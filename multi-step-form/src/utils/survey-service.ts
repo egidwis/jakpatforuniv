@@ -5,12 +5,37 @@
  */
 export async function extractGoogleFormsInfo(url: string) {
   try {
+    // Cek terlebih dahulu apakah form tidak publik
+    try {
+      // Gunakan fetch langsung untuk memeriksa apakah form tidak publik
+      const directResponse = await fetch(url);
+      const directHtml = await directResponse.text();
+
+      // Cek teks yang menunjukkan form tidak publik
+      if (directHtml.includes('This form can only be viewed by users in the owner\'s organization') ||
+          directHtml.includes('You need permission') ||
+          directHtml.includes('requires permission') ||
+          directHtml.includes('need to login') ||
+          directHtml.includes('tidak memiliki akses')) {
+        console.log("Form is not public");
+        throw new Error("FORM_NOT_PUBLIC");
+      }
+    } catch (directError) {
+      // Jika error bukan karena form tidak publik, lanjutkan dengan proxy
+      if (directError instanceof Error && directError.message === "FORM_NOT_PUBLIC") {
+        throw directError;
+      }
+      console.log("Direct fetch failed, continuing with proxies");
+    }
+
     // Gunakan CORS proxy untuk mengakses form
     const corsProxies = [
       'https://corsproxy.io/?',
       'https://cors-anywhere.herokuapp.com/',
       'https://api.allorigins.win/raw?url='
     ];
+
+    let lastHtml = '';
 
     // Coba setiap proxy sampai berhasil
     for (const proxy of corsProxies) {
@@ -19,6 +44,17 @@ export async function extractGoogleFormsInfo(url: string) {
         if (!response.ok) continue;
 
         const html = await response.text();
+        lastHtml = html; // Simpan HTML terakhir untuk pengecekan form tidak publik
+
+        // Cek apakah form tidak publik dari respons proxy
+        if (html.includes('This form can only be viewed by users in the owner\'s organization') ||
+            html.includes('You need permission') ||
+            html.includes('requires permission') ||
+            html.includes('need to login') ||
+            html.includes('tidak memiliki akses')) {
+          console.log("Form is not public (detected via proxy)");
+          throw new Error("FORM_NOT_PUBLIC");
+        }
 
         // Ekstrak data form dari JavaScript di halaman
         const scriptRegex = /var FB_PUBLIC_LOAD_DATA_ = ([\s\S]*?);<\/script>/;
@@ -56,6 +92,11 @@ export async function extractGoogleFormsInfo(url: string) {
           platform: 'Google Forms'
         };
       } catch (proxyError) {
+        // Jika error karena form tidak publik, lempar error tersebut
+        if (proxyError instanceof Error && proxyError.message === "FORM_NOT_PUBLIC") {
+          throw proxyError;
+        }
+
         console.error(`Error with proxy ${proxy}:`, proxyError);
         // Lanjutkan ke proxy berikutnya
       }
@@ -70,6 +111,15 @@ export async function extractGoogleFormsInfo(url: string) {
 
     if (apiResponse.ok) {
       const data = await apiResponse.json();
+
+      // Jika API mengembalikan status error untuk form tidak publik
+      if (data.error && (
+          data.error.includes('not public') ||
+          data.error.includes('permission') ||
+          data.error.includes('access denied'))) {
+        throw new Error("FORM_NOT_PUBLIC");
+      }
+
       return {
         title: data.title || 'Tidak tersedia',
         description: data.description || 'Tidak tersedia',
@@ -78,10 +128,13 @@ export async function extractGoogleFormsInfo(url: string) {
       };
     }
 
-    // Cek apakah form mungkin tidak publik
-    if (html && html.includes('This form can only be viewed by users in the owner\'s organization') ||
-        html && html.includes('You need permission') ||
-        html && html.includes('requires permission')) {
+    // Cek lagi dari HTML terakhir yang didapat
+    if (lastHtml && (
+        lastHtml.includes('This form can only be viewed by users in the owner\'s organization') ||
+        lastHtml.includes('You need permission') ||
+        lastHtml.includes('requires permission') ||
+        lastHtml.includes('need to login') ||
+        lastHtml.includes('tidak memiliki akses'))) {
       throw new Error("FORM_NOT_PUBLIC");
     }
 
