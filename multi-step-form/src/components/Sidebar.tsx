@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost } from '../utils/cost-calculator';
+import { MobileProgressBar } from './MobileProgressBar';
 
 interface SidebarProps {
   currentStep: number;
@@ -26,6 +27,20 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
     return new Intl.NumberFormat('id-ID').format(amount);
   };
 
+  // Define steps for desktop
+  const desktopSteps = [
+    { number: 1, title: "Detail Survey" },
+    { number: 2, title: "Data diri & Insentif" },
+    { number: 3, title: "Review & Pembayaran" }
+  ];
+
+  // Define steps for mobile (shorter titles)
+  const mobileSteps = [
+    { number: 1, title: "Detail" },
+    { number: 2, title: "Data" },
+    { number: 3, title: "Review" }
+  ];
+
   return (
     <div className="sidebar">
       <h2 className="text-lg font-semibold mb-4">Submit survey</h2>
@@ -33,27 +48,23 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
         Iklankan survey kamu ke 1.7Juta responden Jakpat
       </p>
 
+      {/* Mobile Progress Bar */}
+      <MobileProgressBar
+        currentStep={currentStep}
+        steps={mobileSteps}
+      />
+
+      {/* Desktop Steps */}
       <div className="space-y-2">
-        <StepItem
-          number={1}
-          title="Detail Survey"
-          isActive={currentStep === 1}
-          isCompleted={currentStep > 1}
-        />
-
-        <StepItem
-          number={2}
-          title="Data diri & Insentif"
-          isActive={currentStep === 2}
-          isCompleted={currentStep > 2}
-        />
-
-        <StepItem
-          number={3}
-          title="Review & Pembayaran"
-          isActive={currentStep === 3}
-          isCompleted={false}
-        />
+        {desktopSteps.map((step) => (
+          <StepItem
+            key={step.number}
+            number={step.number}
+            title={step.title}
+            isActive={currentStep === step.number}
+            isCompleted={currentStep > step.number}
+          />
+        ))}
       </div>
 
       <div className="mt-8 p-6 border rounded-lg bg-gray-50">
