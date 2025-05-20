@@ -11,10 +11,10 @@ const getTodayDate = () => {
   return today.toISOString().split('T')[0];
 };
 
-// Fungsi untuk mendapatkan tanggal 3 hari dari sekarang dalam format YYYY-MM-DD
+// Fungsi untuk mendapatkan tanggal 1 hari dari sekarang dalam format YYYY-MM-DD
 const getDefaultEndDate = () => {
   const date = new Date();
-  date.setDate(date.getDate() + 3);
+  date.setDate(date.getDate() + 1);
   return date.toISOString().split('T')[0];
 };
 
@@ -26,7 +26,7 @@ const defaultFormData: SurveyFormData = {
   description: '',
   questionCount: 0,
   criteriaResponden: '',
-  duration: 3, // Default 3 hari
+  duration: 1, // Default 1 hari
   startDate: getTodayDate(),
   endDate: getDefaultEndDate(),
 
