@@ -13,6 +13,7 @@ interface StepOneProps {
 export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleForm, setIsGoogleForm] = useState(true);
+  const [extractTimeout, setExtractTimeout] = useState<number | null>(null);
 
   // Fungsi untuk handle perubahan URL
   const handleUrlChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,6 +31,22 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
         description: '',
         questionCount: 0
       });
+      return;
+    }
+
+    // Jika URL adalah Google Form dan memiliki panjang yang cukup, ekstrak otomatis
+    if (isGoogle && url.length > 30) {
+      // Gunakan debounce untuk menghindari terlalu banyak request
+      if (extractTimeout) {
+        clearTimeout(extractTimeout);
+      }
+
+      const timeout = window.setTimeout(() => {
+        // Panggil fungsi ekstrak
+        extractInfo();
+      }, 1000); // Tunggu 1 detik setelah pengguna berhenti mengetik
+
+      setExtractTimeout(timeout);
     }
   };
 
@@ -82,7 +99,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             toast.error(
               <div>
                 <p className="font-medium">Gagal mengekstrak informasi survei</p>
-                <p className="text-sm mt-1">Terjadi kesalahan saat pengisian data dari link. Silakan coba lagi atau isi form dibawah secara manual.</p>
+                <p className="text-sm mt-1">Pastikan google form sudah diatur sebagai "Public" di pengaturan Google Form. Silakan coba lagi atau isi form dibawah secara manual.</p>
               </div>
             );
         }
@@ -180,7 +197,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             </button>
           </div>
           <p className="text-sm text-gray-500 mt-2">
-            Masukan link google form dan field dibawah akan otomatis terisi. Link selain google form akan bisa dimasukan manual.
+            Masukan link Google Form dan field dibawah akan otomatis terisi. Anda juga bisa klik tombol "Ekstrak" jika data tidak terisi otomatis. Link selain Google Form bisa diisi secara manual.
           </p>
         </div>
 
