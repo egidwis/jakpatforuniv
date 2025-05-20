@@ -8,31 +8,34 @@ export async function extractGoogleFormsInfo(url: string) {
     // Cek terlebih dahulu apakah form tidak publik
     try {
       // Gunakan fetch langsung untuk memeriksa apakah form tidak publik
-      const directResponse = await fetch(url);
-      const directHtml = await directResponse.text();
+      // Tambahkan mode no-cors untuk menghindari error CORS
+      const directResponse = await fetch(url, {
+        method: 'GET',
+        mode: 'no-cors', // Ini akan mencegah error CORS, tapi juga membuat response tidak dapat dibaca
+        cache: 'no-cache',
+        credentials: 'same-origin',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
 
-      // Cek teks yang menunjukkan form tidak publik
-      if (directHtml.includes('This form can only be viewed by users in the owner\'s organization') ||
-          directHtml.includes('You need permission') ||
-          directHtml.includes('requires permission') ||
-          directHtml.includes('need to login') ||
-          directHtml.includes('tidak memiliki akses')) {
-        console.log("Form is not public");
-        throw new Error("FORM_NOT_PUBLIC");
-      }
+      // Karena mode no-cors, kita tidak bisa membaca response
+      // Jadi kita akan langsung lanjut ke proxy
+      console.log("Direct fetch completed, but can't read response due to CORS. Continuing with proxies");
     } catch (directError) {
       // Jika error bukan karena form tidak publik, lanjutkan dengan proxy
       if (directError instanceof Error && directError.message === "FORM_NOT_PUBLIC") {
         throw directError;
       }
-      console.log("Direct fetch failed, continuing with proxies");
+      console.log("Direct fetch failed, continuing with proxies:", directError);
     }
 
     // Gunakan CORS proxy untuk mengakses form
     const corsProxies = [
       'https://corsproxy.io/?',
+      'https://api.allorigins.win/raw?url=',
       'https://cors-anywhere.herokuapp.com/',
-      'https://api.allorigins.win/raw?url='
+      'https://cors.bridged.cc/'
     ];
 
     let lastHtml = '';
