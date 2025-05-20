@@ -175,12 +175,12 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                'Ekstrak'
+                'Preview'
               )}
             </button>
           </div>
           <p className="text-sm text-gray-500 mt-2">
-            Masukan link Google Form dan klik tombol "Ekstrak" untuk mengisi field dibawah secara otomatis. Link selain Google Form bisa diisi secara manual.
+            Masukan link Google Form dan klik tombol "Preview" untuk mengisi field dibawah secara otomatis. Link selain Google Form bisa diisi secara manual.
           </p>
         </div>
 
