@@ -1,0 +1,19 @@
+[site]
+bucket = "./dist"
+entry-point = "."
+pages_build_output_dir = "dist"
+
+[site.static]
+include = ["_headers", "_redirects"]
+
+[env.production]
+name = "jakpatforuniv"
+route = "jakpatforuniv.com/*"
+
+[build]
+command = "npm run build"
+output_dir = "dist"
+
+[routes]
+pattern = "/*"
+script = "index.html"
