@@ -30,8 +30,8 @@
   ],
   "rewrites": [
     {
-      "source": "/submit-survey/(.*)",
-      "destination": "/submit-survey/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
