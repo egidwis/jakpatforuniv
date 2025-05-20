@@ -36,16 +36,6 @@ export function StepTwo({ formData, updateFormData, nextStep, prevStep }: StepTw
       return false;
     }
 
-    if (formData.winnerCount < 2) {
-      toast.error('Jumlah pemenang minimal 2 orang');
-      return false;
-    }
-
-    if (formData.prizePerWinner < 25000) {
-      toast.error('Hadiah per pemenang minimal Rp 25.000');
-      return false;
-    }
-
     return true;
   };
 
@@ -60,8 +50,8 @@ export function StepTwo({ formData, updateFormData, nextStep, prevStep }: StepTw
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">Data diri & Insentif</h2>
-      <p className="text-gray-600 mb-6">Lengkapi data diri dan informasi insentif</p>
+      <h2 className="text-xl font-semibold mb-4">Data diri</h2>
+      <p className="text-gray-600 mb-6">Lengkapi data diri Anda</p>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -140,50 +130,7 @@ export function StepTwo({ formData, updateFormData, nextStep, prevStep }: StepTw
           </div>
         </div>
 
-        <div className="border-t border-gray-200 pt-6 mt-8">
-          <div className="rounded-lg border border-gray-200 overflow-hidden mb-6">
-            <div className="p-6">
-              <h3 className="text-lg font-medium mb-4">Insentif ke responden</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                Total insentif nantinya akan dimasukkan ke link pembayaran beserta biaya iklan, dari pihak Jakpat akan mendistribusikan insentif ke responden secara otomatis.
-              </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="form-group">
-                  <label htmlFor="winnerCount" className="form-label">Jumlah Pemenang</label>
-                  <input
-                    id="winnerCount"
-                    type="number"
-                    className="form-input"
-                    placeholder="Min. 2"
-                    value={formData.winnerCount}
-                    onChange={(e) => updateFormData({ winnerCount: parseInt(e.target.value) || 0 })}
-                    min={2}
-                  />
-                  <p className="text-sm text-gray-500 mt-2">Minimal 2 pemenang</p>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="prizePerWinner" className="form-label">Hadiah per-pemenang</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
-                    <input
-                      id="prizePerWinner"
-                      type="number"
-                      className="form-input pl-10"
-                      placeholder="Min. Rp 25.000"
-                      value={formData.prizePerWinner}
-                      onChange={(e) => updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 })}
-                      min={25000}
-                      step={1000}
-                    />
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">Minimal Rp 25.000 per pemenang</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <div className="flex justify-between mt-8">
           <button

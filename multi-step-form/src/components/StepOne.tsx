@@ -61,15 +61,15 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             toast.error(
               <div>
                 <p className="font-medium">Link Google Form tidak dapat diakses</p>
-                <p className="text-sm mt-1">Pastikan form sudah diatur sebagai "Public" di pengaturan Google Form. Silakan ubah pengaturan akses form Anda.</p>
+                <p className="text-sm mt-1">Pastikan form sudah diatur sebagai "Public" di pengaturan Google Form. Silakan ubah pengaturan akses form Kamu ya.</p>
               </div>
             );
             break;
           case 'NON_GOOGLE_FORM':
             toast.error(
               <div>
-                <p className="font-medium">Link bukan Google Form</p>
-                <p className="text-sm mt-1">Saat ini kami hanya mendukung ekstraksi otomatis untuk Google Form. Silakan isi detail form secara manual.</p>
+                <p className="font-medium">Link ini bukan Google Form</p>
+                <p className="text-sm mt-1">Saat ini kami hanya mendukung pengisian otomatis untuk Google Form. Silakan isi detail form secara manual.</p>
               </div>
             );
             // Reset isGoogleForm to false
@@ -82,7 +82,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             toast.error(
               <div>
                 <p className="font-medium">Gagal mengekstrak informasi survei</p>
-                <p className="text-sm mt-1">Terjadi kesalahan saat mengekstrak data. Silakan coba lagi atau isi detail form secara manual.</p>
+                <p className="text-sm mt-1">Terjadi kesalahan saat pengisian data dari link. Silakan coba lagi atau isi form dibawah secara manual.</p>
               </div>
             );
         }
@@ -124,6 +124,16 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
     if (formData.duration <= 0) {
       toast.error('Durasi survei harus lebih dari 0 hari');
+      return false;
+    }
+
+    if (formData.winnerCount < 2) {
+      toast.error('Jumlah pemenang minimal 2 orang');
+      return false;
+    }
+
+    if (formData.prizePerWinner < 25000) {
+      toast.error('Hadiah per pemenang minimal Rp 25.000');
       return false;
     }
 
@@ -290,6 +300,51 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             <p>Max 15 pertanyaan = Rp 150.000/hari</p>
             <p>Max 30 pertanyaan = Rp 200.000/hari</p>
             <p>Max 50 pertanyaan = Rp 300.000/hari</p>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 pt-6 mt-8">
+          <div className="rounded-lg border border-gray-200 overflow-hidden mb-6">
+            <div className="p-6">
+              <h3 className="text-lg font-medium mb-4">Insentif ke responden</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Total insentif nantinya akan dimasukkan ke link pembayaran beserta biaya iklan, dari pihak Jakpat akan mendistribusikan insentif ke responden secara otomatis.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="form-group">
+                  <label htmlFor="winnerCount" className="form-label">Jumlah Pemenang</label>
+                  <input
+                    id="winnerCount"
+                    type="number"
+                    className="form-input"
+                    placeholder="Min. 2"
+                    value={formData.winnerCount}
+                    onChange={(e) => updateFormData({ winnerCount: parseInt(e.target.value) || 0 })}
+                    min={2}
+                  />
+                  <p className="text-sm text-gray-500 mt-2">Minimal 2 pemenang</p>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="prizePerWinner" className="form-label">Hadiah per-pemenang</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
+                    <input
+                      id="prizePerWinner"
+                      type="number"
+                      className="form-input pl-10"
+                      placeholder="Min. Rp 25.000"
+                      value={formData.prizePerWinner}
+                      onChange={(e) => updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 })}
+                      min={25000}
+                      step={1000}
+                    />
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">Minimal Rp 25.000 per pemenang</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
