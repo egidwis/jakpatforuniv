@@ -54,7 +54,41 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
       toast.success('Informasi survei berhasil diekstrak');
     } catch (error) {
-      toast.error('Gagal mengekstrak informasi survei');
+      // Handle specific error codes with user-friendly messages
+      if (error instanceof Error) {
+        switch (error.message) {
+          case 'FORM_NOT_PUBLIC':
+            toast.error(
+              <div>
+                <p className="font-medium">Link Google Form tidak dapat diakses</p>
+                <p className="text-sm mt-1">Pastikan form sudah diatur sebagai "Public" di pengaturan Google Form. Silakan ubah pengaturan akses form Anda.</p>
+              </div>
+            );
+            break;
+          case 'NON_GOOGLE_FORM':
+            toast.error(
+              <div>
+                <p className="font-medium">Link bukan Google Form</p>
+                <p className="text-sm mt-1">Saat ini kami hanya mendukung ekstraksi otomatis untuk Google Form. Silakan isi detail form secara manual.</p>
+              </div>
+            );
+            // Reset isGoogleForm to false
+            setIsGoogleForm(false);
+            break;
+          case 'URL_EMPTY':
+            toast.error('Masukkan URL survei terlebih dahulu');
+            break;
+          default:
+            toast.error(
+              <div>
+                <p className="font-medium">Gagal mengekstrak informasi survei</p>
+                <p className="text-sm mt-1">Terjadi kesalahan saat mengekstrak data. Silakan coba lagi atau isi detail form secara manual.</p>
+              </div>
+            );
+        }
+      } else {
+        toast.error('Gagal mengekstrak informasi survei');
+      }
       console.error(error);
     } finally {
       setIsLoading(false);

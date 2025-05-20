@@ -78,10 +78,26 @@ export async function extractGoogleFormsInfo(url: string) {
       };
     }
 
-    throw new Error("Tidak dapat mengakses form. Coba lagi nanti atau gunakan URL form yang berbeda.");
+    // Cek apakah form mungkin tidak publik
+    if (html && html.includes('This form can only be viewed by users in the owner\'s organization') ||
+        html && html.includes('You need permission') ||
+        html && html.includes('requires permission')) {
+      throw new Error("FORM_NOT_PUBLIC");
+    }
+
+    throw new Error("EXTRACTION_FAILED");
   } catch (error) {
     console.error("Error extracting Google Forms info:", error);
-    throw new Error("Gagal mengekstrak informasi dari Google Forms");
+
+    // Propagate specific error codes
+    if (error instanceof Error &&
+        (error.message === "FORM_NOT_PUBLIC" ||
+         error.message === "EXTRACTION_FAILED")) {
+      throw error;
+    }
+
+    // Default error
+    throw new Error("EXTRACTION_FAILED");
   }
 }
 
@@ -114,17 +130,25 @@ export async function extractSurveyInfo(url: string) {
   try {
     // Validasi URL
     if (!url) {
-      throw new Error("URL tidak boleh kosong");
+      throw new Error("URL_EMPTY");
     }
 
     // Tentukan platform berdasarkan URL
     if (url.includes("docs.google.com/forms") || url.includes("forms.gle")) {
       return await extractGoogleFormsInfo(url);
     } else {
-      return await extractUnknownSurveyInfo(url);
+      // Jika bukan Google Form, tandai dengan error code khusus
+      throw new Error("NON_GOOGLE_FORM");
     }
   } catch (error) {
     console.error("Error extracting survey info:", error);
-    throw error;
+
+    // Propagate specific error codes
+    if (error instanceof Error) {
+      throw error; // Teruskan error dengan kode spesifik
+    }
+
+    // Default error
+    throw new Error("EXTRACTION_FAILED");
   }
 }
