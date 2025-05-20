@@ -1,0 +1,20 @@
+/*
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  X-Content-Type-Options: nosniff
+
+/*.css
+  Content-Type: text/css
+
+/*.js
+  Content-Type: application/javascript
+
+/*.mjs
+  Content-Type: application/javascript
+
+/assets/js/*
+  Content-Type: application/javascript
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
