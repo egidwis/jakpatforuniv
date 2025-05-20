@@ -157,7 +157,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="form-group">
           <label htmlFor="surveyUrl" className="form-label">Link Google Form</label>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
             <input
               id="surveyUrl"
               type="text"
@@ -168,7 +168,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             />
             <button
               type="button"
-              className="button button-secondary"
+              className="button button-secondary w-full sm:w-auto"
               onClick={extractInfo}
               disabled={isLoading}
             >
