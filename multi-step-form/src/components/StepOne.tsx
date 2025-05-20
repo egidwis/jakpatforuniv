@@ -13,11 +13,10 @@ interface StepOneProps {
 export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleForm, setIsGoogleForm] = useState(true);
-  const [extractTimeout, setExtractTimeout] = useState<number | null>(null);
 
   // Fungsi untuk handle perubahan URL
   const handleUrlChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const url = e.target.value.trim();
+    const url = e.target.value;
     updateFormData({ surveyUrl: url });
 
     // Cek apakah URL adalah Google Form
@@ -31,31 +30,6 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
         description: '',
         questionCount: 0
       });
-      return;
-    }
-
-    // Jika URL adalah Google Form dan memiliki panjang yang cukup, ekstrak otomatis
-    if (isGoogle && url.length > 30) {
-      // Pastikan URL valid
-      try {
-        // Validasi format URL
-        new URL(url);
-
-        // Gunakan debounce untuk menghindari terlalu banyak request
-        if (extractTimeout) {
-          clearTimeout(extractTimeout);
-        }
-
-        const timeout = window.setTimeout(() => {
-          // Panggil fungsi ekstrak
-          extractInfo();
-        }, 1000); // Tunggu 1 detik setelah pengguna berhenti mengetik
-
-        setExtractTimeout(timeout);
-      } catch (error) {
-        // URL tidak valid, tidak perlu melakukan apa-apa
-        console.log("URL tidak valid:", error);
-      }
     }
   };
 
@@ -66,25 +40,9 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
       return;
     }
 
-    // Validasi format URL
-    try {
-      new URL(formData.surveyUrl);
-    } catch (error) {
-      toast.error('URL tidak valid. Pastikan format URL benar');
-      return;
-    }
-
     setIsLoading(true);
     try {
-      // Bersihkan URL dari whitespace
-      const cleanUrl = formData.surveyUrl.trim();
-
-      // Pastikan URL adalah Google Form
-      if (!cleanUrl.includes('docs.google.com/forms') && !cleanUrl.includes('forms.gle')) {
-        throw new Error('NON_GOOGLE_FORM');
-      }
-
-      const info = await extractSurveyInfo(cleanUrl);
+      const info = await extractSurveyInfo(formData.surveyUrl);
       updateFormData({
         title: info.title,
         description: info.description,
@@ -124,14 +82,14 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             toast.error(
               <div>
                 <p className="font-medium">Gagal mengekstrak informasi survei</p>
-                <p className="text-sm mt-1">Pastikan URL Google Form valid dan form sudah diatur sebagai "Public". Silakan coba lagi atau isi form dibawah secara manual.</p>
+                <p className="text-sm mt-1">Pastikan form sudah diatur sebagai "Public" di pengaturan Google Form. Silakan coba lagi atau isi form dibawah secara manual.</p>
               </div>
             );
         }
       } else {
         toast.error('Gagal mengekstrak informasi survei');
       }
-      console.error("Error extracting form info:", error);
+      console.error(error);
     } finally {
       setIsLoading(false);
     }
@@ -222,7 +180,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             </button>
           </div>
           <p className="text-sm text-gray-500 mt-2">
-            Masukan link Google Form dan field dibawah akan otomatis terisi. Anda juga bisa klik tombol "Ekstrak" jika data tidak terisi otomatis. Link selain Google Form bisa diisi secara manual.
+            Masukan link Google Form dan klik tombol "Ekstrak" untuk mengisi field dibawah secara otomatis. Link selain Google Form bisa diisi secara manual.
           </p>
         </div>
 

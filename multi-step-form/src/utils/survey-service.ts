@@ -8,34 +8,29 @@ export async function extractGoogleFormsInfo(url: string) {
     // Cek terlebih dahulu apakah form tidak publik
     try {
       // Gunakan fetch langsung untuk memeriksa apakah form tidak publik
-      // Tambahkan mode no-cors untuk menghindari error CORS
-      const directResponse = await fetch(url, {
-        method: 'GET',
-        mode: 'no-cors', // Ini akan mencegah error CORS, tapi juga membuat response tidak dapat dibaca
-        cache: 'no-cache',
-        credentials: 'same-origin',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-      });
+      const directResponse = await fetch(url);
+      const directHtml = await directResponse.text();
 
-      // Karena mode no-cors, kita tidak bisa membaca response
-      // Jadi kita akan langsung lanjut ke proxy
-      console.log("Direct fetch completed, but can't read response due to CORS. Continuing with proxies");
+      // Cek teks yang menunjukkan form tidak publik
+      if (directHtml.includes('This form can only be viewed by users in the owner\'s organization') ||
+          directHtml.includes('You need permission') ||
+          directHtml.includes('requires permission')) {
+        console.log("Form is not public");
+        throw new Error("FORM_NOT_PUBLIC");
+      }
     } catch (directError) {
       // Jika error bukan karena form tidak publik, lanjutkan dengan proxy
       if (directError instanceof Error && directError.message === "FORM_NOT_PUBLIC") {
         throw directError;
       }
-      console.log("Direct fetch failed, continuing with proxies:", directError);
+      console.log("Direct fetch failed, continuing with proxies");
     }
 
     // Gunakan CORS proxy untuk mengakses form
     const corsProxies = [
       'https://corsproxy.io/?',
-      'https://api.allorigins.win/raw?url=',
       'https://cors-anywhere.herokuapp.com/',
-      'https://cors.bridged.cc/'
+      'https://api.allorigins.win/raw?url='
     ];
 
     let lastHtml = '';
@@ -52,9 +47,7 @@ export async function extractGoogleFormsInfo(url: string) {
         // Cek apakah form tidak publik dari respons proxy
         if (html.includes('This form can only be viewed by users in the owner\'s organization') ||
             html.includes('You need permission') ||
-            html.includes('requires permission') ||
-            html.includes('need to login') ||
-            html.includes('tidak memiliki akses')) {
+            html.includes('requires permission')) {
           console.log("Form is not public (detected via proxy)");
           throw new Error("FORM_NOT_PUBLIC");
         }
@@ -115,12 +108,9 @@ export async function extractGoogleFormsInfo(url: string) {
     if (apiResponse.ok) {
       const data = await apiResponse.json();
 
-      // Jika API mengembalikan status error untuk form tidak publik
-      if (data.error && (
-          data.error.includes('not public') ||
-          data.error.includes('permission') ||
-          data.error.includes('access denied'))) {
-        throw new Error("FORM_NOT_PUBLIC");
+      // Jika API mengembalikan status error
+      if (data.error) {
+        throw new Error("EXTRACTION_FAILED");
       }
 
       return {
@@ -135,9 +125,7 @@ export async function extractGoogleFormsInfo(url: string) {
     if (lastHtml && (
         lastHtml.includes('This form can only be viewed by users in the owner\'s organization') ||
         lastHtml.includes('You need permission') ||
-        lastHtml.includes('requires permission') ||
-        lastHtml.includes('need to login') ||
-        lastHtml.includes('tidak memiliki akses'))) {
+        lastHtml.includes('requires permission'))) {
       throw new Error("FORM_NOT_PUBLIC");
     }
 
