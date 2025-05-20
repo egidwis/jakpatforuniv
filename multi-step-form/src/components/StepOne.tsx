@@ -30,6 +30,14 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
         description: '',
         questionCount: 0
       });
+    } else {
+      // Jika URL adalah Google Form dan cukup panjang, coba ekstrak otomatis
+      if (url.length > 30 && !isLoading) {
+        // Tunggu sebentar sebelum ekstrak otomatis
+        setTimeout(() => {
+          extractInfo();
+        }, 500);
+      }
     }
   };
 
@@ -42,17 +50,39 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
     setIsLoading(true);
     try {
-      const info = await extractSurveyInfo(formData.surveyUrl);
-      updateFormData({
-        title: info.title,
-        description: info.description,
-        questionCount: info.questionCount
-      });
+      // Normalisasi URL
+      let url = formData.surveyUrl.trim();
 
-      // Cek apakah URL adalah Google Form
-      setIsGoogleForm(info.platform === 'Google Forms');
+      // Tambahkan https:// jika tidak ada
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+        updateFormData({ surveyUrl: url });
+      }
 
-      toast.success('Informasi survei berhasil diekstrak');
+      console.log("Extracting info from URL:", url);
+      const info = await extractSurveyInfo(url);
+
+      // Jika berhasil diekstrak, update form data
+      if (info && info.title) {
+        updateFormData({
+          title: info.title,
+          description: info.description,
+          questionCount: info.questionCount
+        });
+
+        // Cek apakah URL adalah Google Form
+        setIsGoogleForm(info.platform === 'Google Forms');
+
+        toast.success('Informasi survei berhasil diekstrak');
+      } else {
+        // Jika tidak ada data yang diekstrak
+        toast.warning(
+          <div>
+            <p className="font-medium">Informasi survei tidak lengkap</p>
+            <p className="text-sm mt-1">Silakan lengkapi detail form secara manual.</p>
+          </div>
+        );
+      }
     } catch (error) {
       // Handle specific error codes with user-friendly messages
       if (error instanceof Error) {
@@ -78,6 +108,14 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
           case 'URL_EMPTY':
             toast.error('Masukkan URL survei terlebih dahulu');
             break;
+          case 'EXTRACTION_FAILED':
+            toast.warning(
+              <div>
+                <p className="font-medium">Gagal mengekstrak informasi survei</p>
+                <p className="text-sm mt-1">Silakan coba lagi atau isi form dibawah secara manual.</p>
+              </div>
+            );
+            break;
           default:
             toast.error(
               <div>
@@ -89,7 +127,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
       } else {
         toast.error('Gagal mengekstrak informasi survei');
       }
-      console.error(error);
+      console.error("Error in extractInfo:", error);
     } finally {
       setIsLoading(false);
     }

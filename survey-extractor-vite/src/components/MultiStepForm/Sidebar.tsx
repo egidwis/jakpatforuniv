@@ -43,7 +43,7 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
 
         <StepItem
           number={2}
-          title="Data diri & Insentif"
+          title="Data diri"
           isActive={currentStep === 2}
           isCompleted={currentStep > 2}
         />

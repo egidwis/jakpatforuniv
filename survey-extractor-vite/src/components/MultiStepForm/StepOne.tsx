@@ -131,7 +131,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                'Ekstrak'
+                'Preview'
               )}
             </button>
           </div>
