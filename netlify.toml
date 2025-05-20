@@ -1,0 +1,25 @@
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Content-Type = "text/css"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Content-Type = "application/javascript"
+
+[[headers]]
+  for = "/*.mjs"
+  [headers.values]
+    Content-Type = "application/javascript"
+
+[[redirects]]
+  from = "/"
+  to = "/submit-survey/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/submit-survey/*"
+  to = "/submit-survey/index.html"
+  status = 200
