@@ -217,7 +217,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
                       const start = new Date(e.target.value);
                       const end = new Date(formData.endDate);
                       const diffTime = Math.abs(end.getTime() - start.getTime());
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                       updateFormData({ duration: diffDays });
                     }
                   }}
@@ -240,7 +240,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
                       const start = new Date(formData.startDate);
                       const end = new Date(e.target.value);
                       const diffTime = Math.abs(end.getTime() - start.getTime());
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                       updateFormData({ duration: diffDays });
                     }
                   }}
