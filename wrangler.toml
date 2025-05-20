@@ -7,8 +7,8 @@ pages_build_output_dir = "dist"
 include = ["_headers", "_redirects"]
 
 [env.production]
-name = "jakpatforuniv"
-route = "jakpatforuniv.com/*"
+name = "jakpatforuniv-submit"
+route = "submit.jakpatforuniv.com/*"
 
 [build]
 command = "npm run build"
