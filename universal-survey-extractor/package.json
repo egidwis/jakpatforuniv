@@ -1,0 +1,24 @@
+{
+  "name": "universal-survey-extractor",
+  "version": "1.0.0",
+  "description": "A tool to extract information from various survey platforms",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "survey",
+    "form",
+    "extractor",
+    "google-forms",
+    "surveymonkey",
+    "typeform"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.27.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.1"
+  }
+}

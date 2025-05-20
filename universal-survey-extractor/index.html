@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Survey Extractor</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Universal Survey Extractor</h1>
+            <p class="subtitle">Ekstrak informasi dari berbagai platform survei online</p>
+            <div class="platform-badges">
+                <span class="badge google">Google Forms</span>
+                <span class="badge surveymonkey">SurveyMonkey</span>
+                <span class="badge typeform">Typeform</span>
+                <span class="badge microsoft">Microsoft Forms</span>
+                <span class="badge jotform">JotForm</span>
+                <span class="badge opinionx">OpinionX</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="form-container">
+                <div class="input-group">
+                    <label for="survey-url">URL Survei:</label>
+                    <input type="text" id="survey-url" placeholder="https://docs.google.com/forms/... atau https://www.surveymonkey.com/..." required>
+                </div>
+                <div class="button-group">
+                    <button id="extract-btn" class="primary-btn">Dapatkan Informasi</button>
+                    <button id="clear-btn" class="secondary-btn">Bersihkan</button>
+                </div>
+            </div>
+
+            <div id="platform-info" class="platform-info">
+                <div class="platform-icon">
+                    <img id="platform-icon-img" src="" alt="Platform Icon">
+                </div>
+                <div class="platform-details">
+                    <h3 id="platform-name">Platform Terdeteksi</h3>
+                    <p id="platform-description">Mendeteksi platform survei...</p>
+                </div>
+            </div>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Memuat informasi survei...</p>
+            </div>
+
+            <div id="error-message" class="error-message"></div>
+
+            <div id="result-container" class="result-container">
+                <h2 id="result-title">Informasi Survei</h2>
+                <div class="info-item">
+                    <span class="info-label">Judul:</span>
+                    <span id="survey-title" class="info-value"></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Deskripsi:</span>
+                    <span id="survey-description" class="info-value"></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Jumlah Pertanyaan:</span>
+                    <span id="question-count" class="info-value"></span>
+                </div>
+                <div id="additional-info" class="additional-info">
+                    <!-- Additional platform-specific information will be displayed here -->
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Universal Survey Extractor | <a href="https://github.com/yourusername/universal-survey-extractor" target="_blank">GitHub</a></p>
+        </footer>
+    </div>
+
+    <!-- Load extractors -->
+    <script src="extractors/base-extractor.js"></script>
+    <script src="extractors/google-forms-extractor.js"></script>
+    <script src="extractors/surveymonkey-extractor.js"></script>
+    <script src="extractors/typeform-extractor.js"></script>
+    <script src="extractors/microsoft-forms-extractor.js"></script>
+    <script src="extractors/jotform-extractor.js"></script>
+    <script src="extractors/opinionx-extractor.js"></script>
+
+    <!-- Load main app -->
+    <script src="js/app-server.js"></script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Form Info Extractor</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Google Form Info Extractor</h1>
+            <p class="subtitle">Dapatkan judul, deskripsi, dan jumlah pertanyaan dari Google Form</p>
+        </header>
+
+        <main>
+            <div class="form-container">
+                <div class="input-group">
+                    <label for="form-url">URL Google Form:</label>
+                    <input type="text" id="form-url" placeholder="https://docs.google.com/forms/d/e/..." required>
+                </div>
+                <div class="button-group">
+                    <button id="extract-btn" class="primary-btn">Dapatkan Informasi</button>
+                    <button id="clear-btn" class="secondary-btn">Bersihkan</button>
+                </div>
+            </div>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Memuat informasi form...</p>
+            </div>
+
+            <div id="error-message" class="error-message"></div>
+
+            <div id="result-container" class="result-container">
+                <h2>Informasi Form</h2>
+                <div class="info-item">
+                    <span class="info-label">Judul:</span>
+                    <span id="form-title" class="info-value"></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Deskripsi:</span>
+                    <span id="form-description" class="info-value"></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Jumlah Pertanyaan:</span>
+                    <span id="question-count" class="info-value"></span>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Dibuat dengan ❤️ | <a href="https://github.com/yourusername/google-form-extractor" target="_blank">GitHub</a></p>
+        </footer>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

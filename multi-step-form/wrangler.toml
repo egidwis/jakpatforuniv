@@ -1,0 +1,14 @@
+[site]
+bucket = "./dist"
+entry-point = "."
+
+[site.static]
+include = ["_headers", "_redirects"]
+
+[env.production]
+name = "jakpatforuniv-submit-survey"
+route = "jakpatforuniv.com/submit-survey/*"
+
+[build]
+command = "npm run build"
+output_dir = "dist"

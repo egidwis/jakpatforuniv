@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Info Extractor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #4285F4;
+            text-align: center;
+        }
+        .form-container {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4285F4;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #3367D6;
+        }
+        .result-container {
+            margin-top: 20px;
+            display: none;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .error-message {
+            color: #D32F2F;
+            margin-top: 20px;
+            display: none;
+            background-color: #FFEBEE;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .info-item {
+            margin-bottom: 10px;
+        }
+        .info-label {
+            font-weight: bold;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Form Info Extractor</h1>
+
+    <div class="form-container">
+        <form id="form-url-form">
+            <div class="input-group">
+                <label for="form-url">Masukkan URL Form (Google Forms, SurveyMonkey, dll):</label>
+                <input type="text" id="form-url" name="url" placeholder="https://docs.google.com/forms/... atau https://www.surveymonkey.com/..." required>
+            </div>
+            <button type="submit">Dapatkan Informasi</button>
+        </form>
+    </div>
+
+    <div class="loading" id="loading">
+        <p>Memuat informasi form...</p>
+    </div>
+
+    <div class="error-message" id="error-message"></div>
+
+    <div class="result-container" id="result-container">
+        <h2>Informasi Form</h2>
+        <div class="info-item">
+            <span class="info-label">Judul:</span>
+            <span id="form-title"></span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Deskripsi:</span>
+            <span id="form-description"></span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Jumlah Pertanyaan:</span>
+            <span id="question-count"></span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Platform:</span>
+            <span id="platform"></span>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('form-url-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Reset previous results
+            document.getElementById('result-container').style.display = 'none';
+            document.getElementById('error-message').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+
+            const formUrl = document.getElementById('form-url').value;
+
+            // Send request to server
+            fetch('/get_form_info', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'url=' + encodeURIComponent(formUrl)
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+
+                if (data.success) {
+                    // Display form information
+                    document.getElementById('form-title').textContent = data.form_info.title || 'Tidak tersedia';
+                    document.getElementById('form-description').textContent = data.form_info.description || 'Tidak tersedia';
+                    document.getElementById('question-count').textContent = data.form_info.question_count;
+                    document.getElementById('platform').textContent = data.form_info.platform || 'Tidak diketahui';
+                    document.getElementById('result-container').style.display = 'block';
+                } else {
+                    // Display error message
+                    document.getElementById('error-message').textContent = data.error;
+                    document.getElementById('error-message').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error-message').textContent = 'Terjadi kesalahan: ' + error.message;
+                document.getElementById('error-message').style.display = 'block';
+            });
+        });
+    </script>
+</body>
+</html>
