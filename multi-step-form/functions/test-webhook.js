@@ -1,4 +1,6 @@
 export function onRequest(context) {
+  // Ambil webhook token dari environment variables
+  const webhookToken = context.env.VITE_MAYAR_WEBHOOK_TOKEN || '';
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -101,6 +103,7 @@ export function onRequest(context) {
       <option value="payment.success">payment.success</option>
       <option value="payment.failed">payment.failed</option>
       <option value="payment.expired">payment.expired</option>
+      <option value="testing">testing</option>
     </select>
   </div>
 
@@ -111,7 +114,10 @@ export function onRequest(context) {
 
   <div class="form-group">
     <label for="webhookToken">Webhook Token (untuk signature):</label>
-    <input type="text" id="webhookToken" placeholder="Webhook token dari .env.local">
+    <input type="text" id="webhookToken" value="${webhookToken}" placeholder="Webhook token dari .env.local">
+    <div style="font-size: 0.8em; color: #10b981; margin-top: 5px;">
+      ${webhookToken ? 'Token diambil dari environment variables' : 'Token tidak ditemukan di environment variables'}
+    </div>
   </div>
 
   <div class="form-group">
@@ -151,15 +157,41 @@ export function onRequest(context) {
       function generatePayload() {
         const eventType = eventTypeSelect.value;
         const paymentId = paymentIdInput.value || 'pay_test_' + Date.now();
+        const timestamp = Math.floor(Date.now() / 1000);
 
+        // Format payload sesuai dengan format Mayar
         const payload = {
           type: eventType,
           data: {
             id: paymentId,
-            status: eventType === 'payment.success' ? 'completed' :
-                   eventType === 'payment.failed' ? 'failed' : 'expired',
+            status: eventType === 'payment.success' ? 'SUCCESS' :
+                   eventType === 'payment.failed' ? 'FAILED' :
+                   eventType === 'payment.expired' ? 'EXPIRED' : 'SUCCESS',
             amount: 100000,
-            created_at: new Date().toISOString()
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            merchantId: "12345",
+            merchantName: "Merchant Demo",
+            merchantEmail: "example.merchant@myr.id",
+            customerName: "Customer Demo",
+            customerEmail: "example.customer@myr.id",
+            customerMobile: "8123456789",
+            isAdminFeeBorneByCustomer: true,
+            isChannelFeeBorneByCustomer: true,
+            productId: "1123344",
+            productName: "Product Example",
+            productType: "digital_product",
+            custom_field: [
+              {
+                name: "Label Input",
+                description: "Input description",
+                fieldType: "text",
+                isRequired: false,
+                key: "001123344",
+                type: "string",
+                value: "Value Input"
+              }
+            ]
           }
         };
 
