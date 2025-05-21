@@ -25,10 +25,8 @@ const isSimulationMode = () => {
 
   console.log('Is simulation mode:', isSimulation);
 
-  return isSimulation;
-
   // Untuk debugging, uncomment baris di bawah ini untuk memaksa mode produksi
-  // return false;
+  return false; // Paksa mode produksi untuk testing
 };
 
 // Fungsi untuk memeriksa status API Mayar
@@ -135,6 +133,7 @@ export const createPayment = async (paymentData: PaymentData) => {
       amount: amount,
       mobile: customerInfo.phoneNumber || '08123456789',
       redirectUrl: `${origin}/payment-success?id=${formSubmissionId}`,
+      failureUrl: `${origin}/payment-failed?id=${formSubmissionId}`,
       description: `Pembayaran Survey - ${customerInfo.title}`,
       expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 jam
       webhookUrl: `${origin}/webhook` // URL webhook untuk notifikasi pembayaran
@@ -147,7 +146,7 @@ export const createPayment = async (paymentData: PaymentData) => {
 
     let response;
 
-    // Coba beberapa format header Authorization yang berbeda
+    // Coba dengan format header yang benar sesuai dokumentasi Mayar
     try {
       // Persiapkan header untuk request - format sesuai dokumentasi Mayar
       const headers = {
@@ -167,89 +166,50 @@ export const createPayment = async (paymentData: PaymentData) => {
         ...(webhookToken ? { 'X-Webhook-Token': 'configured' } : {})
       });
 
-      response = await axios.post(
-        'https://api.mayar.id/hl/v1/payment/create',
-        requestData,
-        {
-          headers,
-          timeout: 15000 // 15 detik timeout
-        }
-      );
-
-      console.log('Mayar API response received successfully with Bearer token');
-    } catch (apiError) {
-      console.error('Error with Bearer token format, trying alternative format:', apiError.message);
-
+      // Coba endpoint baru terlebih dahulu
       try {
-        // Jika format Bearer gagal, coba format tanpa Bearer
-        console.log('Trying alternative authorization format');
-
-        // Persiapkan header alternatif
-        const altHeaders = {
-          'Authorization': apiKey,
-          'Content-Type': 'application/json',
-          'X-API-KEY': apiKey // Tambahkan X-API-KEY sebagai alternatif
-        };
-
-        // Tambahkan webhook token ke header jika tersedia
-        const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
-        if (webhookToken) {
-          altHeaders['X-Webhook-Token'] = webhookToken;
-        }
-
-        console.log('Using alternative headers:', {
-          Authorization: apiKey.substring(0, 10) + '...',
-          'Content-Type': 'application/json',
-          'X-API-KEY': apiKey.substring(0, 10) + '...',
-          ...(webhookToken ? { 'X-Webhook-Token': 'configured' } : {})
-        });
-
+        console.log('Trying Mayar Headless API endpoint');
         response = await axios.post(
           'https://api.mayar.id/hl/v1/payment/create',
           requestData,
           {
-            headers: altHeaders,
+            headers,
             timeout: 15000 // 15 detik timeout
           }
         );
+        console.log('Mayar Headless API response received successfully');
+      } catch (headlessError) {
+        console.error('Error with Headless API, trying standard API:', headlessError.message);
 
-        console.log('Mayar API response received with alternative auth format');
-      } catch (altError) {
-        console.error('Alternative authorization format failed:', altError.message);
-
-        // Coba format ketiga - menggunakan header Basic Auth
-        try {
-          console.log('Trying Basic Auth format as last resort');
-
-          // Encode API key untuk Basic Auth
-          const encodedAuth = btoa(apiKey + ':');
-
-          const basicAuthHeaders = {
-            'Authorization': `Basic ${encodedAuth}`,
-            'Content-Type': 'application/json'
-          };
-
-          console.log('Using Basic Auth headers');
-
-          response = await axios.post(
-            'https://api.mayar.id/hl/v1/payment/create',
-            requestData,
-            {
-              headers: basicAuthHeaders,
-              timeout: 15000 // 15 detik timeout
-            }
-          );
-
-          console.log('Mayar API response received with Basic Auth format');
-        } catch (basicAuthError) {
-          console.error('All authorization formats failed:', basicAuthError.message);
-          throw basicAuthError; // Re-throw untuk ditangkap oleh catch di luar
-        }
+        // Jika endpoint headless gagal, coba endpoint standar
+        console.log('Trying Mayar standard API endpoint');
+        response = await axios.post(
+          'https://api.mayar.id/v1/invoices',
+          requestData,
+          {
+            headers,
+            timeout: 15000 // 15 detik timeout
+          }
+        );
+        console.log('Mayar standard API response received successfully');
       }
+    } catch (apiError) {
+      console.error('All API endpoints failed:', apiError.message);
+
+      // Log error details untuk debugging
+      if (apiError.response) {
+        console.error('API error response:', {
+          status: apiError.response.status,
+          data: apiError.response.data,
+          headers: apiError.response.headers
+        });
+      }
+
+      throw apiError; // Re-throw untuk ditangkap oleh catch di luar
     }
 
     // Validasi response
-    if (!response || !response.data || !response.data.payment_url) {
+    if (!response || !response.data) {
       console.error('Invalid response from Mayar API:', response?.data);
       throw new Error('Response dari Mayar API tidak valid');
     }
@@ -257,15 +217,61 @@ export const createPayment = async (paymentData: PaymentData) => {
     // Log response untuk debugging
     console.log('Mayar API response:', response.data);
 
+    // Log response untuk debugging
+    console.log('Raw Mayar API response:', response.data);
+
     // Validasi response sesuai format Mayar
-    if (!response.data || response.data.statusCode !== 200 || !response.data.data || !response.data.data.link) {
-      console.error('Invalid response format from Mayar API:', response.data);
-      throw new Error('Format respons dari gateway pembayaran tidak valid');
+    if (!response.data) {
+      console.error('Empty response from Mayar API');
+      throw new Error('Response dari gateway pembayaran kosong');
     }
 
-    // Ekstrak data dari response sesuai format Mayar
-    const paymentUrl = response.data.data.link;
-    const transactionId = response.data.data.id || response.data.data.transaction_id;
+    // Coba ekstrak payment URL dan ID dari berbagai format response yang mungkin
+    let paymentUrl = '';
+    let transactionId = '';
+
+    // Format 1: response.data.data.link (format dokumentasi)
+    if (response.data.data && response.data.data.link) {
+      paymentUrl = response.data.data.link;
+      transactionId = response.data.data.id || response.data.data.transaction_id || '';
+      console.log('Extracted payment URL using format 1 (data.data.link)');
+    }
+    // Format 2: response.data.payment_url (format lama)
+    else if (response.data.payment_url) {
+      paymentUrl = response.data.payment_url;
+      transactionId = response.data.id || response.data.transaction_id || '';
+      console.log('Extracted payment URL using format 2 (data.payment_url)');
+    }
+    // Format 3: response.data.url (format alternatif)
+    else if (response.data.url) {
+      paymentUrl = response.data.url;
+      transactionId = response.data.id || response.data.transaction_id || '';
+      console.log('Extracted payment URL using format 3 (data.url)');
+    }
+    // Format 4: response.data.data.url (format alternatif)
+    else if (response.data.data && response.data.data.url) {
+      paymentUrl = response.data.data.url;
+      transactionId = response.data.data.id || response.data.data.transaction_id || '';
+      console.log('Extracted payment URL using format 4 (data.data.url)');
+    }
+    // Format 5: response.data.redirect_url (format alternatif)
+    else if (response.data.redirect_url) {
+      paymentUrl = response.data.redirect_url;
+      transactionId = response.data.id || response.data.transaction_id || '';
+      console.log('Extracted payment URL using format 5 (data.redirect_url)');
+    }
+    // Format 6: response.data langsung berisi URL (format paling sederhana)
+    else if (typeof response.data === 'string' && response.data.startsWith('http')) {
+      paymentUrl = response.data;
+      transactionId = `mayar_${Date.now()}`; // Buat ID jika tidak ada
+      console.log('Extracted payment URL using format 6 (data is URL string)');
+    }
+
+    // Jika tidak ada URL yang ditemukan, throw error
+    if (!paymentUrl) {
+      console.error('Could not extract payment URL from response:', response.data);
+      throw new Error('Tidak dapat menemukan URL pembayaran dalam respons');
+    }
 
     console.log('Payment URL received:', paymentUrl);
     console.log('Transaction ID:', transactionId);
