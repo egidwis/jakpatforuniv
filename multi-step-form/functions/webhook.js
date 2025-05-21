@@ -1,8 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import { createHmac } from 'crypto';
 
-// Fungsi untuk memverifikasi signature dari Mayar
-function verifySignature(payload, signature, webhookToken) {
+// Fungsi untuk memverifikasi signature dari Mayar menggunakan Web Crypto API
+async function verifySignature(payload, signature, webhookToken) {
   try {
     // Jika signature atau token tidak ada, verifikasi gagal
     if (!signature || !webhookToken) {
@@ -10,10 +9,27 @@ function verifySignature(payload, signature, webhookToken) {
       return false;
     }
 
-    // Buat HMAC dengan webhook token
-    const hmac = createHmac('sha256', webhookToken);
-    // Update HMAC dengan payload
-    const calculatedSignature = hmac.update(payload).digest('hex');
+    // Encode payload dan token
+    const encoder = new TextEncoder();
+    const data = encoder.encode(payload);
+    const key = encoder.encode(webhookToken);
+
+    // Buat HMAC key
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      key,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+
+    // Hitung signature
+    const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, data);
+
+    // Konversi ke hex string
+    const calculatedSignature = Array.from(new Uint8Array(signatureBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
 
     // Bandingkan signature yang dihitung dengan signature yang diterima
     return calculatedSignature === signature;
@@ -61,7 +77,7 @@ export async function onRequest(context) {
 
     // Verifikasi signature jika webhook token tersedia
     if (webhookToken) {
-      const isValid = verifySignature(payload, signature, webhookToken);
+      const isValid = await verifySignature(payload, signature, webhookToken);
 
       if (!isValid) {
         console.error('Invalid webhook signature');
@@ -139,18 +155,17 @@ export async function onRequest(context) {
           body: JSON.stringify({
             to: formSubmission[0].email,
             subject: 'Pembayaran Berhasil',
-            html: `
-              <h1>Pembayaran Berhasil</h1>
-              <p>Halo ${formSubmission[0].name || 'Responden'},</p>
-              <p>Pembayaran Anda dengan ID <strong>${paymentId}</strong> telah berhasil diproses.</p>
-              <p>Detail Pembayaran:</p>
-              <ul>
-                <li>Jumlah: Rp ${(payloadData.data.amount / 100).toLocaleString('id-ID')}</li>
-                <li>Tanggal: ${new Date(payloadData.data.created_at).toLocaleString('id-ID')}</li>
-                <li>Status: Selesai</li>
-              </ul>
-              <p>Terima kasih atas partisipasi Anda.</p>
-            `
+            html:
+              '<h1>Pembayaran Berhasil</h1>' +
+              '<p>Halo ' + (formSubmission[0].name || 'Responden') + ',</p>' +
+              '<p>Pembayaran Anda dengan ID <strong>' + paymentId + '</strong> telah berhasil diproses.</p>' +
+              '<p>Detail Pembayaran:</p>' +
+              '<ul>' +
+                '<li>Jumlah: Rp ' + (payloadData.data.amount / 100).toLocaleString('id-ID') + '</li>' +
+                '<li>Tanggal: ' + new Date(payloadData.data.created_at).toLocaleString('id-ID') + '</li>' +
+                '<li>Status: Selesai</li>' +
+              '</ul>' +
+              '<p>Terima kasih atas partisipasi Anda.</p>'
           })
         });
 
