@@ -216,7 +216,7 @@ export function onRequest(context) {
           if (webhookToken) {
             const signature = await calculateSignature(payload, webhookToken);
             headers['x-mayar-signature'] = signature;
-            signatureInfo = `Signature calculated: ${signature.substring(0, 10)}...`;
+            signatureInfo = 'Signature calculated: ' + signature.substring(0, 10) + '...';
           }
 
           // Log request details
@@ -246,22 +246,20 @@ export function onRequest(context) {
 
           // Tampilkan hasil
           resultDiv.className = response.ok ? 'result success' : 'result error';
-          resultDiv.innerHTML = `
-<strong>Status:</strong> ${response.status} ${response.statusText}
-<strong>Webhook URL:</strong> ${webhookUrl}
-<strong>Signature:</strong> ${signatureInfo}
-<strong>Headers:</strong> ${Object.keys(headers).join(', ')}
-
-<strong>Response:</strong>
-${responseData}`;
+          resultDiv.innerHTML =
+'<strong>Status:</strong> ' + response.status + ' ' + response.statusText + '<br>' +
+'<strong>Webhook URL:</strong> ' + webhookUrl + '<br>' +
+'<strong>Signature:</strong> ' + signatureInfo + '<br>' +
+'<strong>Headers:</strong> ' + Object.keys(headers).join(', ') + '<br><br>' +
+'<strong>Response:</strong><br>' +
+responseData;
         } catch (error) {
           resultDiv.className = 'result error';
-          resultDiv.innerHTML = `
-<strong>Error:</strong> ${error.message}
-<strong>Webhook URL:</strong> ${webhookUrlInput.value}
-
-<strong>Details:</strong>
-${error.stack || 'No stack trace available'}`;
+          resultDiv.innerHTML =
+'<strong>Error:</strong> ' + error.message + '<br>' +
+'<strong>Webhook URL:</strong> ' + webhookUrlInput.value + '<br><br>' +
+'<strong>Details:</strong><br>' +
+(error.stack || 'No stack trace available');
         }
       });
     });
