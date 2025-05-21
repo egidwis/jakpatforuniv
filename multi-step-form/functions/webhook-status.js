@@ -253,7 +253,6 @@ export function onRequest(context) {
           document.getElementById('mayar-ready-status').className = 'status-error';
         }
       }
-      }
 
       // Fungsi untuk menguji webhook
       testWebhookBtn.addEventListener('click', function() {

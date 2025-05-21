@@ -103,6 +103,19 @@ export async function onRequest(context) {
     if (payloadData.type === 'payment.success') {
       const paymentId = payloadData.data.id;
 
+      // Cek apakah ini adalah test webhook
+      if (paymentId.startsWith('pay_test_')) {
+        console.log('Test webhook detected:', paymentId);
+        return new Response(JSON.stringify({
+          message: 'Test webhook processed successfully',
+          transaction_id: paymentId,
+          status: 'test_success'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
       // Cari transaksi berdasarkan payment_id
       const { data: transaction, error: transactionError } = await supabase
         .from('transactions')
@@ -180,6 +193,21 @@ export async function onRequest(context) {
         transaction_id: paymentId,
         form_id: transaction.form_submission_id,
         status: 'completed'
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Untuk event lain, cek apakah ini test webhook
+    const paymentId = payloadData.data?.id || '';
+    if (paymentId.startsWith('pay_test_')) {
+      console.log('Test webhook detected for event:', payloadData.type);
+      return new Response(JSON.stringify({
+        message: 'Test webhook processed successfully',
+        transaction_id: paymentId,
+        type: payloadData.type,
+        status: 'test_success'
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
