@@ -92,7 +92,7 @@ export function onRequest(context) {
 
   <div class="form-group">
     <label for="webhookUrl">Webhook URL:</label>
-    <input type="text" id="webhookUrl" value="/.netlify/functions/webhook" placeholder="Contoh: /.netlify/functions/webhook">
+    <input type="text" id="webhookUrl" value="/webhook" placeholder="Contoh: /webhook">
   </div>
 
   <div class="form-group">

@@ -155,7 +155,7 @@ export function onRequest(context) {
 
       // Fungsi untuk memeriksa konfigurasi webhook
       function checkWebhookConfiguration(envStatus) {
-        const webhookUrl = \`\${window.location.origin}/.netlify/functions/webhook\`;
+        const webhookUrl = \`\${window.location.origin}/webhook\`;
         const isCloudflare = window.location.hostname.includes('pages.dev') ||
                             window.location.hostname.includes('jakpatforuniv.com');
 
