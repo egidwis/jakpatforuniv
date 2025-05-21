@@ -16,6 +16,14 @@ export function onRequest(context) {
     VITE_MAYAR_API_KEY: maskValue(context.env.VITE_MAYAR_API_KEY),
     VITE_MAYAR_WEBHOOK_TOKEN: maskValue(context.env.VITE_MAYAR_WEBHOOK_TOKEN),
 
+    // Configuration status
+    config: {
+      MAYAR_API_KEY_CONFIGURED: context.env.VITE_MAYAR_API_KEY && context.env.VITE_MAYAR_API_KEY.length > 20,
+      MAYAR_WEBHOOK_TOKEN_CONFIGURED: context.env.VITE_MAYAR_WEBHOOK_TOKEN && context.env.VITE_MAYAR_WEBHOOK_TOKEN.length > 20,
+      SUPABASE_URL_CONFIGURED: !!context.env.VITE_SUPABASE_URL,
+      SUPABASE_ANON_KEY_CONFIGURED: context.env.VITE_SUPABASE_ANON_KEY && context.env.VITE_SUPABASE_ANON_KEY.length > 20
+    },
+
     // Debug info
     debug: {
       envKeys: Object.keys(context.env || {}).filter(key => !key.startsWith('_')),

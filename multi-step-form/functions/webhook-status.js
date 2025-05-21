@@ -125,8 +125,9 @@ export function onRequest(context) {
           const response = await fetch('/api/env-vars');
           const data = await response.json();
 
-          const hasMayarApiKey = data.VITE_MAYAR_API_KEY && data.VITE_MAYAR_API_KEY.length > 20;
-          const hasMayarWebhookToken = data.VITE_MAYAR_WEBHOOK_TOKEN && data.VITE_MAYAR_WEBHOOK_TOKEN.length > 20;
+          // Gunakan properti config yang baru ditambahkan
+          const hasMayarApiKey = data.config?.MAYAR_API_KEY_CONFIGURED || false;
+          const hasMayarWebhookToken = data.config?.MAYAR_WEBHOOK_TOKEN_CONFIGURED || false;
 
           let html = '<div class="status-item">';
           html += '<span class="status-label">Mayar API Key:</span>';
