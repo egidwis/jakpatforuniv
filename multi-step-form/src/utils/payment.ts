@@ -111,12 +111,9 @@ export const createPayment = async (paymentData: PaymentData) => {
     const isPlaceholderApiKey = !apiKey || apiKey.trim() === '' || apiKey.includes('your-mayar-api-key');
 
     if (isPlaceholderApiKey) {
-      console.warn('Mayar API key is missing, empty, or using placeholder - using simulation mode');
-      // Gunakan hardcoded URL untuk menghindari masalah dengan window.location.origin
-      const origin = "https://submit.jakpatforuniv.com";
-
-      // Langsung return URL simulasi jika API key tidak ada atau placeholder
-      return `${origin}/payment-success?id=${formSubmissionId}&simulation=true`;
+      console.warn('Mayar API key is missing, empty, or using placeholder - but continuing with production mode');
+      // Tetap lanjutkan dengan mode produksi meskipun API key tidak valid
+      // Ini akan menghasilkan error yang lebih jelas dari Mayar API
     }
 
     // Ambil webhook token dari environment variables
@@ -322,37 +319,11 @@ export const createPayment = async (paymentData: PaymentData) => {
       console.error('Error setting up request:', error.message);
     }
 
-    // Jika error, gunakan mode simulasi sebagai fallback
-    const { formSubmissionId } = paymentData;
-    console.log('Falling back to simulation mode due to error');
+    // Jika error, tampilkan error yang lebih jelas dan tidak menggunakan mode simulasi
+    console.error('Error creating payment with Mayar API. Please check your API key and try again.');
 
-    // Buat ID transaksi simulasi untuk fallback
-    const simulatedPaymentId = `sim_error_${Date.now()}`;
-
-    // Coba simpan data transaksi fallback ke Supabase
-    try {
-      const transactionData: Transaction = {
-        form_submission_id: formSubmissionId,
-        payment_id: simulatedPaymentId,
-        payment_method: 'simulation_fallback',
-        amount: paymentData.amount,
-        status: 'pending',
-        payment_url: `/payment-success?id=${formSubmissionId}&simulation=true`
-      };
-
-      await supabase
-        .from('transactions')
-        .insert([transactionData]);
-    } catch (dbError) {
-      console.error('Error saving fallback transaction:', dbError);
-      // Tetap lanjutkan meskipun ada error dengan database
-    }
-
-    // Gunakan hardcoded URL untuk menghindari masalah dengan window.location.origin
-    const origin = "https://submit.jakpatforuniv.com";
-
-    // Return URL simulasi sebagai fallback
-    return `${origin}/payment-success?id=${formSubmissionId}&simulation=true`;
+    // Throw error untuk ditangani oleh catch di komponen yang memanggil
+    throw new Error('Gagal membuat pembayaran dengan Mayar. Silakan periksa API key dan coba lagi.');
   }
 };
 

@@ -236,10 +236,8 @@ export function StepThree({ formData, updateFormData, prevStep, onSubmit }: Step
         // Log error untuk debugging
         console.error(`Payment error (${errorCode}): ${errorMessage}`);
 
-        // Redirect ke halaman sukses simulasi setelah delay
-        setTimeout(() => {
-          window.location.href = `/payment-success?id=${savedData.id}&simulation=true`;
-        }, 2000);
+        // Tampilkan pesan error dan biarkan pengguna mencoba lagi
+        toast.error('Gagal terhubung ke layanan pembayaran. Silakan coba lagi nanti.');
       }
     } catch (error) {
       console.error('Error saat menyimpan data:', error);
