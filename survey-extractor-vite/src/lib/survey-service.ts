@@ -52,7 +52,7 @@ async function extractSurveyMonkeyInfo(url: string): Promise<SurveyInfo> {
 }
 
 // Fungsi untuk mengekstrak informasi dari URL OpinionX
-async function extractOpinionXInfo(url: string): Promise<SurveyInfo> {
+async function extractOpinionXInfo(_url: string): Promise<SurveyInfo> {
   try {
     // Simulasi delay untuk menunjukkan loading state
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -72,7 +72,7 @@ async function extractOpinionXInfo(url: string): Promise<SurveyInfo> {
 }
 
 // Fungsi untuk mengekstrak informasi dari URL survei yang tidak dikenal
-async function extractUnknownSurveyInfo(url: string): Promise<SurveyInfo> {
+async function extractUnknownSurveyInfo(_url: string): Promise<SurveyInfo> {
   // Simulasi delay untuk menunjukkan loading state
   await new Promise(resolve => setTimeout(resolve, 1000));
 

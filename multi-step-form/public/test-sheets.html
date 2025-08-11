@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Send to Google Sheets</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .loading {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Send to Google Sheets</h1>
+        <p>Halaman ini untuk testing pengiriman data dari Supabase ke Google Sheets.</p>
+
+        <div class="form-group">
+            <label for="formId">Form Submission ID:</label>
+            <input type="text" id="formId" placeholder="Masukkan ID form submission dari Supabase">
+            <small style="color: #666; font-size: 12px;">
+                Contoh: 123e4567-e89b-12d3-a456-426614174000
+            </small>
+        </div>
+
+        <div class="form-group">
+            <label for="action">Action:</label>
+            <select id="action">
+                <option value="send">send (default)</option>
+                <option value="form_submission">form_submission</option>
+                <option value="payment_success">payment_success</option>
+                <option value="test">test</option>
+            </select>
+        </div>
+
+        <button onclick="sendToSheets()">📤 Send to Google Sheets</button>
+        <button onclick="testConnection()">🔗 Test Connection</button>
+        <button onclick="clearResult()">🗑️ Clear Result</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        function showResult(message, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+        }
+
+        function clearResult() {
+            document.getElementById('result').textContent = '';
+            document.getElementById('result').className = '';
+        }
+
+        async function sendToSheets() {
+            const formId = document.getElementById('formId').value.trim();
+            const action = document.getElementById('action').value;
+
+            if (!formId) {
+                showResult('❌ Form ID harus diisi!', 'error');
+                return;
+            }
+
+            showResult('⏳ Mengirim data ke Google Sheets...', 'loading');
+
+            try {
+                const response = await fetch('/api/send-to-sheets', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        formId: formId,
+                        action: action
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showResult(`✅ Berhasil!\n\n${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    showResult(`❌ Gagal!\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Error!\n\n${error.message}`, 'error');
+            }
+        }
+
+        async function testConnection() {
+            showResult('⏳ Testing connection...', 'loading');
+
+            try {
+                // Test 1: Check if API endpoint exists
+                const response = await fetch('/api/send-to-sheets', {
+                    method: 'OPTIONS'
+                });
+
+                if (response.ok) {
+                    showResult('✅ API endpoint accessible\n\nStatus: ' + response.status, 'success');
+                } else {
+                    showResult('❌ API endpoint not accessible\n\nStatus: ' + response.status, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Connection test failed!\n\n${error.message}`, 'error');
+            }
+        }
+
+        // Auto-fill form ID from URL parameter if available
+        window.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const formId = urlParams.get('formId');
+            if (formId) {
+                document.getElementById('formId').value = formId;
+            }
+        });
+    </script>
+</body>
+</html>

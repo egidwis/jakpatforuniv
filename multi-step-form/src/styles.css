@@ -16,17 +16,18 @@
   --card-foreground: #1a202c;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1a202c;
-    --foreground: #f7fafc;
-    --muted: #a0aec0;
-    --muted-foreground: #cbd5e1;
-    --border: #4a5568;
-    --input: #2d3748;
-    --card: #2d3748;
-    --card-foreground: #f7fafc;
-  }
+/* Dark theme variables */
+[data-theme="dark"] {
+  --background: #1a1a1a;
+  --foreground: #ffffff;
+  --muted: #a0aec0;
+  --muted-foreground: #cbd5e1;
+  --border: #333333;
+  --input: #2a2a2a;
+  --card: #2a2a2a;
+  --card-foreground: #ffffff;
+  --primary: #0091ff;
+  --primary-hover: #0077cc;
 }
 
 * {
@@ -82,10 +83,23 @@ body {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
 
+[data-theme="dark"] .form-input:focus {
+  border-color: #0091ff;
+  box-shadow: 0 0 0 2px rgba(0, 145, 255, 0.25);
+}
+
 .form-input:disabled {
   background-color: var(--card);
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.form-input[readonly], .readonly-input {
+  background-color: #f1f5f9;
+  border: 1px solid var(--border);
+  color: #64748b;
+  cursor: not-allowed;
+  opacity: 0.9;
 }
 
 .form-input::placeholder {
@@ -289,10 +303,8 @@ body {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
-@media (prefers-color-scheme: dark) {
-  .step-item.active {
-    background-color: rgba(255, 255, 255, 0.05);
-  }
+[data-theme="dark"] .step-item.active {
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .step-number {
@@ -496,6 +508,10 @@ body {
   background-color: var(--card);
 }
 
+[data-theme="dark"] .bg-gray-50 {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
 .text-gray-500 {
   color: var(--muted);
 }
@@ -616,16 +632,22 @@ body {
   transition: all 0.2s ease;
 }
 
+[data-theme="dark"] .progress-step {
+  background-color: #2a2a2a;
+  border: 2px solid #333333;
+  color: #a0aec0;
+}
+
 .progress-step-active {
-  background-color: #00bcd4;
-  border-color: #00bcd4;
+  background-color: #0091ff;
+  border-color: #0091ff;
   color: white;
-  box-shadow: 0 0 0 4px rgba(0, 188, 212, 0.2);
+  box-shadow: 0 0 0 4px rgba(0, 145, 255, 0.2);
 }
 
 .progress-step-completed {
-  background-color: #4caf50;
-  border-color: #4caf50;
+  background-color: #22c55e;
+  border-color: #22c55e;
   color: white;
 }
 
@@ -638,8 +660,12 @@ body {
   transition: background-color 0.2s ease;
 }
 
+[data-theme="dark"] .progress-connector {
+  background-color: #333333;
+}
+
 .progress-connector-active {
-  background-color: #00bcd4;
+  background-color: #0091ff;
 }
 
 .progress-step-title {
@@ -652,13 +678,17 @@ body {
   transition: color 0.2s ease;
 }
 
+[data-theme="dark"] .progress-step-title {
+  color: #a0aec0;
+}
+
 .progress-step-title-active {
-  color: #00bcd4;
+  color: #0091ff;
   font-weight: 600;
 }
 
 .progress-step-title-completed {
-  color: #4caf50;
+  color: #22c55e;
 }
 
 /* Desktop Sidebar Styles (hide on mobile) */

@@ -128,6 +128,24 @@ export function StepTwo({ formData, updateFormData, nextStep, prevStep }: StepTw
               <option value="Pelajar SMA/SMK">Pelajar SMA/SMK</option>
             </select>
           </div>
+
+          <div className="form-group">
+            <label htmlFor="referralSource" className="form-label">Tahu Jakpat for Univesities dari mana?</label>
+            <select
+              id="referralSource"
+              className="form-input"
+              value={formData.referralSource}
+              onChange={(e) => updateFormData({ referralSource: e.target.value as SurveyFormData['referralSource'] })}
+            >
+              <option value="Tiktok">Tiktok</option>
+              <option value="Instagram">Instagram</option>
+              <option value="LinkedIn">LinkedIn</option>
+              <option value="Website Jakpat">Website Jakpat</option>
+              <option value="Chat GPT">Chat GPT</option>
+              <option value="Rekomendasi Dosen">Rekomendasi Dosen</option>
+              <option value="Rekomendasi Teman">Rekomendasi Teman</option>
+            </select>
+          </div>
         </div>
 
 

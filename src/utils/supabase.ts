@@ -5,8 +5,20 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
+// Hardcoded values for fallback
+const hardcodedUrl = 'https://zewuzezbmrmpttysjvpg.supabase.co';
+const hardcodedKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpld3V6ZXpibXJtcHR0eXNqdnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3NDg0MzMsImV4cCI6MjA2MzMyNDQzM30.IsFpW4TMm1mrLse-dZNvZpB-srOIFb9f2XBgNpaOwpI';
+
+// Use environment variables if available, otherwise use hardcoded values
+const finalUrl = supabaseUrl || hardcodedUrl;
+const finalKey = supabaseAnonKey || hardcodedKey;
+
+// Log for debugging
+console.log('Supabase URL:', supabaseUrl ? 'Using environment variable' : 'Using hardcoded value');
+console.log('Supabase Key:', supabaseAnonKey ? 'Using environment variable' : 'Using hardcoded value');
+
 // Buat Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(finalUrl, finalKey);
 
 // Tipe data untuk form submissions
 export type FormSubmission = {
@@ -25,6 +37,7 @@ export type FormSubmission = {
   university?: string;
   department?: string;
   status?: string;
+  referral_source?: string;
   winner_count?: number;
   prize_per_winner?: number;
   voucher_code?: string;

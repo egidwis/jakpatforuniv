@@ -8,6 +8,8 @@ export interface SurveyInfo {
   description: string;
   questionCount: number;
   platform: string;
+  hasPersonalDataQuestions?: boolean;
+  detectedKeywords?: string[];
 }
 
 // Fungsi untuk mengekstrak informasi dari Google Forms
@@ -15,160 +17,152 @@ export async function extractGoogleFormsInfo(url: string): Promise<SurveyInfo> {
   try {
     console.log('Extracting Google Forms info from:', url);
 
-    // Gunakan proxy untuk mengatasi masalah CORS
-    let html = '';
+    // Gunakan timeout yang lebih pendek untuk mencegah browser hang
+    const TIMEOUT_MS = 8000; // 8 detik timeout
 
-    try {
-      // Coba ambil konten HTML dari URL dengan proxy
-      const proxiedUrl = getProxiedUrl(url);
-      console.log('Using proxied URL:', proxiedUrl);
+    // Gunakan Promise.race untuk menerapkan timeout global pada seluruh proses ekstraksi
+    return await Promise.race([
+      // Proses ekstraksi utama
+      (async () => {
+        let html = '';
+        let title = 'Google Form';
+        let description = 'Form description not available';
+        let questionCount = 10; // Default value
 
-      const response = await axios.get(proxiedUrl, {
-        timeout: 15000, // 15 detik timeout
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Referer': 'https://www.google.com/'
+        try {
+          // Coba ambil konten HTML dari URL dengan proxy dan timeout
+          console.log('Fetching form content with timeout...');
+
+          // Gunakan tryAllProxies dengan timeout yang lebih pendek
+          html = await tryAllProxies(url, async (proxiedUrl) => {
+            const response = await axios.get(proxiedUrl, {
+              timeout: 5000, // 5 detik timeout per request
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Referer': 'https://www.google.com/'
+              }
+            });
+            return response.data;
+          }, 5000); // 5 detik timeout untuk tryAllProxies
+
+          console.log('Successfully fetched HTML content, length:', html.length);
+
+          // Cek apakah form memerlukan login
+          if (html.includes('You need permission') ||
+              html.includes('You need to login') ||
+              html.includes('need to sign in')) {
+            console.log('Form requires permission or login');
+            throw new Error('FORM_NOT_PUBLIC');
+          }
+
+          // Ekstrak judul - gunakan metode yang lebih efisien
+          const titleMatch = /<title>(.*?)<\/title>/i.exec(html);
+          if (titleMatch && titleMatch[1]) {
+            title = titleMatch[1].replace(' - Google Forms', '').trim();
+            console.log('Extracted title:', title);
+          }
+
+          // Ekstrak deskripsi - gunakan metode yang lebih efisien
+          const descriptionMatch = /<meta\s+property="og:description"\s+content="([^"]*?)"/i.exec(html);
+          if (descriptionMatch && descriptionMatch[1]) {
+            description = descriptionMatch[1].trim();
+            console.log('Extracted description:', description);
+          }
+
+          // Ekstrak jumlah pertanyaan - gunakan metode yang lebih efisien
+          // Cari FB_PUBLIC_LOAD_DATA_ dengan regex yang lebih efisien
+          const fbDataRegex = /var\s+FB_PUBLIC_LOAD_DATA_\s*=\s*(\[.*?\]);/;
+          const fbDataMatch = fbDataRegex.exec(html);
+
+          if (fbDataMatch && fbDataMatch[1]) {
+            try {
+              // Coba parse JSON data
+              const formData = JSON.parse(fbDataMatch[1]);
+
+              // Cek struktur data untuk pertanyaan
+              if (formData && formData[1] && Array.isArray(formData[1][1])) {
+                // Filter pertanyaan (exclude page breaks yang memiliki type 8)
+                const questions = formData[1][1];
+                questionCount = questions.filter(q => q[3] !== 8).length;
+                console.log(`Detected ${questionCount} questions`);
+              }
+            } catch (parseError) {
+              console.error('Error parsing form data:', parseError);
+              // Gunakan nilai default jika parsing gagal
+            }
+          } else {
+            // Jika tidak bisa menemukan FB_PUBLIC_LOAD_DATA_, coba metode alternatif
+            // Hitung jumlah elemen pertanyaan dengan regex sederhana
+            const questionMatches = html.match(/freebirdFormviewerComponentsQuestionBaseRoot/g);
+            if (questionMatches) {
+              questionCount = questionMatches.length;
+              console.log(`Detected ${questionCount} questions using alternative method`);
+            }
+          }
+
+        } catch (fetchError) {
+          console.error('Error fetching form content:', fetchError);
+
+          // Jika error adalah karena form tidak public
+          if (fetchError.message === 'FORM_NOT_PUBLIC') {
+            throw fetchError; // Re-throw error untuk ditangani di level atas
+          }
+
+          // Untuk error lainnya, gunakan nilai default
+          console.log('Using default values due to fetch error');
         }
-      });
 
-      html = response.data;
-      console.log('Successfully fetched HTML content, length:', html.length);
-    } catch (error) {
-      console.error('Error fetching with proxy, trying alternative method:', error);
+        // Pastikan questionCount adalah angka yang valid
+        if (isNaN(questionCount) || questionCount <= 0) {
+          questionCount = 10; // Default value jika tidak valid
+        }
 
-      // Gunakan nilai default jika gagal dengan proxy pertama
-      console.log('Using default values as fallback');
+        // Return hasil ekstraksi
+        const extractedData = {
+          title,
+          description,
+          questionCount,
+          platform: 'Google Forms'
+        };
+
+        console.log('Final extracted Google Forms data:', JSON.stringify(extractedData, null, 2));
+        return extractedData;
+      })(),
+
+      // Timeout promise
+      new Promise<SurveyInfo>((_, reject) => {
+        setTimeout(() => {
+          console.log('Extraction timed out, using default values');
+          reject(new Error('EXTRACTION_TIMEOUT'));
+        }, TIMEOUT_MS);
+      })
+    ]);
+
+  } catch (error) {
+    console.error('Error in extractGoogleFormsInfo:', error);
+
+    // Handle specific error types
+    if (error.message === 'FORM_NOT_PUBLIC') {
+      throw new Error('FORM_NOT_PUBLIC');
+    } else if (error.message === 'EXTRACTION_TIMEOUT') {
+      // Jika timeout, gunakan nilai default
+      console.log('Extraction timed out, returning default values');
       return {
         title: 'Google Form',
-        description: 'Form ini tidak dapat diekstrak secara otomatis. Silakan isi detail secara manual.',
+        description: 'Form ini tidak dapat diekstrak karena waktu proses terlalu lama. Silakan isi detail secara manual.',
         questionCount: 10,
         platform: 'Google Forms'
       };
-
-      // Kode ini tidak akan pernah dijalankan karena kita sudah return di atas
-      // Tetapi kita biarkan untuk jaga-jaga
-    }
-
-    // Ekstrak judul
-    let title = '';
-    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-    if (titleMatch && titleMatch[1]) {
-      title = titleMatch[1].replace(' - Google Forms', '').trim();
-      console.log('Extracted title:', title);
-    } else {
-      console.log('Failed to extract title');
-      title = 'Google Form';
-    }
-
-    // Ekstrak deskripsi
-    let description = '';
-    const descriptionMatch = html.match(/<meta\s+property="og:description"\s+content="([^"]*?)"/i);
-    if (descriptionMatch && descriptionMatch[1]) {
-      description = descriptionMatch[1].trim();
-      console.log('Extracted description:', description);
-    } else {
-      console.log('Failed to extract description');
-      description = 'Form description not available';
-    }
-
-    // Hitung jumlah pertanyaan dengan menghitung elemen yang mengandung pertanyaan
-    let questionCount = 0;
-
-    // Metode 1: Ekstrak dari FB_PUBLIC_LOAD_DATA_ (paling akurat)
-    const fbDataMatch = html.match(/var FB_PUBLIC_LOAD_DATA_ = (.*?);<\/script>/s);
-    if (fbDataMatch && fbDataMatch[1]) {
-      try {
-        console.log('Found FB_PUBLIC_LOAD_DATA_, trying to extract question count');
-
-        // Parse JSON data
-        const formData = JSON.parse(fbDataMatch[1]);
-
-        // Struktur data Google Form: formData[1][1] berisi array pertanyaan
-        if (formData && formData[1] && Array.isArray(formData[1][1])) {
-          // Filter pertanyaan (exclude page breaks yang memiliki type 8)
-          const questions = formData[1][1];
-          questionCount = questions.filter(q => q[3] !== 8).length;
-          console.log(`Detected ${questionCount} questions using FB_PUBLIC_LOAD_DATA_ structure`);
-        } else {
-          // Metode fallback: Hitung jumlah "null,2," dalam data sebagai indikator pertanyaan
-          const nullTwoMatches = fbDataMatch[1].match(/null,2,/g);
-          if (nullTwoMatches) {
-            questionCount = nullTwoMatches.length;
-            console.log(`Detected ${questionCount} questions using null,2 pattern`);
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing FB_PUBLIC_LOAD_DATA_:', error);
-
-        // Jika parsing JSON gagal, coba metode alternatif dengan regex
-        try {
-          // Metode alternatif: Hitung jumlah "null,2," dalam data sebagai indikator pertanyaan
-          const nullTwoMatches = fbDataMatch[1].match(/null,2,/g);
-          if (nullTwoMatches) {
-            questionCount = nullTwoMatches.length;
-            console.log(`Detected ${questionCount} questions using null,2 pattern (fallback method)`);
-          }
-        } catch (regexError) {
-          console.error('Error with fallback regex method:', regexError);
-        }
+    } else if (axios.isAxiosError(error)) {
+      // Handle Axios errors
+      if (error.code === 'ECONNABORTED' || error.code === 'ECONNREFUSED' || error.response?.status === 403) {
+        throw new Error('FORM_NOT_PUBLIC');
       }
     }
 
-    // Metode 2: Coba deteksi dengan menghitung elemen pertanyaan di HTML
-    if (questionCount === 0) {
-      try {
-        // Cari elemen pertanyaan dengan berbagai pola yang umum di Google Forms
-        const questionPatterns = [
-          /<div[^>]*role="listitem"[^>]*>/g,
-          /<div[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseRoot[^"]*"[^>]*>/g,
-          /<div[^>]*data-params="[^"]*%22[^"]*%22[^"]*"[^>]*>/g
-        ];
-
-        for (const pattern of questionPatterns) {
-          const matches = html.match(pattern);
-          if (matches && matches.length > 0) {
-            questionCount = matches.length;
-            console.log(`Detected ${questionCount} questions using HTML pattern: ${pattern}`);
-            break;
-          }
-        }
-      } catch (htmlError) {
-        console.error('Error detecting questions from HTML:', htmlError);
-      }
-    }
-
-    // Jika masih 0, gunakan nilai default
-    if (questionCount === 0) {
-      console.log('Failed to detect question count, using default value');
-      questionCount = 10;
-    }
-
-    // Jika form tidak bisa diakses (misalnya karena private)
-    if (html.includes('You need permission') || html.includes('You need to login')) {
-      console.log('Form requires permission or login');
-      throw new Error('FORM_NOT_PUBLIC');
-    }
-
-    // Log the final extracted data for debugging
-    const extractedData = {
-      title,
-      description,
-      questionCount,
-      platform: 'Google Forms'
-    };
-
-    console.log('Final extracted Google Forms data:', JSON.stringify(extractedData, null, 2));
-    return extractedData;
-  } catch (error) {
-    console.error('Error extracting Google Forms info:', error);
-
-    // Jika error adalah karena network atau timeout, kemungkinan form tidak public
-    if (axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || error.code === 'ECONNREFUSED' || error.response?.status === 403)) {
-      throw new Error('FORM_NOT_PUBLIC');
-    }
-
+    // Untuk error lainnya
     throw new Error('EXTRACTION_FAILED');
   }
 }

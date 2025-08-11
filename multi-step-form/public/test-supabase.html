@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supabase Connection Test</title>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      overflow-x: auto;
+    }
+    .success {
+      background-color: #e6f7e6;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+    }
+    .error {
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+    }
+    .loading {
+      background-color: #e2e3e5;
+      border: 1px solid #d6d8db;
+      color: #383d41;
+    }
+    button {
+      background-color: #4a5568;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #2d3748;
+    }
+  </style>
+</head>
+<body>
+  <h1>Supabase Connection Test</h1>
+  <p>This page tests if the application can connect to Supabase using the environment variables.</p>
+  
+  <button id="testButton">Test Connection</button>
+  
+  <div id="result" class="result loading">Click the button to test the connection...</div>
+  
+  <script>
+    document.getElementById('testButton').addEventListener('click', async () => {
+      const resultDiv = document.getElementById('result');
+      resultDiv.className = 'result loading';
+      resultDiv.textContent = 'Testing connection...';
+      
+      try {
+        // Get environment variables
+        const response = await fetch('/api/env-vars');
+        const envVars = await response.json();
+        
+        // Create Supabase client
+        const { createClient } = supabase;
+        const supabaseUrl = envVars.VITE_SUPABASE_URL;
+        const supabaseAnonKey = envVars.VITE_SUPABASE_ANON_KEY;
+        
+        if (!supabaseUrl || !supabaseAnonKey) {
+          throw new Error('Supabase URL or Anon Key is missing');
+        }
+        
+        const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+        
+        // Test connection by querying form_submissions table
+        const { data, error } = await supabaseClient
+          .from('form_submissions')
+          .select('count');
+        
+        if (error) {
+          throw error;
+        }
+        
+        // Show success
+        resultDiv.className = 'result success';
+        resultDiv.textContent = 'Connection successful!\n\nResponse: ' + JSON.stringify(data, null, 2);
+      } catch (error) {
+        // Show error
+        resultDiv.className = 'result error';
+        resultDiv.textContent = 'Connection failed: ' + error.message;
+        console.error('Error:', error);
+      }
+    });
+  </script>
+</body>
+</html>

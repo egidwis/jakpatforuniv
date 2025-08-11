@@ -14,6 +14,20 @@ route = "submit.jakpatforuniv.com/*"
 command = "npm run build"
 output_dir = "dist"
 
-[routes]
+# Routes configuration
+[[routes]]
 pattern = "/*"
 script = "index.html"
+
+[[routes]]
+pattern = "/"
+url = "https://business.jakpat.net/for-universities"
+status = 301
+
+# Ensure environment variables are accessible to Cloudflare Functions
+[vars]
+# These will be populated from the Cloudflare dashboard or CLI
+# VITE_MAYAR_API_KEY = ""
+# VITE_MAYAR_WEBHOOK_TOKEN = ""
+# VITE_SUPABASE_URL = ""
+# VITE_SUPABASE_ANON_KEY = ""

@@ -1,0 +1,19 @@
+--- a/src/utils/survey-service.ts
++++ b/src/utils/survey-service.ts
+@@ -286,11 +286,12 @@
+     }
+ 
+     // Validasi format URL
+-    try {
+-      new URL(url);
+-    } catch (error) {
+-      console.error("Invalid URL format:", error);
++    // Gunakan regex sederhana untuk validasi URL daripada konstruktor URL
++    const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
++    if (!urlRegex.test(url)) {
++      console.error("Invalid URL format:", url);
+       throw new Error("INVALID_URL_FORMAT");
++      return;
+     }
+ 
+     // Tentukan platform berdasarkan URL

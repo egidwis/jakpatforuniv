@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { getFormSubmissionById, FormSubmission } from '../utils/supabase';
+import { getFormSubmissionById } from '../utils/supabase';
+import type { FormSubmission } from '../utils/supabase';
 import { ErrorPage } from './ErrorPage';
 
 interface PaymentFailedProps {

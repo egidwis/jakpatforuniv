@@ -37,15 +37,7 @@ function App() {
       <footer className="border-t border-border py-6">
         <div className="max-w-6xl mx-auto text-center text-sm text-muted px-4">
           <p>
-            Jakpat for Universities | Dibuat dengan{" "}
-            <a
-              href="https://vite.dev"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-4 hover:text-foreground"
-            >
-              Vite
-            </a>
+            Jakpat for Universities © 2025
           </p>
         </div>
       </footer>

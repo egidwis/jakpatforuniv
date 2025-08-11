@@ -9,6 +9,9 @@ export interface SurveyFormData {
   duration: number; // dalam hari
   startDate?: string; // format YYYY-MM-DD
   endDate?: string; // format YYYY-MM-DD
+  isManualEntry?: boolean; // Flag untuk menandai form diisi manual
+  hasPersonalDataQuestions?: boolean; // Flag untuk deteksi keyword personal data
+  detectedKeywords?: string[]; // List keyword yang terdeteksi
 
   // Step 2: Data Diri & Insentif
   fullName: string;
@@ -17,6 +20,7 @@ export interface SurveyFormData {
   university: string;
   department: string;
   status: 'Mahasiswa' | 'Dosen' | 'Pelajar SMA/SMK';
+  referralSource: 'Tiktok' | 'Instagram' | 'LinkedIn' | 'Website Jakpat' | 'Chat GPT' | 'Rekomendasi Dosen' | 'Rekomendasi Teman';
   winnerCount: number;
   prizePerWinner: number;
 

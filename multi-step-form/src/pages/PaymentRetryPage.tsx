@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { getFormSubmissionById, FormSubmission } from '../utils/supabase';
-import { createPayment } from '../utils/payment';
+import { getFormSubmissionById } from '../utils/supabase';
+import type { FormSubmission } from '../utils/supabase';
+import { createPayment } from '../utils/simple-payment';
 import { ErrorPage } from '../components/ErrorPage';
 
 export default function PaymentRetryPage() {
@@ -15,7 +16,7 @@ export default function PaymentRetryPage() {
     // Ambil ID dari URL query parameter
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
-    
+
     if (id) {
       setFormId(id);
       fetchFormData(id);
@@ -29,19 +30,19 @@ export default function PaymentRetryPage() {
     try {
       console.log('Fetching form data for ID:', id);
       const data = await getFormSubmissionById(id);
-      
+
       if (!data) {
         console.error('No form data returned for ID:', id);
         setError('Data form tidak ditemukan');
         setLoading(false);
         return;
       }
-      
+
       console.log('Form data retrieved successfully:', data);
       setFormData(data as FormSubmission);
     } catch (error) {
       console.error('Error fetching form data:', error);
-      
+
       // Tampilkan pesan error yang lebih spesifik
       if (error.message && error.message.includes('network')) {
         setError('Gagal terhubung ke server. Periksa koneksi internet Anda.');
@@ -66,7 +67,7 @@ export default function PaymentRetryPage() {
 
     try {
       console.log('Memulai proses pembayaran ulang untuk form ID:', formId);
-      
+
       const paymentUrl = await createPayment({
         formSubmissionId: formId,
         amount: formData.total_cost,
@@ -132,7 +133,7 @@ export default function PaymentRetryPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
         <h1 className="text-2xl font-bold mb-6 text-center">Coba Bayar Lagi</h1>
-        
+
         {formData && (
           <div className="mb-8">
             <div className="bg-gray-50 p-4 rounded-lg mb-6">
@@ -145,16 +146,16 @@ export default function PaymentRetryPage() {
                 <li><span className="font-medium">Total Biaya:</span> Rp {new Intl.NumberFormat('id-ID').format(formData.total_cost)}</li>
               </ul>
             </div>
-            
+
             <p className="text-gray-600 mb-6 text-center">
               Silakan klik tombol di bawah untuk mencoba pembayaran lagi.
             </p>
-            
+
             <div className="flex justify-center space-x-4">
               <a href="/" className="button button-secondary">
                 Kembali ke Beranda
               </a>
-              
+
               <button
                 onClick={handleRetryPayment}
                 disabled={isProcessing}

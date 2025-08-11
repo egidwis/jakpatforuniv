@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Mayar API</title>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    button {
+      background-color: #4f46e5;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 20px;
+    }
+    button:hover {
+      background-color: #4338ca;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      margin-top: 20px;
+    }
+    .error {
+      color: #ef4444;
+      font-weight: bold;
+    }
+    .success {
+      color: #10b981;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Test Mayar API</h1>
+  <p>This page tests the Mayar API proxy to ensure it's working correctly.</p>
+
+  <button id="testButton">Test API Connection</button>
+
+  <div id="result">
+    <h2>Results:</h2>
+    <pre id="resultContent">Click the button to test the API connection.</pre>
+  </div>
+
+  <script>
+    document.getElementById('testButton').addEventListener('click', async () => {
+      const resultContent = document.getElementById('resultContent');
+      resultContent.textContent = 'Testing API connection...';
+
+      try {
+        // Get the current origin
+        const origin = window.location.origin;
+
+        // Create test payment data
+        const testData = {
+          name: 'Test User',
+          email: 'test@example.com',
+          amount: 10000, // 10,000 IDR (well above the 500 minimum)
+          mobile: '08123456789',
+          redirectUrl: `${origin}/payment-success?payment_id={id}&form_id=test-123`,
+          failureUrl: `${origin}/payment-failed?payment_id={id}&form_id=test-123`,
+          description: 'Test Payment',
+          expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          webhookUrl: `${origin}/webhook`
+        };
+
+        // Log the request
+        console.log('Sending test request to:', `${origin}/api/simple-mayar-proxy`);
+        console.log('Request data:', testData);
+
+        // Send the request
+        const response = await fetch(`${origin}/api/simple-mayar-proxy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(testData)
+        });
+
+        // Get the response text
+        const responseText = await response.text();
+
+        // Try to parse as JSON
+        let responseData;
+        try {
+          responseData = JSON.parse(responseText);
+          console.log('Response data:', responseData);
+        } catch (e) {
+          console.error('Error parsing response:', e);
+        }
+
+        // Display the result
+        if (response.ok) {
+          resultContent.innerHTML = `<span class="success">✅ API connection successful!</span>\n\nStatus: ${response.status}\n\nResponse:\n${JSON.stringify(responseData || responseText, null, 2)}`;
+        } else {
+          resultContent.innerHTML = `<span class="error">❌ API connection failed!</span>\n\nStatus: ${response.status}\n\nResponse:\n${JSON.stringify(responseData || responseText, null, 2)}`;
+        }
+      } catch (error) {
+        console.error('Error testing API:', error);
+        resultContent.innerHTML = `<span class="error">❌ Error testing API:</span>\n\n${error.message}\n\n${error.stack}`;
+      }
+    });
+  </script>
+</body>
+</html>

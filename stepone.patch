@@ -1,0 +1,22 @@
+--- a/src/components/StepOne.tsx
++++ b/src/components/StepOne.tsx
+@@ -61,12 +61,13 @@
+       }
+       
+       // Validasi URL
+-      try {
+-        // Cek apakah URL valid
+-        new URL(url);
+-      } catch (error) {
+-        console.error("Invalid URL:", error);
+-        toast.error("URL tidak valid. Pastikan format URL benar.");
++      // Gunakan regex sederhana untuk validasi URL daripada konstruktor URL
++      const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
++      if (!urlRegex.test(url)) {
++        console.error("Invalid URL format:", url);
++        toast.error("URL tidak valid. Pastikan format URL benar dan dimulai dengan http:// atau https://");
++        setIsLoading(false);
++        return;
+         setIsLoading(false);
+         return;
+       }

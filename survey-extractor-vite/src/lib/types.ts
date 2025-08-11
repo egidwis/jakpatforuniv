@@ -5,10 +5,10 @@ export interface SurveyInfo {
   questionCount: number;
   platform: string;
   formId?: string;
+  sectionCount?: number;
   isQuiz?: boolean;
   requiresLogin?: boolean;
   isPaidFeature?: boolean;
-  sectionCount?: number;
   note?: string;
 }
 

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Console - Form Submission</title>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e5e5e5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+        }
+        .header h1 {
+            color: #60a5fa;
+            margin-bottom: 10px;
+        }
+        .header p {
+            color: #9ca3af;
+            margin: 0;
+        }
+        .console-container {
+            background: #0f0f0f;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .console-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #374151;
+        }
+        .console-header h3 {
+            margin: 0;
+            color: #60a5fa;
+        }
+        .clear-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .clear-btn:hover {
+            background: #dc2626;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #374151;
+        }
+        .log-entry.info {
+            background: #1e3a8a20;
+            border-left-color: #3b82f6;
+            color: #93c5fd;
+        }
+        .log-entry.success {
+            background: #14532d20;
+            border-left-color: #10b981;
+            color: #6ee7b7;
+        }
+        .log-entry.error {
+            background: #7f1d1d20;
+            border-left-color: #ef4444;
+            color: #fca5a5;
+        }
+        .log-entry.warn {
+            background: #78350f20;
+            border-left-color: #f59e0b;
+            color: #fbbf24;
+        }
+        .timestamp {
+            color: #6b7280;
+            font-size: 12px;
+        }
+        .instructions {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .instructions h3 {
+            color: #60a5fa;
+            margin-top: 0;
+        }
+        .instructions ol {
+            color: #d1d5db;
+        }
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        .link {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+        .link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🐛 Debug Console</h1>
+            <p>Monitor console logs dari form submission untuk debugging Google Sheets integration</p>
+        </div>
+
+        <div class="instructions">
+            <h3>📋 Cara Menggunakan:</h3>
+            <ol>
+                <li>Buka halaman ini di tab terpisah</li>
+                <li>Buka <a href="https://submit.jakpatforuniv.com" class="link" target="_blank">https://submit.jakpatforuniv.com</a> di tab lain</li>
+                <li>Submit form di tab tersebut</li>
+                <li>Lihat console logs yang muncul di halaman ini</li>
+                <li>Check apakah ada error atau masalah dalam pengiriman ke Google Sheets</li>
+            </ol>
+        </div>
+
+        <div class="console-container">
+            <div class="console-header">
+                <h3>📊 Console Logs</h3>
+                <button class="clear-btn" onclick="clearLogs()">Clear Logs</button>
+            </div>
+            <div id="console-output">
+                <div class="log-entry info">
+                    <span class="timestamp">[${new Date().toLocaleTimeString()}]</span>
+                    Debug console started. Waiting for logs...
+                </div>
+            </div>
+        </div>
+
+        <div class="console-container">
+            <div class="console-header">
+                <h3>🔍 Network Requests</h3>
+                <button class="clear-btn" onclick="clearNetwork()">Clear Network</button>
+            </div>
+            <div id="network-output">
+                <div class="log-entry info">
+                    <span class="timestamp">[${new Date().toLocaleTimeString()}]</span>
+                    Network monitoring started...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Override console methods to capture logs
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn,
+            info: console.info
+        };
+
+        function addLogEntry(message, type = 'info') {
+            const output = document.getElementById('console-output');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            
+            // Format message
+            let formattedMessage = '';
+            if (typeof message === 'object') {
+                formattedMessage = JSON.stringify(message, null, 2);
+            } else {
+                formattedMessage = String(message);
+            }
+            
+            logEntry.innerHTML = `
+                <span class="timestamp">[${timestamp}]</span>
+                <pre style="margin: 5px 0; white-space: pre-wrap;">${formattedMessage}</pre>
+            `;
+            
+            output.appendChild(logEntry);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function addNetworkEntry(url, method, status, response) {
+            const output = document.getElementById('network-output');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const networkEntry = document.createElement('div');
+            const type = status >= 200 && status < 300 ? 'success' : 'error';
+            networkEntry.className = `log-entry ${type}`;
+            
+            networkEntry.innerHTML = `
+                <span class="timestamp">[${timestamp}]</span>
+                <div><strong>${method}</strong> ${url}</div>
+                <div>Status: ${status}</div>
+                <pre style="margin: 5px 0; white-space: pre-wrap; font-size: 12px;">${JSON.stringify(response, null, 2)}</pre>
+            `;
+            
+            output.appendChild(networkEntry);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // Override console methods
+        console.log = function(...args) {
+            originalConsole.log.apply(console, args);
+            args.forEach(arg => addLogEntry(arg, 'info'));
+        };
+
+        console.error = function(...args) {
+            originalConsole.error.apply(console, args);
+            args.forEach(arg => addLogEntry(arg, 'error'));
+        };
+
+        console.warn = function(...args) {
+            originalConsole.warn.apply(console, args);
+            args.forEach(arg => addLogEntry(arg, 'warn'));
+        };
+
+        console.info = function(...args) {
+            originalConsole.info.apply(console, args);
+            args.forEach(arg => addLogEntry(arg, 'info'));
+        };
+
+        // Monitor fetch requests
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            const url = args[0];
+            const options = args[1] || {};
+            const method = options.method || 'GET';
+            
+            addLogEntry(`🌐 Fetch Request: ${method} ${url}`, 'info');
+            
+            return originalFetch.apply(this, args)
+                .then(response => {
+                    const clonedResponse = response.clone();
+                    
+                    // Try to get response body
+                    clonedResponse.text().then(text => {
+                        let responseData;
+                        try {
+                            responseData = JSON.parse(text);
+                        } catch (e) {
+                            responseData = text;
+                        }
+                        
+                        addNetworkEntry(url, method, response.status, responseData);
+                    }).catch(err => {
+                        addNetworkEntry(url, method, response.status, 'Could not read response body');
+                    });
+                    
+                    return response;
+                })
+                .catch(error => {
+                    addNetworkEntry(url, method, 'ERROR', error.message);
+                    throw error;
+                });
+        };
+
+        function clearLogs() {
+            const output = document.getElementById('console-output');
+            output.innerHTML = `
+                <div class="log-entry info">
+                    <span class="timestamp">[${new Date().toLocaleTimeString()}]</span>
+                    Console cleared. Waiting for new logs...
+                </div>
+            `;
+        }
+
+        function clearNetwork() {
+            const output = document.getElementById('network-output');
+            output.innerHTML = `
+                <div class="log-entry info">
+                    <span class="timestamp">[${new Date().toLocaleTimeString()}]</span>
+                    Network logs cleared. Monitoring continues...
+                </div>
+            `;
+        }
+
+        // Listen for messages from other tabs (if needed)
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'debug-log') {
+                addLogEntry(event.data.message, event.data.level || 'info');
+            }
+        });
+
+        addLogEntry('🚀 Debug console ready! Open the main app in another tab and submit a form.', 'success');
+    </script>
+</body>
+</html>

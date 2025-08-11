@@ -37,8 +37,9 @@ const defaultFormData: SurveyFormData = {
   university: '',
   department: '',
   status: 'Mahasiswa',
-  winnerCount: 2, // Minimal 2 pemenang
-  prizePerWinner: 25000, // Minimal Rp 25.000
+  referralSource: 'Tiktok',
+  winnerCount: 1, // Minimal 1 pemenang
+  prizePerWinner: 0, // Default 0, akan diisi user
 
   // Step 3
   voucherCode: '',
@@ -61,13 +62,6 @@ export function MultiStepForm() {
   // Fungsi untuk update form data
   const updateFormData = (newData: Partial<SurveyFormData>) => {
     setFormData(prev => ({ ...prev, ...newData }));
-  };
-
-  // Fungsi untuk handle submit form
-  const handleSubmit = () => {
-    // Implementasi submit form ke backend
-    console.log('Form submitted:', formData);
-    alert('Form berhasil dikirim!');
   };
 
   return (
@@ -99,7 +93,6 @@ export function MultiStepForm() {
             formData={formData}
             updateFormData={updateFormData}
             prevStep={prevStep}
-            onSubmit={handleSubmit}
           />
         )}
       </div>

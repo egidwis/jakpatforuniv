@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
-import { calculateTotalCost } from '../utils/cost-calculator';
+import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
 import { saveFormSubmission, type FormSubmission } from '../utils/supabase';
-import { createPayment, checkMayarApiStatus } from '../utils/payment';
+// Import the simplified payment utility
+import { createPayment } from '../utils/simple-payment';
+import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 
 interface StepThreeProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   prevStep: () => void;
-  onSubmit: () => void;
 }
 
-export function StepThree({ formData, updateFormData, prevStep, onSubmit }: StepThreeProps) {
+export function StepThree({ formData, updateFormData, prevStep }: StepThreeProps) {
   const [costCalculation, setCostCalculation] = useState<CostCalculation>({
     adCost: 0,
     incentiveCost: 0,
@@ -20,11 +21,17 @@ export function StepThree({ formData, updateFormData, prevStep, onSubmit }: Step
     totalCost: 0
   });
 
+  const [voucherInfo, setVoucherInfo] = useState<{ isValid: boolean; message?: string; discount?: number }>({ isValid: false });
+
   // Hitung biaya saat form data berubah
   useEffect(() => {
     const calculation = calculateTotalCost(formData);
     setCostCalculation(calculation);
-  }, [formData]);
+
+    // Update voucher info
+    const info = getVoucherInfo(formData.voucherCode);
+    setVoucherInfo(info);
+  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode]);
 
   // Format angka ke format rupiah
   const formatRupiah = (amount: number) => {
@@ -45,26 +52,17 @@ export function StepThree({ formData, updateFormData, prevStep, onSubmit }: Step
         return;
       }
 
+      // Cek apakah form diisi secara manual
+      const isManualForm = formData.isManualEntry || !formData.surveyUrl.includes('docs.google.com/forms');
+      console.log('Form submission type check:', {
+        isManualEntry: formData.isManualEntry,
+        surveyUrl: formData.surveyUrl,
+        containsGoogleForms: formData.surveyUrl.includes('docs.google.com/forms'),
+        isManualForm: isManualForm
+      });
+
       // Tampilkan loading toast
       const loadingToast = toast.loading('Menyimpan data dan mempersiapkan pembayaran...');
-
-      // Coba ping Supabase terlebih dahulu untuk memeriksa koneksi
-      let isOfflineMode = false;
-      try {
-        const response = await fetch(import.meta.env.VITE_SUPABASE_URL);
-        if (!response.ok) {
-          console.warn('Supabase connection test failed, might be using offline mode');
-          isOfflineMode = true;
-        }
-      } catch (pingError) {
-        console.error('Failed to ping Supabase, switching to offline mode:', pingError);
-        isOfflineMode = true;
-      }
-
-      if (isOfflineMode) {
-        console.log('Using offline mode due to connection issues');
-        toast.info('Koneksi internet terbatas. Menggunakan mode offline.', { duration: 3000 });
-      }
 
       // Siapkan data untuk disimpan ke Supabase
       const submissionData: FormSubmission = {
@@ -82,6 +80,7 @@ export function StepThree({ formData, updateFormData, prevStep, onSubmit }: Step
         university: formData.university,
         department: formData.department,
         status: formData.status || 'pending',
+        referral_source: formData.referralSource,
         winner_count: formData.winnerCount,
         prize_per_winner: formData.prizePerWinner,
         voucher_code: formData.voucherCode,
@@ -94,152 +93,84 @@ export function StepThree({ formData, updateFormData, prevStep, onSubmit }: Step
       try {
         savedData = await saveFormSubmission(submissionData);
         console.log('Data berhasil disimpan:', savedData);
+
+        // Kirim data ke Google Sheets secara background hanya untuk Google Forms
+        // Manual forms akan dikirim di bagian isManualForm
+        if (savedData && savedData.id && !isManualForm) {
+          console.log('Mengirim data Google Form ke Google Sheets untuk form ID:', savedData.id);
+          sendToGoogleSheetsBackground(savedData.id, 'google_form_submission');
+        }
       } catch (saveError: any) {
         console.error('Error saat menyimpan data:', saveError);
-
-        // Jika error adalah masalah koneksi, gunakan mode offline
-        if (
-          saveError.message?.includes('Failed to fetch') ||
-          saveError.message?.includes('Network Error') ||
-          saveError.message?.includes('ERR_NAME_NOT_RESOLVED')
-        ) {
-          toast.warning('Gagal terhubung ke database. Menggunakan mode offline.', { duration: 3000 });
-
-          // Buat ID simulasi
-          const offlineId = `offline_${Date.now()}`;
-          savedData = {
-            ...submissionData,
-            id: offlineId,
-            created_at: new Date().toISOString(),
-            status: 'pending',
-            payment_status: 'offline'
-          };
-
-          // Simpan di localStorage
-          try {
-            const existingData = localStorage.getItem('offlineFormSubmissions');
-            const offlineSubmissions = existingData ? JSON.parse(existingData) : [];
-            offlineSubmissions.push(savedData);
-            localStorage.setItem('offlineFormSubmissions', JSON.stringify(offlineSubmissions));
-            console.log('Data saved in offline mode:', savedData);
-          } catch (localStorageError) {
-            console.error('Failed to save in offline mode:', localStorageError);
-            toast.dismiss(loadingToast);
-            toast.error('Gagal menyimpan data. Silakan coba lagi.');
-            return;
-          }
-        } else {
-          toast.dismiss(loadingToast);
-          toast.error('Gagal menyimpan data. Silakan coba lagi.');
-          return;
-        }
+        toast.dismiss(loadingToast);
+        toast.error('Gagal menyimpan data. Silakan coba lagi.');
+        return;
       }
 
-      // Periksa status API Mayar terlebih dahulu
-      try {
-        console.log('Memeriksa status API Mayar...');
-        const isApiAvailable = await checkMayarApiStatus();
+      // Jika form diisi secara manual, bukan Google Form, atau memiliki personal data questions, redirect ke halaman submit-success
+      if (isManualForm || formData.hasPersonalDataQuestions) {
+        console.log('Form diisi secara manual atau memiliki personal data questions, redirect ke halaman submit-success');
 
-        if (!isApiAvailable) {
-          console.warn('Mayar API tidak tersedia, menggunakan mode simulasi');
-          toast.info('Layanan pembayaran sedang tidak tersedia. Menggunakan mode simulasi.', { duration: 3000 });
-        } else {
-          console.log('Mayar API tersedia, melanjutkan dengan pembayaran normal');
+        // Kirim data ke Google Sheets untuk manual form juga
+        if (savedData && savedData.id) {
+          console.log('Mengirim data manual form ke Google Sheets untuk form ID:', savedData.id);
+          sendToGoogleSheetsBackground(savedData.id, 'manual_form_submission');
         }
-
-        console.log('Memulai proses pembayaran untuk form ID:', savedData.id);
-
-        const paymentUrl = await createPayment({
-          formSubmissionId: savedData.id,
-          amount: costCalculation.totalCost,
-          customerInfo: {
-            title: formData.title,
-            fullName: formData.fullName || 'Pengguna',
-            email: formData.email || 'user@example.com',
-            phoneNumber: formData.phoneNumber || '-'
-          }
-        });
-
-        console.log('Payment URL diterima:', paymentUrl);
 
         // Dismiss loading toast
         toast.dismiss(loadingToast);
 
-        // Cek apakah ini adalah simulasi
-        if (paymentUrl.includes('simulation=true')) {
-          // Tampilkan success toast untuk simulasi
-          toast.success('Simulasi pembayaran berhasil! Anda akan diarahkan ke halaman sukses.');
-          console.log('Mode simulasi terdeteksi, akan redirect ke halaman sukses simulasi');
-        } else {
-          // Tampilkan success toast untuk pembayaran nyata
-          toast.success('Berhasil! Anda akan diarahkan ke halaman pembayaran.');
-          console.log('Mode produksi terdeteksi, akan redirect ke Mayar payment gateway');
-        }
+        // Tampilkan success toast
+        toast.success('Form berhasil dikirim! Anda akan diarahkan ke halaman sukses.');
 
         // Tambahkan delay kecil agar toast terlihat
         setTimeout(() => {
-          // Redirect ke halaman pembayaran
-          console.log('Melakukan redirect ke:', paymentUrl);
-          window.location.href = paymentUrl;
+          // Redirect ke halaman submit-success
+          console.log('Melakukan redirect ke halaman submit-success');
+          window.open(`${window.location.origin}/submit-success.html`, '_self');
         }, 1500);
-      } catch (paymentError: any) {
-        // Dismiss loading toast
-        toast.dismiss(loadingToast);
-
-        console.error('Error saat membuat pembayaran:', paymentError);
-
-        // Tampilkan pesan error yang lebih spesifik
-        let errorMessage = 'Terjadi kesalahan saat membuat pembayaran.';
-        let errorCode = '';
-
-        if (paymentError.response) {
-          // Error dari server Mayar
-          const status = paymentError.response.status;
-          const data = paymentError.response.data;
-          errorCode = `HTTP ${status}`;
-
-          if (status === 401) {
-            errorMessage = 'Autentikasi dengan Mayar gagal. Silakan periksa API key.';
-          } else if (status === 400) {
-            errorMessage = `Permintaan tidak valid: ${data.message || 'Format data tidak sesuai'}`;
-          } else if (status === 422) {
-            errorMessage = 'Format data pembayaran tidak valid.';
-
-            // Cek apakah ada detail validasi error
-            if (data && data.errors) {
-              const errors = data.errors;
-              const errorFields = Object.keys(errors).join(', ');
-              errorMessage += ` Masalah pada: ${errorFields}`;
-            }
-          } else if (status >= 500) {
-            errorMessage = 'Layanan Mayar sedang mengalami gangguan. Silakan coba lagi nanti.';
-          }
-
-          console.error(`Mayar API error (${errorCode}):`, data);
-          toast.error(errorMessage + ' Menggunakan mode simulasi.');
-        } else if (paymentError.request) {
-          // Error karena tidak ada response (network issue)
-          errorCode = 'NETWORK';
-          errorMessage = 'Tidak dapat terhubung ke layanan pembayaran.';
-          console.error('Network error connecting to Mayar API:', paymentError);
-          toast.error(errorMessage + ' Menggunakan mode simulasi.');
-        } else {
-          // Error lainnya
-          errorCode = 'UNKNOWN';
-          if (paymentError.message) {
-            errorMessage = `Error: ${paymentError.message}`;
-          }
-          console.error('Unknown error with Mayar API:', paymentError);
-          toast.error(errorMessage + ' Menggunakan mode simulasi.');
-        }
-
-        // Log error untuk debugging
-        console.error(`Payment error (${errorCode}): ${errorMessage}`);
-
-        // Tampilkan pesan error dan biarkan pengguna mencoba lagi
-        toast.error('Gagal terhubung ke layanan pembayaran. Silakan coba lagi nanti.');
       }
-    } catch (error) {
+      // Jika form adalah Google Form, lanjutkan dengan pembayaran
+      else {
+        // Simplified payment flow
+        try {
+          console.log('Memulai proses pembayaran untuk form ID:', savedData.id);
+
+          // Create payment with simplified function
+          const paymentUrl = await createPayment({
+            formSubmissionId: savedData.id,
+            amount: costCalculation.totalCost,
+            customerInfo: {
+              title: formData.title,
+              fullName: formData.fullName || 'Pengguna',
+              email: formData.email || 'user@example.com',
+              phoneNumber: formData.phoneNumber || '-'
+            }
+          });
+
+          console.log('Payment URL diterima:', paymentUrl);
+
+          // Dismiss loading toast
+          toast.dismiss(loadingToast);
+
+          // Tampilkan success toast untuk pembayaran nyata
+          toast.success('Berhasil! Anda akan diarahkan ke halaman pembayaran.');
+
+          // Tambahkan delay kecil agar toast terlihat
+          setTimeout(() => {
+            // Redirect ke halaman pembayaran
+            console.log('Melakukan redirect ke:', paymentUrl);
+            // Use window.open instead of window.location.href to avoid issues
+            window.open(paymentUrl, '_self');
+          }, 1500);
+        } catch (paymentError: any) {
+          // Dismiss loading toast
+          toast.dismiss(loadingToast);
+          console.error('Error saat membuat pembayaran:', paymentError);
+          toast.error('Gagal membuat pembayaran. Silakan coba lagi nanti.');
+        }
+      }
+    } catch (error: any) {
       console.error('Error saat menyimpan data:', error);
       toast.error('Terjadi kesalahan saat menyimpan data. Silakan coba lagi.');
     }
@@ -298,9 +229,15 @@ export function StepThree({ formData, updateFormData, prevStep, onSubmit }: Step
             value={formData.voucherCode || ''}
             onChange={handleVoucherChange}
           />
-          <p className="text-sm text-gray-500 mt-2">
-            Masukkan kode voucher jika Anda memilikinya untuk mendapatkan diskon
-          </p>
+          {voucherInfo.isValid && voucherInfo.message ? (
+            <p className="text-sm text-green-600 mt-2">
+              {voucherInfo.message}
+            </p>
+          ) : (
+            <p className="text-sm text-gray-500 mt-2">
+              Masukkan kode voucher jika Anda memilikinya untuk mendapatkan diskon
+            </p>
+          )}
         </div>
 
         {costCalculation.discount > 0 && (

@@ -40,16 +40,18 @@ export const checkMayarApiStatus = async (): Promise<boolean> => {
       return false;
     }
 
-    // Coba ping API Mayar dengan timeout yang pendek
-    const response = await axios.get('https://api.mayar.id/v1/ping', {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
+    // Coba ping API Mayar melalui proxy untuk menghindari CORS
+    console.log('Checking Mayar API status via proxy');
+    const response = await axios.post('/api/mayar-proxy', {
+      endpoint: 'https://api.mayar.id/v1/ping',
+      apiKey: apiKey,
+      method: 'GET'
+    }, {
       timeout: 5000 // 5 detik timeout
     });
 
     // Jika response OK, API tersedia
+    console.log('Mayar API status check response:', response.status);
     return response.status === 200;
   } catch (error) {
     console.error('Error checking Mayar API status:', error);
@@ -80,7 +82,7 @@ export const createPayment = async (paymentData: PaymentData) => {
       };
 
       try {
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('transactions')
           .insert([transactionData])
           .select();
@@ -94,8 +96,8 @@ export const createPayment = async (paymentData: PaymentData) => {
         // Tetap lanjutkan meskipun ada error dengan database
       }
 
-      // Gunakan hardcoded URL untuk menghindari masalah dengan window.location.origin
-      const origin = "https://submit.jakpatforuniv.com";
+      // Gunakan window.location.origin untuk mendapatkan URL dasar
+      const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
       // Return URL simulasi
       return `${origin}/payment-success?id=${formSubmissionId}&simulation=true`;
@@ -120,8 +122,8 @@ export const createPayment = async (paymentData: PaymentData) => {
     const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
     console.log('Webhook token available:', webhookToken ? 'Yes' : 'No');
 
-    // Gunakan hardcoded URL untuk menghindari masalah dengan window.location.origin
-    const origin = "https://submit.jakpatforuniv.com";
+    // Gunakan window.location.origin untuk mendapatkan URL dasar
+    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
     // Log request data untuk debugging - format sesuai dokumentasi Mayar
     const requestData = {
@@ -133,8 +135,15 @@ export const createPayment = async (paymentData: PaymentData) => {
       failureUrl: `${origin}/payment-failed?id=${formSubmissionId}`,
       description: `Pembayaran Survey - ${customerInfo.title}`,
       expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 jam
-      webhookUrl: `${origin}/webhook` // URL webhook untuk notifikasi pembayaran
+      webhookUrl: `${origin}/api/webhook` // URL webhook untuk notifikasi pembayaran
     };
+
+    // Log the redirect URLs for debugging
+    console.log('Redirect URLs:', {
+      success: `${origin}/payment-success?id=${formSubmissionId}`,
+      failure: `${origin}/payment-failed?id=${formSubmissionId}`,
+      webhook: `${origin}/api/webhook`
+    });
 
     console.log('Mayar request data:', requestData);
 
@@ -146,7 +155,7 @@ export const createPayment = async (paymentData: PaymentData) => {
     // Coba dengan format header yang benar sesuai dokumentasi Mayar
     try {
       // Persiapkan header untuk request - format sesuai dokumentasi Mayar
-      const headers = {
+      const headers: Record<string, string> = {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       };
@@ -163,34 +172,76 @@ export const createPayment = async (paymentData: PaymentData) => {
         ...(webhookToken ? { 'X-Webhook-Token': 'configured' } : {})
       });
 
-      // Coba endpoint baru terlebih dahulu
+      // Gunakan Cloudflare Function sebagai proxy untuk mengatasi masalah CORS
       try {
-        console.log('Trying Mayar Headless API endpoint');
-        response = await axios.post(
-          'https://api.mayar.id/hl/v1/payment/create',
-          requestData,
-          {
-            headers,
-            timeout: 15000 // 15 detik timeout
-          }
-        );
-        console.log('Mayar Headless API response received successfully');
-      } catch (headlessError) {
-        console.error('Error with Headless API, trying standard API:', headlessError.message);
+        console.log('Using Cloudflare Function proxy for Mayar API');
 
-        // Jika endpoint headless gagal, coba endpoint standar
-        console.log('Trying Mayar standard API endpoint');
+        // Tambahkan endpoint, API key, dan webhook token ke request data
+        const proxyRequestData = {
+          ...requestData,
+          endpoint: 'https://api.mayar.id/hl/v1/payment/create',
+          apiKey: apiKey, // Kirim API key ke proxy
+          webhookToken: webhookToken // Kirim webhook token ke proxy
+        };
+
+        console.log('Sending request to proxy with API key and webhook token included');
+
+        // Panggil Cloudflare Function proxy dengan retry logic
+        let retryCount = 0;
+        const maxRetries = 2;
+
+        while (retryCount <= maxRetries) {
+          try {
+            response = await axios.post(
+              '/api/mayar-proxy',
+              proxyRequestData,
+              {
+                timeout: 15000 // 15 detik timeout
+              }
+            );
+            console.log('Mayar API response received via proxy successfully');
+            break; // Keluar dari loop jika berhasil
+          } catch (retryError) {
+            retryCount++;
+            console.error(`Proxy attempt ${retryCount} failed:`, retryError);
+
+            if (retryCount > maxRetries) {
+              throw retryError; // Re-throw jika sudah mencapai batas retry
+            }
+
+            // Tunggu sebentar sebelum retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      } catch (error) {
+        const proxyError = error as Error;
+        console.error('Error with primary API endpoint:', proxyError.message);
+
+        // Jika proxy gagal, coba endpoint standar melalui proxy
+        console.log('Trying standard API endpoint via proxy');
+
+        // Tambahkan endpoint standar, API key, dan webhook token ke request data
+        const proxyRequestData = {
+          ...requestData,
+          endpoint: 'https://api.mayar.id/v1/invoices',
+          apiKey: apiKey, // Kirim API key ke proxy
+          webhookToken: webhookToken // Kirim webhook token ke proxy
+        };
+
+        console.log('Trying standard endpoint with API key and webhook token included');
+
         response = await axios.post(
-          'https://api.mayar.id/v1/invoices',
-          requestData,
+          '/api/mayar-proxy',
+          proxyRequestData,
           {
-            headers,
             timeout: 15000 // 15 detik timeout
           }
         );
-        console.log('Mayar standard API response received successfully');
+
+        console.log('Mayar standard API response received via proxy successfully');
       }
-    } catch (apiError) {
+    } catch (error) {
+      const apiError = error as any;
       console.error('All API endpoints failed:', apiError.message);
 
       // Log error details untuk debugging
@@ -284,7 +335,7 @@ export const createPayment = async (paymentData: PaymentData) => {
     };
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('transactions')
         .insert([transactionData])
         .select();
@@ -300,7 +351,8 @@ export const createPayment = async (paymentData: PaymentData) => {
 
     // Return payment URL dari response Mayar
     return paymentUrl;
-  } catch (error) {
+  } catch (err) {
+    const error = err as any;
     console.error('Error creating payment:', error);
 
     // Log error details untuk debugging
@@ -330,15 +382,22 @@ export const createPayment = async (paymentData: PaymentData) => {
 // Fungsi untuk memverifikasi status pembayaran
 export const verifyPayment = async (paymentId: string) => {
   try {
-    // Gunakan endpoint yang benar sesuai dokumentasi Mayar
-    const response = await axios.get(
-      `https://api.mayar.id/hl/v1/payment/${paymentId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_MAYAR_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
+    // Ambil API key
+    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
+
+    // Gunakan Cloudflare Function proxy untuk verifikasi pembayaran
+    const proxyRequestData = {
+      endpoint: `https://api.mayar.id/hl/v1/payment/${paymentId}`,
+      method: 'GET',
+      apiKey: apiKey // Kirim API key ke proxy
+    };
+
+    console.log('Verifying payment with API key included');
+
+    // Panggil proxy dengan metode POST tapi minta proxy melakukan GET request
+    const response = await axios.post(
+      '/api/mayar-verify',
+      proxyRequestData
     );
 
     console.log('Verify payment response:', response.data);
@@ -349,7 +408,8 @@ export const verifyPayment = async (paymentId: string) => {
     }
 
     return response.data;
-  } catch (error) {
+  } catch (err) {
+    const error = err as Error;
     console.error('Error verifying payment:', error);
     throw error;
   }

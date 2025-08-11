@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rollback Instructions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .step {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .step h2 {
+            margin-top: 0;
+            color: #0051c3;
+        }
+        code {
+            background-color: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .highlight {
+            background-color: #ffffcc;
+            padding: 2px;
+        }
+        img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>How to Roll Back to a Previous Deployment in Cloudflare Pages</h1>
+    
+    <div class="step">
+        <h2>Step 1: Log in to Cloudflare Dashboard</h2>
+        <p>Go to <a href="https://dash.cloudflare.com/" target="_blank">https://dash.cloudflare.com/</a> and log in with your credentials.</p>
+    </div>
+    
+    <div class="step">
+        <h2>Step 2: Navigate to Pages</h2>
+        <p>From the left sidebar, click on <strong>Workers & Pages</strong>.</p>
+    </div>
+    
+    <div class="step">
+        <h2>Step 3: Select Your Project</h2>
+        <p>Find and click on the <code>jakpatforuniv-submit</code> project.</p>
+    </div>
+    
+    <div class="step">
+        <h2>Step 4: Go to Deployments Tab</h2>
+        <p>Click on the <strong>Deployments</strong> tab to see all your deployments.</p>
+    </div>
+    
+    <div class="step">
+        <h2>Step 5: Find the Working Deployment</h2>
+        <p>Look for the deployment with ID: <code class="highlight">d033e0ee</code></p>
+        <p>The full ID is: <code>d033e0ee-eb63-4cbf-8ac3-d4f68a9304be</code></p>
+        <p>This deployment was created about 1 hour ago.</p>
+    </div>
+    
+    <div class="step">
+        <h2>Step 6: Roll Back to This Deployment</h2>
+        <p>Click on the three dots (⋮) next to this deployment and select <strong>Rollback to this deployment</strong>.</p>
+    </div>
+    
+    <div class="step">
+        <h2>Step 7: Confirm the Rollback</h2>
+        <p>Confirm the rollback in the dialog that appears.</p>
+    </div>
+    
+    <div class="step">
+        <h2>Step 8: Verify the Rollback</h2>
+        <p>After the rollback is complete, visit <a href="https://submit.jakpatforuniv.com" target="_blank">https://submit.jakpatforuniv.com</a> to verify that the site is working correctly.</p>
+    </div>
+    
+    <div class="step">
+        <h2>Alternative: Use the Specific Deployment URL</h2>
+        <p>If you prefer not to roll back, you can directly use the working deployment URL:</p>
+        <p><a href="https://d033e0ee.jakpatforuniv-submit.pages.dev" target="_blank">https://d033e0ee.jakpatforuniv-submit.pages.dev</a></p>
+    </div>
+</body>
+</html>

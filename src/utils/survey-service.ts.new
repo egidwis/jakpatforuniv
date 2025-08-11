@@ -1,0 +1,269 @@
+// Fungsi untuk mengekstrak informasi dari Google Forms
+import axios from 'axios';
+import { getProxiedUrl, tryAllProxies } from './proxy-service';
+
+// Interface untuk hasil ekstraksi
+export interface SurveyInfo {
+  title: string;
+  description: string;
+  questionCount: number;
+  platform: string;
+}
+
+// Fungsi untuk mengekstrak informasi dari Google Forms
+export async function extractGoogleFormsInfo(url: string): Promise<SurveyInfo> {
+  try {
+    console.log('[DEBUG] Extracting Google Forms info from:', url);
+    
+    // Gunakan proxy untuk mengatasi masalah CORS
+    let html = '';
+    
+    try {
+      // Coba ambil konten HTML dari URL dengan proxy
+      const proxiedUrl = getProxiedUrl(url);
+      console.log('[DEBUG] Using proxied URL:', proxiedUrl);
+      
+      const response = await axios.get(proxiedUrl, {
+        timeout: 15000, // 15 detik timeout
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Referer': 'https://www.google.com/'
+        }
+      });
+      
+      html = response.data;
+      console.log('[DEBUG] Successfully fetched HTML content, length:', html.length);
+      
+      // Log sample of HTML untuk debugging
+      console.log('[DEBUG] HTML sample:', html.substring(0, 200) + '...');
+    } catch (error) {
+      console.error('[DEBUG] Error fetching with proxy, trying alternative method:', error);
+      
+      // Coba metode alternatif dengan proxy lain
+      try {
+        console.log('[DEBUG] Trying alternative proxy method');
+        const result = await tryAllProxies(url, async (proxiedUrl) => {
+          const response = await axios.get(proxiedUrl, {
+            timeout: 15000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.5',
+              'Referer': 'https://www.google.com/'
+            }
+          });
+          return response.data;
+        });
+        
+        if (result) {
+          html = result;
+          console.log('[DEBUG] Successfully fetched HTML with alternative proxy, length:', html.length);
+        }
+      } catch (proxyError) {
+        console.error('[DEBUG] All proxy methods failed:', proxyError);
+      }
+      
+      // Jika masih gagal dan tidak ada HTML, gunakan nilai default
+      if (!html) {
+        console.log('[DEBUG] Using default values as fallback');
+        return {
+          title: 'Google Form',
+          description: 'Form ini tidak dapat diekstrak secara otomatis. Silakan isi detail secara manual.',
+          questionCount: 10,
+          platform: 'Google Forms'
+        };
+      }
+    }
+    
+    // Ekstrak judul
+    let title = '';
+    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+    if (titleMatch && titleMatch[1]) {
+      title = titleMatch[1].replace(' - Google Forms', '').trim();
+      console.log('[DEBUG] Extracted title:', title);
+    } else {
+      console.log('[DEBUG] Failed to extract title');
+      title = 'Google Form';
+    }
+
+    // Ekstrak deskripsi
+    let description = '';
+    const descriptionMatch = html.match(/<meta\s+property="og:description"\s+content="([^"]*?)"/i);
+    if (descriptionMatch && descriptionMatch[1]) {
+      description = descriptionMatch[1].trim();
+      console.log('[DEBUG] Extracted description:', description);
+    } else {
+      console.log('[DEBUG] Failed to extract description');
+      description = 'Form description not available';
+    }
+
+    // Hitung jumlah pertanyaan dengan menghitung elemen yang mengandung pertanyaan
+    let questionCount = 0;
+    let detectionMethod = '';
+
+    // Metode 0: Ekstrak dari FB_PUBLIC_LOAD_DATA_ (paling akurat)
+    const fbDataMatch = html.match(/var FB_PUBLIC_LOAD_DATA_ = (.*?);<\/script>/s);
+    if (fbDataMatch && fbDataMatch[1]) {
+      try {
+        console.log('[DEBUG] Found FB_PUBLIC_LOAD_DATA_, trying to extract question count');
+        
+        // Hitung jumlah "null,2," dalam data
+        const nullTwoMatches = fbDataMatch[1].match(/null,2,/g);
+        if (nullTwoMatches) {
+          questionCount = nullTwoMatches.length;
+          detectionMethod = 'FB_PUBLIC_LOAD_DATA_ (null,2,)';
+          console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+        }
+        
+        // Metode alternatif: Cari pola lain dalam FB_PUBLIC_LOAD_DATA_
+        if (questionCount === 0) {
+          // Coba cari pola lain yang mungkin menunjukkan pertanyaan
+          const fbData = fbDataMatch[1];
+          
+          // Pola 1: Cari jumlah array yang berisi data pertanyaan
+          const questionArrayMatches = fbData.match(/\[\d+,"[^"]+",null,\d+,\[\[/g);
+          if (questionArrayMatches) {
+            questionCount = questionArrayMatches.length;
+            detectionMethod = 'FB_PUBLIC_LOAD_DATA_ (questionArray)';
+            console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+          }
+          
+          // Pola 2: Cari jumlah elemen dengan pola tertentu
+          if (questionCount === 0) {
+            const questionElementMatches = fbData.match(/\[\d+,"[^"]+",null,\d+,\[\[\d+,/g);
+            if (questionElementMatches) {
+              questionCount = questionElementMatches.length;
+              detectionMethod = 'FB_PUBLIC_LOAD_DATA_ (questionElement)';
+              console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+            }
+          }
+          
+          // Pola 3: Cari jumlah elemen dengan pola lain
+          if (questionCount === 0) {
+            const questionTypeMatches = fbData.match(/\[\d+,\[\["[^"]+",null,null,null,\d+\]\],\d+,/g);
+            if (questionTypeMatches) {
+              questionCount = questionTypeMatches.length;
+              detectionMethod = 'FB_PUBLIC_LOAD_DATA_ (questionType)';
+              console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[DEBUG] Error parsing FB_PUBLIC_LOAD_DATA_:', error);
+      }
+    }
+
+    // Metode 1: Hitung berdasarkan elemen dengan atribut role="listitem"
+    if (questionCount === 0) {
+      const listItemMatches = html.match(/role="listitem"/g);
+      if (listItemMatches) {
+        questionCount = listItemMatches.length;
+        detectionMethod = 'role="listitem"';
+        console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+      }
+    }
+
+    // Metode 2: Hitung berdasarkan elemen dengan class yang mengandung "freebirdFormviewerComponentsQuestionBaseRoot"
+    if (questionCount === 0) {
+      const questionMatches = html.match(/freebirdFormviewerComponentsQuestionBaseRoot/g);
+      if (questionMatches) {
+        questionCount = questionMatches.length;
+        detectionMethod = 'freebirdFormviewerComponentsQuestionBaseRoot';
+        console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+      }
+    }
+
+    // Metode 3: Hitung berdasarkan elemen dengan data-params yang mengandung "%.@.[1"
+    if (questionCount === 0) {
+      const dataParamsMatches = html.match(/data-params="%.@.\[1/g);
+      if (dataParamsMatches) {
+        questionCount = dataParamsMatches.length;
+        detectionMethod = 'data-params="%.@.[1"';
+        console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+      }
+    }
+
+    // Metode 4: Hitung berdasarkan elemen dengan class yang mengandung "freebirdFormviewerViewNumberedItemContainer"
+    if (questionCount === 0) {
+      const numberedItemMatches = html.match(/freebirdFormviewerViewNumberedItemContainer/g);
+      if (numberedItemMatches) {
+        questionCount = numberedItemMatches.length;
+        detectionMethod = 'freebirdFormviewerViewNumberedItemContainer';
+        console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+      }
+    }
+
+    // Metode 5: Hitung berdasarkan elemen dengan jsname="OCpkoe"
+    if (questionCount === 0) {
+      const jsnameMatches = html.match(/jsname="OCpkoe"/g);
+      if (jsnameMatches) {
+        questionCount = jsnameMatches.length;
+        detectionMethod = 'jsname="OCpkoe"';
+        console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+      }
+    }
+
+    // Metode 6: Hitung berdasarkan elemen dengan jsname="OOO3xb"
+    if (questionCount === 0) {
+      const jsname2Matches = html.match(/jsname="OOO3xb"/g);
+      if (jsname2Matches) {
+        questionCount = jsname2Matches.length;
+        detectionMethod = 'jsname="OOO3xb"';
+        console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+      }
+    }
+
+    // Metode 7: Hitung berdasarkan elemen dengan jscontroller="oCiKKc"
+    if (questionCount === 0) {
+      const jscontrollerMatches = html.match(/jscontroller="oCiKKc"/g);
+      if (jscontrollerMatches) {
+        questionCount = jscontrollerMatches.length;
+        detectionMethod = 'jscontroller="oCiKKc"';
+        console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+      }
+    }
+
+    // Metode 8: Hitung berdasarkan elemen dengan class yang mengandung "freebirdFormviewerViewItemsItemItem"
+    if (questionCount === 0) {
+      const itemMatches = html.match(/freebirdFormviewerViewItemsItemItem/g);
+      if (itemMatches) {
+        questionCount = itemMatches.length;
+        detectionMethod = 'freebirdFormviewerViewItemsItemItem';
+        console.log(`[DEBUG] Detected ${questionCount} questions using ${detectionMethod}`);
+      }
+    }
+
+    // Jika masih 0, gunakan nilai default
+    if (questionCount === 0) {
+      console.log('[DEBUG] Failed to detect question count, using default value');
+      questionCount = 10;
+      detectionMethod = 'default';
+    } else {
+      console.log(`[DEBUG] Final detection: ${questionCount} questions using method: ${detectionMethod}`);
+    }
+
+    // Jika form tidak bisa diakses (misalnya karena private)
+    if (html.includes('You need permission') || html.includes('You need to login')) {
+      console.log('[DEBUG] Form requires permission or login');
+      throw new Error('FORM_NOT_PUBLIC');
+    }
+
+    return {
+      title,
+      description,
+      questionCount,
+      platform: 'Google Forms'
+    };
+  } catch (error) {
+    console.error('[DEBUG] Error extracting Google Forms info:', error);
+
+    // Jika error adalah karena network atau timeout, kemungkinan form tidak public
+    if (axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || error.code === 'ECONNREFUSED' || error.response?.status === 403)) {
+      throw new Error('FORM_NOT_PUBLIC');
+    }
+
+    throw new Error('EXTRACTION_FAILED');
+  }
+}

@@ -70,6 +70,7 @@ export interface FormSubmission {
   university?: string;
   department?: string;
   status?: string;
+  referral_source?: string;
   winner_count?: number;
   prize_per_winner?: number;
   voucher_code?: string;

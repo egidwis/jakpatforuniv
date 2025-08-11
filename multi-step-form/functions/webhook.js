@@ -188,6 +188,26 @@ export async function onRequest(context) {
         console.error('Error sending email notification:', emailError);
       }
 
+      // Kirim data ke Google Sheets setelah payment berhasil
+      try {
+        console.log('Sending payment success data to Google Sheets for form ID:', transaction.form_submission_id);
+
+        const sheetsResponse = await fetch(`${new URL(context.request.url).origin}/api/send-to-sheets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            formId: transaction.form_submission_id,
+            action: 'payment_success'
+          })
+        });
+
+        const sheetsResult = await sheetsResponse.json();
+        console.log('Google Sheets notification result:', sheetsResult);
+      } catch (sheetsError) {
+        console.error('Error sending data to Google Sheets:', sheetsError);
+        // Continue anyway, karena ini tidak critical untuk payment flow
+      }
+
       return new Response(JSON.stringify({
         message: 'Webhook processed successfully',
         transaction_id: paymentId,

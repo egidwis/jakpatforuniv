@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Google Sheets Integration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .loading {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Google Sheets Integration</h1>
+
+        <div class="test-section">
+            <h3>📊 Test Send Data to Google Sheets</h3>
+            <p>Test mengirim data sample ke Google Sheets melalui Cloudflare Function</p>
+            <button onclick="testSendToSheets()">Test Send to Sheets</button>
+            <div id="sheetsResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔗 Test Direct Google Apps Script</h3>
+            <p>Test langsung ke Google Apps Script endpoint</p>
+            <button onclick="testDirectScript()">Test Direct Script</button>
+            <div id="directResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📝 Sample Data</h3>
+            <p>Data yang akan dikirim untuk testing:</p>
+            <div class="result info">
+{
+  "timestamp": "2024-01-26T10:30:00Z",
+  "form_id": "test-form-123",
+  "survey_url": "https://forms.gle/test123",
+  "title": "Test Survey Form",
+  "description": "Survey untuk testing integrasi Google Sheets",
+  "question_count": "15",
+  "criteria_responden": "Mahasiswa aktif",
+  "duration": "7 hari",
+  "start_date": "2024-01-26",
+  "end_date": "2024-02-02",
+  "full_name": "John Doe",
+  "email": "john.doe@example.com",
+  "phone_number": "081234567890",
+  "university": "Universitas Indonesia",
+  "department": "Teknik Informatika",
+  "status": "active",
+  "winner_count": "10",
+  "prize_per_winner": "50000",
+  "voucher_code": "VOUCHER123",
+  "total_cost": "500000",
+  "payment_status": "pending",
+  "action": "test_submission"
+}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CLOUDFLARE_ENDPOINT = 'https://submit.jakpatforuniv.com/api/send-to-sheets';
+        const GOOGLE_SCRIPT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzwOFG1UT-O3LTkklMTDv_voKQDV6UQHvuuFn5m3ZQGzRyK3JIq5Aa4cJ84Hc4nciZq/exec';
+
+        const sampleData = {
+            timestamp: new Date().toISOString(),
+            form_id: 'test-form-' + Date.now(),
+            survey_url: 'https://forms.gle/test123',
+            title: 'Test Survey Form',
+            description: 'Survey untuk testing integrasi Google Sheets',
+            question_count: '15',
+            criteria_responden: 'Mahasiswa aktif',
+            duration: '7 hari',
+            start_date: '2024-01-26',
+            end_date: '2024-02-02',
+            full_name: 'John Doe',
+            email: 'john.doe@example.com',
+            phone_number: '081234567890',
+            university: 'Universitas Indonesia',
+            department: 'Teknik Informatika',
+            status: 'active',
+            winner_count: '10',
+            prize_per_winner: '50000',
+            voucher_code: 'VOUCHER123',
+            total_cost: '500000',
+            payment_status: 'pending',
+            action: 'test_submission',
+            sent_at: new Date().toISOString()
+        };
+
+        function showResult(elementId, content, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.className = `result ${type}`;
+            element.textContent = content;
+            element.style.display = 'block';
+        }
+
+        async function testSendToSheets() {
+            const button = event.target;
+            button.disabled = true;
+            button.textContent = 'Testing...';
+
+            showResult('sheetsResult', 'Mengirim data ke Cloudflare Function...', 'loading');
+
+            try {
+                const response = await fetch(CLOUDFLARE_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(sampleData)
+                });
+
+                const result = await response.text();
+
+                if (response.ok) {
+                    showResult('sheetsResult',
+                        `✅ SUCCESS!\n\nStatus: ${response.status}\nResponse: ${result}`,
+                        'success'
+                    );
+                } else {
+                    showResult('sheetsResult',
+                        `❌ ERROR!\n\nStatus: ${response.status}\nResponse: ${result}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult('sheetsResult',
+                    `❌ NETWORK ERROR!\n\nError: ${error.message}`,
+                    'error'
+                );
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Test Send to Sheets';
+            }
+        }
+
+        async function testDirectScript() {
+            const button = event.target;
+            button.disabled = true;
+            button.textContent = 'Testing...';
+
+            showResult('directResult', 'Mengirim data langsung ke Google Apps Script...', 'loading');
+
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(sampleData)
+                });
+
+                const result = await response.text();
+
+                if (response.ok) {
+                    showResult('directResult',
+                        `✅ SUCCESS!\n\nStatus: ${response.status}\nResponse: ${result}`,
+                        'success'
+                    );
+                } else {
+                    showResult('directResult',
+                        `❌ ERROR!\n\nStatus: ${response.status}\nResponse: ${result}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult('directResult',
+                    `❌ NETWORK ERROR!\n\nError: ${error.message}`,
+                    'error'
+                );
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Test Direct Script';
+            }
+        }
+    </script>
+</body>
+</html>

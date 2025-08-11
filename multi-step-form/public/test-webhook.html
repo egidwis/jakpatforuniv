@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mayar Webhook Test</title>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 14px;
+    }
+    textarea {
+      height: 150px;
+      font-family: monospace;
+    }
+    button {
+      background-color: #4a5568;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #2d3748;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      overflow-x: auto;
+    }
+    .success {
+      background-color: #e6f7e6;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+    }
+    .error {
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+    }
+    .loading {
+      background-color: #e2e3e5;
+      border: 1px solid #d6d8db;
+      color: #383d41;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mayar Webhook Test</h1>
+  <p>Gunakan halaman ini untuk menguji webhook Mayar dengan mengirim payload simulasi.</p>
+  
+  <div class="form-group">
+    <label for="webhookUrl">Webhook URL:</label>
+    <input type="text" id="webhookUrl" value="/.netlify/functions/webhook" placeholder="Contoh: /.netlify/functions/webhook">
+  </div>
+  
+  <div class="form-group">
+    <label for="eventType">Tipe Event:</label>
+    <select id="eventType">
+      <option value="payment.success">payment.success</option>
+      <option value="payment.failed">payment.failed</option>
+      <option value="payment.expired">payment.expired</option>
+    </select>
+  </div>
+  
+  <div class="form-group">
+    <label for="paymentId">ID Pembayaran:</label>
+    <input type="text" id="paymentId" placeholder="Contoh: pay_123456789">
+  </div>
+  
+  <div class="form-group">
+    <label for="webhookToken">Webhook Token (untuk signature):</label>
+    <input type="text" id="webhookToken" placeholder="Webhook token dari .env.local">
+  </div>
+  
+  <div class="form-group">
+    <label for="payload">Payload JSON:</label>
+    <textarea id="payload" placeholder="Payload akan dibuat otomatis berdasarkan input di atas"></textarea>
+  </div>
+  
+  <button id="generateButton">Generate Payload</button>
+  <button id="testButton">Kirim Webhook</button>
+  
+  <div id="result" class="result loading">Hasil akan ditampilkan di sini...</div>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const webhookUrlInput = document.getElementById('webhookUrl');
+      const eventTypeSelect = document.getElementById('eventType');
+      const paymentIdInput = document.getElementById('paymentId');
+      const webhookTokenInput = document.getElementById('webhookToken');
+      const payloadTextarea = document.getElementById('payload');
+      const generateButton = document.getElementById('generateButton');
+      const testButton = document.getElementById('testButton');
+      const resultDiv = document.getElementById('result');
+      
+      // Generate random payment ID if empty
+      if (!paymentIdInput.value) {
+        paymentIdInput.value = 'pay_test_' + Date.now();
+      }
+      
+      // Fungsi untuk menghasilkan payload berdasarkan input
+      function generatePayload() {
+        const eventType = eventTypeSelect.value;
+        const paymentId = paymentIdInput.value || 'pay_test_' + Date.now();
+        
+        const payload = {
+          type: eventType,
+          data: {
+            id: paymentId,
+            status: eventType === 'payment.success' ? 'completed' : 
+                   eventType === 'payment.failed' ? 'failed' : 'expired',
+            amount: 100000,
+            created_at: new Date().toISOString()
+          }
+        };
+        
+        payloadTextarea.value = JSON.stringify(payload, null, 2);
+        return payload;
+      }
+      
+      // Generate payload saat halaman dimuat
+      generatePayload();
+      
+      // Generate payload saat tombol diklik
+      generateButton.addEventListener('click', function() {
+        generatePayload();
+        resultDiv.className = 'result loading';
+        resultDiv.textContent = 'Payload dibuat. Klik "Kirim Webhook" untuk menguji.';
+      });
+      
+      // Fungsi untuk menghitung signature
+      async function calculateSignature(payload, token) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(payload);
+        const key = encoder.encode(token);
+        
+        // Gunakan Web Crypto API untuk menghitung HMAC-SHA256
+        const cryptoKey = await crypto.subtle.importKey(
+          'raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+        );
+        
+        const signature = await crypto.subtle.sign('HMAC', cryptoKey, data);
+        
+        // Konversi ke hex string
+        return Array.from(new Uint8Array(signature))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+      
+      // Kirim webhook saat tombol diklik
+      testButton.addEventListener('click', async function() {
+        resultDiv.className = 'result loading';
+        resultDiv.textContent = 'Mengirim webhook...';
+        
+        try {
+          const webhookUrl = webhookUrlInput.value;
+          const payload = payloadTextarea.value;
+          const webhookToken = webhookTokenInput.value;
+          
+          // Hitung signature jika webhook token tersedia
+          let headers = {
+            'Content-Type': 'application/json'
+          };
+          
+          if (webhookToken) {
+            const signature = await calculateSignature(payload, webhookToken);
+            headers['x-mayar-signature'] = signature;
+          }
+          
+          // Kirim request ke webhook URL
+          const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: headers,
+            body: payload
+          });
+          
+          const responseData = await response.text();
+          
+          resultDiv.className = response.ok ? 'result success' : 'result error';
+          resultDiv.textContent = `Status: ${response.status} ${response.statusText}\n\n${responseData}`;
+        } catch (error) {
+          resultDiv.className = 'result error';
+          resultDiv.textContent = `Error: ${error.message}`;
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -11,6 +11,12 @@
   autoLaunch = true
 
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
+  from = "/"
+  to = "https://business.jakpat.net/for-universities"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/submit-survey/*"
+  to = "/submit-survey/index.html"
   status = 200

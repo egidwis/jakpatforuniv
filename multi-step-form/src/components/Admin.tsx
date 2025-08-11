@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase, FormSubmission } from '../utils/supabase';
+import { supabase } from '../utils/supabase';
+import type { FormSubmission } from '../utils/supabase';
 
 export function Admin() {
   const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
@@ -99,8 +100,8 @@ export function Admin() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      submission.payment_status === 'completed' 
-                        ? 'bg-green-100 text-green-800' 
+                      submission.payment_status === 'completed'
+                        ? 'bg-green-100 text-green-800'
                         : 'bg-yellow-100 text-yellow-800'
                     }`}>
                       {submission.payment_status === 'completed' ? 'Lunas' : 'Pending'}

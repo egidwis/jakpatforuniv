@@ -16,11 +16,11 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
     totalCost: 0
   });
 
-  // Hitung biaya saat form data berubah
+  // Hitung biaya saat form data berubah - hanya field yang relevan
   useEffect(() => {
     const calculation = calculateTotalCost(formData);
     setCostCalculation(calculation);
-  }, [formData]);
+  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode]);
 
   // Format angka ke format rupiah
   const formatRupiah = (amount: number) => {
@@ -43,10 +43,6 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
 
   return (
     <div className="sidebar">
-      <h2 className="text-lg font-semibold mb-4">Submit survey</h2>
-      <p className="text-sm text-gray-600 mb-6">
-        Iklankan survey kamu ke 1.7Juta responden Jakpat
-      </p>
 
       {/* Mobile Progress Bar */}
       <MobileProgressBar

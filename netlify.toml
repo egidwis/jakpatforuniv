@@ -15,7 +15,7 @@
 
 [[redirects]]
   from = "/"
-  to = "/submit-survey/"
+  to = "https://business.jakpat.net/for-universities"
   status = 301
   force = true
 

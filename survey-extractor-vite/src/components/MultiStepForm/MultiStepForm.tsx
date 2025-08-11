@@ -22,8 +22,8 @@ const defaultFormData: SurveyFormData = {
   university: '',
   department: '',
   status: 'Mahasiswa',
-  winnerCount: 2, // Minimal 2 pemenang
-  prizePerWinner: 25000, // Minimal Rp 25.000
+  winnerCount: 1, // Minimal 1 pemenang
+  prizePerWinner: 500, // Minimal Rp 500
 
   // Step 3
   voucherCode: '',

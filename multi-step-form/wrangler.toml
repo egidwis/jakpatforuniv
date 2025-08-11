@@ -1,14 +1,10 @@
-[site]
-bucket = "./dist"
-entry-point = "."
+name = "jakpatforuniv-submit"
+pages_build_output_dir = "dist"
+compatibility_date = "2023-05-22"
+compatibility_flags = ["nodejs_compat"]
 
-[site.static]
-include = ["_headers", "_redirects"]
-
-[env.production]
-name = "jakpatforuniv-submit-survey"
-route = "jakpatforuniv.com/submit-survey/*"
-
-[build]
-command = "npm run build"
-output_dir = "dist"
+[env.production.vars]
+VITE_SUPABASE_URL = "https://zewuzezbmrmpttysjvpg.supabase.co"
+VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpld3V6ZXpibXJtcHR0eXNqdnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3NDg0MzMsImV4cCI6MjA2MzMyNDQzM30.IsFpW4TMm1mrLse-dZNvZpB-srOIFb9f2XBgNpaOwpI"
+VITE_MAYAR_API_KEY = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OGU3YTc0Zi02MWJlLTRiNmMtYjUwNi1jYjk4ZWQ2MzliOWUiLCJhY2NvdW50SWQiOiIyYmQ1NzViZS02YjgwLTQ1OTYtYjFkZi1iODNlZjNkMzVmZDUiLCJjcmVhdGVkQXQiOiIxNzQ3NzUwNzMzODQ3Iiwicm9sZSI6ImRldmVsb3BlciIsInN1YiI6InByb2R1Y3RAamFrcGF0Lm5ldCIsIm5hbWUiOiJKYWtwYXQgIiwibGluayI6Impha3BhdCIsImlzU2VsZkRvbWFpbiI6bnVsbCwiaWF0IjoxNzQ3NzUwNzMzfQ.Cy7Lx6VKR2YjyplRbnl3muPpYmnyta8gZau-dgBehBr3cCQ3wI__cW5Ws_W83-_SDINCozLRtLYc7kKTyjmf-_hf6O7MhJbznP7-cwiuL1M_dAbQygW09s0EjFQklKtoRaaiAOXsyf44pIgjeiMczoUxNotk0vnzD_Poeo6a1utadmgxJCBwWEMnSeJRvPVK1VuKaie_gOfMtxY558llcZEBado4BgNbQ6PEmV8buetz3WX8XwF-Dw3g75aTJW3DJI_0zzIdPsw2QTbA7k6Xni7URL4MN9_TVLpcaIGzEFAevrvNoLP17HvuTx6rF0Cw8mAeU5aVofxcVJx049KYjA"
+VITE_MAYAR_WEBHOOK_TOKEN = "a33caf9bf45ac1487091ae2913e07fefc0e282b3e755be7e5e4ccb9bf8605b38ddc2928fc2232fdb2159778511f4cdd23b9ffc7ec4338a379ce4efcfe963ee25"

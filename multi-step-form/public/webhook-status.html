@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webhook Status</title>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .card {
+      background-color: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .status-item:last-child {
+      border-bottom: none;
+    }
+    .status-label {
+      font-weight: 500;
+    }
+    .status-value {
+      font-family: monospace;
+    }
+    .status-ok {
+      color: #28a745;
+    }
+    .status-warning {
+      color: #ffc107;
+    }
+    .status-error {
+      color: #dc3545;
+    }
+    button {
+      background-color: #4a5568;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #2d3748;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      overflow-x: auto;
+      background-color: #f8f9fa;
+      border: 1px solid #eee;
+    }
+  </style>
+</head>
+<body>
+  <h1>Webhook Status</h1>
+  <p>Halaman ini menampilkan status konfigurasi webhook Mayar.</p>
+  
+  <div class="card">
+    <h2>Environment Variables</h2>
+    <div id="env-status">Loading...</div>
+  </div>
+  
+  <div class="card">
+    <h2>Webhook Configuration</h2>
+    <div id="webhook-status">Loading...</div>
+  </div>
+  
+  <div class="card">
+    <h2>Actions</h2>
+    <button id="testWebhookBtn">Test Webhook</button>
+    <button id="refreshBtn">Refresh Status</button>
+  </div>
+  
+  <div id="result" class="result">Results will appear here...</div>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const envStatusDiv = document.getElementById('env-status');
+      const webhookStatusDiv = document.getElementById('webhook-status');
+      const resultDiv = document.getElementById('result');
+      const testWebhookBtn = document.getElementById('testWebhookBtn');
+      const refreshBtn = document.getElementById('refreshBtn');
+      
+      // Fungsi untuk memeriksa environment variables
+      async function checkEnvironmentVariables() {
+        try {
+          const response = await fetch('/api/env-vars');
+          const data = await response.json();
+          
+          const hasMayarApiKey = data.VITE_MAYAR_API_KEY && data.VITE_MAYAR_API_KEY.length > 20;
+          const hasMayarWebhookToken = data.VITE_MAYAR_WEBHOOK_TOKEN && data.VITE_MAYAR_WEBHOOK_TOKEN.length > 20;
+          
+          let html = '<div class="status-item">';
+          html += '<span class="status-label">Mayar API Key:</span>';
+          html += `<span class="status-value ${hasMayarApiKey ? 'status-ok' : 'status-error'}">`;
+          html += hasMayarApiKey ? '✓ Configured' : '✗ Not configured';
+          html += '</span></div>';
+          
+          html += '<div class="status-item">';
+          html += '<span class="status-label">Mayar Webhook Token:</span>';
+          html += `<span class="status-value ${hasMayarWebhookToken ? 'status-ok' : 'status-error'}">`;
+          html += hasMayarWebhookToken ? '✓ Configured' : '✗ Not configured';
+          html += '</span></div>';
+          
+          html += '<div class="status-item">';
+          html += '<span class="status-label">Available Environment Variables:</span>';
+          html += `<span class="status-value">${data.debug?.envKeys?.join(', ') || 'None'}</span>`;
+          html += '</div>';
+          
+          envStatusDiv.innerHTML = html;
+          return { hasMayarApiKey, hasMayarWebhookToken };
+        } catch (error) {
+          envStatusDiv.innerHTML = `<div class="status-error">Error: ${error.message}</div>`;
+          return { hasMayarApiKey: false, hasMayarWebhookToken: false };
+        }
+      }
+      
+      // Fungsi untuk memeriksa konfigurasi webhook
+      function checkWebhookConfiguration(envStatus) {
+        const webhookUrl = `${window.location.origin}/.netlify/functions/webhook`;
+        const isCloudflare = window.location.hostname.includes('pages.dev') || 
+                            window.location.hostname.includes('jakpatforuniv.com');
+        
+        let html = '<div class="status-item">';
+        html += '<span class="status-label">Webhook URL:</span>';
+        html += `<span class="status-value">${webhookUrl}</span></div>`;
+        
+        html += '<div class="status-item">';
+        html += '<span class="status-label">Deployment Platform:</span>';
+        html += `<span class="status-value">${isCloudflare ? 'Cloudflare Pages' : 'Local Development'}</span></div>`;
+        
+        html += '<div class="status-item">';
+        html += '<span class="status-label">Webhook Handler:</span>';
+        
+        // Cek apakah webhook handler tersedia dengan melakukan request OPTIONS
+        fetch(webhookUrl, { method: 'OPTIONS' })
+          .then(response => {
+            const statusClass = response.ok ? 'status-ok' : 'status-warning';
+            const statusText = response.ok ? '✓ Available' : '? Might be available (OPTIONS not supported)';
+            
+            document.querySelector('#webhook-status .status-item:last-child .status-value')
+              .innerHTML = `<span class="${statusClass}">${statusText}</span>`;
+          })
+          .catch(() => {
+            document.querySelector('#webhook-status .status-item:last-child .status-value')
+              .innerHTML = '<span class="status-error">✗ Not available</span>';
+          });
+        
+        html += '<span class="status-value">Checking...</span></div>';
+        
+        html += '<div class="status-item">';
+        html += '<span class="status-label">Ready for Mayar:</span>';
+        
+        const isReady = envStatus.hasMayarApiKey && envStatus.hasMayarWebhookToken;
+        html += `<span class="status-value ${isReady ? 'status-ok' : 'status-error'}">`;
+        html += isReady ? '✓ Ready' : '✗ Not ready';
+        html += '</span></div>';
+        
+        webhookStatusDiv.innerHTML = html;
+      }
+      
+      // Fungsi untuk menguji webhook
+      testWebhookBtn.addEventListener('click', function() {
+        window.location.href = '/test-webhook.html';
+      });
+      
+      // Fungsi untuk refresh status
+      refreshBtn.addEventListener('click', async function() {
+        envStatusDiv.innerHTML = 'Loading...';
+        webhookStatusDiv.innerHTML = 'Loading...';
+        resultDiv.textContent = 'Refreshing status...';
+        
+        const envStatus = await checkEnvironmentVariables();
+        checkWebhookConfiguration(envStatus);
+        
+        resultDiv.textContent = 'Status refreshed at ' + new Date().toLocaleTimeString();
+      });
+      
+      // Periksa status saat halaman dimuat
+      (async function() {
+        const envStatus = await checkEnvironmentVariables();
+        checkWebhookConfiguration(envStatus);
+        resultDiv.textContent = 'Status loaded at ' + new Date().toLocaleTimeString();
+      })();
+    });
+  </script>
+</body>
+</html>

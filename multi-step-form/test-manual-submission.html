@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Manual Form Submission</title>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+        .header p {
+            color: #64748b;
+            margin: 0;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #374151;
+        }
+        .button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .button:hover {
+            background: #2563eb;
+        }
+        .button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #dcfce7;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+        }
+        .error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+        }
+        .info {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #374151;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-group textarea {
+            height: 80px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧪 Test Manual Form Submission</h1>
+            <p>Test apakah manual form submission sudah mengirim data ke Google Sheets</p>
+        </div>
+
+        <!-- Test 1: Submit Manual Form Data -->
+        <div class="test-section">
+            <h3>📝 Test 1: Submit Manual Form Data</h3>
+            <p>Test mengirim data manual form ke Supabase dan Google Sheets</p>
+            
+            <div class="form-group">
+                <label>Survey URL:</label>
+                <input type="text" id="surveyUrl" value="https://example.com/manual-survey" placeholder="URL survey manual">
+            </div>
+            
+            <div class="form-group">
+                <label>Title:</label>
+                <input type="text" id="title" value="Test Manual Survey" placeholder="Judul survey">
+            </div>
+            
+            <div class="form-group">
+                <label>Description:</label>
+                <textarea id="description" placeholder="Deskripsi survey">Survey ini dibuat secara manual untuk testing integrasi Google Sheets</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Question Count:</label>
+                <input type="number" id="questionCount" value="5" placeholder="Jumlah pertanyaan">
+            </div>
+            
+            <div class="form-group">
+                <label>Full Name:</label>
+                <input type="text" id="fullName" value="Test User" placeholder="Nama lengkap">
+            </div>
+            
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="email" value="test@example.com" placeholder="Email">
+            </div>
+            
+            <button class="button" onclick="testManualSubmission()">Submit Manual Form</button>
+            <div id="manualResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Test 2: Check Google Sheets -->
+        <div class="test-section">
+            <h3>📊 Test 2: Check Google Sheets</h3>
+            <p>Cek apakah data sudah masuk ke Google Sheets</p>
+            <button class="button" onclick="checkGoogleSheets()">Check Google Sheets</button>
+            <div id="sheetsResult" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        async function testManualSubmission() {
+            const button = event.target;
+            const resultDiv = document.getElementById('manualResult');
+            
+            button.disabled = true;
+            button.textContent = 'Submitting...';
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultDiv.textContent = 'Mengirim data manual form...';
+
+            try {
+                // Simulasi data form submission manual
+                const formData = {
+                    survey_url: document.getElementById('surveyUrl').value,
+                    title: document.getElementById('title').value,
+                    description: document.getElementById('description').value,
+                    question_count: parseInt(document.getElementById('questionCount').value),
+                    criteria_responden: 'Mahasiswa aktif',
+                    duration: 1,
+                    start_date: new Date().toISOString().split('T')[0],
+                    end_date: new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0],
+                    full_name: document.getElementById('fullName').value,
+                    email: document.getElementById('email').value,
+                    phone_number: '+62812345678',
+                    university: 'Test University',
+                    department: 'Test Department',
+                    status: 'Mahasiswa',
+                    winner_count: 1,
+                    prize_per_winner: 500,
+                    voucher_code: '',
+                    total_cost: 15000,
+                    payment_status: 'completed' // Manual form langsung completed
+                };
+
+                // Kirim langsung ke API send-to-sheets dengan data manual
+                const response = await fetch(`${API_BASE}/api/send-to-sheets`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        // Kirim data langsung untuk testing
+                        ...formData,
+                        form_id: 'manual-test-' + Date.now(),
+                        timestamp: new Date().toISOString(),
+                        action: 'manual_form_test'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = `✅ SUCCESS!\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(result, null, 2)}`;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `❌ FAILED!\n\nError: ${result.message}\nResponse: ${JSON.stringify(result, null, 2)}`;
+                }
+
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ NETWORK ERROR!\n\nError: ${error.message}`;
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Submit Manual Form';
+            }
+        }
+
+        async function checkGoogleSheets() {
+            const button = event.target;
+            const resultDiv = document.getElementById('sheetsResult');
+            
+            button.disabled = true;
+            button.textContent = 'Checking...';
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultDiv.textContent = 'Mengecek Google Sheets...';
+
+            try {
+                // Test direct Google Apps Script endpoint
+                const response = await fetch('https://script.google.com/macros/s/AKfycbzwOFG1UT-O3LTkklMTDv_voKQDV6UQHvuuFn5m3ZQGzRyK3JIq5Aa4cJ84Hc4nciZq/exec', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        form_id: 'sheets-check-' + Date.now(),
+                        timestamp: new Date().toISOString(),
+                        title: 'Google Sheets Check Test',
+                        action: 'connectivity_test'
+                    })
+                });
+
+                const result = await response.json();
+
+                resultDiv.className = 'result success';
+                resultDiv.textContent = `✅ Google Sheets Accessible!\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(result, null, 2)}`;
+
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Google Sheets Error!\n\nError: ${error.message}\n\nNote: Ini normal karena CORS policy. Yang penting Cloudflare Function bisa akses.`;
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Check Google Sheets';
+            }
+        }
+    </script>
+</body>
+</html>

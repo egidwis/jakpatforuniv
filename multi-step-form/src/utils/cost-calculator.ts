@@ -50,17 +50,75 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
   // Implementasi sederhana, bisa diganti dengan logika yang lebih kompleks
   if (!voucherCode) return 0;
 
-  // Contoh: kode "JAKPAT10" memberikan diskon 10%
-  if (voucherCode.toUpperCase() === 'JAKPAT10') {
+  // Contoh: kode "Mamikos" memberikan diskon 25%
+  if (voucherCode.toUpperCase() === 'JAKPATUNIV2025') {
+    return adCost * 0.25;
+  }
+
+  // Contoh: kode "Rakhma" memberikan diskon 10%
+  if (voucherCode.toUpperCase() === 'RA2025') {
     return adCost * 0.1;
   }
 
-  // Contoh: kode "JAKPAT20" memberikan diskon 20%
-  if (voucherCode.toUpperCase() === 'JAKPAT20') {
+    // Contoh: kode "Tiara" memberikan diskon 10%
+  if (voucherCode.toUpperCase() === 'JFUTYR') {
+    return adCost * 0.1;
+  }
+
+    // Contoh: kode "PPI SWEDIA" memberikan diskon 20%
+  if (voucherCode.toUpperCase() === 'PPISWEDIA') {
     return adCost * 0.2;
   }
 
+    // Contoh: kode "SEKAR" memberikan diskon 10%
+  if (voucherCode.toUpperCase() === 'SEKARJFU') {
+    return adCost * 0.1;
+  }
+
+    // Contoh: kode "Adinda" memberikan diskon 10%
+  if (voucherCode.toUpperCase() === 'ADINDAJFU') {
+    return adCost * 0.1;
+  }
+
+    // Contoh: kode "Raja" memberikan diskon 10%
+  if (voucherCode.toUpperCase() === 'RAJAJFU') {
+    return adCost * 0.1;
+  }
+
+    // Contoh: kode "Saci" memberikan diskon 10%
+  if (voucherCode.toUpperCase() === 'SACIJFU') {
+    return adCost * 0.1;
+  }
+
+
   return 0;
+}
+
+/**
+ * Mendapatkan informasi voucher berdasarkan kode
+ * @param voucherCode Kode voucher
+ * @returns Informasi voucher atau null jika tidak valid
+ */
+export function getVoucherInfo(voucherCode: string | undefined): { isValid: boolean; message?: string; discount?: number } {
+  if (!voucherCode) return { isValid: false };
+
+  const upperCode = voucherCode.toUpperCase();
+
+  if (upperCode === 'PPISWEDIA') {
+    return {
+      isValid: true,
+      message: 'Kode referal ini berlaku sampai 30 Juni 2026',
+      discount: 20
+    };
+  }
+
+  // Voucher lainnya tanpa pesan khusus
+  const validCodes = ['JAKPATUNIV2025', 'RA2025', 'JFUTYR', 'SEKARJFU', 'ADINDAJFU', 'RAJAJFU', 'SACIJFU'];
+  if (validCodes.includes(upperCode)) {
+    return { isValid: true };
+  }
+
+  return { isValid: false };
 }
 
 /**

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shortlink Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-case { margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        .result { margin-top: 5px; font-size: 12px; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Shortlink Detection & Expansion Test</h1>
+    
+    <div id="test-results"></div>
+
+    <script>
+        // Copy the utility functions for testing
+        const GOOGLE_SHORTLINK_DOMAINS = [
+            'forms.gle',
+            'goo.gl',
+            'g.co'
+        ];
+
+        function isShortlink(url) {
+            try {
+                const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+                return GOOGLE_SHORTLINK_DOMAINS.includes(urlObj.hostname);
+            } catch {
+                return GOOGLE_SHORTLINK_DOMAINS.some(domain => url.includes(domain));
+            }
+        }
+
+        async function expandShortlink(url) {
+            const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
+            
+            const result = {
+                isShortlink: isShortlink(url),
+                originalUrl: normalizedUrl,
+                expandedUrl: null,
+                platform: null
+            };
+
+            if (!result.isShortlink) {
+                return result;
+            }
+
+            try {
+                // Use fetch with mode: 'no-cors' for testing
+                const response = await fetch(normalizedUrl, { 
+                    method: 'HEAD',
+                    mode: 'no-cors'
+                });
+
+                // Note: In no-cors mode, we can't access headers
+                // This is just for testing the detection logic
+                console.log('Fetch completed (no-cors mode)');
+                
+                // For actual implementation, we'd need a proxy or CORS-enabled endpoint
+                result.expandedUrl = 'Test: Would expand in real implementation';
+                result.platform = 'Google Forms (detected)';
+                
+            } catch (error) {
+                console.warn('Failed to expand shortlink:', error);
+                result.expandedUrl = null;
+            }
+
+            return result;
+        }
+
+        // Test cases
+        const testCases = [
+            'forms.gle/abc123',
+            'https://forms.gle/xyz789',
+            'goo.gl/shortlink',
+            'https://docs.google.com/forms/d/e/1FAI...',
+            'https://example.com/form',
+            'not-a-url',
+            'g.co/test123'
+        ];
+
+        async function runTests() {
+            const resultsDiv = document.getElementById('test-results');
+            
+            for (const testUrl of testCases) {
+                const testDiv = document.createElement('div');
+                testDiv.className = 'test-case';
+                
+                testDiv.innerHTML = `<strong>Testing:</strong> ${testUrl}`;
+                
+                try {
+                    const isShort = isShortlink(testUrl);
+                    const result = await expandShortlink(testUrl);
+                    
+                    testDiv.innerHTML += `
+                        <div class="result success">
+                            ✓ Is shortlink: ${isShort}<br>
+                            ✓ Original URL: ${result.originalUrl}<br>
+                            ✓ Expanded URL: ${result.expandedUrl || 'None'}<br>
+                            ✓ Platform: ${result.platform || 'None'}
+                        </div>
+                    `;
+                } catch (error) {
+                    testDiv.innerHTML += `
+                        <div class="result error">
+                            ✗ Error: ${error.message}
+                        </div>
+                    `;
+                }
+                
+                resultsDiv.appendChild(testDiv);
+            }
+        }
+
+        // Run tests when page loads
+        runTests();
+    </script>
+</body>
+</html>
