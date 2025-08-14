@@ -17,10 +17,6 @@ output_dir = "dist"
 # Routes configuration
 [[routes]]
 pattern = "/*"
-script = "index.html"
-
-[[routes]]
-pattern = "/"
 url = "https://business.jakpat.net/for-universities"
 status = 301
 
