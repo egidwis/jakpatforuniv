@@ -64,7 +64,7 @@ async function quickPreCheck(url: string): Promise<'accessible' | 'problematic' 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1500); // 1.5 second timeout
 
-    const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
+    const response = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`, {
       signal: controller.signal
     });
 
@@ -173,27 +173,71 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
       throw new Error('NON_GOOGLE_FORM');
     }
     
-    // Try safe fetch with very short timeout
-    console.log('[FALLBACK DEBUG] Attempting safe fetch with 3 second timeout');
+    // Try safe fetch with reasonable timeout
+    console.log('[FALLBACK DEBUG] Attempting safe fetch with 8 second timeout');
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+    
+    let html = '';
+    let title = `Google Form ${formId ? formId.substring(0, 8) + '...' : ''}`;
+    let description = 'Form description not available';
+    let questionCount = 10; // Default
+    let hasPersonalDataQuestions = false;
+    let detectedKeywords: string[] = [];
     
     try {
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-      console.log('[FALLBACK DEBUG] Fetching via proxy...');
+      // Use server-side proxy first (most reliable for Google Forms)
+      console.log('[FALLBACK DEBUG] Using server-side Google Forms proxy...');
+      const serverProxyUrl = `/api/google-forms-proxy?url=${encodeURIComponent(url)}`;
       
-      const response = await fetch(proxyUrl, {
-        signal: controller.signal
-      });
+      let response;
+      try {
+        response = await fetch(serverProxyUrl, {
+          signal: controller.signal
+        });
+        console.log('[FALLBACK DEBUG] Server proxy successful, status:', response.status);
+      } catch (serverError) {
+        console.log('[FALLBACK DEBUG] Server proxy failed, trying direct:', serverError.message);
+        
+        // Fallback to direct fetch
+        try {
+          response = await fetch(url, {
+            signal: controller.signal,
+            mode: 'cors'
+          });
+          console.log('[FALLBACK DEBUG] Direct fetch successful, status:', response.status);
+        } catch (directError) {
+          console.log('[FALLBACK DEBUG] Direct fetch failed, trying external proxy:', directError.message);
+          
+          // Last resort: external proxy
+          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+          console.log('[FALLBACK DEBUG] Fetching via corsproxy.io...');
+          
+          response = await fetch(proxyUrl, {
+            signal: controller.signal
+          });
+        }
+      }
       
       clearTimeout(timeoutId);
       console.log('[FALLBACK DEBUG] Fetch successful, status:', response.status);
       
       if (!response.ok) {
+        if (response.status === 403) {
+          console.log('[FALLBACK DEBUG] HTTP 403 - Form may be private or restricted');
+          // For 403, return default data rather than throwing error
+          return {
+            title: `Google Form ${formId ? formId.substring(0, 8) + '...' : ''}`,
+            description: 'This form appears to be private or restricted',
+            questionCount: 5, // Conservative estimate
+            hasPersonalDataQuestions: false,
+            detectedKeywords: []
+          };
+        }
         throw new Error(`HTTP ${response.status}`);
       }
       
-      const html = await response.text();
+      html = await response.text();
       console.log('[FALLBACK DEBUG] HTML received, length:', html.length);
       
       // Very specific privacy check - only trigger on actual restriction messages
@@ -220,12 +264,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
       // If we have a reasonable amount of HTML and no obvious restrictions, proceed
       console.log('[FALLBACK DEBUG] Form appears accessible, proceeding with extraction');
       
-      // SAFE extraction - title, description, and basic question count
-      let title = `Google Form ${formId ? formId.substring(0, 8) + '...' : ''}`;
-      let description = 'Form description not available';
-      let questionCount = 10; // Default
-      
-      // Extract title
+      // Extract basic title and description (simple extraction)
       const titleMatch = html.match(/<title>(.*?)<\/title>/i);
       if (titleMatch && titleMatch[1] && titleMatch[1].trim()) {
         title = titleMatch[1].replace(' - Google Forms', '').trim();
@@ -247,37 +286,109 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         }
       }
       
-      // Try to get basic question count (safe regex only, no complex parsing)
+      // PRIMARY METHOD: Extract from FB_PUBLIC_LOAD_DATA_ (most accurate)
       try {
-        // Look for simple patterns that indicate questions
-        const questionPatterns = [
-          /freebirdFormviewerComponentsQuestionBaseRoot/g,
-          /role="listitem"/g,
-          /data-params="[^"]*question[^"]*"/gi
+        console.log('[FALLBACK DEBUG] Attempting FB_PUBLIC_LOAD_DATA_ extraction...');
+        
+        const fbDataRegex = /var\s+FB_PUBLIC_LOAD_DATA_\s*=\s*([\s\S]*?);\s*<\/script>/;
+        const fbDataMatch = fbDataRegex.exec(html);
+
+        if (fbDataMatch && fbDataMatch[1]) {
+          console.log('[FALLBACK DEBUG] Found FB_PUBLIC_LOAD_DATA_, length:', fbDataMatch[1].length);
+          
+          try {
+            const formData = JSON.parse(fbDataMatch[1]);
+            console.log('[FALLBACK DEBUG] Successfully parsed FB_PUBLIC_LOAD_DATA_');
+
+            // Google Forms structure: formData[1][1] contains array of questions
+            if (formData && formData[1] && Array.isArray(formData[1][1])) {
+              const questions = formData[1][1];
+              console.log('[FALLBACK DEBUG] Found questions array with', questions.length, 'items');
+              
+              // Filter out page breaks (type 8) and invalid entries
+              const validQuestions = questions.filter(q => {
+                if (!q || !Array.isArray(q)) return false;
+                if (q[3] === 8) return false; // Skip page breaks
+                return true;
+              });
+              
+              questionCount = validQuestions.length;
+              console.log(`[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ method: ${questionCount} valid questions (from ${questions.length} total items)`);
+              
+              // Log question types for debugging
+              const questionTypes = validQuestions.map(q => q[3]).filter(type => type !== undefined);
+              const uniqueTypes = [...new Set(questionTypes)];
+              console.log('[FALLBACK DEBUG] Question types found:', uniqueTypes);
+              
+              // SUCCESS! Use FB_PUBLIC_LOAD_DATA_ result and return immediately
+              console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ extraction successful - using these results');
+              
+              return {
+                title,
+                description,
+                questionCount,
+                platform: 'Google Forms',
+                url: url,
+                hasPersonalDataQuestions: false, // Will be detected separately if needed
+                detectedKeywords: []
+              };
+              
+            } else {
+              console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ structure not as expected');
+              throw new Error('Unexpected structure');
+            }
+          } catch (parseError) {
+            console.log('[FALLBACK DEBUG] Failed to parse FB_PUBLIC_LOAD_DATA_:', parseError.message);
+            questionCount = 0; // Will fall back to secondary methods
+          }
+        } else {
+          console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ not found in HTML');
+          questionCount = 0; // Will fall back to secondary methods
+        }
+      } catch (fbError) {
+        console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ extraction failed:', fbError.message);
+        questionCount = 0;
+      }
+
+      // FALLBACK METHOD: If FB_PUBLIC_LOAD_DATA_ fails, use simple patterns
+      if (questionCount === 0) {
+        console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ failed, trying fallback methods...');
+        
+        const fallbackPatterns = [
+          { pattern: /jscontroller="(VXdfxd|lSvzH|YOQA7d|NRAOPe|HvnK2b|W7JYtf|auOCFe)"/g, name: 'InputController' },
+          { pattern: /entry\.\d+/g, name: 'UniqueEntries', unique: true },
+          { pattern: /\*(?!\s*(?:Indicates|Menunjukkan))/g, name: 'RequiredFields' }
         ];
         
-        for (const pattern of questionPatterns) {
+        for (const { pattern, name, unique } of fallbackPatterns) {
           const matches = html.match(pattern);
           if (matches && matches.length > 0) {
-            // Adjust count based on pattern type
             let count = matches.length;
-            if (pattern.source.includes('listitem')) {
-              count = Math.max(1, count - 2); // Subtract potential header/footer items
+            if (unique) {
+              count = new Set(matches).size;
             }
-            if (count > 0 && count <= 50) { // Reasonable range
+            
+            if (count > questionCount && count <= 50) {
               questionCount = count;
-              console.log('[FALLBACK DEBUG] Detected', questionCount, 'questions using pattern');
+              console.log(`[FALLBACK DEBUG] Using fallback method ${name}: ${count} questions`);
               break;
             }
           }
         }
+      }
+      
+      // Final fallback: Use default value
+      if (questionCount === 0) {
+        console.log('[FALLBACK DEBUG] All extraction methods failed, using default: 10');
+        questionCount = 10;
+      }
+        
       } catch (countError) {
         console.log('[FALLBACK DEBUG] Question count extraction failed, using default:', countError);
       }
       
       // SAFE personal data detection - simple keyword search
-      let hasPersonalDataQuestions = false;
-      let detectedKeywords: string[] = [];
+      // Variables already declared at function scope
       
       try {
         // OPTION 2: Better HTML analysis - analyze actual form elements
@@ -365,6 +476,40 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         console.log('[FALLBACK DEBUG] Personal data detection failed, skipping:', detectionError);
       }
       
+      // Special debugging for specific URLs
+      if (url.includes('1FAIpQLSdSGkjOa4F309mAXN4KHGxjgQRtkKHxr57NZFt_XQQFTT8OXg')) {
+        console.log('[FALLBACK DEBUG] SPECIAL DEBUG - Quiz form detected');
+        console.log('[FALLBACK DEBUG] Final question count before return:', questionCount);
+        console.log('[FALLBACK DEBUG] HTML length:', html.length);
+      }
+      
+      // Special debugging for Order Request form  
+      if (url.includes('1FAIpQLSdCpIuBC5BNKhl2qv077I-WlOCmYR_7RHAJY9RZXpdD9519IQ')) {
+        console.log('[FALLBACK DEBUG] SPECIAL DEBUG - Order Request form detected');
+        console.log('[FALLBACK DEBUG] Final question count:', questionCount);
+        console.log('[FALLBACK DEBUG] HTML length:', html.length);
+        
+        // Additional debug - try manual pattern search for better understanding
+        const debugPatterns = [
+          { name: 'Radio buttons', pattern: /type="radio"/g },
+          { name: 'Input fields', pattern: /<input[^>]*>/g },
+          { name: 'Question divs', pattern: /<div[^>]*question[^>]*>/gi },
+          { name: 'Required asterisks', pattern: /\*/g },
+          { name: 'Aria labels', pattern: /aria-label="[^"]*"/g },
+          // More structural patterns
+          { name: 'Radio groups (name attr)', pattern: /name="entry\.\d+"/g },
+          { name: 'Question containers', pattern: /data-item-id="\d+"/g },
+          { name: 'Form sections', pattern: /<div[^>]*role="group"/g },
+          { name: 'Question IDs', pattern: /entry\.\d+/g },
+          { name: 'FB form data', pattern: /FB_PUBLIC_LOAD_DATA_/g }
+        ];
+        
+        for (const { name, pattern } of debugPatterns) {
+          const matches = html.match(pattern);
+          console.log(`[FALLBACK DEBUG] ${name}: ${matches ? matches.length : 0} found`);
+        }
+      }
+      
       console.log('[FALLBACK DEBUG] Safe extraction with fetch completed');
       return {
         title,
@@ -377,23 +522,22 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
       };
       
     } catch (fetchError) {
-      clearTimeout(timeoutId);
-      console.log('[FALLBACK DEBUG] Fetch failed, falling back to URL-only:', fetchError);
+      if (typeof timeoutId !== 'undefined') {
+        clearTimeout(timeoutId);
+      }
       
-      // Fallback to URL-only analysis
-      return {
-        title: `Google Form ${formId ? formId.substring(0, 8) + '...' : '(Auto-detected)'}`,
-        description: 'Form tidak dapat diakses - gunakan nilai default',
-        questionCount: 10,
-        platform: 'Google Forms',
-        url: url
-      };
+      // Handle specific error types
+      if (fetchError.name === 'AbortError') {
+        console.log('[FALLBACK DEBUG] Request timeout (8 seconds exceeded)');
+        throw new Error('REQUEST_TIMEOUT');
+      } else {
+        console.log('[FALLBACK DEBUG] Fetch failed:', fetchError);
+      }
+      
+      // Don't return fallback data that looks real - instead throw error
+      // This prevents showing misleading mock data to users
+      throw new Error('EXTRACTION_FAILED');
     }
-    
-  } catch (error) {
-    console.log('[FALLBACK DEBUG] Safe extraction failed:', error);
-    throw error;
-  }
   
   /* ORIGINAL CODE COMMENTED OUT TO TEST FREEZE
   try {
@@ -412,7 +556,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
 
       // Gunakan public CORS proxy service
       // Opsi 1: AllOrigins - service publik yang memungkinkan CORS
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
 
       // Set a timeout for the fetch operation
       const controller = new AbortController();
@@ -573,7 +717,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
 
     // Set a timeout for the fetch operation
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout (reduced from 5)
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
 
     // Fetch the form content
     console.log('Fetching form content...');

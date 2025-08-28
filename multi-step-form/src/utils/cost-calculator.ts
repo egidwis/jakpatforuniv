@@ -14,8 +14,12 @@ export function calculateAdCostPerDay(questionCount: number): number {
     return 150000; // Rp 150.000/hari untuk max 15 pertanyaan
   } else if (questionCount <= 30) {
     return 200000; // Rp 200.000/hari untuk max 30 pertanyaan
+  } else if (questionCount <= 50) {
+    return 300000; // Rp 300.000/hari untuk 31-50 pertanyaan
+  } else if (questionCount <= 70) {
+    return 400000; // Rp 400.000/hari untuk 51-70 pertanyaan
   } else {
-    return 300000; // Rp 300.000/hari untuk max 50 pertanyaan
+    return 500000; // Rp 500.000/hari untuk >70 pertanyaan
   }
 }
 

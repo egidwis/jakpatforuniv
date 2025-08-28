@@ -23,119 +23,23 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
   const [detectedKeywords, setDetectedKeywords] = useState<string[]>([]);
 
   // Fungsi untuk handle perubahan URL
-  const handleUrlChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const url = e.target.value;
     updateFormData({ surveyUrl: url });
 
-    // Reset shortlink state when URL changes
+    // Reset state when URL changes
     setShortlinkResult(null);
-
-    if (!url.trim()) {
-      setIsGoogleForm(true);
-      setShowFormFields(false);
-      return;
-    }
-
-    // Check if it's a shortlink
-    if (isShortlink(url)) {
-      setIsExpandingShortlink(true);
-      try {
-        const result = await expandShortlink(url);
-        setShortlinkResult(result);
-        
-        if (result.expandedUrl && result.wasExpanded) {
-          // Update the input with expanded URL
-          updateFormData({ surveyUrl: result.expandedUrl });
-          
-          const isGoogle = result.expandedUrl.includes('docs.google.com/forms') || result.expandedUrl.includes('forms.google.com');
-          setIsGoogleForm(isGoogle);
-          
-          // Show form fields for non-Google Forms
-          if (!isGoogle) {
-            setShowFormFields(true);
-            updateFormData({ isManualEntry: true });
-          }
-          
-          toast.success(
-            <div className="flex items-start gap-2">
-              <ExternalLink className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">Shortlink berhasil di-expand</p>
-                <p className="text-sm mt-1">URL telah diperbarui ke bentuk lengkap</p>
-              </div>
-            </div>
-          );
-        } else {
-          // Shortlink detected but expansion failed, still treat as Google Form
-          // forms.gle is always a Google Form shortlink
-          const isGoogle = url.includes('forms.gle') || url.includes('goo.gl') || url.includes('g.co') || url.includes('docs.google.com/forms');
-          setIsGoogleForm(isGoogle);
-          
-          // Show form fields for non-Google Forms
-          if (!isGoogle) {
-            setShowFormFields(true);
-            updateFormData({ isManualEntry: true });
-          }
-          
-          console.log('[DEBUG] Shortlink detected but not expanded, treating as Google Form:', isGoogle);
-        }
-      } catch (error) {
-        console.warn('Failed to expand shortlink:', error);
-        // forms.gle is always Google Forms, even if expansion fails
-        const isGoogle = url.includes('forms.gle') || url.includes('goo.gl') || url.includes('g.co') || url.includes('docs.google.com/forms');
-        setIsGoogleForm(isGoogle);
-        
-        // Show form fields for non-Google Forms
-        if (!isGoogle) {
-          setShowFormFields(true);
-          updateFormData({ isManualEntry: true });
-        }
-        
-        console.log('[DEBUG] Shortlink expansion failed, but still treating as Google Form:', isGoogle);
-      } finally {
-        setIsExpandingShortlink(false);
-      }
-    } else {
-      // Regular URL handling - include all Google shortlink domains
-      const isGoogle = url.includes('docs.google.com/forms') || 
-                       url.includes('forms.gle') || 
-                       url.includes('goo.gl') || 
-                       url.includes('g.co');
-      setIsGoogleForm(isGoogle);
-      
-      // Show form fields immediately for non-Google Forms
-      if (!isGoogle) {
-        setShowFormFields(true);
-        updateFormData({ isManualEntry: true });
-      }
-      
-      console.log('[DEBUG] Regular URL detected as Google Form:', isGoogle);
-    }
-
-    // Check final URL after shortlink processing
-    const finalUrl = shortlinkResult?.expandedUrl || url;
-    const finalIsGoogle = finalUrl.includes('docs.google.com/forms') || 
-                          finalUrl.includes('forms.gle') || 
-                          finalUrl.includes('goo.gl') || 
-                          finalUrl.includes('g.co');
+    setShowFormFields(false);
+    setIsGoogleForm(true); // Default to Google Form assumption
     
-    if (!finalIsGoogle) {
-      // Reset form fields jika bukan Google Form dan tampilkan form untuk manual entry
+    // Reset form fields when URL changes
+    if (url.trim()) {
       updateFormData({
         title: '',
         description: '',
         questionCount: 0,
-        isManualEntry: true
+        isManualEntry: false
       });
-      setShowFormFields(true);
-    } else {
-      // Jika URL adalah Google Form dan cukup panjang, coba ekstrak otomatis
-      if (finalUrl.length > 30 && !isLoading) {
-        // Tunggu sebentar sebelum ekstrak otomatis
-        setTimeout(() => {
-          extractInfo();
-        }, 500);
-      }
     }
   };
 
@@ -157,14 +61,69 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
         updateFormData({ surveyUrl: url });
       }
 
-      console.log("Using safe extraction function");
+      // Check if it's a shortlink and expand it first
+      let finalUrl = url;
+      if (isShortlink(url)) {
+        setIsExpandingShortlink(true);
+        try {
+          const result = await expandShortlink(url);
+          setShortlinkResult(result);
+          
+          if (result.expandedUrl && result.wasExpanded) {
+            finalUrl = result.expandedUrl;
+            // Update the input with expanded URL immediately
+            updateFormData({ surveyUrl: finalUrl });
+            
+            toast.success(
+              <div className="flex items-start gap-2">
+                <ExternalLink className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Shortlink berhasil di-expand</p>
+                  <p className="text-sm mt-1">URL telah diperbarui ke bentuk lengkap</p>
+                </div>
+              </div>
+            );
+          }
+        } catch (error) {
+          console.warn('Failed to expand shortlink:', error);
+          // Continue with original URL if shortlink expansion fails
+        } finally {
+          setIsExpandingShortlink(false);
+        }
+      }
+
+      // Wait a bit for URL update to propagate if shortlink was expanded
+      if (finalUrl !== url) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // Detect if it's Google Form or not
+      const isGoogle = finalUrl.includes('docs.google.com/forms') || 
+                       finalUrl.includes('forms.gle') || 
+                       finalUrl.includes('goo.gl') || 
+                       finalUrl.includes('g.co') ||
+                       finalUrl.includes('forms.google.com');
       
-      // Use expanded URL if shortlink was processed, otherwise use original URL
-      const extractUrl = shortlinkResult?.expandedUrl || url;
-      console.log("Extraction URL:", extractUrl);
+      setIsGoogleForm(isGoogle);
+
+      // If it's not a Google Form, show manual entry fields immediately
+      if (!isGoogle) {
+        toast.warning(
+          <div>
+            <p className="font-medium">Link ini bukan Google Form</p>
+            <p className="text-sm mt-1">Pengisian otomatis hanya tersedia untuk Google Form. Silakan isi detail form secara manual di bawah.</p>
+          </div>
+        );
+        setShowFormFields(true);
+        updateFormData({ isManualEntry: true });
+        return;
+      }
+
+      console.log("Using safe extraction function for Google Form");
+      console.log("Extraction URL:", finalUrl);
       
-      // Use our safe extraction function instead
-      const info = await extractFormInfoFallback(extractUrl);
+      // Use our safe extraction function for Google Forms
+      const info = await extractFormInfoFallback(finalUrl);
       
       console.log("Safe extraction completed");
 
@@ -184,9 +143,6 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
         };
 
         updateFormData(extractedData);
-
-        // Cek apakah URL adalah Google Form
-        setIsGoogleForm(info.platform === 'Google Forms');
 
         // Cek apakah ada deteksi keyword personal data
         console.log('[DEBUG] Checking personal data detection...');
@@ -228,18 +184,6 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
                 <p className="text-sm mt-1">Pastikan form sudah diatur sebagai "Public" di pengaturan Google Form. Silakan ubah pengaturan akses form Anda.</p>
               </div>
             );
-            break;
-          case 'NON_GOOGLE_FORM':
-            toast.warning(
-              <div>
-                <p className="font-medium">Link ini bukan Google Form</p>
-                <p className="text-sm mt-1">Pengisian otomatis hanya tersedia untuk Google Form. Silakan isi detail form secara manual di bawah.</p>
-              </div>
-            );
-            // Reset isGoogleForm to false and show form fields for manual entry
-            setIsGoogleForm(false);
-            setShowFormFields(true);
-            updateFormData({ isManualEntry: true });
             break;
           case 'URL_EMPTY':
             toast.error('Masukkan URL survei terlebih dahulu');
@@ -369,11 +313,6 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
           <p className="text-sm text-gray-500 mt-2">
             Masukan link Google Form atau shortlink (forms.gle/abc) dan klik tombol "Preview" untuk mengisi field dibawah secara otomatis. Link selain Google Form bisa diisi secara manual.
           </p>
-          {!isGoogleForm && formData.surveyUrl && (
-            <p className="text-sm text-orange-600 mt-1 font-medium">
-              ⚠️ Link yang dimasukkan bukan Google Form. Silakan isi detail form secara manual.
-            </p>
-          )}
 
           {/* Shortlink Preview */}
           {shortlinkResult && shortlinkResult.isShortlink && (
