@@ -11,10 +11,10 @@ const getTodayDate = () => {
   return today.toISOString().split('T')[0];
 };
 
-// Fungsi untuk mendapatkan tanggal 1 hari dari sekarang dalam format YYYY-MM-DD
-const getDefaultEndDate = () => {
+// Fungsi untuk mendapatkan tanggal berdasarkan durasi dari hari ini
+const getEndDateFromDuration = (duration: number) => {
   const date = new Date();
-  date.setDate(date.getDate() + 1);
+  date.setDate(date.getDate() + duration);
   return date.toISOString().split('T')[0];
 };
 
@@ -28,7 +28,7 @@ const defaultFormData: SurveyFormData = {
   criteriaResponden: '',
   duration: 1, // Default 1 hari
   startDate: getTodayDate(),
-  endDate: getDefaultEndDate(),
+  endDate: getEndDateFromDuration(1),
 
   // Step 2
   fullName: '',
@@ -61,7 +61,13 @@ export function MultiStepForm() {
 
   // Fungsi untuk update form data
   const updateFormData = (newData: Partial<SurveyFormData>) => {
-    setFormData(prev => ({ ...prev, ...newData }));
+    // Jika durasi berubah, update endDate secara otomatis
+    if (newData.duration !== undefined) {
+      const endDate = getEndDateFromDuration(newData.duration);
+      setFormData(prev => ({ ...prev, ...newData, endDate }));
+    } else {
+      setFormData(prev => ({ ...prev, ...newData }));
+    }
   };
 
   return (

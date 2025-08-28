@@ -424,60 +424,19 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
         <div className="form-group">
           <label htmlFor="duration" className="form-label">Durasi survey iklan (hari)</label>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-md text-sm font-medium">
-              {formData.duration} hari
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label htmlFor="startDate" className="form-label text-sm">Tanggal Mulai</label>
-              <div className="relative">
-                <input
-                  id="startDate"
-                  type="date"
-                  className="form-input"
-                  onChange={(e) => {
-                    updateFormData({ startDate: e.target.value });
-                    // Hitung durasi jika tanggal akhir sudah diisi
-                    if (formData.endDate) {
-                      const start = new Date(e.target.value);
-                      const end = new Date(formData.endDate);
-                      const diffTime = Math.abs(end.getTime() - start.getTime());
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                      updateFormData({ duration: diffDays });
-                    }
-                  }}
-                  value={formData.startDate || ''}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="endDate" className="form-label text-sm">Tanggal Berakhir</label>
-              <div className="relative">
-                <input
-                  id="endDate"
-                  type="date"
-                  className="form-input"
-                  onChange={(e) => {
-                    updateFormData({ endDate: e.target.value });
-                    // Hitung durasi jika tanggal mulai sudah diisi
-                    if (formData.startDate) {
-                      const start = new Date(formData.startDate);
-                      const end = new Date(e.target.value);
-                      const diffTime = Math.abs(end.getTime() - start.getTime());
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                      updateFormData({ duration: diffDays });
-                    }
-                  }}
-                  value={formData.endDate || ''}
-                  min={formData.startDate || ''}
-                />
-              </div>
-            </div>
-          </div>
+          <input
+            id="duration"
+            type="number"
+            className="form-input"
+            placeholder="Masukkan durasi dalam hari"
+            value={formData.duration || ''}
+            onChange={(e) => updateFormData({ duration: parseInt(e.target.value) || 1 })}
+            min={1}
+            max={30}
+          />
+          <p className="text-sm text-gray-500 mt-2">
+            Pilih durasi iklan survey dari 1-30 hari
+          </p>
 
           <div className="text-sm text-gray-500 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <p className="mb-2 font-medium">Harga berdasarkan jumlah pertanyaan:</p>
