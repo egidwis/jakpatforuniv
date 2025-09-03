@@ -120,11 +120,21 @@ export class GoogleFormsApiService {
           return;
         }
 
+        // IMPORTANT: Only process items that have questionItem (actual questions)
+        // This excludes:
+        // - Form title/description items
+        // - Text-only/description items
+        // - Image items
+        // - Video items
+        if (!item.questionItem || !item.questionItem.question) {
+          return;
+        }
+
         const question: GoogleFormQuestion = {
-          questionId: item.questionItem?.question?.questionId || `q_${index}`,
+          questionId: item.questionItem.question.questionId || `q_${index}`,
           title: item.title || `Question ${index + 1}`,
           type: this.getQuestionType(item),
-          required: item.questionItem?.question?.required || false,
+          required: item.questionItem.question.required || false,
         };
 
         // Extract options for choice questions

@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
-// import { extractSurveyInfo } from '../utils/survey-service';
-import { extractFormInfoFallback } from '../utils/worker-service';
-import { isShortlink, expandShortlink, type ShortlinkResult } from '../utils/shortlink-utils';
-import { Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { PersonalDataWarningDialog } from './ui/Dialog';
 import { GoogleDriveImport } from './GoogleDriveImport';
@@ -15,210 +12,44 @@ interface StepOneProps {
 }
 
 export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleForm, setIsGoogleForm] = useState(true);
-  const [shortlinkResult, setShortlinkResult] = useState<ShortlinkResult | null>(null);
-  const [isExpandingShortlink, setIsExpandingShortlink] = useState(false);
+  const [surveySource, setSurveySource] = useState<'google' | 'other' | null>(null);
   const [showFormFields, setShowFormFields] = useState(false);
   const [showPersonalDataWarning, setShowPersonalDataWarning] = useState(false);
   const [detectedKeywords, setDetectedKeywords] = useState<string[]>([]);
 
-  // Fungsi untuk handle perubahan URL
-  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const url = e.target.value;
-    updateFormData({ surveyUrl: url });
-
-    // Reset state when URL changes
-    setShortlinkResult(null);
-    setShowFormFields(false);
-    setIsGoogleForm(true); // Default to Google Form assumption
+  // Handle source selection
+  const handleSourceSelection = (source: 'google' | 'other') => {
+    setSurveySource(source);
     
-    // Reset form fields when URL changes
-    if (url.trim()) {
-      updateFormData({
+    if (source === 'other') {
+      // Reset form data for manual entry
+      updateFormData({ 
+        surveyUrl: '',
         title: '',
         description: '',
         questionCount: 0,
-        isManualEntry: false
+        isManualEntry: true 
       });
+      setShowFormFields(true);
+    } else {
+      // Reset form data for Google import
+      updateFormData({ 
+        surveyUrl: '',
+        title: '',
+        description: '',
+        questionCount: 0,
+        isManualEntry: false 
+      });
+      setShowFormFields(false);
     }
   };
 
-  // Fungsi untuk mengekstrak informasi survei
-  const extractInfo = async () => {
-    if (!formData.surveyUrl) {
-      toast.error('Masukkan URL survei terlebih dahulu');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      // Normalisasi URL
-      let url = formData.surveyUrl.trim();
-
-      // Tambahkan https:// jika tidak ada
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://' + url;
-        updateFormData({ surveyUrl: url });
-      }
-
-      // Check if it's a shortlink and expand it first
-      let finalUrl = url;
-      if (isShortlink(url)) {
-        setIsExpandingShortlink(true);
-        try {
-          const result = await expandShortlink(url);
-          setShortlinkResult(result);
-          
-          if (result.expandedUrl && result.wasExpanded) {
-            finalUrl = result.expandedUrl;
-            // Update the input with expanded URL immediately
-            updateFormData({ surveyUrl: finalUrl });
-            
-            toast.success(
-              <div className="flex items-start gap-2">
-                <ExternalLink className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium">Shortlink berhasil di-expand</p>
-                  <p className="text-sm mt-1">URL telah diperbarui ke bentuk lengkap</p>
-                </div>
-              </div>
-            );
-          }
-        } catch (error) {
-          console.warn('Failed to expand shortlink:', error);
-          // Continue with original URL if shortlink expansion fails
-        } finally {
-          setIsExpandingShortlink(false);
-        }
-      }
-
-      // Wait a bit for URL update to propagate if shortlink was expanded
-      if (finalUrl !== url) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      // Detect if it's Google Form or not
-      const isGoogle = finalUrl.includes('docs.google.com/forms') || 
-                       finalUrl.includes('forms.gle') || 
-                       finalUrl.includes('goo.gl') || 
-                       finalUrl.includes('g.co') ||
-                       finalUrl.includes('forms.google.com');
-      
-      setIsGoogleForm(isGoogle);
-
-      // If it's not a Google Form, show manual entry fields immediately
-      if (!isGoogle) {
-        toast.warning(
-          <div>
-            <p className="font-medium">Link ini bukan Google Form</p>
-            <p className="text-sm mt-1">Pengisian otomatis hanya tersedia untuk Google Form. Silakan isi detail form secara manual di bawah.</p>
-          </div>
-        );
-        setShowFormFields(true);
-        updateFormData({ isManualEntry: true });
-        return;
-      }
-
-      console.log("Using safe extraction function for Google Form");
-      console.log("Extraction URL:", finalUrl);
-      
-      // Use our safe extraction function for Google Forms
-      const info = await extractFormInfoFallback(finalUrl);
-      
-      console.log("Safe extraction completed");
-
-      // Jika berhasil diekstrak, update form data
-      if (info && info.title) {
-        // Ensure questionCount is a valid number
-        const questionCount = typeof info.questionCount === 'number' ? info.questionCount :
-                             (parseInt(String(info.questionCount)) || 0);
-
-        const extractedData = {
-          title: info.title,
-          description: info.description,
-          questionCount: questionCount,
-          isManualEntry: false, // Reset flag karena ini ekstraksi otomatis
-          hasPersonalDataQuestions: info.hasPersonalDataQuestions || false,
-          detectedKeywords: info.detectedKeywords || []
-        };
-
-        updateFormData(extractedData);
-
-        // Cek apakah ada deteksi keyword personal data
-        console.log('[DEBUG] Checking personal data detection...');
-        console.log('[DEBUG] info.hasPersonalDataQuestions:', info.hasPersonalDataQuestions);
-        console.log('[DEBUG] info.detectedKeywords:', info.detectedKeywords);
-
-        if (info.hasPersonalDataQuestions && info.detectedKeywords && info.detectedKeywords.length > 0) {
-          console.log('[DEBUG] Personal data keywords detected:', info.detectedKeywords);
-          setDetectedKeywords(info.detectedKeywords);
-          setShowPersonalDataWarning(true);
-          console.log('[DEBUG] Showing personal data warning modal');
-        } else {
-          // Show the form fields after successful extraction
-          setShowFormFields(true);
-          console.log('[DEBUG] No personal data detected, showing form fields directly');
-        }
-
-        toast.success('Informasi survei berhasil diekstrak');
-      } else {
-        // Jika tidak ada data yang diekstrak
-        toast.warning(
-          <div>
-            <p className="font-medium">Informasi survei tidak lengkap</p>
-            <p className="text-sm mt-1">Silakan lengkapi detail form secara manual.</p>
-          </div>
-        );
-        // Show form fields for manual entry
-        setShowFormFields(true);
-        updateFormData({ isManualEntry: true });
-      }
-    } catch (error) {
-      // Handle specific error codes with user-friendly messages
-      if (error instanceof Error) {
-        switch (error.message) {
-          case 'FORM_NOT_PUBLIC':
-            toast.error(
-              <div>
-                <p className="font-medium">Link Google Form tidak dapat diakses</p>
-                <p className="text-sm mt-1">Pastikan form sudah diatur sebagai "Public" di pengaturan Google Form. Silakan ubah pengaturan akses form Anda.</p>
-              </div>
-            );
-            break;
-          case 'URL_EMPTY':
-            toast.error('Masukkan URL survei terlebih dahulu');
-            break;
-          case 'EXTRACTION_FAILED':
-            toast.warning(
-              <div>
-                <p className="font-medium">Gagal mengekstrak informasi survei</p>
-                <p className="text-sm mt-1">Silakan coba lagi atau isi form dibawah secara manual.</p>
-              </div>
-            );
-            // Show form fields for manual entry
-            setShowFormFields(true);
-            updateFormData({ isManualEntry: true });
-            break;
-          default:
-            toast.error(
-              <div>
-                <p className="font-medium">Gagal mengekstrak informasi survei</p>
-                <p className="text-sm mt-1">Pastikan form sudah diatur sebagai "Public" di pengaturan Google Form. Silakan coba lagi atau isi form dibawah secara manual.</p>
-              </div>
-            );
-            // Show form fields for manual entry
-            setShowFormFields(true);
-            updateFormData({ isManualEntry: true });
-        }
-      } else {
-        toast.error('Gagal mengekstrak informasi survei');
-      }
-      console.error("Error in extractInfo:", error);
-    } finally {
-      setIsLoading(false);
-    }
+  // Handle URL change for other sources
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const url = e.target.value;
+    updateFormData({ surveyUrl: url, isManualEntry: true });
   };
+
 
   // Fungsi untuk validasi form
   const validateForm = () => {
@@ -299,150 +130,212 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4">Detail Survey</h2>
-      <p className="text-gray-600 mb-6">Lengkapi form dibawah ini</p>
+      <p className="text-gray-600 mb-6">Pilih sumber survey Anda</p>
+
+      {/* Source Selection */}
+      {!surveySource && (
+        <div className="mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Google Form Option */}
+            <button
+              type="button"
+              onClick={() => handleSourceSelection('google')}
+              className="p-6 border-2 border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-all duration-200 text-left group"
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                  <svg className="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 mb-2">Google Form</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Import pertanyaan dari Google Forms dengan akurasi 100%. Data otomatis terisi dari form Anda.
+                  </p>
+                  <div className="flex items-center text-xs text-green-600">
+                    <CheckCircle className="w-4 h-4 mr-1" />
+                    Akses ke Google Drive
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            {/* Other Source Option */}
+            <button
+              type="button"
+              onClick={() => handleSourceSelection('other')}
+              className="p-6 border-2 border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 text-left group"
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                  <svg className="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M16,11V13H8V11H16M16,15V17H11V15H16Z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 mb-2">From other source</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Input manual untuk survey dari platform lain seperti Typeform, SurveyMonkey, atau platform custom.
+                  </p>
+                  <div className="flex items-center text-xs text-blue-600">
+                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                    </svg>
+                    Input manual
+                  </div>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Google Drive Import Section */}
-      <GoogleDriveImport 
-        formData={formData}
-        updateFormData={updateFormData}
-        onFormDataLoaded={handleGoogleDriveFormLoaded}
-      />
-
-
-      {/* Divider */}
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-gray-300" />
+      {surveySource === 'google' && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium">Import Pertanyaan dari Google Forms</h3>
+            <button
+              type="button"
+              onClick={() => setSurveySource(null)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              ← Kembali pilih sumber
+            </button>
+          </div>
+          
+          <GoogleDriveImport 
+            formData={formData}
+            updateFormData={updateFormData}
+            onFormDataLoaded={handleGoogleDriveFormLoaded}
+          />
         </div>
-        <div className="relative flex justify-center text-sm">
-          <span className="px-2 bg-white text-gray-500">atau</span>
-        </div>
-      </div>
+      )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="form-group">
-          <label htmlFor="surveyUrl" className="form-label">Link Google Form</label>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+      {/* Manual Entry Section */}
+      {surveySource === 'other' && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium">Survei dari Platform Lain</h3>
+            <button
+              type="button"
+              onClick={() => setSurveySource(null)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              ← Kembali pilih sumber
+            </button>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="surveyUrl" className="form-label">Link Survey</label>
             <input
               id="surveyUrl"
               type="text"
-              className="form-input flex-1"
-              placeholder="https://docs.google.com/forms/..."
+              className="form-input"
+              placeholder="https://typeform.com/... atau platform lainnya"
               value={formData.surveyUrl}
               onChange={handleUrlChange}
             />
-            <button
-              type="button"
-              className="button button-secondary w-full sm:w-auto"
-              onClick={extractInfo}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                'Preview'
-              )}
-            </button>
+            <p className="text-sm text-gray-500 mt-2">
+              Masukan link survey dari platform manapun (Typeform, SurveyMonkey, dll)
+            </p>
           </div>
-          <p className="text-sm text-gray-500 mt-2">
-            Masukan link Google Form atau shortlink (forms.gle/abc) dan klik tombol "Preview" untuk mengisi field dibawah secara otomatis. Link selain Google Form bisa diisi secara manual.
-          </p>
-
-          {/* Shortlink Preview */}
-          {shortlinkResult && shortlinkResult.isShortlink && (
-            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <div className="flex items-start gap-2">
-                <ExternalLink className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-blue-800">Shortlink terdeteksi</p>
-                  {isExpandingShortlink ? (
-                    <div className="flex items-center gap-2 mt-1">
-                      <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
-                      <p className="text-xs text-blue-700">Mengexpand shortlink...</p>
-                    </div>
-                  ) : shortlinkResult.expandedUrl ? (
-                    <div className="mt-1">
-                      <p className="text-xs text-blue-700">URL lengkap:</p>
-                      <p className="text-xs font-mono text-blue-600 break-all bg-white px-2 py-1 rounded border mt-1">
-                        {shortlinkResult.expandedUrl}
-                      </p>
-                      {shortlinkResult.platform && (
-                        <p className="text-xs text-blue-700 mt-1">
-                          Platform: {shortlinkResult.platform}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-blue-700 mt-1">
-                      Shortlink siap untuk ekstraksi: {shortlinkResult.platform || 'Google Forms'}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
+      )}
 
-        {showFormFields && (
+      <form onSubmit={handleSubmit} className="space-y-6">
+
+        {/* Form Fields - Show when survey source is selected and data is available */}
+        {(surveySource === 'other' || (surveySource === 'google' && formData.title && !formData.isManualEntry)) && (
           <>
-            {!isGoogleForm && (
-              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+            {/* Show success info for Google Drive imports */}
+            {surveySource === 'google' && !formData.isManualEntry && formData.title && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
                 <div className="flex items-start gap-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-yellow-800">Link bukan Google Form terdeteksi</p>
-                    <p className="text-xs text-yellow-700 mt-1">
-                      Silakan isi detail form secara manual di bawah ini. Pastikan informasi yang diisi sesuai dengan survey Anda.
+                  <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-green-800">Data berhasil diimport dari Google Drive</p>
+                    <p className="text-xs text-green-700 mt-1">
+                      Judul, deskripsi, dan jumlah pertanyaan telah diisi otomatis berdasarkan form Google Anda.
                     </p>
                   </div>
                 </div>
               </div>
             )}
-            
+
+            {/* Show Link Survey for Google Drive imports */}
+            {surveySource === 'google' && formData.surveyUrl && (
+              <div className="form-group mb-6">
+                <label htmlFor="importedSurveyUrl" className="form-label">
+                  Link Survey <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>
+                </label>
+                <input
+                  id="importedSurveyUrl"
+                  type="text"
+                  className="form-input bg-gray-50 text-gray-700"
+                  value={formData.surveyUrl}
+                  readOnly
+                />
+                <p className="text-sm text-gray-500 mt-2">
+                  Link Google Form yang diimport dari Drive Anda
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="form-group">
-            <label htmlFor="title" className="form-label">Judul {!isGoogleForm && <span className="text-red-500">*</span>}</label>
-            <input
-              id="title"
-              type="text"
-              className="form-input"
-              placeholder="Masukkan judul survey"
-              value={formData.title}
-              onChange={(e) => updateFormData({ title: e.target.value })}
-              readOnly={isGoogleForm && formData.title !== ''}
-              required={!isGoogleForm}
-            />
-          </div>
+              <div className="form-group">
+                <label htmlFor="title" className="form-label">
+                  Judul <span className="text-red-500">*</span>
+                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>}
+                </label>
+                <input
+                  id="title"
+                  type="text"
+                  className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
+                  placeholder="Masukkan judul survey"
+                  value={formData.title}
+                  onChange={(e) => updateFormData({ title: e.target.value })}
+                  readOnly={surveySource === 'google'}
+                  required
+                />
+              </div>
 
-          <div className="form-group">
-            <label htmlFor="questionCount" className="form-label">Jumlah Pertanyaan {!isGoogleForm && <span className="text-red-500">*</span>}</label>
-            <input
-              id="questionCount"
-              type="number"
-              className="form-input"
-              placeholder="Masukkan jumlah pertanyaan"
-              value={formData.questionCount || ''}
-              onChange={(e) => updateFormData({ questionCount: parseInt(e.target.value) || 0 })}
-              readOnly={isGoogleForm && formData.questionCount > 0}
-              min={1}
-              required={!isGoogleForm}
-            />
-          </div>
-        </div>
+              <div className="form-group">
+                <label htmlFor="questionCount" className="form-label">
+                  Jumlah Pertanyaan <span className="text-red-500">*</span>
+                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>}
+                </label>
+                <input
+                  id="questionCount"
+                  type="number"
+                  className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
+                  placeholder="Masukkan jumlah pertanyaan"
+                  value={formData.questionCount || ''}
+                  onChange={(e) => updateFormData({ questionCount: parseInt(e.target.value) || 0 })}
+                  readOnly={surveySource === 'google'}
+                  min={1}
+                  required
+                />
+              </div>
+            </div>
 
-        <div className="form-group">
-          <label htmlFor="description" className="form-label">Deskripsi Survey {!isGoogleForm && <span className="text-red-500">*</span>}</label>
-          <textarea
-            id="description"
-            className="form-input"
-            placeholder="Masukkan deskripsi survey"
-            value={formData.description}
-            onChange={(e) => updateFormData({ description: e.target.value })}
-            readOnly={isGoogleForm && formData.description !== ''}
-            rows={4}
-            required={!isGoogleForm}
-          />
-        </div>
+            <div className="form-group">
+              <label htmlFor="description" className="form-label">
+                Deskripsi Survey <span className="text-red-500">*</span>
+                {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>}
+              </label>
+              <textarea
+                id="description"
+                className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
+                placeholder="Masukkan deskripsi survey"
+                value={formData.description}
+                onChange={(e) => updateFormData({ description: e.target.value })}
+                readOnly={surveySource === 'google'}
+                rows={4}
+                required
+              />
+            </div>
 
         <div className="form-group">
           <label htmlFor="criteriaResponden" className="form-label">Kriteria Responden</label>
@@ -527,7 +420,8 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
           </>
         )}
 
-        {showFormFields && (
+        {/* Show submit button when form data is ready */}
+        {(surveySource === 'other' || (surveySource === 'google' && formData.title)) && (
           <div className="flex justify-end mt-8">
             <button type="submit" className="button button-primary">
               Berikutnya
