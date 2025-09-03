@@ -6,6 +6,7 @@ import { isShortlink, expandShortlink, type ShortlinkResult } from '../utils/sho
 import { Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { PersonalDataWarningDialog } from './ui/Dialog';
+import { GoogleDriveImport } from './GoogleDriveImport';
 
 interface StepOneProps {
   formData: SurveyFormData;
@@ -280,10 +281,43 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
     setShowFormFields(true);
   };
 
+  // Handle form data loaded from Google Drive
+  const handleGoogleDriveFormLoaded = () => {
+    console.log("[DEBUG] Form loaded from Google Drive");
+    // Show form fields after Google Drive import
+    setShowFormFields(true);
+    
+    // Check for personal data detection
+    if (formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0) {
+      console.log('[DEBUG] Personal data detected from Google Drive import:', formData.detectedKeywords);
+      setDetectedKeywords(formData.detectedKeywords);
+      setShowPersonalDataWarning(true);
+      setShowFormFields(false); // Hide form fields until warning is dismissed
+    }
+  };
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4">Detail Survey</h2>
       <p className="text-gray-600 mb-6">Lengkapi form dibawah ini</p>
+
+      {/* Google Drive Import Section */}
+      <GoogleDriveImport 
+        formData={formData}
+        updateFormData={updateFormData}
+        onFormDataLoaded={handleGoogleDriveFormLoaded}
+      />
+
+
+      {/* Divider */}
+      <div className="relative mb-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-300" />
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 bg-white text-gray-500">atau</span>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="form-group">

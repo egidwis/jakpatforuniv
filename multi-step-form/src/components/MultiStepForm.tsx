@@ -49,6 +49,7 @@ export function MultiStepForm() {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<SurveyFormData>(defaultFormData);
 
+
   // Fungsi untuk pindah ke step berikutnya
   const nextStep = () => {
     setCurrentStep(prev => Math.min(prev + 1, 3));
