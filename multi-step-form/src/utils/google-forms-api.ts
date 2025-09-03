@@ -1,0 +1,259 @@
+// Google Forms API Service for direct form data extraction
+import { googleAuth } from './google-auth';
+import type { SurveyInfo } from './survey-service';
+
+export interface GoogleFormQuestion {
+  questionId: string;
+  title: string;
+  type: string;
+  required: boolean;
+  options?: string[];
+}
+
+export interface GoogleFormData {
+  formId: string;
+  title: string;
+  description: string;
+  questions: GoogleFormQuestion[];
+  settings?: {
+    isPublic: boolean;
+    allowResponseEditing: boolean;
+    collectEmail: boolean;
+  };
+}
+
+export interface GoogleFormsApiResponse {
+  success: boolean;
+  data?: GoogleFormData;
+  error?: string;
+}
+
+export class GoogleFormsApiService {
+  private static instance: GoogleFormsApiService;
+  
+  private constructor() {}
+
+  static getInstance(): GoogleFormsApiService {
+    if (!GoogleFormsApiService.instance) {
+      GoogleFormsApiService.instance = new GoogleFormsApiService();
+    }
+    return GoogleFormsApiService.instance;
+  }
+
+  // Extract form data using Google Forms API (100% accuracy)
+  async extractFormData(formId: string): Promise<GoogleFormsApiResponse> {
+    try {
+      if (!googleAuth.isSignedIn()) {
+        return {
+          success: false,
+          error: 'User not authenticated. Please sign in to Google first.'
+        };
+      }
+
+      console.log('Extracting form data using Google Forms API for form:', formId);
+
+      const url = `https://forms.googleapis.com/v1/forms/${formId}`;
+      
+      const response = await googleAuth.makeAuthenticatedRequest(url);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        if (response.status === 404) {
+          throw new Error('Form not found or you do not have access to this form');
+        } else if (response.status === 403) {
+          throw new Error('Access denied. You may not have permission to read this form');
+        } else {
+          throw new Error(errorData.error?.message || `API error: ${response.status}`);
+        }
+      }
+
+      const formData = await response.json();
+      
+      console.log('Form data retrieved successfully:', formData.info?.title);
+
+      // Parse the form data
+      const parsedData = this.parseFormData(formData, formId);
+
+      return {
+        success: true,
+        data: parsedData
+      };
+    } catch (error: any) {
+      console.error('Error extracting form data:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to extract form data'
+      };
+    }
+  }
+
+  // Parse Google Forms API response into our format
+  private parseFormData(apiResponse: any, formId: string): GoogleFormData {
+    const questions: GoogleFormQuestion[] = [];
+
+    // Extract questions from items
+    if (apiResponse.items && Array.isArray(apiResponse.items)) {
+      apiResponse.items.forEach((item: any, index: number) => {
+        // Skip page breaks and section headers
+        if (item.pageBreakItem || item.sectionHeaderItem) {
+          return;
+        }
+
+        const question: GoogleFormQuestion = {
+          questionId: item.questionItem?.question?.questionId || `q_${index}`,
+          title: item.title || `Question ${index + 1}`,
+          type: this.getQuestionType(item),
+          required: item.questionItem?.question?.required || false,
+        };
+
+        // Extract options for choice questions
+        if (item.questionItem?.question?.choiceQuestion) {
+          const options = item.questionItem.question.choiceQuestion.options;
+          if (options && Array.isArray(options)) {
+            question.options = options.map((option: any) => option.value || '');
+          }
+        } else if (item.questionItem?.question?.scaleQuestion) {
+          const scale = item.questionItem.question.scaleQuestion;
+          question.options = [`Scale: ${scale.low || 1} to ${scale.high || 5}`];
+        }
+
+        questions.push(question);
+      });
+    }
+
+    return {
+      formId,
+      title: apiResponse.info?.title || 'Untitled Form',
+      description: apiResponse.info?.description || '',
+      questions,
+      settings: {
+        isPublic: !apiResponse.settings?.quizSettings?.isQuiz,
+        allowResponseEditing: apiResponse.settings?.allowResponseEditing || false,
+        collectEmail: apiResponse.settings?.collectEmail || false,
+      }
+    };
+  }
+
+  // Convert Google Forms question types to our format
+  private getQuestionType(item: any): string {
+    if (!item.questionItem || !item.questionItem.question) {
+      return 'unknown';
+    }
+
+    const question = item.questionItem.question;
+
+    if (question.textQuestion) {
+      return question.textQuestion.paragraph ? 'long_text' : 'short_text';
+    } else if (question.choiceQuestion) {
+      return question.choiceQuestion.type === 'RADIO' ? 'multiple_choice' : 'checkboxes';
+    } else if (question.scaleQuestion) {
+      return 'linear_scale';
+    } else if (question.dateQuestion) {
+      return 'date';
+    } else if (question.timeQuestion) {
+      return 'time';
+    } else if (question.fileUploadQuestion) {
+      return 'file_upload';
+    } else if (question.rowQuestion) {
+      return 'grid';
+    }
+
+    return 'unknown';
+  }
+
+  // Convert to SurveyInfo format (compatibility with existing system)
+  async extractToSurveyInfo(formId: string): Promise<SurveyInfo> {
+    try {
+      const result = await this.extractFormData(formId);
+      
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Failed to extract form data');
+      }
+
+      const formData = result.data;
+      const formUrl = `https://docs.google.com/forms/d/${formId}/viewform`;
+
+      // Detect personal data questions
+      const personalDataKeywords: string[] = [];
+      let hasPersonalDataQuestions = false;
+
+      formData.questions.forEach(question => {
+        const titleLower = question.title.toLowerCase();
+        
+        if (titleLower.includes('email') || titleLower.includes('e-mail')) {
+          if (!personalDataKeywords.includes('email')) personalDataKeywords.push('email');
+          hasPersonalDataQuestions = true;
+        }
+        if (titleLower.includes('phone') || titleLower.includes('nomor') || titleLower.includes('telepon')) {
+          if (!personalDataKeywords.includes('phone')) personalDataKeywords.push('phone');
+          hasPersonalDataQuestions = true;
+        }
+        if (titleLower.includes('name') || titleLower.includes('nama')) {
+          if (!personalDataKeywords.includes('name')) personalDataKeywords.push('name');
+          hasPersonalDataQuestions = true;
+        }
+        if (titleLower.includes('address') || titleLower.includes('alamat')) {
+          if (!personalDataKeywords.includes('address')) personalDataKeywords.push('address');
+          hasPersonalDataQuestions = true;
+        }
+      });
+
+      return {
+        title: formData.title,
+        description: formData.description || 'Form description not available',
+        questionCount: formData.questions.length,
+        platform: 'Google Forms (API)',
+        url: formUrl,
+        hasPersonalDataQuestions,
+        detectedKeywords: personalDataKeywords,
+        // Additional data from API
+        apiData: {
+          formId,
+          questions: formData.questions,
+          settings: formData.settings
+        }
+      };
+    } catch (error: any) {
+      console.error('Error converting to SurveyInfo:', error);
+      throw error;
+    }
+  }
+
+  // Get form responses (if needed)
+  async getFormResponses(formId: string, limit: number = 100): Promise<any> {
+    try {
+      if (!googleAuth.isSignedIn()) {
+        throw new Error('User not authenticated');
+      }
+
+      const url = `https://forms.googleapis.com/v1/forms/${formId}/responses?pageSize=${limit}`;
+      
+      const response = await googleAuth.makeAuthenticatedRequest(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to get responses: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.responses || [];
+    } catch (error) {
+      console.error('Error getting form responses:', error);
+      throw error;
+    }
+  }
+
+  // Validate form access
+  async validateFormAccess(formId: string): Promise<boolean> {
+    try {
+      const result = await this.extractFormData(formId);
+      return result.success;
+    } catch (error) {
+      console.error('Error validating form access:', error);
+      return false;
+    }
+  }
+}
+
+// Singleton instance
+export const googleFormsApi = GoogleFormsApiService.getInstance();
