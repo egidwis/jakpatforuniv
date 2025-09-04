@@ -39,3 +39,7 @@ build
 # Cloudflare
 .wrangler
 .dev.vars
+
+# Backup files
+*.backup
+package.json.backup

@@ -1,0 +1,17 @@
+{
+  "build": {
+    "command": "",
+    "directory": "."
+  },
+  "headers": {
+    "/*.html": {
+      "Cache-Control": "public, max-age=0, must-revalidate"
+    },
+    "/*.png": {
+      "Cache-Control": "public, max-age=31536000, immutable"
+    },
+    "/*.jpg": {
+      "Cache-Control": "public, max-age=31536000, immutable"
+    }
+  }
+}
