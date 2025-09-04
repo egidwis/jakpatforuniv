@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Syarat & Ketentuan - Jakpat for Universities</title>
+    <meta name="description" content="Syarat dan Ketentuan penggunaan layanan Jakpat for Universities. Membantu mahasiswa Indonesia dalam riset dengan layanan survey terpercaya.">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="jfu-logo.png">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: #fdfdf8;
+        }
+        
+        /* Navigation */
+        .nav {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1976D2;
+            text-decoration: none;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+        
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            color: #1976D2;
+        }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+            padding: 4rem 0;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 1rem;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            color: #555;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        /* Content */
+        .content {
+            max-width: 800px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+        
+        .section {
+            margin-bottom: 3rem;
+        }
+        
+        .section h2 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #1976D2;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #E3F2FD;
+        }
+        
+        .section h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #333;
+            margin: 2rem 0 1rem 0;
+        }
+        
+        .section p {
+            margin-bottom: 1.5rem;
+            color: #555;
+            text-align: justify;
+        }
+        
+        .section ul {
+            margin: 1rem 0 1.5rem 2rem;
+            color: #555;
+        }
+        
+        .section li {
+            margin-bottom: 0.8rem;
+        }
+        
+        .contact-info {
+            background: #E3F2FD;
+            padding: 2rem;
+            border-radius: 12px;
+            margin-top: 3rem;
+        }
+        
+        .contact-info h3 {
+            color: #1976D2;
+            margin-bottom: 1rem;
+        }
+        
+        .contact-info p {
+            margin-bottom: 0.5rem;
+        }
+        
+        .contact-info a {
+            color: #1976D2;
+            text-decoration: none;
+        }
+        
+        .contact-info a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Footer */
+        .footer {
+            background: #1976D2;
+            color: white;
+            padding: 2rem 0;
+            margin-top: 5rem;
+        }
+        
+        .footer-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            text-align: center;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            opacity: 0.9;
+        }
+        
+        .footer-links a:hover {
+            opacity: 1;
+            text-decoration: underline;
+        }
+        
+        .last-updated {
+            font-style: italic;
+            color: #666;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid #ddd;
+        }
+        
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .content {
+                padding: 0 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="/" class="logo">🎓 Jakpat for Universities</a>
+            <ul class="nav-links">
+                <li><a href="/">Beranda</a></li>
+                <li><a href="/privacy-policy.html">Kebijakan Privasi</a></li>
+                <li><a href="/terms-conditions.html">Syarat & Ketentuan</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="header">
+        <h1>Syarat & Ketentuan</h1>
+        <p>Syarat dan Ketentuan penggunaan layanan Jakpat for Universities untuk membantu riset mahasiswa di Indonesia</p>
+    </header>
+
+    <!-- Content -->
+    <main class="content">
+        <section class="section">
+            <h2>1. Penerimaan Syarat</h2>
+            <p>
+                Dengan mengakses dan menggunakan layanan Jakpat for Universities (selanjutnya disebut "Layanan") yang tersedia di jakpatforuniv.com, Anda menyetujui dan menyatakan terikat dengan Syarat dan Ketentuan ini. Jika Anda tidak menyetujui syarat dan ketentuan ini, mohon untuk tidak menggunakan Layanan kami.
+            </p>
+            <p>
+                Syarat dan Ketentuan ini berlaku untuk semua pengguna Layanan, termasuk namun tidak terbatas pada mahasiswa, peneliti, dosen, dan institusi pendidikan yang menggunakan platform kami untuk keperluan riset dan akademis.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>2. Deskripsi Layanan</h2>
+            <p>Jakpat for Universities adalah platform yang menyediakan layanan:</p>
+            <ul>
+                <li><strong>Iklan Survey:</strong> Membantu mahasiswa dan peneliti mengiklankan survey mereka kepada 1.7 juta responden Jakpat di seluruh Indonesia</li>
+                <li><strong>Survey Extractor:</strong> Tool otomatis untuk menghitung jumlah pertanyaan dari Google Forms dengan akurasi 100%</li>
+                <li><strong>Google Drive Integration:</strong> Integrasi dengan Google Drive untuk memudahkan import form survey</li>
+                <li><strong>Manajemen Survey:</strong> Platform untuk mengelola dan memantau progress survey</li>
+            </ul>
+        </section>
+
+        <section class="section">
+            <h2>3. Persyaratan Pengguna</h2>
+            <h3>3.1 Kelayakan</h3>
+            <p>Untuk menggunakan Layanan, Anda harus:</p>
+            <ul>
+                <li>Berusia minimal 18 tahun atau memiliki izin dari orang tua/wali</li>
+                <li>Terdaftar sebagai mahasiswa, peneliti, atau staf di institusi pendidikan yang diakui</li>
+                <li>Memiliki alamat email yang valid dan aktif</li>
+                <li>Memberikan informasi yang akurat, lengkap, dan terkini saat registrasi</li>
+            </ul>
+
+            <h3>3.2 Akun Pengguna</h3>
+            <p>
+                Anda bertanggung jawab untuk menjaga kerahasiaan akun dan password Anda. Anda setuju untuk segera memberitahu kami tentang penggunaan tidak sah atas akun Anda atau pelanggaran keamanan lainnya.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>4. Ketentuan Penggunaan Survey</h2>
+            <h3>4.1 Konten Survey</h3>
+            <p>Dalam membuat dan mengiklankan survey, Anda menyetujui bahwa:</p>
+            <ul>
+                <li>Survey harus untuk tujuan akademis, penelitian, atau pendidikan yang sah</li>
+                <li>Konten survey tidak boleh mengandung unsur SARA, pornografi, atau hal yang melanggar hukum</li>
+                <li>Survey tidak boleh mengumpulkan data sensitif tanpa persetujuan eksplisit</li>
+                <li>Pertanyaan survey harus jelas, tidak menyesatkan, dan relevan dengan tujuan penelitian</li>
+                <li>Survey harus mematuhi standar etika penelitian yang berlaku</li>
+            </ul>
+
+            <h3>4.2 Verifikasi Survey</h3>
+            <p>
+                Tim Jakpat berhak untuk meninjau dan memverifikasi setiap survey sebelum diiklankan. Kami dapat menolak atau menghapus survey yang melanggar ketentuan ini tanpa pengembalian dana.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>5. Pembayaran dan Pengembalian Dana</h2>
+            <h3>5.1 Harga Layanan</h3>
+            <ul>
+                <li>Harga layanan iklan survey ditentukan berdasarkan durasi iklan dan jumlah pertanyaan</li>
+                <li>Harga mulai dari Rp 100.000 untuk paket dasar</li>
+                <li>Pembayaran dilakukan melalui gateway pembayaran resmi (Mayar/Midtrans)</li>
+                <li>Semua harga belum termasuk pajak yang berlaku</li>
+            </ul>
+
+            <h3>5.2 Kebijakan Pengembalian Dana</h3>
+            <p>Pengembalian dana dapat diberikan dalam kondisi:</p>
+            <ul>
+                <li>Pembatalan sebelum survey diiklankan (potong biaya admin 10%)</li>
+                <li>Kesalahan sistem yang mengakibatkan survey tidak dapat diiklankan</li>
+                <li>Survey ditolak dalam proses verifikasi (pengembalian 100%)</li>
+            </ul>
+            <p>
+                Tidak ada pengembalian dana setelah survey mulai diiklankan, kecuali terjadi kesalahan dari pihak Jakpat.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>6. Hak Kekayaan Intelektual</h2>
+            <p>
+                Semua konten, fitur, dan fungsionalitas Layanan, termasuk namun tidak terbatas pada teks, desain, grafik, logo, ikon, gambar, klip audio dan video, serta perangkat lunak, adalah milik Jakpat for Universities atau pemberi lisensinya dan dilindungi oleh hukum hak cipta Indonesia dan internasional.
+            </p>
+            <p>
+                Anda mempertahankan hak atas konten survey yang Anda buat, namun memberikan Jakpat lisensi terbatas untuk menampilkan dan mendistribusikan survey tersebut sesuai dengan tujuan Layanan.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>7. Batasan Tanggung Jawab</h2>
+            <p>
+                Jakpat for Universities menyediakan Layanan "sebagaimana adanya" dan "sebagaimana tersedia" tanpa jaminan apapun, baik tersurat maupun tersirat. Kami tidak bertanggung jawab atas:
+            </p>
+            <ul>
+                <li>Kualitas atau akurasi respons survey dari responden</li>
+                <li>Kerugian yang timbul dari penggunaan atau ketidakmampuan menggunakan Layanan</li>
+                <li>Kehilangan data atau kerusakan pada sistem Anda</li>
+                <li>Gangguan, virus, atau malware yang mungkin mempengaruhi perangkat Anda</li>
+                <li>Konten atau perilaku pihak ketiga dalam Layanan</li>
+            </ul>
+            <p>
+                Dalam keadaan apapun, tanggung jawab maksimal Jakpat for Universities tidak akan melebihi jumlah yang telah Anda bayarkan untuk Layanan dalam 12 bulan terakhir.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>8. Ganti Rugi</h2>
+            <p>
+                Anda setuju untuk mengganti rugi, membela, dan membebaskan Jakpat for Universities, afiliasinya, serta direktur, pejabat, karyawan, dan agen dari dan terhadap setiap klaim, kerugian, tanggung jawab, kerusakan, biaya, dan pengeluaran (termasuk biaya pengacara yang wajar) yang timbul dari:
+            </p>
+            <ul>
+                <li>Pelanggaran Anda terhadap Syarat dan Ketentuan ini</li>
+                <li>Penggunaan Layanan oleh Anda</li>
+                <li>Konten yang Anda posting atau kirimkan melalui Layanan</li>
+                <li>Pelanggaran Anda terhadap hak pihak ketiga</li>
+            </ul>
+        </section>
+
+        <section class="section">
+            <h2>9. Pemutusan Layanan</h2>
+            <p>
+                Kami berhak untuk menangguhkan atau menghentikan akses Anda ke Layanan, dengan atau tanpa pemberitahuan, karena alasan apapun, termasuk namun tidak terbatas pada:
+            </p>
+            <ul>
+                <li>Pelanggaran terhadap Syarat dan Ketentuan ini</li>
+                <li>Permintaan dari penegak hukum atau instansi pemerintah</li>
+                <li>Masalah teknis atau keamanan yang tidak terduga</li>
+                <li>Periode tidak aktif yang berkepanjangan</li>
+                <li>Keterlibatan dalam aktivitas penipuan atau ilegal</li>
+            </ul>
+        </section>
+
+        <section class="section">
+            <h2>10. Hukum yang Berlaku</h2>
+            <p>
+                Syarat dan Ketentuan ini diatur dan ditafsirkan sesuai dengan hukum Republik Indonesia. Setiap perselisihan yang timbul dari atau sehubungan dengan Syarat dan Ketentuan ini akan diselesaikan melalui mediasi terlebih dahulu. Jika mediasi tidak berhasil, perselisihan akan diselesaikan melalui arbitrase di Jakarta, Indonesia.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>11. Perubahan Syarat dan Ketentuan</h2>
+            <p>
+                Kami berhak untuk mengubah atau memodifikasi Syarat dan Ketentuan ini kapan saja. Perubahan akan efektif segera setelah dipublikasikan di website. Penggunaan Layanan setelah perubahan berarti Anda menerima Syarat dan Ketentuan yang telah diperbarui.
+            </p>
+            <p>
+                Kami akan memberitahukan perubahan material melalui email atau notifikasi di platform kami minimal 7 hari sebelum perubahan berlaku efektif.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>12. Ketentuan Tambahan</h2>
+            <h3>12.1 Force Majeure</h3>
+            <p>
+                Jakpat tidak bertanggung jawab atas kegagalan atau keterlambatan dalam memenuhi kewajiban karena keadaan di luar kendali yang wajar, termasuk bencana alam, perang, terorisme, pemogokan, embargo, tindakan pemerintah, atau gangguan internet.
+            </p>
+
+            <h3>12.2 Keterpisahan</h3>
+            <p>
+                Jika ada ketentuan dalam Syarat dan Ketentuan ini yang dianggap tidak sah atau tidak dapat dilaksanakan, ketentuan tersebut akan dianggap terpisah dan tidak akan mempengaruhi validitas dan pelaksanaan ketentuan lainnya.
+            </p>
+
+            <h3>12.3 Tidak Ada Pengesampingan</h3>
+            <p>
+                Kegagalan kami untuk menegakkan hak atau ketentuan dalam Syarat dan Ketentuan ini tidak akan dianggap sebagai pengesampingan hak atau ketentuan tersebut.
+            </p>
+        </section>
+
+        <div class="contact-info">
+            <h3>📧 Hubungi Kami</h3>
+            <p>Jika Anda memiliki pertanyaan tentang Syarat & Ketentuan ini, silakan hubungi:</p>
+            <p>Email: <a href="mailto:product@jakpat.net">product@jakpat.net</a></p>
+            <p>Alamat: Perumahan Puri Gejayan Indah no B-12
+
+RT 004 RW 034 Kaliwaru, Condong Catur, 
+
+Depok Sleman, Daerah Istimewa Yogyakarta
+
+55281</p>
+        </div>
+
+        <p class="last-updated">
+            <em>Terakhir diperbarui: 4 September 2025</em>
+        </p>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-links">
+                <a href="/">Beranda</a>
+                <a href="/privacy-policy.html">Kebijakan Privasi</a>
+                <a href="/terms-conditions.html">Syarat & Ketentuan</a>
+                <a href="https://submit.jakpatforuniv.com/">Mulai Survey</a>
+            </div>
+            <p>&copy; 2025 Jakpat for Universities. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

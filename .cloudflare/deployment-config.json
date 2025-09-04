@@ -1,0 +1,42 @@
+{
+  "build": {
+    "command": "",
+    "directory": "."
+  },
+  "exclude": [
+    "multi-step-form/**",
+    "survey-extractor-shadcn/**",
+    "survey-extractor-vite/**",
+    "google-form-extractor/**",
+    "simple_form_info/**",
+    "universal-survey-extractor/**",
+    "api/**",
+    "api-deploy/**",
+    "functions/**",
+    "src/**",
+    "dist/**",
+    "main-redirect/**",
+    "redirect-deploy/**",
+    "public/**",
+    "js/**",
+    "node_modules/**",
+    "*.ts",
+    "*.tsx",
+    "*.config.js",
+    "*.config.ts",
+    "package*.json",
+    "tsconfig*.json",
+    "*.patch",
+    "*.md",
+    "*.toml",
+    ".env*"
+  ],
+  "include": [
+    "index.html",
+    "privacy-policy.html", 
+    "terms-conditions.html",
+    "jfu-logo.png",
+    "background-heropage.jpg",
+    "_redirects"
+  ]
+}

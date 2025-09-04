@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kebijakan Privasi - Jakpat for Universities</title>
+    <meta name="description" content="Kebijakan Privasi Jakpat for Universities. Kami berkomitmen melindungi privasi dan data mahasiswa dalam penggunaan layanan survey dan riset kami.">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="jfu-logo.png">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: #fdfdf8;
+        }
+        
+        /* Navigation */
+        .nav {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1976D2;
+            text-decoration: none;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+        
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            color: #1976D2;
+        }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+            padding: 4rem 0;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 1rem;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            color: #555;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        /* Content */
+        .content {
+            max-width: 800px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+        
+        .section {
+            margin-bottom: 3rem;
+        }
+        
+        .section h2 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #1976D2;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #E3F2FD;
+        }
+        
+        .section h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #333;
+            margin: 2rem 0 1rem 0;
+        }
+        
+        .section p {
+            margin-bottom: 1.5rem;
+            color: #555;
+            text-align: justify;
+        }
+        
+        .section ul {
+            margin: 1rem 0 1.5rem 2rem;
+            color: #555;
+        }
+        
+        .section li {
+            margin-bottom: 0.8rem;
+        }
+        
+        .contact-info {
+            background: #E3F2FD;
+            padding: 2rem;
+            border-radius: 12px;
+            margin-top: 3rem;
+        }
+        
+        .contact-info h3 {
+            color: #1976D2;
+            margin-bottom: 1rem;
+        }
+        
+        .contact-info p {
+            margin-bottom: 0.5rem;
+        }
+        
+        .contact-info a {
+            color: #1976D2;
+            text-decoration: none;
+        }
+        
+        .contact-info a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Footer */
+        .footer {
+            background: #1976D2;
+            color: white;
+            padding: 2rem 0;
+            margin-top: 5rem;
+        }
+        
+        .footer-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            text-align: center;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            opacity: 0.9;
+        }
+        
+        .footer-links a:hover {
+            opacity: 1;
+            text-decoration: underline;
+        }
+        
+        .last-updated {
+            font-style: italic;
+            color: #666;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid #ddd;
+        }
+        
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .content {
+                padding: 0 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="/" class="logo">🎓 Jakpat for Universities</a>
+            <ul class="nav-links">
+                <li><a href="/">Beranda</a></li>
+                <li><a href="/privacy-policy.html">Kebijakan Privasi</a></li>
+                <li><a href="/terms-conditions.html">Syarat & Ketentuan</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="header">
+        <h1>Kebijakan Privasi</h1>
+        <p>Kami berkomitmen melindungi privasi dan keamanan data Anda dalam penggunaan layanan Jakpat for Universities</p>
+    </header>
+
+    <!-- Content -->
+    <main class="content">
+        <section class="section">
+            <h2>1. Pendahuluan</h2>
+            <p>
+                Selamat datang di Jakpat for Universities. Kami memahami pentingnya privasi data bagi mahasiswa, peneliti, dan institusi pendidikan. Kebijakan Privasi ini menjelaskan bagaimana kami mengumpulkan, menggunakan, dan melindungi informasi Anda ketika menggunakan layanan kami di jakpatforuniv.com.
+            </p>
+            <p>
+                Dengan menggunakan layanan Jakpat for Universities, Anda menyetujui praktik-praktik yang dijelaskan dalam Kebijakan Privasi ini. Jika Anda tidak setuju dengan kebijakan ini, mohon untuk tidak menggunakan layanan kami.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>2. Informasi yang Kami Kumpulkan</h2>
+            
+            <h3>2.1 Informasi yang Anda Berikan</h3>
+            <ul>
+                <li><strong>Data Akun:</strong> Nama lengkap, email, nomor telepon, nama universitas, dan program studi</li>
+                <li><strong>Data Survey:</strong> Link survey, judul penelitian, jumlah pertanyaan, dan kriteria responden</li>
+                <li><strong>Data Pembayaran:</strong> Informasi transaksi untuk layanan iklan survey (diproses melalui payment gateway yang aman)</li>
+                <li><strong>Google Account:</strong> Jika Anda menggunakan fitur Google Drive integration, kami akan mengakses Google Forms Anda dengan izin eksplisit</li>
+            </ul>
+
+            <h3>2.2 Informasi yang Dikumpulkan Otomatis</h3>
+            <ul>
+                <li><strong>Data Penggunaan:</strong> Aktivitas penggunaan fitur, waktu akses, dan durasi sesi</li>
+                <li><strong>Data Teknis:</strong> Alamat IP, jenis browser, sistem operasi, dan informasi perangkat</li>
+                <li><strong>Cookies:</strong> Data sesi untuk meningkatkan pengalaman pengguna</li>
+            </ul>
+        </section>
+
+        <section class="section">
+            <h2>3. Cara Kami Menggunakan Informasi</h2>
+            <p>Kami menggunakan informasi yang dikumpulkan untuk:</p>
+            <ul>
+                <li>Menyediakan dan mengelola layanan iklan survey</li>
+                <li>Memproses pembayaran dan transaksi</li>
+                <li>Mengirimkan notifikasi terkait status survey Anda</li>
+                <li>Meningkatkan kualitas layanan dan pengalaman pengguna</li>
+                <li>Memberikan dukungan customer service</li>
+                <li>Menganalisis penggunaan layanan untuk pengembangan fitur</li>
+                <li>Mematuhi kewajiban hukum dan peraturan yang berlaku</li>
+            </ul>
+        </section>
+
+        <section class="section">
+            <h2>4. Berbagi Informasi dengan Pihak Ketiga</h2>
+            <p>
+                Kami <strong>TIDAK</strong> menjual, menyewakan, atau membagikan informasi pribadi Anda kepada pihak ketiga untuk tujuan pemasaran mereka. Kami hanya membagikan informasi dalam situasi berikut:
+            </p>
+            <ul>
+                <li><strong>Responden Survey:</strong> Link survey Anda akan dibagikan kepada responden Jakpat sesuai paket yang dipilih</li>
+                <li><strong>Mitra Pembayaran:</strong> Informasi pembayaran diproses melalui gateway pembayaran terpercaya (Mayar/Midtrans)</li>
+                <li><strong>Penyedia Layanan:</strong> Pihak ketiga yang membantu operasional (hosting, analytics) dengan perjanjian kerahasiaan</li>
+                <li><strong>Kewajiban Hukum:</strong> Jika diwajibkan oleh hukum atau perintah pengadilan</li>
+            </ul>
+        </section>
+
+        <section class="section">
+            <h2>5. Keamanan Data</h2>
+            <p>
+                Kami menerapkan langkah-langkah keamanan teknis dan organisasi untuk melindungi data Anda:
+            </p>
+            <ul>
+                <li>Enkripsi SSL/TLS untuk transmisi data</li>
+                <li>Penyimpanan data terenkripsi di server yang aman</li>
+                <li>Akses terbatas hanya untuk personel yang berwenang</li>
+                <li>Audit keamanan berkala</li>
+                <li>Backup data reguler</li>
+            </ul>
+            <p>
+                Namun, tidak ada metode transmisi atau penyimpanan elektronik yang 100% aman. Kami tidak dapat menjamin keamanan absolut, tetapi kami berkomitmen untuk terus meningkatkan perlindungan data Anda.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>6. Hak Privasi Anda</h2>
+            <p>Sebagai pengguna, Anda memiliki hak untuk:</p>
+            <ul>
+                <li><strong>Mengakses:</strong> Meminta salinan data pribadi yang kami miliki tentang Anda</li>
+                <li><strong>Memperbaiki:</strong> Memperbarui atau mengoreksi informasi yang tidak akurat</li>
+                <li><strong>Menghapus:</strong> Meminta penghapusan data pribadi Anda (dengan batasan tertentu)</li>
+                <li><strong>Membatasi:</strong> Meminta pembatasan pemrosesan data Anda</li>
+                <li><strong>Portabilitas:</strong> Menerima data Anda dalam format yang dapat dibaca mesin</li>
+                <li><strong>Menolak:</strong> Menolak pemrosesan data untuk tujuan pemasaran</li>
+            </ul>
+            <p>
+                Untuk menggunakan hak-hak ini, silakan hubungi kami melalui informasi kontak di bawah.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>7. Retensi Data</h2>
+            <p>
+                Kami menyimpan data pribadi Anda selama:
+            </p>
+            <ul>
+                <li>Akun Anda aktif dan selama periode yang diperlukan untuk memberikan layanan</li>
+                <li>Data survey disimpan selama 1 tahun setelah selesai untuk keperluan analisis dan audit</li>
+                <li>Data transaksi disimpan sesuai ketentuan perpajakan (minimal 5 tahun)</li>
+                <li>Data dapat dihapus lebih awal atas permintaan Anda (kecuali yang diwajibkan hukum)</li>
+            </ul>
+        </section>
+
+        <section class="section">
+            <h2>8. Kebijakan Cookie</h2>
+            <p>
+                Kami menggunakan cookie dan teknologi serupa untuk:
+            </p>
+            <ul>
+                <li>Menyimpan preferensi dan pengaturan Anda</li>
+                <li>Mengautentikasi dan menjaga keamanan sesi</li>
+                <li>Menganalisis traffic dan penggunaan website</li>
+                <li>Meningkatkan kecepatan dan performa website</li>
+            </ul>
+            <p>
+                Anda dapat mengatur browser untuk menolak cookie, namun beberapa fitur mungkin tidak berfungsi optimal.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>9. Privasi Anak-anak</h2>
+            <p>
+                Layanan Jakpat for Universities ditujukan untuk mahasiswa dan peneliti berusia 18 tahun ke atas. Kami tidak dengan sengaja mengumpulkan informasi pribadi dari anak-anak di bawah 18 tahun. Jika Anda mengetahui bahwa anak di bawah umur telah memberikan informasi pribadi kepada kami, harap hubungi kami segera.
+            </p>
+        </section>
+
+        <section class="section">
+            <h2>10. Perubahan Kebijakan Privasi</h2>
+            <p>
+                Kami dapat memperbarui Kebijakan Privasi ini dari waktu ke waktu. Perubahan akan diberitahukan melalui:
+            </p>
+            <ul>
+                <li>Pemberitahuan di website</li>
+                <li>Email ke alamat terdaftar Anda</li>
+                <li>Update tanggal "Terakhir Diperbarui" di bawah halaman</li>
+            </ul>
+            <p>
+                Penggunaan layanan setelah perubahan berarti Anda menyetujui kebijakan yang diperbarui.
+            </p>
+        </section>
+
+        <div class="contact-info">
+            <h3>📧 Hubungi Kami</h3>
+            <p>Jika Anda memiliki pertanyaan tentang Kebijakan Privasi ini, silakan hubungi:</p>
+            <p>Email: <a href="mailto:product@jakpat.net">product@jakpat.net</a></p>
+            <p>Alamat:  Perumahan Puri Gejayan Indah no B-12 RT 004 RW 034 Kaliwaru, Condong Catur, Depok Sleman, Daerah Istimewa Yogyakarta 55281</p>
+        </div>
+
+        <p class="last-updated">
+            <em>Terakhir diperbarui: 4 September 2025</em>
+        </p>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-links">
+                <a href="/">Beranda</a>
+                <a href="/privacy-policy.html">Kebijakan Privasi</a>
+                <a href="/terms-conditions.html">Syarat & Ketentuan</a>
+                <a href="https://submit.jakpatforuniv.com/">Mulai Survey</a>
+            </div>
+            <p>&copy; 2025 Jakpat for Universities. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
