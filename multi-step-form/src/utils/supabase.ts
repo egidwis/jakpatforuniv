@@ -205,3 +205,19 @@ export const updatePaymentStatus = async (id: string, status: string) => {
     throw error;
   }
 };
+
+// Fungsi untuk mendapatkan semua form submissions (untuk internal dashboard)
+export const getAllFormSubmissions = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error getting all form submissions:', error);
+    throw error;
+  }
+};
