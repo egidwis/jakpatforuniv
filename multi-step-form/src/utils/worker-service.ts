@@ -161,9 +161,15 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
     console.log('[FALLBACK DEBUG] Starting safe fetch');
     
     // Extract form ID from URL for pattern matching
-    const formIdMatch = url.match(/\/forms\/d\/([a-zA-Z0-9-_]+)/);
+    // Handle both regular and /e/ URLs
+    let formIdMatch = url.match(/\/forms\/d\/([a-zA-Z0-9-_]+)/);
+    if (!formIdMatch) {
+      // Try /e/ format: /forms/d/e/1FAIpQLSe.../viewform
+      formIdMatch = url.match(/\/forms\/d\/e\/([a-zA-Z0-9-_]+)/);
+    }
     const formId = formIdMatch ? formIdMatch[1] : null;
     console.log('[FALLBACK DEBUG] Form ID:', formId);
+    console.log('[FALLBACK DEBUG] Original URL:', url);
     
     // Basic validation - accept all Google Form URLs including shortlinks
     if (!url.includes('docs.google.com/forms') && 
@@ -186,37 +192,44 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
     let detectedKeywords: string[] = [];
     
     try {
-      // Use server-side proxy first (most reliable for Google Forms)
-      console.log('[FALLBACK DEBUG] Using server-side Google Forms proxy...');
-      const serverProxyUrl = `/api/google-forms-proxy?url=${encodeURIComponent(url)}`;
-      
+      // Try multiple proxies for better reliability
+      console.log('[FALLBACK DEBUG] Trying multiple proxies for Google Form...');
+
+      const proxyUrls = [
+        `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+        `/api/google-forms-proxy?url=${encodeURIComponent(url)}`
+      ];
+
       let response;
-      try {
-        response = await fetch(serverProxyUrl, {
-          signal: controller.signal
-        });
-        console.log('[FALLBACK DEBUG] Server proxy successful, status:', response.status);
-      } catch (serverError) {
-        console.log('[FALLBACK DEBUG] Server proxy failed, trying direct:', serverError.message);
-        
-        // Fallback to direct fetch
+      let lastError;
+
+      for (let i = 0; i < proxyUrls.length; i++) {
+        const proxyUrl = proxyUrls[i];
+        console.log(`[FALLBACK DEBUG] Trying proxy ${i + 1}/${proxyUrls.length}:`, proxyUrl);
+
         try {
-          response = await fetch(url, {
-            signal: controller.signal,
-            mode: 'cors'
-          });
-          console.log('[FALLBACK DEBUG] Direct fetch successful, status:', response.status);
-        } catch (directError) {
-          console.log('[FALLBACK DEBUG] Direct fetch failed, trying external proxy:', directError.message);
-          
-          // Last resort: external proxy
-          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-          console.log('[FALLBACK DEBUG] Fetching via corsproxy.io...');
-          
           response = await fetch(proxyUrl, {
             signal: controller.signal
           });
+
+          if (response.ok) {
+            console.log(`[FALLBACK DEBUG] Proxy ${i + 1} successful, status:`, response.status);
+            break;
+          } else {
+            console.log(`[FALLBACK DEBUG] Proxy ${i + 1} failed with status:`, response.status);
+            lastError = new Error(`HTTP ${response.status}`);
+            response = null;
+          }
+        } catch (error) {
+          console.log(`[FALLBACK DEBUG] Proxy ${i + 1} failed:`, error.message);
+          lastError = error;
+          response = null;
         }
+      }
+
+      if (!response) {
+        throw lastError || new Error('All proxies failed');
       }
       
       clearTimeout(timeoutId);
@@ -256,8 +269,9 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
       }
       
       // Additional check: if HTML is too short, it might be an error page
-      if (html.length < 5000) {
-        console.log('[FALLBACK DEBUG] HTML too short, might be error page');
+      if (html.length < 3000) {
+        console.log('[FALLBACK DEBUG] HTML too short, might be error page (length:', html.length, ')');
+        console.log('[FALLBACK DEBUG] HTML preview:', html.substring(0, 500));
         throw new Error('FORM_NOT_PUBLIC');
       }
       
@@ -304,12 +318,47 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
             if (formData && formData[1] && Array.isArray(formData[1][1])) {
               const questions = formData[1][1];
               console.log('[FALLBACK DEBUG] Found questions array with', questions.length, 'items');
-              
-              // Filter out page breaks (type 8) and invalid entries
-              const validQuestions = questions.filter(q => {
-                if (!q || !Array.isArray(q)) return false;
-                if (q[3] === 8) return false; // Skip page breaks
-                return true;
+
+              // DETAILED DEBUGGING: Log each item structure
+              questions.forEach((q, index) => {
+                if (q && Array.isArray(q)) {
+                  console.log(`[FALLBACK DEBUG] Item ${index}:`, {
+                    type: q[3],
+                    hasContent: q.length > 0,
+                    firstElements: q.slice(0, 5),
+                    length: q.length
+                  });
+                } else {
+                  console.log(`[FALLBACK DEBUG] Item ${index}: not an array or null/undefined`);
+                }
+              });
+
+              // Simple and accurate question counting
+              const validQuestions = questions.filter((q, index) => {
+                if (!q || !Array.isArray(q)) {
+                  console.log(`[FALLBACK DEBUG] Filtering out item ${index}: not an array`);
+                  return false;
+                }
+
+                const questionType = q[3];
+
+                // Skip ONLY clear non-questions: section headers and page breaks
+                if (questionType === 6 || questionType === 7 || questionType === 8) {
+                  console.log(`[FALLBACK DEBUG] Filtering out item ${index}: non-question type (${questionType}) - "${q[1]}"`);
+                  return false;
+                }
+
+                // Include ALL other types as questions (0, 1, 2, 3, 4, 5, etc.)
+                // Type 0: Text input questions (very common in Google Forms)
+                // Type 1: Text questions, Type 2: Multiple choice, Type 4: Dropdown, Type 5: Scale, etc.
+                if (typeof questionType === 'number' && questionType >= 0 &&
+                    questionType !== 6 && questionType !== 7 && questionType !== 8) {
+                  console.log(`[FALLBACK DEBUG] Including item ${index}: valid question (type ${questionType}) - "${q[1]}"`);
+                  return true;
+                }
+
+                console.log(`[FALLBACK DEBUG] Filtering out item ${index}: unknown type (${questionType}) - "${q[1]}"`);
+                return false;
               });
               
               questionCount = validQuestions.length;
@@ -320,17 +369,61 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
               const uniqueTypes = [...new Set(questionTypes)];
               console.log('[FALLBACK DEBUG] Question types found:', uniqueTypes);
               
-              // SUCCESS! Use FB_PUBLIC_LOAD_DATA_ result and return immediately
-              console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ extraction successful - using these results');
-              
+              // SUCCESS! FB_PUBLIC_LOAD_DATA_ extraction successful
+              console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ extraction successful - now checking personal data...');
+
+              // Personal data detection dari FB_PUBLIC_LOAD_DATA_
+              let hasPersonalDataQuestions = false;
+              let detectedKeywords: string[] = [];
+
+              const fbQuestions = formData[1][1];
+              fbQuestions.forEach((q: any, index: number) => {
+                if (q && Array.isArray(q) && q.length > 1 && q[1]) {
+                  const questionText = String(q[1]).toLowerCase();
+                  console.log(`[FALLBACK DEBUG] Checking FB item ${index}: "${q[1]}" (type: ${q[3]})`);
+
+                  // More specific personal data detection - avoid false positives
+                  const isNameField = (questionText.includes('nama lengkap') || questionText.includes('full name') ||
+                                      questionText.includes('nama depan') || questionText.includes('first name') ||
+                                      questionText.includes('nama belakang') || questionText.includes('last name') ||
+                                      (questionText.includes('nama') && !questionText.includes('nama makanan') && !questionText.includes('nama produk') && !questionText.includes('nama tempat') && !questionText.includes('nama perusahaan') && !questionText.includes('nama sekolah')) ||
+                                      (questionText.includes('name') && !questionText.includes('brand name') && !questionText.includes('company name') && !questionText.includes('school name')));
+
+                  const isEmailField = questionText.includes('email') || questionText.includes('e-mail');
+
+                  const isPhoneField = (questionText.includes('phone') || questionText.includes('telepon') ||
+                                       questionText.includes('handphone') || questionText.includes('hanphone') ||
+                                       questionText.includes('whatsapp') || questionText.includes('nomor hp') ||
+                                       questionText.includes('nomor telepon'));
+
+                  if (isNameField || isEmailField || isPhoneField) {
+                    console.log(`[FALLBACK DEBUG] *** PERSONAL DATA FOUND in FB item ${index}: "${q[1]}" ***`);
+                    hasPersonalDataQuestions = true;
+
+                    // Determine keyword type
+                    if (isNameField) {
+                      if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
+                    } else if (isEmailField) {
+                      if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
+                    } else if (isPhoneField) {
+                      if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
+                    }
+                  }
+                }
+              });
+
+              if (hasPersonalDataQuestions) {
+                console.log(`[FALLBACK DEBUG] *** FINAL RESULT: hasPersonalDataQuestions = true, detectedKeywords:`, detectedKeywords);
+              }
+
               return {
                 title,
                 description,
                 questionCount,
                 platform: 'Google Forms',
                 url: url,
-                hasPersonalDataQuestions: false, // Will be detected separately if needed
-                detectedKeywords: []
+                hasPersonalDataQuestions,
+                detectedKeywords
               };
               
             } else {
@@ -393,13 +486,78 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
       try {
         // OPTION 2: Better HTML analysis - analyze actual form elements
         console.log('[FALLBACK DEBUG] Analyzing actual HTML form elements for personal data');
+
+        // Quick check: are we looking for personal data in FB_PUBLIC_LOAD_DATA_ questions first?
+        if (formData && formData[1] && Array.isArray(formData[1][1])) {
+          console.log('[FALLBACK DEBUG] Checking FB_PUBLIC_LOAD_DATA_ for personal data patterns...');
+          const questions = formData[1][1];
+          let personalDataFound = false;
+
+          questions.forEach((q, index) => {
+            if (q && Array.isArray(q) && q.length > 1 && q[1]) {
+              const questionText = String(q[1]).toLowerCase();
+              console.log(`[FALLBACK DEBUG] Checking item ${index}: "${q[1]}" (type: ${q[3]})`);
+
+              if (questionText.includes('nama') || questionText.includes('name') ||
+                  questionText.includes('email') || questionText.includes('e-mail') ||
+                  questionText.includes('phone') || questionText.includes('telepon') ||
+                  questionText.includes('handphone') || questionText.includes('hanphone') ||
+                  questionText.includes('whatsapp') || questionText.includes('alamat')) {
+                console.log(`[FALLBACK DEBUG] *** PERSONAL DATA FOUND in FB item ${index}: "${q[1]}" ***`);
+                personalDataFound = true;
+
+                // Determine keyword type
+                if (questionText.includes('nama') || questionText.includes('name')) {
+                  if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
+                } else if (questionText.includes('email') || questionText.includes('e-mail')) {
+                  if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
+                } else if (questionText.includes('phone') || questionText.includes('telepon') ||
+                          questionText.includes('handphone') || questionText.includes('hanphone') ||
+                          questionText.includes('whatsapp')) {
+                  if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
+                } else if (questionText.includes('alamat')) {
+                  if (!detectedKeywords.includes('address')) detectedKeywords.push('address');
+                }
+              }
+            }
+          });
+
+          if (personalDataFound) {
+            hasPersonalDataQuestions = true;
+            console.log(`[FALLBACK DEBUG] *** SETTING hasPersonalDataQuestions = true, detectedKeywords:`, detectedKeywords);
+          }
+        }
+
+        // Debug: Show relevant HTML snippets that might contain personal data
+        console.log('[FALLBACK DEBUG] Searching for phone patterns in HTML...');
+        const phoneDebugPatterns = [
+          /nomor\s*hanphone/gi,
+          /nomor\s*handphone/gi,
+          /nomor\s*telepon/gi,
+          /nomor\s*hp/gi,
+          /phone/gi,
+          /whatsapp/gi
+        ];
+
+        for (const pattern of phoneDebugPatterns) {
+          const matches = html.match(pattern);
+          if (matches && matches.length > 0) {
+            console.log(`[FALLBACK DEBUG] Found phone-related text: "${matches[0]}" (${matches.length} times)`);
+            // Show surrounding context
+            const index = html.search(pattern);
+            if (index !== -1) {
+              const context = html.substring(Math.max(0, index - 100), index + 200);
+              console.log(`[FALLBACK DEBUG] Context:`, context);
+            }
+          }
+        }
         
         // Look for Google Forms specific structure, not just regular HTML inputs
         const googleFormsPatterns = [
           // Google Forms question patterns - look for question text content with more specific patterns
           // Only match actual personal data collection, not generic usage
           /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:your email|email address|alamat email|e-?mail anda)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
-          /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:phone number|nomor telepon|nomor hp|whatsapp number)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
+          /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:phone number|nomor telepon|nomor hp|nomor handphone|nomor hanphone|whatsapp number)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
           /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:full name|first name|last name|nama lengkap|nama depan|nama belakang)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
           /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:home address|mailing address|alamat rumah|alamat tempat tinggal)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
         ];
@@ -408,7 +566,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         const googleFormsInputPatterns = [
           // Look for actual input elements in Google Forms
           /<input[^>]*aria-label=['"]*([^'"]*(?:email|e-mail)[^'"]*)/gi,
-          /<input[^>]*aria-label=['"]*([^'"]*(?:phone|nomor|telepon|hp|whatsapp)[^'"]*)/gi,
+          /<input[^>]*aria-label=['"]*([^'"]*(?:phone|nomor|telepon|handphone|hanphone|hp|whatsapp)[^'"]*)/gi,
           /<input[^>]*aria-label=['"]*([^'"]*(?:name|nama)[^'"]*)/gi,
           /<input[^>]*aria-label=['"]*([^'"]*(?:address|alamat)[^'"]*)/gi,
           
@@ -426,13 +584,13 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
           
           // Indonesian patterns
           /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat email|surel)[^<]*)</gi,
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nomor|telepon|telp|hp|whatsapp|wa)[^<]*)</gi,
+          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nomor|telepon|handphone|hanphone|telp|hp|whatsapp|wa)[^<]*)</gi,
           /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nama lengkap|nama depan|nama belakang|nama)[^<]*)</gi,
           /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat|domisili|tempat tinggal)[^<]*)</gi,
           
           // Also check span elements that might contain question text
           /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:email|e-?mail|alamat email)[^<]*)</gi,
-          /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:phone|nomor|telepon|hp|whatsapp)[^<]*)</gi,
+          /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:phone|nomor|telepon|handphone|hanphone|hp|whatsapp)[^<]*)</gi,
           /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:name|nama)[^<]*)</gi,
         ];
         
@@ -448,7 +606,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
             const match = matches[0].toLowerCase();
             if (match.includes('email') || match.includes('e-mail') || match.includes('surel')) {
               if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
-            } else if (match.includes('phone') || match.includes('nomor') || match.includes('telepon') || match.includes('hp') || match.includes('whatsapp') || match.includes('telp') || match.includes('mobile') || match.includes('cell')) {
+            } else if (match.includes('phone') || match.includes('nomor') || match.includes('telepon') || match.includes('handphone') || match.includes('hanphone') || match.includes('hp') || match.includes('whatsapp') || match.includes('telp') || match.includes('mobile') || match.includes('cell')) {
               if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
             } else if (match.includes('name') || match.includes('nama')) {
               if (!detectedKeywords.includes('name')) detectedKeywords.push('name');

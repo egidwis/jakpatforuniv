@@ -134,7 +134,7 @@ export class SimpleGoogleAuth {
       // Initialize Token Client for OAuth2
       this.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/drive.readonly',
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly',
         callback: '', // Will be set per request
       });
 

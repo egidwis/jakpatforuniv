@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost } from '../utils/cost-calculator';
 import { MobileProgressBar } from './MobileProgressBar';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface SidebarProps {
   currentStep: number;
@@ -9,6 +10,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentStep, formData }: SidebarProps) {
+  const { t } = useLanguage();
   const [costCalculation, setCostCalculation] = useState<CostCalculation>({
     adCost: 0,
     incentiveCost: 0,
@@ -29,16 +31,16 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
 
   // Define steps for desktop
   const desktopSteps = [
-    { number: 1, title: "Detail Survey" },
-    { number: 2, title: "Data diri & Insentif" },
-    { number: 3, title: "Review & Pembayaran" }
+    { number: 1, title: t('step1') },
+    { number: 2, title: t('step2') },
+    { number: 3, title: t('step3') }
   ];
 
   // Define steps for mobile (shorter titles)
   const mobileSteps = [
-    { number: 1, title: "Detail" },
-    { number: 2, title: "Data" },
-    { number: 3, title: "Review" }
+    { number: 1, title: t('step1').split(' ')[0] }, // First word only
+    { number: 2, title: t('step2').split(' ')[0] },
+    { number: 3, title: t('step3').split(' ')[0] }
   ];
 
   return (
@@ -64,12 +66,12 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
       </div>
 
       <div className="mt-8 p-6 border rounded-lg bg-gray-50">
-        <h3 className="font-medium mb-2">Total Biaya</h3>
+        <h3 className="font-medium mb-2">{t('totalCost')}</h3>
         <div className="text-xl font-bold">
           Rp{formatRupiah(costCalculation.totalCost)}
         </div>
         <div className="text-sm text-gray-600 mt-1">
-          {formData.questionCount} pertanyaan x {formData.duration} (hari)
+          {formData.questionCount} {t('perQuestion')}
           {costCalculation.incentiveCost > 0 && ' + Insentif responden'}
         </div>
       </div>

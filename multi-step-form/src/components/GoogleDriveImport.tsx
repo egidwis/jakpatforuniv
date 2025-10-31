@@ -7,6 +7,7 @@ import { googlePicker } from '../utils/google-picker-browser';
 import type { SurveyFormData } from '../types';
 import { Loader2, ExternalLink, CheckCircle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface GoogleDriveImportProps {
   formData: SurveyFormData;
@@ -22,6 +23,7 @@ interface GoogleForm {
 }
 
 export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }: GoogleDriveImportProps) {
+  const { t } = useLanguage();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoadingForms, setIsLoadingForms] = useState(false);
@@ -50,19 +52,19 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
   // Connect to Google Drive - Simplified version
   const connectToGoogle = async () => {
     if (!privacyAccepted) {
-      toast.error('Harap setujui kebijakan privasi terlebih dahulu');
+      toast.error(t('pleaseAcceptPrivacy'));
       return;
     }
 
     setIsConnecting(true);
     try {
       console.log('🔄 Initializing Google Authentication...');
-      
+
       // Initialize and request access token
       const authResult: AuthResult = await simpleGoogleAuth.requestAccessToken();
-      
+
       if (!authResult.success) {
-        throw new Error(authResult.error || 'Gagal mendapatkan akses ke Google');
+        throw new Error(authResult.error || t('failedToConnect'));
       }
 
       console.log('✅ Google authentication successful');
@@ -73,14 +75,14 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
         <div className="flex items-center gap-2">
           <CheckCircle className="h-4 w-4 text-green-500" />
           <div>
-            <p className="font-medium">Berhasil terhubung ke Google Drive</p>
-            <p className="text-sm">Authentication successful</p>
+            <p className="font-medium">{t('connectedSuccessMessage')}</p>
+            <p className="text-sm">{t('authenticationSuccessful')}</p>
           </div>
         </div>
       );
     } catch (error: any) {
       console.error('❌ Error connecting to Google:', error);
-      toast.error(error.message || 'Gagal terhubung ke Google Drive');
+      toast.error(error.message || t('failedToConnect'));
     } finally {
       setIsConnecting(false);
     }
@@ -92,57 +94,41 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
       simpleGoogleAuth.revoke();
       setIsAuthenticated(false);
       setUserInfo(null);
-      toast.success('Berhasil terputus dari Google Drive');
+      toast.success(t('disconnectedSuccess'));
     } catch (error) {
       console.error('Error disconnecting:', error);
-      toast.error('Gagal memutus koneksi');
+      toast.error(t('failedToDisconnect'));
     }
   };
 
-  // Search for forms in Google Drive
+  // Search for forms in Google Drive using Google Picker
   const searchFormsInDrive = async () => {
     if (!isAuthenticated) {
-      toast.error('Harap hubungkan ke Google Drive terlebih dahulu');
+      toast.error(t('pleaseAcceptPrivacy'));
       return;
     }
 
     setIsLoadingForms(true);
     try {
-      console.log('🔍 Searching for Google Forms in your Drive...');
-      
-      // Use Google Drive API to list forms instead of Picker
-      const result = await googleDrive.listGoogleForms();
-      
-      if (!result.success || !result.files || result.files.length === 0) {
-        toast.warning('Tidak ada Google Forms ditemukan di Drive Anda');
-        setFoundForms([]);
+      console.log('🔍 Opening Google Picker to select forms...');
+
+      // Use Google Picker API for file selection (works with drive.file scope)
+      const selectedFile = await googlePicker.showFormsPicker();
+
+      if (!selectedFile) {
+        console.log('No file selected from picker');
+        toast.info('No form selected');
+        setIsLoadingForms(false);
         return;
       }
 
-      const forms = result.files.map((file: any) => ({
-        id: file.id,
-        name: file.name,
-        webViewLink: file.webViewLink,
-        modifiedTime: file.modifiedTime
-      }));
-      
-      console.log(`Found ${forms.length} Google Forms in Drive`);
-      setFoundForms(forms);
-      
-      // Show form selection dialog if multiple forms found
-      if (forms.length > 1) {
-        setShowFormSelection(true);
-        toast.success(`Ditemukan ${forms.length} Google Forms. Pilih form yang ingin diimpor.`);
-      } else {
-        // Auto-select if only one form found
-        const selectedForm = forms[0];
-        console.log('Only one form found, auto-selecting:', selectedForm.name);
-        toast.info(`Mengimpor form: ${selectedForm.name}`);
-        await extractFormFromFile(selectedForm.id, selectedForm.name);
-      }
-      
+      console.log('Form selected from picker:', selectedFile.name);
+
+      // Extract form data from selected file
+      await extractFormFromFile(selectedFile.id, selectedFile.name);
+
     } catch (error: any) {
-      console.error('Error listing forms from Drive:', error);
+      console.error('Error with Google Picker:', error);
       
       if (error.message?.includes('API key')) {
         toast.error('API key tidak valid. Menggunakan mode fallback...');
@@ -357,11 +343,11 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
             </div>
             
             <div className="flex-1">
-              <h4 className="font-medium text-gray-900 mb-2">Akses ke Google Drive</h4>
+              <h4 className="font-medium text-gray-900 mb-2">{t('accessGoogleDriveTitle')}</h4>
               <p className="text-sm text-gray-600 mb-4">
-                Hubungkan akun Google kamu agar kami bisa mengakses file kamu.
+                {t('connectGoogleMessage')}
               </p>
-              
+
               {/* Privacy Policy Checkbox */}
               <div className="flex items-start gap-3 mb-4">
                 <input
@@ -372,14 +358,14 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
                   className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
                 <label htmlFor="privacy-checkbox" className="text-sm text-gray-600">
-                  Saya setuju untuk memberikan akses Google Drive kepada Jakpat berdasarkan{' '}
+                  {t('agreeToGiveAccess')}{' '}
                   <a href="/privacy-policy" target="_blank" className="text-blue-600 hover:underline">
-                    Kebijakan Privasi
+                    {t('privacyPolicy')}
                   </a>{' '}
                   Jakpat.
                 </label>
               </div>
-              
+
               {/* Connect Button */}
               <button
                 onClick={connectToGoogle}
@@ -389,12 +375,12 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
                 {isConnecting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Menghubungkan...
+                    {t('connecting')}
                   </>
                 ) : (
                   <>
                     <ExternalLink className="h-4 w-4" />
-                    Hubungkan
+                    {t('connect')}
                   </>
                 )}
               </button>
@@ -424,7 +410,7 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
 
           {/* Forms Search Section */}
           <div className="mb-6">
-            <h4 className="font-medium text-gray-900 mb-2">Cari dan impor Google Forms</h4>
+            <h4 className="font-medium text-gray-900 mb-2">{t('searchAndImportForms')}</h4>
             <button
               onClick={searchFormsInDrive}
               disabled={isLoadingForms || isExtractingForm}
@@ -433,22 +419,22 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
               {isLoadingForms ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Mencari Forms...
+                  {t('searchingForms')}
                 </>
               ) : isExtractingForm ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Mengimpor...
+                  {t('importing')}
                 </>
               ) : (
                 <>
-                  Cari Google Forms
-                  <span className="text-xs ml-1">di Drive Anda</span>
+                  {t('selectGoogleForm')}
+                  <span className="text-xs ml-1">{t('fromYourDrive')}</span>
                 </>
               )}
             </button>
             <p className="text-sm text-gray-500 mt-2">
-              Akan mencari semua Google Forms di Drive Anda untuk dipilih
+              {t('willOpenPicker')}
             </p>
           </div>
 

@@ -4,6 +4,8 @@ import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { PersonalDataWarningDialog } from './ui/Dialog';
 import { GoogleDriveImport } from './GoogleDriveImport';
+import { extractFormInfoWithWorker, extractFormInfoFallback, isWorkerSupported } from '../utils/worker-service';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface StepOneProps {
   formData: SurveyFormData;
@@ -12,10 +14,12 @@ interface StepOneProps {
 }
 
 export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
+  const { t } = useLanguage();
   const [surveySource, setSurveySource] = useState<'google' | 'other' | null>(null);
   const [showFormFields, setShowFormFields] = useState(false);
   const [showPersonalDataWarning, setShowPersonalDataWarning] = useState(false);
   const [detectedKeywords, setDetectedKeywords] = useState<string[]>([]);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   // Handle source selection
   const handleSourceSelection = (source: 'google' | 'other') => {
@@ -48,6 +52,77 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const url = e.target.value;
     updateFormData({ surveyUrl: url, isManualEntry: true });
+  };
+
+  // Handle preview button click
+  const handlePreview = async () => {
+    if (!formData.surveyUrl) {
+      toast.error('Masukkan URL survei terlebih dahulu');
+      return;
+    }
+
+    setIsPreviewLoading(true);
+
+    try {
+      // Clean up URL first - convert preview/edit URLs to viewform
+      let cleanUrl = formData.surveyUrl;
+
+      // Convert /preview to /viewform
+      if (cleanUrl.includes('/preview')) {
+        cleanUrl = cleanUrl.replace('/preview', '/viewform');
+      }
+
+      // Convert /edit to /viewform
+      if (cleanUrl.includes('/edit')) {
+        cleanUrl = cleanUrl.replace('/edit', '/viewform');
+      }
+
+      console.log('Starting form extraction for cleaned URL:', cleanUrl);
+
+      let surveyInfo;
+
+      // Always use fallback method for better reliability with Google Forms
+      console.log('Using fallback method for Google Forms extraction');
+      surveyInfo = await extractFormInfoFallback(cleanUrl);
+
+      console.log('Form extraction completed:', surveyInfo);
+
+      // Update form data with extracted info
+      updateFormData({
+        surveyUrl: cleanUrl, // Use cleaned URL
+        title: surveyInfo.title || '',
+        description: surveyInfo.description || '',
+        questionCount: surveyInfo.questionCount || 0,
+        hasPersonalDataQuestions: surveyInfo.hasPersonalDataQuestions || false,
+        detectedKeywords: surveyInfo.detectedKeywords || [],
+        isManualEntry: false // Mark as auto-filled
+      });
+
+      // Show success message
+      toast.success('Data survei berhasil diambil!');
+
+      // Check for personal data warnings
+      if (surveyInfo.hasPersonalDataQuestions && surveyInfo.detectedKeywords && surveyInfo.detectedKeywords.length > 0) {
+        setDetectedKeywords(surveyInfo.detectedKeywords);
+        setShowPersonalDataWarning(true);
+      }
+
+    } catch (error: any) {
+      console.error('Error extracting form info:', error);
+
+      // Handle specific error types
+      if (error.message === 'FORM_NOT_PUBLIC') {
+        toast.error('Form tidak dapat diakses. Pastikan form bersifat publik dan dapat diakses oleh semua orang.');
+      } else if (error.message === 'WORKER_TIMEOUT' || error.message === 'REQUEST_TIMEOUT') {
+        toast.error('Waktu tunggu habis. Coba lagi atau isi data secara manual.');
+      } else if (error.message === 'NON_GOOGLE_FORM') {
+        toast.error('Saat ini hanya mendukung Google Forms. Untuk platform lain, silakan isi data secara manual.');
+      } else {
+        toast.error('Gagal mengambil data survei. Silakan isi data secara manual.');
+      }
+    } finally {
+      setIsPreviewLoading(false);
+    }
   };
 
 
@@ -129,39 +204,41 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">Detail Survey</h2>
-      <p className="text-gray-600 mb-6">Pilih sumber survey Anda</p>
+      <h2 className="text-xl font-semibold mb-4">{t('surveyDetails')}</h2>
+      <p className="text-gray-600 mb-6">{t('chooseSurveySource')}</p>
 
-      {/* Source Selection */}
+      {/* Source Selection - Google Forms API Hidden for now */}
       {!surveySource && (
         <div className="mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             {/* Google Form Option */}
-            <button
-              type="button"
-              onClick={() => handleSourceSelection('google')}
-              className="p-6 border-2 border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-all duration-200 text-left group"
-            >
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                  <svg className="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">Google Form</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Import pertanyaan dari Google Forms dengan akurasi 100%. Data otomatis terisi dari form Anda.
-                  </p>
-                  <div className="flex items-center text-xs text-green-600">
-                    <CheckCircle className="w-4 h-4 mr-1" />
-                    Akses ke Google Drive
+            <div>
+              <button
+                type="button"
+                onClick={() => handleSourceSelection('google')}
+                className="p-6 border-2 border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-all duration-200 text-left group"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                    <svg className="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-2">{t('googleFormOption')}</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      {t('googleFormDescription')}
+                    </p>
+                    <div className="flex items-center text-xs text-green-600">
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      {t('googleDriveAccess')}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            </div>
 
-            {/* Other Source Option */}
+            {/* From other source Option */}
             <button
               type="button"
               onClick={() => handleSourceSelection('other')}
@@ -170,19 +247,17 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
               <div className="flex items-start gap-4">
                 <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
                   <svg className="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M16,11V13H8V11H16M16,15V17H11V15H16Z" />
+                    <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">From other source</h3>
+                  <h3 className="font-semibold text-gray-900 mb-2">{t('otherSourceOption')}</h3>
                   <p className="text-sm text-gray-600 mb-3">
-                    Input manual untuk survey dari platform lain seperti Typeform, SurveyMonkey, atau platform custom.
+                    {t('otherSourceDescription')}
                   </p>
                   <div className="flex items-center text-xs text-blue-600">
-                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                    </svg>
-                    Input manual
+                    <AlertTriangle className="w-4 h-4 mr-1" />
+                    {t('manualInputRequired')}
                   </div>
                 </div>
               </div>
@@ -195,13 +270,13 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
       {surveySource === 'google' && (
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-medium">Import Pertanyaan dari Google Forms</h3>
+            <h3 className="text-lg font-medium">{t('importFromGoogleForms')}</h3>
             <button
               type="button"
               onClick={() => setSurveySource(null)}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
-              ← Kembali pilih sumber
+              {t('backToSourceSelection')}
             </button>
           </div>
           
@@ -213,32 +288,33 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
         </div>
       )}
 
-      {/* Manual Entry Section */}
+      {/* URL Input Section - Now Primary Flow */}
       {surveySource === 'other' && (
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-medium">Survei dari Platform Lain</h3>
-            <button
-              type="button"
-              onClick={() => setSurveySource(null)}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              ← Kembali pilih sumber
-            </button>
-          </div>
+          <h3 className="text-lg font-medium mb-4">{t('completeFormBelow')}</h3>
 
           <div className="form-group">
-            <label htmlFor="surveyUrl" className="form-label">Link Survey</label>
-            <input
-              id="surveyUrl"
-              type="text"
-              className="form-input"
-              placeholder="https://typeform.com/... atau platform lainnya"
-              value={formData.surveyUrl}
-              onChange={handleUrlChange}
-            />
+            <label htmlFor="surveyUrl" className="form-label">{t('googleFormLink')}</label>
+            <div className="flex gap-2">
+              <input
+                id="surveyUrl"
+                type="text"
+                className="form-input flex-1"
+                placeholder={t('googleFormLinkPlaceholder')}
+                value={formData.surveyUrl}
+                onChange={handleUrlChange}
+              />
+              <button
+                type="button"
+                onClick={handlePreview}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                disabled={!formData.surveyUrl || isPreviewLoading}
+              >
+                {isPreviewLoading ? t('loading') : t('preview')}
+              </button>
+            </div>
             <p className="text-sm text-gray-500 mt-2">
-              Masukan link survey dari platform manapun (Typeform, SurveyMonkey, dll)
+              {t('googleFormLinkHelp')}
             </p>
           </div>
         </div>
@@ -286,14 +362,14 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="form-group">
                 <label htmlFor="title" className="form-label">
-                  Judul <span className="text-red-500">*</span>
-                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>}
+                  {t('surveyTitle')} <span className="text-red-500">*</span>
+                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
                 </label>
                 <input
                   id="title"
                   type="text"
                   className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
-                  placeholder="Masukkan judul survey"
+                  placeholder={t('surveyTitlePlaceholder')}
                   value={formData.title}
                   onChange={(e) => updateFormData({ title: e.target.value })}
                   readOnly={surveySource === 'google'}
@@ -303,14 +379,14 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
               <div className="form-group">
                 <label htmlFor="questionCount" className="form-label">
-                  Jumlah Pertanyaan <span className="text-red-500">*</span>
-                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>}
+                  {t('questionCount')} <span className="text-red-500">*</span>
+                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
                 </label>
                 <input
                   id="questionCount"
                   type="number"
                   className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
-                  placeholder="Masukkan jumlah pertanyaan"
+                  placeholder={t('questionCountPlaceholder')}
                   value={formData.questionCount || ''}
                   onChange={(e) => updateFormData({ questionCount: parseInt(e.target.value) || 0 })}
                   readOnly={surveySource === 'google'}
@@ -322,13 +398,13 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
             <div className="form-group">
               <label htmlFor="description" className="form-label">
-                Deskripsi Survey <span className="text-red-500">*</span>
-                {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>}
+                {t('surveyDescription')} <span className="text-red-500">*</span>
+                {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
               </label>
               <textarea
                 id="description"
                 className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
-                placeholder="Masukkan deskripsi survey"
+                placeholder={t('surveyDescriptionPlaceholder')}
                 value={formData.description}
                 onChange={(e) => updateFormData({ description: e.target.value })}
                 readOnly={surveySource === 'google'}
@@ -424,7 +500,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
         {(surveySource === 'other' || (surveySource === 'google' && formData.title)) && (
           <div className="flex justify-end mt-8">
             <button type="submit" className="button button-primary">
-              Berikutnya
+              {t('continue')}
             </button>
           </div>
         )}
