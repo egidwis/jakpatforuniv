@@ -210,55 +210,71 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
       {/* Source Selection - Google Forms API Hidden for now */}
       {!surveySource && (
         <div className="mb-8">
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Google Form Option */}
-            <div>
-              <button
-                type="button"
-                onClick={() => handleSourceSelection('google')}
-                className="p-6 border-2 border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-all duration-200 text-left group"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                    <svg className="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="currentColor">
+            <button
+              type="button"
+              onClick={() => handleSourceSelection('google')}
+              className="relative p-6 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-green-500 dark:hover:border-green-500 hover:shadow-lg transition-all duration-200 text-left group overflow-hidden w-full"
+            >
+              {/* Gradient background on hover */}
+              <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+
+              <div className="relative z-10 flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
+                    <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 mb-2">{t('googleFormOption')}</h3>
-                    <p className="text-sm text-gray-600 mb-3">
-                      {t('googleFormDescription')}
-                    </p>
-                    <div className="flex items-center text-xs text-green-600">
-                      <CheckCircle className="w-4 h-4 mr-1" />
-                      {t('googleDriveAccess')}
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{t('googleFormOption')}</h3>
+                    <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-semibold">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>Recommended</span>
                     </div>
                   </div>
                 </div>
-              </button>
-            </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                  {t('googleFormDescription')}
+                </p>
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 font-medium pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>{t('googleDriveAccess')}</span>
+                </div>
+              </div>
+            </button>
 
             {/* From other source Option */}
             <button
               type="button"
               onClick={() => handleSourceSelection('other')}
-              className="p-6 border-2 border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 text-left group"
+              className="relative p-6 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-lg transition-all duration-200 text-left group overflow-hidden w-full"
             >
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                  <svg className="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">{t('otherSourceOption')}</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    {t('otherSourceDescription')}
-                  </p>
-                  <div className="flex items-center text-xs text-blue-600">
-                    <AlertTriangle className="w-4 h-4 mr-1" />
-                    {t('manualInputRequired')}
+              {/* Gradient background on hover */}
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+
+              <div className="relative z-10 flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
+                    <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
+                    </svg>
                   </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{t('otherSourceOption')}</h3>
+                    <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 font-semibold">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Manual Entry</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                  {t('otherSourceDescription')}
+                </p>
+                <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-medium pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>{t('manualInputRequired')}</span>
                 </div>
               </div>
             </button>
