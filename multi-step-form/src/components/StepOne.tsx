@@ -215,7 +215,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             <button
               type="button"
               onClick={() => handleSourceSelection('google')}
-              className="relative p-8 bg-white dark:bg-gray-800 border-[3px] border-gray-400 dark:border-gray-500 rounded-xl hover:border-green-500 dark:hover:border-green-400 hover:shadow-xl transition-all duration-200 text-center group overflow-hidden w-full shadow-md"
+              className="relative p-8 bg-white dark:bg-gray-800 border-[3px] border-gray-400 dark:border-gray-300 rounded-xl hover:border-green-500 dark:hover:border-green-400 hover:shadow-xl transition-all duration-200 text-center group overflow-hidden w-full shadow-md"
             >
               {/* Gradient background on hover */}
               <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
@@ -247,7 +247,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             <button
               type="button"
               onClick={() => handleSourceSelection('other')}
-              className="relative p-8 bg-white dark:bg-gray-800 border-[3px] border-gray-400 dark:border-gray-500 rounded-xl hover:border-blue-500 dark:hover:border-blue-400 hover:shadow-xl transition-all duration-200 text-center group overflow-hidden w-full shadow-md"
+              className="relative p-8 bg-white dark:bg-gray-800 border-[3px] border-gray-400 dark:border-gray-300 rounded-xl hover:border-blue-500 dark:hover:border-blue-400 hover:shadow-xl transition-all duration-200 text-center group overflow-hidden w-full shadow-md"
             >
               {/* Gradient background on hover */}
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
