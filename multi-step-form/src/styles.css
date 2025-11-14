@@ -143,11 +143,23 @@ body {
 .button-primary {
   background-color: var(--primary);
   color: white;
-  border: 1px solid var(--primary);
+  border: 2px solid var(--primary);
 }
 
 .button-primary:hover:not(:disabled) {
   background-color: var(--primary-hover);
+}
+
+/* Ghost button style for dark mode */
+[data-theme="dark"] .button-primary {
+  background-color: transparent;
+  color: var(--primary);
+  border: 2px solid var(--primary);
+}
+
+[data-theme="dark"] .button-primary:hover:not(:disabled) {
+  background-color: var(--primary);
+  color: white;
 }
 
 .button-secondary {

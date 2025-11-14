@@ -1,7 +1,7 @@
 // Google Picker API Service for file selection UI (Browser-compatible)
 import { simpleGoogleAuth } from './google-auth-simple';
 
-const GOOGLE_API_KEY = 'AIzaSyCTZCvIo8O8Mk-_CpbPCu3LN37WkTqukDQ';
+const GOOGLE_API_KEY = 'AIzaSyBBl3eCvwqDvDUm4aFUyE0JNYUu9ox2Tjo';
 
 export interface PickerFile {
   id: string;
