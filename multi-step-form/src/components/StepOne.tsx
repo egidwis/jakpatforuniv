@@ -215,30 +215,28 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             <button
               type="button"
               onClick={() => handleSourceSelection('google')}
-              className="relative p-6 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-green-500 dark:hover:border-green-500 hover:shadow-lg transition-all duration-200 text-left group overflow-hidden w-full"
+              className="relative p-8 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl hover:border-green-500 dark:hover:border-green-500 hover:shadow-xl transition-all duration-200 text-center group overflow-hidden w-full"
             >
               {/* Gradient background on hover */}
               <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
 
-              <div className="relative z-10 flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
-                    <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{t('googleFormOption')}</h3>
-                    <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-semibold">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      <span>Recommended</span>
-                    </div>
+              <div className="relative z-10 flex flex-col items-center gap-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
+                  <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                  </svg>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">{t('googleFormOption')}</h3>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 dark:bg-green-900/30 rounded-full text-xs text-green-700 dark:text-green-400 font-semibold">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>Recommended</span>
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed text-center">
                   {t('googleFormDescription')}
                 </p>
-                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 font-medium pt-2 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400 font-medium pt-3 border-t border-gray-200 dark:border-gray-700 w-full">
                   <CheckCircle className="w-4 h-4" />
                   <span>{t('googleDriveAccess')}</span>
                 </div>
@@ -249,30 +247,28 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             <button
               type="button"
               onClick={() => handleSourceSelection('other')}
-              className="relative p-6 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-lg transition-all duration-200 text-left group overflow-hidden w-full"
+              className="relative p-8 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-xl transition-all duration-200 text-center group overflow-hidden w-full"
             >
               {/* Gradient background on hover */}
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
 
-              <div className="relative z-10 flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
-                    <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{t('otherSourceOption')}</h3>
-                    <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 font-semibold">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      <span>Manual Entry</span>
-                    </div>
+              <div className="relative z-10 flex flex-col items-center gap-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
+                  <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
+                  </svg>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">{t('otherSourceOption')}</h3>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-full text-xs text-blue-700 dark:text-blue-400 font-semibold">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Manual Entry</span>
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed text-center">
                   {t('otherSourceDescription')}
                 </p>
-                <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-medium pt-2 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex items-center justify-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-medium pt-3 border-t border-gray-200 dark:border-gray-700 w-full">
                   <AlertTriangle className="w-4 h-4" />
                   <span>{t('manualInputRequired')}</span>
                 </div>
