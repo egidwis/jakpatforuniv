@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost } from '../utils/cost-calculator';
 import { MobileProgressBar } from './MobileProgressBar';
+import { SidebarHeader } from './SidebarHeader';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface SidebarProps {
@@ -45,15 +46,21 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
 
   return (
     <div className="sidebar">
+      {/* Desktop Header - Hidden on Mobile */}
+      <div className="desktop-sidebar-header">
+        <SidebarHeader />
+      </div>
 
-      {/* Mobile Progress Bar */}
+      {/* Mobile Progress Bar - Compact with Header and Total */}
       <MobileProgressBar
         currentStep={currentStep}
         steps={mobileSteps}
+        totalCost={costCalculation.totalCost}
+        formatRupiah={formatRupiah}
       />
 
       {/* Desktop Steps */}
-      <div className="space-y-2">
+      <div className="desktop-steps space-y-2">
         {desktopSteps.map((step) => (
           <StepItem
             key={step.number}
@@ -65,7 +72,8 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
         ))}
       </div>
 
-      <div className="mt-8 p-6 border rounded-lg bg-gray-50">
+      {/* Desktop Total Cost - Hidden on Mobile */}
+      <div className="desktop-total-cost mt-8 p-6 border rounded-lg bg-gray-50">
         <h3 className="font-medium mb-2">{t('totalCost')}</h3>
         <div className="text-xl font-bold">
           Rp{formatRupiah(costCalculation.totalCost)}

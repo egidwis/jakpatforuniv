@@ -1,3 +1,28 @@
+/**
+ * JAKPAT FOR UNIVERSITIES - MAIN STYLESHEET
+ *
+ * This is the primary stylesheet for the multi-step survey form application.
+ *
+ * File Structure:
+ * 1. CSS Variables (Theme colors, spacing)
+ * 2. Base Styles (Reset, body, typography)
+ * 3. Form Components (Inputs, buttons, labels)
+ * 4. Layout Components (Container, grid, flexbox)
+ * 5. Page Components (Header, footer, sidebar)
+ * 6. Utility Classes (Spacing, colors, text)
+ * 7. Responsive Breakpoints (Mobile: <768px, Tablet: 768px+, Desktop: 1024px+)
+ *
+ * CSS Load Order:
+ * index.css (animations) → styles.css (this file) → App.css (unused)
+ *
+ * Note: All conflicts with Vite template (index.css) and App.css have been resolved.
+ * No !important flags should be needed now.
+ */
+
+/* ============================================
+   1. CSS VARIABLES & THEME
+   ============================================ */
+
 /* Base Styles */
 :root {
   --primary: #000000;
@@ -36,16 +61,26 @@
   box-sizing: border-box;
 }
 
+/* ============================================
+   2. BASE STYLES
+   ============================================ */
+
 body {
+  margin: 0;
+  display: block;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   background-color: var(--background);
   color: var(--foreground);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
 }
 
-/* Form Styles */
+/* ============================================
+   3. FORM COMPONENTS
+   ============================================ */
+
 .form-group {
   margin-bottom: 1.5rem;
 }
@@ -184,17 +219,33 @@ body {
   opacity: 0.8;
 }
 
-/* Layout Styles */
+/* ============================================
+   4. LAYOUT COMPONENTS
+   ============================================ */
+
+/* Main container - Centers content with max-width constraint */
 .container {
-  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 0.75rem;
+  padding: 0 1rem;
 }
 
 @media (min-width: 768px) {
   .container {
-    padding: 0 1.25rem;
+    padding: 0 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 0 3rem;
+  }
+}
+
+@media (min-width: 1440px) {
+  .container {
+    max-width: 1200px;
+    padding: 0 3rem;
   }
 }
 
@@ -242,36 +293,291 @@ body {
   color: var(--muted);
 }
 
+.footer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.footer-text {
+  margin: 0;
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Compact Mobile Progress Bar Styles */
+.mobile-progress-bar-compact {
+  display: block;
+  margin-bottom: 0;
+  overflow: visible;
+}
+
+.mobile-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 0.75rem;
+}
+
+.mobile-step-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.3;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mobile-total-cost {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 0.25rem 0.625rem;
+  background-color: transparent;
+  border-radius: 0.25rem;
+  border: 1px solid var(--border);
+}
+
+[data-theme="dark"] .mobile-total-cost {
+  background-color: transparent;
+  border-color: var(--border);
+}
+
+.mobile-progress-track {
+  position: relative;
+  height: 6px;
+  background-color: var(--border);
+  border-radius: 999px;
+  overflow: visible;
+  margin-bottom: 0;
+  padding-bottom: 0.75rem;
+}
+
+[data-theme="dark"] .mobile-progress-track {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.mobile-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #0091ff 0%, #00b4ff 100%);
+  border-radius: 999px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .mobile-progress-fill {
+  background: linear-gradient(90deg, #0091ff 0%, #00d4ff 100%);
+}
+
+.mobile-progress-dots {
+  position: absolute;
+  top: 0;
+  left: 0.625rem;
+  width: calc(100% - 1.25rem);
+  height: 100%;
+}
+
+.mobile-progress-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background-color: #ffffff;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 3;
+}
+
+[data-theme="dark"] .mobile-progress-dot {
+  background-color: var(--background);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.mobile-progress-dot.active {
+  background-color: #0091ff;
+  border-color: #0091ff;
+  width: 1.5rem;
+  height: 1.5rem;
+  box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.2);
+  border-width: 2.5px;
+  color: white;
+}
+
+.mobile-progress-dot.completed {
+  background-color: #22c55e;
+  border-color: #22c55e;
+  color: white;
+  border-width: 2px;
+}
+
+.mobile-dot-number {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.mobile-progress-dot.active .mobile-dot-number {
+  color: white;
+}
+
+.mobile-dot-check {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+@media (min-width: 768px) {
+  .mobile-progress-bar-compact {
+    display: none;
+  }
+}
+
+/* Hide desktop total cost on mobile */
+.desktop-total-cost {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .desktop-total-cost {
+    display: block;
+  }
+}
+
+/* Language Switcher Styles */
+.language-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.language-switcher:hover {
+  border-color: var(--primary);
+}
+
+.language-switcher-icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted);
+}
+
+.language-button {
+  background: none;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.language-button:hover {
+  color: var(--foreground);
+  background-color: var(--accent);
+}
+
+.language-button.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.language-divider {
+  color: var(--border);
+  font-size: 0.875rem;
+}
+
+@media (min-width: 768px) {
+  .footer-content {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .footer-text {
+    text-align: left;
+  }
+}
+
 /* Multi-step Form Styles */
 .multi-step-form {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 @media (min-width: 768px) {
   .multi-step-form {
     flex-direction: row;
     align-items: flex-start;
+    gap: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .multi-step-form {
+    gap: 2.5rem;
   }
 }
 
 .sidebar {
   background-color: var(--card);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  margin-bottom: 1.5rem;
+  border-radius: 0;
+  padding: 1.25rem 1.25rem 1.25rem 1.25rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 0;
+  margin-left: -1rem;
+  margin-right: -1rem;
+  margin-top: -2rem;
 }
 
 @media (min-width: 768px) {
   .sidebar {
-    width: 18rem;
+    width: 280px;
     flex-shrink: 0;
     padding: 1.5rem;
+    margin: 0;
     margin-bottom: 0;
+    border-radius: var(--radius);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     position: sticky;
     top: 2rem;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .sidebar {
+    width: 320px;
+    padding: 2rem;
   }
 }
 
@@ -282,11 +588,20 @@ body {
   padding: 1.25rem;
   background-color: var(--background);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  min-width: 0;
 }
 
 @media (min-width: 768px) {
   .form-content {
     padding: 2rem;
+    max-width: calc(100% - 280px - 2rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .form-content {
+    padding: 2.5rem;
+    max-width: 780px;
   }
 }
 
@@ -589,111 +904,541 @@ body {
   min-height: 100vh;
 }
 
-/* Mobile Progress Bar Styles */
-.mobile-progress-bar {
-  display: block;
-  margin: 0.5rem 0 2rem;
-  padding: 0 0.5rem;
-}
-
-@media (min-width: 768px) {
-  .mobile-progress-bar {
-    display: none;
-  }
-}
-
-.progress-steps {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-}
-
-.progress-step-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-}
-
-.progress-step {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 9999px;
-  background-color: #f1f1f1;
-  border: 2px solid #e0e0e0;
-  color: #9e9e9e;
-  font-weight: 600;
-  font-size: 0.875rem;
-  z-index: 10;
-  transition: all 0.2s ease;
-}
-
-[data-theme="dark"] .progress-step {
-  background-color: #2a2a2a;
-  border: 2px solid #333333;
-  color: #a0aec0;
-}
-
-.progress-step-active {
-  background-color: #0091ff;
-  border-color: #0091ff;
-  color: white;
-  box-shadow: 0 0 0 4px rgba(0, 145, 255, 0.2);
-}
-
-.progress-step-completed {
-  background-color: #22c55e;
-  border-color: #22c55e;
-  color: white;
-}
-
-.progress-connector {
-  flex: 1;
-  height: 2px;
-  background-color: #e0e0e0;
-  min-width: 1rem;
-  max-width: 2.5rem;
-  transition: background-color 0.2s ease;
-}
-
-[data-theme="dark"] .progress-connector {
-  background-color: #333333;
-}
-
-.progress-connector-active {
-  background-color: #0091ff;
-}
-
-.progress-step-title {
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: #9e9e9e;
-  margin-top: 0.5rem;
-  text-align: center;
-  max-width: 4rem;
-  transition: color 0.2s ease;
-}
-
-[data-theme="dark"] .progress-step-title {
-  color: #a0aec0;
-}
-
-.progress-step-title-active {
-  color: #0091ff;
-  font-weight: 600;
-}
-
-.progress-step-title-completed {
-  color: #22c55e;
-}
+/* Old Mobile Progress Bar Styles - Deprecated (now using compact version above) */
 
 /* Desktop Sidebar Styles (hide on mobile) */
 @media (max-width: 767px) {
   .sidebar .space-y-2 {
     display: none;
+  }
+}
+
+/* Section Card Styles */
+.section-card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s ease;
+}
+
+@media (min-width: 768px) {
+  .section-card {
+    padding: 1.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .section-card {
+    padding: 2rem;
+    margin-bottom: 2rem;
+  }
+}
+
+.section-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+}
+
+[data-theme="dark"] .section-card {
+  background-color: var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .section-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-icon {
+  font-size: 1.5rem;
+  margin-right: 0.75rem;
+  flex-shrink: 0;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--foreground);
+  flex: 1;
+}
+
+.section-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--success);
+  color: white;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+/* Input with Validation Icons */
+.input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.input-with-validation {
+  padding-right: 2.5rem;
+}
+
+.validation-icon {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.25rem;
+  height: 1.25rem;
+  pointer-events: none;
+}
+
+.validation-icon.valid {
+  color: var(--success);
+}
+
+.validation-icon.invalid {
+  color: var(--error);
+}
+
+/* Helper Text */
+.helper-text {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.375rem;
+}
+
+.helper-text.error {
+  color: var(--error);
+}
+
+/* Character Counter */
+.char-counter {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: right;
+  margin-top: 0.25rem;
+}
+
+.char-counter.warning {
+  color: #f59e0b;
+}
+
+.char-counter.error {
+  color: var(--error);
+}
+
+/* Floating Label Input */
+.floating-label-group {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.floating-label {
+  position: absolute;
+  left: 0.875rem;
+  top: 0.75rem;
+  font-size: 1rem;
+  color: var(--muted-foreground);
+  transition: all 0.2s ease;
+  pointer-events: none;
+  background-color: var(--input);
+  padding: 0 0.25rem;
+}
+
+.floating-input {
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--input);
+  color: var(--foreground);
+  font-size: 1rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.floating-input:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+[data-theme="dark"] .floating-input:focus {
+  border-color: #0091ff;
+  box-shadow: 0 0 0 2px rgba(0, 145, 255, 0.25);
+}
+
+.floating-input:focus + .floating-label,
+.floating-input:not(:placeholder-shown) + .floating-label {
+  top: -0.5rem;
+  font-size: 0.75rem;
+  color: var(--ring);
+  font-weight: 500;
+}
+
+[data-theme="dark"] .floating-input:focus + .floating-label,
+[data-theme="dark"] .floating-input:not(:placeholder-shown) + .floating-label {
+  color: #0091ff;
+}
+
+/* Info Box Styles */
+.info-box {
+  padding: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--card);
+  margin-top: 0.75rem;
+}
+
+.info-box.success {
+  background-color: rgba(34, 197, 94, 0.1);
+  border-color: var(--success);
+}
+
+.info-box.warning {
+  background-color: rgba(245, 158, 11, 0.1);
+  border-color: #f59e0b;
+}
+
+.info-box.info {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-color: var(--ring);
+}
+
+[data-theme="dark"] .info-box.success {
+  background-color: rgba(34, 197, 94, 0.15);
+}
+
+[data-theme="dark"] .info-box.warning {
+  background-color: rgba(245, 158, 11, 0.15);
+}
+
+[data-theme="dark"] .info-box.info {
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+/* Price Display Card */
+.price-card {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  color: white;
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  margin-top: 1rem;
+}
+
+[data-theme="dark"] .price-card {
+  background: linear-gradient(135deg, #0091ff 0%, #0077cc 100%);
+}
+
+.price-label {
+  font-size: 0.875rem;
+  opacity: 0.9;
+  margin-bottom: 0.5rem;
+}
+
+.price-amount {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+/* Option Button Styles (for radio/checkbox alternatives) */
+.option-button {
+  padding: 1rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--background);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.option-button:hover {
+  border-color: var(--ring);
+  background-color: var(--card);
+}
+
+.option-button.selected {
+  border-color: var(--ring);
+  background-color: rgba(59, 130, 246, 0.1);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .option-button:hover {
+  border-color: #0091ff;
+}
+
+[data-theme="dark"] .option-button.selected {
+  border-color: #0091ff;
+  background-color: rgba(0, 145, 255, 0.15);
+}
+
+/* Review Summary Card */
+.review-card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.review-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.review-item:last-child {
+  margin-bottom: 0;
+}
+
+.review-icon {
+  margin-right: 0.75rem;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.review-content {
+  flex: 1;
+}
+
+.review-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.review-value {
+  font-size: 0.875rem;
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+/* Cost Breakdown Styles */
+.cost-breakdown {
+  background-color: var(--background);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.cost-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cost-item:last-child {
+  border-bottom: none;
+}
+
+.cost-item.total {
+  border-top: 2px solid var(--border);
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.cost-label {
+  color: var(--foreground);
+}
+
+.cost-value {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.cost-discount {
+  color: var(--success);
+}
+
+/* Slider Input Styles */
+.slider-container {
+  margin: 1.5rem 0;
+}
+
+.slider-input {
+  width: 100%;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--border);
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider-input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .slider-input::-webkit-slider-thumb {
+  background: #0091ff;
+}
+
+[data-theme="dark"] .slider-input::-moz-range-thumb {
+  background: #0091ff;
+}
+
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Edit Button Styles */
+.edit-button {
+  font-size: 0.875rem;
+  color: var(--ring);
+  background: none;
+  border: 1px solid var(--ring);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.edit-button:hover {
+  background-color: var(--ring);
+  color: white;
+}
+
+[data-theme="dark"] .edit-button {
+  color: #0091ff;
+  border-color: #0091ff;
+}
+
+[data-theme="dark"] .edit-button:hover {
+  background-color: #0091ff;
+  color: white;
+}
+
+/* ============================================
+   SIDEBAR HEADER & MOBILE PROGRESS BAR
+   ============================================ */
+
+/* Desktop Sidebar Header - Hidden on Mobile */
+.desktop-sidebar-header {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .desktop-sidebar-header {
+    display: block;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+.sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar-header-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--foreground);
+  line-height: 1.3;
+  margin: 0;
+}
+
+.sidebar-header-tagline {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Desktop Steps Container - Hidden on Mobile */
+.desktop-steps {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .desktop-steps {
+    display: block;
+  }
+}
+
+/* Mobile App Header inside Progress Bar */
+.mobile-app-header {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .mobile-app-header {
+    display: none;
+  }
+}
+
+.mobile-app-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--foreground);
+  line-height: 1.3;
+  margin: 0 0 0.375rem 0;
+}
+
+.mobile-app-tagline {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.mobile-header-divider {
+  height: 1px;
+  background-color: var(--border);
+  margin: 1rem 0 0.875rem 0;
+}
+
+/* Update Mobile Progress Bar to show on mobile only */
+@media (min-width: 768px) {
+  .mobile-progress-bar-compact {
+    display: none;
+  }
+}
+
+/* Make sidebar sticky on mobile */
+@media (max-width: 767px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin-bottom: 1rem;
+    border-radius: 0 0 var(--radius) var(--radius);
   }
 }

@@ -178,97 +178,200 @@ export function StepThree({ formData, updateFormData, prevStep }: StepThreeProps
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">Review & Pembayaran</h2>
-      <p className="text-gray-600 mb-6">
+      <h2 className="text-lg font-semibold mb-2">Review & Pembayaran</h2>
+      <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
         Pastikan kamu review survei sebelum melakukan pembayaran
       </p>
 
       <div className="space-y-6">
-        <div className="rounded-lg border border-gray-200 overflow-hidden">
-          <div className="p-6">
-            <h3 className="text-lg font-medium mb-4">Rincian Harga</h3>
-            <p className="text-sm text-gray-600 mb-6">
-              Pastikan kamu review survei sebelum melakukan pembayaran
-            </p>
+        {/* SECTION: SURVEY OVERVIEW */}
+        <div className="section-card">
+          <div className="section-header">
+            <span className="section-icon">📋</span>
+            <h3 className="section-title">SURVEY OVERVIEW</h3>
+          </div>
 
+          <div className="review-card">
+            <h4 className="font-semibold text-lg mb-3">{formData.title}</h4>
             <div className="space-y-2">
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span>Jumlah pertanyaan: {formData.questionCount}</span>
-                <span className="font-medium">Rp {formatRupiah(costCalculation.adCost / formData.duration)}</span>
+              <div className="review-item">
+                <span className="review-icon">📝</span>
+                <div className="review-content">
+                  <div className="review-label">Questions</div>
+                  <div className="review-value">{formData.questionCount} pertanyaan</div>
+                </div>
               </div>
-
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span>Durasi: {formData.duration} Hari</span>
-                <span className="font-medium">x {formData.duration}</span>
+              <div className="review-item">
+                <span className="review-icon">⏱️</span>
+                <div className="review-content">
+                  <div className="review-label">Campaign Duration</div>
+                  <div className="review-value">{formData.duration} hari ({formData.startDate} - {formData.endDate})</div>
+                </div>
               </div>
-
-              <div className="flex justify-between py-3 border-b border-gray-100 font-medium">
-                <span>Biaya iklan</span>
-                <span>Rp {formatRupiah(costCalculation.adCost)}</span>
+              <div className="review-item">
+                <span className="review-icon">🎯</span>
+                <div className="review-content">
+                  <div className="review-label">Target Criteria</div>
+                  <div className="review-value">{formData.criteriaResponden}</div>
+                </div>
+              </div>
+              <div className="review-item">
+                <span className="review-icon">🎁</span>
+                <div className="review-content">
+                  <div className="review-label">Incentive</div>
+                  <div className="review-value">{formData.winnerCount} pemenang × Rp {formatRupiah(formData.prizePerWinner)}</div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200 overflow-hidden">
-          <div className="p-6">
-            <div className="flex justify-between py-3">
-              <span>Insentif ke Responden</span>
-              <span className="font-medium">Rp {formatRupiah(costCalculation.incentiveCost)}</span>
+        {/* SECTION: YOUR INFORMATION */}
+        <div className="section-card">
+          <div className="section-header">
+            <span className="section-icon">👤</span>
+            <h3 className="section-title">YOUR INFORMATION</h3>
+          </div>
+
+          <div className="review-card">
+            <div className="space-y-2">
+              <div className="review-item">
+                <span className="review-icon">👨‍🎓</span>
+                <div className="review-content">
+                  <div className="review-value">{formData.fullName}</div>
+                  <div className="review-label">{formData.status}</div>
+                </div>
+              </div>
+              <div className="review-item">
+                <span className="review-icon">📧</span>
+                <div className="review-content">
+                  <div className="review-value">{formData.email}</div>
+                </div>
+              </div>
+              <div className="review-item">
+                <span className="review-icon">📱</span>
+                <div className="review-content">
+                  <div className="review-value">{formData.phoneNumber}</div>
+                </div>
+              </div>
+              <div className="review-item">
+                <span className="review-icon">🎓</span>
+                <div className="review-content">
+                  <div className="review-value">{formData.department}, {formData.university}</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="form-group">
-          <label htmlFor="voucherCode" className="form-label">Kode voucher/referal (Opsional)</label>
-          <input
-            id="voucherCode"
-            type="text"
-            className="form-input"
-            placeholder="Masukkan kode"
-            value={formData.voucherCode || ''}
-            onChange={handleVoucherChange}
-          />
-          {voucherInfo.isValid && voucherInfo.message ? (
-            <p className="text-sm text-green-600 mt-2">
-              {voucherInfo.message}
-            </p>
-          ) : (
-            <p className="text-sm text-gray-500 mt-2">
-              Masukkan kode voucher jika Anda memilikinya untuk mendapatkan diskon
-            </p>
-          )}
+        {/* SECTION: PROMO CODE */}
+        <div className="section-card">
+          <div className="section-header">
+            <span className="section-icon">🎟️</span>
+            <h3 className="section-title">PROMO CODE</h3>
+            {voucherInfo.isValid && (
+              <span className="section-badge">✓</span>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="voucherCode" className="form-label">Kode voucher/referal (Opsional)</label>
+            <div className="input-wrapper">
+              <input
+                id="voucherCode"
+                type="text"
+                className="form-input input-with-validation"
+                placeholder="e.g., MAHASISWA10"
+                value={formData.voucherCode || ''}
+                onChange={handleVoucherChange}
+              />
+            </div>
+            {voucherInfo.isValid && voucherInfo.message ? (
+              <div className="info-box success mt-2">
+                <p className="text-sm font-medium">
+                  ✅ {voucherInfo.message}
+                </p>
+              </div>
+            ) : (
+              <span className="helper-text">
+                Masukkan kode voucher untuk mendapatkan diskon
+              </span>
+            )}
+          </div>
         </div>
 
-        {costCalculation.discount > 0 && (
-          <div className="flex justify-between text-green-600 py-3 border-t border-gray-200">
-            <span>Diskon</span>
-            <span>- Rp {formatRupiah(costCalculation.discount)}</span>
-          </div>
-        )}
-
-        <div className="border-t border-gray-200 pt-6 mt-4">
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-lg font-medium">Total Biaya</span>
-            <span className="text-2xl font-bold">Rp{formatRupiah(costCalculation.totalCost)}</span>
+        {/* SECTION: COST BREAKDOWN */}
+        <div className="section-card">
+          <div className="section-header">
+            <span className="section-icon">💰</span>
+            <h3 className="section-title">COST BREAKDOWN</h3>
           </div>
 
-          <div className="flex justify-between mt-8">
-            <button
-              type="button"
-              className="button button-secondary"
-              onClick={prevStep}
-            >
-              Kembali
-            </button>
-            <button
-              type="button"
-              className="button button-primary px-6"
-              onClick={handleSubmit}
-            >
-              Lanjut Bayar
-            </button>
+          <div className="cost-breakdown">
+            <div className="cost-item">
+              <div>
+                <div className="cost-label">Ad Campaign Cost</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {formData.questionCount} pertanyaan × Rp {formatRupiah(costCalculation.adCost / formData.duration)}/hari × {formData.duration} hari
+                </div>
+              </div>
+              <div className="cost-value">Rp {formatRupiah(costCalculation.adCost)}</div>
+            </div>
+
+            <div className="cost-item">
+              <div>
+                <div className="cost-label">Respondent Incentive</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {formData.winnerCount} pemenang × Rp {formatRupiah(formData.prizePerWinner)}
+                </div>
+              </div>
+              <div className="cost-value">Rp {formatRupiah(costCalculation.incentiveCost)}</div>
+            </div>
+
+            <div className="cost-item">
+              <div className="cost-label">Subtotal</div>
+              <div className="cost-value">Rp {formatRupiah(costCalculation.adCost + costCalculation.incentiveCost)}</div>
+            </div>
+
+            {costCalculation.discount > 0 && (
+              <div className="cost-item">
+                <div className="cost-label">Discount</div>
+                <div className="cost-value cost-discount">- Rp {formatRupiah(costCalculation.discount)}</div>
+              </div>
+            )}
+
+            <div className="cost-item total">
+              <div className="cost-label">TOTAL PAYMENT</div>
+              <div className="cost-value" style={{fontSize: '1.5rem', color: 'var(--primary)'}}>
+                Rp {formatRupiah(costCalculation.totalCost)}
+              </div>
+            </div>
           </div>
+
+          <div className="info-box info mt-4">
+            <p className="text-xs">
+              ℹ️ <strong>Note:</strong> By proceeding, you agree to our Terms of Service and Privacy Policy
+            </p>
+          </div>
+        </div>
+
+        {/* ACTION BUTTONS */}
+        <div className="flex justify-between mt-8">
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={prevStep}
+          >
+            ← Kembali
+          </button>
+          <button
+            type="button"
+            className="button button-primary px-8"
+            onClick={handleSubmit}
+            style={{fontSize: '1rem', fontWeight: '600'}}
+          >
+            💳 Proceed to Payment
+          </button>
         </div>
       </div>
     </div>

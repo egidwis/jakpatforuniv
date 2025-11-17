@@ -204,32 +204,36 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">{t('surveyDetails')}</h2>
-      <p className="text-gray-600 mb-6">{t('chooseSurveySource')}</p>
+      <h2 className="text-lg font-semibold mb-2">{t('surveyDetails')}</h2>
+      <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>{t('chooseSurveySource')}</p>
 
       {/* Source Selection - Google Forms API Hidden for now */}
       {!surveySource && (
-        <div className="mb-8">
+        <div className="mb-8 max-w-3xl mx-auto">
           <div className="grid grid-cols-1 gap-4">
             {/* Google Form Option */}
             <div>
               <button
                 type="button"
                 onClick={() => handleSourceSelection('google')}
-                className="p-6 border-2 border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-all duration-200 text-left group"
+                className="option-button w-full p-6 border-2 rounded-lg transition-all duration-200 text-left group"
+                style={{
+                  borderColor: 'var(--border)',
+                  backgroundColor: 'var(--card)',
+                }}
               >
                 <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                    <svg className="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="currentColor">
+                  <div className="flex-shrink-0 w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center group-hover:bg-green-200 dark:group-hover:bg-green-900/50 transition-colors">
+                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 mb-2">{t('googleFormOption')}</h3>
-                    <p className="text-sm text-gray-600 mb-3">
+                    <h3 className="font-semibold mb-2" style={{ color: 'var(--foreground)' }}>{t('googleFormOption')}</h3>
+                    <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>
                       {t('googleFormDescription')}
                     </p>
-                    <div className="flex items-center text-xs text-green-600">
+                    <div className="flex items-center text-xs text-green-600 dark:text-green-400">
                       <CheckCircle className="w-4 h-4 mr-1" />
                       {t('googleDriveAccess')}
                     </div>
@@ -242,20 +246,24 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
             <button
               type="button"
               onClick={() => handleSourceSelection('other')}
-              className="p-6 border-2 border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 text-left group"
+              className="option-button w-full p-6 border-2 rounded-lg transition-all duration-200 text-left group"
+              style={{
+                borderColor: 'var(--border)',
+                backgroundColor: 'var(--card)',
+              }}
             >
               <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                  <svg className="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                  <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">{t('otherSourceOption')}</h3>
-                  <p className="text-sm text-gray-600 mb-3">
+                  <h3 className="font-semibold mb-2" style={{ color: 'var(--foreground)' }}>{t('otherSourceOption')}</h3>
+                  <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>
                     {t('otherSourceDescription')}
                   </p>
-                  <div className="flex items-center text-xs text-blue-600">
+                  <div className="flex items-center text-xs text-blue-600 dark:text-blue-400">
                     <AlertTriangle className="w-4 h-4 mr-1" />
                     {t('manualInputRequired')}
                   </div>
@@ -327,7 +335,7 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
           <>
             {/* Show success info for Google Drive imports */}
             {surveySource === 'google' && !formData.isManualEntry && formData.title && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
+              <div className="info-box success mb-4">
                 <div className="flex items-start gap-2">
                   <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
@@ -340,159 +348,254 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
               </div>
             )}
 
-            {/* Show Link Survey for Google Drive imports */}
-            {surveySource === 'google' && formData.surveyUrl && (
-              <div className="form-group mb-6">
-                <label htmlFor="importedSurveyUrl" className="form-label">
-                  Link Survey <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>
-                </label>
-                <input
-                  id="importedSurveyUrl"
-                  type="text"
-                  className="form-input bg-gray-50 text-gray-700"
-                  value={formData.surveyUrl}
-                  readOnly
-                />
-                <p className="text-sm text-gray-500 mt-2">
-                  Link Google Form yang diimport dari Drive Anda
-                </p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="form-group">
-                <label htmlFor="title" className="form-label">
-                  {t('surveyTitle')} <span className="text-red-500">*</span>
-                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
-                </label>
-                <input
-                  id="title"
-                  type="text"
-                  className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
-                  placeholder={t('surveyTitlePlaceholder')}
-                  value={formData.title}
-                  onChange={(e) => updateFormData({ title: e.target.value })}
-                  readOnly={surveySource === 'google'}
-                  required
-                />
+            {/* SECTION: SURVEY INFORMATION */}
+            <div className="section-card">
+              <div className="section-header">
+                <span className="section-icon">📝</span>
+                <h3 className="section-title">SURVEY INFORMATION</h3>
+                {formData.title && formData.description && formData.questionCount > 0 && (
+                  <span className="section-badge">✓</span>
+                )}
               </div>
 
-              <div className="form-group">
-                <label htmlFor="questionCount" className="form-label">
-                  {t('questionCount')} <span className="text-red-500">*</span>
-                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
-                </label>
-                <input
-                  id="questionCount"
-                  type="number"
-                  className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
-                  placeholder={t('questionCountPlaceholder')}
-                  value={formData.questionCount || ''}
-                  onChange={(e) => updateFormData({ questionCount: parseInt(e.target.value) || 0 })}
-                  readOnly={surveySource === 'google'}
-                  min={1}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="description" className="form-label">
-                {t('surveyDescription')} <span className="text-red-500">*</span>
-                {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
-              </label>
-              <textarea
-                id="description"
-                className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
-                placeholder={t('surveyDescriptionPlaceholder')}
-                value={formData.description}
-                onChange={(e) => updateFormData({ description: e.target.value })}
-                readOnly={surveySource === 'google'}
-                rows={4}
-                required
-              />
-            </div>
-
-        <div className="form-group">
-          <label htmlFor="criteriaResponden" className="form-label">Kriteria Responden</label>
-          <textarea
-            id="criteriaResponden"
-            className="form-input"
-            placeholder="Contoh : usia, pekerjaan, domisili"
-            value={formData.criteriaResponden}
-            onChange={(e) => updateFormData({ criteriaResponden: e.target.value })}
-            rows={3}
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="duration" className="form-label">Durasi survey iklan (hari)</label>
-          <input
-            id="duration"
-            type="number"
-            className="form-input"
-            placeholder="Masukkan durasi dalam hari"
-            value={formData.duration || ''}
-            onChange={(e) => updateFormData({ duration: parseInt(e.target.value) || 1 })}
-            min={1}
-            max={30}
-          />
-          <p className="text-sm text-gray-500 mt-2">
-            Pilih durasi iklan survey dari 1-30 hari
-          </p>
-
-          <div className="text-sm text-gray-500 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="mb-2 font-medium">Harga berdasarkan jumlah pertanyaan:</p>
-            <p>Max 15 pertanyaan = Rp 150.000/hari</p>
-            <p>Max 30 pertanyaan = Rp 200.000/hari</p>
-            <p>Max 50 pertanyaan = Rp 300.000/hari</p>
-          </div>
-        </div>
-
-        <div className="border-t border-gray-200 pt-6 mt-8">
-          <div className="rounded-lg border border-gray-200 overflow-hidden mb-6">
-            <div className="p-6">
-              <h3 className="text-lg font-medium mb-4">Insentif ke responden</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                Total insentif nantinya akan dimasukkan ke link pembayaran beserta biaya iklan, dari pihak Jakpat akan mendistribusikan insentif ke responden secara otomatis.
-              </p>
+              {/* Show Link Survey for Google Drive imports */}
+              {surveySource === 'google' && formData.surveyUrl && (
+                <div className="form-group mb-6">
+                  <label htmlFor="importedSurveyUrl" className="form-label">
+                    Link Survey <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>
+                  </label>
+                  <div className="input-wrapper">
+                    <input
+                      id="importedSurveyUrl"
+                      type="text"
+                      className="form-input bg-gray-50 text-gray-700 input-with-validation"
+                      value={formData.surveyUrl}
+                      readOnly
+                    />
+                    <CheckCircle className="validation-icon valid" />
+                  </div>
+                  <span className="helper-text">Link Google Form yang diimport dari Drive Anda</span>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="form-group">
-                  <label htmlFor="winnerCount" className="form-label">Jumlah Pemenang</label>
-                  <input
-                    id="winnerCount"
-                    type="number"
-                    className="form-input"
-                    placeholder="Min. 2"
-                    value={formData.winnerCount}
-                    onChange={(e) => updateFormData({ winnerCount: parseInt(e.target.value) || 0 })}
-                    min={2}
-                  />
-                  <p className="text-sm text-gray-500 mt-2">Minimal 2 pemenang</p>
+                  <label htmlFor="title" className="form-label">
+                    {t('surveyTitle')} <span className="text-red-500">*</span>
+                    {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
+                  </label>
+                  <div className="input-wrapper">
+                    <input
+                      id="title"
+                      type="text"
+                      className={`form-input input-with-validation ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
+                      placeholder={t('surveyTitlePlaceholder')}
+                      value={formData.title}
+                      onChange={(e) => updateFormData({ title: e.target.value })}
+                      readOnly={surveySource === 'google'}
+                      required
+                    />
+                    {formData.title && (
+                      <CheckCircle className="validation-icon valid" />
+                    )}
+                  </div>
+                  <span className="helper-text">e.g., Customer Satisfaction Survey</span>
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="prizePerWinner" className="form-label">Hadiah per-pemenang</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
+                  <label htmlFor="questionCount" className="form-label">
+                    {t('questionCount')} <span className="text-red-500">*</span>
+                    {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
+                  </label>
+                  <div className="input-wrapper">
                     <input
-                      id="prizePerWinner"
+                      id="questionCount"
                       type="number"
-                      className="form-input pl-10"
-                      placeholder="Min. Rp 25.000"
-                      value={formData.prizePerWinner}
-                      onChange={(e) => updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 })}
-                      min={25000}
-                      step={1000}
+                      className={`form-input input-with-validation ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
+                      placeholder={t('questionCountPlaceholder')}
+                      value={formData.questionCount || ''}
+                      onChange={(e) => updateFormData({ questionCount: parseInt(e.target.value) || 0 })}
+                      readOnly={surveySource === 'google'}
+                      min={1}
+                      required
                     />
+                    {formData.questionCount > 0 && (
+                      <CheckCircle className="validation-icon valid" />
+                    )}
                   </div>
-                  <p className="text-sm text-gray-500 mt-2">Minimal Rp 25.000 per pemenang</p>
+                  {formData.questionCount > 0 && (
+                    <span className="helper-text">
+                      💰 Rp {formData.questionCount <= 15 ? '150.000' : formData.questionCount <= 30 ? '200.000' : formData.questionCount <= 50 ? '300.000' : formData.questionCount <= 70 ? '400.000' : '500.000'}/hari
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="description" className="form-label">
+                  {t('surveyDescription')} <span className="text-red-500">*</span>
+                  {surveySource === 'google' && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
+                </label>
+                <textarea
+                  id="description"
+                  className={`form-input ${surveySource === 'google' ? 'bg-gray-50 text-gray-700' : ''}`}
+                  placeholder={t('surveyDescriptionPlaceholder')}
+                  value={formData.description}
+                  onChange={(e) => updateFormData({ description: e.target.value })}
+                  readOnly={surveySource === 'google'}
+                  rows={4}
+                  required
+                />
+                <div className="char-counter">
+                  {formData.description.length}/500 characters
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+
+            {/* SECTION: SURVEY CONFIGURATION */}
+            <div className="section-card">
+              <div className="section-header">
+                <span className="section-icon">⚙️</span>
+                <h3 className="section-title">SURVEY CONFIGURATION</h3>
+                {formData.criteriaResponden && formData.duration > 0 && (
+                  <span className="section-badge">✓</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="criteriaResponden" className="form-label">
+                  Kriteria Responden <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="criteriaResponden"
+                  className="form-input"
+                  placeholder="Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif"
+                  value={formData.criteriaResponden}
+                  onChange={(e) => updateFormData({ criteriaResponden: e.target.value })}
+                  rows={3}
+                />
+                <div className="char-counter">
+                  {formData.criteriaResponden.length}/200 characters
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="duration" className="form-label">
+                  Durasi survey iklan (hari) <span className="text-red-500">*</span>
+                </label>
+                <div className="input-wrapper">
+                  <input
+                    id="duration"
+                    type="number"
+                    className="form-input input-with-validation"
+                    placeholder="Masukkan durasi dalam hari (1-30)"
+                    value={formData.duration || ''}
+                    onChange={(e) => updateFormData({ duration: parseInt(e.target.value) || 1 })}
+                    min={1}
+                    max={30}
+                  />
+                  {formData.duration > 0 && formData.duration <= 30 && (
+                    <CheckCircle className="validation-icon valid" />
+                  )}
+                </div>
+                <span className="helper-text">
+                  Pilih durasi iklan survey dari 1-30 hari
+                </span>
+
+                {formData.duration > 0 && formData.startDate && (
+                  <div className="info-box info mt-3">
+                    <p className="text-sm">
+                      📅 <strong>Campaign Period:</strong> {formData.startDate} → {formData.endDate || 'calculating...'}
+                    </p>
+                  </div>
+                )}
+
+                <div className="info-box mt-4">
+                  <p className="mb-2 font-medium text-sm">💰 Harga berdasarkan jumlah pertanyaan:</p>
+                  <div className="text-sm space-y-1">
+                    <p>• Max 15 pertanyaan = Rp 150.000/hari</p>
+                    <p>• Max 30 pertanyaan = Rp 200.000/hari</p>
+                    <p>• Max 50 pertanyaan = Rp 300.000/hari</p>
+                    <p>• Max 70 pertanyaan = Rp 400.000/hari</p>
+                    <p>• Lebih dari 70 = Rp 500.000/hari</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION: INCENTIVE SETTINGS */}
+            <div className="section-card">
+              <div className="section-header">
+                <span className="section-icon">🎁</span>
+                <h3 className="section-title">INCENTIVE SETTINGS</h3>
+                {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
+                  <span className="section-badge">✓</span>
+                )}
+              </div>
+
+              <div className="info-box warning mb-6">
+                <p className="text-sm">
+                  <strong>ℹ️ Info:</strong> Total insentif nantinya akan dimasukkan ke link pembayaran beserta biaya iklan.
+                  Pihak Jakpat akan mendistribusikan insentif ke responden secara otomatis.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="form-group">
+                  <label htmlFor="winnerCount" className="form-label">
+                    Jumlah Pemenang <span className="text-red-500">*</span>
+                  </label>
+                  <div className="input-wrapper">
+                    <input
+                      id="winnerCount"
+                      type="number"
+                      className="form-input input-with-validation"
+                      placeholder="Minimal 2 pemenang"
+                      value={formData.winnerCount}
+                      onChange={(e) => updateFormData({ winnerCount: parseInt(e.target.value) || 0 })}
+                      min={2}
+                    />
+                    {formData.winnerCount >= 2 && (
+                      <CheckCircle className="validation-icon valid" />
+                    )}
+                  </div>
+                  <span className="helper-text">Minimal 2 pemenang</span>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="prizePerWinner" className="form-label">
+                    Hadiah per-pemenang <span className="text-red-500">*</span>
+                  </label>
+                  <div className="input-wrapper">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
+                      <input
+                        id="prizePerWinner"
+                        type="number"
+                        className="form-input pl-10 input-with-validation"
+                        placeholder="Min. Rp 25.000"
+                        value={formData.prizePerWinner}
+                        onChange={(e) => updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 })}
+                        min={25000}
+                        step={1000}
+                      />
+                      {formData.prizePerWinner >= 25000 && (
+                        <CheckCircle className="validation-icon valid" style={{ right: '2.75rem' }} />
+                      )}
+                    </div>
+                  </div>
+                  <span className="helper-text">Minimal Rp 25.000 per pemenang</span>
+                </div>
+              </div>
+
+              {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
+                <div className="info-box success mt-4">
+                  <p className="text-sm font-medium">
+                    💰 Total Incentive: Rp {(formData.winnerCount * formData.prizePerWinner).toLocaleString('id-ID')}
+                  </p>
+                </div>
+              )}
+            </div>
           </>
         )}
 

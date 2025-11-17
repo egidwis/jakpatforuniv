@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { MultiStepForm } from './components/MultiStepForm';
-import { ThemeToggle } from './components/ThemeToggle';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { ThemeToggle } from './components/ThemeToggle';
 import { InternalDashboard } from './components/InternalDashboard';
 import { useLanguage } from './i18n/LanguageContext';
 import AdminPage from './pages/AdminPage';
@@ -32,17 +32,6 @@ function AppContent() {
 
   return (
     <div className="min-h-screen">
-      <header className="header">
-        <div className="container">
-          <div className="flex justify-end items-center gap-4 mb-4">
-            <LanguageSwitcher />
-            <ThemeToggle />
-          </div>
-          <h1>{t('appTitle')}</h1>
-          <p>{t('appTagline')}</p>
-        </div>
-      </header>
-
       <main className="container py-8">
         <Routes>
           <Route path="/" element={<MultiStepForm />} />
@@ -54,10 +43,14 @@ function AppContent() {
       </main>
 
       <footer className="footer">
-        <div className="container">
-          <p>
+        <div className="container footer-content">
+          <p className="footer-text">
             {t('footer')}
           </p>
+          <div className="footer-actions">
+            <ThemeToggle />
+            <LanguageSwitcher />
+          </div>
         </div>
       </footer>
 
