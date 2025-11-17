@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 // Helper function untuk mengirim data langsung ke Google Sheets (untuk testing)
 async function sendDirectDataToSheets(data, corsHeaders) {
   try {
-    const googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbwOQzDhxJ88ms5EyNCEunzxi6B74KIK5rAT6QPaxPTqjexJsHritaEpnPt6wCA9q7Vj/exec';
+    const googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbwVMEQRKrOX-kKimjfTuD0UDeeDq4E8aQ-GCFDvfEXXvlvqUfZ-vVmFGbmBIWEUls1Q/exec';
 
     console.log('Sending direct data to Google Sheets:', {
       url: googleAppsScriptUrl,
@@ -190,7 +190,7 @@ export async function onRequest(context) {
     });
 
     // URL Google Apps Script web app yang sudah diperbaiki
-    const googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbwOQzDhxJ88ms5EyNCEunzxi6B74KIK5rAT6QPaxPTqjexJsHritaEpnPt6wCA9q7Vj/exec';
+    const googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbwVMEQRKrOX-kKimjfTuD0UDeeDq4E8aQ-GCFDvfEXXvlvqUfZ-vVmFGbmBIWEUls1Q/exec';
     // Backup mock endpoint jika Google Apps Script gagal
     // const mockUrl = 'https://c1e63347.jakpatforuniv-submit.pages.dev/api/mock-sheets';
 
