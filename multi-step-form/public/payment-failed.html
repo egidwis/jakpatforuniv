@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Submit Survey Sukses | Jakpat for Universities</title>
+  <title>Pembayaran Gagal | Jakpat for Universities</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Lottie Player Script -->
+  <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
   <style>
     * {
       margin: 0;
@@ -16,7 +18,7 @@
 
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #10b981 100%);
+      background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #ef4444 100%);
       color: white;
       min-height: 100vh;
       display: flex;
@@ -36,7 +38,7 @@
       right: -50%;
       width: 100%;
       height: 100%;
-      background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(239, 68, 68, 0.15) 0%, transparent 70%);
       animation: pulse 4s ease-in-out infinite;
     }
 
@@ -62,7 +64,7 @@
       margin-bottom: 10px;
     }
 
-    .success-icon-container {
+    .failed-icon-container {
       width: 250px;
       height: 250px;
       margin: 10px 0;
@@ -71,16 +73,17 @@
       justify-content: center;
     }
 
-    .success-icon {
+    .failed-icon {
       width: 200px;
       height: 200px;
-      filter: drop-shadow(0 0 20px rgba(16, 185, 129, 0.4));
-      animation: bounce 1s ease-in-out;
+      filter: drop-shadow(0 0 20px rgba(239, 68, 68, 0.3));
+      animation: shake 0.5s ease-in-out;
     }
 
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-20px); }
+    @keyframes shake {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(-5deg); }
+      75% { transform: rotate(5deg); }
     }
 
     .message {
@@ -90,12 +93,21 @@
     }
 
     .highlight {
-      color: #6ee7b7;
+      color: #fca5a5;
       font-weight: 500;
     }
 
+    .cta-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      max-width: 300px;
+      margin-top: 20px;
+    }
+
     .cta-button {
-      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
       color: white;
       font-weight: 600;
       font-size: 1rem;
@@ -106,21 +118,30 @@
       text-decoration: none;
       transition: all 0.2s ease;
       width: 100%;
-      max-width: 300px;
-      margin-top: 20px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
       display: inline-block;
     }
 
     .cta-button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 12px rgba(16, 185, 129, 0.4);
-      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      box-shadow: 0 6px 12px rgba(239, 68, 68, 0.4);
+      background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    }
+
+    .cta-button-secondary {
+      background: rgba(0, 0, 0, 0.3) !important;
+      color: white;
+      border: 2px solid rgba(255, 255, 255, 0.3) !important;
+    }
+
+    .cta-button-secondary:hover {
+      background: rgba(0, 0, 0, 0.5) !important;
+      border-color: rgba(255, 255, 255, 0.5) !important;
     }
 
     .info-box {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-      border: 1px solid rgba(16, 185, 129, 0.3);
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+      border: 1px solid rgba(239, 68, 68, 0.3);
       border-radius: 12px;
       padding: 16px;
       margin-top: 20px;
@@ -129,17 +150,21 @@
       backdrop-filter: blur(10px);
     }
 
+    .info-box strong {
+      color: #fca5a5;
+    }
+
     @media (max-width: 640px) {
       h1 {
         font-size: 2rem;
       }
 
-      .success-icon-container {
+      .failed-icon-container {
         width: 200px;
         height: 200px;
       }
 
-      .success-icon {
+      .failed-icon {
         width: 150px;
         height: 150px;
       }
@@ -250,11 +275,11 @@
 
     /* Light theme adjustments */
     [data-theme="light"] body {
-      background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 30%, #d1fae5 60%, #6ee7b7 100%);
+      background: linear-gradient(135deg, #ffffff 0%, #fef2f2 30%, #fee2e2 60%, #fca5a5 100%);
     }
 
     [data-theme="light"] body::before {
-      background: radial-gradient(circle, rgba(110, 231, 183, 0.3) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(252, 165, 165, 0.3) 0%, transparent 70%);
     }
 
     [data-theme="light"] .footer {
@@ -294,7 +319,7 @@
     }
 
     [data-theme="light"] .language-button.active {
-      color: #10b981;
+      color: #ef4444;
       font-weight: 600;
     }
 
@@ -308,29 +333,42 @@
     }
 
     [data-theme="light"] .highlight {
-      color: #059669;
-    }
-
-    [data-theme="light"] .success-icon {
-      filter: drop-shadow(0 0 20px rgba(16, 185, 129, 0.3));
-    }
-
-    [data-theme="light"] .success-icon circle {
-      stroke: #10b981;
-    }
-
-    [data-theme="light"] .success-icon path {
-      stroke: #10b981;
-    }
-
-    [data-theme="light"] .info-box {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(0, 0, 0, 0.05) 100%);
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      color: #1e293b;
+      color: #dc2626;
     }
 
     [data-theme="light"] .info-box strong {
-      color: #059669;
+      color: #dc2626;
+    }
+
+    [data-theme="light"] .info-box {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(0, 0, 0, 0.05) 100%);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #1e293b;
+    }
+
+    [data-theme="light"] .failed-icon {
+      filter: drop-shadow(0 0 20px rgba(239, 68, 68, 0.3));
+    }
+
+    [data-theme="light"] .failed-icon circle {
+      stroke: #dc2626;
+    }
+
+    [data-theme="light"] .failed-icon line {
+      stroke: #dc2626;
+    }
+
+    [data-theme="light"] .cta-button-secondary {
+      color: #dc2626 !important;
+      border-color: #dc2626 !important;
+      border-width: 2px;
+      background: white !important;
+    }
+
+    [data-theme="light"] .cta-button-secondary:hover {
+      background: #fef2f2 !important;
+      border-color: #b91c1c !important;
+      color: #b91c1c !important;
     }
 
     @media (max-width: 640px) {
@@ -347,28 +385,35 @@
 </head>
 <body>
   <div class="container">
-    <h1 id="pageTitle">Submit Survey Sukses!</h1>
+    <h1>Pembayaran Gagal</h1>
 
-    <!-- Success Icon -->
-    <div class="success-icon-container">
-      <svg class="success-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <!-- Failed Icon -->
+    <div class="failed-icon-container">
+      <svg class="failed-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
         <circle cx="50" cy="50" r="45" fill="none" stroke="white" stroke-width="3" opacity="0.3"/>
         <circle cx="50" cy="50" r="35" fill="rgba(255, 255, 255, 0.1)"/>
-        <path d="M30 50 L45 65 L70 35" fill="none" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="35" y1="35" x2="65" y2="65" stroke="white" stroke-width="4" stroke-linecap="round"/>
+        <line x1="65" y1="35" x2="35" y2="65" stroke="white" stroke-width="4" stroke-linecap="round"/>
       </svg>
     </div>
 
     <div class="message">
-      <span id="processingText">Survey kamu <span class="highlight">sedang kami proses</span>.</span><br>
-      <span id="teamContactText">Tim kami akan segera menghubungi kamu untuk langkah selanjutnya.</span>
+      Maaf, pembayaran kamu <span class="highlight">tidak berhasil diproses</span>.<br>
+      Silakan hubungi admin untuk bantuan lebih lanjut.
     </div>
 
-    <a id="confirmButton" href="https://wa.me/6287759153120?text=Halo%20Jakpat%2C%20saya%20ingin%20mengkonfirmasi%20survey%20yang%20baru%20saja%20saya%20submit." class="cta-button">
-      Konfirmasi ke Jakpat
-    </a>
+    <div class="cta-container">
+      <a href="https://wa.me/6287759153120?text=Halo%20Jakpat%2C%20saya%20mengalami%20kendala%20saat%20pembayaran%20iklan%20survei.%20Mohon%20dibantu%20ya%20kak." class="cta-button">
+        Hubungi Admin
+      </a>
+
+      <a href="/" class="cta-button cta-button-secondary">
+        Kembali ke Beranda
+      </a>
+    </div>
 
     <div class="info-box">
-      <strong>✨ <span id="nextStepsLabel">Next Steps:</span></strong> <span id="nextStepsText">Kami akan meninjau survey Anda dan menghubungi Anda dalam 1-2 hari kerja untuk konfirmasi dan langkah selanjutnya.</span>
+      <strong>💡 Tips:</strong> Pastikan saldo mencukupi dan koneksi internet stabil sebelum mencoba pembayaran kembali.
     </div>
   </div>
 
@@ -412,21 +457,21 @@
     const translations = {
       id: {
         footer: 'Jakpat for Universities © 2025',
-        pageTitle: 'Submit Survey Sukses!',
-        processing: 'Survey kamu <span class="highlight">sedang kami proses</span>.',
-        teamContact: 'Tim kami akan segera menghubungi kamu untuk langkah selanjutnya.',
-        confirmButton: 'Konfirmasi ke Jakpat',
-        nextStepsLabel: 'Next Steps:',
-        nextStepsText: 'Kami akan meninjau survey Anda dan menghubungi Anda dalam 1-2 hari kerja untuk konfirmasi dan langkah selanjutnya.'
+        paymentFailed: 'Pembayaran Gagal',
+        failedMessage: 'Maaf, pembayaran kamu tidak berhasil diproses.',
+        contactAdmin: 'Silakan hubungi admin untuk bantuan lebih lanjut.',
+        contactButton: 'Hubungi Admin',
+        backToHome: 'Kembali ke Beranda',
+        tips: 'Tips: Pastikan saldo mencukupi dan koneksi internet stabil sebelum mencoba pembayaran kembali.'
       },
       en: {
         footer: 'Jakpat for Universities © 2025',
-        pageTitle: 'Survey Submitted Successfully!',
-        processing: 'Your survey is <span class="highlight">being processed</span>.',
-        teamContact: 'Our team will contact you shortly for next steps.',
-        confirmButton: 'Confirm with Jakpat',
-        nextStepsLabel: 'Next Steps:',
-        nextStepsText: 'We will review your survey and contact you within 1-2 business days for confirmation and next steps.'
+        paymentFailed: 'Payment Failed',
+        failedMessage: 'Sorry, your payment could not be processed.',
+        contactAdmin: 'Please contact admin for further assistance.',
+        contactButton: 'Contact Admin',
+        backToHome: 'Back to Home',
+        tips: 'Tips: Make sure you have sufficient balance and stable internet connection before retrying payment.'
       }
     };
 
@@ -462,33 +507,21 @@
     // Language Switcher
     const languageButtons = document.querySelectorAll('.language-button');
     const footerText = document.getElementById('footerText');
-    const pageTitle = document.getElementById('pageTitle');
-    const processingText = document.getElementById('processingText');
-    const teamContactText = document.getElementById('teamContactText');
-    const confirmButton = document.getElementById('confirmButton');
-    const nextStepsLabel = document.getElementById('nextStepsLabel');
-    const nextStepsText = document.getElementById('nextStepsText');
 
     function setLanguage(lang) {
-      localStorage.setItem('jakpat-language', lang);
+      localStorage.setItem('language', lang);
 
       // Update active button
       languageButtons.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.lang === lang);
       });
 
-      // Update all text content
+      // Update footer text
       footerText.textContent = translations[lang].footer;
-      pageTitle.textContent = translations[lang].pageTitle;
-      processingText.innerHTML = translations[lang].processing;
-      teamContactText.textContent = translations[lang].teamContact;
-      confirmButton.textContent = translations[lang].confirmButton;
-      nextStepsLabel.textContent = translations[lang].nextStepsLabel;
-      nextStepsText.textContent = translations[lang].nextStepsText;
     }
 
-    // Initialize language - use jakpat-language key to sync with main app
-    const savedLang = localStorage.getItem('jakpat-language') || 'id';
+    // Initialize language
+    const savedLang = localStorage.getItem('language') || 'id';
     setLanguage(savedLang);
 
     languageButtons.forEach(btn => {

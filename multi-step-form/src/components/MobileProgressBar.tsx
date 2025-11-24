@@ -1,15 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { SurveyFormData, CostCalculation } from '../types';
 
 interface MobileProgressBarProps {
   currentStep: number;
   steps: { number: number; title: string }[];
   totalCost: number;
   formatRupiah: (amount: number) => string;
+  formData?: SurveyFormData;
+  costCalculation?: CostCalculation;
 }
 
-export function MobileProgressBar({ currentStep, steps, totalCost, formatRupiah }: MobileProgressBarProps) {
+export function MobileProgressBar({
+  currentStep,
+  steps,
+  totalCost,
+  formatRupiah,
+  formData,
+  costCalculation
+}: MobileProgressBarProps) {
   const { t } = useLanguage();
+  const [isExpanded, setIsExpanded] = useState(false);
   const progressPercentage = ((currentStep - 1) / (steps.length - 1)) * 100;
   const currentStepTitle = steps.find(s => s.number === currentStep)?.title || '';
 
@@ -24,16 +35,10 @@ export function MobileProgressBar({ currentStep, steps, totalCost, formatRupiah 
       {/* Divider */}
       <div className="mobile-header-divider"></div>
 
-      {/* Step Title + Total Cost */}
-      <div className="mobile-progress-header">
+      {/* Step Title + Progress Track with Dots */}
+      <div className="mobile-progress-with-title">
         <h3 className="mobile-step-title">{currentStepTitle}</h3>
-        <div className="mobile-total-cost">
-          Total: Rp{formatRupiah(totalCost)}
-        </div>
-      </div>
-
-      {/* Progress Track with Dots */}
-      <div className="mobile-progress-track">
+        <div className="mobile-progress-track">
         <div
           className="mobile-progress-fill"
           style={{ width: `${progressPercentage}%` }}
@@ -62,7 +67,72 @@ export function MobileProgressBar({ currentStep, steps, totalCost, formatRupiah 
             );
           })}
         </div>
+        </div>
       </div>
+
+      {/* Divider between progress and total */}
+      <div className="mobile-progress-divider"></div>
+
+      {/* Total Cost with Chevron (Clickable if formData exists) */}
+      {formData && costCalculation ? (
+        <button
+          className="mobile-total-cost-header clickable"
+          onClick={() => setIsExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
+        >
+          <div className="mobile-total-cost-label">Total Biaya</div>
+          <div className="mobile-total-cost-amount-wrapper">
+            <span className="mobile-total-cost-amount">Rp{formatRupiah(totalCost)}</span>
+            <svg
+              className={`mobile-cost-chevron ${isExpanded ? 'expanded' : ''}`}
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="none"
+            >
+              <path
+                d="M5 7.5L10 12.5L15 7.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+        </button>
+      ) : (
+        <div className="mobile-total-cost-header">
+          <div className="mobile-total-cost-label">Total Biaya</div>
+          <div className="mobile-total-cost-amount">Rp{formatRupiah(totalCost)}</div>
+        </div>
+      )}
+
+      {/* Collapsible Cost Breakdown - Only show if expanded */}
+      {formData && costCalculation && isExpanded && (
+        <div className="mobile-cost-breakdown">
+          <div className="mobile-cost-formula">
+            <span>{formData.questionCount} pertanyaan × {formData.duration} (hari)</span>
+            <span>+ Insentif responden</span>
+          </div>
+
+          <div className="mobile-cost-items">
+            <div className="mobile-cost-row">
+              <span>Ad Cost</span>
+              <span>Rp {formatRupiah(costCalculation.adCost)}</span>
+            </div>
+            <div className="mobile-cost-row">
+              <span>Incentive</span>
+              <span>Rp {formatRupiah(costCalculation.incentiveCost)}</span>
+            </div>
+            {costCalculation.discount > 0 && (
+              <div className="mobile-cost-row discount">
+                <span>Discount</span>
+                <span>- Rp {formatRupiah(costCalculation.discount)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { getFormSubmissionById } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
 import { ErrorPage } from './ErrorPage';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface PaymentSuccessProps {
   formId?: string;
 }
 
 export function PaymentSuccess({ formId }: PaymentSuccessProps) {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState<FormSubmission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +66,7 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
 
       // Tampilkan pesan error yang lebih spesifik
       if (error.message && (error.message.includes('network') || error.message.includes('timeout'))) {
-        setError('Gagal terhubung ke server. Periksa koneksi internet Anda.');
+        setError(t('errorConnectionFailed'));
 
         // Buat data simulasi untuk fallback
         setFormData({

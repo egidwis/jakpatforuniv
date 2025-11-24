@@ -359,7 +359,7 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
                 />
                 <label htmlFor="privacy-checkbox" className="text-sm text-gray-600">
                   {t('agreeToGiveAccess')}{' '}
-                  <a href="/privacy-policy" target="_blank" className="text-blue-600 hover:underline">
+                  <a href="https://jakpatforuniv.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                     {t('privacyPolicy')}
                   </a>{' '}
                   Jakpat.

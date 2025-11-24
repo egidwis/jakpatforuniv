@@ -19,8 +19,9 @@ export interface SurveyFormData {
   phoneNumber: string;
   university: string;
   department: string;
-  status: 'Mahasiswa' | 'Dosen' | 'Pelajar SMA/SMK';
-  referralSource: 'Tiktok' | 'Instagram' | 'LinkedIn' | 'Website Jakpat' | 'Chat GPT' | 'Rekomendasi Dosen' | 'Rekomendasi Teman';
+  status: string;
+  referralSource: string;
+  referralSourceOther?: string;
   winnerCount: number;
   prizePerWinner: number;
 

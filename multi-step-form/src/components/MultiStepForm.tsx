@@ -3,6 +3,7 @@ import type { SurveyFormData } from '../types';
 import { StepOne } from './StepOne';
 import { StepTwo } from './StepTwo';
 import { StepThree } from './StepThree';
+import { StepFour } from './StepFour';
 import { Sidebar } from './Sidebar';
 
 // Fungsi untuk mendapatkan tanggal hari ini dalam format YYYY-MM-DD
@@ -36,10 +37,11 @@ const defaultFormData: SurveyFormData = {
   phoneNumber: '',
   university: '',
   department: '',
-  status: 'Mahasiswa',
-  referralSource: 'Tiktok',
-  winnerCount: 1, // Minimal 1 pemenang
-  prizePerWinner: 0, // Default 0, akan diisi user
+  status: '',
+  referralSource: '',
+  referralSourceOther: '',
+  winnerCount: 0, // Default 0, akan diisi di step 2
+  prizePerWinner: 0, // Default 0, akan diisi di step 2
 
   // Step 3
   voucherCode: '',
@@ -52,12 +54,14 @@ export function MultiStepForm() {
 
   // Fungsi untuk pindah ke step berikutnya
   const nextStep = () => {
-    setCurrentStep(prev => Math.min(prev + 1, 3));
+    setCurrentStep(prev => Math.min(prev + 1, 4));
+    window.scrollTo(0, 0);
   };
 
   // Fungsi untuk kembali ke step sebelumnya
   const prevStep = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
+    window.scrollTo(0, 0);
   };
 
   // Fungsi untuk update form data
@@ -97,6 +101,15 @@ export function MultiStepForm() {
 
         {currentStep === 3 && (
           <StepThree
+            formData={formData}
+            updateFormData={updateFormData}
+            nextStep={nextStep}
+            prevStep={prevStep}
+          />
+        )}
+
+        {currentStep === 4 && (
+          <StepFour
             formData={formData}
             updateFormData={updateFormData}
             prevStep={prevStep}

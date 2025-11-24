@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { getFormSubmissionById } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
 import { ErrorPage } from './ErrorPage';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface PaymentFailedProps {
   formId?: string;
 }
 
 export function PaymentFailed({ formId }: PaymentFailedProps) {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState<FormSubmission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,7 @@ export function PaymentFailed({ formId }: PaymentFailedProps) {
 
       // Tampilkan pesan error yang lebih spesifik
       if (error.message && error.message.includes('network')) {
-        setError('Gagal terhubung ke server. Periksa koneksi internet Anda.');
+        setError(t('errorConnectionFailed'));
       } else if (error.code === 'PGRST116') {
         setError('Data form tidak ditemukan');
       } else {

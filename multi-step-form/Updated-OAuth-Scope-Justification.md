@@ -4,7 +4,7 @@
 
 ---
 
-**Jakpat for Universities is a survey distribution platform that helps universities distribute their surveys to our network of 1.7 million qualified respondents.**
+**Jakpat for Universities is a survey distribution platform that helps universities distribute their surveys to our network of 2 million qualified respondents.**
 
 **FORMS SCOPES USAGE:**
 
@@ -24,7 +24,7 @@
 
 ## Shorter Version (Under 1000 characters):
 
-**Jakpat for Universities distributes academic surveys to 1.7 million qualified respondents.**
+**Jakpat for Universities distributes academic surveys to 2 million qualified respondents.**
 
 **SCOPE USAGE:**
 **• forms.body.readonly:** Read university Google Forms structure for content validation and safety screening before distribution to our respondent network, protecting respondents from inappropriate content.

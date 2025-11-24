@@ -54,9 +54,10 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
   // Implementasi sederhana, bisa diganti dengan logika yang lebih kompleks
   if (!voucherCode) return 0;
 
-  // Contoh: kode "Mamikos" memberikan diskon 25%
+  // Kode JAKPATUNIV2025 memberikan diskon 25% dengan maksimal 50k
   if (voucherCode.toUpperCase() === 'JAKPATUNIV2025') {
-    return adCost * 0.25;
+    const discount = adCost * 0.25;
+    return Math.min(discount, 50000); // Maksimal potongan 50k
   }
 
   // Contoh: kode "Rakhma" memberikan diskon 10%
@@ -94,6 +95,39 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
     return adCost * 0.1;
   }
 
+  // Kode referral tambahan - semua 10%
+  if (voucherCode.toUpperCase() === 'JFUGITA') {
+    return adCost * 0.1;
+  }
+
+  if (voucherCode.toUpperCase() === 'JFUTANIA') {
+    return adCost * 0.1;
+  }
+
+  if (voucherCode.toUpperCase() === 'JFUEDO') {
+    return adCost * 0.1;
+  }
+
+  if (voucherCode.toUpperCase() === 'JFURAISA') {
+    return adCost * 0.1;
+  }
+
+  if (voucherCode.toUpperCase() === 'JFUANA') {
+    return adCost * 0.1;
+  }
+
+  if (voucherCode.toUpperCase() === 'JFUSALSA') {
+    return adCost * 0.1;
+  }
+
+  if (voucherCode.toUpperCase() === 'JFUNATALIA') {
+    return adCost * 0.1;
+  }
+
+  // Kode TEGARGANTENG memberikan diskon 20%
+  if (voucherCode.toUpperCase() === 'TEGARGANTENG') {
+    return adCost * 0.2;
+  }
 
   return 0;
 }
@@ -108,6 +142,14 @@ export function getVoucherInfo(voucherCode: string | undefined): { isValid: bool
 
   const upperCode = voucherCode.toUpperCase();
 
+  if (upperCode === 'JAKPATUNIV2025') {
+    return {
+      isValid: true,
+      message: 'Kode referal ini berlaku sampai 31 Januari 2026',
+      discount: 25
+    };
+  }
+
   if (upperCode === 'PPISWEDIA') {
     return {
       isValid: true,
@@ -117,7 +159,22 @@ export function getVoucherInfo(voucherCode: string | undefined): { isValid: bool
   }
 
   // Voucher lainnya tanpa pesan khusus
-  const validCodes = ['JAKPATUNIV2025', 'RA2025', 'JFUTYR', 'SEKARJFU', 'ADINDAJFU', 'RAJAJFU', 'SACIJFU'];
+  const validCodes = [
+    'RA2025',
+    'JFUTYR',
+    'SEKARJFU',
+    'ADINDAJFU',
+    'RAJAJFU',
+    'SACIJFU',
+    'JFUGITA',
+    'JFUTANIA',
+    'JFUEDO',
+    'JFURAISA',
+    'JFUANA',
+    'JFUSALSA',
+    'JFUNATALIA',
+    'TEGARGANTENG'
+  ];
   if (validCodes.includes(upperCode)) {
     return { isValid: true };
   }

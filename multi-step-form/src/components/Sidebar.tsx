@@ -32,16 +32,18 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
 
   // Define steps for desktop
   const desktopSteps = [
-    { number: 1, title: t('step1') },
-    { number: 2, title: t('step2') },
-    { number: 3, title: t('step3') }
+    { number: 1, title: 'Detail Survey' },
+    { number: 2, title: 'Konfigurasi Survey' },
+    { number: 3, title: 'Data Diri' },
+    { number: 4, title: 'Review' }
   ];
 
-  // Define steps for mobile (shorter titles)
+  // Define steps for mobile (match desktop titles)
   const mobileSteps = [
-    { number: 1, title: t('step1').split(' ')[0] }, // First word only
-    { number: 2, title: t('step2').split(' ')[0] },
-    { number: 3, title: t('step3').split(' ')[0] }
+    { number: 1, title: 'Detail Survey' },
+    { number: 2, title: 'Konfigurasi Survey' },
+    { number: 3, title: 'Data Diri' },
+    { number: 4, title: 'Review' }
   ];
 
   return (
@@ -57,6 +59,8 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
         steps={mobileSteps}
         totalCost={costCalculation.totalCost}
         formatRupiah={formatRupiah}
+        formData={formData}
+        costCalculation={costCalculation}
       />
 
       {/* Desktop Steps */}
