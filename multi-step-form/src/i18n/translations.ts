@@ -315,6 +315,8 @@ export const translations = {
     fillManually: "Isi Secara Manual",
     canChangeMethodLater: "Anda dapat mengubah metode nanti jika diperlukan",
     byContinuingAgree: "Dengan melanjutkan, Anda setuju dengan",
+    andText: "dan",
+    termsConditions: "Syarat dan Ketentuan",
     noGoogleForm: "Tidak punya Google Form?",
     fillManualOnly: "Isi Manual Saja",
 

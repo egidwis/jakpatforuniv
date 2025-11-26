@@ -47,7 +47,7 @@
   --foreground: #ffffff;
   --muted: #a0aec0;
   --muted-foreground: #cbd5e1;
-  --border: #333333;
+  --border: #404040;
   --input: #2a2a2a;
   --card: #2a2a2a;
   --card-foreground: #ffffff;
@@ -95,7 +95,7 @@ body {
 .form-input {
   width: 100%;
   padding: 0.75rem 0.875rem;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: var(--radius);
   background-color: var(--input);
   color: var(--foreground);
@@ -139,6 +139,19 @@ body {
 
 .form-input::placeholder {
   color: var(--muted-foreground);
+}
+
+.form-input:hover:not(:disabled):not([readonly]) {
+  border-color: var(--muted);
+}
+
+[data-theme="dark"] .form-input {
+  background-color: #232323;
+  border-color: #505050;
+}
+
+[data-theme="dark"] .form-input:hover:not(:disabled):not([readonly]) {
+  border-color: #606060;
 }
 
 /* Select specific styling for better arrow positioning */
@@ -2609,6 +2622,17 @@ select.form-input.border-red-500:focus {
   font-size: 0.9375rem;
   font-family: inherit;
   transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .form-field-input,
+[data-theme="dark"] .form-field-textarea {
+  background-color: #232323;
+  border-color: #505050;
+}
+
+[data-theme="dark"] .form-field-input:hover:not(:disabled):not([readonly]),
+[data-theme="dark"] .form-field-textarea:hover:not(:disabled):not([readonly]) {
+  border-color: #606060;
 }
 
 .form-field-input:focus,
