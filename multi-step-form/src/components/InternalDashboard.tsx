@@ -4,6 +4,13 @@ import { LogOut, Eye, Download, RefreshCw, Lock, CheckCircle, XCircle } from 'lu
 import { getFormResponseCount, getFormResponses, exportResponsesToCSV } from '../utils/google-forms-responses';
 import { getAllFormSubmissions, type FormSubmission } from '../utils/supabase';
 import { simpleGoogleAuth } from '../utils/google-auth-simple';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Badge } from './ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { Alert, AlertDescription } from './ui/alert';
+import './InternalDashboard.css';
 
 interface SurveySubmission {
   id: string;
@@ -187,108 +194,103 @@ export function InternalDashboard() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 px-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-8 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-full mb-4">
-                <Lock className="w-8 h-8 text-white" />
+        <Card className="w-full max-w-md">
+          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-center rounded-t-lg">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-full mb-4 mx-auto">
+              <Lock className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl text-white">Internal Dashboard</CardTitle>
+            <CardDescription className="text-blue-100">Jakpat for Universities</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-2">
+                <label htmlFor="password" className="block text-sm font-semibold">
+                  Password
+                </label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  autoFocus
+                  required
+                />
               </div>
-              <h1 className="text-2xl font-bold text-white">Internal Dashboard</h1>
-              <p className="text-blue-100 mt-2">Jakpat for Universities</p>
-            </div>
-
-            <div className="p-8">
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div>
-                  <label htmlFor="password" className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                    Password
-                  </label>
-                  <input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400"
-                    placeholder="Enter your password"
-                    autoFocus
-                    required
-                  />
-                </div>
-                {error && (
-                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
-                    <p className="text-red-600 dark:text-red-400 text-sm font-medium">{error}</p>
-                  </div>
-                )}
-                <button
-                  type="submit"
-                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3.5 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                  Login
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <Button type="submit" className="w-full">
+                Login
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1419] text-white">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-[#1a1f2e] border-b border-gray-800">
+      <div className="bg-card border-b border-border">
         <div className="max-w-[1400px] mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center font-bold text-lg">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center font-bold text-lg text-white">
                 J
               </div>
               <div>
-                <h1 className="text-xl font-bold">Internal Dashboard</h1>
-                <p className="text-sm text-gray-400">Jakpat for Universities</p>
+                <h1 className="text-xl font-bold text-foreground">Internal Dashboard</h1>
+                <p className="text-sm text-muted-foreground">Jakpat for Universities</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               {/* Google Connection Status */}
               {isGoogleConnected ? (
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    <span className="text-sm text-green-400 font-medium">Google Connected</span>
-                  </div>
-                  <button
+                  <Badge variant="outline" className="bg-green-500/10 border-green-500/20 text-green-400">
+                    <CheckCircle className="w-3 h-3 mr-1.5" />
+                    Google Connected
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={disconnectGoogle}
-                    className="text-sm text-gray-400 hover:text-gray-300 transition-colors"
                   >
                     Disconnect
-                  </button>
+                  </Button>
                 </div>
               ) : (
-                <button
+                <Button
                   onClick={connectGoogle}
                   disabled={isConnectingGoogle}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  size="sm"
                 >
                   {isConnectingGoogle ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                       Connecting...
                     </>
                   ) : (
                     <>
-                      <XCircle className="w-4 h-4" />
+                      <XCircle className="w-4 h-4 mr-2" />
                       Connect Google
                     </>
                   )}
-                </button>
+                </Button>
               )}
-              <button
+              <Button
                 onClick={handleLogout}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors text-sm font-medium"
+                variant="secondary"
+                size="sm"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-4 h-4 mr-2" />
                 Logout
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -299,131 +301,123 @@ export function InternalDashboard() {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
-              <RefreshCw className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
-              <p className="text-gray-400 font-medium">Loading submissions...</p>
+              <RefreshCw className="w-12 h-12 text-primary animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground font-medium">Loading submissions...</p>
             </div>
           </div>
         ) : submissions.length === 0 ? (
-          <div className="bg-[#1a1f2e] rounded-xl border border-gray-800 p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-800 rounded-full mb-4">
-              <Eye className="w-8 h-8 text-gray-500" />
+          <Card className="p-12 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
+              <Eye className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-xl font-semibold mb-2">No Submissions Yet</h3>
-            <p className="text-gray-400">
+            <h3 className="text-xl font-semibold mb-2 text-foreground">No Submissions Yet</h3>
+            <p className="text-muted-foreground">
               Survey submissions will appear here once researchers start submitting their forms.
             </p>
-          </div>
+          </Card>
         ) : (
-          <div className="bg-[#1a1f2e] rounded-xl border border-gray-800 overflow-hidden">
-            {/* Table Header */}
+          <Card>
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-800 bg-[#151a24]">
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Form Title
-                    </th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Researcher
-                    </th>
-                    <th className="text-center px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Questions
-                    </th>
-                    <th className="text-center px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Responses
-                    </th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Submitted
-                    </th>
-                    <th className="text-center px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="text-right px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Form Title</TableHead>
+                    <TableHead>Researcher</TableHead>
+                    <TableHead className="text-center">Questions</TableHead>
+                    <TableHead className="text-center">Responses</TableHead>
+                    <TableHead>Submitted</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {submissions.map((submission, index) => (
-                    <tr key={submission.id} className="hover:bg-[#151a24] transition-colors">
-                      <td className="px-6 py-4">
+                    <TableRow key={submission.id}>
+                      <TableCell>
                         <div className="flex flex-col">
-                          <span className="font-semibold text-white">{submission.formTitle}</span>
-                          <span className="text-sm text-gray-500 font-mono">ID: {submission.formId.substring(0, 12)}...</span>
+                          <span className="font-semibold">{submission.formTitle}</span>
+                          <span className="text-sm text-muted-foreground font-mono">ID: {submission.formId.substring(0, 12)}...</span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
+                      </TableCell>
+                      <TableCell>
                         <div className="flex flex-col">
-                          <span className="text-sm text-white">{submission.researcherName}</span>
-                          <span className="text-xs text-gray-500">{submission.researcherEmail}</span>
+                          <span className="text-sm">{submission.researcherName}</span>
+                          <span className="text-xs text-muted-foreground">{submission.researcherEmail}</span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-500/10 text-blue-400 font-bold text-lg">
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 font-bold text-lg w-12 h-12 flex items-center justify-center">
                           {submission.questionCount}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-indigo-500/10 text-indigo-400 font-bold text-lg">
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 font-bold text-lg w-12 h-12 flex items-center justify-center">
                           {submission.responseCount ?? '-'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex flex-col">
-                          <span className="text-sm text-white">
+                          <span className="text-sm">
                             {new Date(submission.submittedAt).toLocaleDateString('en-US', {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric'
                             })}
                           </span>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-muted-foreground">
                             {new Date(submission.submittedAt).toLocaleTimeString('en-US', {
                               hour: '2-digit',
                               minute: '2-digit'
                             })}
                           </span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">
                           Active
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <a
-                            href={submission.formUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            asChild
                             title="View Form"
                           >
-                            <Eye className="w-3.5 h-3.5" />
-                          </a>
-                          <button
+                            <a
+                              href={submission.formUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </a>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => fetchResponseCount(submission.formId, index)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm font-medium"
                             title="Fetch Responses"
                           >
                             <RefreshCw className="w-3.5 h-3.5" />
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => exportResponses(submission.formId, submission.formTitle)}
                             disabled={!submission.responseCount || submission.responseCount === 0}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Export CSV"
                           >
                             <Download className="w-3.5 h-3.5" />
-                          </button>
+                          </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
-          </div>
+          </Card>
         )}
       </div>
     </div>

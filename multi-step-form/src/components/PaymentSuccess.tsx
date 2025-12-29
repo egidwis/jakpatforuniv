@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getFormSubmissionById } from '../utils/supabase';
+import { getFormSubmissionById, updatePaymentStatus } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
 import { ErrorPage } from './ErrorPage';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -34,6 +34,16 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
   const fetchFormData = async (id: string) => {
     try {
       console.log('Fetching form data for ID:', id);
+
+      // Update payment status to 'paid' when user lands on success page
+      try {
+        console.log('Updating payment status to paid for form ID:', id);
+        await updatePaymentStatus(id, 'paid');
+        console.log('Payment status updated successfully');
+      } catch (updateError) {
+        console.error('Failed to update payment status:', updateError);
+        // Continue even if update fails - user still sees success page
+      }
 
       // Tambahkan timeout untuk menghindari hanging request
       const timeoutPromise = new Promise((_, reject) =>

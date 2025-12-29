@@ -6,7 +6,6 @@ import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { ThemeToggle } from './components/ThemeToggle';
 import { InternalDashboard } from './components/InternalDashboard';
 import { useLanguage } from './i18n/LanguageContext';
-import AdminPage from './pages/AdminPage';
 import PaymentSuccessPage from './pages/PaymentSuccessPage';
 import PaymentFailedPage from './pages/PaymentFailedPage';
 import PaymentRetryPage from './pages/PaymentRetryPage';
@@ -35,7 +34,6 @@ function AppContent() {
       <main className="container py-8">
         <Routes>
           <Route path="/" element={<MultiStepForm />} />
-          <Route path="/admin" element={<AdminPage />} />
           <Route path="/payment-success" element={<PaymentSuccessPage />} />
           <Route path="/payment-failed" element={<PaymentFailedPage />} />
           <Route path="/payment-retry" element={<PaymentRetryPage />} />
