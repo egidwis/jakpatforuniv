@@ -89,8 +89,22 @@ export interface Transaction {
   amount: number;
   status: string;
   payment_url?: string;
+  note?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+// Tipe data untuk invoices
+export interface Invoice {
+  id?: string;
+  form_submission_id: string;
+  payment_id: string;
+  invoice_url: string;
+  amount: number;
+  status: string;
+  created_at?: string;
+  expires_at?: string;
+  paid_at?: string;
 }
 
 // Fungsi untuk menyimpan form submission
@@ -206,6 +220,23 @@ export const updatePaymentStatus = async (id: string, status: string) => {
   }
 };
 
+// Fungsi untuk update status form
+export const updateFormStatus = async (id: string, status: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .update({ status: status })
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (error) {
+    console.error('Error updating form status:', error);
+    throw error;
+  }
+};
+
 // Fungsi untuk mendapatkan semua form submissions (untuk internal dashboard)
 export const getAllFormSubmissions = async () => {
   try {
@@ -218,6 +249,58 @@ export const getAllFormSubmissions = async () => {
     return data;
   } catch (error) {
     console.error('Error getting all form submissions:', error);
+    throw error;
+  }
+};
+
+// ============= INVOICE FUNCTIONS =============
+
+// Fungsi untuk membuat invoice baru
+export const createInvoice = async (invoice: Invoice) => {
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert([invoice])
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (error) {
+    console.error('Error creating invoice:', error);
+    throw error;
+  }
+};
+
+// Fungsi untuk mendapatkan semua invoice berdasarkan form_submission_id
+export const getInvoicesByFormSubmissionId = async (formSubmissionId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('form_submission_id', formSubmissionId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error getting invoices:', error);
+    throw error;
+  }
+};
+
+// Fungsi untuk update status invoice
+export const updateInvoiceStatus = async (paymentId: string, status: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .update({ status: status })
+      .eq('payment_id', paymentId)
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (error) {
+    console.error('Error updating invoice status:', error);
     throw error;
   }
 };

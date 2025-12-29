@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import { MultiStepForm } from './components/MultiStepForm';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { ThemeToggle } from './components/ThemeToggle';
-import { InternalDashboard } from './components/InternalDashboard';
+import { InternalDashboardWithLayout } from './components/InternalDashboardWithLayout';
 import { useLanguage } from './i18n/LanguageContext';
 import PaymentSuccessPage from './pages/PaymentSuccessPage';
 import PaymentFailedPage from './pages/PaymentFailedPage';
@@ -22,7 +22,7 @@ function AppContent() {
     return (
       <>
         <Routes>
-          <Route path="/internal-dash" element={<InternalDashboard />} />
+          <Route path="/internal-dash" element={<InternalDashboardWithLayout />} />
         </Routes>
         <Toaster position="top-center" />
       </>

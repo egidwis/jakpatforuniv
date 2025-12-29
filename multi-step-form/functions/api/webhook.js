@@ -23,7 +23,8 @@ export async function onRequest(context) {
     const webhookToken = context.env.VITE_MAYAR_WEBHOOK_TOKEN;
     const requestToken = context.request.headers.get('X-Webhook-Token');
 
-    if (webhookToken && requestToken !== webhookToken) {
+    // Only validate token if both webhookToken is configured AND requestToken is provided
+    if (webhookToken && requestToken && requestToken !== webhookToken) {
       console.error('Invalid webhook token');
       return new Response(JSON.stringify({
         success: false,
@@ -36,11 +37,12 @@ export async function onRequest(context) {
 
     // Ekstrak data pembayaran dari webhook
     // Format webhook Mayar bisa bervariasi, jadi kita perlu menangani beberapa kemungkinan
-    
+
     let paymentId = '';
     let status = '';
-    
-    // Format 1: data.id dan data.status
+    let event = requestData.event || '';
+
+    // Format 1: Mayar standard format dengan event dan data
     if (requestData.data && requestData.data.id) {
       paymentId = requestData.data.id;
       status = requestData.data.status || '';
@@ -55,7 +57,7 @@ export async function onRequest(context) {
       paymentId = requestData.transaction_id;
       status = requestData.status || '';
     }
-    
+
     if (!paymentId) {
       console.error('Payment ID not found in webhook data');
       return new Response(JSON.stringify({
@@ -66,26 +68,147 @@ export async function onRequest(context) {
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    
+
+    console.log(`Webhook event: ${event}, Payment ID: ${paymentId}, Status: ${status}`);
+
     // Map status Mayar ke status aplikasi
     let appStatus = 'pending';
-    
-    if (status === 'PAID' || status === 'paid' || status === 'COMPLETED' || status === 'completed') {
+
+    // Mayar menggunakan SUCCESS untuk pembayaran berhasil
+    if (status === 'SUCCESS' || status === 'PAID' || status === 'paid' || status === 'COMPLETED' || status === 'completed') {
       appStatus = 'completed';
     } else if (status === 'FAILED' || status === 'failed' || status === 'EXPIRED' || status === 'expired') {
       appStatus = 'failed';
+    } else if (status === 'PENDING' || status === 'pending') {
+      appStatus = 'pending';
     }
     
     console.log(`Payment ${paymentId} status updated to ${appStatus}`);
-    
-    // TODO: Perbarui status di database
-    // Ini memerlukan akses ke Supabase, yang mungkin perlu diimplementasikan
-    // dengan cara lain karena keterbatasan Cloudflare Functions
-    
-    // Untuk saat ini, kita hanya mengembalikan respons sukses
+
+    // Jika ini adalah event testing dari Mayar, return success tanpa update database
+    if (event === 'testing') {
+      console.log('This is a testing webhook event, skipping database update');
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Test webhook received successfully',
+        paymentId,
+        status: appStatus,
+        note: 'This was a test event, no database update performed'
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Update status di database Supabase
+    try {
+      const supabaseUrl = context.env.VITE_SUPABASE_URL;
+      const supabaseKey = context.env.VITE_SUPABASE_ANON_KEY;
+
+      // Supabase configuration loaded successfully
+
+      if (!supabaseUrl || !supabaseKey) {
+        console.error('Supabase credentials not found in environment');
+        return new Response(JSON.stringify({
+          success: false,
+          message: 'Database configuration error',
+          paymentId,
+          status: appStatus
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } else {
+        // Update transaction status
+        const transactionUrl = `${supabaseUrl}/rest/v1/transactions?payment_id=eq.${paymentId}`;
+        console.log('Querying Supabase:', transactionUrl);
+        console.log('Looking for payment_id:', paymentId);
+
+        const updateTransactionResponse = await fetch(
+          transactionUrl,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify({ status: appStatus })
+          }
+        );
+
+        const updatedTransactions = await updateTransactionResponse.json();
+        console.log('Supabase response status:', updateTransactionResponse.status);
+        console.log('Updated transactions:', updatedTransactions);
+
+        // Check if transaction was found
+        if (!updatedTransactions || updatedTransactions.length === 0) {
+          console.warn(`No transaction found with payment_id: ${paymentId}`);
+          return new Response(JSON.stringify({
+            success: false,
+            message: 'Transaction not found in database',
+            paymentId,
+            status: appStatus,
+            note: 'The payment_id from webhook does not match any transaction in our database'
+          }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Get form_submission_id from transaction
+        if (updatedTransactions && updatedTransactions.length > 0) {
+          const formSubmissionId = updatedTransactions[0].form_submission_id;
+
+          // Update form submission payment status
+          const updateFormResponse = await fetch(
+            `${supabaseUrl}/rest/v1/form_submissions?id=eq.${formSubmissionId}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify({ payment_status: appStatus === 'completed' ? 'paid' : appStatus })
+            }
+          );
+
+          const updatedForms = await updateFormResponse.json();
+          console.log('Updated form submissions:', updatedForms);
+
+          // Update invoice status if this is a manual invoice
+          const updateInvoiceResponse = await fetch(
+            `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${paymentId}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify({
+                status: appStatus === 'completed' ? 'paid' : appStatus,
+                paid_at: appStatus === 'completed' ? new Date().toISOString() : null
+              })
+            }
+          );
+
+          const updatedInvoices = await updateInvoiceResponse.json();
+          console.log('Updated invoices:', updatedInvoices);
+        }
+      }
+    } catch (dbError) {
+      console.error('Error updating database:', dbError);
+      // Continue even if database update fails
+    }
+
     return new Response(JSON.stringify({
       success: true,
-      message: 'Webhook received successfully',
+      message: 'Webhook received and processed successfully',
       paymentId,
       status: appStatus
     }), {

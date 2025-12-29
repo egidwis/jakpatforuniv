@@ -14,6 +14,18 @@ interface PaymentData {
   };
 }
 
+// Interface untuk data invoice (untuk admin manual invoice creation)
+export interface InvoiceData {
+  formSubmissionId: string;
+  amount: number;
+  description?: string;
+  customerInfo?: {
+    fullName?: string;
+    email?: string;
+    phoneNumber?: string;
+  };
+}
+
 // Cek apakah dalam mode simulasi (tidak ada API key Mayar)
 const isSimulationMode = () => {
   const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
@@ -281,32 +293,38 @@ export const createPayment = async (paymentData: PaymentData) => {
     // Format 1: response.data.data.link (format dokumentasi)
     if (response.data.data && response.data.data.link) {
       paymentUrl = response.data.data.link;
-      transactionId = response.data.data.id || response.data.data.transaction_id || '';
+      // PRIORITASKAN transactionId karena itu yang dikirim di webhook!
+      transactionId = response.data.data.transactionId || response.data.data.transaction_id || response.data.data.id || '';
       console.log('Extracted payment URL using format 1 (data.data.link)');
+      console.log('transactionId:', response.data.data.transactionId, 'id:', response.data.data.id);
     }
     // Format 2: response.data.payment_url (format lama)
     else if (response.data.payment_url) {
       paymentUrl = response.data.payment_url;
-      transactionId = response.data.id || response.data.transaction_id || '';
+      transactionId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
       console.log('Extracted payment URL using format 2 (data.payment_url)');
+      console.log('transactionId:', response.data.transactionId, 'id:', response.data.id);
     }
     // Format 3: response.data.url (format alternatif)
     else if (response.data.url) {
       paymentUrl = response.data.url;
-      transactionId = response.data.id || response.data.transaction_id || '';
+      transactionId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
       console.log('Extracted payment URL using format 3 (data.url)');
+      console.log('transactionId:', response.data.transactionId, 'id:', response.data.id);
     }
     // Format 4: response.data.data.url (format alternatif)
     else if (response.data.data && response.data.data.url) {
       paymentUrl = response.data.data.url;
-      transactionId = response.data.data.id || response.data.data.transaction_id || '';
+      transactionId = response.data.data.transactionId || response.data.data.transaction_id || response.data.data.id || '';
       console.log('Extracted payment URL using format 4 (data.data.url)');
+      console.log('transactionId:', response.data.data.transactionId, 'id:', response.data.data.id);
     }
     // Format 5: response.data.redirect_url (format alternatif)
     else if (response.data.redirect_url) {
       paymentUrl = response.data.redirect_url;
-      transactionId = response.data.id || response.data.transaction_id || '';
+      transactionId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
       console.log('Extracted payment URL using format 5 (data.redirect_url)');
+      console.log('transactionId:', response.data.transactionId, 'id:', response.data.id);
     }
     // Format 6: response.data langsung berisi URL (format paling sederhana)
     else if (typeof response.data === 'string' && response.data.startsWith('http')) {
@@ -322,7 +340,7 @@ export const createPayment = async (paymentData: PaymentData) => {
     }
 
     console.log('Payment URL received:', paymentUrl);
-    console.log('Transaction ID:', transactionId);
+    console.log('Transaction ID (will be saved to database):', transactionId);
 
     // Simpan data transaksi ke Supabase
     const transactionData: Transaction = {
@@ -444,5 +462,121 @@ export const updatePaymentStatus = async (paymentId: string, status: string) => 
   } catch (error) {
     console.error('Error updating payment status:', error);
     throw error;
+  }
+};
+
+// ============= ADMIN INVOICE CREATION =============
+
+/**
+ * Fungsi untuk membuat invoice manual (untuk admin)
+ * Reusable function yang bisa dipanggil dari InternalDashboard
+ *
+ * @param invoiceData - Data invoice yang akan dibuat
+ * @returns Object berisi invoice_id dan payment_url
+ */
+export const createManualInvoice = async (invoiceData: InvoiceData) => {
+  try {
+    const { formSubmissionId, amount, description, customerInfo } = invoiceData;
+
+    // Validasi API key
+    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
+    const isPlaceholderApiKey = !apiKey || apiKey.trim() === '' || apiKey.includes('your-mayar-api-key');
+
+    if (isPlaceholderApiKey) {
+      throw new Error('Mayar API key tidak tersedia atau tidak valid');
+    }
+
+    // Ambil webhook token dari environment variables
+    const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
+
+    // Gunakan window.location.origin untuk mendapatkan URL dasar
+    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
+
+    // Buat request data untuk Mayar API
+    const requestData = {
+      name: customerInfo?.fullName || 'Pelanggan',
+      email: customerInfo?.email || 'customer@example.com',
+      amount: amount,
+      mobile: customerInfo?.phoneNumber || '08123456789',
+      redirectUrl: `${origin}/payment-success?form_id=${formSubmissionId}`,
+      failureUrl: `${origin}/payment-failed?form_id=${formSubmissionId}`,
+      description: description || 'Invoice Manual',
+      expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 hari
+      webhookUrl: `${origin}/api/webhook`
+    };
+
+    console.log('Creating manual invoice with data:', requestData);
+
+    // Panggil Mayar API melalui proxy
+    const proxyRequestData = {
+      ...requestData,
+      endpoint: 'https://api.mayar.id/hl/v1/payment/create',
+      apiKey: apiKey,
+      webhookToken: webhookToken
+    };
+
+    const response = await axios.post(
+      '/api/mayar-proxy',
+      proxyRequestData,
+      {
+        timeout: 15000 // 15 detik timeout
+      }
+    );
+
+    console.log('Mayar API response:', response.data);
+    console.log('Full Mayar response for debugging:', JSON.stringify(response.data, null, 2));
+
+    // Ekstrak payment URL dan ID dari response
+    let paymentUrl = '';
+    let invoiceId = '';
+
+    // Coba berbagai format response
+    // PRIORITASKAN transactionId karena itu yang dikirim di webhook!
+    if (response.data.data && response.data.data.link) {
+      paymentUrl = response.data.data.link;
+      // Coba transactionId dulu, baru id, baru transaction_id
+      invoiceId = response.data.data.transactionId || response.data.data.transaction_id || response.data.data.id || '';
+      console.log('Extracted from data.data.link - transactionId:', response.data.data.transactionId, 'id:', response.data.data.id);
+    } else if (response.data.payment_url) {
+      paymentUrl = response.data.payment_url;
+      invoiceId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
+      console.log('Extracted from payment_url - transactionId:', response.data.transactionId, 'id:', response.data.id);
+    } else if (response.data.url) {
+      paymentUrl = response.data.url;
+      invoiceId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
+      console.log('Extracted from url - transactionId:', response.data.transactionId, 'id:', response.data.id);
+    } else if (response.data.data && response.data.data.url) {
+      paymentUrl = response.data.data.url;
+      invoiceId = response.data.data.transactionId || response.data.data.transaction_id || response.data.data.id || '';
+      console.log('Extracted from data.data.url - transactionId:', response.data.data.transactionId, 'id:', response.data.data.id);
+    }
+
+    // Jika tidak ada URL yang ditemukan, throw error
+    if (!paymentUrl || !invoiceId) {
+      console.error('Could not extract payment URL or invoice ID from response:', response.data);
+      throw new Error('Tidak dapat menemukan URL pembayaran atau ID invoice dalam respons');
+    }
+
+    console.log('Manual invoice created successfully:', { invoiceId, paymentUrl });
+    console.log('IMPORTANT: Saving payment_id to database:', invoiceId);
+
+    // Return payment ID dan invoice URL
+    return {
+      payment_id: invoiceId,
+      invoice_url: paymentUrl
+    };
+  } catch (err) {
+    const error = err as any;
+    console.error('Error creating manual invoice:', error);
+
+    // Log error details untuk debugging
+    if (error.response) {
+      console.error('Mayar API error response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+
+    throw new Error(error.message || 'Gagal membuat invoice manual');
   }
 };
