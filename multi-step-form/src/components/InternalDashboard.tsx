@@ -277,7 +277,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-center rounded-t-lg">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-full mb-4 mx-auto">
@@ -361,7 +361,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       )}
 
       {/* Content */}
-      <div className={hideAuth ? '' : 'max-w-[1400px] mx-auto px-4 sm:px-6 py-6'}>
+      <div className={hideAuth ? 'p-4 md:p-8' : 'max-w-[1400px] mx-auto px-4 sm:px-6 py-6'}>
         {/* Toolbar - Search & Google Connect */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div className="flex-1 max-w-2xl">
