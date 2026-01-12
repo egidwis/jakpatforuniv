@@ -5,8 +5,9 @@ import { Input } from './ui/input';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { InternalDashboard } from './InternalDashboard';
 import { TransactionsPage } from './TransactionsPage';
+import { DemographyPage } from './DemographyPage';
 
-type Page = 'submissions' | 'transactions';
+type Page = 'submissions' | 'transactions' | 'demography';
 
 export function InternalDashboardWithLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -90,7 +91,7 @@ export function InternalDashboardWithLayout() {
                 placeholder="Enter password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full"
+                className="w-full bg-white border border-gray-300 text-gray-900 focus:border-blue-500 focus:ring-blue-500 placeholder-gray-400"
               />
             </div>
             <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
@@ -112,6 +113,11 @@ export function InternalDashboardWithLayout() {
       id: 'transactions' as Page,
       label: 'Transactions',
       icon: CreditCard,
+    },
+    {
+      id: 'demography' as Page,
+      label: 'Demography',
+      icon: FileText, // Or Users if imported, standardizing on FileText or similar
     },
   ];
 
@@ -246,9 +252,13 @@ export function InternalDashboardWithLayout() {
         <main className="flex-1 overflow-auto">
           {currentPage === 'submissions' ? (
             <InternalDashboard hideAuth={true} onLogout={handleLogout} />
-          ) : (
+          ) : currentPage === 'transactions' ? (
             <div className="container mx-auto p-4 md:p-8">
               <TransactionsPage />
+            </div>
+          ) : (
+            <div className="container mx-auto p-4 md:p-8">
+              <DemographyPage />
             </div>
           )}
         </main>

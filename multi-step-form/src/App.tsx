@@ -9,6 +9,7 @@ import { useLanguage } from './i18n/LanguageContext';
 import PaymentSuccessPage from './pages/PaymentSuccessPage';
 import PaymentFailedPage from './pages/PaymentFailedPage';
 import PaymentRetryPage from './pages/PaymentRetryPage';
+import { InvoicePage } from './pages/InvoicePage';
 import './styles.css';
 
 function AppContent() {
@@ -37,6 +38,7 @@ function AppContent() {
           <Route path="/payment-success" element={<PaymentSuccessPage />} />
           <Route path="/payment-failed" element={<PaymentFailedPage />} />
           <Route path="/payment-retry" element={<PaymentRetryPage />} />
+          <Route path="/invoices/:paymentId" element={<InvoicePage />} />
         </Routes>
       </main>
 

@@ -349,15 +349,15 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 <Button
                   onClick={handleLogout}
                   variant="secondary"
-                size="sm"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Logout</span>
-              </Button>
+                  size="sm"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Logout</span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* Content */}
@@ -465,103 +465,121 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         ) : (
           <>
             {/* Desktop Table View - hidden on mobile */}
-            <Card className="hidden md:block">
+            <Card className="hidden md:block shadow-sm border-gray-200">
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-gray-50/50">
                     <TableRow>
-                      <TableHead>Form Title</TableHead>
-                      <TableHead>Researcher</TableHead>
-                      <TableHead className="text-center">Questions</TableHead>
-                      <TableHead>Submitted</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
-                      <TableHead className="text-center">Payment Status</TableHead>
-                      <TableHead className="text-center">Invoice Actions</TableHead>
+                      <TableHead className="w-[300px] font-semibold text-gray-900">Form Title</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Researcher</TableHead>
+                      <TableHead className="text-center font-semibold text-gray-900">Questions</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Submitted</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Status</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Payment Status</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Invoice Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredSubmissions.map((submission, index) => (
-                      <TableRow key={submission.id}>
-                        <TableCell>
-                          <div className="flex items-start gap-2">
-                            <div className="flex flex-col flex-1">
-                              <span className="font-semibold">{submission.formTitle}</span>
-                              <span className="text-sm text-muted-foreground font-mono">ID: {submission.formId.substring(0, 12)}...</span>
+                      <TableRow key={submission.id} className="hover:bg-gray-50/50 transition-colors">
+                        <TableCell className="align-top py-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex flex-col gap-1 flex-1">
+                              <span className="font-semibold text-gray-900 line-clamp-2" title={submission.formTitle}>
+                                {submission.formTitle}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground font-mono bg-gray-100 px-1.5 py-0.5 rounded">
+                                  {submission.formId.substring(0, 8)}...
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-gray-400 hover:text-blue-600"
+                                  onClick={() => window.open(submission.formUrl, '_blank')}
+                                  title="Open survey"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
                             </div>
-                            <button
-                              onClick={() => window.open(submission.formUrl, '_blank')}
-                              className="mt-1 p-1.5 hover:bg-muted rounded-md transition-colors flex-shrink-0"
-                              title="Buka survey di tab baru"
-                            >
-                              <Eye className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                            </button>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span className="text-sm">{submission.researcherName}</span>
+                        <TableCell className="align-top py-4">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium text-gray-900">{submission.researcherName}</span>
                             <span className="text-xs text-muted-foreground">{submission.researcherEmail}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 font-bold text-lg w-12 h-12 flex items-center justify-center">
+                        <TableCell className="align-top py-4 text-center">
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-100 font-medium w-10 h-8 flex items-center justify-center mx-auto text-sm">
                             {submission.questionCount}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span className="text-sm">
-                              {new Date(submission.submittedAt).toLocaleDateString('en-US', {
-                                month: 'short',
+                        <TableCell className="align-top py-4">
+                          <div className="flex flex-col text-sm">
+                            <span className="font-medium text-gray-900">
+                              {new Date(submission.submittedAt).toLocaleDateString('id-ID', {
                                 day: 'numeric',
+                                month: 'short',
                                 year: 'numeric'
                               })}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {new Date(submission.submittedAt).toLocaleTimeString('en-US', {
+                              {new Date(submission.submittedAt).toLocaleTimeString('id-ID', {
                                 hour: '2-digit',
                                 minute: '2-digit'
                               })}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-center">
-                          <select
-                            className="px-2 py-1 text-xs rounded-md border border-border bg-background"
-                            value={submission.status || 'verified'}
-                            onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
-                          >
-                            <option value="spam">Spam</option>
-                            <option value="verified">Verified</option>
-                            <option value="process">Process</option>
-                            <option value="publishing">Publishing</option>
-                          </select>
+                        <TableCell className="align-top py-4">
+                          <div className="relative">
+                            <select
+                              className="appearance-none w-full pl-3 pr-8 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer transition-colors"
+                              value={submission.status || 'verified'}
+                              onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
+                            >
+                              <option value="spam">Spam</option>
+                              <option value="verified">Verified</option>
+                              <option value="process">Process</option>
+                              <option value="publishing">Publishing</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                              <svg className="h-3 w-3 fill-current" viewBox="0 0 20 20">
+                                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                              </svg>
+                            </div>
+                          </div>
                         </TableCell>
-                        <TableCell className="text-center">
+                        <TableCell className="align-top py-4">
                           {submission.payment_status === 'paid' ? (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-medium">
                               Paid
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/20">
+                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 font-medium">
                               Pending
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-center gap-2">
+                        <TableCell className="align-top py-4">
+                          <div className="flex items-center gap-2">
                             <Button
                               variant="outline"
                               size="sm"
+                              className="h-8 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-100 hover:text-blue-700"
                               onClick={() => handleOpenInvoiceModal(submission)}
                             >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Create Invoice
+                              <Plus className="w-3.5 h-3.5 mr-1.5" />
+                              Invoice
                             </Button>
-                            <CopyInvoiceDropdown
-                              formSubmissionId={submission.id}
-                              refreshTrigger={invoiceRefreshTrigger}
-                            />
+                            <div className="scale-90 origin-right">
+                              <CopyInvoiceDropdown
+                                formSubmissionId={submission.id}
+                                refreshTrigger={invoiceRefreshTrigger}
+                              />
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -574,100 +592,93 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             {/* Mobile Card View - shown only on mobile */}
             <div className="md:hidden space-y-4">
               {filteredSubmissions.map((submission, index) => (
-                <Card key={submission.id} className="p-4">
-                  {/* Header with Title and Eye Icon */}
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-base leading-tight mb-1">{submission.formTitle}</h3>
-                      <p className="text-xs text-muted-foreground font-mono">ID: {submission.formId.substring(0, 12)}...</p>
-                    </div>
-                    <button
-                      onClick={() => window.open(submission.formUrl, '_blank')}
-                      className="p-2 hover:bg-muted rounded-md transition-colors flex-shrink-0"
-                      title="Buka survey"
-                    >
-                      <Eye className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </div>
-
-                  {/* Researcher Info */}
-                  <div className="mb-3 pb-3 border-b border-border">
-                    <p className="text-sm font-medium">{submission.researcherName}</p>
-                    <p className="text-xs text-muted-foreground">{submission.researcherEmail}</p>
-                  </div>
-
-                  {/* Stats Row */}
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Questions</p>
-                      <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 font-bold">
-                        {submission.questionCount}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Submitted</p>
-                      <p className="text-xs font-medium">
-                        {new Date(submission.submittedAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(submission.submittedAt).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Status Controls */}
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Status</p>
-                      <select
-                        className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-background"
-                        value={submission.status || 'verified'}
-                        onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
+                <Card key={submission.id} className="border-gray-200 shadow-sm overflow-hidden">
+                  <div className="p-4 space-y-4">
+                    {/* Header */}
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="space-y-1 flex-1">
+                        <h3 className="font-semibold text-gray-900 leading-tight">
+                          {submission.formTitle}
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                            {submission.formId.substring(0, 8)}...
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 -mt-1 -mr-2 text-gray-400"
+                        onClick={() => window.open(submission.formUrl, '_blank')}
                       >
-                        <option value="spam">Spam</option>
-                        <option value="verified">Verified</option>
-                        <option value="process">Process</option>
-                        <option value="publishing">Publishing</option>
-                      </select>
+                        <Eye className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Payment</p>
-                      {submission.payment_status === 'paid' ? (
-                        <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">
-                          Paid
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/20">
-                          Pending
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Invoice Actions */}
-                  <div className="pt-3 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-2">Invoice Actions</p>
-                    <div className="flex flex-col gap-2">
+                    {/* Researcher */}
+                    <div className="flex items-center gap-3 py-3 border-y border-gray-100">
+                      <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Researcher</p>
+                        <p className="font-medium text-gray-900 text-sm">{submission.researcherName}</p>
+                        <p className="text-xs text-gray-500">{submission.researcherEmail}</p>
+                      </div>
+                      <div className="text-right pl-4 border-l border-gray-100">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Items</p>
+                        <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                          {submission.questionCount} Qs
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Actions Row */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-500">Status</label>
+                        <select
+                          className="w-full px-2 py-1.5 text-xs rounded-md border border-gray-200 bg-white"
+                          value={submission.status || 'verified'}
+                          onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
+                        >
+                          <option value="spam">Spam</option>
+                          <option value="verified">Verified</option>
+                          <option value="process">Process</option>
+                          <option value="publishing">Publishing</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-500">Payment</label>
+                        <div className="flex items-center h-[30px]">
+                          {submission.payment_status === 'paid' ? (
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                              Paid
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                              Pending
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div className="flex gap-2 pt-2">
                       <Button
                         variant="outline"
                         size="sm"
+                        className="flex-1 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
                         onClick={() => handleOpenInvoiceModal(submission)}
-                        className="w-full"
                       >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create Invoice
+                        <Plus className="w-3.5 h-3.5 mr-1.5" />
+                        Invoice
                       </Button>
-                      <CopyInvoiceDropdown
-                        formSubmissionId={submission.id}
-                        refreshTrigger={invoiceRefreshTrigger}
-                      />
+                      <div className="flex-1">
+                        <CopyInvoiceDropdown
+                          formSubmissionId={submission.id}
+                          refreshTrigger={invoiceRefreshTrigger}
+                        />
+                      </div>
                     </div>
                   </div>
                 </Card>

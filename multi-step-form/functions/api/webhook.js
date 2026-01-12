@@ -16,7 +16,7 @@ export async function onRequest(context) {
   try {
     // Parse request body
     const requestData = await context.request.json();
-    
+
     console.log('Webhook received:', JSON.stringify(requestData));
 
     // Validasi webhook token jika ada
@@ -82,7 +82,7 @@ export async function onRequest(context) {
     } else if (status === 'PENDING' || status === 'pending') {
       appStatus = 'pending';
     }
-    
+
     console.log(`Payment ${paymentId} status updated to ${appStatus}`);
 
     // Jika ini adalah event testing dari Mayar, return success tanpa update database
@@ -172,7 +172,10 @@ export async function onRequest(context) {
                 'Content-Type': 'application/json',
                 'Prefer': 'return=representation'
               },
-              body: JSON.stringify({ payment_status: appStatus === 'completed' ? 'paid' : appStatus })
+              body: JSON.stringify({
+                payment_status: appStatus === 'completed' ? 'paid' : appStatus,
+                status: appStatus === 'completed' ? 'process' : undefined
+              })
             }
           );
 
@@ -215,10 +218,10 @@ export async function onRequest(context) {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
-    
+
   } catch (error) {
     console.error('Error processing webhook:', error);
-    
+
     return new Response(JSON.stringify({
       success: false,
       message: 'Error processing webhook: ' + error.message

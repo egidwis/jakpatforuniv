@@ -31,7 +31,7 @@ export const checkSupabaseConnection = async (): Promise<boolean> => {
     }
 
     // Coba melakukan query sederhana dengan timeout
-    const timeoutPromise = new Promise<{error: any}>((_, reject) =>
+    const timeoutPromise = new Promise<{ error: any }>((_, reject) =>
       setTimeout(() => reject(new Error('Supabase connection timeout')), 5000)
     );
 
@@ -135,6 +135,45 @@ export const createTransaction = async (transaction: Transaction) => {
     return data[0];
   } catch (error) {
     console.error('Error creating transaction:', error);
+    throw error;
+  }
+};
+
+// Fungsi untuk menghapus transaksi
+export const deleteTransaction = async (id: string) => {
+  try {
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    throw error;
+  }
+};
+
+// Fungsi untuk menghapus banyak transaksi
+export const deleteTransactions = async (ids: string[]) => {
+  try {
+    const { error, count } = await supabase
+      .from('transactions')
+      .delete({ count: 'exact' })
+      .in('id', ids);
+
+    if (error) throw error;
+
+    // Check if rows were actually deleted
+    if (count === 0) {
+      console.warn('Delete operation returned 0 count. Check RLS policies.');
+      throw new Error('Tidak ada data yang terhapus (Permasalahan Izin/RLS)');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error deleting transactions:', error);
     throw error;
   }
 };
