@@ -13,9 +13,12 @@ export async function onRequest(context) {
     });
   }
 
+
+
   try {
     // Parse request body
     const requestData = await context.request.json();
+    const event = requestData.event || '';
 
     console.log('Webhook received:', JSON.stringify(requestData));
 
@@ -35,16 +38,33 @@ export async function onRequest(context) {
       });
     }
 
+    // Ignore payment.created and payment.reminder events
+    if (event === 'payment.created' || event === 'payment.reminder') {
+      console.log(`Ignoring event: ${event}`);
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Event ${event} ignored`
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // Ekstrak data pembayaran dari webhook
     // Format webhook Mayar bisa bervariasi, jadi kita perlu menangani beberapa kemungkinan
 
     let paymentId = '';
     let status = '';
-    let event = requestData.event || '';
+    // event already declared above
 
     // Format 1: Mayar standard format dengan event dan data
     if (requestData.data && requestData.data.id) {
       paymentId = requestData.data.id;
+      status = requestData.data.status || '';
+    }
+    // Format 1a: Mayar standard format dengan event dan data.transactionId (Paylater/Generic)
+    else if (requestData.data && requestData.data.transactionId) {
+      paymentId = requestData.data.transactionId;
       status = requestData.data.status || '';
     }
     // Format 2: id dan status langsung di root
@@ -144,7 +164,72 @@ export async function onRequest(context) {
 
         // Check if transaction was found
         if (!updatedTransactions || updatedTransactions.length === 0) {
-          console.warn(`No transaction found with payment_id: ${paymentId}`);
+          console.warn(`No transaction found with payment_id: ${paymentId}. Trying fallback lookup.`);
+
+          // Fallback: Try to find by email and amount if available
+          const customerEmail = requestData.data ? requestData.data.customerEmail : null;
+          const amount = requestData.data ? requestData.data.amount : null;
+
+          if (customerEmail && amount) {
+            console.log(`Fallback: Looking up by email ${customerEmail} and amount ${amount}`);
+            // Find form submission by email
+            const formUrl = `${supabaseUrl}/rest/v1/form_submissions?email=eq.${customerEmail}&order=created_at.desc&limit=1`;
+            const formResponse = await fetch(formUrl, {
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            const forms = await formResponse.json();
+
+            if (forms && forms.length > 0) {
+              const form = forms[0];
+              // Check if amount matches roughly (allow some variance if needed, but exact is better)
+              if (Math.abs(form.total_cost - amount) < 1000) {
+                console.log(`Fallback: Found matching form submission ${form.id}. Updating status.`);
+                // Update the form directly since we missed the transaction
+                const updateFormFallbackResponse = await fetch(
+                  `${supabaseUrl}/rest/v1/form_submissions?id=eq.${form.id}`,
+                  {
+                    method: 'PATCH',
+                    headers: {
+                      'apikey': supabaseKey,
+                      'Authorization': `Bearer ${supabaseKey}`,
+                      'Content-Type': 'application/json',
+                      'Prefer': 'return=representation'
+                    },
+                    body: JSON.stringify({
+                      payment_status: appStatus === 'completed' ? 'paid' : appStatus,
+                      status: appStatus === 'completed' ? 'process' : undefined
+                    })
+                  }
+                );
+
+                // Also try to update transaction if it exists by form_id
+                const updateTransFallbackResponse = await fetch(
+                  `${supabaseUrl}/rest/v1/transactions?form_submission_id=eq.${form.id}`,
+                  {
+                    method: 'PATCH',
+                    headers: {
+                      'apikey': supabaseKey,
+                      'Authorization': `Bearer ${supabaseKey}`,
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ status: appStatus, payment_id: paymentId }) // Update payment_id too!
+                  }
+                );
+
+                return new Response(JSON.stringify({
+                  success: true,
+                  message: 'Fallback update successful',
+                  paymentId,
+                  status: appStatus
+                }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+              }
+            }
+          }
+
           return new Response(JSON.stringify({
             success: false,
             message: 'Transaction not found in database',

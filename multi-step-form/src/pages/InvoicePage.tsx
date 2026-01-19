@@ -6,10 +6,13 @@ import { Button } from '@/components/ui/button';
 import jakpatLogo from '../assets/Jakpat Navbar Logo.webp';
 
 interface InvoiceItem {
+    name?: string; // Added optional name
     category: string;
     price: number;
     qty: number;
 }
+
+
 
 interface InvoiceData {
     id: string; // Transaction ID
@@ -200,7 +203,12 @@ export function InvoicePage() {
                         <tbody>
                             {items.map((item, idx) => (
                                 <tr key={idx} className="border-b border-gray-100">
-                                    <td className="py-4 px-4 text-sm text-gray-800 font-medium">{item.category}</td>
+                                    <td className="py-4 px-4 text-sm text-gray-800 font-medium">
+                                        <div className="font-bold">{item.name || item.category}</div>
+                                        {item.name && item.name !== item.category && (
+                                            <div className="text-xs text-gray-500 mt-1">{item.category}</div>
+                                        )}
+                                    </td>
                                     <td className="py-4 px-4 text-center text-sm text-gray-600">{item.qty}</td>
                                     <td className="py-4 px-4 text-right text-sm text-gray-600">{formatCurrency(item.price)}</td>
                                     <td className="py-4 px-4 text-right text-sm text-gray-900 font-bold">

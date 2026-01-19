@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { createManualInvoice } from '../utils/payment';
-import { createInvoice, createTransaction, updateFormStatus } from '../utils/supabase';
+import { createInvoice, createTransaction } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
 import { Trash2, Plus } from 'lucide-react';
 
@@ -159,8 +159,8 @@ export function CreateInvoiceModal({
 
       await createTransaction(transactionData);
 
-      // Update form status to 'verified'
-      await updateFormStatus(formSubmissionId, 'verified');
+      // Don't auto-verify form status, wait for payment
+      // await updateFormStatus(formSubmissionId, 'verified');
 
       toast.success('Invoice berhasil dibuat!');
 

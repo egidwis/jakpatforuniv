@@ -7,147 +7,103 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const transactions = [
     {
-        email: 'abidzarghifari@mail.ugm.ac.id',
-        name: 'Abi Dzar Ghifari',
-        amount: 260000,
-        created_at: '2026-01-02T15:41:00+07:00',
-        items: [
-            { id: '1', name: 'Jakpat for University (Platform)', qty: 1, price: 200000, category: 'Jakpat for University (Platform)' },
-            { id: '2', name: "Respondent's Incentive", qty: 2, price: 30000, category: "Respondent's Incentive" }
-        ]
-    },
-    {
-        email: 'riosantoso6090@gmail.com',
-        name: 'Rio Santoso',
-        amount: 400000,
-        created_at: '2026-01-02T15:50:00+07:00',
-        items: [
-            { id: '1', name: 'Jakpat for University (Platform)', qty: 1, price: 300000, category: 'Jakpat for University (Platform)' },
-            { id: '2', name: "Respondent's Incentive", qty: 2, price: 50000, category: "Respondent's Incentive" }
-        ]
-    },
-    {
-        email: 'ieuan1022@gmail.com',
-        name: 'niexuan',
-        amount: 490000,
-        created_at: '2026-01-05T15:35:00+07:00',
-        items: [
-            { id: '1', name: 'Jakpat for University (Platform)', qty: 2, price: 200000, category: 'Jakpat for University (Platform)' },
-            { id: '2', name: "Respondent's Incentive", qty: 3, price: 30000, category: "Respondent's Incentive" }
-        ]
-    },
-    {
-        email: 'syafiraazka1722@gmail.com',
-        name: 'Syafira Azka',
-        amount: 200000,
-        created_at: '2026-01-07T14:55:00+07:00',
-        items: [
-            { id: '1', name: 'Jakpat for University (Platform)', qty: 1, price: 150000, category: 'Jakpat for University (Platform)' },
-            { id: '2', name: "Respondent's Incentive", qty: 2, price: 25000, category: "Respondent's Incentive" }
-        ]
-    },
-    {
-        email: 'assyfa.maura@ui.ac.id',
-        name: 'Assyfa Maura Meldina',
-        amount: 500000,
-        created_at: '2026-01-08T15:26:00+07:00',
-        items: [
-            { id: '1', name: 'Jakpat for University (Platform)', qty: 1, price: 400000, category: 'Jakpat for University (Platform)' },
-            { id: '2', name: "Respondent's Incentive", qty: 2, price: 50000, category: "Respondent's Incentive" }
-        ]
-    },
-    {
-        email: 'aryonokurnianto310@gmail.com',
-        name: 'Aryono Kurnianto',
-        amount: 290000,
-        created_at: '2026-01-09T11:20:00+07:00',
-        items: [
-            { id: '1', name: 'Jakpat for University (ads)', qty: 1, price: 200000, category: 'Jakpat for University (ads)' },
-            { id: '2', name: "Respondent's Incentive", qty: 3, price: 30000, category: "Respondent's Incentive" }
-        ]
-    },
-    {
-        email: 'usuhud@unj.ac.id',
+        name_query: 'Usep Suhud',
         name: 'USEP SUHUD',
-        amount: 1500000,
-        created_at: '2026-01-09T17:13:00+07:00',
+        amount: 2525000,
         items: [
-            { id: '1', name: 'Jakpat for University (Platform) - JAK2604', qty: 2, price: 300000, category: 'Jakpat for University (Platform)' },
-            { id: '2', name: "Respondent's Incentive - JAK2604", qty: 5, price: 30000, category: "Respondent's Incentive" },
-            { id: '3', name: 'Jakpat for University (Platform) - JAK26003', qty: 2, price: 300000, category: 'Jakpat for University (Platform)' },
-            { id: '4', name: "Respondent's Incentive - JAK26003", qty: 5, price: 30000, category: "Respondent's Incentive" }
+            { id: '1', name: 'Jakpat for University (Platform) - EM-2601-JAK', qty: 1, price: 150000, category: 'Jakpat for University (Platform)' },
+            { id: '2', name: "Respondent's Incentive - EM-2601-JAK", qty: 5, price: 25000, category: "Respondent's Incentive" },
+            { id: '3', name: 'Jakpat for University (Platform) - EM-2602-JAK', qty: 2, price: 300000, category: 'Jakpat for University (Platform)' },
+            { id: '4', name: "Respondent's Incentive - EM-2602-JAK", qty: 5, price: 30000, category: "Respondent's Incentive" },
+            { id: '5', name: 'Jakpat for University (Platform) - EM-2603-JAK', qty: 2, price: 300000, category: 'Jakpat for University (Platform)' },
+            { id: '6', name: "Respondent's Incentive - EM-2603-JAK", qty: 5, price: 30000, category: "Respondent's Incentive" },
+            { id: '7', name: 'Jakpat for University (Platform) - EM-2604-JAK', qty: 2, price: 300000, category: 'Jakpat for University (Platform)' },
+            { id: '8', name: "Respondent's Incentive - EM-2604-JAK", qty: 5, price: 30000, category: "Respondent's Incentive" }
         ]
     }
 ];
 
 async function main() {
-    console.log('Starting backfill...');
+    console.log('Starting backfill update...');
 
     for (const t of transactions) {
-        console.log(`Processing ${t.name} (${t.email})...`);
+        console.log(`Processing ${t.name}...`);
 
         // 1. Find form_submission_id
         const { data: submissions, error: findError } = await supabase
             .from('form_submissions')
-            .select('id, payment_status')
-            .eq('email', t.email);
+            .select('id, full_name, email')
+            .ilike('full_name', `%${t.name_query}%`);
 
-        if (findError) {
-            console.error('Error finding submission:', findError);
+        if (findError || !submissions || submissions.length === 0) {
+            console.error('Submission not found for', t.name);
             continue;
         }
 
-        if (!submissions || submissions.length === 0) {
-            console.warn(`No submission found for ${t.email}`);
-            continue;
-        }
+        const submission = submissions[0];
+        console.log(`Found submission: ${submission.full_name}`);
 
-        // Use the most recent submission if multiple? Or specific logic.
-        // Assuming unique email or most recent is the target.
-        const submissionId = submissions[0].id;
-
-        // 2. Prepare transaction data
+        // 2. Prepare transaction data (Note)
         const note = JSON.stringify({
             items: t.items,
-            memo: 'Manual backfill'
+            memo: 'Manual Backfill via Script (Updated)'
         });
 
-        const transactionData = {
-            form_submission_id: submissionId,
-            amount: t.amount,
-            status: 'completed', // Using 'completed' as app logic maps to 'paid'
-            payment_method: 'Mayar (Manual Backfill)',
-            note: note,
-            created_at: t.created_at,
-            updated_at: new Date().toISOString()
-        };
-
-        // 3. Insert Transaction
-        const { data: newTx, error: txError } = await supabase
+        // 3. Find existing transaction to update
+        const { data: existingTx, error: txFindError } = await supabase
             .from('transactions')
-            .insert([transactionData])
-            .select();
+            .select('id')
+            .eq('form_submission_id', submission.id)
+            .ilike('payment_method', '%Manual Backfill%')
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-        if (txError) {
-            console.error('Error inserting transaction:', txError);
+        if (existingTx && existingTx.length > 0) {
+            // UDPATE existing
+            const { error: updateError } = await supabase
+                .from('transactions')
+                .update({
+                    amount: t.amount,
+                    note: note,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existingTx[0].id);
+
+            if (updateError) console.error('Error updating tx:', updateError);
+            else console.log(`Transaction UPDATED for ${t.name} (ID: ${existingTx[0].id})`);
+
         } else {
-            console.log(`Transaction created for ${t.name}:`, newTx[0].id);
+            // INSERT new (fallback if user deleted it)
+            const transactionData = {
+                form_submission_id: submission.id,
+                amount: t.amount,
+                status: 'completed',
+                payment_method: 'Mayar (Manual Backfill)',
+                payment_id: `backfill_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+                note: note,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+
+            const { data: newTx, error: insertError } = await supabase
+                .from('transactions')
+                .insert([transactionData])
+                .select();
+
+            if (insertError) console.error('Error inserting tx:', insertError);
+            else console.log(`Transaction CREATED for ${t.name} (ID: ${newTx[0].id})`);
         }
 
-        // 4. Update Submission Payment Status to 'paid' if not already
-        const { error: updateError } = await supabase
+        // 4. Update Submission Payment Status (Ensure it is paid)
+        await supabase
             .from('form_submissions')
-            .update({ payment_status: 'paid', status: 'process' }) // Also setting status to process as requested
-            .eq('id', submissionId);
+            .update({ payment_status: 'paid', status: 'process' })
+            .eq('id', submission.id);
 
-        if (updateError) {
-            console.error('Error updating submission status:', updateError);
-        } else {
-            console.log(`Submission status updated for ${t.name}`);
-        }
+        console.log(`Submission status ensured for ${t.name}`);
     }
 
-    console.log('Backfill complete.');
+    console.log('Update complete.');
 }
 
 main();

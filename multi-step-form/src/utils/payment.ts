@@ -339,6 +339,19 @@ export const createPayment = async (paymentData: PaymentData) => {
       throw new Error('Tidak dapat menemukan URL pembayaran dalam respons');
     }
 
+    if (!transactionId) {
+      console.warn('Could not extract transactionId from response, trying fallback to id or parsing link');
+
+      if (response.data.data && response.data.data.id) transactionId = response.data.data.id;
+      else if (response.data.id) transactionId = response.data.id;
+
+      // If still empty, use timestamp but warn heavily
+      if (!transactionId) {
+        console.error('CRITICAL: Failed to extract transaction ID. Webhooks will fail.');
+        transactionId = `unknown_${Date.now()}`;
+      }
+    }
+
     console.log('Payment URL received:', paymentUrl);
     console.log('Transaction ID (will be saved to database):', transactionId);
 
