@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -41,8 +42,17 @@
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 0.5; transform: scale(1); }
-      50% { opacity: 0.8; transform: scale(1.1); }
+
+      0%,
+      100% {
+        opacity: 0.5;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.8;
+        transform: scale(1.1);
+      }
     }
 
     .container {
@@ -79,8 +89,15 @@
     }
 
     @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-20px); }
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-20px);
+      }
     }
 
     .message {
@@ -345,6 +362,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1 id="pageTitle">Submit Survey Sukses!</h1>
@@ -352,9 +370,10 @@
     <!-- Success Icon -->
     <div class="success-icon-container">
       <svg class="success-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="50" cy="50" r="45" fill="none" stroke="white" stroke-width="3" opacity="0.3"/>
-        <circle cx="50" cy="50" r="35" fill="rgba(255, 255, 255, 0.1)"/>
-        <path d="M30 50 L45 65 L70 35" fill="none" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="50" cy="50" r="45" fill="none" stroke="white" stroke-width="3" opacity="0.3" />
+        <circle cx="50" cy="50" r="35" fill="rgba(255, 255, 255, 0.1)" />
+        <path d="M30 50 L45 65 L70 35" fill="none" stroke="white" stroke-width="5" stroke-linecap="round"
+          stroke-linejoin="round" />
       </svg>
     </div>
 
@@ -363,12 +382,13 @@
       <span id="teamContactText">Tim kami akan segera menghubungi kamu untuk langkah selanjutnya.</span>
     </div>
 
-    <a id="confirmButton" href="https://wa.me/6287759153120?text=Halo%20Jakpat%2C%20saya%20ingin%20mengkonfirmasi%20survey%20yang%20baru%20saja%20saya%20submit." class="cta-button">
-      Konfirmasi ke Jakpat
+    <a id="confirmButton" href="/dashboard/status" class="cta-button">
+      Track Status Survey
     </a>
 
     <div class="info-box">
-      <strong>✨ <span id="nextStepsLabel">Next Steps:</span></strong> <span id="nextStepsText">Kami akan meninjau survey Anda dan menghubungi Anda dalam 1-2 hari kerja untuk konfirmasi dan langkah selanjutnya.</span>
+      <strong>✨ <span id="nextStepsLabel">Next Steps:</span></strong> <span id="nextStepsText">Kami akan meninjau survey
+        Anda dan menghubungi Anda dalam 1-2 hari kerja untuk konfirmasi dan langkah selanjutnya.</span>
     </div>
   </div>
 
@@ -378,26 +398,29 @@
       <p class="footer-text" id="footerText">Jakpat for Universities © 2025</p>
       <div class="footer-actions">
         <button id="themeToggle" class="icon-button" aria-label="Toggle theme">
-          <svg class="icon sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5"/>
-            <line x1="12" y1="1" x2="12" y2="3"/>
-            <line x1="12" y1="21" x2="12" y2="23"/>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-            <line x1="1" y1="12" x2="3" y2="12"/>
-            <line x1="21" y1="12" x2="23" y2="12"/>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          <svg class="icon sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
           </svg>
-          <svg class="icon moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          <svg class="icon moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
           </svg>
         </button>
         <div class="language-switcher">
-          <svg class="language-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="2" y1="12" x2="22" y2="12"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          <svg class="language-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
           </svg>
           <button class="language-button active" data-lang="id">🇮🇩 ID</button>
           <span class="language-divider">|</span>
@@ -415,7 +438,7 @@
         pageTitle: 'Submit Survey Sukses!',
         processing: 'Survey kamu <span class="highlight">sedang kami proses</span>.',
         teamContact: 'Tim kami akan segera menghubungi kamu untuk langkah selanjutnya.',
-        confirmButton: 'Konfirmasi ke Jakpat',
+        confirmButton: 'Track Status Survey',
         nextStepsLabel: 'Next Steps:',
         nextStepsText: 'Kami akan meninjau survey Anda dan menghubungi Anda dalam 1-2 hari kerja untuk konfirmasi dan langkah selanjutnya.'
       },
@@ -424,7 +447,7 @@
         pageTitle: 'Survey Submitted Successfully!',
         processing: 'Your survey is <span class="highlight">being processed</span>.',
         teamContact: 'Our team will contact you shortly for next steps.',
-        confirmButton: 'Confirm with Jakpat',
+        confirmButton: 'Track Status Survey',
         nextStepsLabel: 'Next Steps:',
         nextStepsText: 'We will review your survey and contact you within 1-2 business days for confirmation and next steps.'
       }
@@ -498,4 +521,5 @@
     });
   </script>
 </body>
+
 </html>

@@ -9,34 +9,38 @@ export function ThemeToggle() {
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(newTheme);
-    
-    // Update HTML attribute for CSS selectors
+
+    // Update HTML attribute for CSS selectors and class for Tailwind
     if (newTheme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.classList.add('dark');
     } else {
       document.documentElement.setAttribute('data-theme', 'light');
+      document.documentElement.classList.remove('dark');
     }
-    
+
     localStorage.setItem('theme', newTheme);
   };
 
   // Effect to detect theme from localStorage or system preference
   useEffect(() => {
     setMounted(true);
-    
+
     // Check theme from localStorage
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    
+
     // If there's a saved theme, use it
     if (savedTheme) {
       setTheme(savedTheme);
       document.documentElement.setAttribute('data-theme', savedTheme);
-    } 
+      if (savedTheme === 'dark') document.documentElement.classList.add('dark');
+    }
     // Otherwise, use system preference
     else {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       setTheme(isDark ? 'dark' : 'light');
       document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      if (isDark) document.documentElement.classList.add('dark');
     }
   }, []);
 
@@ -44,11 +48,11 @@ export function ThemeToggle() {
   if (!mounted) return null;
 
   return (
-    <button 
+    <button
       onClick={toggleTheme}
       className="button button-secondary"
       aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-      style={{ 
+      style={{
         padding: '0.5rem',
         display: 'flex',
         alignItems: 'center',

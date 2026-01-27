@@ -17,9 +17,10 @@ import { Copy, Link as LinkIcon } from 'lucide-react';
 interface CopyInvoiceDropdownProps {
   formSubmissionId: string;
   refreshTrigger?: number;
+  isCompact?: boolean;
 }
 
-export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger }: CopyInvoiceDropdownProps) {
+export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompact }: CopyInvoiceDropdownProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -86,15 +87,21 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger }: CopyIn
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" disabled={isLoading} className="w-full sm:w-auto">
-          <LinkIcon className="w-4 h-4 mr-2" />
-          Invoice Link
-          {invoices.length > 0 && (
-            <Badge variant="secondary" className="ml-2">
-              {invoices.length}
-            </Badge>
-          )}
-        </Button>
+        {isCompact ? (
+          <Button variant="outline" size="icon" disabled={isLoading} className="h-8 w-8">
+            <LinkIcon className="w-4 h-4" />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" disabled={isLoading} className="w-full sm:w-auto">
+            <LinkIcon className="w-4 h-4 mr-2" />
+            Invoice Link
+            {invoices.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {invoices.length}
+              </Badge>
+            )}
+          </Button>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuLabel>Daftar Invoice</DropdownMenuLabel>

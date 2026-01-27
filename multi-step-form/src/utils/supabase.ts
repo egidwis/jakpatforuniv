@@ -47,9 +47,82 @@ export const checkSupabaseConnection = async (): Promise<boolean> => {
 
     console.log('Supabase connection successful');
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error checking Supabase connection:', error);
     return false;
+  }
+};
+
+// ============= AUTH FUNCTIONS =============
+
+export const signInWithGoogle = async (redirectTo?: string) => {
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTo || `${window.location.origin}/dashboard/submit`,
+      },
+    });
+
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Error signing in with Google:', error);
+    throw error;
+  }
+};
+
+export const signOut = async () => {
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    return true;
+  } catch (error: any) {
+    console.error('Error signing out:', error);
+    throw error;
+  }
+};
+
+export const getCurrentUser = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user;
+  } catch (error: any) {
+    console.error('Error getting current user:', error);
+    return null;
+  }
+};
+
+export const signInWithPassword = async (email: string, password: string) => {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Error signing in with password:', error);
+    throw error;
+  }
+};
+
+export const signUp = async (email: string, password: string, fullName: string) => {
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        },
+      },
+    });
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Error signing up:', error);
+    throw error;
   }
 };
 
@@ -70,6 +143,7 @@ export interface FormSubmission {
   university?: string;
   department?: string;
   status?: string;
+  submission_status?: string;
   referral_source?: string;
   winner_count?: number;
   prize_per_winner?: number;
@@ -107,6 +181,21 @@ export interface Invoice {
   paid_at?: string;
 }
 
+export interface ScheduledAd {
+  id?: string;
+  form_submission_id: string;
+  start_date: string;
+  end_date: string;
+  ad_link: string;
+  notes?: string;
+  google_calendar_event_id?: string;
+  created_at?: string;
+  created_by?: string;
+  // Joins
+  form_title?: string; // from form_submissions
+  researcher_name?: string; // from form_submissions
+}
+
 // Fungsi untuk menyimpan form submission
 export const saveFormSubmission = async (formData: FormSubmission) => {
   try {
@@ -117,7 +206,7 @@ export const saveFormSubmission = async (formData: FormSubmission) => {
 
     if (error) throw error;
     return data[0];
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving form submission:', error);
     throw error;
   }
@@ -133,7 +222,7 @@ export const createTransaction = async (transaction: Transaction) => {
 
     if (error) throw error;
     return data[0];
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating transaction:', error);
     throw error;
   }
@@ -149,7 +238,7 @@ export const deleteTransaction = async (id: string) => {
 
     if (error) throw error;
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting transaction:', error);
     throw error;
   }
@@ -172,9 +261,26 @@ export const deleteTransactions = async (ids: string[]) => {
     }
 
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting transactions:', error);
     throw error;
+  }
+};
+
+// Fungsi untuk mendapatkan transaksi berdasarkan form_submission_id
+export const getTransactionsByFormSubmissionId = async (formSubmissionId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('form_submission_id', formSubmissionId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error getting transactions:', error);
+    return [];
   }
 };
 
@@ -229,7 +335,7 @@ export const getFormSubmissionById = async (id: string) => {
 
     console.log('Form submission data retrieved successfully');
     return data;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error getting form submission:', error);
 
     // Tambahkan informasi tambahan ke error untuk debugging
@@ -253,7 +359,7 @@ export const updatePaymentStatus = async (id: string, status: string) => {
 
     if (error) throw error;
     return data[0];
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating payment status:', error);
     throw error;
   }
@@ -264,19 +370,20 @@ export const updateFormStatus = async (id: string, status: string) => {
   try {
     const { data, error } = await supabase
       .from('form_submissions')
-      .update({ status: status })
+      .update({ submission_status: status })
       .eq('id', id)
       .select();
 
     if (error) throw error;
     return data[0];
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating form status:', error);
     throw error;
   }
 };
 
 // Fungsi untuk mendapatkan semua form submissions (untuk internal dashboard)
+// Fungsi untuk mendapatkan semua form submissions (untuk internal dashboard, deprecated for pagination)
 export const getAllFormSubmissions = async () => {
   try {
     const { data, error } = await supabase
@@ -286,8 +393,37 @@ export const getAllFormSubmissions = async () => {
 
     if (error) throw error;
     return data;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error getting all form submissions:', error);
+    throw error;
+  }
+};
+
+// Fungsi untuk mendapatkan form submissions dengan pagination
+export const getFormSubmissionsPaginated = async (page: number, limit: number, searchQuery: string = '') => {
+  try {
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    let query = supabase
+      .from('form_submissions')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (searchQuery) {
+      // Simple search on title or researcher name if needed, but usually search is client side in simple apps.
+      // However, for proper pagination search should be server side.
+      // Let's implement basic server side search for title and full_name
+      query = query.or(`title.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) throw error;
+    return { data, count };
+  } catch (error: any) {
+    console.error('Error getting paginated submissions:', error);
     throw error;
   }
 };
@@ -338,8 +474,178 @@ export const updateInvoiceStatus = async (paymentId: string, status: string) => 
 
     if (error) throw error;
     return data[0];
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating invoice status:', error);
     throw error;
+  }
+};
+
+// Fungsi untuk mendapatkan submissions berdasarkan email user
+export const getFormSubmissionsByEmail = async (email: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .select('*')
+      .eq('email', email) // Match by email only (user_id column doesn't exist)
+      .order('created_at', { ascending: false });
+
+    // Fallback simple query if OR fails or for simplicity (User asked for email match)
+    // const { data, error } = await supabase
+    //   .from('form_submissions')
+    //   .select('*')
+    //   .eq('email', email)
+    //   .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error: any) {
+    console.error('Error getting user submissions:', error);
+    // Return empty array instead of throwing to prevent page crash
+    return [];
+  }
+};
+// ============= CHAT FUNCTIONS =============
+
+export interface ChatSession {
+  id: string;
+  user_email: string;
+  last_message_at: string;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+// Get or create session for user
+export const getOrCreateChatSession = async (userEmail: string) => {
+  try {
+    // 1. Try to find existing session
+    const { data: existingSession, error: fetchError } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('user_email', userEmail)
+      .single();
+
+    if (existingSession) return existingSession;
+
+    // 2. If not found, create new
+    const { data: newSession, error: createError } = await supabase
+      .from('chat_sessions')
+      .insert([{ user_email: userEmail }])
+      .select()
+      .single();
+
+    if (createError) throw createError;
+    return newSession;
+  } catch (error) {
+    console.error('Error in getOrCreateChatSession:', error);
+    return null;
+  }
+};
+
+// Get messages for a session
+export const getChatMessages = async (sessionId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error getting chat messages:', error);
+    return [];
+  }
+};
+
+// Save a new message
+export const saveChatMessage = async (sessionId: string, role: 'user' | 'assistant', content: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert([{ session_id: sessionId, role, content }])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Update last_message_at in session (fire and forget update)
+    supabase
+      .from('chat_sessions')
+      .update({ last_message_at: new Date().toISOString() })
+      .eq('id', sessionId)
+      .then();
+
+    return data;
+  } catch (error) {
+    console.error('Error saving chat message:', error);
+    return null;
+  }
+};
+
+// Admin: Get all chat sessions (for internal dashboard)
+export const getAllChatSessions = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .order('last_message_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching all chat sessions:', error);
+    return [];
+  }
+}
+// ============= SCHEDULING FUNCTIONS =============
+
+export const createScheduledAd = async (adData: ScheduledAd) => {
+  try {
+    const { data, error } = await supabase
+      .from('scheduled_ads')
+      .insert([adData])
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (error: any) {
+    console.error('Error creating scheduled ad:', error);
+    throw error;
+  }
+};
+
+export const getScheduledAds = async () => {
+  try {
+    // Join with form_submissions to get details
+    const { data, error } = await supabase
+      .from('scheduled_ads')
+      .select(`
+        *,
+        form_submissions (
+          title,
+          full_name
+        )
+      `)
+      .order('start_date', { ascending: true });
+
+    if (error) throw error;
+
+    // Flatten logic if needed, but for now return as is or map
+    return data.map((item: any) => ({
+      ...item,
+      form_title: item.form_submissions?.title || 'Unknown Title',
+      researcher_name: item.form_submissions?.full_name || 'Unknown Researcher'
+    }));
+  } catch (error: any) {
+    console.error('Error fetching scheduled ads:', error);
+    return [];
   }
 };

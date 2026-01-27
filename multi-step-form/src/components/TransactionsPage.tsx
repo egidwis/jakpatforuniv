@@ -12,21 +12,19 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, ExternalLink, Search, RefreshCw, ShoppingBag, Trash2, Download } from 'lucide-react';
+import { Loader2, Search, RefreshCw, Trash2, Download } from 'lucide-react';
 
 // Assuming deleteTransaction is a named export from supabase utility
 // If supabase itself is still needed, it would be:
 // import { supabase, deleteTransaction } from '../utils/supabase';
 // For this change, we'll assume deleteTransaction is a named export.
 // If `getTransactions` is also needed, it should be added here.
-import { deleteTransaction, deleteTransactions } from '../utils/supabase';
+import { deleteTransactions } from '../utils/supabase';
 
 
 interface Transaction {
@@ -51,11 +49,10 @@ export function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const itemsPerPage = 10;
+
   const fetchTransactions = async () => {
     try {
       setLoading(true);
@@ -113,21 +110,6 @@ export function TransactionsPage() {
       return <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100">Mayar</Badge>;
     }
     return <Badge variant="outline">{method}</Badge>;
-  };
-
-  const handleDeleteTransaction = async (id: string, name: string) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus transaksi untuk ${name}?`)) {
-      try {
-        setLoading(true);
-        await deleteTransaction(id);
-        toast.success('Transaksi berhasil dihapus');
-        fetchTransactions(); // Refresh list
-      } catch (error) {
-        toast.error('Gagal menghapus transaksi');
-        console.error(error);
-        setLoading(false);
-      }
-    }
   };
 
   const handleToggleSelectAll = (checked: boolean) => {
@@ -245,6 +227,42 @@ export function TransactionsPage() {
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
+          </Button>
+
+          <Button
+            onClick={() => {
+              const headers = ['Transaction ID', 'Survey Title', 'Researcher', 'Payment Method', 'Amount', 'Status', 'Created At', 'Payment ID'];
+              const csvContent = [
+                headers.join(','),
+                ...filteredTransactions.map(t => [
+                  `"${t.id}"`,
+                  `"${(t.form_submissions?.title || '').replace(/"/g, '""')}"`,
+                  `"${(t.form_submissions?.full_name || '').replace(/"/g, '""')}"`,
+                  `"${t.payment_method}"`,
+                  `"${t.amount}"`,
+                  `"${t.status}"`,
+                  `"${new Date(t.created_at).toLocaleString()}"`,
+                  `"${t.payment_id || ''}"`
+                ].join(','))
+              ].join('\n');
+
+              const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+              const link = document.createElement('a');
+              if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `transactions_export_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }
+            }}
+            variant="outline"
+            className="h-10"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
           </Button>
         </div>
 

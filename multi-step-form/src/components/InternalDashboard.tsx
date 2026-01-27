@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, Download, RefreshCw, Lock, CheckCircle, XCircle, Search, Plus } from 'lucide-react';
-import { getFormResponseCount, getFormResponses, exportResponsesToCSV } from '../utils/google-forms-responses';
-import { getAllFormSubmissions, updateFormStatus, type FormSubmission } from '../utils/supabase';
+import { LogOut, Eye, RefreshCw, Lock, CheckCircle, XCircle, Search, Plus, Calendar } from 'lucide-react';
+import { getAllFormSubmissions, getFormSubmissionsPaginated, updateFormStatus, type FormSubmission, supabase } from '../utils/supabase';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { simpleGoogleAuth } from '../utils/google-auth-simple';
+import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Alert, AlertDescription } from './ui/alert';
 import { CreateInvoiceModal } from './CreateInvoiceModal';
 import { CopyInvoiceDropdown } from './CopyInvoiceDropdown';
+import { PublishAdsModal } from './PublishAdsModal';
 import './InternalDashboard.css';
 
 interface SurveySubmission {
@@ -36,13 +37,21 @@ interface InternalDashboardProps {
 }
 
 export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashboardProps = {}) {
-  const [isAuthenticated, setIsAuthenticated] = useState(hideAuth);
-  const [password, setPassword] = useState('');
+  const { user, loading: authLoading, signOut } = useAuth();
   const [submissions, setSubmissions] = useState<SurveySubmission[]>([]);
   const [filteredSubmissions, setFilteredSubmissions] = useState<SurveySubmission[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50); // Default 50 items per page
+  const [totalSubmissions, setTotalSubmissions] = useState(0);
+
+  // Login State
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
 
@@ -51,44 +60,29 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [selectedSubmission, setSelectedSubmission] = useState<SurveySubmission | null>(null);
   const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
 
+  // Publish Ads Modal State
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+  const [selectedSubmissionForAds, setSelectedSubmissionForAds] = useState<SurveySubmission | null>(null);
+
+  // Admin Access Check
+  // STRICT: Only product@jakpat.net is allowed
+  const allowedEmails = ['product@jakpat.net'];
+  const isAdmin = (user?.email && allowedEmails.includes(user.email)) ||
+    hideAuth; // Trust parent if hideAuth is true
+
   useEffect(() => {
-    if (hideAuth) {
-      // If hideAuth is true, we're already authenticated via parent component
-      setIsAuthenticated(true);
+    if (isAdmin) {
       loadSubmissions();
       checkGoogleConnection();
-    } else {
-      // Check if already authenticated in session
-      const auth = sessionStorage.getItem('internal_auth');
-      if (auth === 'true') {
-        setIsAuthenticated(true);
-        loadSubmissions();
-        checkGoogleConnection();
-      }
     }
-  }, [hideAuth]);
+  }, [isAdmin]);
 
-  // Filter submissions based on search query
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredSubmissions(submissions);
-      return;
-    }
-
-    const query = searchQuery.toLowerCase();
-    const filtered = submissions.filter(submission => {
-      return (
-        submission.formTitle.toLowerCase().includes(query) ||
-        submission.researcherName.toLowerCase().includes(query) ||
-        submission.researcherEmail.toLowerCase().includes(query) ||
-        submission.formId.toLowerCase().includes(query) ||
-        submission.status?.toLowerCase().includes(query) ||
-        submission.payment_status?.toLowerCase().includes(query)
-      );
-    });
-
-    setFilteredSubmissions(filtered);
-  }, [searchQuery, submissions]);
+  // Client-side search logic removed in favor of Server-side search inside loadSubmissions
+  // Reset page to 1 when search changes
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setCurrentPage(1);
+  };
 
   const checkGoogleConnection = () => {
     const connected = simpleGoogleAuth.isAuthenticated();
@@ -98,26 +92,17 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const connectGoogle = async () => {
     setIsConnectingGoogle(true);
     try {
-      // Check if already authenticated from homepage
       if (simpleGoogleAuth.isAuthenticated()) {
         setIsGoogleConnected(true);
         toast.success('Already connected to Google!');
         setIsConnectingGoogle(false);
         return;
       }
-
       toast.info('Opening Google authentication popup...');
-
-      // Initialize and request access
       await simpleGoogleAuth.loadGoogleScript();
       const initialized = await simpleGoogleAuth.initialize();
-
-      if (!initialized) {
-        throw new Error('Failed to initialize Google authentication');
-      }
-
+      if (!initialized) throw new Error('Failed to initialize Google authentication');
       const result = await simpleGoogleAuth.requestAccessToken();
-
       if (result.success) {
         setIsGoogleConnected(true);
         toast.success('Connected to Google successfully!');
@@ -138,56 +123,59 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     toast.info('Disconnected from Google');
   };
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === 'jakpat2025') {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('internal_auth', 'true');
-      setError('');
-      loadSubmissions();
-    } else {
-      setError('Invalid password');
+  const handleLogout = async () => {
+    if (onLogout) {
+      onLogout();
     }
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    sessionStorage.removeItem('internal_auth');
-    setPassword('');
+    await signOut();
   };
 
   const loadSubmissions = async () => {
     setLoading(true);
     try {
-      // Fetch from Supabase
-      const data = await getAllFormSubmissions();
+      // Use paginated fetch
+      const { data, count } = await getFormSubmissionsPaginated(currentPage, pageSize, searchQuery);
 
-      // Transform Supabase data to SurveySubmission format
-      const transformedData: SurveySubmission[] = data.map((submission: FormSubmission) => ({
-        id: submission.id || '',
-        formId: extractFormId(submission.survey_url),
-        formTitle: submission.title,
-        formUrl: submission.survey_url,
-        researcherName: submission.full_name || 'Unknown',
-        researcherEmail: submission.email || 'N/A',
-        submittedAt: submission.created_at || new Date().toISOString(),
-        questionCount: submission.question_count,
-        responseCount: undefined,
-        status: submission.status || 'verified',
-        payment_status: submission.payment_status || 'pending',
-        total_cost: submission.total_cost,
-        phone_number: submission.phone_number
-      }));
-
-      setSubmissions(transformedData);
-      toast.success(`Loaded ${transformedData.length} submissions`);
-    } catch (err) {
-      console.error('Error loading submissions:', err);
-      toast.error('Failed to load submissions from database');
+      if (data) {
+        const transformed: SurveySubmission[] = data.map((sub: any) => ({
+          id: sub.id,
+          formId: sub.id.substring(0, 8), // Mock ID from UUID
+          formTitle: sub.title || 'Untitled Survey',
+          formUrl: sub.survey_url,
+          researcherName: sub.full_name || 'Unknown',
+          researcherEmail: sub.email || 'No Email',
+          submittedAt: new Date(sub.created_at).toLocaleDateString('id-ID', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          }),
+          questionCount: sub.question_count || 0,
+          responseCount: 0, // Not tracked yet
+          status: (sub.submission_status || sub.status || 'in_review') === 'pending' ? 'in_review' : (sub.submission_status || sub.status || 'in_review'),
+          payment_status: sub.payment_status || 'pending',
+          total_cost: sub.total_cost || 0,
+          phone_number: sub.phone_number
+        }));
+        setSubmissions(transformed);
+        setFilteredSubmissions(transformed); // Since handle search handles querying, these are same
+        setTotalSubmissions(count || 0);
+      }
+    } catch (error) {
+      toast.error('Failed to load submissions');
+      console.error(error);
     } finally {
       setLoading(false);
     }
   };
+
+  // Debounced search effect or separate effect for page changes
+  useEffect(() => {
+    if (isAdmin) {
+      loadSubmissions();
+    }
+  }, [isAdmin, currentPage, searchQuery]); // Re-fetch on page/search change
+
+  // Remove the old client-side filter effect since we do server-side search now
+  // Kept filteredSubmissions state for compatibility but it mirrors submissions now
 
   // Helper function to extract Google Form ID from URL
   const extractFormId = (url: string): string => {
@@ -195,64 +183,14 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     return match ? match[1] : '';
   };
 
-  const fetchResponseCount = async (formId: string, index: number) => {
-    if (!isGoogleConnected) {
-      toast.error('Please connect your Google account first');
-      return;
-    }
-
-    try {
-      toast.info('Fetching response count...');
-      const count = await getFormResponseCount(formId);
-
-      // Update the submission with response count
-      setSubmissions(prev => {
-        const updated = [...prev];
-        updated[index] = { ...updated[index], responseCount: count };
-        return updated;
-      });
-
-      toast.success(`Found ${count} responses`);
-    } catch (error) {
-      console.error('Error fetching response count:', error);
-      toast.error('Failed to fetch response count. Please try reconnecting to Google.');
-    }
-  };
-
-  const exportResponses = async (formId: string, formTitle: string) => {
-    if (!isGoogleConnected) {
-      toast.error('Please connect your Google account first');
-      return;
-    }
-
-    try {
-      toast.info('Fetching responses for export...');
-      const { responses } = await getFormResponses(formId);
-
-      if (responses.length === 0) {
-        toast.warning('No responses to export');
-        return;
-      }
-
-      exportResponsesToCSV(responses, formTitle);
-      toast.success(`Exported ${responses.length} responses to CSV`);
-    } catch (error) {
-      console.error('Error exporting responses:', error);
-      toast.error('Failed to export responses. Please try reconnecting to Google.');
-    }
-  };
-
   const handleStatusChange = async (submissionId: string, newStatus: string, index: number) => {
     try {
       await updateFormStatus(submissionId, newStatus);
-
-      // Update local state
       setSubmissions(prev => {
         const updated = [...prev];
         updated[index] = { ...updated[index], status: newStatus };
         return updated;
       });
-
       toast.success('Status updated successfully');
     } catch (error) {
       console.error('Error updating status:', error);
@@ -271,11 +209,47 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   };
 
   const handleInvoiceCreated = () => {
-    // Refresh the invoice dropdown by incrementing the trigger
     setInvoiceRefreshTrigger(prev => prev + 1);
   };
 
-  if (!isAuthenticated) {
+  const handleOpenPublishModal = (submission: SurveySubmission) => {
+    setSelectedSubmissionForAds(submission);
+    setIsPublishModalOpen(true);
+  };
+
+  const handleClosePublishModal = () => {
+    setIsPublishModalOpen(false);
+    setSelectedSubmissionForAds(null);
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  // Not Logged In -> Show Login Screen
+  if (!user && !hideAuth) {
+    const handleEmailLogin = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setLoading(true);
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: emailInput,
+          password: passwordInput,
+        });
+        if (error) throw error;
+        toast.success('Login successful');
+      } catch (error: any) {
+        console.error('Login error:', error);
+        toast.error(error.message || 'Failed to login');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 px-4">
         <Card className="w-full max-w-md">
@@ -284,34 +258,62 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               <Lock className="w-8 h-8 text-white" />
             </div>
             <CardTitle className="text-2xl text-white">Internal Dashboard</CardTitle>
-            <CardDescription className="text-blue-100">Jakpat for Universities</CardDescription>
+            <CardDescription className="text-blue-100">Login with Admin Credentials</CardDescription>
           </CardHeader>
-          <CardContent className="pt-6">
-            <form onSubmit={handleLogin} className="space-y-6">
+          <CardContent className="pt-8 pb-8 px-8">
+            <form onSubmit={handleEmailLogin} className="space-y-4">
               <div className="space-y-2">
-                <label htmlFor="password" className="block text-sm font-semibold">
-                  Password
-                </label>
+                <label htmlFor="email" className="text-sm font-medium">Email</label>
                 <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  autoFocus
+                  id="email"
+                  type="email"
+                  placeholder="admin@jakpat.net"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
                   required
                 />
               </div>
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              <Button type="submit" className="w-full">
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm font-medium">Password</label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  required
+                />
+              </div>
+              <Button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                disabled={loading}
+              >
+                {loading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
                 Login
               </Button>
             </form>
           </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Not Admin -> Access Denied
+  if (!isAdmin && !hideAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-red-50 px-4">
+        <Card className="w-full max-w-md text-center p-8">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600 mb-6">
+            Your email ({user?.email}) is not authorized to access the Internal Dashboard.
+          </p>
+          <Button onClick={handleLogout} variant="destructive">
+            Log Out
+          </Button>
         </Card>
       </div>
     );
@@ -334,7 +336,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-                {/* Refresh Button */}
                 <Button
                   onClick={loadSubmissions}
                   variant="outline"
@@ -369,10 +370,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 type="text"
-                placeholder="Search submissions..."
+                placeholder="Search or ID..."
+                className="pl-8"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 w-full"
+                onChange={(e) => handleSearchChange(e.target.value)}
               />
             </div>
           </div>
@@ -476,6 +477,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       <TableHead className="font-semibold text-gray-900">Submitted</TableHead>
                       <TableHead className="font-semibold text-gray-900">Status</TableHead>
                       <TableHead className="font-semibold text-gray-900">Payment Status</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Ads Actions</TableHead>
                       <TableHead className="font-semibold text-gray-900">Invoice Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -509,6 +511,17 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           <div className="flex flex-col gap-0.5">
                             <span className="text-sm font-medium text-gray-900">{submission.researcherName}</span>
                             <span className="text-xs text-muted-foreground">{submission.researcherEmail}</span>
+                            {submission.phone_number && (
+                              <a
+                                href={`https://wa.me/${submission.phone_number.replace(/^0/, '62').replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1 mt-0.5 hover:underline"
+                                title="Chat via WhatsApp"
+                              >
+                                <span>📱</span> {submission.phone_number}
+                              </a>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="align-top py-4 text-center">
@@ -536,16 +549,29 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         <TableCell className="align-top py-4">
                           <div className="relative">
                             <select
-                              className="appearance-none w-full pl-3 pr-8 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer transition-colors"
-                              value={submission.status || 'verified'}
+                              className={`appearance-none w-full pl-3 pr-8 py-2 text-xs font-medium rounded-full border-0 cursor-pointer transition-all focus:ring-2 focus:ring-offset-1 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 hover:bg-red-200 focus:ring-red-500' :
+                                submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 focus:ring-blue-500' :
+                                  submission.status === 'scheduling' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200 focus:ring-purple-500' :
+                                    submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 focus:ring-indigo-500' :
+                                      submission.status === 'completed' ? 'bg-gray-100 text-gray-800 hover:bg-gray-200 focus:ring-gray-500' :
+                                        'bg-gray-100 text-gray-800'
+                                }`}
+                              value={submission.status || 'in_review'}
                               onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
                             >
-                              <option value="spam">Spam</option>
-                              <option value="verified">Verified</option>
-                              <option value="process">Process</option>
-                              <option value="publishing">Publishing</option>
+                              <option value="spam" className="bg-white text-gray-900">Spam</option>
+                              <option value="in_review" className="bg-white text-gray-900">In Review</option>
+                              <option value="scheduling" className="bg-white text-gray-900">Scheduling</option>
+                              <option value="publishing" className="bg-white text-gray-900">Publishing</option>
+                              <option value="completed" className="bg-white text-gray-900">Completed</option>
                             </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                            <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 ${submission.status === 'spam' ? 'text-red-600' :
+                              submission.status === 'in_review' ? 'text-blue-600' :
+                                submission.status === 'scheduling' ? 'text-purple-600' :
+                                  submission.status === 'publishing' ? 'text-indigo-600' :
+                                    submission.status === 'completed' ? 'text-gray-600' :
+                                      'text-gray-500'
+                              }`}>
                               <svg className="h-3 w-3 fill-current" viewBox="0 0 20 20">
                                 <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                               </svg>
@@ -553,39 +579,82 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           </div>
                         </TableCell>
                         <TableCell className="align-top py-4">
-                          {submission.payment_status === 'paid' ? (
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-medium">
-                              Paid
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 font-medium">
-                              Pending
-                            </Badge>
-                          )}
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${submission.payment_status?.toLowerCase() === 'paid'
+                            ? 'bg-green-50 text-green-700 border-green-200'
+                            : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                            }`}>
+                            {submission.payment_status === 'paid' ? 'Paid' : 'Pending'}
+                          </span>
                         </TableCell>
                         <TableCell className="align-top py-4">
-                          <div className="flex items-center gap-2">
+                          {submission.payment_status?.toLowerCase() === 'paid' ? (
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-100 hover:text-blue-700"
-                              onClick={() => handleOpenInvoiceModal(submission)}
+                              className="h-8 border-dashed text-xs"
+                              onClick={() => handleOpenPublishModal(submission)}
                             >
-                              <Plus className="w-3.5 h-3.5 mr-1.5" />
-                              Invoice
+                              <Calendar className="w-3 h-3 mr-1.5" />
+                              {submission.status === 'publishing' ? 'Extend Ads' : 'Publish Ads'}
                             </Button>
-                            <div className="scale-90 origin-right">
-                              <CopyInvoiceDropdown
-                                formSubmissionId={submission.id}
-                                refreshTrigger={invoiceRefreshTrigger}
-                              />
-                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="align-top py-4">
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="default"
+                              size="icon"
+                              className="h-8 w-8 bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={() => {
+                                setSelectedSubmission(submission);
+                                setIsInvoiceModalOpen(true);
+                              }}
+                              title="Create Invoice"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+
+                            <CopyInvoiceDropdown
+                              formSubmissionId={submission.id}
+                              refreshTrigger={submission.payment_status === 'paid' ? 1 : 0}
+                              isCompact={true}
+                            />
                           </div>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between px-4 py-4 border-t">
+                  <div className="text-sm text-gray-500">
+                    Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalSubmissions)} of {totalSubmissions} results
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1 || loading}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="text-sm font-medium">Page {currentPage}</div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => prev + 1)}
+                      disabled={currentPage * pageSize >= totalSubmissions || loading}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               </div>
             </Card>
 
@@ -636,14 +705,21 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-gray-500">Status</label>
                         <select
-                          className="w-full px-2 py-1.5 text-xs rounded-md border border-gray-200 bg-white"
-                          value={submission.status || 'verified'}
+                          className={`w-full px-3 py-2 text-xs font-medium rounded-lg border-0 cursor-pointer transition-all focus:ring-2 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 focus:ring-red-500' :
+                            submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 focus:ring-blue-500' :
+                              submission.status === 'scheduling' ? 'bg-purple-100 text-purple-700 focus:ring-purple-500' :
+                                submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 focus:ring-indigo-500' :
+                                  submission.status === 'completed' ? 'bg-gray-100 text-gray-800 focus:ring-gray-500' :
+                                    'bg-gray-100 text-gray-800'
+                            }`}
+                          value={submission.status || 'in_review'}
                           onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
                         >
-                          <option value="spam">Spam</option>
-                          <option value="verified">Verified</option>
-                          <option value="process">Process</option>
-                          <option value="publishing">Publishing</option>
+                          <option value="spam" className="bg-white text-gray-900">Spam</option>
+                          <option value="in_review" className="bg-white text-gray-900">In Review</option>
+                          <option value="scheduling" className="bg-white text-gray-900">Scheduling</option>
+                          <option value="publishing" className="bg-white text-gray-900">Publishing</option>
+                          <option value="completed" className="bg-white text-gray-900">Completed</option>
                         </select>
                       </div>
                       <div className="space-y-1">
@@ -685,24 +761,40 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               ))}
             </div>
           </>
-        )}
-      </div>
+        )
+        }
+      </div >
 
       {/* Invoice Creation Modal */}
-      {selectedSubmission && (
-        <CreateInvoiceModal
-          isOpen={isInvoiceModalOpen}
-          onClose={handleCloseInvoiceModal}
-          formSubmissionId={selectedSubmission.id}
-          defaultAmount={selectedSubmission.total_cost || 0}
-          customerInfo={{
-            fullName: selectedSubmission.researcherName,
-            email: selectedSubmission.researcherEmail,
-            phoneNumber: selectedSubmission.phone_number || ''
+      {
+        selectedSubmission && (
+          <CreateInvoiceModal
+            isOpen={isInvoiceModalOpen}
+            onClose={handleCloseInvoiceModal}
+            formSubmissionId={selectedSubmission.id}
+            defaultAmount={selectedSubmission.total_cost || 0}
+            customerInfo={{
+              fullName: selectedSubmission.researcherName,
+              email: selectedSubmission.researcherEmail,
+              phoneNumber: selectedSubmission.phone_number || ''
+            }}
+            onSuccess={handleInvoiceCreated}
+          />
+        )
+      }
+
+      {/* Publish Ads Modal */}
+      {selectedSubmissionForAds && (
+        <PublishAdsModal
+          isOpen={isPublishModalOpen}
+          onClose={handleClosePublishModal}
+          submission={selectedSubmissionForAds as any} // Cast because wrapper types slightly differ but core fields match
+          onSuccess={() => {
+            loadSubmissions(); // Refresh table to show updated status
+            handleClosePublishModal();
           }}
-          onSuccess={handleInvoiceCreated}
         />
       )}
-    </div>
+    </div >
   );
 }

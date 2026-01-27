@@ -24,7 +24,8 @@ export function DemographyPage() {
             setLoading(true);
             const { data, error } = await supabase
                 .from('form_submissions')
-                .select('university, department, status, referral_source');
+                .select('university, department, status, referral_source, email')
+                .eq('payment_status', 'paid');
 
             if (error) throw error;
 
@@ -36,7 +37,24 @@ export function DemographyPage() {
                 total: data?.length || 0
             };
 
+            // Filter unique emails (use a Set/Map to track seen emails)
+            const uniqueData = [];
+            const seenEmails = new Set();
+
             data?.forEach(row => {
+                if (row.email && !seenEmails.has(row.email)) {
+                    seenEmails.add(row.email);
+                    uniqueData.push(row);
+                } else if (!row.email) {
+                    // Include rows without email? Maybe yes, assuming they are unique or legacy.
+                    uniqueData.push(row);
+                }
+            });
+
+            // Update total based on unique users
+            newStats.total = uniqueData.length;
+
+            uniqueData.forEach(row => {
                 // Normalize strings (trim, lowercase if needed, but display nicely)
                 // Helper to count
                 const count = (obj: Record<string, number>, key: string | null) => {
@@ -46,7 +64,13 @@ export function DemographyPage() {
 
                 count(newStats.universities, row.university);
                 count(newStats.departments, row.department);
-                count(newStats.statuses, row.status);
+
+                // Only count status if it's not a system workflow status
+                const systemStatuses = ['process', 'verified', 'spam', 'publishing', 'pending'];
+                if (!systemStatuses.includes(row.status?.toLowerCase())) {
+                    count(newStats.statuses, row.status);
+                }
+
                 count(newStats.referrals, row.referral_source);
             });
 

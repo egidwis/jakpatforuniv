@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare } from 'lucide-react';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { InternalDashboard } from './InternalDashboard';
 import { TransactionsPage } from './TransactionsPage';
 import { DemographyPage } from './DemographyPage';
+import { ConversationsPage } from './ConversationsPage';
+import { SchedulingPage } from '../pages/dashboard/SchedulingPage';
+import { useAuth } from '../context/AuthContext';
 
-type Page = 'submissions' | 'transactions' | 'demography';
+type Page = 'submissions' | 'transactions' | 'demography' | 'conversations' | 'scheduling';
 
 export function InternalDashboardWithLayout() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState('');
+  // Supabase Auth
+  const { user, signOut } = useAuth();
+
   const [currentPage, setCurrentPage] = useState<Page>('submissions');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -32,12 +35,6 @@ export function InternalDashboardWithLayout() {
     // Also set explicit background
     document.body.style.backgroundColor = '#f9fafb';
 
-    // Check if already authenticated in session
-    const auth = sessionStorage.getItem('internal_auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
-
     // Cleanup: restore theme on unmount
     return () => {
       const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
@@ -52,20 +49,8 @@ export function InternalDashboardWithLayout() {
     };
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === 'jakpat2024') {
-      sessionStorage.setItem('internal_auth', 'true');
-      setIsAuthenticated(true);
-    } else {
-      alert('Password salah!');
-    }
-  };
-
-  const handleLogout = () => {
-    sessionStorage.removeItem('internal_auth');
-    setIsAuthenticated(false);
-    setPassword('');
+  const handleLogout = async () => {
+    await signOut();
   };
 
   const handlePageChange = (page: Page) => {
@@ -73,34 +58,9 @@ export function InternalDashboardWithLayout() {
     setIsSidebarOpen(false); // Close sidebar on mobile after navigation
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-full max-w-md space-y-8 p-8">
-          <div className="text-center">
-            <div className="mx-auto h-16 w-16 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-2xl mb-4">
-              J
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900">Internal Dashboard</h2>
-            <p className="text-gray-500 mt-2">Jakpat for Universities</p>
-          </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <Input
-                type="password"
-                placeholder="Enter password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white border border-gray-300 text-gray-900 focus:border-blue-500 focus:ring-blue-500 placeholder-gray-400"
-              />
-            </div>
-            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
-              Login
-            </Button>
-          </form>
-        </div>
-      </div>
-    );
+  // If not logged in, show Login Screen (Full Page) WITHOUT Sidebar
+  if (!user) {
+    return <InternalDashboard />;
   }
 
   const menuItems = [
@@ -118,6 +78,16 @@ export function InternalDashboardWithLayout() {
       id: 'demography' as Page,
       label: 'Demography',
       icon: FileText, // Or Users if imported, standardizing on FileText or similar
+    },
+    {
+      id: 'conversations' as Page,
+      label: 'Conversations',
+      icon: MessageSquare,
+    },
+    {
+      id: 'scheduling' as Page,
+      label: 'Scheduling',
+      icon: FileText, // Or Calendar if imported
     },
   ];
 
@@ -251,14 +221,22 @@ export function InternalDashboardWithLayout() {
         {/* Main Content */}
         <main className="flex-1 overflow-auto">
           {currentPage === 'submissions' ? (
-            <InternalDashboard hideAuth={true} onLogout={handleLogout} />
+            <InternalDashboard onLogout={handleLogout} />
           ) : currentPage === 'transactions' ? (
             <div className="container mx-auto p-4 md:p-8">
               <TransactionsPage />
             </div>
-          ) : (
+          ) : currentPage === 'demography' ? (
             <div className="container mx-auto p-4 md:p-8">
               <DemographyPage />
+            </div>
+          ) : currentPage === 'conversations' ? (
+            <div className="container mx-auto p-4 md:p-8">
+              <ConversationsPage />
+            </div>
+          ) : (
+            <div className="container mx-auto p-4 md:p-8 h-full">
+              <SchedulingPage />
             </div>
           )}
         </main>

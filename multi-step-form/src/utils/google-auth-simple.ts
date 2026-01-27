@@ -36,7 +36,7 @@ export class SimpleGoogleAuth {
   private accessToken: string | null = null;
   private initialized: boolean = false;
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): SimpleGoogleAuth {
     if (!SimpleGoogleAuth.instance) {
@@ -134,7 +134,7 @@ export class SimpleGoogleAuth {
       // Initialize Token Client for OAuth2
       this.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly',
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly https://www.googleapis.com/auth/calendar',
         callback: '', // Will be set per request
       });
 
@@ -160,16 +160,16 @@ export class SimpleGoogleAuth {
       return new Promise((resolve) => {
         this.tokenClient.callback = (response: any) => {
           if (response.error) {
-            resolve({ 
-              success: false, 
-              error: response.error_description || response.error 
+            resolve({
+              success: false,
+              error: response.error_description || response.error
             });
             return;
           }
 
           this.accessToken = response.access_token;
           console.log('✅ Access token received successfully');
-          
+
           resolve({
             success: true,
             accessToken: this.accessToken
@@ -183,9 +183,9 @@ export class SimpleGoogleAuth {
       });
     } catch (error: any) {
       console.error('❌ Error requesting access token:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Failed to get access token' 
+      return {
+        success: false,
+        error: error.message || 'Failed to get access token'
       };
     }
   }
@@ -225,12 +225,41 @@ export class SimpleGoogleAuth {
 
   // Note: makeGapiRequest removed - using direct HTTP calls instead
 
+  // Create Calendar Event
+  async createCalendarEvent(eventData: any): Promise<any> {
+    if (!this.accessToken) {
+      throw new Error('No access token available');
+    }
+
+    try {
+      const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(eventData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to create calendar event');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error creating calendar event:', error);
+      throw error;
+    }
+  }
+
   // Revoke access token
   revoke(): void {
-    if (this.accessToken) {
-      window.google.accounts.oauth2.revoke(this.accessToken);
-      this.accessToken = null;
-      console.log('✅ Access token revoked');
+    if (this.accessToken && window.google && window.google.accounts && window.google.accounts.oauth2) {
+      window.google.accounts.oauth2.revoke(this.accessToken, () => {
+        this.accessToken = null;
+        console.log('✅ Access token revoked');
+      });
     }
   }
 }

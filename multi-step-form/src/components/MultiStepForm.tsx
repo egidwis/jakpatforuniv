@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { getFormSubmissionsByEmail } from '../utils/supabase';
 import type { SurveyFormData } from '../types';
 import { StepOne } from './StepOne';
 import { StepTwo } from './StepTwo';
@@ -48,8 +50,46 @@ const defaultFormData: SurveyFormData = {
 };
 
 export function MultiStepForm() {
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<SurveyFormData>(defaultFormData);
+
+  // Auto-fill form data from logged-in user
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (user) {
+        // 1. Basic auth data
+        setFormData(prev => ({
+          ...prev,
+          email: user.email || prev.email,
+          fullName: user.user_metadata?.full_name || prev.fullName
+        }));
+
+        // 2. Fetch previous submission for extra details
+        if (user.email) {
+          try {
+            const previousSubmissions = await getFormSubmissionsByEmail(user.email);
+            if (previousSubmissions && previousSubmissions.length > 0) {
+              const latest = previousSubmissions[0];
+              setFormData(prev => ({
+                ...prev,
+                phoneNumber: latest.phone_number || prev.phoneNumber,
+                university: latest.university || prev.university,
+                department: latest.department || prev.department,
+                status: latest.status || prev.status
+              }));
+              // Optional: notification
+              // toast.info('Data diri diisi otomatis dari submission sebelumnya');
+            }
+          } catch (error) {
+            console.error('Failed to auto-fill from previous submission', error);
+          }
+        }
+      }
+    };
+
+    loadUserData();
+  }, [user]);
 
 
   // Fungsi untuk pindah ke step berikutnya
