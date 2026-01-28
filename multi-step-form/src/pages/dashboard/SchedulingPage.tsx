@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Calendar, momentLocalizer, Views, type View } from 'react-big-calendar';
+import { Calendar, momentLocalizer, Views, View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { getScheduledAds, type ScheduledAd } from '@/utils/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, ExternalLink } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
 
 // Setup the localizer for react-big-calendar
 const localizer = momentLocalizer(moment);
@@ -20,7 +19,6 @@ interface CalendarEvent {
 }
 
 export function SchedulingPage() {
-    // const { user } = useAuth();
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(false);
     const [view, setView] = useState<View>(Views.MONTH);
@@ -107,7 +105,7 @@ export function SchedulingPage() {
                             endAccessor="end"
                             style={{ height: '100%' }}
                             view={view}
-                            onView={(v) => setView(v)}
+                            onView={(v: View) => setView(v)}
                             date={date}
                             onNavigate={setDate}
                             eventPropGetter={eventStyleGetter}
