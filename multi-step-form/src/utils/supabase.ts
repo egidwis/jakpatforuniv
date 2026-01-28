@@ -649,3 +649,36 @@ export const getScheduledAds = async () => {
     return [];
   }
 };
+
+// Get scheduled ads for a specific submission
+export const getScheduledAdsBySubmission = async (submissionId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('scheduled_ads')
+      .select('*')
+      .eq('form_submission_id', submissionId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error: any) {
+    console.error('Error fetching scheduled ads by submission:', error);
+    return [];
+  }
+};
+
+// Delete a scheduled ad
+export const deleteScheduledAd = async (id: string) => {
+  try {
+    const { error } = await supabase
+      .from('scheduled_ads')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  } catch (error: any) {
+    console.error('Error deleting scheduled ad:', error);
+    throw error;
+  }
+};

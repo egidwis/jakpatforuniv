@@ -70,7 +70,7 @@ export function PublishAdsModal({ isOpen, onClose, submission, onSuccess }: Publ
 
             try {
                 const event = {
-                    summary: `Advertising: ${title}`,
+                    summary: `Publish Ads: ${title}`,
                     description: `Researcher: ${researcherName}\nLink: ${adLink}\nNotes: ${notes}\n\nSurvey URL: ${surveyUrl}`,
                     start: {
                         dateTime: startDateTime.toISOString(),
