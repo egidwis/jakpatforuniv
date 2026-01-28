@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getFormSubmissionsByEmail } from '../utils/supabase';
 import type { SurveyFormData } from '../types';
@@ -6,7 +7,7 @@ import { StepOne } from './StepOne';
 import { StepTwo } from './StepTwo';
 import { StepThree } from './StepThree';
 import { StepFour } from './StepFour';
-import { Sidebar } from './Sidebar';
+import { UnifiedHeader } from './UnifiedHeader';
 
 // Fungsi untuk mendapatkan tanggal hari ini dalam format YYYY-MM-DD
 const getTodayDate = () => {
@@ -51,8 +52,10 @@ const defaultFormData: SurveyFormData = {
 
 export function MultiStepForm() {
   const { user } = useAuth();
+  const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<SurveyFormData>(defaultFormData);
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
 
   // Auto-fill form data from logged-in user
   useEffect(() => {
@@ -91,6 +94,13 @@ export function MultiStepForm() {
     loadUserData();
   }, [user]);
 
+  // Reset header visibility when changing steps (ensure it shows up for steps 2,3,4)
+  useEffect(() => {
+    if (currentStep > 1) {
+      setIsHeaderVisible(true);
+    }
+  }, [currentStep]);
+
 
   // Fungsi untuk pindah ke step berikutnya
   const nextStep = () => {
@@ -116,17 +126,23 @@ export function MultiStepForm() {
   };
 
   return (
-    <div className="multi-step-form">
-      {/* Sidebar */}
-      <Sidebar currentStep={currentStep} formData={formData} />
+    <div className={`multi-step-form ${isHeaderVisible ? 'pt-24' : ''}`}>
+      {isHeaderVisible && (
+        <UnifiedHeader
+          currentStep={currentStep}
+          formData={formData}
+          onToggleSidebar={toggleSidebar}
+        />
+      )}
 
       {/* Form Content */}
-      <div className="form-content">
+      <div className="form-content mt-8 max-w-5xl mx-auto px-6 pb-24">
         {currentStep === 1 && (
           <StepOne
             formData={formData}
             updateFormData={updateFormData}
             nextStep={nextStep}
+            onHeaderVisibilityChange={setIsHeaderVisible}
           />
         )}
 

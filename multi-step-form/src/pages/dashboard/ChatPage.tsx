@@ -193,112 +193,114 @@ Rules:
     };
 
     return (
-        <div className="space-y-8 max-w-4xl h-[calc(100vh-8rem)] flex flex-col">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Bantuan & Chat</h1>
-                <p className="text-gray-500 dark:text-gray-400 mt-2">
-                    Cari jawaban di FAQ atau tanya langsung ke Mimin AI.
-                </p>
-            </div>
+        <div className="p-6 md:p-8 max-w-6xl mx-auto h-[calc(100vh-4rem)] flex flex-col">
+            <div className="space-y-8 h-full flex flex-col">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Bantuan & Chat</h1>
+                    <p className="text-gray-500 dark:text-gray-400 mt-2">
+                        Cari jawaban di FAQ atau tanya langsung ke Mimin AI.
+                    </p>
+                </div>
 
-            <div className="grid md:grid-cols-2 gap-6 items-start flex-1 min-h-0">
-                {/* FAQ Card - Left Side */}
-                <Card className="h-full flex flex-col overflow-hidden">
-                    <CardHeader>
-                        <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
-                            <HelpCircle className="w-6 h-6 text-orange-600" />
-                        </div>
-                        <CardTitle>FAQ</CardTitle>
-                        <CardDescription>
-                            Pertanyaan umum seputar JFU.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="overflow-y-auto pr-2 custom-scrollbar">
-                        <Accordion type="single" collapsible className="w-full">
-                            {faqs.map((faq, i) => (
-                                <AccordionItem key={i} value={`item-${i}`}>
-                                    <AccordionTrigger className="text-left text-sm">{faq.q}</AccordionTrigger>
-                                    <AccordionContent className="text-gray-600 dark:text-gray-300 text-sm">
-                                        {faq.a}
-                                    </AccordionContent>
-                                </AccordionItem>
+                <div className="grid md:grid-cols-2 gap-6 items-start flex-1 min-h-0">
+                    {/* FAQ Card - Left Side */}
+                    <Card className="h-full flex flex-col overflow-hidden">
+                        <CardHeader>
+                            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                                <HelpCircle className="w-6 h-6 text-orange-600" />
+                            </div>
+                            <CardTitle>FAQ</CardTitle>
+                            <CardDescription>
+                                Pertanyaan umum seputar JFU.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="overflow-y-auto pr-2 custom-scrollbar">
+                            <Accordion type="single" collapsible className="w-full">
+                                {faqs.map((faq, i) => (
+                                    <AccordionItem key={i} value={`item-${i}`}>
+                                        <AccordionTrigger className="text-left text-sm">{faq.q}</AccordionTrigger>
+                                        <AccordionContent className="text-gray-600 dark:text-gray-300 text-sm">
+                                            {faq.a}
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                ))}
+                            </Accordion>
+                        </CardContent>
+                    </Card>
+
+                    {/* Chat AI Card - Right Side */}
+                    <Card className="border-blue-100 bg-white dark:bg-gray-800 h-full flex flex-col shadow-lg overflow-hidden">
+                        <CardHeader className="bg-blue-50/50 dark:bg-blue-900/10 border-b pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-800 rounded-full flex items-center justify-center">
+                                    <Bot className="w-6 h-6 text-blue-600 dark:text-blue-300" />
+                                </div>
+                                <div>
+                                    <CardTitle className="text-lg">Mimin AI</CardTitle>
+                                    <CardDescription className="flex items-center gap-1.5 text-xs">
+                                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                        Online - Siap membantu
+                                    </CardDescription>
+                                </div>
+                            </div>
+                        </CardHeader>
+
+                        {/* Chat Messages Area */}
+                        <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/30 dark:bg-gray-900/30" ref={scrollRef}>
+                            {messages.map((msg, idx) => (
+                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`
+                                        max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm
+                                        ${msg.role === 'user'
+                                            ? 'bg-blue-600 text-white rounded-tr-sm'
+                                            : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-600 rounded-tl-sm'
+                                        }
+                                    `}>
+                                        <ReactMarkdown
+                                            components={{
+                                                p: (props) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
+                                                ul: (props) => <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />,
+                                                ol: (props) => <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />,
+                                                li: (props) => <li className="pl-1" {...props} />,
+                                                strong: (props) => <span className="font-bold" {...props} />,
+                                                a: (props) => <a className="underline hover:text-blue-200 transition-colors" target="_blank" rel="noopener noreferrer" {...props} />,
+                                            }}
+                                        >
+                                            {msg.content}
+                                        </ReactMarkdown>
+                                    </div>
+                                </div>
                             ))}
-                        </Accordion>
-                    </CardContent>
-                </Card>
+                            {isLoading && (
+                                <div className="flex justify-start">
+                                    <div className="bg-white dark:bg-gray-700 rounded-2xl rounded-tl-sm px-4 py-3 border border-gray-100 dark:border-gray-600 flex items-center gap-2 text-sm text-gray-500">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Mimin sedang mengetik...
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
 
-                {/* Chat AI Card - Right Side */}
-                <Card className="border-blue-100 bg-white dark:bg-gray-800 h-full flex flex-col shadow-lg overflow-hidden">
-                    <CardHeader className="bg-blue-50/50 dark:bg-blue-900/10 border-b pb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-800 rounded-full flex items-center justify-center">
-                                <Bot className="w-6 h-6 text-blue-600 dark:text-blue-300" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-lg">Mimin AI</CardTitle>
-                                <CardDescription className="flex items-center gap-1.5 text-xs">
-                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                                    Online - Siap membantu
-                                </CardDescription>
+                        {/* Chat Input Area */}
+                        <div className="p-4 bg-white dark:bg-gray-800 border-t">
+                            <form onSubmit={handleSendMessage} className="flex gap-2">
+                                <Input
+                                    placeholder="Ketik pertanyaanmu..."
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    disabled={isLoading}
+                                    className="flex-1 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 focus-visible:ring-blue-500"
+                                />
+                                <Button type="submit" size="icon" disabled={isLoading || !input.trim()} className="bg-blue-600 hover:bg-blue-700">
+                                    <Send className="w-4 h-4" />
+                                </Button>
+                            </form>
+                            <div className="text-[10px] text-center text-gray-400 mt-2">
+                                Powered by Jakpat AI
                             </div>
                         </div>
-                    </CardHeader>
-
-                    {/* Chat Messages Area */}
-                    <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/30 dark:bg-gray-900/30" ref={scrollRef}>
-                        {messages.map((msg, idx) => (
-                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`
-                                    max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm
-                                    ${msg.role === 'user'
-                                        ? 'bg-blue-600 text-white rounded-tr-sm'
-                                        : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-600 rounded-tl-sm'
-                                    }
-                                `}>
-                                    <ReactMarkdown
-                                        components={{
-                                            p: (props) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
-                                            ul: (props) => <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />,
-                                            ol: (props) => <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />,
-                                            li: (props) => <li className="pl-1" {...props} />,
-                                            strong: (props) => <span className="font-bold" {...props} />,
-                                            a: (props) => <a className="underline hover:text-blue-200 transition-colors" target="_blank" rel="noopener noreferrer" {...props} />,
-                                        }}
-                                    >
-                                        {msg.content}
-                                    </ReactMarkdown>
-                                </div>
-                            </div>
-                        ))}
-                        {isLoading && (
-                            <div className="flex justify-start">
-                                <div className="bg-white dark:bg-gray-700 rounded-2xl rounded-tl-sm px-4 py-3 border border-gray-100 dark:border-gray-600 flex items-center gap-2 text-sm text-gray-500">
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    Mimin sedang mengetik...
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-
-                    {/* Chat Input Area */}
-                    <div className="p-4 bg-white dark:bg-gray-800 border-t">
-                        <form onSubmit={handleSendMessage} className="flex gap-2">
-                            <Input
-                                placeholder="Ketik pertanyaanmu..."
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                disabled={isLoading}
-                                className="flex-1 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 focus-visible:ring-blue-500"
-                            />
-                            <Button type="submit" size="icon" disabled={isLoading || !input.trim()} className="bg-blue-600 hover:bg-blue-700">
-                                <Send className="w-4 h-4" />
-                            </Button>
-                        </form>
-                        <div className="text-[10px] text-center text-gray-400 mt-2">
-                            Powered by Jakpat AI
-                        </div>
-                    </div>
-                </Card>
+                    </Card>
+                </div>
             </div>
         </div>
     );

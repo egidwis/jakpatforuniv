@@ -1,21 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
 import { StepOneMethodSelection } from './StepOneMethodSelection';
 import { StepOneGoogleForm } from './StepOneGoogleForm';
 import { StepOneFormFields } from './StepOneFormFields';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface StepOneProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   nextStep: () => void;
+  onHeaderVisibilityChange?: (isVisible: boolean) => void;
 }
 
 type FlowState = 'method-selection' | 'google-form' | 'manual' | 'form-fields';
 
-export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
+export function StepOne({ formData, updateFormData, nextStep, onHeaderVisibilityChange }: StepOneProps) {
   const { t } = useLanguage();
 
   // Initialize flowState based on existing formData
@@ -35,6 +36,15 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
   const [flowState, setFlowState] = useState<FlowState>(getInitialFlowState());
   const [showConfirmSwitch, setShowConfirmSwitch] = useState(false);
+
+  // Notify parent about header visibility
+  useEffect(() => {
+    if (onHeaderVisibilityChange) {
+      // Hide header in method-selection AND google-form flow
+      const shouldShowHeader = flowState !== 'method-selection' && flowState !== 'google-form';
+      onHeaderVisibilityChange(shouldShowHeader);
+    }
+  }, [flowState, onHeaderVisibilityChange]);
 
   // Check if form has data
   const hasFilledData = formData.title || formData.description || formData.questionCount > 0;
@@ -150,9 +160,9 @@ export function StepOne({ formData, updateFormData, nextStep }: StepOneProps) {
 
         {/* Switch to Google Form */}
         <div className="switch-method-section">
-          <p className="switch-method-text">Punya Google Form?</p>
+          <p className="switch-method-text">{t('troubleFillingManual')}</p>
           <button onClick={handleSwitchToGoogle} className="switch-method-link">
-            Import dari Google Form
+            {t('importFromGoogleForm')}
           </button>
         </div>
 

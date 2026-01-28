@@ -10,8 +10,9 @@ export const translations = {
 
     // Step Navigation
     step1: "Survey Details",
-    step2: "Data & Incentives",
-    step3: "Review & Payment",
+    step2: "Configuration & Incentive",
+    step3: "Personal Data",
+    step4: "Review & Payment",
 
     // Step One - Survey Source Selection
     surveyDetails: "Survey Details",
@@ -56,6 +57,18 @@ export const translations = {
     fromYourDrive: "from your Drive",
     willOpenPicker: "Will open Google Picker to select your form",
 
+    // Google Drive Connect Steps
+    googleConnectTitle: "Connect Google Account",
+    googleConnectDescription: "We need read-only access to your Google Drive and Google Forms",
+    permissionDrive: "Google Drive (read only)",
+    permissionForms: "Google Forms (read only)",
+    googleConnectButton: "Connect with Google",
+    googleConnectedTitle: "Connected to Google Drive",
+    googleConnectedMessage: "Your Google Account has been successfully connected",
+    titleSelectForm: "Select Google Form",
+    descriptionSelectForm: "Click the button below to open file picker and select your form",
+    buttonSelectForm: "Select Google Form from Drive",
+
     // Form Fields
     completeFormBelow: "Complete the form below",
     googleFormLink: "Google Form Link",
@@ -94,6 +107,59 @@ export const translations = {
     totalCost: "Total Cost",
     perQuestion: "questions x 1 (day)",
 
+    // Step Two Fields
+    surveyDurationLabel: "Ad survey duration (days)",
+    surveyDurationPlaceholder: "Enter duration in days (1-30)",
+    surveyDurationHelp: "Ad period will be confirmed by admin via WhatsApp after payment",
+    prizePerWinnerLabel: "Prize per winner",
+    prizePerWinnerPlaceholder: "Min. Rp 25,000",
+    winnerCountLabel: "Number of Winners",
+    winnerCountPlaceholder: "2-5 winners",
+    incentiveDistributionInfo: "Jakpat will distribute incentives to respondents automatically",
+    totalIncentiveRequired: "Total Incentive Required",
+    recommendation: "Recommendation",
+    perWinner: "/winner",
+    respondentCriteriaPlaceholder: "Example: Age 18-35 years, Jakarta Domicile, Active Student",
+    respondentCriteriaLabel: "Respondent Criteria",
+
+
+    // Step Three Fields
+    contactInformation: "Contact Information",
+    academicInformation: "Academic Information",
+    referralSourceTitle: "How Did You Find Us?",
+
+    fullNameLabel: "Full Name",
+    fullNamePlaceholder: "e.g., John Doe",
+    fullNameHelp: "Enter full name as per ID card",
+
+    emailLabel: "Email",
+    emailPlaceholder: "e.g., john.doe@university.ac.id",
+    emailHelp: "Active email for payment notifications",
+
+    phoneNumberLabel: "Phone Number",
+    phoneNumberPlaceholder: "e.g., 081234567890",
+    phoneNumberHelp: "Format: 08xxxxxxxxxx (without spaces or dashes)",
+
+    universityLabel: "University",
+    universityPlaceholder: "e.g., University of Indonesia",
+    universityHelp: "Name of university or educational institution",
+
+    departmentLabel: "Department / Faculty",
+    departmentPlaceholder: "e.g., Computer Science",
+    departmentHelp: "Your department or faculty",
+
+    statusLabel: "Academic Status",
+    statusPlaceholder: "Select academic status",
+    statusHelp: "Select your current academic status",
+
+    referralSourceLabel: "Where did you hear about Jakpat for Universities?",
+    referralSourcePlaceholder: "Select source",
+    referralSourceHelp: "Select where you found out about us",
+
+    referralSourceOtherLabel: "Specify Source",
+    referralSourceOtherPlaceholder: "Specify source",
+    referralSourceOtherHelp: "Required if 'Other' is selected",
+
     // Step One Method Selection
     startByFillingData: "Start by filling in survey data",
     chooseMethodSuitable: "Choose the method that suits you best. You can change the method later.",
@@ -114,6 +180,7 @@ export const translations = {
     andText: "and",
     termsConditions: "Terms and Conditions",
     noGoogleForm: "Don't have a Google Form?",
+    troubleFillingManual: "Tired of manual entry?",
     fillManualOnly: "Fill Manually Instead",
 
     // Validation Error Messages - StepOne
@@ -128,6 +195,35 @@ export const translations = {
     errorDescriptionEmpty: "Survey description cannot be empty",
     errorQuestionCountInvalid: "Number of questions must be greater than 0",
     errorCompleteAllFields: "Please complete all required fields",
+
+    // Step Four Sections
+    surveyOverview: "Survey Overview",
+    promoCode: "Promo Code (Optional)",
+    costBreakdown: "Cost Breakdown",
+
+    // Review Items
+    questions: "Questions",
+    duration: "Duration",
+    incentive: "Incentive",
+    targetCriteria: "Target Criteria",
+    contactInfo: "Contact Info",
+
+    // Promo Code
+    voucherCodeLabel: "Voucher/Referral Code",
+    voucherCodePlaceholder: "Enter code if any",
+    voucherValid: "Voucher applied successfully!",
+
+    // Cost Breakdown
+    adCampaignCost: "Ad Campaign Cost",
+    respondentIncentive: "Respondent Incentive",
+    subtotal: "Subtotal",
+    discount: "Discount",
+    totalPayment: "Total Payment",
+    disclaimer: "By proceeding, you agree to our Terms of Service and Privacy Policy",
+
+    // Buttons
+    proceedPayment: "Proceed to Payment",
+    submitForReview: "Submit for Admin Review",
 
     // Validation Error Messages - StepTwo
     errorRespondentCriteriaEmpty: "Respondent criteria cannot be empty",
@@ -160,6 +256,7 @@ export const translations = {
     errorSavingData: "Failed to save data. Please try again.",
     errorPaymentFailed: "Failed to create payment. Please try again later.",
     errorSavingDataGeneric: "An error occurred while saving data. Please try again.",
+    errorTermsRequired: "Please accept the Terms of Service and Privacy Policy",
 
     // Success Messages - StepFour
     successFormSubmitted: "Form successfully submitted! You will be redirected to the success page.",
@@ -214,8 +311,9 @@ export const translations = {
 
     // Step Navigation
     step1: "Detail Survey",
-    step2: "Data diri & Insentif",
-    step3: "Review & Pembayaran",
+    step2: "Konfigurasi & Insentif",
+    step3: "Data Diri",
+    step4: "Review & Pembayaran",
 
     // Step One - Survey Source Selection
     surveyDetails: "Detail Survey",
@@ -298,6 +396,62 @@ export const translations = {
     totalCost: "Total Biaya",
     perQuestion: "pertanyaan x 1 (hari)",
 
+    // Step Two Fields
+    surveyDurationLabel: "Durasi survey iklan (hari)",
+    surveyDurationPlaceholder: "Masukkan durasi dalam hari (1-30)",
+    surveyDurationHelp: "Periode iklan akan dikonfirmasi oleh admin via WhatsApp setelah pembayaran",
+    prizePerWinnerLabel: "Hadiah per-pemenang",
+    prizePerWinnerPlaceholder: "Min. Rp 25.000",
+    winnerCountLabel: "Jumlah Pemenang",
+    winnerCountPlaceholder: "2-5 pemenang",
+    incentiveDistributionInfo: "Jakpat akan mendistribusikan insentif ke responden secara otomatis",
+    totalIncentiveRequired: "Total Insentif yang Dibutuhkan",
+    recommendation: "Rekomendasi",
+    perWinner: "/pemenang",
+    respondentCriteriaPlaceholder: "Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif",
+    respondentCriteriaLabel: "Kriteria Responden",
+    respondentCriteriaHelp: "Kriteria ini akan ditampilkan di postingan iklan",
+
+    // Step Two Fields
+
+
+    // Step Three Fields
+    contactInformation: "Informasi Kontak",
+    academicInformation: "Informasi Akademik",
+    referralSourceTitle: "Dari Mana Anda Mengetahui Kami?",
+
+    fullNameLabel: "Nama Lengkap",
+    fullNamePlaceholder: "Contoh: Budi Santoso",
+    fullNameHelp: "Masukkan nama lengkap sesuai KTP",
+
+    emailLabel: "Email",
+    emailPlaceholder: "Contoh: budi.santoso@university.ac.id",
+    emailHelp: "Email aktif untuk notifikasi pembayaran",
+
+    phoneNumberLabel: "No Telepon",
+    phoneNumberPlaceholder: "Contoh: 081234567890",
+    phoneNumberHelp: "Format: 08xxxxxxxxxx (tanpa spasi atau tanda hubung)",
+
+    universityLabel: "Universitas",
+    universityPlaceholder: "Contoh: Universitas Indonesia",
+    universityHelp: "Nama universitas atau institusi pendidikan",
+
+    departmentLabel: "Jurusan / Fakultas",
+    departmentPlaceholder: "Contoh: Ilmu Komputer",
+    departmentHelp: "Jurusan atau fakultas Anda",
+
+    statusLabel: "Status Akademik",
+    statusPlaceholder: "Pilih status akademik",
+    statusHelp: "Pilih status akademik Anda saat ini",
+
+    referralSourceLabel: "Tahu Jakpat for Universities dari mana?",
+    referralSourcePlaceholder: "Pilih sumber informasi",
+    referralSourceHelp: "Pilih dari mana Anda mengetahui tentang kami",
+
+    referralSourceOtherLabel: "Sebutkan Sumber",
+    referralSourceOtherPlaceholder: "Sebutkan sumber informasi",
+    referralSourceOtherHelp: "Wajib diisi jika memilih 'Lainnya'",
+
     // Step One Method Selection
     startByFillingData: "Mulai dengan mengisi data survei",
     chooseMethodSuitable: "Pilih metode yang paling sesuai untuk Anda. Anda dapat mengubah metode nanti.",
@@ -318,6 +472,7 @@ export const translations = {
     andText: "dan",
     termsConditions: "Syarat dan Ketentuan",
     noGoogleForm: "Tidak punya Google Form?",
+    troubleFillingManual: "Ribet ngisi manual?",
     fillManualOnly: "Isi Manual Saja",
 
     // Validation Error Messages - StepOne
@@ -332,6 +487,35 @@ export const translations = {
     errorDescriptionEmpty: "Deskripsi survey tidak boleh kosong",
     errorQuestionCountInvalid: "Jumlah pertanyaan harus lebih dari 0",
     errorCompleteAllFields: "Mohon lengkapi semua field yang wajib diisi",
+
+    // Step Four Sections
+    surveyOverview: "Ringkasan Survey",
+    promoCode: "Kode Promo (Opsional)",
+    costBreakdown: "Rincian Biaya",
+
+    // Review Items
+    questions: "Pertanyaan",
+    duration: "Durasi",
+    incentive: "Insentif",
+    targetCriteria: "Kriteria Target",
+    contactInfo: "Info Kontak",
+
+    // Promo Code
+    voucherCodeLabel: "Kode Voucher/Referral",
+    voucherCodePlaceholder: "Masukkan kode jika ada",
+    voucherValid: "Voucher berhasil digunakan!",
+
+    // Cost Breakdown
+    adCampaignCost: "Biaya Kampanye Iklan",
+    respondentIncentive: "Insentif Responden",
+    subtotal: "Subtotal",
+    discount: "Diskon",
+    totalPayment: "Total Pembayaran",
+    disclaimer: "Dengan melanjutkan, Anda menyetujui Syarat Layanan dan Kebijakan Privasi kami",
+
+    // Buttons
+    proceedPayment: "Lanjut ke Pembayaran",
+    submitForReview: "Kirim untuk Review Admin",
 
     // Validation Error Messages - StepTwo
     errorRespondentCriteriaEmpty: "Kriteria responden tidak boleh kosong",
@@ -364,6 +548,7 @@ export const translations = {
     errorSavingData: "Gagal menyimpan data. Silakan coba lagi.",
     errorPaymentFailed: "Gagal membuat pembayaran. Silakan coba lagi nanti.",
     errorSavingDataGeneric: "Terjadi kesalahan saat menyimpan data. Silakan coba lagi.",
+    errorTermsRequired: "Mohon setujui Syarat & Ketentuan serta Kebijakan Privasi",
 
     // Success Messages - StepFour
     successFormSubmitted: "Form berhasil dikirim! Anda akan diarahkan ke halaman sukses.",
@@ -409,6 +594,18 @@ export const translations = {
 
     // Error Messages - PaymentSuccess & PaymentFailed
     errorConnectionFailed: "Gagal terhubung ke server. Periksa koneksi internet Anda.",
+
+    // Google Drive Connect Steps
+    googleConnectTitle: "Hubungkan Google Account",
+    googleConnectDescription: "Kami memerlukan akses read-only ke Google Drive dan Google Forms Anda",
+    permissionDrive: "Google Drive (read only)",
+    permissionForms: "Google Forms (read only)",
+    googleConnectButton: "Hubungkan dengan Google",
+    googleConnectedTitle: "Terhubung ke Google Drive",
+    googleConnectedMessage: "Akun Google Anda berhasil terhubung",
+    titleSelectForm: "Pilih Google Form",
+    descriptionSelectForm: "Klik tombol di bawah untuk membuka file picker dan pilih form Anda",
+    buttonSelectForm: "Pilih Google Form dari Drive",
   }
 };
 

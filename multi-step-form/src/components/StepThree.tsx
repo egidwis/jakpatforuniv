@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, User, Mail, Phone, GraduationCap, AlertCircle, Building, BookOpen, UserCircle, Megaphone } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface StepThreeProps {
@@ -69,7 +69,7 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
 
     // Show toast if there are errors
     if (Object.keys(newErrors).length > 0) {
-      toast.error(t('errorCompleteAllFields'));
+      // toast.error(t('errorCompleteAllFields')); // Optional, sometimes intrusive
       return false;
     }
 
@@ -92,32 +92,46 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
   };
 
   return (
-    <div>
-      <h2 className="text-lg font-semibold mb-2">{t('personalData')}</h2>
-      <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>Lengkapi data diri Anda</p>
+    <div className="max-w-3xl mx-auto">
+      {/* Title & Subtitle removed to avoid duplication with Header, or kept minimal */}
 
       <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+
         {/* SECTION: CONTACT INFORMATION */}
-        <div className="section-card">
-          <div className="section-header">
-            <span className="section-icon">👤</span>
-            <h3 className="section-title">CONTACT INFORMATION</h3>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                <User size={18} />
+              </div>
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('contactInformation')}</h3>
+            </div>
             {formData.fullName && formData.email && formData.phoneNumber && (
-              <span className="section-badge">✓</span>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                <CheckCircle size={12} />
+                <span>Complete</span>
+              </div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="form-group">
-              <label htmlFor="fullName" className="form-label">
-                Nama lengkap <span className="text-red-500">*</span>
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Full Name */}
+            <div className="space-y-2">
+              <label htmlFor="fullName" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('fullNameLabel')} <span className="text-red-500">*</span>
               </label>
-              <div className="input-wrapper">
+              <div className="relative">
                 <input
                   id="fullName"
                   type="text"
-                  className={`form-input input-with-validation ${errors.fullName ? 'border-red-500' : ''}`}
-                  placeholder="e.g., Budi Santoso"
+                  className={`
+                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    ${errors.fullName && attemptedSubmit
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30 ring-4 ring-transparent'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                    }
+                  `}
+                  placeholder={t('fullNamePlaceholder')}
                   value={formData.fullName}
                   onChange={(e) => {
                     updateFormData({ fullName: e.target.value });
@@ -127,26 +141,35 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                   }}
                 />
                 {formData.fullName && !errors.fullName && (
-                  <CheckCircle className="validation-icon valid" />
+                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4" />
                 )}
               </div>
-              {errors.fullName ? (
-                <span className="helper-text error">⚠️ {errors.fullName}</span>
+              {errors.fullName && attemptedSubmit ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.fullName}
+                </p>
               ) : (
-                <span className="helper-text">Masukkan nama lengkap sesuai KTP/identitas</span>
+                <p className="text-xs text-gray-400 mt-1">{t('fullNameHelp')}</p>
               )}
             </div>
 
-            <div className="form-group">
-              <label htmlFor="email" className="form-label">
-                Email <span className="text-red-500">*</span>
+            {/* Email */}
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('emailLabel')} <span className="text-red-500">*</span>
               </label>
-              <div className="input-wrapper">
+              <div className="relative">
                 <input
                   id="email"
                   type="email"
-                  className={`form-input input-with-validation ${errors.email ? 'border-red-500' : ''}`}
-                  placeholder="e.g., budi.santoso@university.ac.id"
+                  className={`
+                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    ${errors.email && attemptedSubmit
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                    }
+                  `}
+                  placeholder={t('emailPlaceholder')}
                   value={formData.email}
                   onChange={(e) => {
                     updateFormData({ email: e.target.value });
@@ -155,27 +178,34 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                     }
                   }}
                 />
-                {formData.email && isValidEmail(formData.email) && !errors.email && (
-                  <CheckCircle className="validation-icon valid" />
-                )}
+                <Mail className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
               </div>
-              {errors.email ? (
-                <span className="helper-text error">⚠️ {errors.email}</span>
+              {errors.email && attemptedSubmit ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.email}
+                </p>
               ) : (
-                <span className="helper-text">Email aktif untuk notifikasi pembayaran</span>
+                <p className="text-xs text-gray-400 mt-1">{t('emailHelp')}</p>
               )}
             </div>
 
-            <div className="form-group md:col-span-2">
-              <label htmlFor="phoneNumber" className="form-label">
-                No Telepon <span className="text-red-500">*</span>
+            {/* Phone Number */}
+            <div className="space-y-2 md:col-span-2">
+              <label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('phoneNumberLabel')} <span className="text-red-500">*</span>
               </label>
-              <div className="input-wrapper">
+              <div className="relative">
                 <input
                   id="phoneNumber"
                   type="tel"
-                  className={`form-input input-with-validation ${errors.phoneNumber ? 'border-red-500' : ''}`}
-                  placeholder="e.g., 081234567890"
+                  className={`
+                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    ${errors.phoneNumber && attemptedSubmit
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                    }
+                  `}
+                  placeholder={t('phoneNumberPlaceholder')}
                   value={formData.phoneNumber}
                   onChange={(e) => {
                     updateFormData({ phoneNumber: e.target.value });
@@ -184,40 +214,54 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                     }
                   }}
                 />
-                {formData.phoneNumber && formData.phoneNumber.length >= 10 && !errors.phoneNumber && (
-                  <CheckCircle className="validation-icon valid" />
-                )}
+                <Phone className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
               </div>
-              {errors.phoneNumber ? (
-                <span className="helper-text error">⚠️ {errors.phoneNumber}</span>
+              {errors.phoneNumber && attemptedSubmit ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.phoneNumber}
+                </p>
               ) : (
-                <span className="helper-text">Format: 08xxxxxxxxxx (tanpa spasi atau tanda hubung)</span>
+                <p className="text-xs text-gray-400 mt-1">{t('phoneNumberHelp')}</p>
               )}
             </div>
           </div>
         </div>
 
         {/* SECTION: ACADEMIC INFORMATION */}
-        <div className="section-card">
-          <div className="section-header">
-            <span className="section-icon">🎓</span>
-            <h3 className="section-title">ACADEMIC INFORMATION</h3>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
+                <GraduationCap size={18} />
+              </div>
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('academicInformation')}</h3>
+            </div>
             {formData.university && formData.department && formData.status && (
-              <span className="section-badge">✓</span>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                <CheckCircle size={12} />
+                <span>Complete</span>
+              </div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="form-group">
-              <label htmlFor="university" className="form-label">
-                Universitas <span className="text-red-500">*</span>
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* University */}
+            <div className="space-y-2">
+              <label htmlFor="university" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('universityLabel')} <span className="text-red-500">*</span>
               </label>
-              <div className="input-wrapper">
+              <div className="relative">
                 <input
                   id="university"
                   type="text"
-                  className={`form-input input-with-validation ${errors.university ? 'border-red-500' : ''}`}
-                  placeholder="e.g., Universitas Indonesia"
+                  className={`
+                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    ${errors.university && attemptedSubmit
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                    }
+                  `}
+                  placeholder={t('universityPlaceholder')}
                   value={formData.university}
                   onChange={(e) => {
                     updateFormData({ university: e.target.value });
@@ -226,27 +270,34 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                     }
                   }}
                 />
-                {formData.university && !errors.university && (
-                  <CheckCircle className="validation-icon valid" />
-                )}
+                <Building className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
               </div>
-              {errors.university ? (
-                <span className="helper-text error">⚠️ {errors.university}</span>
+              {errors.university && attemptedSubmit ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.university}
+                </p>
               ) : (
-                <span className="helper-text">Nama universitas atau institusi pendidikan</span>
+                <p className="text-xs text-gray-400 mt-1">{t('universityHelp')}</p>
               )}
             </div>
 
-            <div className="form-group">
-              <label htmlFor="department" className="form-label">
-                Jurusan / Fakultas <span className="text-red-500">*</span>
+            {/* Department */}
+            <div className="space-y-2">
+              <label htmlFor="department" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('departmentLabel')} <span className="text-red-500">*</span>
               </label>
-              <div className="input-wrapper">
+              <div className="relative">
                 <input
                   id="department"
                   type="text"
-                  className={`form-input input-with-validation ${errors.department ? 'border-red-500' : ''}`}
-                  placeholder="e.g., Computer Science"
+                  className={`
+                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    ${errors.department && attemptedSubmit
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                    }
+                  `}
+                  placeholder={t('departmentPlaceholder')}
                   value={formData.department}
                   onChange={(e) => {
                     updateFormData({ department: e.target.value });
@@ -255,134 +306,171 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                     }
                   }}
                 />
-                {formData.department && !errors.department && (
-                  <CheckCircle className="validation-icon valid" />
-                )}
+                <BookOpen className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
               </div>
-              {errors.department ? (
-                <span className="helper-text error">⚠️ {errors.department}</span>
+              {errors.department && attemptedSubmit ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.department}
+                </p>
               ) : (
-                <span className="helper-text">Jurusan atau fakultas Anda</span>
+                <p className="text-xs text-gray-400 mt-1">{t('departmentHelp')}</p>
               )}
             </div>
 
-            <div className="form-group">
-              <label htmlFor="status" className="form-label">
-                Status <span className="text-red-500">*</span>
+            {/* Status (Select) */}
+            <div className="space-y-2 md:col-span-2">
+              <label htmlFor="status" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('statusLabel')} <span className="text-red-500">*</span>
               </label>
-              <select
-                id="status"
-                className={`form-input ${errors.status && attemptedSubmit ? 'border-red-500' : ''}`}
-                value={formData.status}
-                onChange={(e) => {
-                  updateFormData({ status: e.target.value });
-                  if (attemptedSubmit && errors.status) {
-                    setErrors({ ...errors, status: undefined });
-                  }
-                }}
-              >
-                <option value="">Pilih status akademik</option>
-                <option value="Dosen">👨‍🏫 Dosen</option>
-                <option value="Mahasiswa S3 (Doktor)">🎓 Mahasiswa S3 (Doktor)</option>
-                <option value="Mahasiswa S2 (Master)">🎓 Mahasiswa S2 (Master)</option>
-                <option value="Mahasiswa S1 (Sarjana)">🎓 Mahasiswa S1 (Sarjana)</option>
-                <option value="Mahasiswa D3 (Diploma)">🎓 Mahasiswa D3 (Diploma)</option>
-                <option value="Pelajar SMA/SMK">📚 Pelajar SMA/SMK</option>
-              </select>
+              <div className="relative">
+                <select
+                  id="status"
+                  className={`
+                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200 appearance-none bg-white
+                    ${errors.status && attemptedSubmit
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300'
+                    }
+                  `}
+                  value={formData.status}
+                  onChange={(e) => {
+                    updateFormData({ status: e.target.value });
+                    if (attemptedSubmit && errors.status) {
+                      setErrors({ ...errors, status: undefined });
+                    }
+                  }}
+                >
+                  <option value="">{t('statusPlaceholder')}</option>
+                  <option value="Dosen">👨‍🏫 Dosen</option>
+                  <option value="Mahasiswa S3 (Doktor)">🎓 Mahasiswa S3 (Doktor)</option>
+                  <option value="Mahasiswa S2 (Master)">🎓 Mahasiswa S2 (Master)</option>
+                  <option value="Mahasiswa S1 (Sarjana)">🎓 Mahasiswa S1 (Sarjana)</option>
+                  <option value="Mahasiswa D3 (Diploma)">🎓 Mahasiswa D3 (Diploma)</option>
+                  <option value="Pelajar SMA/SMK">📚 Pelajar SMA/SMK</option>
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                  <UserCircle size={18} />
+                </div>
+              </div>
               {errors.status && attemptedSubmit ? (
-                <span className="helper-text error">⚠️ {errors.status}</span>
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.status}
+                </p>
               ) : (
-                <span className="helper-text">Pilih status akademik Anda</span>
+                <p className="text-xs text-gray-400 mt-1">{t('statusHelp')}</p>
               )}
             </div>
           </div>
         </div>
 
         {/* SECTION: HOW DID YOU FIND US */}
-        <div className="section-card">
-          <div className="section-header">
-            <span className="section-icon">📢</span>
-            <h3 className="section-title">HOW DID YOU FIND US?</h3>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                <Megaphone size={18} />
+              </div>
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('referralSourceTitle')}</h3>
+            </div>
             {formData.referralSource && (
-              <span className="section-badge">✓</span>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                <CheckCircle size={12} />
+                <span>Complete</span>
+              </div>
             )}
           </div>
 
-          <div className="form-group">
-            <label htmlFor="referralSource" className="form-label">
-              Tahu Jakpat for Universities dari mana?
-            </label>
-            <select
-              id="referralSource"
-              className="form-input"
-              value={formData.referralSource}
-              onChange={(e) => {
-                const value = e.target.value;
-                updateFormData({ referralSource: value });
-                // Reset referralSourceOther jika bukan "Lainnya"
-                if (value !== 'Lainnya') {
-                  updateFormData({ referralSourceOther: '' });
-                }
-              }}
-            >
-              <option value="">Pilih sumber informasi</option>
-              <option value="Tiktok">TikTok</option>
-              <option value="Instagram">Instagram</option>
-              <option value="LinkedIn">LinkedIn</option>
-              <option value="Website Jakpat">Website Jakpat</option>
-              <option value="Blog Jakpat">Blog Jakpat</option>
-              <option value="Google Search">Google Search</option>
-              <option value="Chat GPT">ChatGPT</option>
-              <option value="Rekomendasi Dosen">Rekomendasi Dosen</option>
-              <option value="Rekomendasi Teman">Rekomendasi Teman</option>
-              <option value="Lainnya">Lainnya</option>
-            </select>
-            <span className="helper-text">Pilih dari mana Anda mengetahui Jakpat for Universities</span>
-          </div>
-
-          {/* Conditional text input for "Lainnya" */}
-          {formData.referralSource === 'Lainnya' && (
-            <div className="form-group mt-4">
-              <label htmlFor="referralSourceOther" className="form-label">
-                Sebutkan sumber informasi <span className="text-red-500">*</span>
+          <div className="p-6 space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="referralSource" className="text-sm font-medium text-gray-700">
+                {t('referralSourceLabel')}
               </label>
-              <div className="input-wrapper">
-                <input
-                  id="referralSourceOther"
-                  type="text"
-                  className={`form-input input-with-validation ${errors.referralSourceOther ? 'border-red-500' : ''}`}
-                  placeholder="Sebutkan sumber informasi"
-                  value={formData.referralSourceOther || ''}
+              <div className="relative">
+                <select
+                  id="referralSource"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white appearance-none outline-none transition-all duration-200 hover:border-gray-300"
+                  value={formData.referralSource}
                   onChange={(e) => {
-                    updateFormData({ referralSourceOther: e.target.value });
-                    if (attemptedSubmit && errors.referralSourceOther) {
-                      setErrors({ ...errors, referralSourceOther: undefined });
+                    const value = e.target.value;
+                    updateFormData({ referralSource: value });
+                    if (value !== 'Lainnya') {
+                      updateFormData({ referralSourceOther: '' });
                     }
                   }}
-                />
-                {formData.referralSourceOther && formData.referralSourceOther.trim() && !errors.referralSourceOther && (
-                  <CheckCircle className="validation-icon valid" />
+                >
+                  <option value="">{t('referralSourcePlaceholder')}</option>
+                  <option value="Tiktok">TikTok</option>
+                  <option value="Instagram">Instagram</option>
+                  <option value="LinkedIn">LinkedIn</option>
+                  <option value="Website Jakpat">Website Jakpat</option>
+                  <option value="Blog Jakpat">Blog Jakpat</option>
+                  <option value="Google Search">Google Search</option>
+                  <option value="Chat GPT">ChatGPT</option>
+                  <option value="Rekomendasi Dosen">Rekomendasi Dosen</option>
+                  <option value="Rekomendasi Teman">Rekomendasi Teman</option>
+                  <option value="Lainnya">Lainnya</option>
+                </select>
+                {/* Custom arrow if needed, usually browser default is okay or use background-image in CSS */}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{t('referralSourceHelp')}</p>
+            </div>
+
+            {/* Conditional text input for "Lainnya" */}
+            {formData.referralSource === 'Lainnya' && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                <label htmlFor="referralSourceOther" className="text-sm font-medium text-gray-700">
+                  {t('referralSourceOtherLabel')} <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    id="referralSourceOther"
+                    type="text"
+                    className={`
+                      w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                      ${errors.referralSourceOther && attemptedSubmit
+                        ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                        : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                      }
+                    `}
+                    placeholder={t('referralSourceOtherPlaceholder')}
+                    value={formData.referralSourceOther || ''}
+                    onChange={(e) => {
+                      updateFormData({ referralSourceOther: e.target.value });
+                      if (attemptedSubmit && errors.referralSourceOther) {
+                        setErrors({ ...errors, referralSourceOther: undefined });
+                      }
+                    }}
+                  />
+                  {formData.referralSourceOther && formData.referralSourceOther.trim() && !errors.referralSourceOther && (
+                    <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4" />
+                  )}
+                </div>
+                {errors.referralSourceOther && attemptedSubmit ? (
+                  <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3 h-3" /> {errors.referralSourceOther}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1">{t('referralSourceOtherHelp')}</p>
                 )}
               </div>
-              {errors.referralSourceOther ? (
-                <span className="helper-text error">⚠️ {errors.referralSourceOther}</span>
-              ) : (
-                <span className="helper-text">Wajib diisi jika memilih "Lainnya"</span>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="flex justify-between mt-8">
+        {/* Buttons */}
+        <div className="flex justify-between items-center pt-4">
           <button
             type="button"
-            className="button button-secondary"
+            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
             onClick={prevStep}
           >
-            ← Kembali
+            ← {t('backButton')}
           </button>
-          <button type="submit" className="button button-primary">
-            Berikutnya →
+          <button
+            type="submit"
+            className="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
+          >
+            {t('continue')} →
           </button>
         </div>
       </form>

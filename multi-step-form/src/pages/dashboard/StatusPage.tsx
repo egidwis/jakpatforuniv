@@ -3,7 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, type FormSubmission } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Calendar, FileText, AlertCircle, CheckCircle2, Clock, CreditCard, Search, PlayCircle, ExternalLink, MessageCircle } from 'lucide-react';
+import { Loader2, Calendar, FileText, AlertCircle, CheckCircle2, Search, PlayCircle, ExternalLink, MessageCircle, CreditCard, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 
@@ -188,15 +188,15 @@ export function StatusPage() {
                     // Fetch payment links for each submission
                     const links: Record<string, string | null> = {};
 
-                    for (const submission of data) {
+                    // Use Promise.all for parallel fetching to prevent blocking
+                    await Promise.all(data.map(async (submission) => {
                         if (submission.id && submission.payment_status !== 'paid') {
                             // Try to get invoice first (manual invoice from admin)
                             try {
                                 const invoices = await getInvoicesByFormSubmissionId(submission.id);
-
                                 if (invoices.length > 0 && invoices[0].invoice_url) {
                                     links[submission.id] = invoices[0].invoice_url;
-                                    continue;
+                                    return;
                                 }
                             } catch (e) {
                                 console.error(`Error fetching invoices for ${submission.id}:`, e);
@@ -205,10 +205,9 @@ export function StatusPage() {
                             // If no invoice, try transactions (auto Mayar link)
                             try {
                                 const transactions = await getTransactionsByFormSubmissionId(submission.id);
-
                                 if (transactions.length > 0 && transactions[0].payment_url) {
                                     links[submission.id] = transactions[0].payment_url;
-                                    continue;
+                                    return;
                                 }
                             } catch (e) {
                                 console.error(`Error fetching transactions for ${submission.id}:`, e);
@@ -217,13 +216,16 @@ export function StatusPage() {
                             // No payment link found
                             links[submission.id] = null;
                         }
-                    }
+                    }));
+
                     setPaymentLinks(links);
                 } catch (error) {
                     console.error('Failed to fetch submissions', error);
                 } finally {
                     setLoading(false);
                 }
+            } else {
+                setLoading(false);
             }
         }
 
@@ -284,119 +286,120 @@ export function StatusPage() {
     }
 
     return (
-        <div className="space-y-8">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Track Status</h1>
-                <p className="text-gray-500 dark:text-gray-400 mt-2">
-                    Monitor the progress of your survey submissions in real-time.
-                </p>
-            </div>
-
-            {submissions.length === 0 ? (
-                <Card className="border-dashed">
-                    <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                        <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                            <FileText className="w-6 h-6 text-gray-400" />
-                        </div>
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">No submissions yet</h3>
-                        <p className="text-gray-500 dark:text-gray-400 max-w-sm mt-2 mb-6">
-                            You haven't submitted any surveys yet. Create your first survey to get started.
-                        </p>
-                        <Link to="/dashboard/submit">
-                            <Button className="bg-blue-600 hover:bg-blue-700 text-white">Create New Survey</Button>
-                        </Link>
-                    </CardContent>
-                </Card>
-            ) : (
-                <div className="grid gap-6">
-                    {submissions.map((submission) => {
-                        const badgeInfo = getStatusBadgeInfo(submission);
-                        const currentStep = getCurrentStepIndex(submission);
-
-                        return (
-                            <Card key={submission.id} className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
-                                <CardHeader className="bg-gray-50/50 dark:bg-gray-800/50 border-b pb-4">
-                                    <div className="flex items-center justify-between flex-wrap gap-3">
-                                        <div className="space-y-1">
-                                            <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">
-                                                {submission.title}
-                                            </CardTitle>
-                                            <CardDescription>
-                                                Submitted on {new Date(submission.created_at || new Date()).toLocaleDateString('id-ID', {
-                                                    day: 'numeric', month: 'long', year: 'numeric'
-                                                })}
-                                            </CardDescription>
-                                        </div>
-                                        <Badge variant="outline" className={`${badgeInfo.color} px-3 py-1 flex items-center gap-1.5`}>
-                                            {badgeInfo.icon}
-                                            {badgeInfo.label}
-                                        </Badge>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="pt-6 pb-4">
-                                    {/* Progress Tracker */}
-                                    <ProgressTracker currentStep={currentStep} submission={submission} />
-
-                                    {/* Action Button */}
-                                    {submission.payment_status !== 'paid' && submission.id && (
-                                        <div className="mt-6 flex flex-col items-center md:items-end gap-2">
-                                            {paymentLinks[submission.id] ? (
-                                                <a
-                                                    href={paymentLinks[submission.id]!}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-500 dark:hover:bg-blue-400 transition-colors"
-                                                >
-                                                    <CreditCard className="w-4 h-4 mr-2" />
-                                                    Pay Now
-                                                    <ExternalLink className="w-3 h-3 ml-2" />
-                                                </a>
-                                            ) : paymentLinks[submission.id] === null ? (
-                                                <div className="text-center md:text-right">
-                                                    <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                                                        <Clock className="w-4 h-4" />
-                                                        Menunggu Invoice dari Admin
-                                                    </p>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                        Kami akan segera menghubungi Anda
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <Button disabled className="bg-gray-400">
-                                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                    Memuat...
-                                                </Button>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Paid / In Review - Contact Admin Button */}
-                                    {/* Only show when in "Payment Success" / "In Review" stage (Step 1) */}
-                                    {submission.payment_status === 'paid' && currentStep === 1 && (
-                                        <div className="mt-6 flex justify-end">
-                                            <Button
-                                                className="bg-green-600 hover:bg-green-700 text-white"
-                                                asChild
-                                            >
-                                                <a
-                                                    href={`https://wa.me/6287759153120?text=${encodeURIComponent(
-                                                        `Halo min aku ${submission.full_name || user?.user_metadata?.full_name || 'User'} (${submission.email || user?.email}), aku sudah submit survey "${submission.title}" dan sudah melakukan payment, mohon info lebih lanjut`
-                                                    )}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                >
-                                                    <MessageCircle className="w-4 h-4 mr-2" />
-                                                    Contact Admin
-                                                </a>
-                                            </Button>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
+        <div className="p-6 md:p-8 max-w-6xl mx-auto">
+            <div className="space-y-8">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Track Status</h1>
+                    <p className="text-gray-500 dark:text-gray-400 mt-2">
+                        Monitor the progress of your survey submissions in real-time.
+                    </p>
                 </div>
-            )}
+
+                {submissions.length === 0 ? (
+                    <Card className="border-dashed">
+                        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                            <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                                <FileText className="w-6 h-6 text-gray-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-gray-900 dark:text-white">No submissions yet</h3>
+                            <p className="text-gray-500 dark:text-gray-400 max-w-sm mt-2 mb-6">
+                                You haven't submitted any surveys yet. Create your first survey to get started.
+                            </p>
+                            <Link to="/dashboard/submit">
+                                <Button className="bg-blue-600 hover:bg-blue-700 text-white">Create New Survey</Button>
+                            </Link>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <div className="grid gap-6">
+                        {submissions.map((submission) => {
+                            const badgeInfo = getStatusBadgeInfo(submission);
+                            const currentStep = getCurrentStepIndex(submission);
+
+                            return (
+                                <Card key={submission.id} className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
+                                    <CardHeader className="bg-gray-50/50 dark:bg-gray-800/50 border-b pb-4">
+                                        <div className="flex items-center justify-between flex-wrap gap-3">
+                                            <div className="space-y-1">
+                                                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                    {submission.title}
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Submitted on {new Date(submission.created_at || new Date()).toLocaleDateString('id-ID', {
+                                                        day: 'numeric', month: 'long', year: 'numeric'
+                                                    })}
+                                                </CardDescription>
+                                            </div>
+                                            <Badge variant="outline" className={`${badgeInfo.color} px-3 py-1 flex items-center gap-1.5`}>
+                                                {badgeInfo.icon}
+                                                {badgeInfo.label}
+                                            </Badge>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="pt-6 pb-4">
+                                        {/* Progress Tracker */}
+                                        <ProgressTracker currentStep={currentStep} submission={submission} />
+
+                                        {/* Action Button */}
+                                        {submission.payment_status !== 'paid' && submission.id && (
+                                            <div className="mt-6 flex flex-col items-center md:items-end gap-2">
+                                                {paymentLinks[submission.id] ? (
+                                                    <a
+                                                        href={paymentLinks[submission.id]!}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-500 dark:hover:bg-blue-400 transition-colors"
+                                                    >
+                                                        <CreditCard className="w-4 h-4 mr-2" />
+                                                        Pay Now
+                                                        <ExternalLink className="w-3 h-3 ml-2" />
+                                                    </a>
+                                                ) : paymentLinks[submission.id] === null ? (
+                                                    <div className="text-center md:text-right">
+                                                        <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                                                            <Clock className="w-4 h-4" />
+                                                            Menunggu Invoice dari Admin
+                                                        </p>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                            Kami akan segera menghubungi Anda
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <Button disabled className="bg-gray-400">
+                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                        Memuat...
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Paid / In Review - Contact Admin Button */}
+                                        {submission.payment_status === 'paid' && currentStep === 1 && (
+                                            <div className="mt-6 flex justify-end">
+                                                <Button
+                                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                                    asChild
+                                                >
+                                                    <a
+                                                        href={`https://wa.me/6287759153120?text=${encodeURIComponent(
+                                                            `Halo min aku ${submission.full_name || user?.user_metadata?.full_name || 'User'} (${submission.email || user?.email}), aku sudah submit survey "${submission.title}" dan sudah melakukan payment, mohon info lebih lanjut`
+                                                        )}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                    >
+                                                        <MessageCircle className="w-4 h-4 mr-2" />
+                                                        Contact Admin
+                                                    </a>
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

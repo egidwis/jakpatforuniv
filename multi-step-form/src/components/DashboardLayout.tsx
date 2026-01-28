@@ -6,12 +6,10 @@ import {
   FileText,
   MessageSquare,
   LogOut,
-  Menu,
-  X,
   User
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { ThemeToggle } from './ThemeToggle';
+
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 export function DashboardLayout() {
@@ -24,6 +22,8 @@ export function DashboardLayout() {
     await signOut();
     navigate('/login');
   };
+
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const navItems = [
     {
@@ -45,13 +45,7 @@ export function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col md:flex-row">
-      {/* Mobile Header */}
-      <div className="md:hidden bg-white dark:bg-gray-800 border-b p-4 flex items-center justify-between sticky top-0 z-50">
-        <span className="font-bold text-xl text-blue-600 dark:text-blue-400">Jakpat</span>
-        <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-          {isSidebarOpen ? <X /> : <Menu />}
-        </Button>
-      </div>
+
 
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
@@ -116,7 +110,7 @@ export function DashboardLayout() {
 
             <div className="flex items-center gap-2 justify-between">
               <div className="flex gap-1">
-                <ThemeToggle />
+
                 <LanguageSwitcher />
               </div>
               <Button variant="ghost" size="icon" onClick={handleSignOut} title="Sign Out" className="text-red-500 hover:text-red-600 hover:bg-red-50">
@@ -129,9 +123,7 @@ export function DashboardLayout() {
 
       {/* Main Content */}
       <main className="flex-1 min-w-0 overflow-y-auto h-screen md:pl-64">
-        <div className="p-6 md:p-8 max-w-6xl mx-auto">
-          <Outlet />
-        </div>
+        <Outlet context={{ isSidebarOpen, toggleSidebar }} />
       </main>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SurveyFormData } from '../types';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Settings, Gift, AlertCircle, Info, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -127,202 +127,246 @@ export function StepTwoConfig({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+    <form onSubmit={handleSubmit} className="" noValidate>
       {/* SECTION: SURVEY CONFIGURATION */}
-      <div className="section-card">
-        <div className="section-header">
-          <span className="section-icon">⚙️</span>
-          <h3 className="section-title">SURVEY CONFIGURATION</h3>
-          {formData.criteriaResponden && formData.duration > 0 && (
-            <span className="section-badge">✓</span>
-          )}
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="criteriaResponden" className="form-label">
-            Kriteria Responden <span className="text-red-500">*</span>
-          </label>
-          <textarea
-            id="criteriaResponden"
-            className={`form-input ${errors.criteriaResponden && attemptedSubmit ? 'border-red-500' : ''}`}
-            placeholder="Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif"
-            value={formData.criteriaResponden}
-            onChange={(e) => {
-              updateFormData({ criteriaResponden: e.target.value });
-              if (attemptedSubmit && errors.criteriaResponden) {
-                setErrors({ ...errors, criteriaResponden: undefined });
-              }
-            }}
-            rows={3}
-          />
-          <div className="char-counter">
-            {formData.criteriaResponden.length}/200 characters
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-10">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+              <Settings size={18} />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('surveyConfiguration')}</h3>
           </div>
-          {errors.criteriaResponden && attemptedSubmit ? (
-            <span className="helper-text error mt-2">⚠️ {errors.criteriaResponden}</span>
-          ) : (
-            <div className="info-box info mt-3">
-              <p className="text-sm">
-                ℹ️ Kriteria ini akan ditampilkan di postingan iklan
-              </p>
+          {formData.criteriaResponden && formData.duration > 0 && (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full border border-green-100">
+              <CheckCircle size={12} />
+              <span>Complete</span>
             </div>
           )}
         </div>
 
-        {/* Separator */}
-        <div style={{ marginTop: '2rem', marginBottom: '2rem', borderTop: '1px solid rgba(0, 0, 0, 0.1)' }}></div>
-
-        <div className="form-group">
-          <label htmlFor="duration" className="form-label">
-            Durasi survey iklan (hari) <span className="text-red-500">*</span>
-          </label>
-          <div className="input-wrapper">
-            <input
-              id="duration"
-              type="number"
-              className={`form-input input-with-validation ${errors.duration && attemptedSubmit ? 'border-red-500' : ''}`}
-              placeholder="Masukkan durasi dalam hari (1-30)"
-              value={formData.duration || ''}
-              onChange={(e) => {
-                updateFormData({ duration: parseInt(e.target.value) || 1 });
-                if (attemptedSubmit && errors.duration) {
-                  setErrors({ ...errors, duration: undefined });
-                }
-              }}
-              min={1}
-              max={30}
-            />
-            {formData.duration > 0 && formData.duration <= 30 && !errors.duration && (
-              <CheckCircle className="validation-icon valid" />
+        <div className="p-6 space-y-6">
+          <div className="space-y-2">
+            <label htmlFor="criteriaResponden" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+              {t('respondentCriteriaLabel')} <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <textarea
+                id="criteriaResponden"
+                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 min-h-[100px] resize-y
+                  ${errors.criteriaResponden && attemptedSubmit
+                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                  }
+                  bg-white
+                `}
+                placeholder={t('respondentCriteriaPlaceholder')}
+                value={formData.criteriaResponden}
+                onChange={(e) => {
+                  updateFormData({ criteriaResponden: e.target.value });
+                  if (attemptedSubmit && errors.criteriaResponden) {
+                    setErrors({ ...errors, criteriaResponden: undefined });
+                  }
+                }}
+                rows={3}
+                maxLength={200}
+              />
+              <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 font-medium bg-white/80 px-1.5 py-0.5 rounded">
+                {formData.criteriaResponden.length}/200
+              </div>
+            </div>
+            {errors.criteriaResponden && attemptedSubmit ? (
+              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3 h-3" /> {errors.criteriaResponden}
+              </p>
+            ) : (
+              <p className="text-xs text-blue-600 flex items-center gap-1 mt-1 bg-blue-50 p-2 rounded-lg border border-blue-100">
+                <Info size={14} />
+                {t('respondentCriteriaHelp')}
+              </p>
             )}
           </div>
-          {errors.duration && attemptedSubmit ? (
-            <span className="helper-text error">⚠️ {errors.duration}</span>
-          ) : (
-            <>
-              <span className="helper-text">
-                Pilih durasi iklan survey dari 1-30 hari
-              </span>
-              <div className="info-box info mt-3">
-                <p className="text-sm">
-                  ℹ️ Periode iklan akan dikonfirmasi oleh admin via WhatsApp setelah pembayaran
-                </p>
-              </div>
-            </>
-          )}
+
+          <div className="space-y-2">
+            <label htmlFor="duration" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+              {t('surveyDurationLabel')} <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <input
+                id="duration"
+                type="number"
+                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
+                  ${errors.duration && attemptedSubmit
+                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                  }
+                  bg-white
+                `}
+                placeholder={t('surveyDurationPlaceholder')}
+                value={formData.duration || ''}
+                onChange={(e) => {
+                  updateFormData({ duration: parseInt(e.target.value) || 1 });
+                  if (attemptedSubmit && errors.duration) {
+                    setErrors({ ...errors, duration: undefined });
+                  }
+                }}
+                min={1}
+                max={30}
+              />
+              {formData.duration > 0 && formData.duration <= 30 && !errors.duration && (
+                <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4" />
+              )}
+            </div>
+            {errors.duration && attemptedSubmit ? (
+              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3 h-3" /> {errors.duration}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 mt-1">
+                {t('surveyDurationHelp')}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
       {/* SECTION: INCENTIVE SETTINGS */}
-      <div className="section-card">
-        <div className="section-header">
-          <span className="section-icon">🎁</span>
-          <h3 className="section-title">INCENTIVE SETTINGS</h3>
+      <div className="bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/30 rounded-xl border border-emerald-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-emerald-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+              <Gift size={18} />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">INCENTIVE SETTINGS</h3>
+          </div>
           {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
-            <span className="section-badge">✓</span>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
+              <CheckCircle size={12} />
+              <span>Complete</span>
+            </div>
           )}
         </div>
 
-        <div className="info-box info mb-6">
-          <p className="text-sm">
-            ℹ️ Jakpat akan mendistribusikan insentif ke responden secara otomatis
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="form-group">
-            <label htmlFor="prizePerWinner" className="form-label">
-              Hadiah per-pemenang <span className="text-red-500">*</span>
-            </label>
-            <div className="input-wrapper">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
-              <input
-                id="prizePerWinner"
-                type="number"
-                className={`form-input pl-10 input-with-validation ${errors.prizePerWinner ? 'border-red-500' : ''}`}
-                placeholder="Min. Rp 25.000"
-                value={formData.prizePerWinner}
-                onChange={(e) => {
-                  updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
-                  if (attemptedSubmit && errors.prizePerWinner) {
-                    setErrors({ ...errors, prizePerWinner: undefined });
-                  }
-                }}
-                min={25000}
-                step={1000}
-              />
-              {formData.prizePerWinner >= 25000 && !errors.prizePerWinner && (
-                <CheckCircle className="validation-icon valid" />
-              )}
-            </div>
-            {formData.prizePerWinner > 0 && formData.prizePerWinner < 25000 ? (
-              <span className="helper-text error">⚠️ Minimal Rp 25.000 per pemenang</span>
-            ) : (
-              <>
-                {formData.prizePerWinner >= 25000 && formData.questionCount > 0 && (
-                  <span className="helper-text">
-                    💡 Rekomendasi: Rp {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}/pemenang untuk {formData.questionCount} pertanyaan
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="winnerCount" className="form-label">
-              Jumlah Pemenang <span className="text-red-500">*</span>
-            </label>
-            <div className="input-wrapper">
-              <input
-                id="winnerCount"
-                type="number"
-                className={`form-input input-with-validation ${errors.winnerCount ? 'border-red-500' : ''}`}
-                placeholder="2-5 pemenang"
-                value={formData.winnerCount}
-                onChange={(e) => {
-                  updateFormData({ winnerCount: parseInt(e.target.value) || 0 });
-                  if (attemptedSubmit && errors.winnerCount) {
-                    setErrors({ ...errors, winnerCount: undefined });
-                  }
-                }}
-                min={2}
-                max={5}
-              />
-              {formData.winnerCount >= 2 && formData.winnerCount <= 5 && !errors.winnerCount && (
-                <CheckCircle className="validation-icon valid" />
-              )}
-            </div>
-            {formData.winnerCount > 0 && formData.winnerCount < 2 ? (
-              <span className="helper-text error">⚠️ Minimal 2 pemenang</span>
-            ) : formData.winnerCount > 5 ? (
-              <span className="helper-text error">⚠️ Maksimal 5 pemenang</span>
-            ) : null}
-          </div>
-        </div>
-
-        {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
-          <div className="info-box success mt-4">
-            <p className="text-sm font-medium">
-              💰 Total Incentive: Rp {(formData.winnerCount * formData.prizePerWinner).toLocaleString('id-ID')}
+        <div className="p-6 space-y-6">
+          <div className="bg-blue-50 p-3 rounded-lg flex items-start gap-2 border border-blue-100">
+            <Info className="w-4 h-4 text-blue-600 mt-0.5" />
+            <p className="text-sm text-blue-800">
+              {t('incentiveDistributionInfo')}
             </p>
           </div>
-        )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label htmlFor="prizePerWinner" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('prizePerWinnerLabel')} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">Rp</div>
+                <input
+                  id="prizePerWinner"
+                  type="number"
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm transition-all duration-200
+                    ${errors.prizePerWinner
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                    }
+                    bg-white
+                  `}
+                  placeholder={t('prizePerWinnerPlaceholder')}
+                  value={formData.prizePerWinner}
+                  onChange={(e) => {
+                    updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
+                    if (attemptedSubmit && errors.prizePerWinner) {
+                      setErrors({ ...errors, prizePerWinner: undefined });
+                    }
+                  }}
+                  min={25000}
+                  step={1000}
+                />
+                {formData.prizePerWinner >= 25000 && !errors.prizePerWinner && (
+                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4" />
+                )}
+              </div>
+              {formData.prizePerWinner > 0 && formData.prizePerWinner < 25000 ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {t('errorMinPrize')}
+                </p>
+              ) : (
+                <>
+                  {formData.prizePerWinner >= 25000 && formData.questionCount > 0 && (
+                    <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                      <Lightbulb className="w-3 h-3" />
+                      {t('recommendation')}: Rp {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}{t('perWinner')}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="winnerCount" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('winnerCountLabel')} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  id="winnerCount"
+                  type="number"
+                  className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
+                    ${errors.winnerCount ? 'border-red-300 focus:ring-red-200 bg-red-50/30' : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'}
+                     bg-white
+                  `}
+                  placeholder={t('winnerCountPlaceholder')}
+                  value={formData.winnerCount}
+                  onChange={(e) => {
+                    updateFormData({ winnerCount: parseInt(e.target.value) || 0 });
+                    if (attemptedSubmit && errors.winnerCount) {
+                      setErrors({ ...errors, winnerCount: undefined });
+                    }
+                  }}
+                  min={2}
+                  max={5}
+                />
+                {formData.winnerCount >= 2 && formData.winnerCount <= 5 && !errors.winnerCount && (
+                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4" />
+                )}
+              </div>
+              {formData.winnerCount > 0 && formData.winnerCount < 2 ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {t('errorMinWinners')}
+                </p>
+              ) : formData.winnerCount > 5 ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {t('errorMaxWinners')}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
+            <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 flex items-center justify-between">
+              <span className="text-sm font-medium text-emerald-800">{t('totalIncentiveRequired')}</span>
+              <p className="text-lg font-bold text-emerald-700">
+                💰 Rp {(formData.winnerCount * formData.prizePerWinner).toLocaleString('id-ID')}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex justify-between mt-8">
+      <div className="flex justify-between items-center pt-4 mt-6">
         <button
           type="button"
-          className="button button-secondary"
+          className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
           onClick={onBack}
         >
-          ← Kembali
+          ← {t('backButton')}
         </button>
         <button
           type="submit"
-          className="button button-primary"
+          className="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
         >
-          Berikutnya →
+          {t('continue')} →
         </button>
       </div>
     </form>

@@ -22,16 +22,7 @@ const getInitialLanguage = (): Language => {
     return savedLanguage;
   }
 
-  // Check browser language preference
-  const browserLang = navigator.language.toLowerCase();
-  if (browserLang.startsWith('en')) {
-    return 'en';
-  }
-  if (browserLang.startsWith('id')) {
-    return 'id';
-  }
-
-  // Default to Indonesian
+  // Default to Indonesian (Ignore browser preference)
   return 'id';
 };
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { toast } from 'sonner';
 
@@ -87,157 +87,187 @@ export function StepOneFormFields({
       )}
 
       {/* SECTION: SURVEY INFORMATION */}
-      <div className="section-card">
-        <div className="section-header">
-          <span className="section-icon">📋</span>
-          <h3 className="section-title">DETAIL SURVEY</h3>
-          {formData.title && formData.description && formData.questionCount > 0 && (
-            <span className="section-badge">✓</span>
-          )}
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        {/* Card Title Removed as per request (Redundant with Header) */}
 
-        <div className="form-group">
-          <label htmlFor="surveyUrl" className="form-label">
-            Link Survey <span className="text-red-500">*</span>
-            {isGoogleImport && <span className="text-xs text-gray-500 ml-2">(dari Google Drive)</span>}
-          </label>
-          <div className="input-wrapper">
-            <input
-              id="surveyUrl"
-              type="url"
-              className={`form-input input-with-validation ${isGoogleImport ? 'bg-gray-50 text-gray-700' : ''} ${errors.surveyUrl && attemptedSubmit ? 'border-red-500' : ''}`}
-              placeholder="https://docs.google.com/forms/... atau https://forms.gle/..."
-              value={formData.surveyUrl}
-              onChange={(e) => {
-                if (!isGoogleImport) {
-                  updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
-                  if (attemptedSubmit && errors.surveyUrl) {
-                    setErrors({ ...errors, surveyUrl: undefined });
-                  }
-                }
-              }}
-              readOnly={isGoogleImport}
-            />
-            {formData.surveyUrl && !errors.surveyUrl && <CheckCircle className="validation-icon valid" />}
-          </div>
-          {errors.surveyUrl && attemptedSubmit && (
-            <span className="helper-text error mt-2">⚠️ {errors.surveyUrl}</span>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="form-group">
-            <label htmlFor="title" className="form-label">
-              {t('surveyTitle')} <span className="text-red-500">*</span>
-              {isGoogleImport && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
+        <div className="p-6 space-y-6">
+          <div className="space-y-2">
+            <label htmlFor="surveyUrl" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+              {t('googleFormLink')} <span className="text-red-500">*</span>
+              {isGoogleImport && <span className="text-xs font-normal text-gray-500 ml-1">{t('surveyTitleFromGoogleDrive')}</span>}
             </label>
-            <div className="input-wrapper">
+            <div className="relative">
               <input
-                id="title"
-                type="text"
-                className={`form-input input-with-validation ${isGoogleImport ? 'bg-gray-50 text-gray-700' : ''} ${errors.title && attemptedSubmit ? 'border-red-500' : ''}`}
-                placeholder={t('surveyTitlePlaceholder')}
-                value={formData.title}
+                id="surveyUrl"
+                type="url"
+                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 
+                  ${errors.surveyUrl && attemptedSubmit
+                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                  }
+                  ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
+                `}
+                placeholder={t('googleFormLinkPlaceholder')}
+                value={formData.surveyUrl}
                 onChange={(e) => {
                   if (!isGoogleImport) {
-                    updateFormData({ title: e.target.value });
-                    if (attemptedSubmit && errors.title) {
-                      setErrors({ ...errors, title: undefined });
+                    updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
+                    if (attemptedSubmit && errors.surveyUrl) {
+                      setErrors({ ...errors, surveyUrl: undefined });
                     }
                   }
                 }}
                 readOnly={isGoogleImport}
               />
-              {formData.title && !errors.title && <CheckCircle className="validation-icon valid" />}
+              {formData.surveyUrl && !errors.surveyUrl && !isGoogleImport && (
+                <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4" />
+              )}
             </div>
-            {errors.title && attemptedSubmit ? (
-              <span className="helper-text error">⚠️ {errors.title}</span>
+            {errors.surveyUrl && attemptedSubmit ? (
+              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3 h-3" /> {errors.surveyUrl}
+              </p>
             ) : (
-              <span className="helper-text">e.g., Customer Satisfaction Survey</span>
+              <p className="text-xs text-gray-500">
+                Masukan link Google Form atau shortlink (forms.gle/...)
+              </p>
             )}
           </div>
 
-          <div className="form-group">
-            <label htmlFor="questionCount" className="form-label">
-              {t('questionCount')} <span className="text-red-500">*</span>
-              {isGoogleImport && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label htmlFor="title" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('surveyTitle')} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  id="title"
+                  type="text"
+                  className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
+                    ${errors.title && attemptedSubmit
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                    }
+                    ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
+                  `}
+                  placeholder={t('surveyTitlePlaceholder')}
+                  value={formData.title}
+                  onChange={(e) => {
+                    if (!isGoogleImport) {
+                      updateFormData({ title: e.target.value });
+                      if (attemptedSubmit && errors.title) {
+                        setErrors({ ...errors, title: undefined });
+                      }
+                    }
+                  }}
+                  readOnly={isGoogleImport}
+                />
+              </div>
+              {errors.title && attemptedSubmit && (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.title}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="questionCount" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                {t('questionCount')} <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  id="questionCount"
+                  type="number"
+                  className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
+                    ${errors.questionCount && attemptedSubmit
+                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                    }
+                    ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
+                  `}
+                  placeholder={t('questionCountPlaceholder')}
+                  value={formData.questionCount || ''}
+                  onChange={(e) => {
+                    if (!isGoogleImport) {
+                      updateFormData({ questionCount: parseInt(e.target.value) || 0 });
+                      if (attemptedSubmit && errors.questionCount) {
+                        setErrors({ ...errors, questionCount: undefined });
+                      }
+                    }
+                  }}
+                  readOnly={isGoogleImport}
+                  min={1}
+                />
+              </div>
+              {errors.questionCount && attemptedSubmit ? (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.questionCount}
+                </p>
+              ) : formData.questionCount > 0 && (
+                <p className="text-xs text-blue-600 font-medium mt-1">
+                  Est. Cost: Rp {formData.questionCount <= 15 ? '150.000' : formData.questionCount <= 30 ? '200.000' : formData.questionCount <= 50 ? '300.000' : formData.questionCount <= 70 ? '400.000' : '500.000'}/hari
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="description" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+              {t('surveyDescription')} <span className="text-red-500">*</span>
             </label>
-            <div className="input-wrapper">
-              <input
-                id="questionCount"
-                type="number"
-                className={`form-input input-with-validation ${isGoogleImport ? 'bg-gray-50 text-gray-700' : ''} ${errors.questionCount && attemptedSubmit ? 'border-red-500' : ''}`}
-                placeholder={t('questionCountPlaceholder')}
-                value={formData.questionCount || ''}
+            <div className="relative">
+              <textarea
+                id="description"
+                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 min-h-[120px] resize-y
+                  ${errors.description && attemptedSubmit
+                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
+                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                  }
+                  ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
+                `}
+                placeholder={t('surveyDescriptionPlaceholder')}
+                value={formData.description}
                 onChange={(e) => {
                   if (!isGoogleImport) {
-                    updateFormData({ questionCount: parseInt(e.target.value) || 0 });
-                    if (attemptedSubmit && errors.questionCount) {
-                      setErrors({ ...errors, questionCount: undefined });
+                    updateFormData({ description: e.target.value });
+                    if (attemptedSubmit && errors.description) {
+                      setErrors({ ...errors, description: undefined });
                     }
                   }
                 }}
                 readOnly={isGoogleImport}
-                min={1}
+                rows={4}
+                maxLength={500}
               />
-              {formData.questionCount > 0 && !errors.questionCount && <CheckCircle className="validation-icon valid" />}
+              <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 font-medium bg-white/80 px-1.5 py-0.5 rounded">
+                {formData.description.length}/500
+              </div>
             </div>
-            {errors.questionCount && attemptedSubmit ? (
-              <span className="helper-text error">⚠️ {errors.questionCount}</span>
-            ) : formData.questionCount > 0 ? (
-              <span className="helper-text">
-                💰 Rp {formData.questionCount <= 15 ? '150.000' : formData.questionCount <= 30 ? '200.000' : formData.questionCount <= 50 ? '300.000' : formData.questionCount <= 70 ? '400.000' : '500.000'}/hari
-              </span>
-            ) : null}
+            {errors.description && attemptedSubmit && (
+              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3 h-3" /> {errors.description}
+              </p>
+            )}
           </div>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="description" className="form-label">
-            {t('surveyDescription')} <span className="text-red-500">*</span>
-            {isGoogleImport && <span className="text-xs text-gray-500 ml-2">{t('surveyTitleFromGoogleDrive')}</span>}
-          </label>
-          <textarea
-            id="description"
-            className={`form-input ${isGoogleImport ? 'bg-gray-50 text-gray-700' : ''} ${errors.description && attemptedSubmit ? 'border-red-500' : ''}`}
-            placeholder={t('surveyDescriptionPlaceholder')}
-            value={formData.description}
-            onChange={(e) => {
-              if (!isGoogleImport) {
-                updateFormData({ description: e.target.value });
-                if (attemptedSubmit && errors.description) {
-                  setErrors({ ...errors, description: undefined });
-                }
-              }
-            }}
-            readOnly={isGoogleImport}
-            rows={4}
-          />
-          <div className="char-counter">
-            {formData.description.length}/500 characters
-          </div>
-          {errors.description && attemptedSubmit && (
-            <span className="helper-text error mt-2">⚠️ {errors.description}</span>
-          )}
         </div>
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex justify-between mt-8">
+      <div className="flex justify-between items-center pt-4 mt-8">
         {onBack && (
           <button
             type="button"
-            className="button button-secondary"
+            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
             onClick={onBack}
           >
-            ← Kembali
+            ← {t('backButton')}
           </button>
         )}
         <button
           type="submit"
-          className={`button button-primary ${!onBack ? 'ml-auto' : ''}`}
+          className={`px-6 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 ${!onBack ? 'ml-auto' : ''}`}
         >
-          {t('continue')}
+          {t('continue')} →
         </button>
       </div>
     </form>

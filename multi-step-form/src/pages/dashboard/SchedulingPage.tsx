@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Calendar, momentLocalizer, Views } from 'react-big-calendar';
+import { Calendar, momentLocalizer, Views, type View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { getScheduledAds, type ScheduledAd } from '@/utils/supabase';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, LayoutList, Calendar as CalendarIcon, ExternalLink } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { RefreshCw, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 // Setup the localizer for react-big-calendar
@@ -21,10 +20,10 @@ interface CalendarEvent {
 }
 
 export function SchedulingPage() {
-    const { user } = useAuth();
+    // const { user } = useAuth();
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(false);
-    const [view, setView] = useState(Views.MONTH);
+    const [view, setView] = useState<View>(Views.MONTH);
     const [date, setDate] = useState(new Date());
 
     const fetchEvents = async () => {
@@ -75,7 +74,7 @@ export function SchedulingPage() {
     };
 
     return (
-        <div className="p-4 md:p-8 space-y-6 h-full flex flex-col">
+        <div className="p-4 md:p-8 max-w-6xl mx-auto w-full space-y-6 h-full flex flex-col">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Ad Scheduling</h1>
@@ -108,7 +107,7 @@ export function SchedulingPage() {
                             endAccessor="end"
                             style={{ height: '100%' }}
                             view={view}
-                            onView={(v) => setView(v as Views)}
+                            onView={(v) => setView(v)}
                             date={date}
                             onNavigate={setDate}
                             eventPropGetter={eventStyleGetter}

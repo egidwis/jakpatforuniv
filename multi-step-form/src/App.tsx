@@ -3,7 +3,7 @@ import { Toaster } from 'sonner';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { MultiStepForm } from './components/MultiStepForm';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
-import { ThemeToggle } from './components/ThemeToggle';
+
 import { InternalDashboardWithLayout } from './components/InternalDashboardWithLayout';
 import { useLanguage } from './i18n/LanguageContext';
 import PaymentSuccessPage from './pages/PaymentSuccessPage';
@@ -47,7 +47,7 @@ function AppContent() {
             {t('footer')}
           </p>
           <div className="footer-actions">
-            <ThemeToggle />
+
             <LanguageSwitcher />
           </div>
         </div>
@@ -93,16 +93,10 @@ function App() {
   // Effect to apply theme when app loads
   // Effect to apply theme when app loads
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    const isDark = savedTheme === 'dark' ||
-      (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
-
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    // Force light theme
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.documentElement.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
   }, []);
 
   return (

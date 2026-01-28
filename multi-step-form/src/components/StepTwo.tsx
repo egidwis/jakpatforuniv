@@ -46,10 +46,7 @@ export function StepTwo({ formData, updateFormData, nextStep, prevStep }: StepTw
 
   return (
     <div>
-      <h2 className="text-lg font-semibold mb-2">{t('surveyConfiguration')}</h2>
-      <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
-        {t('surveyConfigurationDescription')}
-      </p>
+
 
       <StepTwoConfig
         formData={formData}
