@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, CheckCircle, XCircle, Search, Plus, Calendar } from 'lucide-react';
-import { getAllFormSubmissions, getFormSubmissionsPaginated, updateFormStatus, type FormSubmission, supabase } from '../utils/supabase';
+import { LogOut, Eye, RefreshCw, Lock, CheckCircle, XCircle, Search, Plus, Calendar, Trash2 } from 'lucide-react';
+import { getAllFormSubmissions, getFormSubmissionsPaginated, updateFormStatus, getScheduledAdsBySubmission, deleteScheduledAd, type FormSubmission, supabase } from '../utils/supabase';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { simpleGoogleAuth } from '../utils/google-auth-simple';
 import { useAuth } from '../context/AuthContext';
@@ -220,6 +220,46 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const handleClosePublishModal = () => {
     setIsPublishModalOpen(false);
     setSelectedSubmissionForAds(null);
+  };
+
+  const handleRemoveAds = async (submissionId: string) => {
+    if (!confirm('Are you sure you want to remove all scheduled ads for this submission? This will also remove the event from Google Calendar.')) {
+      return;
+    }
+
+    try {
+      // Get all scheduled ads for this submission
+      const scheduledAds = await getScheduledAdsBySubmission(submissionId);
+
+      // Delete from Google Calendar if connected
+      if (simpleGoogleAuth.isAuthenticated()) {
+        for (const ad of scheduledAds) {
+          if (ad.google_calendar_event_id) {
+            try {
+              await simpleGoogleAuth.deleteCalendarEvent(ad.google_calendar_event_id);
+            } catch (calError) {
+              console.error('Failed to delete calendar event:', calError);
+              // Continue even if calendar delete fails
+            }
+          }
+        }
+      }
+
+      // Delete from Supabase
+      for (const ad of scheduledAds) {
+        await deleteScheduledAd(ad.id);
+      }
+
+      // Update status back to scheduling
+      await updateFormStatus(submissionId, 'scheduling');
+
+      // Refresh the list
+      loadSubmissions();
+      toast.success('Scheduled ads removed successfully');
+    } catch (error: any) {
+      console.error('Error removing ads:', error);
+      toast.error('Failed to remove scheduled ads');
+    }
   };
 
   if (authLoading) {
@@ -588,15 +628,27 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         </TableCell>
                         <TableCell className="align-top py-4">
                           {submission.payment_status?.toLowerCase() === 'paid' ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 border-dashed text-xs"
-                              onClick={() => handleOpenPublishModal(submission)}
-                            >
-                              <Calendar className="w-3 h-3 mr-1.5" />
-                              {submission.status === 'publishing' ? 'Extend Ads' : 'Publish Ads'}
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 border-dashed text-xs"
+                                onClick={() => handleOpenPublishModal(submission)}
+                              >
+                                <Calendar className="w-3 h-3 mr-1.5" />
+                                {submission.status === 'publishing' ? 'Extend Ads' : 'Publish Ads'}
+                              </Button>
+                              {submission.status === 'publishing' && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => handleRemoveAds(submission.id)}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">-</span>
                           )}

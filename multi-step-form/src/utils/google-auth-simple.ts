@@ -1,7 +1,7 @@
 // Simplified Google Auth using Google Identity Services (GIS)
 // For testing and development - focuses on basic functionality
 
-const GOOGLE_CLIENT_ID = '1008202205794-ukn77t8vk6e59e153f5ut7n19pjfv0pe.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '240700313177-b388ejb4kscffglu8id4t5a6cru9a492.apps.googleusercontent.com';
 const GOOGLE_API_KEY = 'AIzaSyCTZCvIo8O8Mk-_CpbPCu3LN37WkTqukDQ';
 
 export interface AuthResult {
@@ -249,6 +249,32 @@ export class SimpleGoogleAuth {
       return await response.json();
     } catch (error) {
       console.error('Error creating calendar event:', error);
+      throw error;
+    }
+  }
+
+  // Delete Calendar Event
+  async deleteCalendarEvent(eventId: string): Promise<void> {
+    if (!this.accessToken) {
+      throw new Error('No access token available');
+    }
+
+    try {
+      const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+        },
+      });
+
+      if (!response.ok && response.status !== 204) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to delete calendar event');
+      }
+
+      console.log('✅ Calendar event deleted:', eventId);
+    } catch (error) {
+      console.error('Error deleting calendar event:', error);
       throw error;
     }
   }
