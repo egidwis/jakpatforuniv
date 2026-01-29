@@ -15,7 +15,6 @@ interface GoogleDriveImportSimpleProps {
 }
 
 export function GoogleDriveImportSimple({
-  formData,
   updateFormData,
   onFormDataLoaded
 }: GoogleDriveImportSimpleProps) {
@@ -40,6 +39,13 @@ export function GoogleDriveImportSimple({
       toast.success(t('successConnectedGoogleDrive'));
     } catch (error: any) {
       console.error('Error connecting:', error);
+
+      // Handle access_denied specifically (user cancelled via 'x' or 'cancel')
+      if (error.message && (error.message.includes('access_denied') || error.message.includes('access_denied_timeout'))) {
+        toast.info(t('cancel')); // Use existing 'Cancel' translation
+        return;
+      }
+
       toast.error(error.message || t('errorConnectGoogleDrive'));
     } finally {
       setIsConnecting(false);

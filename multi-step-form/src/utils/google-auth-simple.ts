@@ -2,7 +2,7 @@
 // For testing and development - focuses on basic functionality
 
 const GOOGLE_CLIENT_ID = '240700313177-b388ejb4kscffglu8id4t5a6cru9a492.apps.googleusercontent.com';
-const GOOGLE_API_KEY = 'AIzaSyCTZCvIo8O8Mk-_CpbPCu3LN37WkTqukDQ';
+// const GOOGLE_API_KEY = 'AIzaSyCTZCvIo8O8Mk-_CpbPCu3LN37WkTqukDQ';
 
 export interface AuthResult {
   success: boolean;
@@ -158,7 +158,25 @@ export class SimpleGoogleAuth {
       }
 
       return new Promise((resolve) => {
+        let isResolved = false;
+
+        // Timeout mechanism - users might close the popup without action, causing the callback to never fire
+        const timeoutId = setTimeout(() => {
+          if (!isResolved) {
+            isResolved = true;
+            console.warn('⚠️ Google Auth timed out - popup likely closed by user');
+            resolve({
+              success: false,
+              error: 'access_denied_timeout' // Treat as cancellation/timeout
+            });
+          }
+        }, 300000); // 5 minutes timeout (extended for 2FA/Slow login)
+
         this.tokenClient.callback = (response: any) => {
+          if (isResolved) return;
+          clearTimeout(timeoutId);
+          isResolved = true;
+
           if (response.error) {
             resolve({
               success: false,
@@ -172,7 +190,7 @@ export class SimpleGoogleAuth {
 
           resolve({
             success: true,
-            accessToken: this.accessToken
+            accessToken: this.accessToken || undefined
           });
         };
 
@@ -190,9 +208,8 @@ export class SimpleGoogleAuth {
     }
   }
 
-  // Get current access token
-  getAccessToken(): string | null {
-    return this.accessToken;
+  getAccessToken(): string | undefined {
+    return this.accessToken || undefined;
   }
 
   // Check if authenticated
@@ -282,10 +299,12 @@ export class SimpleGoogleAuth {
   // Revoke access token
   revoke(): void {
     if (this.accessToken && window.google && window.google.accounts && window.google.accounts.oauth2) {
-      window.google.accounts.oauth2.revoke(this.accessToken, () => {
-        this.accessToken = null;
-        console.log('✅ Access token revoked');
-      });
+      if ((window.google.accounts.oauth2 as any).revoke) {
+        (window.google.accounts.oauth2 as any).revoke(this.accessToken, () => {
+          this.accessToken = null;
+          console.log('✅ Access token revoked');
+        });
+      }
     }
   }
 }

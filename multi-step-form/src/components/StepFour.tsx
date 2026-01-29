@@ -157,8 +157,11 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         setTimeout(() => {
           // Redirect ke halaman submit-success
           console.log('Melakukan redirect ke halaman submit-success');
-          window.open(`${window.location.origin}/submit-success.html`, '_self');
+          // Clear draft before redirecting
+          localStorage.removeItem('survey_form_draft');
+          window.open(`${window.location.origin}/dashboard/status?status=survey_submitted`, '_self');
         }, 1500);
+
       }
       // Jika form adalah Google Form, lanjutkan dengan pembayaran
       else {
@@ -190,9 +193,12 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
           setTimeout(() => {
             // Redirect ke halaman pembayaran
             console.log('Melakukan redirect ke:', paymentUrl);
+            // Clear draft before redirecting
+            localStorage.removeItem('survey_form_draft');
             // Use window.open instead of window.location.href to avoid issues
             window.open(paymentUrl, '_self');
           }, 1500);
+
         } catch (paymentError: any) {
           // Dismiss loading toast
           toast.dismiss(loadingToast);

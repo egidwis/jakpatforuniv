@@ -93,7 +93,7 @@ export const createPayment = async (paymentData: PaymentData): Promise<string> =
       }
 
       // Return simulation URL
-      return `${window.location.origin}/payment-success.html`;
+      return `${window.location.origin}/dashboard/status?payment_status=paid`;
     }
 
     // Production mode - Create payment with Mayar
@@ -117,8 +117,8 @@ export const createPayment = async (paymentData: PaymentData): Promise<string> =
       amount: adjustedAmount, // Use adjusted amount that meets minimum requirement
       mobile: customerInfo.phoneNumber || '08123456789',
       // Redirect to static success page instead of dynamic one
-      redirectUrl: `${origin}/payment-success.html`,
-      failureUrl: `${origin}/payment-failed?payment_id={id}&form_id=${formSubmissionId}`,
+      redirectUrl: `${origin}/dashboard/status?payment_status=paid`,
+      failureUrl: `${origin}/dashboard/status?payment_status=failed&form_id=${formSubmissionId}`,
       description: `Pembayaran Survey - ${customerInfo.title}`,
       expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
       webhookUrl: `${origin}/webhook` // Webhook URL for payment notifications

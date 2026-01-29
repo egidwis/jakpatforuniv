@@ -1,4 +1,5 @@
 import { useLanguage } from '../i18n/LanguageContext';
+import { Zap, CheckCircle2, Clock, Info } from 'lucide-react';
 
 interface StepOneMethodSelectionProps {
   onSelectMethod: (method: 'google' | 'manual') => void;
@@ -11,13 +12,12 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
     <div className="method-selection-container">
       {/* Page Title */}
       <div className="method-selection-header">
-        <h1 className="method-selection-title">{t('startByFillingData')}</h1>
-        <p className="method-selection-subtitle">
+        <h1 className="method-selection-title text-2xl font-semibold text-gray-900">{t('startByFillingData')}</h1>
+        <p className="method-selection-subtitle text-sm text-gray-500 mt-1">
           {t('chooseMethodSuitable')}
         </p>
       </div>
 
-      {/* Method Cards */}
       <div className="method-cards-grid">
         {/* PRIMARY: Google Form Import */}
         <div className="method-card method-card-primary">
@@ -31,40 +31,24 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
           <div className="method-card-content">
             {/* Icon */}
             <div className="method-card-icon method-card-icon-primary">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="9" y1="13" x2="15" y2="13" />
-                <line x1="9" y1="17" x2="15" y2="17" />
-              </svg>
+              <Zap size={32} />
             </div>
 
             {/* Title */}
-            <h2 className="method-card-title">{t('googleFormImportTitle')}</h2>
-
-            {/* Description */}
-            <p className="method-card-description">
-              {t('googleFormImportDescription')}
-            </p>
+            <h2 className="method-card-title text-lg font-semibold mt-4 mb-6">{t('googleFormImportTitle')}</h2>
 
             {/* Benefits List */}
-            <ul className="method-card-benefits">
-              <li className="method-benefit-item">
-                <svg className="benefit-icon" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
+            <ul className="method-card-benefits space-y-3 mb-8">
+              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
+                <CheckCircle2 className="benefit-icon text-blue-500 flex-shrink-0" size={18} />
                 <span className="benefit-text">{t('benefit100Accurate')}</span>
               </li>
-              <li className="method-benefit-item">
-                <svg className="benefit-icon" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <span className="benefit-text">{t('benefitAutoFill')}</span>
+              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
+                <Zap className="benefit-icon text-amber-500 flex-shrink-0" size={18} />
+                <span className="benefit-text font-medium text-gray-900">{t('benefitAutoFill')}</span>
               </li>
-              <li className="method-benefit-item">
-                <svg className="benefit-icon" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
+              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
+                <Clock className="benefit-icon text-emerald-500 flex-shrink-0" size={18} />
                 <span className="benefit-text">{t('benefitSaveTime')}</span>
               </li>
             </ul>
@@ -85,7 +69,7 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
         {/* SECONDARY: Manual Input */}
         <div className="method-card method-card-secondary">
           {/* Card Content */}
-          <div className="method-card-content">
+          <div className="method-card-content flex flex-col items-start text-left h-full">
             {/* Icon */}
             <div className="method-card-icon method-card-icon-secondary">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -95,17 +79,23 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
             </div>
 
             {/* Title */}
-            <h2 className="method-card-title">{t('manualFillTitle')}</h2>
+            <h2 className="method-card-title text-lg font-semibold mt-4 mb-2">{t('manualFillTitle')}</h2>
 
             {/* Description */}
-            <p className="method-card-description">
+            <p className="method-card-description text-sm text-gray-500 text-left leading-relaxed mb-auto">
               {t('manualFillDescription')}
             </p>
+
+            {/* Admin Review Info - Left Aligned */}
+            <div className="flex items-center gap-1.5 mt-8 mb-4 text-blue-600/80 text-xs">
+              <Info size={12} strokeWidth={2.5} />
+              <span className="font-medium">{t('requiresAdminReview')}</span>
+            </div>
 
             {/* CTA Button */}
             <button
               onClick={() => onSelectMethod('manual')}
-              className="method-card-cta method-card-cta-secondary"
+              className="method-card-cta method-card-cta-secondary w-full"
             >
               {t('fillManually')}
             </button>
@@ -113,13 +103,7 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
         </div>
       </div>
 
-      {/* Info Notice */}
-      <div className="method-selection-notice">
-        <svg className="notice-icon" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-        </svg>
-        <p>{t('canChangeMethodLater')}</p>
-      </div>
+      {/* Info Notice removed - moved to subtitle */}
     </div>
   );
 }

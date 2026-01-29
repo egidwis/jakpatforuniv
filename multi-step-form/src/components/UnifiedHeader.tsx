@@ -9,9 +9,10 @@ interface UnifiedHeaderProps {
     currentStep: number;
     formData: SurveyFormData;
     onToggleSidebar: () => void;
+    onReset?: () => void;
 }
 
-export function UnifiedHeader({ currentStep, formData, onToggleSidebar }: UnifiedHeaderProps) {
+export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset }: UnifiedHeaderProps) {
     const { t } = useLanguage();
     const calculation = useMemo(() => calculateTotalCost(formData), [
         formData.questionCount,
@@ -92,6 +93,19 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar }: Unifie
                                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Estimated Cost</p>
                                 <p className="text-lg font-bold text-blue-600">Rp{formatRupiah(calculation.totalCost)}</p>
                             </div>
+
+                            {onReset && (
+                                <div className="border-l border-gray-200 pl-6 hidden md:block">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={onReset}
+                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
+                                    >
+                                        {t('cancelSubmission')}
+                                    </Button>
+                                </div>
+                            )}
                         </div>
 
                     </div>

@@ -10,6 +10,8 @@ export interface SurveyInfo {
   platform: string;
   hasPersonalDataQuestions?: boolean;
   detectedKeywords?: string[];
+  url?: string;
+  apiData?: any;
 }
 
 // Fungsi untuk mengekstrak informasi dari Google Forms
@@ -51,8 +53,8 @@ export async function extractGoogleFormsInfo(url: string): Promise<SurveyInfo> {
 
           // Cek apakah form memerlukan login
           if (html.includes('You need permission') ||
-              html.includes('You need to login') ||
-              html.includes('need to sign in')) {
+            html.includes('You need to login') ||
+            html.includes('need to sign in')) {
             console.log('Form requires permission or login');
             throw new Error('FORM_NOT_PUBLIC');
           }
@@ -106,7 +108,7 @@ export async function extractGoogleFormsInfo(url: string): Promise<SurveyInfo> {
           console.error('Error fetching form content:', fetchError);
 
           // Jika error adalah karena form tidak public
-          if (fetchError.message === 'FORM_NOT_PUBLIC') {
+          if ((fetchError as any).message === 'FORM_NOT_PUBLIC') {
             throw fetchError; // Re-throw error untuk ditangani di level atas
           }
 
@@ -144,9 +146,9 @@ export async function extractGoogleFormsInfo(url: string): Promise<SurveyInfo> {
     console.error('Error in extractGoogleFormsInfo:', error);
 
     // Handle specific error types
-    if (error.message === 'FORM_NOT_PUBLIC') {
+    if ((error as any).message === 'FORM_NOT_PUBLIC') {
       throw new Error('FORM_NOT_PUBLIC');
-    } else if (error.message === 'EXTRACTION_TIMEOUT') {
+    } else if ((error as any).message === 'EXTRACTION_TIMEOUT') {
       // Jika timeout, gunakan nilai default
       console.log('Extraction timed out, returning default values');
       return {

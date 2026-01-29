@@ -22,6 +22,9 @@ const getEndDateFromDuration = (duration: number) => {
   return date.toISOString().split('T')[0];
 };
 
+const STORAGE_KEY = 'survey_form_draft';
+
+
 // Default values untuk form
 const defaultFormData: SurveyFormData = {
   // Step 1
@@ -50,23 +53,68 @@ const defaultFormData: SurveyFormData = {
   voucherCode: '',
 };
 
+import { useLanguage } from '../i18n/LanguageContext';
+
 export function MultiStepForm() {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
-  const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState<SurveyFormData>(defaultFormData);
+
+  // Initialize state from localStorage if available
+  const [resetKey, setResetKey] = useState(0);
+  const [currentStep, setCurrentStep] = useState<number>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return typeof parsed.currentStep === 'number' ? parsed.currentStep : 1;
+      } catch (e) {
+        return 1;
+      }
+    }
+    return 1;
+  });
+
+  const [formData, setFormData] = useState<SurveyFormData>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Merge with default to ensure all fields exist
+        return { ...defaultFormData, ...parsed.formData };
+      } catch (e) {
+        return defaultFormData;
+      }
+    }
+    return defaultFormData;
+  });
+
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+
+  // Save to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      formData,
+      currentStep
+    }));
+  }, [formData, currentStep]);
 
   // Auto-fill form data from logged-in user
   useEffect(() => {
     const loadUserData = async () => {
       if (user) {
-        // 1. Basic auth data
-        setFormData(prev => ({
-          ...prev,
-          email: user.email || prev.email,
-          fullName: user.user_metadata?.full_name || prev.fullName
-        }));
+        // 1. Basic auth data - Only if not already set or if empty (don't overwrite draft)
+        setFormData(prev => {
+          // Only update if email is empty (fresh form) or matches the user
+          if (!prev.email || prev.email === user.email) {
+            return {
+              ...prev,
+              email: user.email || prev.email,
+              fullName: user.user_metadata?.full_name || prev.fullName
+            };
+          }
+          return prev;
+        });
 
         // 2. Fetch previous submission for extra details
         if (user.email) {
@@ -114,6 +162,16 @@ export function MultiStepForm() {
     window.scrollTo(0, 0);
   };
 
+  const handleReset = () => {
+    if (confirm(t('confirmCancelSubmission'))) {
+      localStorage.removeItem(STORAGE_KEY);
+      setFormData(defaultFormData);
+      setCurrentStep(1);
+      setResetKey(prev => prev + 1);
+      window.scrollTo(0, 0);
+    }
+  };
+
   // Fungsi untuk update form data
   const updateFormData = (newData: Partial<SurveyFormData>) => {
     // Jika durasi berubah, update endDate secara otomatis
@@ -132,6 +190,7 @@ export function MultiStepForm() {
           currentStep={currentStep}
           formData={formData}
           onToggleSidebar={toggleSidebar}
+          onReset={handleReset}
         />
       )}
 
@@ -139,6 +198,7 @@ export function MultiStepForm() {
       <div className="form-content mt-8 max-w-5xl mx-auto px-6 pb-24">
         {currentStep === 1 && (
           <StepOne
+            key={resetKey}
             formData={formData}
             updateFormData={updateFormData}
             nextStep={nextStep}

@@ -3,30 +3,38 @@ import { useAuth } from '@/context/AuthContext';
 import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, type FormSubmission } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Calendar, FileText, AlertCircle, CheckCircle2, Search, PlayCircle, ExternalLink, MessageCircle, CreditCard, Clock } from 'lucide-react';
+import { Loader2, Calendar, FileText, CheckCircle2, Search, PlayCircle, ExternalLink, MessageCircle, CreditCard, Clock, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
 // Define the status steps in order
 const STATUS_STEPS = [
-    { key: 'payment', label: 'In Review & Waiting Payment', icon: CreditCard, helper: '' },
-    { key: 'in_review', label: 'Payment Confirmation', icon: Search, helper: 'Jam Kerja: Sen - Jum, 08:00 - 17:00' },
-    { key: 'scheduling', label: 'Scheduling', icon: Calendar, helper: '' },
-    { key: 'publishing', label: 'Publishing', icon: PlayCircle, helper: '' },
-    { key: 'completed', label: 'Completed', icon: CheckCircle2, helper: '' },
+    { key: 'in_review', label: 'In Review', icon: Search, helper: 'Menunggu Review Admin' },
+    { key: 'payment', label: 'Waiting Payment', icon: CreditCard, helper: 'Menunggu Pembayaran' },
+    { key: 'scheduling', label: 'Scheduling', icon: Calendar, helper: 'Proses Penjadwalan' },
+    { key: 'publishing', label: 'Publishing', icon: PlayCircle, helper: 'Sedang Tayang' },
+    { key: 'completed', label: 'Completed', icon: CheckCircle2, helper: 'Selesai' },
 ];
 
 // Get the current step index based on submission state
-function getCurrentStepIndex(submission: FormSubmission): number {
+function getCurrentStepIndex(submission: FormSubmission, hasPaymentLink: boolean): number {
+    // If not paid yet
     if (submission.payment_status !== 'paid') {
-        return 0; // Waiting for Payment
+        // If we have a payment link/invoice, we are in Waiting Payment (Step 1)
+        if (hasPaymentLink) {
+            return 1;
+        }
+        // Otherwise we are still In Review (Step 0)
+        return 0;
     }
 
-    const status = (submission.submission_status || 'in_review').toLowerCase();
+    // If paid, check submission status
+    const status = (submission.submission_status || 'scheduling').toLowerCase();
 
     switch (status) {
-        case 'in_review':
-            return 1;
+        case 'in_review': // Should not happen if paid, but fallback to scheduling or keep at payment done?
+            return 1; // Or maybe 2 if we consider paid = passed payment
         case 'scheduling':
             return 2;
         case 'publishing':
@@ -34,7 +42,7 @@ function getCurrentStepIndex(submission: FormSubmission): number {
         case 'completed':
             return 4;
         default:
-            return 1; // Default to in_review
+            return 2; // Default to Scheduling if paid but status unknown
     }
 }
 
@@ -177,6 +185,38 @@ export function StatusPage() {
     const [loading, setLoading] = useState(true);
     // Store payment links for each submission: { submissionId: paymentUrl }
     const [paymentLinks, setPaymentLinks] = useState<Record<string, string | null>>({});
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Handle query params for notifications
+    useEffect(() => {
+        const status = searchParams.get('status');
+        const paymentStatus = searchParams.get('payment_status');
+
+        if (status === 'survey_submitted') {
+            toast.success('Survey berhasil dikirim! Menunggu review admin.');
+            // Clear params
+            setSearchParams(params => {
+                params.delete('status');
+                return params;
+            });
+        }
+
+        if (paymentStatus === 'paid') {
+            toast.success('Pembayaran berhasil! Survey Anda sedang diproses.');
+            setSearchParams(params => {
+                params.delete('payment_status');
+                return params;
+            });
+        }
+
+        if (paymentStatus === 'failed') {
+            toast.error('Pembayaran gagal. Silakan coba lagi.');
+            setSearchParams(params => {
+                params.delete('payment_status');
+                return params;
+            });
+        }
+    }, [searchParams, setSearchParams]);
 
     useEffect(() => {
         async function fetchSubmissions() {
@@ -232,49 +272,33 @@ export function StatusPage() {
         fetchSubmissions();
     }, [user]);
 
-    const getStatusBadgeInfo = (submission: FormSubmission) => {
-        if (submission.payment_status !== 'paid') {
-            return {
-                label: 'Waiting for Payment',
-                color: 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800',
-                icon: <AlertCircle className="w-4 h-4" />,
-            };
-        }
+    const getStatusBadgeInfo = (currentStep: number) => {
+        const step = STATUS_STEPS[currentStep];
+        let color = 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
 
-        const status = submission.submission_status || 'in_review';
-
-        switch (status.toLowerCase()) {
+        switch (step.key) {
             case 'in_review':
-                return {
-                    label: 'In Review',
-                    color: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
-                    icon: <Clock className="w-4 h-4" />,
-                };
+                color = 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800';
+                break;
+            case 'payment':
+                color = 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800';
+                break;
             case 'scheduling':
-                return {
-                    label: 'Scheduling',
-                    color: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800',
-                    icon: <Calendar className="w-4 h-4" />,
-                };
+                color = 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800';
+                break;
             case 'publishing':
-                return {
-                    label: 'Publishing',
-                    color: 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800',
-                    icon: <FileText className="w-4 h-4" />,
-                };
+                color = 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800';
+                break;
             case 'completed':
-                return {
-                    label: 'Completed',
-                    color: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800',
-                    icon: <CheckCircle2 className="w-4 h-4" />,
-                };
-            default:
-                return {
-                    label: `Processing (${status})`, // Show actual status for debugging
-                    color: 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700',
-                    icon: <Loader2 className="w-4 h-4" />,
-                };
+                color = 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800';
+                break;
         }
+
+        return {
+            label: step.label,
+            color,
+            icon: <step.icon className="w-4 h-4" />,
+        };
     };
 
     if (loading) {
@@ -313,8 +337,9 @@ export function StatusPage() {
                 ) : (
                     <div className="grid gap-6">
                         {submissions.map((submission) => {
-                            const badgeInfo = getStatusBadgeInfo(submission);
-                            const currentStep = getCurrentStepIndex(submission);
+                            const hasLink = !!paymentLinks[submission.id!];
+                            const currentStep = getCurrentStepIndex(submission, hasLink);
+                            const badgeInfo = getStatusBadgeInfo(currentStep);
 
                             return (
                                 <Card key={submission.id} className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
@@ -336,46 +361,28 @@ export function StatusPage() {
                                             </Badge>
                                         </div>
                                     </CardHeader>
-                                    <CardContent className="pt-6 pb-4">
+                                    <CardContent className="pt-6 pb-6">
                                         {/* Progress Tracker */}
                                         <ProgressTracker currentStep={currentStep} submission={submission} />
 
-                                        {/* Action Button */}
-                                        {submission.payment_status !== 'paid' && submission.id && (
-                                            <div className="mt-6 flex flex-col items-center md:items-end gap-2">
-                                                {paymentLinks[submission.id] ? (
-                                                    <a
-                                                        href={paymentLinks[submission.id]!}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-500 dark:hover:bg-blue-400 transition-colors"
-                                                    >
-                                                        <CreditCard className="w-4 h-4 mr-2" />
-                                                        Pay Now
-                                                        <ExternalLink className="w-3 h-3 ml-2" />
-                                                    </a>
-                                                ) : paymentLinks[submission.id] === null ? (
-                                                    <div className="text-center md:text-right">
-                                                        <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                                                            <Clock className="w-4 h-4" />
-                                                            Menunggu Invoice dari Admin
-                                                        </p>
-                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                            Kami akan segera menghubungi Anda
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    <Button disabled className="bg-gray-400">
-                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                        Memuat...
-                                                    </Button>
-                                                )}
+                                        {/* STEP 1: Waiting Payment Action */}
+                                        {currentStep === 1 && submission.payment_status !== 'paid' && hasLink && (
+                                            <div className="mt-8 flex justify-center">
+                                                <a
+                                                    href={paymentLinks[submission.id!]!}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center justify-center rounded-md px-8 py-3 text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5"
+                                                >
+                                                    <CreditCard className="w-5 h-5 mr-2" />
+                                                    Pay Now
+                                                </a>
                                             </div>
                                         )}
 
-                                        {/* Paid / In Review - Contact Admin Button */}
-                                        {submission.payment_status === 'paid' && currentStep === 1 && (
-                                            <div className="mt-6 flex justify-end">
+                                        {/* STEP 1 (Paid): Contact Admin Action */}
+                                        {currentStep === 1 && submission.payment_status === 'paid' && (
+                                            <div className="mt-8 flex justify-center">
                                                 <Button
                                                     className="bg-green-600 hover:bg-green-700 text-white"
                                                     asChild
@@ -393,6 +400,67 @@ export function StatusPage() {
                                                 </Button>
                                             </div>
                                         )}
+
+                                        {/* STEP 2, 3, 4: Scheduling, Publishing, Completed - Show Details & Extend */}
+                                        {currentStep >= 2 && (
+                                            <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                                {/* Card 1: Ad Duration */}
+                                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                                                            <Clock className="w-4 h-4" />
+                                                        </div>
+                                                        <span className="text-sm font-medium text-gray-700">Ad Duration</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-gray-900">{submission.duration} Days</p>
+                                                </div>
+
+                                                {/* Card 2: Incentive */}
+                                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <div className="bg-green-100 p-2 rounded-lg text-green-600">
+                                                            <Gift className="w-4 h-4" />
+                                                        </div>
+                                                        <span className="text-sm font-medium text-gray-700">Incentive</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-gray-900">
+                                                        Rp {new Intl.NumberFormat('id-ID').format(submission.prize_per_winner || 0)} <span className="text-xs text-gray-500 font-normal">/ winner</span>
+                                                    </p>
+                                                </div>
+
+                                                {/* Card 3: Action (Extend) */}
+                                                <div className="flex flex-col justify-center">
+                                                    <Button
+                                                        variant="outline"
+                                                        className="w-full justify-start h-auto py-3 px-4 border-dashed border-2 hover:border-blue-300 hover:bg-blue-50 text-left group"
+                                                        asChild
+                                                    >
+                                                        <Link to="/dashboard/chat">
+                                                            <div>
+                                                                <span className="block font-semibold text-blue-600 group-hover:text-blue-700 flex items-center gap-2">
+                                                                    Extend Ads / Incentive
+                                                                    <ExternalLink className="w-3 h-3" />
+                                                                </span>
+                                                                <span className="text-xs text-gray-500 mt-1 block">
+                                                                    Contact admin to add duration or prizes
+                                                                </span>
+                                                            </div>
+                                                        </Link>
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Additional Admin Contact for support */}
+                                        <div className="mt-8 pt-4 border-t flex justify-end">
+                                            <Link
+                                                to="/dashboard/chat"
+                                                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+                                            >
+                                                <MessageCircle className="w-3 h-3" />
+                                                Need help? Contact Support
+                                            </Link>
+                                        </div>
                                     </CardContent>
                                 </Card>
                             );

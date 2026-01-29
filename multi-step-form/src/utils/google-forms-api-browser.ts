@@ -30,8 +30,8 @@ export interface GoogleFormsApiResponse {
 
 export class GoogleFormsApiService {
   private static instance: GoogleFormsApiService;
-  
-  private constructor() {}
+
+  private constructor() { }
 
   static getInstance(): GoogleFormsApiService {
     if (!GoogleFormsApiService.instance) {
@@ -65,12 +65,12 @@ export class GoogleFormsApiService {
 
       // Fallback to direct HTTP request
       const url = `https://forms.googleapis.com/v1/forms/${formId}`;
-      
+
       const response = await simpleGoogleAuth.makeAuthenticatedRequest(url);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        
+
         if (response.status === 404) {
           throw new Error('Form not found or you do not have access to this form');
         } else if (response.status === 403) {
@@ -81,7 +81,7 @@ export class GoogleFormsApiService {
       }
 
       const formData = await response.json();
-      
+
       console.log('Form data retrieved successfully:', formData.info?.title);
 
       // Parse the form data
@@ -117,6 +117,21 @@ export class GoogleFormsApiService {
       apiResponse.items.forEach((item: any, index: number) => {
         // Skip page breaks and section headers
         if (item.pageBreakItem || item.sectionHeaderItem) {
+          return;
+        }
+
+        // Check for Question Group (Grid) - Count each row as a question
+        if (item.questionGroupItem && item.questionGroupItem.questions) {
+          item.questionGroupItem.questions.forEach((groupQuestion: any, groupIndex: number) => {
+            const question: GoogleFormQuestion = {
+              questionId: groupQuestion.questionId || `q_${index}_${groupIndex}`,
+              title: groupQuestion.rowQuestion?.title || item.title || `Question ${index + 1} - Row ${groupIndex + 1}`,
+              type: 'grid', // Mark as grid row
+              required: groupQuestion.required || false,
+              options: [] // Grid options usually shared, we can extract if needed but for counting purpose it's fine
+            };
+            questions.push(question);
+          });
           return;
         }
 
@@ -196,7 +211,7 @@ export class GoogleFormsApiService {
   async extractToSurveyInfo(formId: string): Promise<SurveyInfo> {
     try {
       const result = await this.extractFormData(formId);
-      
+
       if (!result.success || !result.data) {
         throw new Error(result.error || 'Failed to extract form data');
       }
@@ -210,21 +225,40 @@ export class GoogleFormsApiService {
 
       formData.questions.forEach(question => {
         const titleLower = question.title.toLowerCase();
-        
+
+        // 1. Email
         if (titleLower.includes('email') || titleLower.includes('e-mail')) {
           if (!personalDataKeywords.includes('email')) personalDataKeywords.push('email');
           hasPersonalDataQuestions = true;
         }
-        if (titleLower.includes('phone') || titleLower.includes('nomor') || titleLower.includes('telepon')) {
+
+        // 2. Phone / WhatsApp
+        if (titleLower.includes('phone') || titleLower.includes('nomor telepon') || titleLower.includes('no. hp') || titleLower.includes('whatsapp') || titleLower.includes('wa')) {
           if (!personalDataKeywords.includes('phone')) personalDataKeywords.push('phone');
           hasPersonalDataQuestions = true;
         }
-        if (titleLower.includes('name') || titleLower.includes('nama')) {
-          if (!personalDataKeywords.includes('name')) personalDataKeywords.push('name');
+
+        // 3. Full Name / KTP Name (Regular "Nama" is allowed)
+        if (titleLower.includes('nama lengkap') || titleLower.includes('full name') || titleLower.includes('nama sesuai ktp') || titleLower.includes('nama panjang')) {
+          if (!personalDataKeywords.includes('full name')) personalDataKeywords.push('full name');
           hasPersonalDataQuestions = true;
         }
-        if (titleLower.includes('address') || titleLower.includes('alamat')) {
+
+        // 4. Address
+        if (titleLower.includes('address') || titleLower.includes('alamat rumah')) {
           if (!personalDataKeywords.includes('address')) personalDataKeywords.push('address');
+          hasPersonalDataQuestions = true;
+        }
+
+        // 5. NIK / ID Number
+        if (titleLower.includes('nik') || titleLower.includes('nomor induk kependudukan') || titleLower.includes('ktp') || titleLower.includes('id card')) {
+          if (!personalDataKeywords.includes('nik/id')) personalDataKeywords.push('nik/id');
+          hasPersonalDataQuestions = true;
+        }
+
+        // 6. File Upload
+        if (question.type === 'file_upload') {
+          if (!personalDataKeywords.includes('file upload')) personalDataKeywords.push('file upload');
           hasPersonalDataQuestions = true;
         }
       });
@@ -258,7 +292,7 @@ export class GoogleFormsApiService {
       }
 
       const url = `https://forms.googleapis.com/v1/forms/${formId}/responses?pageSize=${limit}`;
-      
+
       const response = await simpleGoogleAuth.makeAuthenticatedRequest(url);
 
       if (!response.ok) {
