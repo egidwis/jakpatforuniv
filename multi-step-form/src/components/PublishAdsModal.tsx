@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Calendar, Loader2, Link as LinkIcon, FileText, Clock } from 'lucide-react';
+import { Calendar, Loader2, Link as LinkIcon, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,8 +21,6 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { createScheduledAd, updateFormStatus } from '../utils/supabase';
-import { simpleGoogleAuth } from '../utils/google-auth-simple';
-import type { FormSubmission } from '../utils/supabase';
 
 interface PublishAdsModalProps {
     isOpen: boolean;
@@ -43,7 +41,6 @@ export function PublishAdsModal({ isOpen, onClose, submission, onSuccess }: Publ
     const researcherName = submission.researcherName || submission.full_name || '-';
     const researcherEmail = submission.researcherEmail || submission.email || '-';
     const title = submission.formTitle || submission.title || 'Untitled';
-    const surveyUrl = submission.formUrl || submission.survey_url || '#';
 
     const handlePublish = async () => {
         if (!startDate || !startTime || !duration || !adLink) {
@@ -58,67 +55,28 @@ export function PublishAdsModal({ isOpen, onClose, submission, onSuccess }: Publ
             const endDateTime = new Date(startDateTime);
             endDateTime.setDate(endDateTime.getDate() + parseInt(duration));
 
-            // 2. Create Google Calendar Event
-            let googleEventId = '';
-
-            // Check auth first
-            if (!simpleGoogleAuth.isAuthenticated()) {
-                toast.error('Please connect to Google first (top right of dashboard)');
-                setIsLoading(false);
-                return;
-            }
-
-            try {
-                const event = {
-                    summary: `Publish Ads: ${title}`,
-                    description: `Researcher: ${researcherName}\nLink: ${adLink}\nNotes: ${notes}\n\nSurvey URL: ${surveyUrl}`,
-                    start: {
-                        dateTime: startDateTime.toISOString(),
-                        timeZone: 'Asia/Jakarta', // Adjust as needed
-                    },
-                    end: {
-                        dateTime: endDateTime.toISOString(),
-                        timeZone: 'Asia/Jakarta',
-                    },
-                    colorId: '5', // Yellow for Ads
-                };
-
-                const gCalResponse = await simpleGoogleAuth.createCalendarEvent(event);
-                googleEventId = gCalResponse.id;
-                toast.success('Google Calendar event created');
-            } catch (gCalError: any) {
-                console.error('Google Calendar Error:', gCalError);
-                toast.error(`Failed to create Calendar event: ${gCalError.message}`);
-                // Ask user if they want to proceed anyway? For now, we abort to be safe/strict
-                setIsLoading(false);
-                return;
-            }
-
-            // 3. Save to Supabase
+            // 2. Save to Supabase
             await createScheduledAd({
                 form_submission_id: submission.id!,
                 start_date: startDateTime.toISOString(),
                 end_date: endDateTime.toISOString(),
                 ad_link: adLink,
                 notes: notes,
-                google_calendar_event_id: googleEventId,
-                // created_by: retrieved from auth context or trigger if RLS handles it
+                google_calendar_event_id: '', // No longer syncing to GCal
             });
 
-            // 4. Update Submission Status (if this is the first publish)
-            // If it's an extension, we might keep it 'publishing' or 'scheduling'
-            // Let's set to 'publishing' or 'scheduling' as user flow
+            // 3. Update Submission Status (if this is the first publish)
             if (submission.status !== 'publishing' && submission.submission_status !== 'publishing') {
                 await updateFormStatus(submission.id!, 'publishing');
             }
 
-            toast.success('Ad published and scheduled successfully!');
+            toast.success('Ad scheduled successfully!');
             onSuccess();
             onClose();
 
         } catch (error: any) {
             console.error('Publish Error:', error);
-            toast.error(error.message || 'Failed to publish ad');
+            toast.error(error.message || 'Failed to schedule ad');
         } finally {
             setIsLoading(false);
         }
@@ -228,7 +186,7 @@ export function PublishAdsModal({ isOpen, onClose, submission, onSuccess }: Publ
                                 Publishing...
                             </>
                         ) : (
-                            'Publish & Sync Calendar'
+                            'Schedule Ad'
                         )}
                     </Button>
                 </DialogFooter>

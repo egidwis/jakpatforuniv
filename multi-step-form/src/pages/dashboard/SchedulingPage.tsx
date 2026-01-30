@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Calendar, momentLocalizer, Views, View } from 'react-big-calendar';
+import { Calendar, momentLocalizer, Views } from 'react-big-calendar';
+import type { View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { getScheduledAds, type ScheduledAd } from '@/utils/supabase';

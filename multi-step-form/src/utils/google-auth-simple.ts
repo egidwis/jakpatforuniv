@@ -1,8 +1,8 @@
 // Simplified Google Auth using Google Identity Services (GIS)
 // For testing and development - focuses on basic functionality
 
-const GOOGLE_CLIENT_ID = '240700313177-b388ejb4kscffglu8id4t5a6cru9a492.apps.googleusercontent.com';
-const GOOGLE_API_KEY = 'AIzaSyCTZCvIo8O8Mk-_CpbPCu3LN37WkTqukDQ';
+const GOOGLE_CLIENT_ID = '1008202205794-ukn77t8vk6e59e153f5ut7n19pjfv0pe.apps.googleusercontent.com';
+// const GOOGLE_API_KEY = 'AIzaSyCTZCvIo8O8Mk-_CpbPCu3LN37WkTqukDQ'; // Not needed for OAuth flow
 
 export interface AuthResult {
   success: boolean;
@@ -19,6 +19,7 @@ declare global {
         oauth2: {
           initTokenClient: (config: any) => any;
           hasGrantedAllScopes: (token: any, ...scopes: string[]) => boolean;
+          revoke: (token: string, callback: () => void) => void;
         };
         id: {
           initialize: (config: any) => void;
@@ -134,7 +135,7 @@ export class SimpleGoogleAuth {
       // Initialize Token Client for OAuth2
       this.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly https://www.googleapis.com/auth/calendar',
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly',
         callback: '', // Will be set per request
       });
 
@@ -172,7 +173,7 @@ export class SimpleGoogleAuth {
 
           resolve({
             success: true,
-            accessToken: this.accessToken
+            accessToken: this.accessToken || undefined
           });
         };
 
