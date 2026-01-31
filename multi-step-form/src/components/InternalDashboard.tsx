@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, CheckCircle, XCircle, Search, Plus, Calendar, Trash2 } from 'lucide-react';
-import { getAllFormSubmissions, getFormSubmissionsPaginated, updateFormStatus, getScheduledAdsBySubmission, deleteScheduledAd, type FormSubmission, supabase } from '../utils/supabase';
+import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Trash2 } from 'lucide-react';
+import { getFormSubmissionsPaginated, updateFormStatus, getScheduledAdsBySubmission, deleteScheduledAd, supabase } from '../utils/supabase';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { simpleGoogleAuth } from '../utils/google-auth-simple';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -52,9 +51,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
 
-  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
-  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
-
   // Invoice modal state
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<SurveySubmission | null>(null);
@@ -73,7 +69,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   useEffect(() => {
     if (isAdmin) {
       loadSubmissions();
-      checkGoogleConnection();
     }
   }, [isAdmin]);
 
@@ -82,45 +77,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const handleSearchChange = (val: string) => {
     setSearchQuery(val);
     setCurrentPage(1);
-  };
-
-  const checkGoogleConnection = () => {
-    const connected = simpleGoogleAuth.isAuthenticated();
-    setIsGoogleConnected(connected);
-  };
-
-  const connectGoogle = async () => {
-    setIsConnectingGoogle(true);
-    try {
-      if (simpleGoogleAuth.isAuthenticated()) {
-        setIsGoogleConnected(true);
-        toast.success('Already connected to Google!');
-        setIsConnectingGoogle(false);
-        return;
-      }
-      toast.info('Opening Google authentication popup...');
-      await simpleGoogleAuth.loadGoogleScript();
-      const initialized = await simpleGoogleAuth.initialize();
-      if (!initialized) throw new Error('Failed to initialize Google authentication');
-      const result = await simpleGoogleAuth.requestAccessToken();
-      if (result.success) {
-        setIsGoogleConnected(true);
-        toast.success('Connected to Google successfully!');
-      } else {
-        toast.error(result.error || 'Failed to connect to Google');
-      }
-    } catch (error: any) {
-      console.error('Error connecting to Google:', error);
-      toast.error(error.message || 'Failed to connect to Google. Please try again.');
-    } finally {
-      setIsConnectingGoogle(false);
-    }
-  };
-
-  const disconnectGoogle = () => {
-    simpleGoogleAuth.revoke();
-    setIsGoogleConnected(false);
-    toast.info('Disconnected from Google');
   };
 
   const handleLogout = async () => {
@@ -177,12 +133,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   // Remove the old client-side filter effect since we do server-side search now
   // Kept filteredSubmissions state for compatibility but it mirrors submissions now
 
-  // Helper function to extract Google Form ID from URL
-  const extractFormId = (url: string): string => {
-    const match = url.match(/\/forms\/d\/([a-zA-Z0-9-_]+)/);
-    return match ? match[1] : '';
-  };
-
   const handleStatusChange = async (submissionId: string, newStatus: string, index: number) => {
     try {
       await updateFormStatus(submissionId, newStatus);
@@ -223,27 +173,13 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   };
 
   const handleRemoveAds = async (submissionId: string) => {
-    if (!confirm('Are you sure you want to remove all scheduled ads for this submission? This will also remove the event from Google Calendar.')) {
+    if (!confirm('Are you sure you want to remove all scheduled ads for this submission?')) {
       return;
     }
 
     try {
       // Get all scheduled ads for this submission
       const scheduledAds = await getScheduledAdsBySubmission(submissionId);
-
-      // Delete from Google Calendar if connected
-      if (simpleGoogleAuth.isAuthenticated()) {
-        for (const ad of scheduledAds) {
-          if (ad.google_calendar_event_id) {
-            try {
-              await simpleGoogleAuth.deleteCalendarEvent(ad.google_calendar_event_id);
-            } catch (calError) {
-              console.error('Failed to delete calendar event:', calError);
-              // Continue even if calendar delete fails
-            }
-          }
-        }
-      }
 
       // Delete from Supabase
       for (const ad of scheduledAds) {
@@ -418,41 +354,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             </div>
           </div>
 
-          {/* Google Connection Status */}
+          {/* Refresh Button */}
           <div className="flex items-center gap-3">
-            {isGoogleConnected ? (
-              <>
-                <Badge variant="outline" className="bg-green-500/10 border-green-500/20 text-green-400">
-                  <CheckCircle className="w-3 h-3 mr-1.5" />
-                  Google Connected
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={disconnectGoogle}
-                >
-                  Disconnect
-                </Button>
-              </>
-            ) : (
-              <Button
-                onClick={connectGoogle}
-                disabled={isConnectingGoogle}
-                size="sm"
-              >
-                {isConnectingGoogle ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="w-4 h-4 mr-2" />
-                    Connect Google
-                  </>
-                )}
-              </Button>
-            )}
             {!hideAuth && (
               <Button
                 onClick={loadSubmissions}

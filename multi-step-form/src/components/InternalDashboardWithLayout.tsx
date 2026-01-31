@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, RefreshCw, CheckCircle } from 'lucide-react';
-import { Badge } from './ui/badge';
-import { simpleGoogleAuth } from '../utils/google-auth-simple';
-import { toast } from 'sonner';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { InternalDashboard } from './InternalDashboard';
@@ -20,19 +17,9 @@ export function InternalDashboardWithLayout() {
 
   const [currentPage, setCurrentPage] = useState<Page>('submissions');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-
-  // Google Connection State
-  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
-  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
 
   // Media query untuk detect desktop (md breakpoint = 768px)
   const isDesktop = useMediaQuery('(min-width: 768px)');
-
-  // Wait for client-side mount to prevent hydration mismatch
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   useEffect(() => {
     // Force light theme for internal dashboard - disable ALL dark mode
@@ -63,41 +50,6 @@ export function InternalDashboardWithLayout() {
   const handlePageChange = (page: Page) => {
     setCurrentPage(page);
     setIsSidebarOpen(false); // Close sidebar on mobile after navigation
-  };
-
-  // Google Connection Functions
-  const checkGoogleConnection = () => {
-    const connected = simpleGoogleAuth.isAuthenticated();
-    setIsGoogleConnected(connected);
-  };
-
-  useEffect(() => {
-    checkGoogleConnection();
-  }, []);
-
-  const connectGoogle = async () => {
-    setIsConnectingGoogle(true);
-    try {
-      await simpleGoogleAuth.initialize();
-      const result = await simpleGoogleAuth.requestAccessToken();
-      if (result.success) {
-        setIsGoogleConnected(true);
-        toast.success('Connected to Google successfully!');
-      } else {
-        toast.error(result.error || 'Failed to connect to Google');
-      }
-    } catch (error: any) {
-      console.error('Error connecting to Google:', error);
-      toast.error(error.message || 'Failed to connect to Google');
-    } finally {
-      setIsConnectingGoogle(false);
-    }
-  };
-
-  const disconnectGoogle = () => {
-    simpleGoogleAuth.revoke();
-    setIsGoogleConnected(false);
-    toast.info('Disconnected from Google');
   };
 
   // If not logged in, show Login Screen (Full Page) WITHOUT Sidebar
@@ -207,41 +159,7 @@ export function InternalDashboardWithLayout() {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200 space-y-3">
-          {/* Google Connection Button */}
-          {isGoogleConnected ? (
-            <div className="flex items-center justify-between">
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                Google Connected
-              </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-gray-500 hover:text-gray-700"
-                onClick={disconnectGoogle}
-              >
-                Disconnect
-              </Button>
-            </div>
-          ) : (
-            <Button
-              onClick={connectGoogle}
-              disabled={isConnectingGoogle}
-              size="sm"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {isConnectingGoogle ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Connecting...
-                </>
-              ) : (
-                'Connect Google Calendar'
-              )}
-            </Button>
-          )}
-
+        <div className="p-4 border-t border-gray-200">
           <Button
             variant="ghost"
             className="w-full justify-start text-gray-700 hover:bg-gray-100 hover:text-gray-900"

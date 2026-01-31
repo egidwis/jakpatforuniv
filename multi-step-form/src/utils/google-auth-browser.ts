@@ -18,13 +18,7 @@ export interface GoogleAuthResponse {
   error?: string;
 }
 
-// Extend Window interface for Google APIs
-declare global {
-  interface Window {
-    gapi: any;
-    google: any;
-  }
-}
+// Note: Window.google and Window.gapi types are declared in google-auth-simple.ts
 
 export class GoogleAuthService {
   private static instance: GoogleAuthService;
@@ -32,7 +26,7 @@ export class GoogleAuthService {
   private isAuthenticated: boolean = false;
   private gapiInitialized: boolean = false;
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): GoogleAuthService {
     if (!GoogleAuthService.instance) {
@@ -107,7 +101,7 @@ export class GoogleAuthService {
 
       this.gapiInitialized = true;
       console.log('Google Auth initialized successfully');
-      
+
       // Check if user is already signed in
       const authInstance = window.gapi.auth2.getAuthInstance();
       if (authInstance.isSignedIn.get()) {
@@ -135,22 +129,22 @@ export class GoogleAuthService {
       }
 
       const authInstance = window.gapi.auth2.getAuthInstance();
-      
+
       if (!authInstance) {
         throw new Error('Google Auth not initialized');
       }
 
       const user = await authInstance.signIn();
       const authResponse = user.getAuthResponse();
-      
+
       this.accessToken = authResponse.access_token;
       this.isAuthenticated = true;
 
       console.log('Successfully signed in to Google');
-      
+
       return {
         success: true,
-        accessToken: this.accessToken
+        accessToken: this.accessToken || undefined
       };
     } catch (error: any) {
       console.error('Google sign in failed:', error);
@@ -168,7 +162,7 @@ export class GoogleAuthService {
       if (authInstance) {
         await authInstance.signOut();
       }
-      
+
       this.accessToken = null;
       this.isAuthenticated = false;
       console.log('Successfully signed out of Google');
@@ -214,16 +208,16 @@ export class GoogleAuthService {
   async refreshToken(): Promise<boolean> {
     try {
       if (!this.gapiInitialized) return false;
-      
+
       const authInstance = window.gapi.auth2.getAuthInstance();
       const user = authInstance.currentUser.get();
-      
+
       if (user.isSignedIn()) {
         const authResponse = await user.reloadAuthResponse();
         this.accessToken = authResponse.access_token;
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('Error refreshing token:', error);
@@ -266,9 +260,9 @@ export class GoogleAuthService {
 
   // Check if Google APIs are available
   isGapiAvailable(): boolean {
-    return typeof window !== 'undefined' && 
-           !!window.gapi && 
-           this.gapiInitialized;
+    return typeof window !== 'undefined' &&
+      !!window.gapi &&
+      this.gapiInitialized;
   }
 }
 
