@@ -2,7 +2,11 @@
 // For testing and development - focuses on basic functionality
 
 const GOOGLE_CLIENT_ID = '1008202205794-ukn77t8vk6e59e153f5ut7n19pjfv0pe.apps.googleusercontent.com';
-// const GOOGLE_API_KEY = 'AIzaSyCTZCvIo8O8Mk-_CpbPCu3LN37WkTqukDQ'; // Not needed for OAuth flow
+const REQUIRED_SCOPES = [
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/forms.body.readonly',
+  'https://www.googleapis.com/auth/forms.responses.readonly'
+];
 
 export interface AuthResult {
   success: boolean;
@@ -135,7 +139,7 @@ export class SimpleGoogleAuth {
       // Initialize Token Client for OAuth2
       this.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly',
+        scope: REQUIRED_SCOPES.join(' '),
         callback: '', // Will be set per request
       });
 
@@ -187,7 +191,23 @@ export class SimpleGoogleAuth {
           }
 
           this.accessToken = response.access_token;
-          console.log('✅ Access token received successfully');
+
+          // Check for granular permissions
+          const hasGrantedAll = window.google.accounts.oauth2.hasGrantedAllScopes(
+            response,
+            ...REQUIRED_SCOPES
+          );
+
+          if (!hasGrantedAll) {
+            console.warn('⚠️ User did not grant all permissions');
+            resolve({
+              success: false,
+              error: 'insufficient_permissions'
+            });
+            return;
+          }
+
+          console.log('✅ Access token received successfully with all scopes');
 
           resolve({
             success: true,

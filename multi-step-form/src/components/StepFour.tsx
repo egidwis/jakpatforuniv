@@ -254,7 +254,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
               <div>
                 <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">{t('questions')}</div>
                 <div className="flex items-center gap-2 font-medium text-sm text-gray-900">
-                  <FileText size={14} className="text-blue-500" />
+                  <FileText size={14} style={{ color: '#0091ff' }} />
                   {formData.questionCount}
                 </div>
               </div>
@@ -315,9 +315,22 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
                   ${voucherInfo.isValid
                     ? 'border-emerald-200 focus:ring-emerald-200 bg-emerald-50/30 text-emerald-900'
-                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
                   }
                 `}
+                style={!voucherInfo.isValid ? { outlineColor: '#0091ff' } : {}}
+                onFocus={(e) => {
+                  if (!voucherInfo.isValid) {
+                    e.target.style.borderColor = '#0091ff';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                  }
+                }}
+                onBlur={(e) => {
+                  if (!voucherInfo.isValid) {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }
+                }}
                 placeholder={t('voucherCodePlaceholder')}
                 value={formData.voucherCode || ''}
                 onChange={handleVoucherChange}
@@ -378,7 +391,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
               {/* Total */}
               <div className="flex justify-between items-end pt-4">
                 <div className="text-base font-bold text-gray-900">{t('totalPayment')}</div>
-                <div className="text-2xl font-bold text-blue-600">Rp {formatRupiah(costCalculation.totalCost)}</div>
+                <div className="text-2xl font-bold" style={{ color: '#0091ff' }}>Rp {formatRupiah(costCalculation.totalCost)}</div>
               </div>
             </div>
           </div>
@@ -393,7 +406,8 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 type="checkbox"
                 checked={isTermsAccepted}
                 onChange={(e) => setIsTermsAccepted(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                style={{ accentColor: '#0091ff' }}
               />
             </div>
             <label htmlFor="terms-checkbox" className="text-sm text-gray-700 leading-relaxed cursor-pointer select-none font-medium">
@@ -402,7 +416,8 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 href="https://jakpatforuniv.com/privacy-policy"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                className="hover:underline transition-colors"
+                style={{ color: '#0091ff' }}
                 onClick={(e) => e.stopPropagation()}
               >
                 {t('privacyPolicy')}
@@ -412,9 +427,11 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 href="https://jakpatforuniv.com/terms-conditions"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                className="hover:underline transition-colors"
+                style={{ color: '#0091ff' }}
                 onClick={(e) => e.stopPropagation()}
               >
+
                 {t('termsConditions')}
               </a>
             </label>
@@ -437,9 +454,10 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
             px-8 py-3 rounded-xl text-white font-bold text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2
             ${formData.hasPersonalDataQuestions
                 ? 'bg-amber-500 hover:bg-amber-600'
-                : 'bg-blue-600 hover:bg-blue-700'
+                : 'shadow-lg hover:shadow-xl'
               }
           `}
+            style={!formData.hasPersonalDataQuestions ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
           >
             {formData.hasPersonalDataQuestions ? (
               <>

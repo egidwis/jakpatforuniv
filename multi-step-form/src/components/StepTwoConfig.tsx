@@ -132,7 +132,7 @@ export function StepTwoConfig({
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-10">
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
               <Settings size={18} />
             </div>
             <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('surveyConfiguration')}</h3>
@@ -156,10 +156,23 @@ export function StepTwoConfig({
                 className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 min-h-[100px] resize-y
                   ${errors.criteriaResponden && attemptedSubmit
                     ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                    : 'border-gray-200 hover:border-gray-300'
                   }
                   bg-white
                 `}
+                style={!errors.criteriaResponden || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
+                onFocus={(e) => {
+                  if (!(attemptedSubmit && errors.criteriaResponden)) {
+                    e.target.style.borderColor = '#0091ff';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                  }
+                }}
+                onBlur={(e) => {
+                  if (!(attemptedSubmit && errors.criteriaResponden)) {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }
+                }}
                 placeholder={t('respondentCriteriaPlaceholder')}
                 value={formData.criteriaResponden}
                 onChange={(e) => {
@@ -180,7 +193,7 @@ export function StepTwoConfig({
                 <AlertCircle className="w-3 h-3" /> {errors.criteriaResponden}
               </p>
             ) : (
-              <p className="text-xs text-blue-600 flex items-center gap-1 mt-1 bg-blue-50 p-2 rounded-lg border border-blue-100">
+              <p className="text-xs flex items-center gap-1 mt-1 p-2 rounded-lg border" style={{ backgroundColor: 'rgba(0, 145, 255, 0.05)', borderColor: 'rgba(0, 145, 255, 0.2)', color: '#0091ff' }}>
                 <Info size={14} />
                 {t('respondentCriteriaHelp')}
               </p>
@@ -198,10 +211,23 @@ export function StepTwoConfig({
                 className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
                   ${errors.duration && attemptedSubmit
                     ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                    : 'border-gray-200 hover:border-gray-300'
                   }
                   bg-white
                 `}
+                style={!errors.duration || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
+                onFocus={(e) => {
+                  if (!(attemptedSubmit && errors.duration)) {
+                    e.target.style.borderColor = '#0091ff';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                  }
+                }}
+                onBlur={(e) => {
+                  if (!(attemptedSubmit && errors.duration)) {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }
+                }}
                 placeholder={t('surveyDurationPlaceholder')}
                 value={formData.duration || ''}
                 onChange={(e) => {
@@ -248,9 +274,9 @@ export function StepTwoConfig({
         </div>
 
         <div className="p-6 space-y-6">
-          <div className="bg-blue-50 p-3 rounded-lg flex items-start gap-2 border border-blue-100">
-            <Info className="w-4 h-4 text-blue-600 mt-0.5" />
-            <p className="text-sm text-blue-800">
+          <div className="p-3 rounded-lg flex items-start gap-2 border" style={{ backgroundColor: 'rgba(0, 145, 255, 0.05)', borderColor: 'rgba(0, 145, 255, 0.2)' }}>
+            <Info className="w-4 h-4 mt-0.5" style={{ color: '#0091ff' }} />
+            <p className="text-sm" style={{ color: '#0077cc' }}>
               {t('incentiveDistributionInfo')}
             </p>
           </div>
@@ -268,7 +294,7 @@ export function StepTwoConfig({
                   className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm transition-all duration-200
                     ${errors.prizePerWinner
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                     bg-white
                   `}
@@ -312,7 +338,7 @@ export function StepTwoConfig({
                   id="winnerCount"
                   type="number"
                   className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
-                    ${errors.winnerCount ? 'border-red-300 focus:ring-red-200 bg-red-50/30' : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'}
+                    ${errors.winnerCount ? 'border-red-300 focus:ring-red-200 bg-red-50/30' : 'border-gray-200 hover:border-gray-300'}
                      bg-white
                   `}
                   placeholder={t('winnerCountPlaceholder')}
@@ -364,7 +390,8 @@ export function StepTwoConfig({
         </button>
         <button
           type="submit"
-          className="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
+          className="px-6 py-2.5 rounded-xl text-white font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
+          style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' }}
         >
           {t('continue')} →
         </button>

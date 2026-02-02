@@ -63,10 +63,15 @@ export function DashboardLayout() {
         {/* Sidebar content unchanged... */}
         <div className="flex flex-col h-full">
           <div className="p-6 border-b">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              JFU Dashboard
-            </h1>
-            <p className="text-xs text-gray-500 mt-1">Jakpat For University</p>
+            <div className="flex items-center gap-3">
+              <img src="/src/assets/jfu-icon.png" alt="JFU Icon" className="w-10 h-10 object-contain flex-shrink-0" />
+              <div>
+                <h1 className="text-xl font-bold bg-clip-text text-transparent leading-tight" style={{ backgroundImage: 'linear-gradient(to right, #0091ff, #0077cc)' }}>
+                  JFU Dashboard
+                </h1>
+                <p className="text-xs text-gray-500 mt-0.5">Jakpat For University</p>
+              </div>
+            </div>
           </div>
 
           <div className="flex-1 py-6 px-3 space-y-1">
@@ -77,10 +82,11 @@ export function DashboardLayout() {
                 className={`
                   flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                   ${location.pathname.startsWith(item.path)
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                    ? 'dark:bg-blue-900/20 dark:text-blue-400'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                   }
                 `}
+                style={location.pathname.startsWith(item.path) ? { backgroundColor: 'rgba(0, 145, 255, 0.05)', color: '#0091ff' } : {}}
                 onClick={() => setIsSidebarOpen(false)}
               >
                 {item.icon}
@@ -91,11 +97,11 @@ export function DashboardLayout() {
 
           <div className="p-4 border-t space-y-4">
             <div className="flex items-center gap-3 px-2">
-              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)' }}>
                 {user?.user_metadata?.avatar_url ? (
                   <img src={user.user_metadata.avatar_url} alt="Profile" className="w-8 h-8 rounded-full" />
                 ) : (
-                  <User className="w-4 h-4 text-blue-600" />
+                  <User className="w-4 h-4" style={{ color: '#0091ff' }} />
                 )}
               </div>
               <div className="flex-1 min-w-0">

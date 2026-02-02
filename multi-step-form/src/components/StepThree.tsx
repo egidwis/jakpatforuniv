@@ -101,7 +101,7 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
                 <User size={18} />
               </div>
               <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('contactInformation')}</h3>
@@ -125,12 +125,25 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                   id="fullName"
                   type="text"
                   className={`
-                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    w-full px-4 py-2.5 rounded-xl border transition-all duration-200
                     ${errors.fullName && attemptedSubmit
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30 ring-4 ring-transparent'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                   `}
+                  style={!(errors.fullName && attemptedSubmit) ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!(attemptedSubmit && errors.fullName)) {
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!(attemptedSubmit && errors.fullName)) {
+                      e.target.style.borderColor = '';
+                      e.target.style.boxShadow = '';
+                    }
+                  }}
                   placeholder={t('fullNamePlaceholder')}
                   value={formData.fullName}
                   onChange={(e) => {
@@ -163,12 +176,25 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                   id="email"
                   type="email"
                   className={`
-                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    w-full px-4 py-2.5 rounded-xl border transition-all duration-200
                     ${errors.email && attemptedSubmit
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                   `}
+                  style={!(errors.email && attemptedSubmit) ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!(attemptedSubmit && errors.email)) {
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!(attemptedSubmit && errors.email)) {
+                      e.target.style.borderColor = '';
+                      e.target.style.boxShadow = '';
+                    }
+                  }}
                   placeholder={t('emailPlaceholder')}
                   value={formData.email}
                   onChange={(e) => {
@@ -199,12 +225,25 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                   id="phoneNumber"
                   type="tel"
                   className={`
-                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    w-full px-4 py-2.5 rounded-xl border transition-all duration-200
                     ${errors.phoneNumber && attemptedSubmit
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                   `}
+                  style={!(errors.phoneNumber && attemptedSubmit) ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!(attemptedSubmit && errors.phoneNumber)) {
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!(attemptedSubmit && errors.phoneNumber)) {
+                      e.target.style.borderColor = '';
+                      e.target.style.boxShadow = '';
+                    }
+                  }}
                   placeholder={t('phoneNumberPlaceholder')}
                   value={formData.phoneNumber}
                   onChange={(e) => {
@@ -255,12 +294,25 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                   id="university"
                   type="text"
                   className={`
-                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    w-full px-4 py-2.5 rounded-xl border transition-all duration-200
                     ${errors.university && attemptedSubmit
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                   `}
+                  style={!(errors.university && attemptedSubmit) ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!(attemptedSubmit && errors.university)) {
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!(attemptedSubmit && errors.university)) {
+                      e.target.style.borderColor = '';
+                      e.target.style.boxShadow = '';
+                    }
+                  }}
                   placeholder={t('universityPlaceholder')}
                   value={formData.university}
                   onChange={(e) => {
@@ -291,12 +343,25 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                   id="department"
                   type="text"
                   className={`
-                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                    w-full px-4 py-2.5 rounded-xl border transition-all duration-200
                     ${errors.department && attemptedSubmit
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                   `}
+                  style={!(errors.department && attemptedSubmit) ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!(attemptedSubmit && errors.department)) {
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!(attemptedSubmit && errors.department)) {
+                      e.target.style.borderColor = '';
+                      e.target.style.boxShadow = '';
+                    }
+                  }}
                   placeholder={t('departmentPlaceholder')}
                   value={formData.department}
                   onChange={(e) => {
@@ -326,12 +391,25 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                 <select
                   id="status"
                   className={`
-                    w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200 appearance-none bg-white
+                    w-full px-4 py-2.5 rounded-xl border transition-all duration-200 appearance-none bg-white
                     ${errors.status && attemptedSubmit
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                   `}
+                  style={!(errors.status && attemptedSubmit) ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!(attemptedSubmit && errors.status)) {
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!(attemptedSubmit && errors.status)) {
+                      e.target.style.borderColor = '';
+                      e.target.style.boxShadow = '';
+                    }
+                  }}
                   value={formData.status}
                   onChange={(e) => {
                     updateFormData({ status: e.target.value });
@@ -388,7 +466,16 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
               <div className="relative">
                 <select
                   id="referralSource"
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white appearance-none outline-none transition-all duration-200 hover:border-gray-300"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white appearance-none transition-all duration-200 hover:border-gray-300"
+                  style={{ outlineColor: '#0091ff' }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#0091ff';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '';
+                    e.target.style.boxShadow = '';
+                  }}
                   value={formData.referralSource}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -426,12 +513,25 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
                     id="referralSourceOther"
                     type="text"
                     className={`
-                      w-full px-4 py-2.5 rounded-xl border outline-none transition-all duration-200
+                      w-full px-4 py-2.5 rounded-xl border transition-all duration-200
                       ${errors.referralSourceOther && attemptedSubmit
                         ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                        : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-gray-300'
+                        : 'border-gray-200 hover:border-gray-300'
                       }
                     `}
+                    style={!(errors.referralSourceOther && attemptedSubmit) ? { outlineColor: '#0091ff' } : {}}
+                    onFocus={(e) => {
+                      if (!(attemptedSubmit && errors.referralSourceOther)) {
+                        e.target.style.borderColor = '#0091ff';
+                        e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (!(attemptedSubmit && errors.referralSourceOther)) {
+                        e.target.style.borderColor = '';
+                        e.target.style.boxShadow = '';
+                      }
+                    }}
                     placeholder={t('referralSourceOtherPlaceholder')}
                     value={formData.referralSourceOther || ''}
                     onChange={(e) => {
@@ -468,7 +568,8 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
           </button>
           <button
             type="submit"
-            className="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
+            className="px-6 py-2.5 rounded-xl text-white font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
+            style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' }}
           >
             {t('continue')} →
           </button>

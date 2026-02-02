@@ -103,10 +103,23 @@ export function StepOneFormFields({
                 className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 
                   ${errors.surveyUrl && attemptedSubmit
                     ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                    : 'border-gray-200 hover:border-gray-300'
                   }
                   ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
                 `}
+                style={!errors.surveyUrl || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
+                onFocus={(e) => {
+                  if (!(attemptedSubmit && errors.surveyUrl)) {
+                    e.target.style.borderColor = '#0091ff';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                  }
+                }}
+                onBlur={(e) => {
+                  if (!(attemptedSubmit && errors.surveyUrl)) {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }
+                }}
                 placeholder={t('googleFormLinkPlaceholder')}
                 value={formData.surveyUrl}
                 onChange={(e) => {
@@ -146,10 +159,23 @@ export function StepOneFormFields({
                   className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
                     ${errors.title && attemptedSubmit
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                     ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
                   `}
+                  style={!errors.title || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!(attemptedSubmit && errors.title)) {
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!(attemptedSubmit && errors.title)) {
+                      e.target.style.borderColor = '#e5e7eb';
+                      e.target.style.boxShadow = 'none';
+                    }
+                  }}
                   placeholder={t('surveyTitlePlaceholder')}
                   value={formData.title}
                   onChange={(e) => {
@@ -181,10 +207,23 @@ export function StepOneFormFields({
                   className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
                     ${errors.questionCount && attemptedSubmit
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
                     ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
                   `}
+                  style={!errors.questionCount || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!(attemptedSubmit && errors.questionCount)) {
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!(attemptedSubmit && errors.questionCount)) {
+                      e.target.style.borderColor = '#e5e7eb';
+                      e.target.style.boxShadow = 'none';
+                    }
+                  }}
                   placeholder={t('questionCountPlaceholder')}
                   value={formData.questionCount || ''}
                   onChange={(e) => {
@@ -204,7 +243,7 @@ export function StepOneFormFields({
                   <AlertCircle className="w-3 h-3" /> {errors.questionCount}
                 </p>
               ) : formData.questionCount > 0 && (
-                <p className="text-xs text-blue-600 font-medium mt-1">
+                <p className="text-xs font-medium mt-1" style={{ color: '#0091ff' }}>
                   Est. Cost: Rp {formData.questionCount <= 15 ? '150.000' : formData.questionCount <= 30 ? '200.000' : formData.questionCount <= 50 ? '300.000' : formData.questionCount <= 70 ? '400.000' : '500.000'}/hari
                 </p>
               )}
@@ -221,10 +260,23 @@ export function StepOneFormFields({
                 className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 min-h-[120px] resize-y
                   ${errors.description && attemptedSubmit
                     ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                    : 'border-gray-200 hover:border-gray-300'
                   }
                   ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
                 `}
+                style={!errors.description || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
+                onFocus={(e) => {
+                  if (!(attemptedSubmit && errors.description)) {
+                    e.target.style.borderColor = '#0091ff';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                  }
+                }}
+                onBlur={(e) => {
+                  if (!(attemptedSubmit && errors.description)) {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }
+                }}
                 placeholder={t('surveyDescriptionPlaceholder')}
                 value={formData.description}
                 onChange={(e) => {
@@ -265,7 +317,8 @@ export function StepOneFormFields({
         )}
         <button
           type="submit"
-          className={`px-6 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 ${!onBack ? 'ml-auto' : ''}`}
+          className={`px-6 py-2.5 rounded-xl text-white font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 ${!onBack ? 'ml-auto' : ''}`}
+          style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' }}
         >
           {t('continue')} →
         </button>

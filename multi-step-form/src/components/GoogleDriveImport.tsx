@@ -82,6 +82,18 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
       );
     } catch (error: any) {
       console.error('❌ Error connecting to Google:', error);
+
+      if (error.message === 'insufficient_permissions') {
+        toast.error(
+          <div className="flex flex-col gap-1">
+            <span className="font-bold">Izin Tidak Lengkap</span>
+            <span className="text-sm">Mohon centang SEMUA kotak izin agar kami dapat membaca form Anda. Jangan khawatir, kami hanya membaca file yang Anda pilih.</span>
+          </div>,
+          { duration: 6000 }
+        );
+        return;
+      }
+
       toast.error(error.message || t('failedToConnect'));
     } finally {
       setIsConnecting(false);
@@ -129,7 +141,7 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
 
     } catch (error: any) {
       console.error('Error with Google Picker:', error);
-      
+
       if (error.message?.includes('API key')) {
         toast.error('API key tidak valid. Menggunakan mode fallback...');
         // Show a simple input for manual form ID entry
@@ -158,9 +170,9 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
     if (!showFormSelection || foundForms.length === 0) return null;
 
     return (
-      <div 
+      <div
         className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4"
-        style={{ 
+        style={{
           zIndex: 99999,
           position: 'fixed',
           top: 0,
@@ -170,9 +182,9 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
         }}
         onClick={() => setShowFormSelection(false)}
       >
-        <div 
+        <div
           className="rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden"
-          style={{ 
+          style={{
             backgroundColor: '#ffffff',
             opacity: 1,
             background: 'white',
@@ -195,7 +207,7 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
               ✕
             </button>
           </div>
-          
+
           {/* Content */}
           <div className="p-6 max-h-96 overflow-y-auto" style={{ backgroundColor: '#ffffff' }}>
             <div className="space-y-3">
@@ -219,7 +231,7 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
                         </p>
                       )}
                     </div>
-                    
+
                     <div className="flex items-center gap-2 ml-4">
                       {form.webViewLink && (
                         <a
@@ -232,7 +244,7 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
                           <ExternalLink className="h-4 w-4" />
                         </a>
                       )}
-                      <button 
+                      <button
                         className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
                         onClick={() => selectForm(form)}
                       >
@@ -244,7 +256,7 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
               ))}
             </div>
           </div>
-          
+
           {/* Footer */}
           <div className="p-6 border-t border-gray-100" style={{ backgroundColor: '#f9fafb' }}>
             <div className="flex justify-end">
@@ -266,10 +278,10 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
     setIsExtractingForm(true);
     try {
       console.log('Extracting form data for:', formId);
-      
+
       // Use Google Forms API for 100% accuracy
       const result = await googleFormsApi.extractToSurveyInfo(formId);
-      
+
       if (result) {
         // Update form data with extracted information
         const extractedData = {
@@ -299,23 +311,23 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
       }
     } catch (error: any) {
       console.error('Error extracting form:', error);
-      
+
       // If API extraction fails, fall back to URL-based extraction
       try {
         const fallbackUrl = `https://docs.google.com/forms/d/${formId}/viewform`;
-        updateFormData({ 
+        updateFormData({
           surveyUrl: fallbackUrl,
           title: formName || 'Google Form',
-          isManualEntry: true 
+          isManualEntry: true
         });
-        
+
         toast.warning(
           <div>
             <p className="font-medium">Form diimpor dengan informasi terbatas</p>
             <p className="text-sm">Silakan lengkapi detail form secara manual</p>
           </div>
         );
-        
+
         onFormDataLoaded();
       } catch (fallbackError) {
         toast.error(error.message || 'Gagal mengimpor form');
@@ -330,155 +342,183 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
         <h3 className="text-lg font-medium mb-4">Impor Pertanyaan dari Google Forms</h3>
-      
-      {!isAuthenticated ? (
-        <>
-          {/* Connect to Google Drive Section */}
-          <div className="flex items-start gap-4 mb-6">
-            {/* Google Drive Icon */}
-            <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12.3 3.7L8.6 10.3L7.7 8.8L12.3 3.7M9.9 13.5L7.1 8.8L4.3 13.5H9.9M14.2 13.5L16.5 9.7L19.3 13.5H14.2M11.4 14.5H4.9L4.2 15.5L11.4 14.5M12.6 14.5L11.4 14.5L12.6 14.5M13.8 14.5L11.4 14.5L19.8 15.5L13.8 14.5M12.3 20.3L7.7 13.5L16.9 13.5L12.3 20.3Z" />
-              </svg>
-            </div>
-            
-            <div className="flex-1">
-              <h4 className="font-medium text-gray-900 mb-2">{t('accessGoogleDriveTitle')}</h4>
-              <p className="text-sm text-gray-600 mb-4">
-                {t('connectGoogleMessage')}
-              </p>
 
-              {/* Privacy Policy Checkbox */}
-              <div className="flex items-start gap-3 mb-4">
-                <input
-                  id="privacy-checkbox"
-                  type="checkbox"
-                  checked={privacyAccepted}
-                  onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                  className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <label htmlFor="privacy-checkbox" className="text-sm text-gray-600">
-                  {t('agreeToGiveAccess')}{' '}
-                  <a href="https://jakpatforuniv.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                    {t('privacyPolicy')}
-                  </a>{' '}
-                  Jakpat.
-                </label>
+        {!isAuthenticated ? (
+          <>
+            {/* Connect to Google Drive Section */}
+            <div className="flex items-start gap-4 mb-6">
+              {/* Google Drive Icon */}
+              <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12.3 3.7L8.6 10.3L7.7 8.8L12.3 3.7M9.9 13.5L7.1 8.8L4.3 13.5H9.9M14.2 13.5L16.5 9.7L19.3 13.5H14.2M11.4 14.5H4.9L4.2 15.5L11.4 14.5M12.6 14.5L11.4 14.5L12.6 14.5M13.8 14.5L11.4 14.5L19.8 15.5L13.8 14.5M12.3 20.3L7.7 13.5L16.9 13.5L12.3 20.3Z" />
+                </svg>
               </div>
 
-              {/* Connect Button */}
+              <div className="flex-1">
+                <h4 className="font-medium text-gray-900 mb-2">{t('accessGoogleDriveTitle')}</h4>
+                <p className="text-sm text-gray-600 mb-4">
+                  {t('connectGoogleMessage')}
+                </p>
+
+                {/* Privacy Policy Checkbox */}
+                <div className="flex items-start gap-3 mb-4">
+                  <input
+                    id="privacy-checkbox"
+                    type="checkbox"
+                    checked={privacyAccepted}
+                    onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                    className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="privacy-checkbox" className="text-sm text-gray-600">
+                    {t('agreeToGiveAccess')}{' '}
+                    <a href="https://jakpatforuniv.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                      {t('privacyPolicy')}
+                    </a>{' '}
+                    Jakpat.
+                  </label>
+                </div>
+
+                {/* Safety Note */}
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-blue-100 rounded-lg shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e40af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-bold text-blue-900 mb-2 text-sm">Jaminan Keamanan Data Anda</p>
+                      <ul className="space-y-2 text-sm text-blue-800">
+                        <li className="flex gap-2">
+                          <span className="shrink-0">•</span>
+                          <span>Kami <strong>TIDAK BISA</strong> melihat seluruh file Google Drive Anda.</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="shrink-0">•</span>
+                          <span>Akses <strong>hanya diberikan ke file yang Anda pilih secara manual</strong> di langkah selanjutnya.</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="shrink-0">•</span>
+                          <span>Permission "View Responses" hanya untuk fitur <strong>menghitung jumlah responden</strong> (kami tidak menyimpan data responden Anda).</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Connect Button */}
+                <button
+                  onClick={connectToGoogle}
+                  disabled={isConnecting || !privacyAccepted}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {t('connecting')}
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="h-4 w-4" />
+                      {t('connect')}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Connected State */}
+            <div className="flex items-center justify-between mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <div>
+                  <h4 className="font-medium text-green-800">Akses ke Google Drive</h4>
+                  <p className="text-sm text-green-700">
+                    Google kamu berhasil terhubung {userInfo?.email || 'Google Drive'}
+                  </p>
+                </div>
+              </div>
               <button
-                onClick={connectToGoogle}
-                disabled={isConnecting || !privacyAccepted}
+                onClick={disconnectGoogle}
+                className="text-sm text-red-600 hover:text-red-800 px-3 py-1 border border-red-300 rounded hover:bg-red-50"
+              >
+                Hapus Akses
+              </button>
+            </div>
+
+            {/* Forms Search Section */}
+            <div className="mb-6">
+              <h4 className="font-medium text-gray-900 mb-2">{t('searchAndImportForms')}</h4>
+              <button
+                onClick={searchFormsInDrive}
+                disabled={isLoadingForms || isExtractingForm}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isConnecting ? (
+                {isLoadingForms ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {t('connecting')}
+                    {t('searchingForms')}
+                  </>
+                ) : isExtractingForm ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t('importing')}
                   </>
                 ) : (
                   <>
-                    <ExternalLink className="h-4 w-4" />
-                    {t('connect')}
+                    {t('selectGoogleForm')}
+                    <span className="text-xs ml-1">{t('fromYourDrive')}</span>
                   </>
                 )}
               </button>
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
-          {/* Connected State */}
-          <div className="flex items-center justify-between mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-              <div>
-                <h4 className="font-medium text-green-800">Akses ke Google Drive</h4>
-                <p className="text-sm text-green-700">
-                  Google kamu berhasil terhubung {userInfo?.email || 'Google Drive'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={disconnectGoogle}
-              className="text-sm text-red-600 hover:text-red-800 px-3 py-1 border border-red-300 rounded hover:bg-red-50"
-            >
-              Hapus Akses
-            </button>
-          </div>
-
-          {/* Forms Search Section */}
-          <div className="mb-6">
-            <h4 className="font-medium text-gray-900 mb-2">{t('searchAndImportForms')}</h4>
-            <button
-              onClick={searchFormsInDrive}
-              disabled={isLoadingForms || isExtractingForm}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoadingForms ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t('searchingForms')}
-                </>
-              ) : isExtractingForm ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t('importing')}
-                </>
-              ) : (
-                <>
-                  {t('selectGoogleForm')}
-                  <span className="text-xs ml-1">{t('fromYourDrive')}</span>
-                </>
-              )}
-            </button>
-            <p className="text-sm text-gray-500 mt-2">
-              {t('willOpenPicker')}
-            </p>
-          </div>
-
-          {/* Form Data Preview (if loaded) */}
-          {formData.title && formData.questionCount > 0 && (
-            <div className="bg-gray-900 text-white p-6 rounded-lg">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                <div>
-                  <h5 className="text-sm font-medium text-gray-300 mb-2">Judul</h5>
-                  <p className="text-white bg-gray-800 px-3 py-2 rounded">{formData.title}</p>
-                </div>
-                <div>
-                  <h5 className="text-sm font-medium text-gray-300 mb-2">Jumlah Pertanyaan</h5>
-                  <p className="text-white bg-gray-800 px-3 py-2 rounded">{formData.questionCount}</p>
-                </div>
-              </div>
-              <div>
-                <h5 className="text-sm font-medium text-gray-300 mb-2">Deskripsi Survey</h5>
-                <p className="text-gray-200 bg-gray-800 px-3 py-2 rounded min-h-[80px]">
-                  {formData.description || 'Form description not available'}
-                </p>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Render Modal using Portal */}
-      <FormSelectionModal />
-
-      {/* Warning for personal data */}
-      {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
-        <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-yellow-800">Data Pribadi Terdeteksi</p>
-              <p className="text-sm text-yellow-700 mt-1">
-                Form ini mengandung pertanyaan yang meminta data pribadi: {formData.detectedKeywords.join(', ')}
+              <p className="text-sm text-gray-500 mt-2">
+                {t('willOpenPicker')}
               </p>
             </div>
+
+            {/* Form Data Preview (if loaded) */}
+            {formData.title && formData.questionCount > 0 && (
+              <div className="bg-gray-900 text-white p-6 rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-300 mb-2">Judul</h5>
+                    <p className="text-white bg-gray-800 px-3 py-2 rounded">{formData.title}</p>
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-300 mb-2">Jumlah Pertanyaan</h5>
+                    <p className="text-white bg-gray-800 px-3 py-2 rounded">{formData.questionCount}</p>
+                  </div>
+                </div>
+                <div>
+                  <h5 className="text-sm font-medium text-gray-300 mb-2">Deskripsi Survey</h5>
+                  <p className="text-gray-200 bg-gray-800 px-3 py-2 rounded min-h-[80px]">
+                    {formData.description || 'Form description not available'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Render Modal using Portal */}
+        <FormSelectionModal />
+
+        {/* Warning for personal data */}
+        {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
+          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-yellow-800">Data Pribadi Terdeteksi</p>
+                <p className="text-sm text-yellow-700 mt-1">
+                  Form ini mengandung pertanyaan yang meminta data pribadi: {formData.detectedKeywords.join(', ')}
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     );
   } catch (error) {

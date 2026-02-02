@@ -1,9 +1,10 @@
+
 import { useState } from 'react';
 import { simpleGoogleAuth, type AuthResult } from '../utils/google-auth-simple';
 import { googlePicker } from '../utils/google-picker-browser';
 import { googleFormsApi } from '../utils/google-forms-api-browser';
 import type { SurveyFormData } from '../types';
-import { Loader2, CheckCircle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../i18n/LanguageContext';
 import { PersonalDataWarningModal } from './PersonalDataWarningModal';
@@ -40,9 +41,22 @@ export function GoogleDriveImportSimple({
     } catch (error: any) {
       console.error('Error connecting:', error);
 
+
       // Handle access_denied specifically (user cancelled via 'x' or 'cancel')
       if (error.message && (error.message.includes('access_denied') || error.message.includes('access_denied_timeout'))) {
         toast.info(t('cancel')); // Use existing 'Cancel' translation
+        return;
+      }
+
+      // Handle insufficient_permissions
+      if (error.message === 'insufficient_permissions') {
+        toast.error(
+          <div className="flex flex-col gap-1">
+            <span className="font-bold">Izin Tidak Lengkap</span>
+            <span className="text-sm">Mohon centang SEMUA kotak izin agar kami dapat membaca form Anda. Jangan khawatir, kami hanya membaca file yang Anda pilih.</span>
+          </div>,
+          { duration: 6000 }
+        );
         return;
       }
 
@@ -145,14 +159,36 @@ export function GoogleDriveImportSimple({
             </div>
           </div>
 
-          <div className="google-permissions-list">
-            <div className="permission-item">
-              <CheckCircle className="permission-icon" size={18} />
-              <span>{t('permissionDrive')}</span>
-            </div>
-            <div className="permission-item">
-              <CheckCircle className="permission-icon" size={18} />
-              <span>{t('permissionForms')}</span>
+
+
+          {/* Safety Note */}
+          <div className="mb-6 p-4 border rounded-xl" style={{
+            backgroundColor: 'rgba(0, 145, 255, 0.05)',
+            borderColor: 'rgba(0, 145, 255, 0.2)'
+          }}>
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg shrink-0" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0091ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-bold mb-2 text-sm" style={{ color: '#0077cc' }}>Jaminan Keamanan Data Anda</p>
+                <ul className="space-y-2 text-sm" style={{ color: '#0077cc' }}>
+                  <li className="flex gap-2">
+                    <span className="shrink-0">•</span>
+                    <span>Kami <strong>TIDAK BISA</strong> melihat seluruh file Google Drive Anda.</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="shrink-0">•</span>
+                    <span>Akses <strong>hanya diberikan ke file yang Anda pilih secara manual</strong> di langkah selanjutnya.</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="shrink-0">•</span>
+                    <span>Permission "View Responses" hanya untuk fitur <strong>menghitung jumlah responden</strong> (kami tidak menyimpan data responden Anda).</span>
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
 
@@ -181,14 +217,16 @@ export function GoogleDriveImportSimple({
         </div>
       ) : (
         /* Step 2: Select Form */
-        <div className="google-step-card google-step-success">
+        <div className="google-drive-step-content">
           <div className="google-step-header">
-            <div className="google-step-number google-step-number-success">
-              <CheckCircle size={20} />
+            <div className="flex items-center justify-center w-8 h-8 rounded-full text-white shrink-0" style={{ backgroundColor: '#0091ff' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
             </div>
             <div className="google-step-content">
               <h3 className="google-step-title">{t('googleConnectedTitle')}</h3>
-              <p className="google-step-description google-step-description-success">
+              <p className="text-sm font-medium" style={{ color: '#0091ff' }}>
                 {t('googleConnectedMessage')}
               </p>
             </div>
@@ -209,7 +247,11 @@ export function GoogleDriveImportSimple({
           <button
             onClick={handleSelectForm}
             disabled={isSelecting}
-            className="google-select-button"
+            className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-3 text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)',
+              boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)'
+            }}
           >
             {isSelecting ? (
               <>

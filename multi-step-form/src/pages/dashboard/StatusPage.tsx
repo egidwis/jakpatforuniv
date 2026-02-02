@@ -1,20 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/i18n/LanguageContext';
 import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, type FormSubmission } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Calendar, FileText, CheckCircle2, Search, PlayCircle, ExternalLink, MessageCircle, CreditCard, Clock, Gift } from 'lucide-react';
+import { Loader2, Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 // Define the status steps in order
-const STATUS_STEPS = [
-    { key: 'in_review', label: 'In Review', icon: Search, helper: 'Menunggu Review Admin' },
-    { key: 'payment', label: 'Waiting Payment', icon: CreditCard, helper: 'Menunggu Pembayaran' },
-    { key: 'scheduling', label: 'Scheduling', icon: Calendar, helper: 'Proses Penjadwalan' },
-    { key: 'publishing', label: 'Publishing', icon: PlayCircle, helper: 'Sedang Tayang' },
-    { key: 'completed', label: 'Completed', icon: CheckCircle2, helper: 'Selesai' },
+// Define status steps dynamically inside component to access translation
+// Define status steps dynamically inside component to access translation
+const getStatusSteps = (t: any) => [
+    { key: 'in_review', label: t('statusInReview'), icon: Search, helper: t('statusInReviewHelper') },
+    { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper') },
+    { key: 'scheduling', label: t('statusScheduling'), icon: Calendar, helper: t('statusSchedulingHelper') },
+    { key: 'publishing', label: t('statusPublishing'), icon: PlayCircle, helper: t('statusPublishingHelper') },
+    { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper') },
 ];
 
 // Get the current step index based on submission state
@@ -47,7 +50,8 @@ function getCurrentStepIndex(submission: FormSubmission, hasPaymentLink: boolean
 }
 
 // Progress Bar Component
-function ProgressTracker({ currentStep }: { currentStep: number; submission: FormSubmission }) {
+function ProgressTracker({ currentStep, submission, paymentLink, steps }: { currentStep: number; submission: FormSubmission; paymentLink?: string | null; steps: any[] }) {
+    const { t } = useLanguage();
     return (
         <div className="w-full py-4">
             {/* Desktop Progress Bar */}
@@ -58,13 +62,13 @@ function ProgressTracker({ currentStep }: { currentStep: number; submission: For
 
                     {/* Progress Line */}
                     <div
-                        className="absolute top-5 left-0 h-1 bg-blue-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(currentStep / (STATUS_STEPS.length - 1)) * 100}%` }}
+                        className="absolute top-5 left-0 h-1 rounded-full transition-all duration-500"
+                        style={{ width: `${(currentStep / (steps.length - 1)) * 100}%`, backgroundColor: '#0091ff' }}
                     />
 
                     {/* Step Circles */}
                     <div className="relative flex justify-between">
-                        {STATUS_STEPS.map((step, index) => {
+                        {steps.map((step, index) => {
                             const Icon = step.icon;
                             const isCompleted = index < currentStep;
                             const isCurrent = index === currentStep;
@@ -76,12 +80,13 @@ function ProgressTracker({ currentStep }: { currentStep: number; submission: For
                                         className={`
                                             w-10 h-10 rounded-full flex items-center justify-center z-10 transition-all duration-300
                                             ${isCompleted
-                                                ? 'bg-blue-500 text-white ring-4 ring-blue-100 dark:ring-blue-900'
+                                                ? 'text-white ring-4 ring-blue-100 dark:ring-blue-900'
                                                 : isCurrent
-                                                    ? 'bg-blue-500 text-white ring-4 ring-blue-200 dark:ring-blue-800 animate-pulse'
+                                                    ? 'text-white ring-4 ring-blue-200 dark:ring-blue-800 animate-pulse'
                                                     : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
                                             }
                                         `}
+                                        style={isCompleted || isCurrent ? { backgroundColor: '#0091ff' } : {}}
                                     >
                                         {isCompleted ? (
                                             <CheckCircle2 className="w-5 h-5" />
@@ -96,17 +101,32 @@ function ProgressTracker({ currentStep }: { currentStep: number; submission: For
                                             className={`
                                                 text-xs font-medium
                                                 ${isCompleted || isCurrent
-                                                    ? 'text-blue-600 dark:text-blue-400'
+                                                    ? 'dark:text-blue-400'
                                                     : 'text-gray-400 dark:text-gray-500'
                                                 }
                                             `}
+                                            style={isCompleted || isCurrent ? { color: '#0091ff' } : {}}
                                         >
                                             {step.label}
                                         </span>
-                                        {step.helper && isCurrent && (
+                                        {step.helper && isCurrent && !paymentLink && (
                                             <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 max-w-[80px] mx-auto">
                                                 {step.helper}
                                             </p>
+                                        )}
+                                        {/* Pay Now Button (Desktop) */}
+                                        {isCurrent && step.key === 'payment' && paymentLink && (
+                                            <div className="mt-2">
+                                                <a
+                                                    href={paymentLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center justify-center rounded-md px-3 py-1 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+                                                    style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
+                                                >
+                                                    {t('payNow')}
+                                                </a>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -124,13 +144,13 @@ function ProgressTracker({ currentStep }: { currentStep: number; submission: For
 
                     {/* Progress Line */}
                     <div
-                        className="absolute left-4 top-0 w-0.5 bg-blue-500 transition-all duration-500"
-                        style={{ height: `${(currentStep / (STATUS_STEPS.length - 1)) * 100}%` }}
+                        className="absolute left-4 top-0 w-0.5 transition-all duration-500"
+                        style={{ height: `${(currentStep / (steps.length - 1)) * 100}%`, backgroundColor: '#0091ff' }}
                     />
 
                     {/* Steps */}
                     <div className="space-y-6">
-                        {STATUS_STEPS.map((step, index) => {
+                        {steps.map((step, index) => {
                             const Icon = step.icon;
                             const isCompleted = index < currentStep;
                             const isCurrent = index === currentStep;
@@ -143,12 +163,13 @@ function ProgressTracker({ currentStep }: { currentStep: number; submission: For
                                         className={`
                                                                     absolute -left-4 w-8 h-8 rounded-full flex items-center justify-center z-10 transition-all box-content border-4 border-white dark:border-gray-900
                                                                     ${isCompleted
-                                                ? 'bg-blue-500 text-white'
+                                                ? 'text-white'
                                                 : isCurrent
-                                                    ? 'bg-blue-500 text-white ring-2 ring-blue-200 dark:ring-blue-800'
+                                                    ? 'text-white ring-2 ring-blue-200 dark:ring-blue-800'
                                                     : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
                                             }
                                                                 `}
+                                        style={isCompleted || isCurrent ? { backgroundColor: '#0091ff' } : {}}
                                     >
                                         {isCompleted ? (
                                             <CheckCircle2 className="w-4 h-4" />
@@ -157,18 +178,35 @@ function ProgressTracker({ currentStep }: { currentStep: number; submission: For
                                         )}
                                     </div>
 
-                                    {/* Label - Push right to avoid overlap */}
-                                    <span
-                                        className={`
-                                                                    ml-8 text-sm font-medium
-                                                                    ${isCompleted || isCurrent
-                                                ? 'text-gray-900 dark:text-white'
-                                                : 'text-gray-400 dark:text-gray-500'
-                                            }
-                                                                `}
-                                    >
-                                        {step.label}
-                                    </span>
+                                    {/* Label & Action */}
+                                    <div className="flex flex-col ml-8">
+                                        <span
+                                            className={`
+                                                text-sm font-medium
+                                                ${isCompleted || isCurrent
+                                                    ? 'text-gray-900 dark:text-white'
+                                                    : 'text-gray-400 dark:text-gray-500'
+                                                }
+                                            `}
+                                        >
+                                            {step.label}
+                                        </span>
+
+                                        {/* Pay Now Button (Mobile) */}
+                                        {isCurrent && step.key === 'payment' && paymentLink && (
+                                            <div className="mt-1">
+                                                <a
+                                                    href={paymentLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center justify-center rounded-md px-3 py-1 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md"
+                                                    style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
+                                                >
+                                                    {t('payNow')}
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             );
                         })}
@@ -181,8 +219,10 @@ function ProgressTracker({ currentStep }: { currentStep: number; submission: For
 
 export function StatusPage() {
     const { user } = useAuth();
+    const { t } = useLanguage();
     const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedStatus, setSelectedStatus] = useState<string>('all');
     // Store payment links for each submission: { submissionId: paymentUrl }
     const [paymentLinks, setPaymentLinks] = useState<Record<string, string | null>>({});
     const [searchParams, setSearchParams] = useSearchParams();
@@ -272,13 +312,16 @@ export function StatusPage() {
         fetchSubmissions();
     }, [user]);
 
+    const steps = getStatusSteps(t);
+
     const getStatusBadgeInfo = (currentStep: number) => {
-        const step = STATUS_STEPS[currentStep];
+        const step = steps[currentStep];
         let color = 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
 
         switch (step.key) {
             case 'in_review':
-                color = 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800';
+                // Using brand blue variations
+                color = 'border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800'; // Override with inline style below
                 break;
             case 'payment':
                 color = 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800';
@@ -298,6 +341,7 @@ export function StatusPage() {
             label: step.label,
             color,
             icon: <step.icon className="w-4 h-4" />,
+            style: step.key === 'in_review' ? { backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0077cc', borderColor: 'rgba(0, 145, 255, 0.2)' } : {}
         };
     };
 
@@ -312,161 +356,114 @@ export function StatusPage() {
     return (
         <div className="p-6 md:p-8 max-w-6xl mx-auto">
             <div className="space-y-8">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Track Status</h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-2">
-                        Monitor the progress of your survey submissions in real-time.
-                    </p>
-                </div>
-
-                {submissions.length === 0 ? (
-                    <Card className="border-dashed">
-                        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                            <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                                <FileText className="w-6 h-6 text-gray-400" />
-                            </div>
-                            <h3 className="text-lg font-medium text-gray-900 dark:text-white">No submissions yet</h3>
-                            <p className="text-gray-500 dark:text-gray-400 max-w-sm mt-2 mb-6">
-                                You haven't submitted any surveys yet. Create your first survey to get started.
-                            </p>
-                            <Link to="/dashboard/submit">
-                                <Button className="bg-blue-600 hover:bg-blue-700 text-white">Create New Survey</Button>
-                            </Link>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <div className="grid gap-6">
-                        {submissions.map((submission) => {
-                            const hasLink = !!paymentLinks[submission.id!];
-                            const currentStep = getCurrentStepIndex(submission, hasLink);
-                            const badgeInfo = getStatusBadgeInfo(currentStep);
-
-                            return (
-                                <Card key={submission.id} className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
-                                    <CardHeader className="bg-gray-50/50 dark:bg-gray-800/50 border-b pb-4">
-                                        <div className="flex items-center justify-between flex-wrap gap-3">
-                                            <div className="space-y-1">
-                                                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">
-                                                    {submission.title}
-                                                </CardTitle>
-                                                <CardDescription>
-                                                    Submitted on {new Date(submission.created_at || new Date()).toLocaleDateString('id-ID', {
-                                                        day: 'numeric', month: 'long', year: 'numeric'
-                                                    })}
-                                                </CardDescription>
-                                            </div>
-                                            <Badge variant="outline" className={`${badgeInfo.color} px-3 py-1 flex items-center gap-1.5`}>
-                                                {badgeInfo.icon}
-                                                {badgeInfo.label}
-                                            </Badge>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="pt-6 pb-6">
-                                        {/* Progress Tracker */}
-                                        <ProgressTracker currentStep={currentStep} submission={submission} />
-
-                                        {/* STEP 1: Waiting Payment Action */}
-                                        {currentStep === 1 && submission.payment_status !== 'paid' && hasLink && (
-                                            <div className="mt-8 flex justify-center">
-                                                <a
-                                                    href={paymentLinks[submission.id!]!}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center justify-center rounded-md px-8 py-3 text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5"
-                                                >
-                                                    <CreditCard className="w-5 h-5 mr-2" />
-                                                    Pay Now
-                                                </a>
-                                            </div>
-                                        )}
-
-                                        {/* STEP 1 (Paid): Contact Admin Action */}
-                                        {currentStep === 1 && submission.payment_status === 'paid' && (
-                                            <div className="mt-8 flex justify-center">
-                                                <Button
-                                                    className="bg-green-600 hover:bg-green-700 text-white"
-                                                    asChild
-                                                >
-                                                    <a
-                                                        href={`https://wa.me/6287759153120?text=${encodeURIComponent(
-                                                            `Halo min aku ${submission.full_name || user?.user_metadata?.full_name || 'User'} (${submission.email || user?.email}), aku sudah submit survey "${submission.title}" dan sudah melakukan payment, mohon info lebih lanjut`
-                                                        )}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                    >
-                                                        <MessageCircle className="w-4 h-4 mr-2" />
-                                                        Contact Admin
-                                                    </a>
-                                                </Button>
-                                            </div>
-                                        )}
-
-                                        {/* STEP 2, 3, 4: Scheduling, Publishing, Completed - Show Details & Extend */}
-                                        {currentStep >= 2 && (
-                                            <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                                                {/* Card 1: Ad Duration */}
-                                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                                                    <div className="flex items-center gap-3 mb-2">
-                                                        <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
-                                                            <Clock className="w-4 h-4" />
-                                                        </div>
-                                                        <span className="text-sm font-medium text-gray-700">Ad Duration</span>
-                                                    </div>
-                                                    <p className="text-xl font-bold text-gray-900">{submission.duration} Days</p>
-                                                </div>
-
-                                                {/* Card 2: Incentive */}
-                                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                                                    <div className="flex items-center gap-3 mb-2">
-                                                        <div className="bg-green-100 p-2 rounded-lg text-green-600">
-                                                            <Gift className="w-4 h-4" />
-                                                        </div>
-                                                        <span className="text-sm font-medium text-gray-700">Incentive</span>
-                                                    </div>
-                                                    <p className="text-xl font-bold text-gray-900">
-                                                        Rp {new Intl.NumberFormat('id-ID').format(submission.prize_per_winner || 0)} <span className="text-xs text-gray-500 font-normal">/ winner</span>
-                                                    </p>
-                                                </div>
-
-                                                {/* Card 3: Action (Extend) */}
-                                                <div className="flex flex-col justify-center">
-                                                    <Button
-                                                        variant="outline"
-                                                        className="w-full justify-start h-auto py-3 px-4 border-dashed border-2 hover:border-blue-300 hover:bg-blue-50 text-left group"
-                                                        asChild
-                                                    >
-                                                        <Link to="/dashboard/chat">
-                                                            <div>
-                                                                <span className="block font-semibold text-blue-600 group-hover:text-blue-700 flex items-center gap-2">
-                                                                    Extend Ads / Incentive
-                                                                    <ExternalLink className="w-3 h-3" />
-                                                                </span>
-                                                                <span className="text-xs text-gray-500 mt-1 block">
-                                                                    Contact admin to add duration or prizes
-                                                                </span>
-                                                            </div>
-                                                        </Link>
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Additional Admin Contact for support */}
-                                        <div className="mt-8 pt-4 border-t flex justify-end">
-                                            <Link
-                                                to="/dashboard/chat"
-                                                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
-                                            >
-                                                <MessageCircle className="w-3 h-3" />
-                                                Need help? Contact Support
-                                            </Link>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            );
-                        })}
+                <div className="space-y-6">
+                    <div className="flex items-center gap-2 mb-2">
+                        <h1 className="text-xl font-semibold text-gray-800 dark:text-white">{t('pageTitle')}</h1>
                     </div>
-                )}
+
+                    {submissions.length === 0 ? (
+                        <Card className="border-dashed">
+                            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                                <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                                    <FileText className="w-6 h-6 text-gray-400" />
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-900 dark:text-white">{t('noSubmissions')}</h3>
+                                <p className="text-gray-500 dark:text-gray-400 max-w-sm mt-2 mb-6">
+                                    {t('noSubmissionsDesc')}
+                                </p>
+                                <Link to="/dashboard/submit">
+                                    <Button className="text-white shadow-md hover:shadow-lg transition-all" style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}>{t('createFirstSurvey')}</Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-6">
+                            {/* Status Filter Tabs */}
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant={selectedStatus === 'all' ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setSelectedStatus('all')}
+                                    className={`rounded-full px-4 text-xs ${selectedStatus === 'all' ? 'text-white shadow-md border-transparent' : 'text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800'}`}
+                                    style={selectedStatus === 'all' ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' } : {}}
+                                >
+                                    {t('statusAll')}
+                                </Button>
+                                {steps.map((step) => (
+                                    <Button
+                                        key={step.key}
+                                        variant={selectedStatus === step.key ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => setSelectedStatus(step.key)}
+                                        className={`rounded-full px-4 text-xs capitalize ${selectedStatus === step.key ? 'text-white shadow-md border-transparent' : 'text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800'}`}
+                                        style={selectedStatus === step.key ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' } : {}}
+                                    >
+                                        {step.label}
+                                    </Button>
+                                ))}
+                            </div>
+
+                            <div className="grid gap-6">
+                                {submissions
+                                    .filter(submission => {
+                                        if (selectedStatus === 'all') return true;
+
+                                        const hasLink = !!paymentLinks[submission.id!];
+                                        const currentStepIndex = getCurrentStepIndex(submission, hasLink);
+                                        const currentStepKey = steps[currentStepIndex].key;
+
+                                        return currentStepKey === selectedStatus;
+                                    })
+                                    .map((submission) => {
+                                        const hasLink = !!paymentLinks[submission.id!];
+                                        const currentStep = getCurrentStepIndex(submission, hasLink);
+                                        const badgeInfo = getStatusBadgeInfo(currentStep);
+
+                                        return (
+                                            <Card key={submission.id} className="overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all rounded-xl">
+                                                <CardHeader className="bg-gray-50/50 dark:bg-gray-800/50 border-b pb-4">
+                                                    <div className="flex items-center justify-between flex-wrap gap-3">
+                                                        <div className="space-y-1">
+                                                            <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                                {submission.title}
+                                                            </CardTitle>
+                                                            <CardDescription>
+                                                                {t('submittedOn')} {new Date(submission.created_at || new Date()).toLocaleDateString('id-ID', {
+                                                                    day: 'numeric', month: 'long', year: 'numeric'
+                                                                })}
+                                                            </CardDescription>
+                                                        </div>
+                                                        <Badge variant="outline" className={`${badgeInfo.color} px-3 py-1 flex items-center gap-1.5`} style={badgeInfo.style}>
+                                                            {badgeInfo.icon}
+                                                            {badgeInfo.label}
+                                                        </Badge>
+                                                    </div>
+                                                </CardHeader>
+                                                <CardContent className="pt-6 pb-6">
+                                                    {/* Progress Tracker */}
+                                                    <ProgressTracker currentStep={currentStep} submission={submission} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} steps={steps} />
+
+
+
+
+                                                    {/* Contact Admin / Support Link */}
+                                                    <div className="mt-8 pt-4 border-t flex justify-end">
+                                                        <Link
+                                                            to="/dashboard/chat"
+                                                            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+                                                        >
+                                                            <MessageCircle className="w-3 h-3" />
+                                                            {t('contactSupport')}
+                                                        </Link>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

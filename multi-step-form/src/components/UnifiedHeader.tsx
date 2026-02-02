@@ -60,17 +60,18 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                                         <div key={step.number} className="flex items-center">
                                             {/* Line Connector (except first) */}
                                             {idx > 0 && (
-                                                <div className={`w-8 h-0.5 mx-2 rounded-full ${isCompleted || isActive ? 'bg-blue-600' : 'bg-gray-200'}`} />
+                                                <div className={`w-8 h-0.5 mx-2 rounded-full transition-colors duration-300`} style={{ backgroundColor: isCompleted || isActive ? '#0091ff' : '#e5e7eb' }} />
                                             )}
 
                                             {/* Circle */}
                                             <div
                                                 className={`
-                        w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ring-4 ring-white
-                        ${isActive ? 'bg-blue-600 text-white shadow-md scale-110' : ''}
-                        ${isCompleted ? 'bg-blue-600 text-white' : ''}
+                        w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ring-4 ring-white transition-all duration-300
+                        ${isActive ? 'text-white shadow-md scale-110' : ''}
+                        ${isCompleted ? 'text-white' : ''}
                         ${!isActive && !isCompleted ? 'bg-gray-100 text-gray-400 border border-gray-200' : ''}
                       `}
+                                                style={isActive || isCompleted ? { backgroundColor: '#0091ff' } : {}}
                                             >
                                                 {isCompleted ? <Check className="w-4 h-4" /> : step.number}
                                             </div>
@@ -91,7 +92,7 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                         <div className="flex items-center gap-6">
                             <div className="text-right">
                                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Estimated Cost</p>
-                                <p className="text-lg font-bold text-blue-600">Rp{formatRupiah(calculation.totalCost)}</p>
+                                <p className="text-lg font-bold" style={{ color: '#0091ff' }}>Rp{formatRupiah(calculation.totalCost)}</p>
                             </div>
 
                             {onReset && (
