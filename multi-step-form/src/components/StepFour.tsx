@@ -108,7 +108,9 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         prize_per_winner: formData.prizePerWinner,
         voucher_code: formData.voucherCode,
         total_cost: costCalculation.totalCost,
-        payment_status: 'pending'
+        payment_status: 'pending',
+        submission_method: isManualForm ? 'manual' : 'google_import',
+        detected_keywords: formData.detectedKeywords || []
       };
 
       // Simpan data ke Supabase dengan penanganan error yang lebih baik
@@ -236,6 +238,12 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 </p>
                 <div className="bg-amber-100/50 px-3 py-2 rounded-lg text-xs text-amber-800 font-medium inline-block">
                   💡 <strong>Tips:</strong> {t('personalDataPolicyExplanation')}
+                  <ul className="list-disc list-inside mt-1 space-y-0.5 ml-1 opacity-90">
+                    <li>{t('personalDataExample1')}</li>
+                    <li>{t('personalDataExample2')}</li>
+                    <li>{t('personalDataExample3')}</li>
+                    <li>{t('personalDataExample4')}</li>
+                  </ul>
                 </div>
               </div>
             </div>

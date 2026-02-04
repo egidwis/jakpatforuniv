@@ -66,6 +66,8 @@ export const translations = {
     googleConnectedTitle: "Connected to Google Drive",
     googleConnectedMessage: "Your Google Account has been successfully connected",
     titleSelectForm: "Select Google Form",
+    descriptionSelectForm: "Choose the Google Form file you want to advertise from your Google Drive.",
+    buttonSelectForm: "Find File in Drive",
 
     // Status Page
     pageTitle: "Track Status",
@@ -146,6 +148,7 @@ export const translations = {
     perWinner: "/winner",
     respondentCriteriaPlaceholder: "Example: Age 18-35 years, Jakarta Domicile, Active Student",
     respondentCriteriaLabel: "Respondent Criteria",
+    respondentCriteriaHelp: "Respondent criteria are displayed on the ad *only as a guide*. Since this service advertises surveys to a *random audience profile*, the characteristics of respondents who participate may vary.",
 
 
     // Step Three Fields
@@ -438,7 +441,7 @@ export const translations = {
     perWinner: "/pemenang",
     respondentCriteriaPlaceholder: "Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif",
     respondentCriteriaLabel: "Kriteria Responden",
-    respondentCriteriaHelp: "Kriteria ini akan ditampilkan di postingan iklan",
+    respondentCriteriaHelp: "Kriteria responden ditampilkan pada iklan *hanya sebagai panduan*. Karena layanan ini mengiklankan survei ke *audiens berprofil random*, karakteristik responden yang mengisi dapat beragam.",
 
     // Step Two Fields
 
@@ -633,6 +636,8 @@ export const translations = {
     googleConnectedTitle: "Terhubung ke Google Drive",
     googleConnectedMessage: "Akun Google Anda berhasil terhubung",
     titleSelectForm: "Pilih Survey Anda",
+    descriptionSelectForm: "Tentukan file Google Form yang ingin diiklankan dari Google Drive.",
+    buttonSelectForm: "Cari File di Drive",
 
     // Status Page
     pageTitle: "Track Status",

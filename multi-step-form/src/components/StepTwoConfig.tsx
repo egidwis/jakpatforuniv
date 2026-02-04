@@ -193,9 +193,13 @@ export function StepTwoConfig({
                 <AlertCircle className="w-3 h-3" /> {errors.criteriaResponden}
               </p>
             ) : (
-              <p className="text-xs flex items-center gap-1 mt-1 p-2 rounded-lg border" style={{ backgroundColor: 'rgba(0, 145, 255, 0.05)', borderColor: 'rgba(0, 145, 255, 0.2)', color: '#0091ff' }}>
-                <Info size={14} />
-                {t('respondentCriteriaHelp')}
+              <p className="text-xs flex items-start gap-2 mt-1 p-2 rounded-lg border text-left" style={{ backgroundColor: 'rgba(0, 145, 255, 0.05)', borderColor: 'rgba(0, 145, 255, 0.2)', color: '#0091ff' }}>
+                <Info size={14} className="mt-0.5 flex-shrink-0" />
+                <span className="leading-relaxed">
+                  {t('respondentCriteriaHelp').split('*').map((part, index) =>
+                    index % 2 === 1 ? <strong key={index} className="font-semibold">{part}</strong> : part
+                  )}
+                </span>
               </p>
             )}
           </div>

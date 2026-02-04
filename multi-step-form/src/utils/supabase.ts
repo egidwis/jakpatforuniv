@@ -150,6 +150,8 @@ export interface FormSubmission {
   voucher_code?: string;
   total_cost: number;
   payment_status?: string;
+  submission_method?: string;
+  detected_keywords?: string[];
   created_at?: string;
   updated_at?: string;
 }

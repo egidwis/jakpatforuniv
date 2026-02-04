@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Trash2 } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Trash2, Zap, PenLine, ShieldAlert } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, getScheduledAdsBySubmission, deleteScheduledAd, supabase } from '../utils/supabase';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +9,12 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { CreateInvoiceModal } from './CreateInvoiceModal';
 import { CopyInvoiceDropdown } from './CopyInvoiceDropdown';
 import { PublishAdsModal } from './PublishAdsModal';
@@ -31,6 +37,8 @@ interface SurveySubmission {
   education?: string;
   university?: string;
   department?: string;
+  submission_method?: string;
+  detected_keywords?: string[];
 }
 
 interface InternalDashboardProps {
@@ -111,9 +119,11 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           payment_status: sub.payment_status || 'pending',
           total_cost: sub.total_cost || 0,
           phone_number: sub.phone_number,
-          education: sub.status, // Backend: status = education info (e.g. Mahasiswa S3)
           university: sub.university,
-          department: sub.department
+          education: sub.status, // Backend: status = education info (e.g. Mahasiswa S3)
+          department: sub.department,
+          submission_method: sub.submission_method,
+          detected_keywords: sub.detected_keywords
         }));
         setSubmissions(transformed);
         setFilteredSubmissions(transformed); // Since handle search handles querying, these are same
@@ -140,11 +150,13 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const handleStatusChange = async (submissionId: string, newStatus: string, index: number) => {
     try {
       await updateFormStatus(submissionId, newStatus);
-      setSubmissions(prev => {
-        const updated = [...prev];
-        updated[index] = { ...updated[index], status: newStatus };
-        return updated;
-      });
+
+      const updateState = (prev: SurveySubmission[]) =>
+        prev.map(s => s.id === submissionId ? { ...s, status: newStatus } : s);
+
+      setSubmissions(updateState);
+      setFilteredSubmissions(updateState);
+
       toast.success('Status updated successfully');
     } catch (error) {
       console.error('Error updating status:', error);
@@ -164,6 +176,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
   const handleInvoiceCreated = () => {
     setInvoiceRefreshTrigger(prev => prev + 1);
+    loadSubmissions();
   };
 
   const handleOpenPublishModal = (submission: SurveySubmission) => {
@@ -428,6 +441,47 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 <span className="text-[10px] text-muted-foreground font-mono bg-gray-100 px-1 py-0.5 rounded">
                                   {submission.formId.substring(0, 8)}...
                                 </span>
+                                {submission.submission_method === 'google_import' && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger>
+                                        <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-100" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Imported via Google Method</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                                {submission.submission_method === 'manual' && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger>
+                                        <PenLine className="h-3.5 w-3.5 text-blue-500" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Manual Entry</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                                {submission.detected_keywords && submission.detected_keywords.length > 0 && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger>
+                                        <ShieldAlert className="h-3.5 w-3.5 text-red-500" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p className="font-semibold text-red-500 mb-1">Sensitive Data Detected:</p>
+                                        <ul className="list-disc pl-4 text-xs">
+                                          {submission.detected_keywords.map(k => (
+                                            <li key={k} className="capitalize">{k}</li>
+                                          ))}
+                                        </ul>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -591,7 +645,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
                             <CopyInvoiceDropdown
                               formSubmissionId={submission.id}
-                              refreshTrigger={submission.payment_status === 'paid' ? 1 : 0}
+                              refreshTrigger={invoiceRefreshTrigger}
                               isCompact={true}
                             />
                           </div>

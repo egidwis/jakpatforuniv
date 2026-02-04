@@ -36,8 +36,8 @@ function getCurrentStepIndex(submission: FormSubmission, hasPaymentLink: boolean
     const status = (submission.submission_status || 'scheduling').toLowerCase();
 
     switch (status) {
-        case 'in_review': // Should not happen if paid, but fallback to scheduling or keep at payment done?
-            return 1; // Or maybe 2 if we consider paid = passed payment
+        case 'in_review':
+            return 2; // If paid but still in review, move to Scheduling (Step 2)
         case 'scheduling':
             return 2;
         case 'publishing':
