@@ -50,7 +50,7 @@ export function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedMonth, setSelectedMonth] = useState(-1); // Default: Semua Bulan
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   const fetchTransactions = async () => {
@@ -171,7 +171,7 @@ export function TransactionsPage() {
   const filteredTransactions = transactions.filter(t => {
     const searchLower = searchTerm.toLowerCase();
     const date = new Date(t.created_at || '');
-    const isSameMonth = date.getMonth() === selectedMonth;
+    const isSameMonth = selectedMonth === -1 || date.getMonth() === selectedMonth;
     const isSameYear = date.getFullYear() === selectedYear;
 
     const matchesSearch =
@@ -304,6 +304,7 @@ export function TransactionsPage() {
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
               >
+                <option value={-1}>Semua Bulan</option>
                 {['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].map((month, index) => (
                   <option key={index} value={index}>{month}</option>
                 ))}

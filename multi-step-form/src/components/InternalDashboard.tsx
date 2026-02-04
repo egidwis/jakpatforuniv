@@ -28,6 +28,9 @@ interface SurveySubmission {
   payment_status?: string;
   total_cost?: number;
   phone_number?: string;
+  education?: string;
+  university?: string;
+  department?: string;
 }
 
 interface InternalDashboardProps {
@@ -100,16 +103,17 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           formUrl: sub.survey_url,
           researcherName: sub.full_name || 'Unknown',
           researcherEmail: sub.email || 'No Email',
-          submittedAt: new Date(sub.created_at).toLocaleDateString('id-ID', {
-            day: 'numeric', month: 'short', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-          }),
+
+          submittedAt: sub.created_at || new Date().toISOString(), // Store raw ISO string
           questionCount: sub.question_count || 0,
           responseCount: 0, // Not tracked yet
           status: (sub.submission_status || sub.status || 'in_review') === 'pending' ? 'in_review' : (sub.submission_status || sub.status || 'in_review'),
           payment_status: sub.payment_status || 'pending',
           total_cost: sub.total_cost || 0,
-          phone_number: sub.phone_number
+          phone_number: sub.phone_number,
+          education: sub.status, // Backend: status = education info (e.g. Mahasiswa S3)
+          university: sub.university,
+          department: sub.department
         }));
         setSubmissions(transformed);
         setFilteredSubmissions(transformed); // Since handle search handles querying, these are same
@@ -354,20 +358,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             </div>
           </div>
 
-          {/* Refresh Button */}
-          <div className="flex items-center gap-3">
-            {!hideAuth && (
-              <Button
-                onClick={loadSubmissions}
-                variant="outline"
-                size="sm"
-                disabled={loading}
-                title="Refresh data"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              </Button>
-            )}
-          </div>
         </div>
 
         {/* Search Results Counter */}
@@ -411,14 +401,15 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             {/* Desktop Table View - hidden on mobile */}
             <Card className="hidden md:block shadow-sm border-gray-200">
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="min-w-[1200px]">
                   <TableHeader className="bg-gray-50/50">
                     <TableRow>
-                      <TableHead className="w-[300px] font-semibold text-gray-900">Form Title</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Researcher</TableHead>
+                      <TableHead className="w-[250px] font-semibold text-gray-900">Form Title</TableHead>
+                      <TableHead className="w-[200px] font-semibold text-gray-900">Researcher</TableHead>
+                      <TableHead className="w-[150px] font-semibold text-gray-900">Education</TableHead>
                       <TableHead className="text-center font-semibold text-gray-900">Questions</TableHead>
                       <TableHead className="font-semibold text-gray-900">Submitted</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Status</TableHead>
+                      <TableHead className="w-[140px] font-semibold text-gray-900">Status</TableHead>
                       <TableHead className="font-semibold text-gray-900">Payment Status</TableHead>
                       <TableHead className="font-semibold text-gray-900">Ads Actions</TableHead>
                       <TableHead className="font-semibold text-gray-900">Invoice Actions</TableHead>
@@ -427,39 +418,39 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   <TableBody>
                     {filteredSubmissions.map((submission, index) => (
                       <TableRow key={submission.id} className="hover:bg-gray-50/50 transition-colors">
-                        <TableCell className="align-top py-4">
-                          <div className="flex items-start gap-3">
-                            <div className="flex flex-col gap-1 flex-1">
-                              <span className="font-semibold text-gray-900 line-clamp-2" title={submission.formTitle}>
+                        <TableCell className="align-top py-2.5">
+                          <div className="flex items-start gap-2">
+                            <div className="flex flex-col gap-0.5 flex-1">
+                              <span className="font-semibold text-xs text-gray-900 line-clamp-2" title={submission.formTitle}>
                                 {submission.formTitle}
                               </span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground font-mono bg-gray-100 px-1.5 py-0.5 rounded">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-muted-foreground font-mono bg-gray-100 px-1 py-0.5 rounded">
                                   {submission.formId.substring(0, 8)}...
                                 </span>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-6 w-6 text-gray-400 hover:text-blue-600"
+                                  className="h-5 w-5 text-gray-400 hover:text-blue-600"
                                   onClick={() => window.open(submission.formUrl, '_blank')}
                                   title="Open survey"
                                 >
-                                  <Eye className="h-3.5 w-3.5" />
+                                  <Eye className="h-3 w-3" />
                                 </Button>
                               </div>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="align-top py-4">
+                        <TableCell className="align-top py-2.5">
                           <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-medium text-gray-900">{submission.researcherName}</span>
-                            <span className="text-xs text-muted-foreground">{submission.researcherEmail}</span>
+                            <span className="text-xs font-medium text-gray-900">{submission.researcherName}</span>
+                            <span className="text-[10px] text-muted-foreground">{submission.researcherEmail}</span>
                             {submission.phone_number && (
                               <a
                                 href={`https://wa.me/${submission.phone_number.replace(/^0/, '62').replace(/[^0-9]/g, '')}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1 mt-0.5 hover:underline"
+                                className="text-[10px] text-green-600 hover:text-green-700 flex items-center gap-1 mt-0.5 hover:underline"
                                 title="Chat via WhatsApp"
                               >
                                 <span>📱</span> {submission.phone_number}
@@ -467,52 +458,79 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="align-top py-4 text-center">
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-100 font-medium w-10 h-8 flex items-center justify-center mx-auto text-sm">
+                        <TableCell className="align-top py-2.5">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs font-semibold text-gray-900 leading-tight block">{submission.education || '-'}</span>
+                            {submission.university && (
+                              <span className="text-[10px] text-gray-600 leading-tight line-clamp-1" title={submission.university}>
+                                {submission.university}
+                              </span>
+                            )}
+                            {submission.department && (
+                              <span className="text-[10px] text-muted-foreground leading-tight line-clamp-1 italic" title={submission.department}>
+                                {submission.department}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top py-2.5 text-center">
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-100 font-medium w-8 h-6 flex items-center justify-center mx-auto text-xs">
                             {submission.questionCount}
                           </Badge>
                         </TableCell>
-                        <TableCell className="align-top py-4">
-                          <div className="flex flex-col text-sm">
+                        <TableCell className="align-top py-2.5">
+                          <div className="flex flex-col text-xs">
                             <span className="font-medium text-gray-900">
-                              {new Date(submission.submittedAt).toLocaleDateString('id-ID', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
+                              {(() => {
+                                try {
+                                  return new Date(submission.submittedAt).toLocaleDateString('id-ID', {
+                                    day: 'numeric',
+                                    month: 'numeric',
+                                    year: '2-digit'
+                                  });
+                                } catch (e) {
+                                  return '-';
+                                }
+                              })()}
                             </span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(submission.submittedAt).toLocaleTimeString('id-ID', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                            <span className="text-[10px] text-muted-foreground">
+                              {(() => {
+                                try {
+                                  return new Date(submission.submittedAt).toLocaleTimeString('id-ID', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  });
+                                } catch (e) {
+                                  return '';
+                                }
+                              })()}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="align-top py-4">
+                        <TableCell className="align-top py-2.5">
                           <div className="relative">
                             <select
-                              className={`appearance-none w-full pl-3 pr-8 py-2 text-xs font-medium rounded-full border-0 cursor-pointer transition-all focus:ring-2 focus:ring-offset-1 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 hover:bg-red-200 focus:ring-red-500' :
+                              className={`appearance-none w-full pl-2 pr-6 py-1 text-xs font-medium rounded border-0 cursor-pointer transition-all focus:ring-1 focus:ring-offset-0 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 hover:bg-red-200 focus:ring-red-500' :
                                 submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 focus:ring-blue-500' :
                                   submission.status === 'scheduling' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200 focus:ring-purple-500' :
                                     submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 focus:ring-indigo-500' :
-                                      submission.status === 'completed' ? 'bg-gray-100 text-gray-800 hover:bg-gray-200 focus:ring-gray-500' :
+                                      submission.status === 'completed' ? 'bg-green-100 text-green-700 hover:bg-green-200 focus:ring-green-500' :
                                         'bg-gray-100 text-gray-800'
                                 }`}
                               value={submission.status || 'in_review'}
                               onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
                             >
-                              <option value="spam" className="bg-white text-gray-900">Spam</option>
-                              <option value="in_review" className="bg-white text-gray-900">In Review</option>
-                              <option value="scheduling" className="bg-white text-gray-900">Scheduling</option>
-                              <option value="publishing" className="bg-white text-gray-900">Publishing</option>
-                              <option value="completed" className="bg-white text-gray-900">Completed</option>
+                              <option value="spam">Spam</option>
+                              <option value="in_review">In Review</option>
+                              <option value="scheduling">Scheduling</option>
+                              <option value="publishing">Publishing</option>
+                              <option value="completed">Completed</option>
                             </select>
-                            <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 ${submission.status === 'spam' ? 'text-red-600' :
+                            <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 ${submission.status === 'spam' ? 'text-red-600' :
                               submission.status === 'in_review' ? 'text-blue-600' :
                                 submission.status === 'scheduling' ? 'text-purple-600' :
                                   submission.status === 'publishing' ? 'text-indigo-600' :
-                                    submission.status === 'completed' ? 'text-gray-600' :
+                                    submission.status === 'completed' ? 'text-green-600' :
                                       'text-gray-500'
                               }`}>
                               <svg className="h-3 w-3 fill-current" viewBox="0 0 20 20">
@@ -521,31 +539,31 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="align-top py-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${submission.payment_status?.toLowerCase() === 'paid'
+                        <TableCell className="align-top py-2.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${submission.payment_status?.toLowerCase() === 'paid'
                             ? 'bg-green-50 text-green-700 border-green-200'
                             : 'bg-yellow-50 text-yellow-700 border-yellow-200'
                             }`}>
                             {submission.payment_status === 'paid' ? 'Paid' : 'Pending'}
                           </span>
                         </TableCell>
-                        <TableCell className="align-top py-4">
+                        <TableCell className="align-top py-2.5">
                           {submission.payment_status?.toLowerCase() === 'paid' ? (
                             <div className="flex items-center gap-1">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8 border-dashed text-xs"
+                                className="h-7 px-2 border-dashed text-[10px]"
                                 onClick={() => handleOpenPublishModal(submission)}
                               >
-                                <Calendar className="w-3 h-3 mr-1.5" />
-                                {submission.status === 'publishing' ? 'Extend Ads' : 'Publish Ads'}
+                                <Calendar className="w-3 h-3 mr-1" />
+                                {submission.status === 'publishing' ? 'Extend' : 'Publish'}
                               </Button>
                               {submission.status === 'publishing' && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
                                   onClick={() => handleRemoveAds(submission.id)}
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -553,22 +571,22 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               )}
                             </div>
                           ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
+                            <span className="text-[10px] text-muted-foreground">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="align-top py-4">
+                        <TableCell className="align-top py-2.5">
                           <div className="flex items-center gap-1">
                             <Button
                               variant="default"
                               size="icon"
-                              className="h-8 w-8 bg-blue-600 hover:bg-blue-700 text-white"
+                              className="h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white"
                               onClick={() => {
                                 setSelectedSubmission(submission);
                                 setIsInvoiceModalOpen(true);
                               }}
                               title="Create Invoice"
                             >
-                              <Plus className="h-4 w-4" />
+                              <Plus className="h-3.5 w-3.5" />
                             </Button>
 
                             <CopyInvoiceDropdown

@@ -11,6 +11,7 @@ import {
 import { Button } from './ui/button';
 
 import { LanguageSwitcher } from './LanguageSwitcher';
+import jfuIcon from '../assets/jfu-icon.png';
 
 export function DashboardLayout() {
   const { user, signOut } = useAuth();
@@ -64,7 +65,7 @@ export function DashboardLayout() {
         <div className="flex flex-col h-full">
           <div className="p-6 border-b">
             <div className="flex items-center gap-3">
-              <img src="/src/assets/jfu-icon.png" alt="JFU Icon" className="w-10 h-10 object-contain flex-shrink-0" />
+              <img src={jfuIcon} alt="JFU Icon" className="w-10 h-10 object-contain flex-shrink-0" />
               <div>
                 <h1 className="text-xl font-bold bg-clip-text text-transparent leading-tight" style={{ backgroundImage: 'linear-gradient(to right, #0091ff, #0077cc)' }}>
                   JFU Dashboard
