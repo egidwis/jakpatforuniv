@@ -159,15 +159,30 @@ export function InternalDashboardWithLayout() {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200">
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
-          </Button>
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-200 bg-gray-50/50">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                {user?.email?.charAt(0).toUpperCase() || 'U'}
+              </div>
+              <div className="flex flex-col overflow-hidden">
+                <span className="font-semibold text-xs text-gray-900 truncate">
+                  {user?.user_metadata?.full_name || 'Admin User'}
+                </span>
+                <span className="text-[10px] text-gray-500 truncate" title={user?.email}>
+                  {user?.email}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+              title="Logout"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -215,7 +230,7 @@ export function InternalDashboardWithLayout() {
         {/* Main Content */}
         <main className="flex-1 overflow-auto">
           {currentPage === 'submissions' ? (
-            <InternalDashboard onLogout={handleLogout} />
+            <InternalDashboard onLogout={handleLogout} hideAuth={true} />
           ) : currentPage === 'transactions' ? (
             <div className="container mx-auto p-4 md:p-8">
               <TransactionsPage />

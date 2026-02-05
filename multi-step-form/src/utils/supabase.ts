@@ -384,6 +384,27 @@ export const updateFormStatus = async (id: string, status: string) => {
   }
 };
 
+export const updateSubmissionCriteria = async (id: string, criteria: string, prizePerWinner: number, winnerCount: number) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .update({
+        criteria_responden: criteria,
+        prize_per_winner: prizePerWinner,
+        winner_count: winnerCount
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Error updating submission criteria:', error);
+    throw error;
+  }
+};
+
 // Fungsi untuk mendapatkan semua form submissions (untuk internal dashboard)
 // Fungsi untuk mendapatkan semua form submissions (untuk internal dashboard, deprecated for pagination)
 export const getAllFormSubmissions = async () => {
@@ -404,6 +425,8 @@ export const getAllFormSubmissions = async () => {
 // Fungsi untuk mendapatkan form submissions dengan pagination
 export const getFormSubmissionsPaginated = async (page: number, limit: number, searchQuery: string = '') => {
   try {
+    // Mock data removed as requested. Directly querying Supabase.
+
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
@@ -426,7 +449,9 @@ export const getFormSubmissionsPaginated = async (page: number, limit: number, s
     return { data, count };
   } catch (error: any) {
     console.error('Error getting paginated submissions:', error);
-    throw error;
+    // If error occurs (e.g. table not found), fallback to empty array or throw
+    // throw error;
+    return { data: [], count: 0 };
   }
 };
 

@@ -227,22 +227,41 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 <AlertTriangle className="w-5 h-5 text-amber-600" />
               </div>
               <div className="flex-1">
-                <h4 className="text-sm font-bold text-amber-800 mb-2">
-                  ⚠️ {t('personalDataWarningTitle')}
+                <h4 className="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2">
+                  {t('personalDataWarningTitle')}
                 </h4>
-                <p className="text-sm text-amber-700 mb-2 leading-relaxed">
-                  {t('personalDataWarningSubtitle')} <strong>{formData.detectedKeywords.join(', ')}</strong>
-                </p>
-                <p className="text-sm text-amber-700 leading-relaxed mb-3">
+
+                {/* Detected Keywords Tags */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {formData.detectedKeywords.map((keyword, i) => (
+                    <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 capitalize">
+                      {keyword}
+                    </span>
+                  ))}
+                </div>
+
+                <p className="text-sm text-amber-800 leading-relaxed mb-4">
                   {t('personalDataWhatHappensDetail')}
                 </p>
-                <div className="bg-amber-100/50 px-3 py-2 rounded-lg text-xs text-amber-800 font-medium inline-block">
-                  💡 <strong>Tips:</strong> {t('personalDataPolicyExplanation')}
-                  <ul className="list-disc list-inside mt-1 space-y-0.5 ml-1 opacity-90">
-                    <li>{t('personalDataExample1')}</li>
-                    <li>{t('personalDataExample2')}</li>
-                    <li>{t('personalDataExample3')}</li>
-                    <li>{t('personalDataExample4')}</li>
+
+                {/* Styled Tips Box */}
+                <div className="bg-white/60 border border-amber-100 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2 text-amber-900 font-semibold text-xs uppercase tracking-wide">
+                    <span className="text-base">💡</span> {t('personalDataPolicyExplanation')}
+                  </div>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-amber-800/90 ml-1">
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-0.5">•</span> {t('personalDataExample1')}
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-0.5">•</span> {t('personalDataExample2')}
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-0.5">•</span> {t('personalDataExample3')}
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-0.5">•</span> {t('personalDataExample4')}
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -481,6 +500,6 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
           </button>
         </div>
       </div>
-    </div>
+    </div >
   );
 }

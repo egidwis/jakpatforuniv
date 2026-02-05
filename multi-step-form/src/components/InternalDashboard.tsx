@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Trash2, Zap, PenLine, ShieldAlert } from 'lucide-react';
-import { getFormSubmissionsPaginated, updateFormStatus, getScheduledAdsBySubmission, deleteScheduledAd, supabase } from '../utils/supabase';
+import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Zap, PenLine, ShieldAlert, GraduationCap } from 'lucide-react';
+import { getFormSubmissionsPaginated, updateFormStatus, supabase } from '../utils/supabase';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
@@ -14,10 +14,17 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "./ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { CreateInvoiceModal } from './CreateInvoiceModal';
 import { CopyInvoiceDropdown } from './CopyInvoiceDropdown';
 import { PublishAdsModal } from './PublishAdsModal';
+import { EditCriteriaModal } from './EditCriteriaModal';
 import './InternalDashboard.css';
 
 interface SurveySubmission {
@@ -39,6 +46,12 @@ interface SurveySubmission {
   department?: string;
   submission_method?: string;
   detected_keywords?: string[];
+  leads?: string;
+  voucher_code?: string;
+  prize_per_winner?: number;
+  winnerCount?: number;
+  criteria?: string;
+  duration?: number;
 }
 
 interface InternalDashboardProps {
@@ -71,6 +84,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [selectedSubmissionForAds, setSelectedSubmissionForAds] = useState<SurveySubmission | null>(null);
 
+  // Edit Criteria Modal State
+  const [isEditCriteriaModalOpen, setIsEditCriteriaModalOpen] = useState(false);
+  const [selectedSubmissionForCriteria, setSelectedSubmissionForCriteria] = useState<SurveySubmission | null>(null);
+
   // Admin Access Check
   // STRICT: Only product@jakpat.net is allowed
   const allowedEmails = ['product@jakpat.net'];
@@ -81,7 +98,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     if (isAdmin) {
       loadSubmissions();
     }
-  }, [isAdmin]);
+  }, [isAdmin, currentPage, searchQuery]);
 
   // Client-side search logic removed in favor of Server-side search inside loadSubmissions
   // Reset page to 1 when search changes
@@ -123,7 +140,13 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           education: sub.status, // Backend: status = education info (e.g. Mahasiswa S3)
           department: sub.department,
           submission_method: sub.submission_method,
-          detected_keywords: sub.detected_keywords
+          detected_keywords: sub.detected_keywords,
+          leads: sub.referral_source,
+          voucher_code: sub.voucher_code,
+          prize_per_winner: sub.prize_per_winner,
+          winnerCount: sub.winner_count,
+          criteria: sub.criteria_responden,
+          duration: sub.duration || 0,
         }));
         setSubmissions(transformed);
         setFilteredSubmissions(transformed); // Since handle search handles querying, these are same
@@ -137,17 +160,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
   };
 
-  // Debounced search effect or separate effect for page changes
-  useEffect(() => {
-    if (isAdmin) {
-      loadSubmissions();
-    }
-  }, [isAdmin, currentPage, searchQuery]); // Re-fetch on page/search change
-
-  // Remove the old client-side filter effect since we do server-side search now
-  // Kept filteredSubmissions state for compatibility but it mirrors submissions now
-
-  const handleStatusChange = async (submissionId: string, newStatus: string, index: number) => {
+  const handleStatusChange = async (submissionId: string, newStatus: string) => {
     try {
       await updateFormStatus(submissionId, newStatus);
 
@@ -162,6 +175,20 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       console.error('Error updating status:', error);
       toast.error('Failed to update status');
     }
+  };
+
+  const calculateAdCost = (questionCount: number, duration: number) => {
+    let dailyRate = 0;
+    if (questionCount <= 15) dailyRate = 150000;
+    else if (questionCount <= 30) dailyRate = 200000;
+    else if (questionCount <= 50) dailyRate = 300000;
+    else if (questionCount <= 70) dailyRate = 400000;
+    else dailyRate = 500000;
+
+    return {
+      dailyRate,
+      totalAdCost: dailyRate * duration
+    };
   };
 
   const handleOpenInvoiceModal = (submission: SurveySubmission) => {
@@ -179,40 +206,23 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     loadSubmissions();
   };
 
-  const handleOpenPublishModal = (submission: SurveySubmission) => {
-    setSelectedSubmissionForAds(submission);
-    setIsPublishModalOpen(true);
-  };
-
   const handleClosePublishModal = () => {
     setIsPublishModalOpen(false);
     setSelectedSubmissionForAds(null);
   };
 
-  const handleRemoveAds = async (submissionId: string) => {
-    if (!confirm('Are you sure you want to remove all scheduled ads for this submission?')) {
-      return;
-    }
+  const handleOpenEditCriteriaModal = (submission: SurveySubmission) => {
+    setSelectedSubmissionForCriteria(submission);
+    setIsEditCriteriaModalOpen(true);
+  };
 
-    try {
-      // Get all scheduled ads for this submission
-      const scheduledAds = await getScheduledAdsBySubmission(submissionId);
+  const handleCloseEditCriteriaModal = () => {
+    setIsEditCriteriaModalOpen(false);
+    setSelectedSubmissionForCriteria(null);
+  };
 
-      // Delete from Supabase
-      for (const ad of scheduledAds) {
-        await deleteScheduledAd(ad.id);
-      }
-
-      // Update status back to scheduling
-      await updateFormStatus(submissionId, 'scheduling');
-
-      // Refresh the list
-      loadSubmissions();
-      toast.success('Scheduled ads removed successfully');
-    } catch (error: any) {
-      console.error('Error removing ads:', error);
-      toast.error('Failed to remove scheduled ads');
-    }
+  const handleCriteriaUpdated = () => {
+    loadSubmissions();
   };
 
   if (authLoading) {
@@ -355,22 +365,48 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       )}
 
       {/* Content */}
-      <div className={hideAuth ? 'p-4 md:p-8' : 'max-w-[1400px] mx-auto px-4 sm:px-6 py-6'}>
-        {/* Toolbar - Search & Google Connect */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div className="flex-1 max-w-2xl">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search or ID..."
-                className="pl-8"
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-              />
-            </div>
+      <div className={hideAuth ? 'p-4 md:px-6 md:py-4' : 'max-w-[1400px] mx-auto px-4 sm:px-6 py-6'}>
+        {/* Toolbar - Search & Actions */}
+        <div className="flex items-center justify-between gap-4 mb-6 bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100">
+          {/* Left: Search */}
+          <div className="flex-1 max-w-3xl relative min-w-0">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search by ID, Title, or Researcher..."
+              className="w-full pl-10 bg-white border-gray-200 focus:border-blue-500 transition-all h-9"
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+            />
           </div>
 
+          {/* Right: Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              onClick={loadSubmissions}
+              variant="outline"
+              size="sm"
+              disabled={loading}
+              className="h-9 w-9 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+
+            {/* Filter placeholder */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 w-9 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
+              title="Filter (Coming Soon)"
+            >
+              <div className="w-4 h-4 flex flex-col justify-center gap-0.5 items-center">
+                <div className="w-3 h-0.5 bg-current rounded-full"></div>
+                <div className="w-2 h-0.5 bg-current rounded-full"></div>
+                <div className="w-1 h-0.5 bg-current rounded-full"></div>
+              </div>
+            </Button>
+          </div>
         </div>
 
         {/* Search Results Counter */}
@@ -416,239 +452,314 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               <div className="overflow-x-auto">
                 <Table className="min-w-[1200px]">
                   <TableHeader className="bg-gray-50/50">
-                    <TableRow>
-                      <TableHead className="w-[250px] font-semibold text-gray-900">Form Title</TableHead>
-                      <TableHead className="w-[200px] font-semibold text-gray-900">Researcher</TableHead>
-                      <TableHead className="w-[150px] font-semibold text-gray-900">Education</TableHead>
-                      <TableHead className="text-center font-semibold text-gray-900">Questions</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Submitted</TableHead>
-                      <TableHead className="w-[140px] font-semibold text-gray-900">Status</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Payment Status</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Ads Actions</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Invoice Actions</TableHead>
+                    <TableRow className="border-b border-gray-100">
+                      <TableHead className="w-[300px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Form Details</TableHead>
+                      <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Criteria & Incentive</TableHead>
+                      <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Researcher</TableHead>
+                      <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Submitted</TableHead>
+                      <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Status</TableHead>
+                      <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Payment</TableHead>
+                      <TableHead className="w-[150px] text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-10 pr-6">Ad Publishing</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSubmissions.map((submission, index) => (
-                      <TableRow key={submission.id} className="hover:bg-gray-50/50 transition-colors">
-                        <TableCell className="align-top py-2.5">
-                          <div className="flex items-start gap-2">
-                            <div className="flex flex-col gap-0.5 flex-1">
-                              <span className="font-semibold text-xs text-gray-900 line-clamp-2" title={submission.formTitle}>
+                    {filteredSubmissions.map((submission) => (
+                      <TableRow key={submission.id} className="hover:bg-gray-50/50 transition-colors group">
+                        {/* Form Details */}
+                        <TableCell className="align-top py-4">
+                          <div className="flex flex-col gap-2">
+                            <div>
+                              <span className="font-semibold text-gray-900 block mb-0.5 line-clamp-2" title={submission.formTitle}>
                                 {submission.formTitle}
                               </span>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] text-muted-foreground font-mono bg-gray-100 px-1 py-0.5 rounded">
-                                  {submission.formId.substring(0, 8)}...
-                                </span>
-                                {submission.submission_method === 'google_import' && (
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-100" />
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>Imported via Google Method</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                {submission.formUrl && (
+                                  <a
+                                    href={submission.formUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 hover:text-blue-600 transition-colors bg-gray-100 px-1.5 py-0.5 rounded"
+                                    title="Open Survey Link"
+                                  >
+                                    {submission.formId.substring(0, 8)}...
+                                    <Eye className="h-3 w-3" />
+                                  </a>
                                 )}
-                                {submission.submission_method === 'manual' && (
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <PenLine className="h-3.5 w-3.5 text-blue-500" />
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>Manual Entry</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1.5">
+                              {/* Method Badge */}
+                              <Badge variant="secondary" className={`
+                                px-1.5 py-0 text-[10px] font-medium border
+                                ${submission.submission_method === 'google_import'
+                                  ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200'}
+                              `}>
+                                {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
+                              </Badge>
+
+                              {/* Sensitive Badge */}
+                              {(submission.detected_keywords && submission.detected_keywords.length > 0) && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="destructive" className="px-1.5 py-0 text-[10px] font-medium bg-red-50 text-red-700 border-red-200 border cursor-help">
+                                        <ShieldAlert className="w-3 h-3 mr-1" />
+                                        Sensitive
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Detected: {submission.detected_keywords.join(', ')}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+
+                              {/* Question Count */}
+                              <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-gray-500 border-gray-200">
+                                {submission.questionCount} Qs
+                              </Badge>
+
+                              {/* Duration */}
+                              {submission.duration ? (
+                                <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-blue-600 bg-blue-50 border-blue-100">
+                                  {submission.duration} Days
+                                </Badge>
+                              ) : null}
+                            </div>
+
+                            {/* Ad Cost Breakdown */}
+                            {submission.duration && submission.duration > 0 && (
+                              <div className="flex flex-col gap-0.5 mt-1 border-t border-dashed border-gray-200 pt-1">
+                                <span className="text-[10px] text-gray-500 uppercase font-medium">Est. Ad Cost</span>
+                                <div className="text-[10px] text-gray-600">
+                                  {(() => {
+                                    const { dailyRate, totalAdCost } = calculateAdCost(submission.questionCount, submission.duration);
+                                    return (
+                                      <>
+                                        <span>{new Intl.NumberFormat('id-ID').format(dailyRate)}/day</span>
+                                        <span className="mx-1">x</span>
+                                        <span>{submission.duration}d</span>
+                                        <div className="font-semibold text-gray-900 mt-0.5">
+                                          = Rp {new Intl.NumberFormat('id-ID').format(totalAdCost)}
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+
+                        {/* Criteria & Incentive */}
+                        <TableCell className="align-top py-4">
+                          <div className="flex flex-col gap-1.5">
+                            {submission.criteria ? (
+                              <div className="text-xs text-gray-700 bg-gray-50 px-2 py-1.5 rounded border border-gray-100 max-w-[200px] whitespace-pre-wrap">
+                                {submission.criteria}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-400 italic">Target not set</div>
+                            )}
+                            {submission.prize_per_winner ? (
+                              <div className="flex flex-col gap-1">
+                                <div className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded w-fit border border-emerald-100">
+                                  Rp {submission.prize_per_winner.toLocaleString('id-ID')} / user
+                                </div>
+                                {submission.winnerCount && submission.winnerCount > 0 && (
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="text-[10px] text-gray-500 font-medium">
+                                      x {submission.winnerCount} Winners
+                                    </div>
+                                    <div className="text-xs font-bold text-gray-900">
+                                      Total: Rp {((submission.prize_per_winner || 0) * submission.winnerCount).toLocaleString('id-ID')}
+                                    </div>
+                                  </div>
                                 )}
-                                {submission.detected_keywords && submission.detected_keywords.length > 0 && (
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <ShieldAlert className="h-3.5 w-3.5 text-red-500" />
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p className="font-semibold text-red-500 mb-1">Sensitive Data Detected:</p>
-                                        <ul className="list-disc pl-4 text-xs">
-                                          {submission.detected_keywords.map(k => (
-                                            <li key={k} className="capitalize">{k}</li>
-                                          ))}
-                                        </ul>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5 text-gray-400 hover:text-blue-600"
-                                  onClick={() => window.open(submission.formUrl, '_blank')}
-                                  title="Open survey"
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-400 border border-dashed border-gray-300 px-2 py-1 rounded w-fit">
+                                No incentive
+                              </div>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[10px] text-blue-600 hover:text-blue-700 hover:bg-blue-50 w-fit px-2 -ml-2"
+                              onClick={() => handleOpenEditCriteriaModal(submission)}
+                            >
+                              <PenLine className="w-3 h-3 mr-1" /> Edit Criteria
+                            </Button>
+                          </div>
+                        </TableCell>
+
+                        {/* Researcher */}
+                        <TableCell className="align-top py-4">
+                          <div className="flex flex-col gap-3">
+                            {/* Personal Info */}
+                            <div className="flex items-start gap-3">
+                              <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                                {submission.researcherName.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-sm font-medium text-gray-900">{submission.researcherName}</span>
+                                <div className="flex flex-col text-xs text-gray-500 gap-0.5">
+                                  <span className="truncate" title={submission.researcherEmail}>{submission.researcherEmail}</span>
+                                  {submission.phone_number && (
+                                    <a
+                                      href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-green-600 hover:underline flex items-center gap-1 w-fit"
+                                    >
+                                      {submission.phone_number}
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Academic Info */}
+                            <div className="bg-gray-50 p-2 rounded border border-gray-100 text-xs text-gray-600 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <GraduationCap className="h-3.5 w-3.5 text-gray-400" />
+                                <span className="font-medium text-gray-700">{submission.education || 'Researcher'}</span>
+                              </div>
+                              {(submission.university || submission.department) && (
+                                <div className="pl-[22px]">
+                                  <div className="text-gray-900">{submission.university}</div>
+                                  <div className="text-gray-500 italic">{submission.department}</div>
+                                </div>
+                              )}
+                              {submission.leads && (
+                                <div className="pt-1 mt-1 border-t border-gray-200 text-[10px] text-gray-400">
+                                  Lead: {submission.leads}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        {/* Submitted */}
+                        <TableCell className="align-top py-4 text-xs">
+                          <div className="flex flex-col text-gray-500">
+                            <span className="font-medium text-gray-900">
+                              {new Date(submission.submittedAt).toLocaleDateString('id-ID')}
+                            </span>
+                            <span>
+                              {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        {/* Status */}
+                        <TableCell className="align-top py-4">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
+                                <Badge
+                                  variant="outline"
+                                  className={`
+                                    cursor-pointer px-2 py-1 text-[10px] uppercase tracking-wide border transition-all hover:ring-2 hover:ring-offset-1
+                                    ${submission.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                                      submission.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                                        submission.status === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                          'bg-gray-100 text-gray-700 border-gray-200'}
+                                  `}
                                 >
-                                  <Eye className="h-3 w-3" />
-                                </Button>
+                                  {submission.status?.replace('_', ' ') || 'Pending'}
+                                </Badge>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'in_review')}>
+                                In Review
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'approved')}>
+                                Approved
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600">
+                                Rejected
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
+                                Spam
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+
+                        {/* Payment */}
+                        <TableCell className="align-top py-4">
+                          {/* Cost & Status */}
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                              <Badge
+                                variant="outline"
+                                className={`
+                                      w-fit px-1.5 py-0.5 text-[10px] uppercase tracking-wide border
+                                      ${submission.payment_status === 'paid' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}
+                                    `}
+                              >
+                                {submission.payment_status || 'Pending'}
+                              </Badge>
+                            </div>
+
+                            {(submission.total_cost || 0) > 0 && (
+                              <span className="text-sm font-bold text-gray-900">
+                                {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(submission.total_cost || 0)}
+                              </span>
+                            )}
+
+                            {/* Referral Code (Voucher) */}
+                            {submission.voucher_code && (
+                              <div className="flex items-center gap-1.5 bg-purple-50 px-2 py-1 rounded border border-purple-100 w-fit">
+                                <Zap className="w-3 h-3 text-purple-600" />
+                                <span className="text-[10px] font-medium text-purple-700 tracking-wide">{submission.voucher_code}</span>
+                              </div>
+                            )}
+
+                            {/* Invoice Actions - Integrated here */}
+                            <div className="flex items-center gap-1 mt-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px] px-2 w-full justify-center"
+                                onClick={() => handleOpenInvoiceModal(submission)}
+                              >
+                                {submission.payment_status === 'paid' ? 'View Invoice' : 'Create Invoice'}
+                              </Button>
+                              <div className="shrink-0">
+                                <CopyInvoiceDropdown
+                                  formSubmissionId={submission.id}
+                                  refreshTrigger={invoiceRefreshTrigger}
+                                  isCompact={true}
+                                />
                               </div>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="align-top py-2.5">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-xs font-medium text-gray-900">{submission.researcherName}</span>
-                            <span className="text-[10px] text-muted-foreground">{submission.researcherEmail}</span>
-                            {submission.phone_number && (
-                              <a
-                                href={`https://wa.me/${submission.phone_number.replace(/^0/, '62').replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[10px] text-green-600 hover:text-green-700 flex items-center gap-1 mt-0.5 hover:underline"
-                                title="Chat via WhatsApp"
-                              >
-                                <span>📱</span> {submission.phone_number}
-                              </a>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="align-top py-2.5">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-xs font-semibold text-gray-900 leading-tight block">{submission.education || '-'}</span>
-                            {submission.university && (
-                              <span className="text-[10px] text-gray-600 leading-tight line-clamp-1" title={submission.university}>
-                                {submission.university}
-                              </span>
-                            )}
-                            {submission.department && (
-                              <span className="text-[10px] text-muted-foreground leading-tight line-clamp-1 italic" title={submission.department}>
-                                {submission.department}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="align-top py-2.5 text-center">
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-100 font-medium w-8 h-6 flex items-center justify-center mx-auto text-xs">
-                            {submission.questionCount}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="align-top py-2.5">
-                          <div className="flex flex-col text-xs">
-                            <span className="font-medium text-gray-900">
-                              {(() => {
-                                try {
-                                  return new Date(submission.submittedAt).toLocaleDateString('id-ID', {
-                                    day: 'numeric',
-                                    month: 'numeric',
-                                    year: '2-digit'
-                                  });
-                                } catch (e) {
-                                  return '-';
-                                }
-                              })()}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {(() => {
-                                try {
-                                  return new Date(submission.submittedAt).toLocaleTimeString('id-ID', {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  });
-                                } catch (e) {
-                                  return '';
-                                }
-                              })()}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="align-top py-2.5">
-                          <div className="relative">
-                            <select
-                              className={`appearance-none w-full pl-2 pr-6 py-1 text-xs font-medium rounded border-0 cursor-pointer transition-all focus:ring-1 focus:ring-offset-0 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 hover:bg-red-200 focus:ring-red-500' :
-                                submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 focus:ring-blue-500' :
-                                  submission.status === 'scheduling' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200 focus:ring-purple-500' :
-                                    submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 focus:ring-indigo-500' :
-                                      submission.status === 'completed' ? 'bg-green-100 text-green-700 hover:bg-green-200 focus:ring-green-500' :
-                                        'bg-gray-100 text-gray-800'
-                                }`}
-                              value={submission.status || 'in_review'}
-                              onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
-                            >
-                              <option value="spam">Spam</option>
-                              <option value="in_review">In Review</option>
-                              <option value="scheduling">Scheduling</option>
-                              <option value="publishing">Publishing</option>
-                              <option value="completed">Completed</option>
-                            </select>
-                            <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 ${submission.status === 'spam' ? 'text-red-600' :
-                              submission.status === 'in_review' ? 'text-blue-600' :
-                                submission.status === 'scheduling' ? 'text-purple-600' :
-                                  submission.status === 'publishing' ? 'text-indigo-600' :
-                                    submission.status === 'completed' ? 'text-green-600' :
-                                      'text-gray-500'
-                              }`}>
-                              <svg className="h-3 w-3 fill-current" viewBox="0 0 20 20">
-                                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                              </svg>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="align-top py-2.5">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${submission.payment_status?.toLowerCase() === 'paid'
-                            ? 'bg-green-50 text-green-700 border-green-200'
-                            : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                            }`}>
-                            {submission.payment_status === 'paid' ? 'Paid' : 'Pending'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="align-top py-2.5">
-                          {submission.payment_status?.toLowerCase() === 'paid' ? (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2 border-dashed text-[10px]"
-                                onClick={() => handleOpenPublishModal(submission)}
-                              >
-                                <Calendar className="w-3 h-3 mr-1" />
-                                {submission.status === 'publishing' ? 'Extend' : 'Publish'}
-                              </Button>
-                              {submission.status === 'publishing' && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() => handleRemoveAds(submission.id)}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="align-top py-2.5">
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="default"
-                              size="icon"
-                              className="h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white"
-                              onClick={() => {
-                                setSelectedSubmission(submission);
-                                setIsInvoiceModalOpen(true);
-                              }}
-                              title="Create Invoice"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </Button>
 
-                            <CopyInvoiceDropdown
-                              formSubmissionId={submission.id}
-                              refreshTrigger={invoiceRefreshTrigger}
-                              isCompact={true}
-                            />
-                          </div>
+                        {/* Ad Publishing (New Column) */}
+                        <TableCell className="align-top py-4 text-right pr-6">
+                          <Button
+                            variant={submission.status === 'scheduling' ? 'default' : 'outline'}
+                            size="sm"
+                            className={`
+                                w-full text-xs font-medium shadow-sm transition-all
+                                ${submission.status === 'scheduling'
+                                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                : 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200'}
+                              `}
+                            onClick={() => {
+                              setSelectedSubmissionForAds(submission);
+                              setIsPublishModalOpen(true);
+                            }}
+                          >
+                            <Calendar className={`w-3.5 h-3.5 mr-1.5 ${submission.status === 'scheduling' ? 'text-white/90' : 'text-gray-400'}`} />
+                            Schedule
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -687,7 +798,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
             {/* Mobile Card View - shown only on mobile */}
             <div className="md:hidden space-y-4">
-              {filteredSubmissions.map((submission, index) => (
+              {filteredSubmissions.map((submission) => (
                 <Card key={submission.id} className="border-gray-200 shadow-sm overflow-hidden">
                   <div className="p-4 space-y-4">
                     {/* Header */}
@@ -719,11 +830,26 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         <p className="font-medium text-gray-900 text-sm">{submission.researcherName}</p>
                         <p className="text-xs text-gray-500">{submission.researcherEmail}</p>
                       </div>
+                    </div>
+
+                    {/* Mobile Stats & Status Rows */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Date</p>
+                        <p className="text-sm text-gray-900">{new Date(submission.submittedAt).toLocaleDateString()}</p>
+                      </div>
                       <div className="text-right pl-4 border-l border-gray-100">
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Items</p>
-                        <Badge variant="secondary" className="bg-blue-50 text-blue-700">
-                          {submission.questionCount} Qs
-                        </Badge>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                            {submission.questionCount} Qs
+                          </Badge>
+                          {submission.duration ? (
+                            <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-blue-600 bg-blue-50 border-blue-100">
+                              {submission.duration} Days
+                            </Badge>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
 
@@ -740,7 +866,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                     'bg-gray-100 text-gray-800'
                             }`}
                           value={submission.status || 'in_review'}
-                          onChange={(e) => handleStatusChange(submission.id, e.target.value, index)}
+                          onChange={(e) => handleStatusChange(submission.id, e.target.value)}
                         >
                           <option value="spam" className="bg-white text-gray-900">Spam</option>
                           <option value="in_review" className="bg-white text-gray-900">In Review</option>
@@ -762,6 +888,28 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             </Badge>
                           )}
                         </div>
+
+                        {/* Ad Cost Mobile */}
+                        {submission.duration && submission.duration > 0 && (
+                          <div className="flex flex-col gap-0.5 mt-2 pt-2 border-t border-dashed border-gray-200">
+                            <span className="text-[10px] text-gray-500 uppercase font-medium">Ad Cost</span>
+                            <div className="text-[10px] text-gray-600">
+                              {(() => {
+                                const { dailyRate, totalAdCost } = calculateAdCost(submission.questionCount, submission.duration);
+                                return (
+                                  <>
+                                    <span>{new Intl.NumberFormat('id-ID').format(dailyRate)}/day</span>
+                                    <span className="mx-1">x</span>
+                                    <span>{submission.duration}d</span>
+                                    <div className="font-semibold text-gray-900 mt-0.5">
+                                      = Rp {new Intl.NumberFormat('id-ID').format(totalAdCost)}
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -811,17 +959,26 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       }
 
       {/* Publish Ads Modal */}
-      {selectedSubmissionForAds && (
-        <PublishAdsModal
-          isOpen={isPublishModalOpen}
-          onClose={handleClosePublishModal}
-          submission={selectedSubmissionForAds as any} // Cast because wrapper types slightly differ but core fields match
-          onSuccess={() => {
-            loadSubmissions(); // Refresh table to show updated status
-            handleClosePublishModal();
-          }}
-        />
-      )}
+      {
+        selectedSubmissionForAds && (
+          <PublishAdsModal
+            isOpen={isPublishModalOpen}
+            onClose={handleClosePublishModal}
+            submission={selectedSubmissionForAds as any} // Cast because wrapper types slightly differ but core fields match
+            onSuccess={() => {
+              loadSubmissions(); // Refresh table to show updated status
+              handleClosePublishModal();
+            }}
+          />
+        )
+      }
+
+      <EditCriteriaModal
+        isOpen={isEditCriteriaModalOpen}
+        onClose={handleCloseEditCriteriaModal}
+        submission={selectedSubmissionForCriteria}
+        onUpdate={handleCriteriaUpdated}
+      />
     </div >
   );
 }
