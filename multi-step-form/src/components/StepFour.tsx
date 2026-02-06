@@ -132,6 +132,22 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         return;
       }
 
+      // Kirim email notifikasi ke user (Async - tidak memblokir flow utama)
+      try {
+        fetch('/api/send-submission-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.fullName || 'Kak',
+            email: formData.email
+          })
+        }).then(res => res.json())
+          .then(data => console.log('Email sent response:', data))
+          .catch(err => console.error('Failed to send email:', err));
+      } catch (e) {
+        console.error('Error initiating email send:', e);
+      }
+
       // Jika form diisi secara manual, bukan Google Form, atau memiliki personal data questions, redirect ke halaman submit-success
       if (isManualForm || formData.hasPersonalDataQuestions) {
         const reasonForReview = formData.hasPersonalDataQuestions

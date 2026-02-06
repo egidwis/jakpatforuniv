@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+
 import { getAllChatSessions, getChatMessages, type ChatSession, type ChatMessage } from '@/utils/supabase';
 import { MessageSquare, User, Calendar, Loader2 } from 'lucide-react';
 
@@ -25,6 +25,18 @@ export function ConversationsPage() {
     const handleSelectSession = async (sessionId: string) => {
         setSelectedSessionId(sessionId);
         setIsLoadingMessages(true);
+
+        // Mark as read in local storage
+        const now = Date.now();
+        const prevRead = localStorage.getItem(`chat_viewed_${sessionId}`);
+
+        // Only update and dispatch if there was a change (optimization)
+        if (!prevRead || parseInt(prevRead) < now) {
+            localStorage.setItem(`chat_viewed_${sessionId}`, now.toString());
+            // Dispatch event to update sidebar badge
+            window.dispatchEvent(new Event('chat-session-viewed'));
+        }
+
         const msgs = await getChatMessages(sessionId);
         setMessages(msgs);
         setIsLoadingMessages(false);

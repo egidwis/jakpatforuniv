@@ -8,6 +8,7 @@ import { DemographyPage } from './DemographyPage';
 import { ConversationsPage } from './ConversationsPage';
 import { SchedulingPage } from '../pages/dashboard/SchedulingPage';
 import { useAuth } from '../context/AuthContext';
+import { getAllChatSessions } from '../utils/supabase';
 
 type Page = 'submissions' | 'transactions' | 'demography' | 'conversations' | 'scheduling';
 
@@ -17,6 +18,53 @@ export function InternalDashboardWithLayout() {
 
   const [currentPage, setCurrentPage] = useState<Page>('submissions');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [unreadConversations, setUnreadConversations] = useState(0);
+
+  // Function to calculate unread conversations
+  const checkUnreadConversations = async () => {
+    try {
+      const sessions = await getAllChatSessions();
+      let unread = 0;
+
+      sessions.forEach(session => {
+        const lastViewed = localStorage.getItem(`chat_viewed_${session.id}`);
+        const lastMessageTime = new Date(session.last_message_at).getTime();
+        const createdTime = new Date(session.created_at).getTime();
+        const lastViewedTime = lastViewed ? parseInt(lastViewed) : 0;
+
+        // Heuristic: If last_message_at is very close to created_at (e.g. within 2 seconds), 
+        // it means the session was just created and likely has no messages yet.
+        // We only want to notify if there is *activity* (messages sent).
+        const isJustCreated = Math.abs(lastMessageTime - createdTime) < 2000;
+
+        // If message is newer than last view AND it's not just an empty session creation
+        if (lastMessageTime > lastViewedTime && !isJustCreated) {
+          unread++;
+        }
+      });
+
+      setUnreadConversations(unread);
+    } catch (error) {
+      console.error('Failed to check unread conversations', error);
+    }
+  };
+
+  useEffect(() => {
+    // Check initial count
+    checkUnreadConversations();
+
+    // Listen for read events from ConversationsPage
+    const handleReadEvent = () => checkUnreadConversations();
+    window.addEventListener('chat-session-viewed', handleReadEvent);
+
+    // Optional: Polling every minute to check for new messages
+    const interval = setInterval(checkUnreadConversations, 60000);
+
+    return () => {
+      window.removeEventListener('chat-session-viewed', handleReadEvent);
+      clearInterval(interval);
+    };
+  }, []);
 
   // Media query untuk detect desktop (md breakpoint = 768px)
   const isDesktop = useMediaQuery('(min-width: 768px)');
@@ -145,14 +193,26 @@ export function InternalDashboardWithLayout() {
                 key={item.id}
                 onClick={() => handlePageChange(item.id)}
                 className={cn(
-                  'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                  'w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors', // Changed to justify-between
                   isActive
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                 )}
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                <div className="flex items-center gap-3">
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </div>
+                {item.id === 'conversations' && unreadConversations > 0 && (
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                    isActive
+                      ? "bg-white text-blue-600"
+                      : "bg-red-500 text-white"
+                  )}>
+                    {unreadConversations > 99 ? '99+' : unreadConversations}
+                  </span>
+                )}
               </button>
             );
           })}
