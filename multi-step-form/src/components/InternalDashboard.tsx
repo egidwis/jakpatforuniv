@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Zap, PenLine, ShieldAlert, GraduationCap } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Zap, PenLine, ShieldAlert, Info } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, supabase } from '../utils/supabase';
+import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
@@ -25,6 +26,10 @@ import { CreateInvoiceModal } from './CreateInvoiceModal';
 import { CopyInvoiceDropdown } from './CopyInvoiceDropdown';
 import { PublishAdsModal } from './PublishAdsModal';
 import { EditCriteriaModal } from './EditCriteriaModal';
+import { EditFormDetailsModal } from './EditFormDetailsModal';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import './InternalDashboard.css';
 
 interface SurveySubmission {
@@ -52,6 +57,7 @@ interface SurveySubmission {
   winnerCount?: number;
   criteria?: string;
   duration?: number;
+  admin_notes?: string;
 }
 
 interface InternalDashboardProps {
@@ -65,11 +71,13 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [filteredSubmissions, setFilteredSubmissions] = useState<SurveySubmission[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(50); // Default 50 items per page
   const [totalSubmissions, setTotalSubmissions] = useState(0);
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   // Login State
   const [emailInput, setEmailInput] = useState('');
@@ -88,17 +96,51 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [isEditCriteriaModalOpen, setIsEditCriteriaModalOpen] = useState(false);
   const [selectedSubmissionForCriteria, setSelectedSubmissionForCriteria] = useState<SurveySubmission | null>(null);
 
+  // Edit Form Details Modal State
+  const [isEditFormDetailsModalOpen, setIsEditFormDetailsModalOpen] = useState(false);
+  const [selectedSubmissionForDetails, setSelectedSubmissionForDetails] = useState<SurveySubmission | null>(null);
+
+  // Rejection Dialog State
+  const [isRejectionDialogOpen, setIsRejectionDialogOpen] = useState(false);
+  const [selectedSubmissionForRejection, setSelectedSubmissionForRejection] = useState<SurveySubmission | null>(null);
+  const [rejectionNote, setRejectionNote] = useState('');
+
   // Admin Access Check
   // STRICT: Only product@jakpat.net is allowed
   const allowedEmails = ['product@jakpat.net'];
   const isAdmin = (user?.email && allowedEmails.includes(user.email)) ||
     hideAuth; // Trust parent if hideAuth is true
 
+
+
+  // Filter Submissions Effect
   useEffect(() => {
-    if (isAdmin) {
-      loadSubmissions();
+    let result = submissions;
+
+    // Filter by Status
+    if (statusFilter !== 'all') {
+      result = result.filter(sub => {
+        if (statusFilter === 'spam') return sub.status === 'spam';
+        if (statusFilter === 'rejected') return sub.status === 'rejected';
+        if (statusFilter === 'approved') return sub.status === 'approved';
+        if (statusFilter === 'in_review') return sub.status === 'in_review';
+        if (statusFilter === 'paid') return (sub.payment_status || '').toLowerCase() === 'paid';
+        return true;
+      });
     }
-  }, [isAdmin, currentPage, searchQuery]);
+
+    setFilteredSubmissions(result);
+  }, [submissions, statusFilter]);
+
+  // Calculate Status Counts
+  const statusCounts = {
+    all: submissions.length,
+    in_review: submissions.filter(s => s.status === 'in_review').length,
+    rejected: submissions.filter(s => s.status === 'rejected').length,
+    approved: submissions.filter(s => s.status === 'approved').length,
+    paid: submissions.filter(s => (s.payment_status || '').toLowerCase() === 'paid').length,
+    spam: submissions.filter(s => s.status === 'spam').length,
+  };
 
   // Client-side search logic removed in favor of Server-side search inside loadSubmissions
   // Reset page to 1 when search changes
@@ -117,8 +159,19 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const loadSubmissions = async () => {
     setLoading(true);
     try {
-      // Use paginated fetch
-      const { data, count } = await getFormSubmissionsPaginated(currentPage, pageSize, searchQuery);
+      // Calculate start and end of selected month
+      const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+      endOfMonth.setHours(23, 59, 59, 999);
+
+      // Use paginated fetch with date range
+      const { data, count } = await getFormSubmissionsPaginated(
+        currentPage,
+        pageSize,
+        searchQuery,
+        startOfMonth.toISOString(),
+        endOfMonth.toISOString()
+      );
 
       if (data) {
         const transformed: SurveySubmission[] = data.map((sub: any) => ({
@@ -146,10 +199,11 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           prize_per_winner: sub.prize_per_winner,
           winnerCount: sub.winner_count,
           criteria: sub.criteria_responden,
-          duration: sub.duration || 0,
+          duration: sub.duration,
+          admin_notes: sub.admin_notes,
         }));
         setSubmissions(transformed);
-        setFilteredSubmissions(transformed); // Since handle search handles querying, these are same
+        // Initial filter application handled by useEffect or derivation
         setTotalSubmissions(count || 0);
       }
     } catch (error) {
@@ -160,15 +214,36 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
   };
 
+  useEffect(() => {
+    if (isAdmin) {
+      loadSubmissions();
+    }
+  }, [isAdmin, currentPage, searchQuery, currentDate]);
+
   const handleStatusChange = async (submissionId: string, newStatus: string) => {
+    // Intercept 'rejected' status
+    if (newStatus === 'rejected') {
+      const submission = submissions.find(s => s.id === submissionId);
+      if (submission) {
+        setSelectedSubmissionForRejection(submission);
+        setRejectionNote(submission.admin_notes || ''); // Pre-fill if exists
+        setIsRejectionDialogOpen(true);
+      }
+      return;
+    }
+
+    await executeStatusUpdate(submissionId, newStatus);
+  };
+
+  const executeStatusUpdate = async (submissionId: string, newStatus: string, notes?: string) => {
     try {
-      await updateFormStatus(submissionId, newStatus);
+      await updateFormStatus(submissionId, newStatus, notes);
 
       const updateState = (prev: SurveySubmission[]) =>
-        prev.map(s => s.id === submissionId ? { ...s, status: newStatus } : s);
+        prev.map(s => s.id === submissionId ? { ...s, status: newStatus, admin_notes: notes !== undefined ? notes : s.admin_notes } : s);
 
       setSubmissions(updateState);
-      setFilteredSubmissions(updateState);
+      // filteredSubmissions will be updated by useEffect
 
       toast.success('Status updated successfully');
     } catch (error) {
@@ -177,17 +252,25 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
   };
 
+  const confirmRejection = async () => {
+    if (!selectedSubmissionForRejection) return;
+
+    // Notes are optional, but recommended for rejection
+    await executeStatusUpdate(selectedSubmissionForRejection.id, 'rejected', rejectionNote);
+
+    setIsRejectionDialogOpen(false);
+    setSelectedSubmissionForRejection(null);
+    setRejectionNote('');
+  };
+
   const calculateAdCost = (questionCount: number, duration: number) => {
-    let dailyRate = 0;
-    if (questionCount <= 15) dailyRate = 150000;
-    else if (questionCount <= 30) dailyRate = 200000;
-    else if (questionCount <= 50) dailyRate = 300000;
-    else if (questionCount <= 70) dailyRate = 400000;
-    else dailyRate = 500000;
+    // Using utility function for consistency
+    const totalAdCost = calculateTotalAdCost(questionCount, duration);
+    const dailyRate = duration > 0 ? totalAdCost / duration : 0;
 
     return {
       dailyRate,
-      totalAdCost: dailyRate * duration
+      totalAdCost
     };
   };
 
@@ -225,6 +308,20 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     loadSubmissions();
   };
 
+  const handleOpenEditFormDetailsModal = (submission: SurveySubmission) => {
+    setSelectedSubmissionForDetails(submission);
+    setIsEditFormDetailsModalOpen(true);
+  };
+
+  const handleCloseEditFormDetailsModal = () => {
+    setIsEditFormDetailsModalOpen(false);
+    setSelectedSubmissionForDetails(null);
+  };
+
+  const handleFormDetailsUpdated = () => {
+    loadSubmissions();
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -233,7 +330,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     );
   }
 
-  // Not Logged In -> Show Login Screen
+
   if (!user && !hideAuth) {
     const handleEmailLogin = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -312,7 +409,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
           <p className="text-gray-600 mb-6">
-            Your email ({user?.email}) is not authorized to access the Internal Dashboard.
+            Your email ({user ? user.email : 'Unknown'}) is not authorized to access the Internal Dashboard.
           </p>
           <Button onClick={handleLogout} variant="destructive">
             Log Out
@@ -366,46 +463,113 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
       {/* Content */}
       <div className={hideAuth ? 'p-4 md:px-6 md:py-4' : 'max-w-[1400px] mx-auto px-4 sm:px-6 py-6'}>
-        {/* Toolbar - Search & Actions */}
-        <div className="flex items-center justify-between gap-4 mb-6 bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100">
-          {/* Left: Search */}
-          <div className="flex-1 max-w-3xl relative min-w-0">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="Search by ID, Title, or Researcher..."
-              className="w-full pl-10 bg-white border-gray-200 focus:border-blue-500 transition-all h-9"
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-            />
+
+        {/* Unified Toolbar Container */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex flex-col gap-4">
+
+          {/* Top Row: Month Selector & Search */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {/* Left: Month Selector */}
+            <div className="flex items-center gap-3 bg-gray-50/80 p-1.5 rounded-lg border border-gray-200/50">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 hover:bg-white hover:shadow-sm"
+                onClick={() => {
+                  const newDate = new Date(currentDate);
+                  newDate.setMonth(newDate.getMonth() - 1);
+                  setCurrentDate(newDate);
+                  setCurrentPage(1);
+                }}
+              >
+                <ChevronLeft className="h-4 w-4 text-gray-600" />
+              </Button>
+              <h2 className="text-sm font-semibold min-w-[140px] text-center text-gray-700 select-none">
+                {currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 hover:bg-white hover:shadow-sm"
+                onClick={() => {
+                  const newDate = new Date(currentDate);
+                  newDate.setMonth(newDate.getMonth() - 1);
+                  setCurrentDate(newDate);
+                  setCurrentPage(1);
+                }}
+              >
+                <ChevronRight className="h-4 w-4 text-gray-600" />
+              </Button>
+            </div>
+
+            {/* Right: Search */}
+            <div className="flex-1 min-w-[300px] max-w-md relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search..."
+                className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+              />
+            </div>
           </div>
 
-          {/* Right: Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              onClick={loadSubmissions}
-              variant="outline"
-              size="sm"
-              disabled={loading}
-              className="h-9 w-9 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
-              title="Refresh data"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
+          <div className="h-px bg-gray-100 w-full" />
 
-            {/* Filter placeholder */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 w-9 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
-              title="Filter (Coming Soon)"
-            >
-              <div className="w-4 h-4 flex flex-col justify-center gap-0.5 items-center">
-                <div className="w-3 h-0.5 bg-current rounded-full"></div>
-                <div className="w-2 h-0.5 bg-current rounded-full"></div>
-                <div className="w-1 h-0.5 bg-current rounded-full"></div>
-              </div>
-            </Button>
+          {/* Bottom Row: Filters & Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+
+            {/* Status Filters */}
+            <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
+              {[
+                { id: 'all', label: 'All', count: statusCounts.all, color: 'bg-gray-100 text-gray-700' },
+                { id: 'in_review', label: 'Need Review', count: statusCounts.in_review, color: 'bg-blue-50 text-blue-700' },
+                { id: 'rejected', label: 'Rejected', count: statusCounts.rejected, color: 'bg-red-50 text-red-700' },
+                { id: 'approved', label: 'Approved', count: statusCounts.approved, color: 'bg-green-50 text-green-700' },
+                { id: 'paid', label: 'Paid', count: statusCounts.paid, color: 'bg-emerald-50 text-emerald-700' },
+                { id: 'spam', label: 'Revision / Spam', count: statusCounts.spam, color: 'bg-orange-50 text-orange-700' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setStatusFilter(tab.id)}
+                  className={`
+                    flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap
+                    ${statusFilter === tab.id
+                      ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-200'
+                      : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-900'}
+                  `}
+                >
+                  {tab.label}
+                  {/* Only show counter for 'Need Review' and 'Rejected' */}
+                  {['in_review', 'rejected'].includes(tab.id) && (
+                    <span className={`
+                      px-1.5 py-0.5 rounded-md text-[10px] font-bold min-w-[18px] text-center
+                      ${statusFilter === tab.id
+                        ? 'bg-white/20 text-white'
+                        : tab.color}
+                    `}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 shrink-0 ml-auto">
+              {/* ... other code ... */}
+              <Button
+                onClick={loadSubmissions}
+                variant="outline"
+                size="sm"
+                disabled={loading}
+                className="h-8 w-8 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
+                title="Refresh data"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -467,31 +631,53 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       <TableRow key={submission.id} className="hover:bg-gray-50/50 transition-colors group">
                         {/* Form Details */}
                         <TableCell className="align-top py-4">
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-1.5">
                             <div>
-                              <span className="font-semibold text-gray-900 block mb-0.5 line-clamp-2" title={submission.formTitle}>
-                                {submission.formTitle}
-                              </span>
-                              <div className="flex items-center gap-2 text-xs text-gray-500">
-                                {submission.formUrl && (
-                                  <a
-                                    href={submission.formUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-1 hover:text-blue-600 transition-colors bg-gray-100 px-1.5 py-0.5 rounded"
-                                    title="Open Survey Link"
-                                  >
-                                    {submission.formId.substring(0, 8)}...
-                                    <Eye className="h-3 w-3" />
-                                  </a>
-                                )}
+                              <div className="flex items-start justify-between gap-2 group relative">
+                                <div className="flex-1 min-w-0 pr-6">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="font-semibold text-gray-900 block mb-0.5 line-clamp-2 text-sm leading-tight cursor-help decoration-dotted decoration-gray-300 underline-offset-2 hover:underline">
+                                          {submission.formTitle}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>ID: {submission.formId}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+
+                                  {submission.formUrl && (
+                                    <a
+                                      href={submission.formUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline decoration-blue-300 underline-offset-2 transition-colors mt-0.5"
+                                      title="Open Survey Link"
+                                    >
+                                      View Survey
+                                      <Eye className="h-3 w-3 ml-0.5" />
+                                    </a>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => handleOpenEditFormDetailsModal(submission)}
+                                  title="Edit Form Details"
+                                >
+                                  <PenLine className="h-3.5 w-3.5" />
+                                </Button>
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap gap-1.5">
+                            {/* Chips Row: Method, Qs, Duration */}
+                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
                               {/* Method Badge */}
                               <Badge variant="secondary" className={`
-                                px-1.5 py-0 text-[10px] font-medium border
+                                px-1.5 py-0 h-5 text-[10px] font-medium border rounded-md whitespace-nowrap
                                 ${submission.submission_method === 'google_import'
                                   ? 'bg-orange-50 text-orange-700 border-orange-200'
                                   : 'bg-indigo-50 text-indigo-700 border-indigo-200'}
@@ -499,15 +685,24 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
                               </Badge>
 
-                              {/* Sensitive Badge */}
+                              {/* Question Count Chip */}
+                              <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-md whitespace-nowrap">
+                                {submission.questionCount} Qs
+                              </Badge>
+
+                              {/* Duration Chip */}
+                              {submission.duration ? (
+                                <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-md whitespace-nowrap">
+                                  {submission.duration} Days
+                                </Badge>
+                              ) : null}
+
+                              {/* Sensitive Badge Icon */}
                               {(submission.detected_keywords && submission.detected_keywords.length > 0) && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Badge variant="destructive" className="px-1.5 py-0 text-[10px] font-medium bg-red-50 text-red-700 border-red-200 border cursor-help">
-                                        <ShieldAlert className="w-3 h-3 mr-1" />
-                                        Sensitive
-                                      </Badge>
+                                      <ShieldAlert className="w-3.5 h-3.5 text-red-500 cursor-help" />
                                     </TooltipTrigger>
                                     <TooltipContent>
                                       <p>Detected: {submission.detected_keywords.join(', ')}</p>
@@ -515,126 +710,135 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                   </Tooltip>
                                 </TooltipProvider>
                               )}
-
-                              {/* Question Count */}
-                              <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-gray-500 border-gray-200">
-                                {submission.questionCount} Qs
-                              </Badge>
-
-                              {/* Duration */}
-                              {submission.duration ? (
-                                <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-blue-600 bg-blue-50 border-blue-100">
-                                  {submission.duration} Days
-                                </Badge>
-                              ) : null}
                             </div>
 
-                            {/* Ad Cost Breakdown */}
-                            {submission.duration && submission.duration > 0 && (
-                              <div className="flex flex-col gap-0.5 mt-1 border-t border-dashed border-gray-200 pt-1">
-                                <span className="text-[10px] text-gray-500 uppercase font-medium">Est. Ad Cost</span>
-                                <div className="text-[10px] text-gray-600">
-                                  {(() => {
-                                    const { dailyRate, totalAdCost } = calculateAdCost(submission.questionCount, submission.duration);
-                                    return (
-                                      <>
-                                        <span>{new Intl.NumberFormat('id-ID').format(dailyRate)}/day</span>
-                                        <span className="mx-1">x</span>
-                                        <span>{submission.duration}d</span>
-                                        <div className="font-semibold text-gray-900 mt-0.5">
-                                          = Rp {new Intl.NumberFormat('id-ID').format(totalAdCost)}
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
+                            {/* Total Ad Cost & Voucher */}
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              {submission.duration && submission.duration > 0 && (
+                                <div className="text-xs text-gray-900 font-medium whitespace-nowrap">
+                                  <span className="text-gray-400 font-normal mr-1">Est:</span>
+                                  Rp {new Intl.NumberFormat('id-ID').format(calculateAdCost(submission.questionCount, submission.duration).totalAdCost)}
                                 </div>
-                              </div>
-                            )}
+                              )}
+
+                              {/* Voucher Info (Moved from Payment Column) */}
+                              {submission.voucher_code && (
+                                <div className="flex items-center gap-1.5 animate-in slide-in-from-left-2 fade-in duration-300">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-1 text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 cursor-help hover:bg-purple-100 transition-colors">
+                                          <Zap className="w-3 h-3 fill-purple-600" />
+                                          <span>{submission.voucher_code}</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <div className="space-y-1 text-xs">
+                                          <p className="font-semibold text-purple-700">Voucher Applied</p>
+                                          <p>Discount: <span className="font-bold text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(
+                                            calculateDiscount(
+                                              submission.voucher_code,
+                                              calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0)
+                                            )
+                                          )}</span></p>
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
 
                         {/* Criteria & Incentive */}
                         <TableCell className="align-top py-4">
-                          <div className="flex flex-col gap-1.5">
+                          <div className="flex flex-col gap-2">
                             {submission.criteria ? (
-                              <div className="text-xs text-gray-700 bg-gray-50 px-2 py-1.5 rounded border border-gray-100 max-w-[200px] whitespace-pre-wrap">
-                                {submission.criteria}
+                              <div className="relative group/criteria">
+                                <p className="text-xs text-gray-600 line-clamp-3 mb-1 pr-6" title={submission.criteria}>
+                                  {submission.criteria || '-'}
+                                </p>
+
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover/criteria:opacity-100 transition-opacity bg-white/80"
+                                  onClick={() => handleOpenEditCriteriaModal(submission)}
+                                  title="Edit Criteria"
+                                >
+                                  <PenLine className="h-3.5 w-3.5" />
+                                </Button>
                               </div>
                             ) : (
-                              <div className="text-xs text-gray-400 italic">Target not set</div>
+                              <div className="flex items-center justify-between text-xs text-gray-400 italic bg-gray-50 px-2 py-1.5 rounded border border-dashed border-gray-200">
+                                <span>Target not set</span>
+                                <button
+                                  onClick={() => handleOpenEditCriteriaModal(submission)}
+                                  className="text-blue-600 hover:text-blue-700"
+                                >
+                                  <PenLine className="w-3 h-3" />
+                                </button>
+                              </div>
                             )}
+
                             {submission.prize_per_winner ? (
-                              <div className="flex flex-col gap-1">
-                                <div className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded w-fit border border-emerald-100">
-                                  Rp {submission.prize_per_winner.toLocaleString('id-ID')} / user
+                              <div className="mt-2">
+                                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                  <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium rounded-md whitespace-nowrap">
+                                    Rp {submission.prize_per_winner.toLocaleString('id-ID')}
+                                  </Badge>
+                                  <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-md whitespace-nowrap">
+                                    {submission.winnerCount || 0} user
+                                  </Badge>
                                 </div>
-                                {submission.winnerCount && submission.winnerCount > 0 && (
-                                  <div className="flex flex-col gap-0.5">
-                                    <div className="text-[10px] text-gray-500 font-medium">
-                                      x {submission.winnerCount} Winners
-                                    </div>
-                                    <div className="text-xs font-bold text-gray-900">
-                                      Total: Rp {((submission.prize_per_winner || 0) * submission.winnerCount).toLocaleString('id-ID')}
-                                    </div>
-                                  </div>
-                                )}
+
+                                <div className="text-xs text-gray-900 font-medium">
+                                  <span className="text-gray-400 font-normal mr-1">Total:</span>
+                                  Rp {((submission.prize_per_winner || 0) * (submission.winnerCount || 0)).toLocaleString('id-ID')}
+                                </div>
                               </div>
                             ) : (
-                              <div className="text-xs text-gray-400 border border-dashed border-gray-300 px-2 py-1 rounded w-fit">
+                              <div className="text-[10px] text-gray-400 italic mt-1">
                                 No incentive
                               </div>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-[10px] text-blue-600 hover:text-blue-700 hover:bg-blue-50 w-fit px-2 -ml-2"
-                              onClick={() => handleOpenEditCriteriaModal(submission)}
-                            >
-                              <PenLine className="w-3 h-3 mr-1" /> Edit Criteria
-                            </Button>
                           </div>
                         </TableCell>
 
                         {/* Researcher */}
                         <TableCell className="align-top py-4">
-                          <div className="flex flex-col gap-3">
-                            {/* Personal Info */}
-                            <div className="flex items-start gap-3">
-                              <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                                {submission.researcherName.charAt(0).toUpperCase()}
-                              </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="text-sm font-medium text-gray-900">{submission.researcherName}</span>
-                                <div className="flex flex-col text-xs text-gray-500 gap-0.5">
-                                  <span className="truncate" title={submission.researcherEmail}>{submission.researcherEmail}</span>
-                                  {submission.phone_number && (
-                                    <a
-                                      href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-green-600 hover:underline flex items-center gap-1 w-fit"
-                                    >
-                                      {submission.phone_number}
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-semibold text-gray-900 leading-tight">
+                              {submission.researcherName}
+                            </span>
 
-                            {/* Academic Info */}
-                            <div className="bg-gray-50 p-2 rounded border border-gray-100 text-xs text-gray-600 space-y-1">
-                              <div className="flex items-center gap-2">
-                                <GraduationCap className="h-3.5 w-3.5 text-gray-400" />
-                                <span className="font-medium text-gray-700">{submission.education || 'Researcher'}</span>
-                              </div>
+                            <div className="flex flex-col text-xs text-gray-500 gap-0.5 mt-0.5">
+                              {/* Subtitle Details */}
+                              <span className="truncate text-[10px] text-gray-400" title={submission.researcherEmail}>
+                                {submission.researcherEmail}
+                              </span>
+
+                              {submission.phone_number && (
+                                <a
+                                  href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-green-600 hover:underline w-fit"
+                                >
+                                  {submission.phone_number}
+                                </a>
+                              )}
+
                               {(submission.university || submission.department) && (
-                                <div className="pl-[22px]">
-                                  <div className="text-gray-900">{submission.university}</div>
-                                  <div className="text-gray-500 italic">{submission.department}</div>
+                                <div className="text-[10px] text-gray-500 italic mt-1 pt-1 border-t border-gray-100 leading-tight">
+                                  {submission.university && <div>{submission.university}</div>}
+                                  {submission.department && <div className="text-gray-400">{submission.department}</div>}
                                 </div>
                               )}
+
                               {submission.leads && (
-                                <div className="pt-1 mt-1 border-t border-gray-200 text-[10px] text-gray-400">
+                                <div className="text-[10px] text-gray-400 mt-0.5">
                                   Lead: {submission.leads}
                                 </div>
                               )}
@@ -669,36 +873,68 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                           'bg-gray-100 text-gray-700 border-gray-200'}
                                   `}
                                 >
-                                  {submission.status?.replace('_', ' ') || 'Pending'}
+                                  {submission.status === 'in_review' ? 'Need Review' : (submission.status?.replace('_', ' ') || 'Pending')}
                                 </Badge>
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
                               <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'in_review')}>
-                                In Review
+                                Need Review
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'approved')}>
                                 Approved
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600">
+                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600 focus:text-red-600 focus:bg-red-50">
                                 Rejected
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
-                                Spam
+                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')}>
+                                Spam / Revision
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+
+                          {/* Admin Notes Display */}
+                          {submission.status === 'rejected' && submission.admin_notes && (
+                            <TooltipProvider>
+                              <Tooltip delayDuration={300}>
+                                <TooltipTrigger asChild>
+                                  <div className="mt-1.5 flex items-start gap-1 text-xs text-red-600 bg-red-50 p-1.5 rounded border border-red-100 max-w-[200px] cursor-help transition-colors hover:bg-red-100">
+                                    <Info className="w-3 h-3 shrink-0 mt-0.5" />
+                                    <span className="line-clamp-2 text-left">
+                                      {submission.admin_notes}
+                                    </span>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[400px] bg-white p-3 shadow-xl border-red-100 text-slate-700">
+                                  <p className="font-semibold text-xs text-red-600 mb-1">Rejection Reason:</p>
+                                  <p className="text-sm leading-relaxed">{submission.admin_notes}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </TableCell>
 
                         {/* Payment */}
                         <TableCell className="align-top py-4">
-                          {/* Cost & Status */}
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-1.5">
+                            {/* Row 1: Amount & Status Badge */}
+                            <div className="flex items-center justify-between gap-2">
+                              {/* Grand Total - Prominent (Matching Form Title Style) */}
+                              <span className={`text-sm font-bold whitespace-nowrap ${submission.payment_status === 'paid' ? 'text-green-700' : 'text-gray-900'}`}>
+                                {(() => {
+                                  const adCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
+                                  const incentive = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
+                                  const discount = calculateDiscount(submission.voucher_code, adCost);
+                                  const total = adCost + incentive - discount;
+                                  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(total);
+                                })()}
+                              </span>
+
+                              {/* Status Badge - Chip Style (Matching Form Details Chips) */}
                               <Badge
                                 variant="outline"
                                 className={`
-                                      w-fit px-1.5 py-0.5 text-[10px] uppercase tracking-wide border
+                                      h-5 px-1.5 py-0 text-[10px] uppercase tracking-wide border font-semibold rounded-md whitespace-nowrap
                                       ${submission.payment_status === 'paid' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}
                                     `}
                               >
@@ -706,26 +942,12 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               </Badge>
                             </div>
 
-                            {(submission.total_cost || 0) > 0 && (
-                              <span className="text-sm font-bold text-gray-900">
-                                {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(submission.total_cost || 0)}
-                              </span>
-                            )}
-
-                            {/* Referral Code (Voucher) */}
-                            {submission.voucher_code && (
-                              <div className="flex items-center gap-1.5 bg-purple-50 px-2 py-1 rounded border border-purple-100 w-fit">
-                                <Zap className="w-3 h-3 text-purple-600" />
-                                <span className="text-[10px] font-medium text-purple-700 tracking-wide">{submission.voucher_code}</span>
-                              </div>
-                            )}
-
-                            {/* Invoice Actions - Integrated here */}
-                            <div className="flex items-center gap-1 mt-1">
+                            {/* Row 2: Actions */}
+                            <div className="flex items-center gap-1">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-7 text-[10px] px-2 w-full justify-center"
+                                className="h-7 text-[10px] flex-1 justify-center px-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium transition-colors"
                                 onClick={() => handleOpenInvoiceModal(submission)}
                               >
                                 {submission.payment_status === 'paid' ? 'View Invoice' : 'Create Invoice'}
@@ -767,7 +989,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 </Table>
 
                 {/* Pagination Controls */}
-                <div className="flex items-center justify-between px-4 py-4 border-t">
+                < div className="flex items-center justify-between px-4 py-4 border-t" >
                   <div className="text-sm text-gray-500">
                     Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalSubmissions)} of {totalSubmissions} results
                   </div>
@@ -938,7 +1160,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           </>
         )
         }
-      </div >
+      </div>
 
       {/* Invoice Creation Modal */}
       {
@@ -979,6 +1201,41 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         submission={selectedSubmissionForCriteria}
         onUpdate={handleCriteriaUpdated}
       />
-    </div >
+      {/* Edit Form Details Modal */}
+      <EditFormDetailsModal
+        isOpen={isEditFormDetailsModalOpen}
+        onClose={handleCloseEditFormDetailsModal}
+        submission={selectedSubmissionForDetails}
+        onUpdate={handleFormDetailsUpdated}
+      />
+
+      {/* Rejection Note Dialog */}
+      <Dialog open={isRejectionDialogOpen} onOpenChange={setIsRejectionDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject Submission</DialogTitle>
+            <DialogDescription>
+              Please provide a reason for rejecting this submission. This note will be visible to admins.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="rejection-note">Admin Notes (Reason)</Label>
+              <Textarea
+                id="rejection-note"
+                placeholder="e.g. Duplicate submission, Invalid survey link..."
+                value={rejectionNote}
+                onChange={(e) => setRejectionNote(e.target.value)}
+                className="h-24"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRejectionDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmRejection}>Confirm Reject</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

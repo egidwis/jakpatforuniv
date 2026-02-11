@@ -88,8 +88,8 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {isCompact ? (
-          <Button variant="outline" size="icon" disabled={isLoading} className="h-8 w-8">
-            <LinkIcon className="w-4 h-4" />
+          <Button variant="outline" size="icon" disabled={isLoading} className="h-7 w-7 border-dashed border-gray-300 hover:border-blue-300 hover:text-blue-600">
+            <LinkIcon className="w-3.5 h-3.5" />
           </Button>
         ) : (
           <Button variant="outline" size="sm" disabled={isLoading} className="w-full sm:w-auto">

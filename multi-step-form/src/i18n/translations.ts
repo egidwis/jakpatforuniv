@@ -331,6 +331,17 @@ export const translations = {
 
     // Error Messages - PaymentSuccess & PaymentFailed
     errorConnectionFailed: "Failed to connect to server. Please check your internet connection.",
+
+    // Revision / Spam Status
+    statusRevisionNeeded: "Revision Needed",
+    revisionNeededTitle: "Please Resubmit",
+    revisionNeededDescPart1: "There are issues during the review process, such as inaccessible links or information that does not comply with our",
+    revisionNeededDescPart2: ". Please update the necessary data and resubmit your survey.",
+    resubmit: "Resubmit",
+    delete: "Delete",
+    deleteSubmissionConfirm: "Are you sure you want to delete this submission? Deleted data cannot be recovered.",
+    deleteSubmissionSuccess: "Submission successfully deleted",
+    deleteSubmissionError: "Failed to delete submission",
   },
 
   id: {
@@ -663,6 +674,17 @@ export const translations = {
     adDuration: "Durasi Iklan",
 
     winner: "pemenang",
+
+    // Revision / Spam Status
+    statusRevisionNeeded: "Perlu Revisi",
+    revisionNeededTitle: "Mohon Submit Ulang",
+    revisionNeededDescPart1: "Terdapat kendala saat proses review, seperti tautan yang belum dapat diakses atau informasi yang belum sesuai dengan",
+    revisionNeededDescPart2: " kami. Silakan perbarui data yang diperlukan dan submit ulang survei Anda.",
+    resubmit: "Submit Ulang",
+    delete: "Hapus",
+    deleteSubmissionConfirm: "Apakah Anda yakin ingin menghapus submission ini? Data yang dihapus tidak dapat dikembalikan.",
+    deleteSubmissionSuccess: "Submission berhasil dihapus",
+    deleteSubmissionError: "Gagal menghapus submission",
   }
 };
 

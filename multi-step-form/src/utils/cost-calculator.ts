@@ -56,8 +56,8 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
 
   // Kode JAKPATUNIV2025 memberikan diskon 25% dengan maksimal 50k
   if (voucherCode.toUpperCase() === 'JAKPATUNIV2025') {
-    const discount = adCost * 0.25;
-    return Math.min(discount, 50000); // Maksimal potongan 50k
+    // EXPIRED: Code no longer valid
+    return 0;
   }
 
   // Contoh: kode "Rakhma" memberikan diskon 10%
@@ -65,32 +65,32 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
     return adCost * 0.1;
   }
 
-    // Contoh: kode "Tiara" memberikan diskon 10%
+  // Contoh: kode "Tiara" memberikan diskon 10%
   if (voucherCode.toUpperCase() === 'JFUTYR') {
     return adCost * 0.1;
   }
 
-    // Contoh: kode "PPI SWEDIA" memberikan diskon 20%
+  // Contoh: kode "PPI SWEDIA" memberikan diskon 20%
   if (voucherCode.toUpperCase() === 'PPISWEDIA') {
     return adCost * 0.2;
   }
 
-    // Contoh: kode "SEKAR" memberikan diskon 10%
+  // Contoh: kode "SEKAR" memberikan diskon 10%
   if (voucherCode.toUpperCase() === 'SEKARJFU') {
     return adCost * 0.1;
   }
 
-    // Contoh: kode "Adinda" memberikan diskon 10%
+  // Contoh: kode "Adinda" memberikan diskon 10%
   if (voucherCode.toUpperCase() === 'ADINDAJFU') {
     return adCost * 0.1;
   }
 
-    // Contoh: kode "Raja" memberikan diskon 10%
+  // Contoh: kode "Raja" memberikan diskon 10%
   if (voucherCode.toUpperCase() === 'RAJAJFU') {
     return adCost * 0.1;
   }
 
-    // Contoh: kode "Saci" memberikan diskon 10%
+  // Contoh: kode "Saci" memberikan diskon 10%
   if (voucherCode.toUpperCase() === 'SACIJFU') {
     return adCost * 0.1;
   }
@@ -144,9 +144,9 @@ export function getVoucherInfo(voucherCode: string | undefined): { isValid: bool
 
   if (upperCode === 'JAKPATUNIV2025') {
     return {
-      isValid: true,
-      message: 'Kode referal ini berlaku sampai 31 Januari 2026',
-      discount: 25
+      isValid: false,
+      message: 'Kode voucher ini sudah berakhir (expired).',
+      discount: 0
     };
   }
 

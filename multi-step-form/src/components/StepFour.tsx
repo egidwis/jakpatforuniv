@@ -364,8 +364,15 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 style={!voucherInfo.isValid ? { outlineColor: '#0091ff' } : {}}
                 onFocus={(e) => {
                   if (!voucherInfo.isValid) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    if (voucherInfo.message) {
+                      // If invalid with message (expired), use red
+                      e.target.style.borderColor = '#ef4444'; // red-500
+                      e.target.style.boxShadow = '0 0 0 4px rgba(239, 68, 68, 0.1)';
+                    } else {
+                      // Standard focus
+                      e.target.style.borderColor = '#0091ff';
+                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                    }
                   }
                 }}
                 onBlur={(e) => {
@@ -385,6 +392,11 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
             {voucherInfo.isValid && voucherInfo.message && (
               <p className="text-xs text-emerald-600 flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2">
                 <CheckCircle className="w-3 h-3" /> {voucherInfo.message}
+              </p>
+            )}
+            {!voucherInfo.isValid && voucherInfo.message && (
+              <p className="text-xs text-red-600 flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2">
+                <AlertTriangle className="w-3 h-3" /> {voucherInfo.message}
               </p>
             )}
           </div>

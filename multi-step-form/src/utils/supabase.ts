@@ -152,6 +152,7 @@ export interface FormSubmission {
   payment_status?: string;
   submission_method?: string;
   detected_keywords?: string[];
+  admin_notes?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -368,11 +369,16 @@ export const updatePaymentStatus = async (id: string, status: string) => {
 };
 
 // Fungsi untuk update status form
-export const updateFormStatus = async (id: string, status: string) => {
+export const updateFormStatus = async (id: string, status: string, notes?: string) => {
   try {
+    const updateData: any = { submission_status: status };
+    if (notes !== undefined) {
+      updateData.admin_notes = notes;
+    }
+
     const { data, error } = await supabase
       .from('form_submissions')
-      .update({ submission_status: status })
+      .update(updateData)
       .eq('id', id)
       .select();
 
@@ -380,6 +386,22 @@ export const updateFormStatus = async (id: string, status: string) => {
     return data[0];
   } catch (error: any) {
     console.error('Error updating form status:', error);
+    throw error;
+  }
+};
+
+// Fungsi untuk menghapus form submission
+export const deleteFormSubmission = async (id: string) => {
+  try {
+    const { error } = await supabase
+      .from('form_submissions')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  } catch (error: any) {
+    console.error('Error deleting form submission:', error);
     throw error;
   }
 };
@@ -405,6 +427,31 @@ export const updateSubmissionCriteria = async (id: string, criteria: string, pri
   }
 };
 
+export const updateFormDetails = async (
+  id: string,
+  updates: {
+    title: string;
+    survey_url: string;
+    question_count: number;
+    duration: number;
+  }
+) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Error updating form details:', error);
+    throw error;
+  }
+};
+
 // Fungsi untuk mendapatkan semua form submissions (untuk internal dashboard)
 // Fungsi untuk mendapatkan semua form submissions (untuk internal dashboard, deprecated for pagination)
 export const getAllFormSubmissions = async () => {
@@ -423,10 +470,14 @@ export const getAllFormSubmissions = async () => {
 };
 
 // Fungsi untuk mendapatkan form submissions dengan pagination
-export const getFormSubmissionsPaginated = async (page: number, limit: number, searchQuery: string = '') => {
+export const getFormSubmissionsPaginated = async (
+  page: number,
+  limit: number,
+  searchQuery: string = '',
+  startDate?: string,
+  endDate?: string
+) => {
   try {
-    // Mock data removed as requested. Directly querying Supabase.
-
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
@@ -437,10 +488,11 @@ export const getFormSubmissionsPaginated = async (page: number, limit: number, s
       .range(from, to);
 
     if (searchQuery) {
-      // Simple search on title or researcher name if needed, but usually search is client side in simple apps.
-      // However, for proper pagination search should be server side.
-      // Let's implement basic server side search for title and full_name
       query = query.or(`title.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`);
+    }
+
+    if (startDate && endDate) {
+      query = query.gte('created_at', startDate).lte('created_at', endDate);
     }
 
     const { data, error, count } = await query;
@@ -449,8 +501,6 @@ export const getFormSubmissionsPaginated = async (page: number, limit: number, s
     return { data, count };
   } catch (error: any) {
     console.error('Error getting paginated submissions:', error);
-    // If error occurs (e.g. table not found), fallback to empty array or throw
-    // throw error;
     return { data: [], count: 0 };
   }
 };
@@ -552,7 +602,7 @@ export interface ChatMessage {
 export const getOrCreateChatSession = async (userEmail: string) => {
   try {
     // 1. Try to find existing session
-    const { data: existingSession, error: fetchError } = await supabase
+    const { data: existingSession } = await supabase
       .from('chat_sessions')
       .select('*')
       .eq('user_email', userEmail)

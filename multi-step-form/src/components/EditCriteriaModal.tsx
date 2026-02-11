@@ -74,7 +74,7 @@ export function EditCriteriaModal({ isOpen, onClose, submission, onUpdate }: Edi
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form id="edit-criteria-form" onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">
                         <Label htmlFor="criteria">Target Audience Criteria</Label>
                         <Textarea
@@ -117,16 +117,16 @@ export function EditCriteriaModal({ isOpen, onClose, submission, onUpdate }: Edi
                             </span>
                         </div>
                     </div>
-
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={loading}>
-                            {loading ? 'Saving...' : 'Save Changes'}
-                        </Button>
-                    </DialogFooter>
                 </form>
+
+                <DialogFooter>
+                    <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+                        Cancel
+                    </Button>
+                    <Button type="submit" form="edit-criteria-form" disabled={loading} className="bg-slate-900 text-white hover:bg-slate-800">
+                        {loading ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

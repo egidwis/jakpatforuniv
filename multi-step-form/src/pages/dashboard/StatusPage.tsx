@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, type FormSubmission } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle, AlertCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -22,6 +23,11 @@ const getStatusSteps = (t: any) => [
 
 // Get the current step index based on submission state
 function getCurrentStepIndex(submission: FormSubmission, hasPaymentLink: boolean): number {
+    // Check for spam/rejected status first (Revision Needed)
+    if (submission.submission_status === 'spam') {
+        return -1;
+    }
+
     // If not paid yet
     if (submission.payment_status !== 'paid') {
         // If we have a payment link/invoice, we are in Waiting Payment (Step 1)
@@ -50,7 +56,7 @@ function getCurrentStepIndex(submission: FormSubmission, hasPaymentLink: boolean
 }
 
 // Progress Bar Component
-function ProgressTracker({ currentStep, submission, paymentLink, steps }: { currentStep: number; submission: FormSubmission; paymentLink?: string | null; steps: any[] }) {
+function ProgressTracker({ currentStep, paymentLink, steps }: { currentStep: number; paymentLink?: string | null; steps: any[] }) {
     const { t } = useLanguage();
     return (
         <div className="w-full py-4">
@@ -312,9 +318,31 @@ export function StatusPage() {
         fetchSubmissions();
     }, [user]);
 
+    const handleDeleteSubmission = async (id: string) => {
+        if (confirm(t('deleteSubmissionConfirm'))) {
+            try {
+                await deleteFormSubmission(id);
+                setSubmissions(prev => prev.filter(s => s.id !== id));
+                toast.success(t('deleteSubmissionSuccess'));
+            } catch (error) {
+                console.error('Failed to delete submission:', error);
+                toast.error(t('deleteSubmissionError'));
+            }
+        }
+    };
+
     const steps = getStatusSteps(t);
 
     const getStatusBadgeInfo = (currentStep: number) => {
+        if (currentStep === -1) {
+            return {
+                label: t('statusRevisionNeeded'),
+                color: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800',
+                icon: <AlertCircle className="w-4 h-4" />,
+                style: {}
+            };
+        }
+
         const step = steps[currentStep];
         let color = 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
 
@@ -347,8 +375,47 @@ export function StatusPage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-8">
+                <div className="space-y-6">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Skeleton className="h-8 w-48" />
+                    </div>
+
+                    {/* Filter Tabs Skeleton */}
+                    <div className="flex flex-wrap gap-2">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                            <Skeleton key={i} className="h-8 w-24 rounded-full" />
+                        ))}
+                    </div>
+
+                    <div className="grid gap-6">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                                <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-between items-start">
+                                    <div className="space-y-2">
+                                        <Skeleton className="h-6 w-64" />
+                                        <Skeleton className="h-4 w-40" />
+                                    </div>
+                                    <Skeleton className="h-8 w-32 rounded-full" />
+                                </div>
+                                <div className="p-6 space-y-6">
+                                    {/* Progress Bar Skeleton */}
+                                    <div className="w-full">
+                                        <div className="flex justify-between relative">
+                                            {[1, 2, 3, 4, 5].map((s) => (
+                                                <div key={s} className="flex flex-col items-center gap-3 z-10">
+                                                    <Skeleton className="h-10 w-10 rounded-full" />
+                                                    <Skeleton className="h-3 w-16" />
+                                                </div>
+                                            ))}
+                                            <div className="absolute top-5 left-0 w-full h-1 bg-gray-100 dark:bg-gray-800" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
         );
     }
@@ -440,8 +507,45 @@ export function StatusPage() {
                                                     </div>
                                                 </CardHeader>
                                                 <CardContent className="pt-6 pb-6">
-                                                    {/* Progress Tracker */}
-                                                    <ProgressTracker currentStep={currentStep} submission={submission} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} steps={steps} />
+                                                    {/* Progress Tracker or Revision Alert */}
+                                                    {currentStep === -1 ? (
+                                                        <div className="rounded-lg border border-orange-100 bg-orange-50/50 p-4 dark:border-orange-900/30 dark:bg-orange-900/10">
+                                                            <div className="flex gap-3">
+                                                                <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+                                                                <div className="space-y-3">
+                                                                    <div>
+                                                                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                                            {t('revisionNeededTitle')}
+                                                                        </h4>
+                                                                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
+                                                                            {t('revisionNeededDescPart1')} <a href="https://jakpatforuniv.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline hover:text-orange-700">{t('termsConditions')}</a>{t('revisionNeededDescPart2')}
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="flex gap-2">
+                                                                        <Link to="/dashboard/submit">
+                                                                            <Button
+                                                                                size="sm"
+                                                                                className="bg-white text-orange-700 border border-orange-200 hover:bg-orange-50 hover:border-orange-300 shadow-sm"
+                                                                            >
+                                                                                {t('resubmit')}
+                                                                            </Button>
+                                                                        </Link>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            onClick={() => handleDeleteSubmission(submission.id!)}
+                                                                            className="bg-transparent text-red-600 border border-red-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700 shadow-sm flex items-center gap-1.5"
+                                                                        >
+                                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                                            {t('delete')}
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <ProgressTracker currentStep={currentStep} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} steps={steps} />
+                                                    )}
 
 
 
