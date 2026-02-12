@@ -15,6 +15,8 @@ import PrivateRoute from './components/PrivateRoute';
 import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
 import { ChatPage } from './pages/dashboard/ChatPage';
+import { SurveyListingPage } from './pages/public/SurveyListingPage';
+import { SurveyPage } from './pages/public/SurveyPage';
 import { AuthProvider } from './context/AuthContext';
 import './styles.css';
 
@@ -80,6 +82,8 @@ function AppContent() {
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
               <Route path="/payment-retry" element={<PaymentRetryPage />} />
               <Route path="/invoices/:paymentId" element={<InvoicePage />} />
+              <Route path="/pages" element={<SurveyListingPage />} />
+              <Route path="/pages/:slug" element={<SurveyPage />} />
             </Routes>
           </PublicLayout>
         } />

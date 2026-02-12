@@ -3,7 +3,7 @@ import { Calendar, momentLocalizer, Views } from 'react-big-calendar';
 import type { View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import { getScheduledAds, type ScheduledAd } from '@/utils/supabase';
+import { getScheduledAds, supabase } from '@/utils/supabase'; // Fixed import
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, ExternalLink } from 'lucide-react';
@@ -16,7 +16,7 @@ interface CalendarEvent {
     title: string;
     start: Date;
     end: Date;
-    resource: ScheduledAd;
+    resource: any; // Allow mixed types for now
 }
 
 export function SchedulingPage() {
@@ -28,17 +28,55 @@ export function SchedulingPage() {
     const fetchEvents = async () => {
         setLoading(true);
         try {
+            // 1. Fetch Scheduled Ads
             const ads = await getScheduledAds();
-            const formattedEvents: CalendarEvent[] = ads.map((ad: any) => ({
-                id: ad.id,
-                title: `Ads: ${ad.form_title}`,
+            const adEvents: CalendarEvent[] = ads.map((ad: any) => ({
+                id: `ad-${ad.id}`,
+                title: `Ad: ${ad.form_title}`,
                 start: new Date(ad.start_date),
                 end: new Date(ad.end_date),
-                resource: ad,
+                resource: {
+                    ...ad,
+                    type: 'ad'
+                },
             }));
-            setEvents(formattedEvents);
+
+            // 2. Fetch Scheduled Survey Pages
+            const { data: pages, error } = await supabase
+                .from('survey_pages')
+                .select(`
+                    id,
+                    title,
+                    slug,
+                    publish_start_date,
+                    publish_end_date,
+                    form_submissions (
+                        full_name,
+                        title
+                    )
+                `)
+                .not('publish_start_date', 'is', null)
+                .not('publish_end_date', 'is', null);
+
+            if (error) throw error;
+
+            const pageEvents: CalendarEvent[] = (pages || []).map((page: any) => ({
+                id: `page-${page.id}`,
+                title: `Survey: ${page.title}`,
+                start: new Date(page.publish_start_date),
+                end: new Date(page.publish_end_date),
+                resource: {
+                    id: page.id,
+                    form_title: page.title,
+                    researcher_name: page.form_submissions?.full_name || 'Unknown',
+                    type: 'survey_page',
+                    slug: page.slug
+                }
+            }));
+
+            setEvents([...adEvents, ...pageEvents]);
         } catch (error) {
-            console.error('Error fetching scheduled ads:', error);
+            console.error('Error fetching schedules:', error);
         } finally {
             setLoading(false);
         }
@@ -50,12 +88,25 @@ export function SchedulingPage() {
 
     const eventStyleGetter = (event: CalendarEvent) => {
         const isActive = new Date() >= event.start && new Date() <= event.end;
+        const isSurvey = event.resource.type === 'survey_page';
+
+        let backgroundColor = isActive ? '#dbeafe' : '#f3f4f6'; // blue-100 vs gray-100
+        let color = isActive ? '#1e40af' : '#374151'; // blue-800 vs gray-700
+        let borderColor = isActive ? '#93c5fd' : '#d1d5db';
+
+        // Custom styling for Survey Pages
+        if (isSurvey) {
+            backgroundColor = isActive ? '#dcfce7' : '#f0fdf4'; // green-100 vs green-50
+            color = isActive ? '#166534' : '#15803d'; // green-800 vs green-700
+            borderColor = isActive ? '#86efac' : '#bbf7d0';
+        }
+
         return {
             style: {
-                backgroundColor: isActive ? '#dbeafe' : '#f3f4f6', // blue-100 vs gray-100
-                color: isActive ? '#1e40af' : '#374151', // blue-800 vs gray-700
+                backgroundColor,
+                color,
                 border: '1px solid',
-                borderColor: isActive ? '#93c5fd' : '#d1d5db',
+                borderColor,
                 borderRadius: '4px',
                 fontSize: '0.85rem',
                 fontWeight: '500',
@@ -66,7 +117,11 @@ export function SchedulingPage() {
     const CustomEvent = ({ event }: { event: CalendarEvent }) => {
         return (
             <div className="flex flex-col h-full justify-center px-1" title={event.title}>
-                <div className="font-semibold truncate">{event.resource.form_title}</div>
+                <div className="font-semibold truncate flex items-center gap-1">
+                    {event.resource.type === 'survey_page' && <span className="text-[9px] bg-white/50 px-1 rounded border border-current opacity-75">SURVEY</span>}
+                    {event.resource.type === 'ad' && <span className="text-[9px] bg-white/50 px-1 rounded border border-current opacity-75">AD</span>}
+                    {event.resource.form_title}
+                </div>
                 <div className="text-[10px] opacity-75 truncate">{event.resource.researcher_name}</div>
             </div>
         );

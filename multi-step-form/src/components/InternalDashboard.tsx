@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Zap, PenLine, ShieldAlert, Info } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Zap, PenLine, ShieldAlert, GraduationCap, Globe, ExternalLink, Info } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, supabase } from '../utils/supabase';
 import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -30,6 +30,7 @@ import { EditFormDetailsModal } from './EditFormDetailsModal';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import './InternalDashboard.css';
 
 interface SurveySubmission {
@@ -104,6 +105,14 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [isRejectionDialogOpen, setIsRejectionDialogOpen] = useState(false);
   const [selectedSubmissionForRejection, setSelectedSubmissionForRejection] = useState<SurveySubmission | null>(null);
   const [rejectionNote, setRejectionNote] = useState('');
+
+  // PageBuilder Modal State
+  const [isPageBuilderOpen, setIsPageBuilderOpen] = useState(false);
+  const [selectedSubmissionForPage, setSelectedSubmissionForPage] = useState<SurveySubmission | null>(null);
+  const [pageBuilderData, setPageBuilderData] = useState<any>(null);
+
+  // Map submission_id -> page data (slug, is_published)
+  const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean }>>({});
 
   // Admin Access Check
   // STRICT: Only product@jakpat.net is allowed
@@ -205,6 +214,29 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         setSubmissions(transformed);
         // Initial filter application handled by useEffect or derivation
         setTotalSubmissions(count || 0);
+
+        // Fetch existing pages for these submissions
+        if (transformed.length > 0) {
+          const submissionIds = transformed.map(s => s.id);
+          const { data: pages, error: pagesError } = await supabase
+            .from('survey_pages')
+            .select('submission_id, slug, is_published')
+            .in('submission_id', submissionIds);
+
+          if (pagesError) {
+            console.error('Error fetching survey pages:', pagesError);
+          }
+
+          if (pages) {
+            const pageMap: Record<string, { slug: string, is_published: boolean }> = {};
+            pages.forEach(p => {
+              pageMap[p.submission_id] = { slug: p.slug, is_published: p.is_published };
+            });
+            setExistingPages(pageMap);
+          }
+        } else {
+          setExistingPages({}); // Clear pages if no submissions
+        }
       }
     } catch (error) {
       toast.error('Failed to load submissions');
@@ -320,6 +352,31 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
   const handleFormDetailsUpdated = () => {
     loadSubmissions();
+  };
+
+  const handlePageBuilt = () => {
+    loadSubmissions(); // Refresh to update the "Link" button availability
+  };
+
+  const handleOpenPageBuilder = async (submission: SurveySubmission) => {
+    setSelectedSubmissionForPage(submission);
+    // Fetch existing page data if any (optional optimization: fetch list of pages first)
+    // For now, we'll try to fetch on open or inside the modal.
+    // Let's rely on the modal to fetch or just pass null and let it handle initialization if needed.
+    // Actually, checking if page exists here is better for UX (Edit vs Create).
+    try {
+      const { data } = await supabase.from('survey_pages').select('*').eq('submission_id', submission.id).single();
+      setPageBuilderData(data);
+    } catch (e) {
+      setPageBuilderData(null);
+    }
+    setIsPageBuilderOpen(true);
+  };
+
+  const handleClosePageBuilder = () => {
+    setIsPageBuilderOpen(false);
+    setSelectedSubmissionForPage(null);
+    setPageBuilderData(null);
   };
 
   if (authLoading) {
@@ -621,9 +678,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Criteria & Incentive</TableHead>
                       <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Researcher</TableHead>
                       <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Submitted</TableHead>
-                      <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Status</TableHead>
-                      <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Payment</TableHead>
-                      <TableHead className="w-[150px] text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-10 pr-6">Ad Publishing</TableHead>
+                      <TableHead className="w-[120px]">Status</TableHead>
+                      <TableHead className="w-[140px]">Payment</TableHead>
+                      <TableHead className="text-right w-[140px] pr-6">Publish & Pages</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -887,7 +944,19 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600 focus:text-red-600 focus:bg-red-50">
                                 Rejected
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')}>
+                              <DropdownMenuItem onClick={() => handleOpenEditFormDetailsModal(submission)}>
+                                <PenLine className="w-4 h-4 mr-2" />
+                                Edit Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenEditCriteriaModal(submission)}>
+                                <PenLine className="w-4 h-4 mr-2" />
+                                Edit Criteria
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenPageBuilder(submission)}>
+                                <Globe className="w-4 h-4 mr-2" />
+                                Page Builder
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
                                 Spam / Revision
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -934,9 +1003,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               <Badge
                                 variant="outline"
                                 className={`
-                                      h-5 px-1.5 py-0 text-[10px] uppercase tracking-wide border font-semibold rounded-md whitespace-nowrap
-                                      ${submission.payment_status === 'paid' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}
-                                    `}
+                                  h-5 px-1.5 py-0 text-[10px] uppercase tracking-wide border font-semibold rounded-md whitespace-nowrap
+                                  ${submission.payment_status === 'paid' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}
+                                `}
                               >
                                 {submission.payment_status || 'Pending'}
                               </Badge>
@@ -963,13 +1032,13 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           </div>
                         </TableCell>
 
-                        {/* Ad Publishing (New Column) */}
-                        <TableCell className="align-top py-4 text-right pr-6">
+                        {/* Publish & Pages (New Column) */}
+                        <TableCell className="align-top py-4 text-right pr-6 space-y-2">
                           <Button
                             variant={submission.status === 'scheduling' ? 'default' : 'outline'}
                             size="sm"
                             className={`
-                                w-full text-xs font-medium shadow-sm transition-all
+                                w-full text-xs font-medium shadow-sm transition-all justify-start
                                 ${submission.status === 'scheduling'
                                 ? 'bg-blue-600 hover:bg-blue-700 text-white'
                                 : 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200'}
@@ -979,14 +1048,40 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               setIsPublishModalOpen(true);
                             }}
                           >
-                            <Calendar className={`w-3.5 h-3.5 mr-1.5 ${submission.status === 'scheduling' ? 'text-white/90' : 'text-gray-400'}`} />
+                            <Calendar className={`w-3.5 h-3.5 mr-2 ${submission.status === 'scheduling' ? 'text-white/90' : 'text-gray-400'}`} />
                             Schedule
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+
+
+                          <div className="flex items-center gap-1 w-full">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={`flex-1 text-xs font-medium shadow-sm transition-all justify-start ${existingPages[submission.id] ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200'}`}
+                              onClick={() => handleOpenPageBuilder(submission)}
+                            >
+                              <Globe className="w-3.5 h-3.5 mr-2" />
+                              {existingPages[submission.id] ? 'Edit Page' : 'Builder'}
+                            </Button>
+
+                            {existingPages[submission.id]?.is_published && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="px-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                                onClick={() => window.open(`/pages/${existingPages[submission.id].slug}`, '_blank')}
+                                title="Open Page"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell >
+                      </TableRow >
+                    ))
+                    }
+                  </TableBody >
+                </Table >
 
                 {/* Pagination Controls */}
                 < div className="flex items-center justify-between px-4 py-4 border-t" >
@@ -1014,153 +1109,155 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
-                </div>
-              </div>
-            </Card>
+                </div >
+              </div >
+            </Card >
 
             {/* Mobile Card View - shown only on mobile */}
-            <div className="md:hidden space-y-4">
-              {filteredSubmissions.map((submission) => (
-                <Card key={submission.id} className="border-gray-200 shadow-sm overflow-hidden">
-                  <div className="p-4 space-y-4">
-                    {/* Header */}
-                    <div className="flex justify-between items-start gap-4">
-                      <div className="space-y-1 flex-1">
-                        <h3 className="font-semibold text-gray-900 leading-tight">
-                          {submission.formTitle}
-                        </h3>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                            {submission.formId.substring(0, 8)}...
-                          </span>
+            < div className="md:hidden space-y-4" >
+              {
+                filteredSubmissions.map((submission) => (
+                  <Card key={submission.id} className="border-gray-200 shadow-sm overflow-hidden">
+                    <div className="p-4 space-y-4">
+                      {/* Header */}
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="space-y-1 flex-1">
+                          <h3 className="font-semibold text-gray-900 leading-tight">
+                            {submission.formTitle}
+                          </h3>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                              {submission.formId.substring(0, 8)}...
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 -mt-1 -mr-2 text-gray-400"
-                        onClick={() => window.open(submission.formUrl, '_blank')}
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    </div>
-
-                    {/* Researcher */}
-                    <div className="flex items-center gap-3 py-3 border-y border-gray-100">
-                      <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Researcher</p>
-                        <p className="font-medium text-gray-900 text-sm">{submission.researcherName}</p>
-                        <p className="text-xs text-gray-500">{submission.researcherEmail}</p>
-                      </div>
-                    </div>
-
-                    {/* Mobile Stats & Status Rows */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Date</p>
-                        <p className="text-sm text-gray-900">{new Date(submission.submittedAt).toLocaleDateString()}</p>
-                      </div>
-                      <div className="text-right pl-4 border-l border-gray-100">
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Items</p>
-                        <div className="flex flex-col items-end gap-1">
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700">
-                            {submission.questionCount} Qs
-                          </Badge>
-                          {submission.duration ? (
-                            <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-blue-600 bg-blue-50 border-blue-100">
-                              {submission.duration} Days
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions Row */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-500">Status</label>
-                        <select
-                          className={`w-full px-3 py-2 text-xs font-medium rounded-lg border-0 cursor-pointer transition-all focus:ring-2 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 focus:ring-red-500' :
-                            submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 focus:ring-blue-500' :
-                              submission.status === 'scheduling' ? 'bg-purple-100 text-purple-700 focus:ring-purple-500' :
-                                submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 focus:ring-indigo-500' :
-                                  submission.status === 'completed' ? 'bg-gray-100 text-gray-800 focus:ring-gray-500' :
-                                    'bg-gray-100 text-gray-800'
-                            }`}
-                          value={submission.status || 'in_review'}
-                          onChange={(e) => handleStatusChange(submission.id, e.target.value)}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 -mt-1 -mr-2 text-gray-400"
+                          onClick={() => window.open(submission.formUrl, '_blank')}
                         >
-                          <option value="spam" className="bg-white text-gray-900">Spam</option>
-                          <option value="in_review" className="bg-white text-gray-900">In Review</option>
-                          <option value="scheduling" className="bg-white text-gray-900">Scheduling</option>
-                          <option value="publishing" className="bg-white text-gray-900">Publishing</option>
-                          <option value="completed" className="bg-white text-gray-900">Completed</option>
-                        </select>
+                          <Eye className="w-4 h-4" />
+                        </Button>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-gray-500">Payment</label>
-                        <div className="flex items-center h-[30px]">
-                          {submission.payment_status === 'paid' ? (
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                              Paid
+
+                      {/* Researcher */}
+                      <div className="flex items-center gap-3 py-3 border-y border-gray-100">
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Researcher</p>
+                          <p className="font-medium text-gray-900 text-sm">{submission.researcherName}</p>
+                          <p className="text-xs text-gray-500">{submission.researcherEmail}</p>
+                        </div>
+                      </div>
+
+                      {/* Mobile Stats & Status Rows */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Date</p>
+                          <p className="text-sm text-gray-900">{new Date(submission.submittedAt).toLocaleDateString()}</p>
+                        </div>
+                        <div className="text-right pl-4 border-l border-gray-100">
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Items</p>
+                          <div className="flex flex-col items-end gap-1">
+                            <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                              {submission.questionCount} Qs
                             </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                              Pending
-                            </Badge>
+                            {submission.duration ? (
+                              <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-blue-600 bg-blue-50 border-blue-100">
+                                {submission.duration} Days
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions Row */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-500">Status</label>
+                          <select
+                            className={`w-full px-3 py-2 text-xs font-medium rounded-lg border-0 cursor-pointer transition-all focus:ring-2 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 focus:ring-red-500' :
+                              submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 focus:ring-blue-500' :
+                                submission.status === 'scheduling' ? 'bg-purple-100 text-purple-700 focus:ring-purple-500' :
+                                  submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 focus:ring-indigo-500' :
+                                    submission.status === 'completed' ? 'bg-gray-100 text-gray-800 focus:ring-gray-500' :
+                                      'bg-gray-100 text-gray-800'
+                              }`}
+                            value={submission.status || 'in_review'}
+                            onChange={(e) => handleStatusChange(submission.id, e.target.value)}
+                          >
+                            <option value="spam" className="bg-white text-gray-900">Spam</option>
+                            <option value="in_review" className="bg-white text-gray-900">In Review</option>
+                            <option value="scheduling" className="bg-white text-gray-900">Scheduling</option>
+                            <option value="publishing" className="bg-white text-gray-900">Publishing</option>
+                            <option value="completed" className="bg-white text-gray-900">Completed</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-500">Payment</label>
+                          <div className="flex items-center h-[30px]">
+                            {submission.payment_status === 'paid' ? (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                Paid
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                Pending
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Ad Cost Mobile */}
+                          {submission.duration && submission.duration > 0 && (
+                            <div className="flex flex-col gap-0.5 mt-2 pt-2 border-t border-dashed border-gray-200">
+                              <span className="text-[10px] text-gray-500 uppercase font-medium">Ad Cost</span>
+                              <div className="text-[10px] text-gray-600">
+                                {(() => {
+                                  const { dailyRate, totalAdCost } = calculateAdCost(submission.questionCount, submission.duration);
+                                  return (
+                                    <>
+                                      <span>{new Intl.NumberFormat('id-ID').format(dailyRate)}/day</span>
+                                      <span className="mx-1">x</span>
+                                      <span>{submission.duration}d</span>
+                                      <div className="font-semibold text-gray-900 mt-0.5">
+                                        = Rp {new Intl.NumberFormat('id-ID').format(totalAdCost)}
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
                           )}
                         </div>
+                      </div>
 
-                        {/* Ad Cost Mobile */}
-                        {submission.duration && submission.duration > 0 && (
-                          <div className="flex flex-col gap-0.5 mt-2 pt-2 border-t border-dashed border-gray-200">
-                            <span className="text-[10px] text-gray-500 uppercase font-medium">Ad Cost</span>
-                            <div className="text-[10px] text-gray-600">
-                              {(() => {
-                                const { dailyRate, totalAdCost } = calculateAdCost(submission.questionCount, submission.duration);
-                                return (
-                                  <>
-                                    <span>{new Intl.NumberFormat('id-ID').format(dailyRate)}/day</span>
-                                    <span className="mx-1">x</span>
-                                    <span>{submission.duration}d</span>
-                                    <div className="font-semibold text-gray-900 mt-0.5">
-                                      = Rp {new Intl.NumberFormat('id-ID').format(totalAdCost)}
-                                    </div>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                        )}
+                      {/* Footer Actions */}
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                          onClick={() => handleOpenInvoiceModal(submission)}
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1.5" />
+                          Invoice
+                        </Button>
+                        <div className="flex-1">
+                          <CopyInvoiceDropdown
+                            formSubmissionId={submission.id}
+                            refreshTrigger={invoiceRefreshTrigger}
+                          />
+                        </div>
                       </div>
                     </div>
-
-                    {/* Footer Actions */}
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                        onClick={() => handleOpenInvoiceModal(submission)}
-                      >
-                        <Plus className="w-3.5 h-3.5 mr-1.5" />
-                        Invoice
-                      </Button>
-                      <div className="flex-1">
-                        <CopyInvoiceDropdown
-                          formSubmissionId={submission.id}
-                          refreshTrigger={invoiceRefreshTrigger}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                  </Card>
+                ))
+              }
+            </div >
           </>
         )
         }
-      </div>
+      </div >
 
       {/* Invoice Creation Modal */}
       {
@@ -1199,7 +1296,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         isOpen={isEditCriteriaModalOpen}
         onClose={handleCloseEditCriteriaModal}
         submission={selectedSubmissionForCriteria}
-        onUpdate={handleCriteriaUpdated}
+        onSuccess={handleCriteriaUpdated}
+        submissionTitle={selectedSubmissionForCriteria?.formTitle || ''}
       />
       {/* Edit Form Details Modal */}
       <EditFormDetailsModal
@@ -1236,6 +1334,15 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Page Builder Modal */}
+      <PageBuilderModal
+        isOpen={isPageBuilderOpen}
+        onClose={handleClosePageBuilder}
+        submissionId={selectedSubmissionForPage?.id || ''}
+        initialData={pageBuilderData}
+        onSuccess={handlePageBuilt}
+      />
     </div>
   );
 }

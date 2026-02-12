@@ -24,10 +24,12 @@ interface EditCriteriaModalProps {
         prize_per_winner?: number;
         winnerCount?: number;
     } | null;
-    onUpdate: () => void;
+    onUpdate?: () => void;
+    onSuccess?: () => void; // Alias for onUpdate to match usage
+    submissionTitle?: string;
 }
 
-export function EditCriteriaModal({ isOpen, onClose, submission, onUpdate }: EditCriteriaModalProps) {
+export function EditCriteriaModal({ isOpen, onClose, submission, onUpdate, onSuccess }: EditCriteriaModalProps) {
     const [criteria, setCriteria] = useState('');
     const [prizePerWinner, setPrizePerWinner] = useState('');
     const [winnerCount, setWinnerCount] = useState('');
@@ -54,7 +56,8 @@ export function EditCriteriaModal({ isOpen, onClose, submission, onUpdate }: Edi
                 parseInt(winnerCount) || 0
             );
             toast.success('Criteria & Incentive updated successfully');
-            onUpdate();
+            if (onUpdate) onUpdate();
+            if (onSuccess) onSuccess();
             onClose();
         } catch (error) {
             console.error('Error updating criteria:', error);
