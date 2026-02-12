@@ -292,7 +292,7 @@ export function InternalDashboardWithLayout() {
           {currentPage === 'submissions' ? (
             <InternalDashboard onLogout={handleLogout} hideAuth={true} />
           ) : currentPage === 'transactions' ? (
-            <div className="container mx-auto p-4 md:p-8">
+            <div className="p-4 md:px-6 md:py-4">
               <TransactionsPage />
             </div>
           ) : currentPage === 'demography' ? (
