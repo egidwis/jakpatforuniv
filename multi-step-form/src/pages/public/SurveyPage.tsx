@@ -579,11 +579,11 @@ export function SurveyPage() {
                                                         />
                                                     ) : field.type === 'select' ? (
                                                         <Select
-                                                            value={formData.custom_answers[field.label] || ''}
+                                                            value={formData.custom_answers[field.label] || undefined}
                                                             onValueChange={(val) => handleCustomFieldChange(field.label, val)}
                                                         >
-                                                            <SelectTrigger className="bg-white">
-                                                                <SelectValue placeholder={field.placeholder || 'Select an option'} />
+                                                            <SelectTrigger className="bg-white text-gray-700">
+                                                                <SelectValue placeholder="Pilih Jawaban" />
                                                             </SelectTrigger>
                                                             <SelectContent>
                                                                 {field.options ? (
