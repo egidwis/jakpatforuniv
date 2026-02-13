@@ -38,6 +38,11 @@ export function SurveyPage() {
 
     const [proofFile, setProofFile] = useState<File | null>(null);
 
+    // Duplicate Check State
+    const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+    const [duplicateError, setDuplicateError] = useState<string | null>(null);
+    const [hasCheckedDuplicate, setHasCheckedDuplicate] = useState(false);
+
     // Screening Logic
     const isDisqualified = useMemo(() => {
         if (!pageData?.custom_fields) return false;
@@ -130,9 +135,48 @@ export function SurveyPage() {
         }
     };
 
+    const checkDuplicateSubmission = async () => {
+        if (!formData.jakpat_id || !pageData?.form_submissions?.id) return;
+
+        setCheckingDuplicate(true);
+        setDuplicateError(null);
+
+        try {
+            // Check if Jakpat ID exists in submissions for this form
+            const { data, error } = await supabase
+                .from('survey_submissions') // Assuming this is the table where answers are stored
+                .select('id')
+                .eq('form_submission_id', pageData.form_submissions.id) // Filter by specific survey
+                // We need to check inside the answers jsonb column or a separate column if it exists.
+                // Assuming answers is a JSONB column and we want to check for jakpat_id inside it?
+                // actually wait, look at handleInput change, jakpat_id is top level in formData for this page,
+                // BUT where is it saved in the DB?
+                // Let's assume it's saved in the 'answers' JSONB column or similar.
+                // Based on previous code, handleSave saves to 'survey_submissions'.
+                // Ideally we should have a 'unique_identifier' column or search within JSON.
+                // For now, let's assume we search in the JSON 'answers' -> 'jakpat_id'.
+                .contains('answers', { jakpat_id: formData.jakpat_id })
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (data) {
+                setDuplicateError('Jakpat ID ini sudah pernah mengisi survei ini.');
+                setHasCheckedDuplicate(true); // Checked, but failed
+            } else {
+                setDuplicateError(null);
+                setHasCheckedDuplicate(true); // Checked and passed
+            }
+        } catch (err) {
+            console.error('Error checking duplicate:', err);
+            // Don't block if error (optional), or block safely
+        } finally {
+            setCheckingDuplicate(false);
+        }
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -440,15 +484,34 @@ export function SurveyPage() {
                                             Cara lihat Jakpat ID
                                         </button>
                                     </div>
-                                    <Input
-                                        id="jakpat_id_step2"
-                                        name="jakpat_id"
-                                        value={formData.jakpat_id}
-                                        onChange={handleInputChange}
-                                        placeholder="Jakpat ID kamu"
-                                        className="bg-white"
-                                        autoFocus
-                                    />
+                                    <div className="flex gap-2">
+                                        <Input
+                                            id="jakpat_id_step2"
+                                            name="jakpat_id"
+                                            value={formData.jakpat_id}
+                                            onChange={(e) => {
+                                                handleInputChange(e);
+                                                setHasCheckedDuplicate(false); // Reset check on change
+                                            }}
+                                            onBlur={checkDuplicateSubmission} // Check on blur
+                                            placeholder="Jakpat ID kamu"
+                                            className="bg-white flex-1"
+                                            autoFocus
+                                        />
+                                        <Button
+                                            onClick={checkDuplicateSubmission}
+                                            disabled={checkingDuplicate || !formData.jakpat_id}
+                                            variant="secondary"
+                                            className="shrink-0"
+                                        >
+                                            {checkingDuplicate ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Cek'}
+                                        </Button>
+                                    </div>
+                                    {duplicateError && (
+                                        <p className="text-red-600 text-sm mt-2 flex items-center gap-1">
+                                            <AlertCircle className="w-4 h-4" /> {duplicateError}
+                                        </p>
+                                    )}
 
                                     <Dialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
                                         <DialogContent className="max-w-md">
@@ -537,8 +600,8 @@ export function SurveyPage() {
                                     </div>
                                 )}
 
-                                {/* Iframe Embed (Hidden if Disqualified) */}
-                                {!isDisqualified && (
+                                {/* Iframe Embed (Hidden if Disqualified OR Duplicate OR Not Checked) */}
+                                {!isDisqualified && !duplicateError && hasCheckedDuplicate && (
                                     <>
                                         <div className="w-full h-[600px] border rounded-lg overflow-hidden relative bg-gray-100">
                                             <iframe
@@ -591,7 +654,7 @@ export function SurveyPage() {
                                 <Button onClick={prevStep} variant="outline">
                                     <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
                                 </Button>
-                                <Button onClick={nextStep} disabled={isDisqualified} className="bg-blue-600 hover:bg-blue-700 text-white">
+                                <Button onClick={nextStep} disabled={isDisqualified || !!duplicateError || !hasCheckedDuplicate} className="bg-blue-600 hover:bg-blue-700 text-white">
                                     Lanjut ke Data Diri <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                             </div>
