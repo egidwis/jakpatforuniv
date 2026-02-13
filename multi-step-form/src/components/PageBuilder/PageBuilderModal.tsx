@@ -440,17 +440,66 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                                 />
                                             </div>
                                         )}
-                                        <div className="flex items-center space-x-2 pt-8">
-                                            <Checkbox
-                                                id={`required-${index}`}
-                                                checked={field.required}
-                                                onCheckedChange={(checked) => {
-                                                    const newFields = [...formData.custom_fields];
-                                                    newFields[index].required = checked as boolean;
-                                                    setFormData({ ...formData, custom_fields: newFields });
-                                                }}
-                                            />
-                                            <Label htmlFor={`required-${index}`} className="text-sm font-normal">Required</Label>
+                                        <div className="flex flex-col space-y-4 pt-4 col-span-2">
+                                            <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`screening-${index}`}
+                                                    checked={field.is_screening || false}
+                                                    onCheckedChange={(checked) => {
+                                                        const newFields = [...formData.custom_fields];
+                                                        newFields[index].is_screening = checked as boolean;
+                                                        setFormData({ ...formData, custom_fields: newFields });
+                                                    }}
+                                                />
+                                                <Label htmlFor={`screening-${index}`} className="text-sm font-normal">
+                                                    Is Screening Question?
+                                                </Label>
+                                            </div>
+
+                                            {field.is_screening && field.type === 'select' && (
+                                                <div className="space-y-2 border-l-2 border-blue-200 pl-4 py-2 bg-blue-50/50 rounded-r-md">
+                                                    <Label className="text-xs font-semibold text-blue-800">Valid Options (Responden Lolos)</Label>
+                                                    <p className="text-[10px] text-gray-500 mb-2">Check options that allow respondent to proceed.</p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {(field.options || '').split(',').map((opt: string, i: number) => {
+                                                            const optVal = opt.trim();
+                                                            if (!optVal) return null;
+                                                            return (
+                                                                <div key={i} className="flex items-center space-x-2">
+                                                                    <Checkbox
+                                                                        id={`valid-${index}-${i}`}
+                                                                        checked={(field.valid_options || []).includes(optVal)}
+                                                                        onCheckedChange={(checked) => {
+                                                                            const newFields = [...formData.custom_fields];
+                                                                            const currentValid = field.valid_options || [];
+                                                                            if (checked) {
+                                                                                newFields[index].valid_options = [...currentValid, optVal];
+                                                                            } else {
+                                                                                newFields[index].valid_options = currentValid.filter((v: string) => v !== optVal);
+                                                                            }
+                                                                            setFormData({ ...formData, custom_fields: newFields });
+                                                                        }}
+                                                                    />
+                                                                    <Label htmlFor={`valid-${index}-${i}`} className="text-xs cursor-pointer">{optVal}</Label>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`required-${index}`}
+                                                    checked={field.required}
+                                                    onCheckedChange={(checked) => {
+                                                        const newFields = [...formData.custom_fields];
+                                                        newFields[index].required = checked as boolean;
+                                                        setFormData({ ...formData, custom_fields: newFields });
+                                                    }}
+                                                />
+                                                <Label htmlFor={`required-${index}`} className="text-sm font-normal">Required</Label>
+                                            </div>
                                         </div>
                                     </div>
                                     <Button

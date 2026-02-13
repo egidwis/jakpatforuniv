@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Loader2, Upload, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartphone, User, HelpCircle } from 'lucide-react';
+import { Loader2, Upload, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartphone, User, HelpCircle, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import imageCompression from 'browser-image-compression';
 
@@ -37,6 +37,21 @@ export function SurveyPage() {
     });
 
     const [proofFile, setProofFile] = useState<File | null>(null);
+
+    // Screening Logic
+    const isDisqualified = useMemo(() => {
+        if (!pageData?.custom_fields) return false;
+        return pageData.custom_fields.some((field: any) => {
+            if (field.is_screening && field.type === 'select' && field.valid_options?.length > 0) {
+                const answer = formData.custom_answers[field.label];
+                // If answered, and answer is NOT in valid_options -> Disqualified
+                if (answer && !field.valid_options.includes(answer)) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }, [pageData, formData.custom_answers]);
 
     useEffect(() => {
         loadPageData();
@@ -454,57 +469,129 @@ export function SurveyPage() {
                                     </Dialog>
                                 </div>
 
-                                {/* Iframe Embed */}
-                                <div className="w-full h-[600px] border rounded-lg overflow-hidden relative bg-gray-100">
-                                    <iframe
-                                        src={surveyUrl}
-                                        className="w-full h-full"
-                                        title="Survey Form"
-                                        allowFullScreen
-                                    ></iframe>
-                                    <div className="absolute top-0 right-0 p-2 bg-white/80 backdrop-blur-sm rounded-bl-lg text-xs text-gray-500">
-                                        External Form
+                                {/* Custom Fields Section (Screening) */}
+                                {pageData.custom_fields && pageData.custom_fields.length > 0 && (
+                                    <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                                        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                                            <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                                            Pertanyaan Tambahan
+                                        </h3>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {pageData.custom_fields.map((field: any, index: number) => (
+                                                <div key={index} className="space-y-2">
+                                                    <Label className="text-gray-700">
+                                                        {field.label} {field.required && <span className="text-red-500">*</span>}
+                                                    </Label>
+                                                    {field.type === 'textarea' ? (
+                                                        <Textarea
+                                                            placeholder={field.placeholder}
+                                                            value={formData.custom_answers[field.label] || ''}
+                                                            onChange={(e) => handleCustomFieldChange(field.label, e.target.value)}
+                                                            required={field.required}
+                                                            className="bg-white"
+                                                        />
+                                                    ) : field.type === 'select' ? (
+                                                        <Select
+                                                            value={formData.custom_answers[field.label] || ''}
+                                                            onValueChange={(val) => handleCustomFieldChange(field.label, val)}
+                                                        >
+                                                            <SelectTrigger className="bg-white">
+                                                                <SelectValue placeholder={field.placeholder || 'Select an option'} />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {field.options ? (
+                                                                    field.options.split(',').map((opt: string, i: number) => (
+                                                                        <SelectItem key={i} value={opt.trim()}>
+                                                                            {opt.trim()}
+                                                                        </SelectItem>
+                                                                    ))
+                                                                ) : (
+                                                                    <SelectItem value="no-options" disabled>No options defined</SelectItem>
+                                                                )}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    ) : (
+                                                        <Input
+                                                            type={field.type === 'number' ? 'number' : 'text'}
+                                                            placeholder={field.placeholder}
+                                                            value={formData.custom_answers[field.label] || ''}
+                                                            onChange={(e) => handleCustomFieldChange(field.label, e.target.value)}
+                                                            required={field.required}
+                                                            className="bg-white"
+                                                        />
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="text-center text-sm text-gray-500">
-                                    Tidak bisa mengisi form di atas? <a href={surveyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Buka di tab baru</a>
-                                </div>
+                                )}
 
-                                {/* Proof Upload */}
-                                <div className="space-y-2 pt-4 border-t">
-                                    <Label className="text-base font-semibold">Upload Screenshot Bukti Pengisian (Halaman Akhir/Terima Kasih)</Label>
-                                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition cursor-pointer relative group">
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={handleFileChange}
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                        />
-                                        {proofFile ? (
-                                            <div className="flex flex-col items-center text-green-600">
-                                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
-                                                    <CheckCircle className="w-6 h-6 text-green-600" />
-                                                </div>
-                                                <span className="font-medium text-lg">{proofFile.name}</span>
-                                                <span className="text-sm text-gray-500">Siap diupload</span>
-                                            </div>
-                                        ) : (
-                                            <div className="flex flex-col items-center text-gray-500 group-hover:text-blue-600 transition-colors">
-                                                <div className="w-12 h-12 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-2 transition-colors">
-                                                    <Smartphone className="w-6 h-6" />
-                                                </div>
-                                                <span className="font-medium text-lg">Tap untuk upload screenshot</span>
-                                                <span className="text-xs mt-1">Format: JPG/PNG, Max 5MB</span>
-                                            </div>
-                                        )}
+                                {/* Disqualification Message */}
+                                {isDisqualified && (
+                                    <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center animate-in fade-in zoom-in duration-300">
+                                        <ShieldAlert className="w-12 h-12 text-red-500 mx-auto mb-3" />
+                                        <h3 className="text-lg font-bold text-red-700 mb-2">Mohon Maaf</h3>
+                                        <p className="text-red-600">
+                                            Anda belum memenuhi kriteria untuk survei kali ini. Terima kasih atas partisipasinya.
+                                        </p>
                                     </div>
-                                </div>
+                                )}
+
+                                {/* Iframe Embed (Hidden if Disqualified) */}
+                                {!isDisqualified && (
+                                    <>
+                                        <div className="w-full h-[600px] border rounded-lg overflow-hidden relative bg-gray-100">
+                                            <iframe
+                                                src={surveyUrl}
+                                                className="w-full h-full"
+                                                title="Survey Form"
+                                                allowFullScreen
+                                            ></iframe>
+                                            <div className="absolute top-0 right-0 p-2 bg-white/80 backdrop-blur-sm rounded-bl-lg text-xs text-gray-500">
+                                                External Form
+                                            </div>
+                                        </div>
+                                        <div className="text-center text-sm text-gray-500">
+                                            Tidak bisa mengisi form di atas? <a href={surveyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Buka di tab baru</a>
+                                        </div>
+
+                                        {/* Proof Upload */}
+                                        <div className="space-y-2 pt-4 border-t">
+                                            <Label className="text-base font-semibold">Upload Screenshot Bukti Pengisian (Halaman Akhir/Terima Kasih)</Label>
+                                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition cursor-pointer relative group">
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleFileChange}
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                />
+                                                {proofFile ? (
+                                                    <div className="flex flex-col items-center text-green-600">
+                                                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
+                                                            <CheckCircle className="w-6 h-6 text-green-600" />
+                                                        </div>
+                                                        <span className="font-medium text-lg">{proofFile.name}</span>
+                                                        <span className="text-sm text-gray-500">Siap diupload</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col items-center text-gray-500 group-hover:text-blue-600 transition-colors">
+                                                        <div className="w-12 h-12 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-2 transition-colors">
+                                                            <Smartphone className="w-6 h-6" />
+                                                        </div>
+                                                        <span className="font-medium text-lg">Tap untuk upload screenshot</span>
+                                                        <span className="text-xs mt-1">Format: JPG/PNG, Max 5MB</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </CardContent>
                             <div className="p-6 border-t bg-gray-50 flex justify-between">
                                 <Button onClick={prevStep} variant="outline">
                                     <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
                                 </Button>
-                                <Button onClick={nextStep} className="bg-blue-600 hover:bg-blue-700 text-white">
+                                <Button onClick={nextStep} disabled={isDisqualified} className="bg-blue-600 hover:bg-blue-700 text-white">
                                     Lanjut ke Data Diri <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                             </div>
@@ -523,62 +610,7 @@ export function SurveyPage() {
                             <CardContent>
                                 <form onSubmit={handleSubmit} className="space-y-6">
 
-                                    {/* Custom Fields Section */}
-                                    {pageData.custom_fields && pageData.custom_fields.length > 0 && (
-                                        <div className="space-y-4 p-4 bg-blue-50/50 rounded-lg border border-blue-100 mb-6">
-                                            <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                                                <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
-                                                Pertanyaan Tambahan
-                                            </h3>
-                                            <div className="grid grid-cols-1 gap-4">
-                                                {pageData.custom_fields.map((field: any, index: number) => (
-                                                    <div key={index} className="space-y-2">
-                                                        <Label className="text-gray-700">
-                                                            {field.label} {field.required && <span className="text-red-500">*</span>}
-                                                        </Label>
-                                                        {field.type === 'textarea' ? (
-                                                            <Textarea
-                                                                placeholder={field.placeholder}
-                                                                value={formData.custom_answers[field.label] || ''}
-                                                                onChange={(e) => handleCustomFieldChange(field.label, e.target.value)}
-                                                                required={field.required}
-                                                                className="bg-white"
-                                                            />
-                                                        ) : field.type === 'select' ? (
-                                                            <Select
-                                                                value={formData.custom_answers[field.label] || ''}
-                                                                onValueChange={(val) => handleCustomFieldChange(field.label, val)}
-                                                            >
-                                                                <SelectTrigger className="bg-white">
-                                                                    <SelectValue placeholder={field.placeholder || 'Select an option'} />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    {field.options ? (
-                                                                        field.options.split(',').map((opt: string, i: number) => (
-                                                                            <SelectItem key={i} value={opt.trim()}>
-                                                                                {opt.trim()}
-                                                                            </SelectItem>
-                                                                        ))
-                                                                    ) : (
-                                                                        <SelectItem value="no-options" disabled>No options defined</SelectItem>
-                                                                    )}
-                                                                </SelectContent>
-                                                            </Select>
-                                                        ) : (
-                                                            <Input
-                                                                type={field.type === 'number' ? 'number' : 'text'}
-                                                                placeholder={field.placeholder}
-                                                                value={formData.custom_answers[field.label] || ''}
-                                                                onChange={(e) => handleCustomFieldChange(field.label, e.target.value)}
-                                                                required={field.required}
-                                                                className="bg-white"
-                                                            />
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* Custom Fields moved to Step 2 */}
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
