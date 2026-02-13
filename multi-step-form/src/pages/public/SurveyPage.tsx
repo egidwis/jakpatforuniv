@@ -614,8 +614,11 @@ export function SurveyPage() {
                                 )}
 
                                 {/* Button Logic: Hidden until valid */}
+                                {/* Button Logic: Hidden until valid */}
                                 {(!duplicateError && hasCheckedDuplicate && formData.jakpat_id &&
-                                    (!pageData.custom_fields || pageData.custom_fields.every((f: any) => !f.required || formData.custom_answers[f.label]))) && (
+                                    (!pageData.custom_fields || pageData.custom_fields.every((f: any) =>
+                                        (!f.required && !f.is_screening) || (formData.custom_answers[f.label] && formData.custom_answers[f.label].trim() !== '')
+                                    ))) && (
                                         <div className="p-6 border-t bg-gray-50 flex justify-between animate-in fade-in slide-in-from-bottom-2 duration-300">
                                             <Button onClick={prevStep} variant="outline">
                                                 <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
