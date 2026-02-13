@@ -413,13 +413,11 @@ export function SurveyPage() {
             )}
 
             <div className="max-w-4xl mx-auto px-4 -mt-10 relative z-10">
-                {/* Stepper */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-8">
+                {/* Stepper (Hidden for now as per request) */}
+                {/* <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-8">
                     <div className="flex items-center justify-between relative">
-                        {/* Connecting Line Background */}
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 z-0" />
 
-                        {/* Active Line Progress - dynamic width based on step */}
                         <div
                             className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-green-500 z-0 transition-all duration-300 ease-in-out"
                             style={{ width: `${((currentStep - 1) / 2) * 100}%` }}
@@ -446,7 +444,7 @@ export function SurveyPage() {
                             </div>
                         ))}
                     </div>
-                </div>
+                </div> */}
 
                 <div className="space-y-6">
                     {/* STEP 1: INFO */}
@@ -502,25 +500,21 @@ export function SurveyPage() {
                                             Cara lihat Jakpat ID
                                         </button>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="relative">
                                         <Input
                                             id="jakpat_id_step2"
                                             name="jakpat_id"
                                             value={formData.jakpat_id}
                                             onChange={handleInputChange}
-                                            // onBlur not strictly needed with debounce, but good for immediate check if cleared
                                             placeholder="Jakpat ID kamu (min. 3 karakter)"
-                                            className="bg-white flex-1"
+                                            className="bg-white pr-10" // Add padding right for loader
                                             autoFocus
                                         />
-                                        <Button
-                                            onClick={() => checkDuplicateSubmission(formData.jakpat_id)}
-                                            disabled={checkingDuplicate || !formData.jakpat_id}
-                                            variant="secondary"
-                                            className="shrink-0"
-                                        >
-                                            {checkingDuplicate ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Cek'}
-                                        </Button>
+                                        {checkingDuplicate && (
+                                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                                            </div>
+                                        )}
                                     </div>
                                     {duplicateError && (
                                         <p className="text-red-600 text-sm mt-2 flex items-center gap-1">
