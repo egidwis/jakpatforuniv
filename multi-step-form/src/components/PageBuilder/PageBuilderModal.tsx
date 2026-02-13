@@ -444,6 +444,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                             <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                     id={`screening-${index}`}
+                                                    className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                                     checked={field.is_screening || false}
                                                     onCheckedChange={(checked) => {
                                                         const newFields = [...formData.custom_fields];
@@ -468,6 +469,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                                                 <div key={i} className="flex items-center space-x-2">
                                                                     <Checkbox
                                                                         id={`valid-${index}-${i}`}
+                                                                        className="bg-white data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                                                         checked={(field.valid_options || []).includes(optVal)}
                                                                         onCheckedChange={(checked) => {
                                                                             const newFields = [...formData.custom_fields];
@@ -491,6 +493,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                             <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                     id={`required-${index}`}
+                                                    className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                                     checked={field.required}
                                                     onCheckedChange={(checked) => {
                                                         const newFields = [...formData.custom_fields];
