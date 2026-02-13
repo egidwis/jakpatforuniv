@@ -9,7 +9,7 @@ import { supabase } from '@/utils/supabase';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Eye, Save, Trash2, Plus, Image as ImageIcon, Upload, Link as LinkIcon, Check } from 'lucide-react';
+import { Loader2, Eye, Save, Trash2, Plus, Image as ImageIcon, Upload, Link as LinkIcon, Check, X } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
@@ -557,6 +557,15 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                     minDate={formData.publish_start_date ? new Date(formData.publish_start_date) : undefined}
                                     className="bg-transparent border-none p-0 focus:outline-none w-[110px] cursor-pointer hover:text-blue-600 transition-colors"
                                 />
+                                {(formData.publish_start_date || formData.publish_end_date) && (
+                                    <button
+                                        onClick={() => setFormData({ ...formData, publish_start_date: '', publish_end_date: '' })}
+                                        className="ml-1 p-0.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors"
+                                        title="Clear Schedule"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
