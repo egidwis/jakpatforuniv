@@ -138,6 +138,8 @@ export function SurveyPage() {
     const checkDuplicateSubmission = async (idToCheck = formData.jakpat_id) => {
         if (!idToCheck || !pageData?.id) return;
 
+        const cleanId = idToCheck.trim();
+
         setCheckingDuplicate(true);
         setDuplicateError(null);
 
@@ -147,7 +149,7 @@ export function SurveyPage() {
                 .from('page_respondents')
                 .select('id', { count: 'exact', head: true })
                 .eq('page_id', pageData.id)
-                .eq('jakpat_id', idToCheck);
+                .eq('jakpat_id', cleanId);
 
             if (error) throw error;
 
@@ -558,7 +560,7 @@ export function SurveyPage() {
 
                                 {/* Custom Fields Section (Screening) */}
                                 {pageData.custom_fields && pageData.custom_fields.length > 0 && (
-                                    <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                                    <div className={`space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-100 transition-opacity duration-300 ${(!hasCheckedDuplicate || !!duplicateError || checkingDuplicate) ? 'opacity-50 pointer-events-none' : ''}`}>
                                         <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                                             <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
                                             Pertanyaan Tambahan
@@ -576,11 +578,13 @@ export function SurveyPage() {
                                                             onChange={(e) => handleCustomFieldChange(field.label, e.target.value)}
                                                             required={field.required}
                                                             className="bg-white"
+                                                            disabled={!hasCheckedDuplicate || !!duplicateError || checkingDuplicate}
                                                         />
                                                     ) : field.type === 'select' ? (
                                                         <Select
                                                             value={formData.custom_answers[field.label] || undefined}
                                                             onValueChange={(val) => handleCustomFieldChange(field.label, val)}
+                                                            disabled={!hasCheckedDuplicate || !!duplicateError || checkingDuplicate}
                                                         >
                                                             <SelectTrigger className="bg-white text-gray-700">
                                                                 <SelectValue placeholder="Pilih Jawaban" />
@@ -605,6 +609,7 @@ export function SurveyPage() {
                                                             onChange={(e) => handleCustomFieldChange(field.label, e.target.value)}
                                                             required={field.required}
                                                             className="bg-white"
+                                                            disabled={!hasCheckedDuplicate || !!duplicateError || checkingDuplicate}
                                                         />
                                                     )}
                                                 </div>
