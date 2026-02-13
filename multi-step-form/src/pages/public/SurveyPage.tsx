@@ -20,7 +20,7 @@ export function SurveyPage() {
     const [pageData, setPageData] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
 
-    // Steps: 1 = Info, 2 = Survey & Proof, 3 = Personal Data
+    // Steps: 1 = Info, 2 = Screening (ID + Qs), 3 = Survey & Proof, 4 = Personal Data
     const [currentStep, setCurrentStep] = useState(1);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
 
@@ -201,12 +201,27 @@ export function SurveyPage() {
     };
 
     const nextStep = () => {
-        // Validation for Step 2
+        // Validation for Step 2 (Screening)
         if (currentStep === 2) {
             if (!formData.jakpat_id) {
                 toast.error('Please enter your Jakpat ID');
                 return;
             }
+            if (duplicateError) {
+                toast.error(duplicateError);
+                return;
+            }
+
+            // Validate required custom fields (screening)
+            if (pageData.custom_fields && pageData.custom_fields.length > 0) {
+                for (const field of pageData.custom_fields) {
+                    if (field.required && !formData.custom_answers[field.label]) {
+                        toast.error(`Pertanyaan "${field.label}" wajib diisi`);
+                        return;
+                    }
+                }
+            }
+
             // If Disqualified, handle "Submit" behavior (End Survey)
             if (isDisqualified) {
                 toast.success('Terima kasih sudah mengisi survey ini ya 😊');
@@ -215,16 +230,16 @@ export function SurveyPage() {
                 }, 2000);
                 return;
             }
+        }
 
+        // Validation for Step 3 (Embed & Proof)
+        if (currentStep === 3) {
             if (!proofFile) {
                 toast.error('Please upload proof of survey completion');
                 return;
             }
-            if (duplicateError) {
-                toast.error(duplicateError);
-                return;
-            }
         }
+
         setCurrentStep(prev => prev + 1);
         window.scrollTo(0, 0);
     };
@@ -477,13 +492,13 @@ export function SurveyPage() {
                         </Card>
                     )}
 
-                    {/* STEP 2: EMBED & PROOF */}
+                    {/* STEP 2: SCREENING (ID & Questions) */}
                     {currentStep === 2 && (
                         <Card className="shadow-lg">
                             <CardHeader>
-                                <CardTitle>Isi Survey & Upload Bukti</CardTitle>
+                                <CardTitle>Data Awal & Screening</CardTitle>
                                 <CardDescription>
-                                    Silakan isi survey di bawah ini sampai selesai, lalu screenshot halaman akhirnya.
+                                    Mohon lengkapi data berikut sebelum melanjutkan ke pengisian survei.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
@@ -598,71 +613,91 @@ export function SurveyPage() {
                                     </div>
                                 )}
 
-                                {/* Disqualification Message Removed - button handles it */}
+                                {/* Button Logic: Hidden until valid */}
+                                {(!duplicateError && hasCheckedDuplicate && formData.jakpat_id &&
+                                    (!pageData.custom_fields || pageData.custom_fields.every((f: any) => !f.required || formData.custom_answers[f.label]))) && (
+                                        <div className="p-6 border-t bg-gray-50 flex justify-between animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                            <Button onClick={prevStep} variant="outline">
+                                                <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
+                                            </Button>
+                                            <Button onClick={nextStep} className="bg-blue-600 hover:bg-blue-700 text-white">
+                                                {isDisqualified ? 'Selesai' : <>Lanjut <ArrowRight className="w-4 h-4 ml-2" /></>}
+                                            </Button>
+                                        </div>
+                                    )}
+                            </CardContent>
+                        </Card>
+                    )}
 
-                                {/* Iframe Embed (Hidden if Disqualified OR Duplicate OR Not Checked) */}
-                                {!isDisqualified && !duplicateError && hasCheckedDuplicate && (
-                                    <>
-                                        <div className="w-full h-[600px] border rounded-lg overflow-hidden relative bg-gray-100">
-                                            <iframe
-                                                src={surveyUrl}
-                                                className="w-full h-full"
-                                                title="Survey Form"
-                                                allowFullScreen
-                                            ></iframe>
-                                            <div className="absolute top-0 right-0 p-2 bg-white/80 backdrop-blur-sm rounded-bl-lg text-xs text-gray-500">
-                                                External Form
-                                            </div>
-                                        </div>
-                                        <div className="text-center text-sm text-gray-500">
-                                            Tidak bisa mengisi form di atas? <a href={surveyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Buka di tab baru</a>
-                                        </div>
+                    {/* STEP 3: EMBED & PROOF */}
+                    {currentStep === 3 && (
+                        <Card className="shadow-lg">
+                            <CardHeader>
+                                <CardTitle>Isi Survey & Upload Bukti</CardTitle>
+                                <CardDescription>
+                                    Silakan isi survey di bawah ini sampai selesai, lalu screenshot halaman akhirnya.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                {/* Iframe Embed */}
+                                <div className="w-full h-[600px] border rounded-lg overflow-hidden relative bg-gray-100">
+                                    <iframe
+                                        src={surveyUrl}
+                                        className="w-full h-full"
+                                        title="Survey Form"
+                                        allowFullScreen
+                                    ></iframe>
+                                    <div className="absolute top-0 right-0 p-2 bg-white/80 backdrop-blur-sm rounded-bl-lg text-xs text-gray-500">
+                                        External Form
+                                    </div>
+                                </div>
+                                <div className="text-center text-sm text-gray-500">
+                                    Tidak bisa mengisi form di atas? <a href={surveyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Buka di tab baru</a>
+                                </div>
 
-                                        {/* Proof Upload */}
-                                        <div className="space-y-2 pt-4 border-t">
-                                            <Label className="text-base font-semibold">Upload Screenshot Bukti Pengisian (Halaman Akhir/Terima Kasih)</Label>
-                                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition cursor-pointer relative group">
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={handleFileChange}
-                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                                />
-                                                {proofFile ? (
-                                                    <div className="flex flex-col items-center text-green-600">
-                                                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
-                                                            <CheckCircle className="w-6 h-6 text-green-600" />
-                                                        </div>
-                                                        <span className="font-medium text-lg">{proofFile.name}</span>
-                                                        <span className="text-sm text-gray-500">Siap diupload</span>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex flex-col items-center text-gray-500 group-hover:text-blue-600 transition-colors">
-                                                        <div className="w-12 h-12 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-2 transition-colors">
-                                                            <Smartphone className="w-6 h-6" />
-                                                        </div>
-                                                        <span className="font-medium text-lg">Tap untuk upload screenshot</span>
-                                                        <span className="text-xs mt-1">Format: JPG/PNG, Max 5MB</span>
-                                                    </div>
-                                                )}
+                                {/* Proof Upload */}
+                                <div className="space-y-2 pt-4 border-t">
+                                    <Label className="text-base font-semibold">Upload Screenshot Bukti Pengisian (Halaman Akhir/Terima Kasih)</Label>
+                                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition cursor-pointer relative group">
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleFileChange}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                        />
+                                        {proofFile ? (
+                                            <div className="flex flex-col items-center text-green-600">
+                                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
+                                                    <CheckCircle className="w-6 h-6 text-green-600" />
+                                                </div>
+                                                <span className="font-medium text-lg">{proofFile.name}</span>
+                                                <span className="text-sm text-gray-500">Siap diupload</span>
                                             </div>
-                                        </div>
-                                    </>
-                                )}
+                                        ) : (
+                                            <div className="flex flex-col items-center text-gray-500 group-hover:text-blue-600 transition-colors">
+                                                <div className="w-12 h-12 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-2 transition-colors">
+                                                    <Smartphone className="w-6 h-6" />
+                                                </div>
+                                                <span className="font-medium text-lg">Tap untuk upload screenshot</span>
+                                                <span className="text-xs mt-1">Format: JPG/PNG, Max 5MB</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </CardContent>
                             <div className="p-6 border-t bg-gray-50 flex justify-between">
                                 <Button onClick={prevStep} variant="outline">
                                     <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
                                 </Button>
-                                <Button onClick={nextStep} disabled={!!duplicateError || !hasCheckedDuplicate} className="bg-blue-600 hover:bg-blue-700 text-white">
-                                    {isDisqualified ? 'Selesai' : <>Lanjut ke Data Diri <ArrowRight className="w-4 h-4 ml-2" /></>}
+                                <Button onClick={nextStep} className="bg-blue-600 hover:bg-blue-700 text-white">
+                                    Lanjut ke Data Diri <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                             </div>
                         </Card>
                     )}
 
-                    {/* STEP 3: PERSONAL DATA */}
-                    {currentStep === 3 && (
+                    {/* STEP 4: PERSONAL DATA */}
+                    {currentStep === 4 && (
                         <Card className="shadow-lg">
                             <CardHeader>
                                 <CardTitle>Data Diri & Pencairan Reward</CardTitle>
