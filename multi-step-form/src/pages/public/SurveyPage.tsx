@@ -534,9 +534,25 @@ export function SurveyPage() {
                                         )}
                                     </div>
                                     {duplicateError && (
-                                        <p className="text-red-600 text-sm mt-2 flex items-center gap-1">
-                                            <AlertCircle className="w-4 h-4" /> {duplicateError}
-                                        </p>
+                                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-3 animate-in fade-in slide-in-from-top-2">
+                                            <div className="flex items-start gap-3">
+                                                <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5 shrink-0" />
+                                                <div className="flex-1">
+                                                    <h4 className="font-semibold text-orange-900 text-sm">Jakpat ID ini sudah pernah mengisi survei ini.</h4>
+                                                    <p className="text-orange-800 text-sm mt-1 mb-3">
+                                                        Kamu bisa cek survei Jakpat yang lainnya untuk mendapatkan reward.
+                                                    </p>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="border-orange-300 text-orange-800 hover:bg-orange-100 hover:text-orange-900 h-8 text-xs bg-white"
+                                                        onClick={() => navigate('/pages')}
+                                                    >
+                                                        Explore Survei Lainnya <ArrowRight className="w-3 h-3 ml-1.5" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     )}
 
                                     <Dialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
