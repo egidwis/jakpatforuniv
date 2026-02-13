@@ -226,10 +226,7 @@ export function SurveyPage() {
 
             // If Disqualified, handle "Submit" behavior (End Survey)
             if (isDisqualified) {
-                toast.success('Terima kasih sudah mengisi survey ini ya 😊');
-                setTimeout(() => {
-                    navigate('/pages');
-                }, 2000);
+                handleDisqualifiedSubmission();
                 return;
             }
         }
@@ -249,6 +246,34 @@ export function SurveyPage() {
     const prevStep = () => {
         setCurrentStep(prev => prev - 1);
         window.scrollTo(0, 0);
+    };
+
+    const handleDisqualifiedSubmission = async () => {
+        setSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from('page_respondents')
+                .insert([{
+                    page_id: pageData.id,
+                    jakpat_id: formData.jakpat_id.trim(),
+                    custom_answers: formData.custom_answers,
+                    // Other fields left null as they didn't reach that step
+                }]);
+
+            if (error) throw error;
+
+            toast.success('Terima kasih sudah mengisi survey ini ya 😊');
+            setTimeout(() => {
+                navigate('/pages');
+            }, 2000);
+
+        } catch (error) {
+            console.error('Error saving disqualified submission:', error);
+            // Even if error, maybe redirect? user shouldn't be blocked.
+            // But let's show error for now.
+            toast.error('Gagal menyimpan data. Silakan coba lagi.');
+            setSubmitting(false);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -641,11 +666,18 @@ export function SurveyPage() {
                                         (!f.required && !f.is_screening) || (formData.custom_answers[f.label] && formData.custom_answers[f.label].trim() !== '')
                                     ))) && (
                                         <div className="p-6 border-t bg-gray-50 flex justify-between animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                            <Button onClick={prevStep} variant="outline">
+                                            <Button onClick={prevStep} variant="outline" disabled={submitting}>
                                                 <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
                                             </Button>
-                                            <Button onClick={nextStep} className="bg-blue-600 hover:bg-blue-700 text-white">
-                                                {isDisqualified ? 'Selesai' : <>Lanjut <ArrowRight className="w-4 h-4 ml-2" /></>}
+                                            <Button onClick={nextStep} className="bg-blue-600 hover:bg-blue-700 text-white" disabled={submitting}>
+                                                {submitting ? (
+                                                    <>
+                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                        Menyimpan...
+                                                    </>
+                                                ) : (
+                                                    isDisqualified ? 'Selesai' : <>Lanjut <ArrowRight className="w-4 h-4 ml-2" /></>
+                                                )}
                                             </Button>
                                         </div>
                                     )}
