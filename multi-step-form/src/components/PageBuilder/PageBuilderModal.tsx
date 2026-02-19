@@ -27,9 +27,21 @@ interface PageBuilderModalProps {
     submissionId: string;
     initialData?: any; // If editing existing page
     onSuccess: () => void;
+    submissionTitle?: string; // Title from the submission for auto-fill
 }
 
-export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess }: PageBuilderModalProps) {
+// Helper: generate slug from title
+const generateSlug = (title: string): string => {
+    return title
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, '') // remove special chars
+        .replace(/\s+/g, '-')          // spaces to hyphens
+        .replace(/-+/g, '-')           // collapse multiple hyphens
+        .slice(0, 60);                 // max 60 chars
+};
+
+export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle }: PageBuilderModalProps) {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         slug: '',
@@ -115,10 +127,12 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     publish_end_date: initialData.publish_end_date ? new Date(initialData.publish_end_date).toISOString().slice(0, 16) : '',
                 });
             } else {
-                // Reset for new page
+                // Reset for new page, auto-fill from submission title if available
+                const autoTitle = submissionTitle || '';
+                const autoSlug = autoTitle ? generateSlug(autoTitle) : '';
                 setFormData({
-                    slug: '',
-                    title: '',
+                    slug: autoSlug,
+                    title: autoTitle,
                     banner_url: '',
                     rewards_amount: '50000',
                     rewards_count: 5,
@@ -128,7 +142,6 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     publish_start_date: '',
                     publish_end_date: '',
                 });
-                // Auto-generate slug suggestion from submission if possible (would need submission title here)
             }
             if (isOpen) {
                 fetchRecentBanners();

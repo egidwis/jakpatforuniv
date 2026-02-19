@@ -1342,6 +1342,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         submissionId={selectedSubmissionForPage?.id || ''}
         initialData={pageBuilderData}
         onSuccess={handlePageBuilt}
+        submissionTitle={selectedSubmissionForPage?.formTitle}
       />
     </div>
   );
