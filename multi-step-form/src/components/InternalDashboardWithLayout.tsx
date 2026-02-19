@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { InternalDashboard } from './InternalDashboard';
@@ -9,7 +9,7 @@ import { ConversationsPage } from './ConversationsPage';
 import { SchedulingPage } from '../pages/dashboard/SchedulingPage';
 import { PublishPageManagement } from './PublishPageManagement';
 import { useAuth } from '../context/AuthContext';
-import { getAllChatSessions } from '../utils/supabase';
+import { getAllChatSessions, supabase } from '../utils/supabase';
 
 type Page = 'submissions' | 'transactions' | 'demography' | 'conversations' | 'scheduling' | 'publish-page';
 
@@ -20,6 +20,8 @@ export function InternalDashboardWithLayout() {
   const [currentPage, setCurrentPage] = useState<Page>('submissions');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [unreadConversations, setUnreadConversations] = useState(0);
+  const [proofImageCount, setProofImageCount] = useState(0);
+  const STORAGE_LIMIT = 9000;
 
   // Function to calculate unread conversations
   const checkUnreadConversations = async () => {
@@ -50,19 +52,40 @@ export function InternalDashboardWithLayout() {
     }
   };
 
+  const fetchProofCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('page_respondents')
+        .select('id', { count: 'exact', head: true })
+        .not('proof_url', 'is', null);
+
+      if (!error && count !== null) {
+        setProofImageCount(count);
+      }
+    } catch (err) {
+      console.error('Failed to fetch proof count', err);
+    }
+  };
+
   useEffect(() => {
     // Check initial count
     checkUnreadConversations();
+    fetchProofCount();
 
     // Listen for read events from ConversationsPage
     const handleReadEvent = () => checkUnreadConversations();
     window.addEventListener('chat-session-viewed', handleReadEvent);
+
+    // Listen for storage change events (from proof deletion)
+    const handleStorageChange = () => fetchProofCount();
+    window.addEventListener('proof-storage-changed', handleStorageChange);
 
     // Optional: Polling every minute to check for new messages
     const interval = setInterval(checkUnreadConversations, 60000);
 
     return () => {
       window.removeEventListener('chat-session-viewed', handleReadEvent);
+      window.removeEventListener('proof-storage-changed', handleStorageChange);
       clearInterval(interval);
     };
   }, []);
@@ -224,7 +247,35 @@ export function InternalDashboardWithLayout() {
           })}
         </nav>
 
-        {/* Footer */}
+        {/* Storage Meter */}
+        <div className="px-4 py-3 border-t border-gray-200">
+          <div className="flex items-center gap-2 mb-1.5">
+            <HardDrive className="h-3.5 w-3.5 text-gray-500" />
+            <span className="text-[11px] font-medium text-gray-600">Proof Storage</span>
+          </div>
+          {(() => {
+            const pct = Math.min((proofImageCount / STORAGE_LIMIT) * 100, 100);
+            const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500';
+            const estMB = ((proofImageCount * 100) / 1024).toFixed(0);
+            return (
+              <>
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-[10px] text-gray-500">
+                    {proofImageCount.toLocaleString()} / {STORAGE_LIMIT.toLocaleString()} gambar
+                  </span>
+                  <span className="text-[10px] text-gray-400">~{estMB} MB</span>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50/50">
           <div className="flex items-center justify-between gap-3">
