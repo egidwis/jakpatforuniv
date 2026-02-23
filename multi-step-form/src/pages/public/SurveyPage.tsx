@@ -808,7 +808,7 @@ export function SurveyPage() {
                                             <p className="text-[10px] text-gray-400">Kami menjaga kerahasiaan data NIK Anda.</p>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="contact_info">Email / No HP</Label>
+                                            <Label htmlFor="contact_info">Email</Label>
                                             <Input
                                                 id="contact_info"
                                                 name="contact_info"
