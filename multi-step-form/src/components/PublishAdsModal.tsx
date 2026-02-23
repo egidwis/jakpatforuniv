@@ -20,7 +20,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { createScheduledAd, updateFormStatus } from '../utils/supabase';
+import { createScheduledAd } from '../utils/supabase';
 
 interface PublishAdsModalProps {
     isOpen: boolean;
@@ -31,9 +31,7 @@ interface PublishAdsModalProps {
 
 export function PublishAdsModal({ isOpen, onClose, submission, onSuccess }: PublishAdsModalProps) {
     const [isLoading, setIsLoading] = useState(false);
-    const [startDate, setStartDate] = useState('');
-    const [startTime, setStartTime] = useState('09:00');
-    const [duration, setDuration] = useState('3'); // Default 3 days
+    const [startDateTime, setStartDateTime] = useState('');
     const [adLink, setAdLink] = useState('');
     const [notes, setNotes] = useState('');
 
@@ -42,8 +40,12 @@ export function PublishAdsModal({ isOpen, onClose, submission, onSuccess }: Publ
     const researcherEmail = submission.researcherEmail || submission.email || '-';
     const title = submission.formTitle || submission.title || 'Untitled';
 
+
+    // Ensure duration exists, default to 1 if not present
+    const submissionDuration = submission.duration || 1;
+
     const handlePublish = async () => {
-        if (!startDate || !startTime || !duration || !adLink) {
+        if (!startDateTime || !adLink) {
             toast.error('Please fill in all required fields');
             return;
         }
@@ -51,24 +53,21 @@ export function PublishAdsModal({ isOpen, onClose, submission, onSuccess }: Publ
         setIsLoading(true);
         try {
             // 1. Calculate dates
-            const startDateTime = new Date(`${startDate}T${startTime}`);
-            const endDateTime = new Date(startDateTime);
-            endDateTime.setDate(endDateTime.getDate() + parseInt(duration));
+            const startDateObj = new Date(startDateTime);
+            const endDateObj = new Date(startDateObj);
+            endDateObj.setDate(endDateObj.getDate() + submissionDuration);
 
             // 2. Save to Supabase
             await createScheduledAd({
                 form_submission_id: submission.id!,
-                start_date: startDateTime.toISOString(),
-                end_date: endDateTime.toISOString(),
+                start_date: startDateObj.toISOString(),
+                end_date: endDateObj.toISOString(),
                 ad_link: adLink,
                 notes: notes,
                 google_calendar_event_id: '', // No longer syncing to GCal
             });
 
-            // 3. Update Submission Status (if this is the first publish)
-            if (submission.status !== 'publishing' && submission.submission_status !== 'publishing') {
-                await updateFormStatus(submission.id!, 'publishing');
-            }
+
 
             toast.success('Ad scheduled successfully!');
             onSuccess();
@@ -107,48 +106,20 @@ export function PublishAdsModal({ isOpen, onClose, submission, onSuccess }: Publ
 
                     {/* Schedule Inputs */}
                     <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Start Date</Label>
-                                <div className="relative">
-                                    <Input
-                                        type="date"
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="pl-9"
-                                    />
-                                    <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Start Time</Label>
-                                <div className="relative">
-                                    <Input
-                                        type="time"
-                                        value={startTime}
-                                        onChange={(e) => setStartTime(e.target.value)}
-                                        className="pl-9"
-                                    />
-                                    <Clock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                                </div>
-                            </div>
-                        </div>
-
                         <div className="space-y-2">
-                            <Label>Duration (Days)</Label>
-                            <Select value={duration} onValueChange={setDuration}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select duration" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="1">1 Day</SelectItem>
-                                    <SelectItem value="2">2 Days</SelectItem>
-                                    <SelectItem value="3">3 Days</SelectItem>
-                                    <SelectItem value="5">5 Days</SelectItem>
-                                    <SelectItem value="7">1 Week</SelectItem>
-                                    <SelectItem value="14">2 Weeks</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <Label>Start Date & Time</Label>
+                            <div className="relative">
+                                <Input
+                                    type="datetime-local"
+                                    value={startDateTime}
+                                    onChange={(e) => setStartDateTime(e.target.value)}
+                                    className="pl-9"
+                                />
+                                <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                                Duration: <span className="font-medium text-gray-900">{submissionDuration} Days</span> (Synced from submission)
+                            </p>
                         </div>
 
                         <div className="space-y-2">

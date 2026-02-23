@@ -27,8 +27,8 @@ export default defineConfig({
         console.log('>> Incoming Request:', req.method, req.url);
       }
 
-      if (req.url.includes('/api/mayar-proxy')) {
-        console.log('✅ HIT /api/mayar-proxy DETECTED!');
+      if (req.url.includes('/api/mayar-proxy') || req.url.includes('/api/simple-mayar-proxy')) {
+        console.log('✅ HIT ' + req.url + ' DETECTED!');
 
         if (req.method !== 'POST') {
           console.log('❌ Method not allowed:', req.method);
@@ -53,7 +53,7 @@ export default defineConfig({
             }
 
             const data = JSON.parse(body);
-            const { endpoint, apiKey } = data;
+            const { endpoint, apiKey, webhookToken, ...rest } = data;
 
             if (!endpoint || !apiKey) {
               res.statusCode = 400;
@@ -64,14 +64,20 @@ export default defineConfig({
 
             console.log(`🚀 Forwarding to Mayar: ${endpoint}`);
 
+            const headers = {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            };
+
+            if (webhookToken) {
+              headers['X-Webhook-Token'] = webhookToken;
+            }
+
             // Fetch ke Mayar
             const response = await fetch(endpoint, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-              },
-              body: JSON.stringify(data) // Kirim full data lagi, Mayar akan ignore field extra
+              headers: headers,
+              body: JSON.stringify(rest) // Kirim data bersih tanpa field internal
             });
 
             console.log(`⬅️ Mayar Response Status: ${response.status}`);

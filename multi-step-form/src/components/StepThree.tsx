@@ -69,7 +69,7 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
 
     // Show toast if there are errors
     if (Object.keys(newErrors).length > 0) {
-      // toast.error(t('errorCompleteAllFields')); // Optional, sometimes intrusive
+      toast.error(t('errorFixFields'));
       return false;
     }
 

@@ -212,30 +212,32 @@ export function StepTwoConfig({
               <input
                 id="duration"
                 type="number"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
-                  ${errors.duration && attemptedSubmit
+                className={`w-full pl-4 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                  ${(errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30))
                     ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
                     : 'border-gray-200 hover:border-gray-300'
                   }
                   bg-white
                 `}
-                style={!errors.duration || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
+                style={(!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) ? { outlineColor: '#0091ff' } : {}}
                 onFocus={(e) => {
-                  if (!(attemptedSubmit && errors.duration)) {
+                  if (!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) {
                     e.target.style.borderColor = '#0091ff';
                     e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
                   }
                 }}
                 onBlur={(e) => {
-                  if (!(attemptedSubmit && errors.duration)) {
+                  if (!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) {
                     e.target.style.borderColor = '#e5e7eb';
                     e.target.style.boxShadow = 'none';
                   }
                 }}
                 placeholder={t('surveyDurationPlaceholder')}
-                value={formData.duration || ''}
+                value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
                 onChange={(e) => {
-                  updateFormData({ duration: parseInt(e.target.value) || 1 });
+                  const val = e.target.value;
+                  const intVal = parseInt(val);
+                  updateFormData({ duration: isNaN(intVal) ? 0 : intVal });
                   if (attemptedSubmit && errors.duration) {
                     setErrors({ ...errors, duration: undefined });
                   }
@@ -244,12 +246,12 @@ export function StepTwoConfig({
                 max={30}
               />
               {formData.duration > 0 && formData.duration <= 30 && !errors.duration && (
-                <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4" />
+                <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4 pointer-events-none" />
               )}
             </div>
-            {errors.duration && attemptedSubmit ? (
+            {((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30))) ? (
               <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {errors.duration}
+                <AlertCircle className="w-3 h-3" /> {formData.duration > 30 ? t('errorDurationMax') : t('errorDurationZero')}
               </p>
             ) : (
               <p className="text-xs text-gray-500 mt-1">
@@ -295,7 +297,7 @@ export function StepTwoConfig({
                 <input
                   id="prizePerWinner"
                   type="number"
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm transition-all duration-200
+                  className={`w-full pl-10 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
                     ${errors.prizePerWinner
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
                       : 'border-gray-200 hover:border-gray-300'
@@ -314,7 +316,7 @@ export function StepTwoConfig({
                   step={1000}
                 />
                 {formData.prizePerWinner >= 25000 && !errors.prizePerWinner && (
-                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4" />
+                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4 pointer-events-none" />
                 )}
               </div>
               {formData.prizePerWinner > 0 && formData.prizePerWinner < 25000 ? (
@@ -341,7 +343,7 @@ export function StepTwoConfig({
                 <input
                   id="winnerCount"
                   type="number"
-                  className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
+                  className={`w-full pl-4 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
                     ${errors.winnerCount ? 'border-red-300 focus:ring-red-200 bg-red-50/30' : 'border-gray-200 hover:border-gray-300'}
                      bg-white
                   `}
@@ -357,7 +359,7 @@ export function StepTwoConfig({
                   max={5}
                 />
                 {formData.winnerCount >= 2 && formData.winnerCount <= 5 && !errors.winnerCount && (
-                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4" />
+                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4 pointer-events-none" />
                 )}
               </div>
               {formData.winnerCount > 0 && formData.winnerCount < 2 ? (
