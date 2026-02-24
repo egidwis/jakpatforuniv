@@ -18,7 +18,7 @@ export async function onRequest(context) {
   try {
     // Parse request body
     const requestData = await context.request.json();
-    const event = requestData.event || '';
+    const event = requestData.event || requestData.type || '';
 
     console.log('Webhook received:', JSON.stringify(requestData));
 
@@ -95,9 +95,10 @@ export async function onRequest(context) {
     let appStatus = 'pending';
 
     // Mayar menggunakan SUCCESS untuk pembayaran berhasil
-    if (status === 'SUCCESS' || status === 'PAID' || status === 'paid' || status === 'COMPLETED' || status === 'completed') {
+    // Tangani juga jika event adalah payment.success
+    if (status === 'SUCCESS' || status === 'PAID' || status === 'paid' || status === 'COMPLETED' || status === 'completed' || event === 'payment.success') {
       appStatus = 'completed';
-    } else if (status === 'FAILED' || status === 'failed' || status === 'EXPIRED' || status === 'expired') {
+    } else if (status === 'FAILED' || status === 'failed' || status === 'EXPIRED' || status === 'expired' || event === 'payment.failed') {
       appStatus = 'failed';
     } else if (status === 'PENDING' || status === 'pending') {
       appStatus = 'pending';
