@@ -81,15 +81,15 @@ async function quickPreCheck(url: string): Promise<'accessible' | 'problematic' 
 
     // Quick check for permission issues
     if (html.includes('You need permission') ||
-        html.includes('Request access') ||
-        html.includes('Sign in') ||
-        html.includes('accounts.google.com') ||
-        html.length < 1000) {
+      html.includes('Request access') ||
+      html.includes('Sign in') ||
+      html.includes('accounts.google.com') ||
+      html.length < 1000) {
       return 'problematic';
     }
 
     return 'accessible';
-  } catch (error) {
+  } catch (error: any) {
     console.log('Quick pre-check failed:', error.message);
     // If quick check fails, we don't know - let the main extraction decide
     return 'unknown';
@@ -155,11 +155,11 @@ export async function extractFormInfoWithWorker(url: string): Promise<SurveyInfo
 // Fallback function for browsers that don't support Web Workers
 export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> {
   console.log('[FALLBACK DEBUG] SAFE EXTRACTION - with network fallback');
-  
+
   // SAFE FETCH with very short timeout
   try {
     console.log('[FALLBACK DEBUG] Starting safe fetch');
-    
+
     // Extract form ID from URL for pattern matching
     // Handle both regular and /e/ URLs
     let formIdMatch = url.match(/\/forms\/d\/([a-zA-Z0-9-_]+)/);
@@ -170,27 +170,28 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
     const formId = formIdMatch ? formIdMatch[1] : null;
     console.log('[FALLBACK DEBUG] Form ID:', formId);
     console.log('[FALLBACK DEBUG] Original URL:', url);
-    
+
     // Basic validation - accept all Google Form URLs including shortlinks
-    if (!url.includes('docs.google.com/forms') && 
-        !url.includes('forms.gle') && 
-        !url.includes('goo.gl') && 
-        !url.includes('g.co')) {
+    if (!url.includes('docs.google.com/forms') &&
+      !url.includes('forms.gle') &&
+      !url.includes('goo.gl') &&
+      !url.includes('g.co')) {
       throw new Error('NON_GOOGLE_FORM');
     }
-    
+
     // Try safe fetch with reasonable timeout
     console.log('[FALLBACK DEBUG] Attempting safe fetch with 8 second timeout');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
-    
+
     let html = '';
     let title = `Google Form ${formId ? formId.substring(0, 8) + '...' : ''}`;
     let description = 'Form description not available';
     let questionCount = 10; // Default
     let hasPersonalDataQuestions = false;
     let detectedKeywords: string[] = [];
-    
+    let formData: any = null;
+
     try {
       // Try multiple proxies for better reliability
       console.log('[FALLBACK DEBUG] Trying multiple proxies for Google Form...');
@@ -221,7 +222,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
             lastError = new Error(`HTTP ${response.status}`);
             response = null;
           }
-        } catch (error) {
+        } catch (error: any) {
           console.log(`[FALLBACK DEBUG] Proxy ${i + 1} failed:`, error.message);
           lastError = error;
           response = null;
@@ -231,10 +232,10 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
       if (!response) {
         throw lastError || new Error('All proxies failed');
       }
-      
+
       clearTimeout(timeoutId);
       console.log('[FALLBACK DEBUG] Fetch successful, status:', response.status);
-      
+
       if (!response.ok) {
         if (response.status === 403) {
           console.log('[FALLBACK DEBUG] HTTP 403 - Form may be private or restricted');
@@ -243,16 +244,17 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
             title: `Google Form ${formId ? formId.substring(0, 8) + '...' : ''}`,
             description: 'This form appears to be private or restricted',
             questionCount: 5, // Conservative estimate
+            platform: 'Google Forms',
             hasPersonalDataQuestions: false,
             detectedKeywords: []
-          };
+          } as SurveyInfo;
         }
         throw new Error(`HTTP ${response.status}`);
       }
-      
+
       html = await response.text();
       console.log('[FALLBACK DEBUG] HTML received, length:', html.length);
-      
+
       // Very specific privacy check - only trigger on actual restriction messages
       const privacyIndicators = [
         'You need permission to access this item',
@@ -260,37 +262,37 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         'This form can only be viewed by users in the',
         'Sign in to continue to Google Forms'
       ];
-      
+
       const hasPrivacyIssue = privacyIndicators.some(indicator => html.includes(indicator));
-      
+
       if (hasPrivacyIssue) {
         console.log('[FALLBACK DEBUG] Form appears private or restricted - found specific privacy indicator');
         throw new Error('FORM_NOT_PUBLIC');
       }
-      
+
       // Additional check: if HTML is too short, it might be an error page
       if (html.length < 3000) {
         console.log('[FALLBACK DEBUG] HTML too short, might be error page (length:', html.length, ')');
         console.log('[FALLBACK DEBUG] HTML preview:', html.substring(0, 500));
         throw new Error('FORM_NOT_PUBLIC');
       }
-      
+
       // If we have a reasonable amount of HTML and no obvious restrictions, proceed
       console.log('[FALLBACK DEBUG] Form appears accessible, proceeding with extraction');
-      
+
       // Extract basic title and description (simple extraction)
       const titleMatch = html.match(/<title>(.*?)<\/title>/i);
       if (titleMatch && titleMatch[1] && titleMatch[1].trim()) {
         title = titleMatch[1].replace(' - Google Forms', '').trim();
         console.log('[FALLBACK DEBUG] Extracted title:', title);
       }
-      
+
       // Extract description safely
       const descMatches = [
         /<meta\s+property="og:description"\s+content="([^"]*?)"/i,
         /<meta\s+name="description"\s+content="([^"]*?)"/i
       ];
-      
+
       for (const regex of descMatches) {
         const match = regex.exec(html);
         if (match && match[1] && match[1].trim()) {
@@ -299,19 +301,19 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
           break;
         }
       }
-      
+
       // PRIMARY METHOD: Extract from FB_PUBLIC_LOAD_DATA_ (most accurate)
       try {
         console.log('[FALLBACK DEBUG] Attempting FB_PUBLIC_LOAD_DATA_ extraction...');
-        
+
         const fbDataRegex = /var\s+FB_PUBLIC_LOAD_DATA_\s*=\s*([\s\S]*?);\s*<\/script>/;
         const fbDataMatch = fbDataRegex.exec(html);
 
         if (fbDataMatch && fbDataMatch[1]) {
           console.log('[FALLBACK DEBUG] Found FB_PUBLIC_LOAD_DATA_, length:', fbDataMatch[1].length);
-          
+
           try {
-            const formData = JSON.parse(fbDataMatch[1]);
+            formData = JSON.parse(fbDataMatch[1]);
             console.log('[FALLBACK DEBUG] Successfully parsed FB_PUBLIC_LOAD_DATA_');
 
             // Google Forms structure: formData[1][1] contains array of questions
@@ -352,7 +354,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
                 // Type 0: Text input questions (very common in Google Forms)
                 // Type 1: Text questions, Type 2: Multiple choice, Type 4: Dropdown, Type 5: Scale, etc.
                 if (typeof questionType === 'number' && questionType >= 0 &&
-                    questionType !== 6 && questionType !== 7 && questionType !== 8) {
+                  questionType !== 6 && questionType !== 7 && questionType !== 8) {
                   console.log(`[FALLBACK DEBUG] Including item ${index}: valid question (type ${questionType}) - "${q[1]}"`);
                   return true;
                 }
@@ -360,15 +362,15 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
                 console.log(`[FALLBACK DEBUG] Filtering out item ${index}: unknown type (${questionType}) - "${q[1]}"`);
                 return false;
               });
-              
+
               questionCount = validQuestions.length;
               console.log(`[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ method: ${questionCount} valid questions (from ${questions.length} total items)`);
-              
+
               // Log question types for debugging
               const questionTypes = validQuestions.map(q => q[3]).filter(type => type !== undefined);
               const uniqueTypes = [...new Set(questionTypes)];
               console.log('[FALLBACK DEBUG] Question types found:', uniqueTypes);
-              
+
               // SUCCESS! FB_PUBLIC_LOAD_DATA_ extraction successful
               console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ extraction successful - now checking personal data...');
 
@@ -382,19 +384,15 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
                   const questionText = String(q[1]).toLowerCase();
                   console.log(`[FALLBACK DEBUG] Checking FB item ${index}: "${q[1]}" (type: ${q[3]})`);
 
-                  // More specific personal data detection - avoid false positives
-                  const isNameField = (questionText.includes('nama lengkap') || questionText.includes('full name') ||
-                                      questionText.includes('nama depan') || questionText.includes('first name') ||
-                                      questionText.includes('nama belakang') || questionText.includes('last name') ||
-                                      (questionText.includes('nama') && !questionText.includes('nama makanan') && !questionText.includes('nama produk') && !questionText.includes('nama tempat') && !questionText.includes('nama perusahaan') && !questionText.includes('nama sekolah')) ||
-                                      (questionText.includes('name') && !questionText.includes('brand name') && !questionText.includes('company name') && !questionText.includes('school name')));
+                  // More specific personal data detection - avoid false positives using word boundaries
+                  const isNameField = /\b(nama lengkap|full name|nama depan|first name|nama belakang|last name|nama|name)\b/i.test(questionText) &&
+                    !/\b(nama makanan|nama produk|nama tempat|nama perusahaan|nama sekolah|brand name|company name|school name)\b/i.test(questionText);
 
-                  const isEmailField = questionText.includes('email') || questionText.includes('e-mail');
+                  const isEmailField = /\b(email|e-mail)\b/i.test(questionText);
 
-                  const isPhoneField = (questionText.includes('phone') || questionText.includes('telepon') ||
-                                       questionText.includes('handphone') || questionText.includes('hanphone') ||
-                                       questionText.includes('whatsapp') || questionText.includes('nomor hp') ||
-                                       questionText.includes('nomor telepon'));
+                  const isPhoneField = /\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp|mobile|cell)\b/i.test(questionText);
+
+                  const isNikField = /\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(questionText);
 
                   if (isNameField || isEmailField || isPhoneField) {
                     console.log(`[FALLBACK DEBUG] *** PERSONAL DATA FOUND in FB item ${index}: "${q[1]}" ***`);
@@ -407,6 +405,8 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
                       if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
                     } else if (isPhoneField) {
                       if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
+                    } else if (isNikField) {
+                      if (!detectedKeywords.includes('nik/id')) detectedKeywords.push('nik/id');
                     }
                   }
                 }
@@ -425,12 +425,12 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
                 hasPersonalDataQuestions,
                 detectedKeywords
               };
-              
+
             } else {
               console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ structure not as expected');
               throw new Error('Unexpected structure');
             }
-          } catch (parseError) {
+          } catch (parseError: any) {
             console.log('[FALLBACK DEBUG] Failed to parse FB_PUBLIC_LOAD_DATA_:', parseError.message);
             questionCount = 0; // Will fall back to secondary methods
           }
@@ -438,7 +438,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
           console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ not found in HTML');
           questionCount = 0; // Will fall back to secondary methods
         }
-      } catch (fbError) {
+      } catch (fbError: any) {
         console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ extraction failed:', fbError.message);
         questionCount = 0;
       }
@@ -446,13 +446,13 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
       // FALLBACK METHOD: If FB_PUBLIC_LOAD_DATA_ fails, use simple patterns
       if (questionCount === 0) {
         console.log('[FALLBACK DEBUG] FB_PUBLIC_LOAD_DATA_ failed, trying fallback methods...');
-        
+
         const fallbackPatterns = [
           { pattern: /jscontroller="(VXdfxd|lSvzH|YOQA7d|NRAOPe|HvnK2b|W7JYtf|auOCFe)"/g, name: 'InputController' },
           { pattern: /entry\.\d+/g, name: 'UniqueEntries', unique: true },
           { pattern: /\*(?!\s*(?:Indicates|Menunjukkan))/g, name: 'RequiredFields' }
         ];
-        
+
         for (const { pattern, name, unique } of fallbackPatterns) {
           const matches = html.match(pattern);
           if (matches && matches.length > 0) {
@@ -460,7 +460,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
             if (unique) {
               count = new Set(matches).size;
             }
-            
+
             if (count > questionCount && count <= 50) {
               questionCount = count;
               console.log(`[FALLBACK DEBUG] Using fallback method ${name}: ${count} questions`);
@@ -469,234 +469,228 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
           }
         }
       }
-      
+
       // Final fallback: Use default value
       if (questionCount === 0) {
         console.log('[FALLBACK DEBUG] All extraction methods failed, using default: 10');
         questionCount = 10;
       }
-        
-      } catch (countError) {
-        console.log('[FALLBACK DEBUG] Question count extraction failed, using default:', countError);
-      }
-      
-      // SAFE personal data detection - simple keyword search
-      // Variables already declared at function scope
-      
-      try {
-        // OPTION 2: Better HTML analysis - analyze actual form elements
-        console.log('[FALLBACK DEBUG] Analyzing actual HTML form elements for personal data');
 
-        // Quick check: are we looking for personal data in FB_PUBLIC_LOAD_DATA_ questions first?
-        if (formData && formData[1] && Array.isArray(formData[1][1])) {
-          console.log('[FALLBACK DEBUG] Checking FB_PUBLIC_LOAD_DATA_ for personal data patterns...');
-          const questions = formData[1][1];
-          let personalDataFound = false;
+    } catch (countError) {
+      console.log('[FALLBACK DEBUG] Question count extraction failed, using default:', countError);
+    }
 
-          questions.forEach((q, index) => {
-            if (q && Array.isArray(q) && q.length > 1 && q[1]) {
-              const questionText = String(q[1]).toLowerCase();
-              console.log(`[FALLBACK DEBUG] Checking item ${index}: "${q[1]}" (type: ${q[3]})`);
+    // SAFE personal data detection - simple keyword search
+    // Variables already declared at function scope
 
-              if (questionText.includes('nama') || questionText.includes('name') ||
-                  questionText.includes('email') || questionText.includes('e-mail') ||
-                  questionText.includes('phone') || questionText.includes('telepon') ||
-                  questionText.includes('handphone') || questionText.includes('hanphone') ||
-                  questionText.includes('whatsapp') || questionText.includes('alamat')) {
-                console.log(`[FALLBACK DEBUG] *** PERSONAL DATA FOUND in FB item ${index}: "${q[1]}" ***`);
-                personalDataFound = true;
+    try {
+      // OPTION 2: Better HTML analysis - analyze actual form elements
+      console.log('[FALLBACK DEBUG] Analyzing actual HTML form elements for personal data');
 
-                // Determine keyword type
-                if (questionText.includes('nama') || questionText.includes('name')) {
-                  if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
-                } else if (questionText.includes('email') || questionText.includes('e-mail')) {
-                  if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
-                } else if (questionText.includes('phone') || questionText.includes('telepon') ||
-                          questionText.includes('handphone') || questionText.includes('hanphone') ||
-                          questionText.includes('whatsapp')) {
-                  if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
-                } else if (questionText.includes('alamat')) {
-                  if (!detectedKeywords.includes('address')) detectedKeywords.push('address');
-                }
+      // Quick check: are we looking for personal data in FB_PUBLIC_LOAD_DATA_ questions first?
+      if (formData && formData[1] && Array.isArray(formData[1][1])) {
+        console.log('[FALLBACK DEBUG] Checking FB_PUBLIC_LOAD_DATA_ for personal data patterns...');
+        const questions = formData[1][1];
+        let personalDataFound = false;
+
+        questions.forEach((q: any, index: number) => {
+          if (q && Array.isArray(q) && q.length > 1 && q[1]) {
+            const questionText = String(q[1]).toLowerCase();
+            console.log(`[FALLBACK DEBUG] Checking item ${index}: "${q[1]}" (type: ${q[3]})`);
+
+            if (/\b(nama|name|email|e-mail|phone|telepon|handphone|hanphone|whatsapp|wa|alamat|nik|ktp|nomor induk kependudukan|henpon|hanpon|hape|telp|hp)\b/i.test(questionText)) {
+              console.log(`[FALLBACK DEBUG] *** PERSONAL DATA FOUND in FB item ${index}: "${q[1]}" ***`);
+              personalDataFound = true;
+
+              // Determine keyword type
+              if (/\b(nama|name)\b/i.test(questionText)) {
+                if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
+              } else if (/\b(email|e-mail)\b/i.test(questionText)) {
+                if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
+              } else if (/\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp|mobile|cell)\b/i.test(questionText)) {
+                if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
+              } else if (/\b(alamat|address)\b/i.test(questionText)) {
+                if (!detectedKeywords.includes('address')) detectedKeywords.push('address');
+              } else if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(questionText)) {
+                if (!detectedKeywords.includes('nik/id')) detectedKeywords.push('nik/id');
               }
             }
-          });
-
-          if (personalDataFound) {
-            hasPersonalDataQuestions = true;
-            console.log(`[FALLBACK DEBUG] *** SETTING hasPersonalDataQuestions = true, detectedKeywords:`, detectedKeywords);
           }
-        }
+        });
 
-        // Debug: Show relevant HTML snippets that might contain personal data
-        console.log('[FALLBACK DEBUG] Searching for phone patterns in HTML...');
-        const phoneDebugPatterns = [
-          /nomor\s*hanphone/gi,
-          /nomor\s*handphone/gi,
-          /nomor\s*telepon/gi,
-          /nomor\s*hp/gi,
-          /phone/gi,
-          /whatsapp/gi
-        ];
-
-        for (const pattern of phoneDebugPatterns) {
-          const matches = html.match(pattern);
-          if (matches && matches.length > 0) {
-            console.log(`[FALLBACK DEBUG] Found phone-related text: "${matches[0]}" (${matches.length} times)`);
-            // Show surrounding context
-            const index = html.search(pattern);
-            if (index !== -1) {
-              const context = html.substring(Math.max(0, index - 100), index + 200);
-              console.log(`[FALLBACK DEBUG] Context:`, context);
-            }
-          }
-        }
-        
-        // Look for Google Forms specific structure, not just regular HTML inputs
-        const googleFormsPatterns = [
-          // Google Forms question patterns - look for question text content with more specific patterns
-          // Only match actual personal data collection, not generic usage
-          /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:your email|email address|alamat email|e-?mail anda)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
-          /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:phone number|nomor telepon|nomor hp|nomor handphone|nomor hanphone|whatsapp number)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
-          /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:full name|first name|last name|nama lengkap|nama depan|nama belakang)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
-          /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:home address|mailing address|alamat rumah|alamat tempat tinggal)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
-        ];
-        
-        // Google Forms uses aria-label and data-params for form structure
-        const googleFormsInputPatterns = [
-          // Look for actual input elements in Google Forms
-          /<input[^>]*aria-label=['"]*([^'"]*(?:email|e-mail)[^'"]*)/gi,
-          /<input[^>]*aria-label=['"]*([^'"]*(?:phone|nomor|telepon|handphone|hanphone|hp|whatsapp)[^'"]*)/gi,
-          /<input[^>]*aria-label=['"]*([^'"]*(?:name|nama)[^'"]*)/gi,
-          /<input[^>]*aria-label=['"]*([^'"]*(?:address|alamat)[^'"]*)/gi,
-          
-          // Look for textarea elements
-          /<textarea[^>]*aria-label=['"]*([^'"]*(?:email|phone|nomor|name|nama|address|alamat)[^'"]*)/gi,
-        ];
-        
-        // Look for question titles in Google Forms structure - more comprehensive patterns
-        const questionTitlePatterns = [
-          // English patterns
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:email|e-?mail|electronic mail)[^<]*)</gi,
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:phone|telephone|mobile|cell)[^<]*)</gi,
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:full name|first name|last name|name)[^<]*)</gi,
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:address|location|residence)[^<]*)</gi,
-          
-          // Indonesian patterns
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat email|surel)[^<]*)</gi,
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nomor|telepon|handphone|hanphone|telp|hp|whatsapp|wa)[^<]*)</gi,
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nama lengkap|nama depan|nama belakang|nama)[^<]*)</gi,
-          /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat|domisili|tempat tinggal)[^<]*)</gi,
-          
-          // Also check span elements that might contain question text
-          /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:email|e-?mail|alamat email)[^<]*)</gi,
-          /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:phone|nomor|telepon|handphone|hanphone|hp|whatsapp)[^<]*)</gi,
-          /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:name|nama)[^<]*)</gi,
-        ];
-        
-        // Check Google Forms patterns (question content)
-        const allPatterns = [...googleFormsPatterns, ...googleFormsInputPatterns, ...questionTitlePatterns];
-        
-        for (const pattern of allPatterns) {
-          const matches = html.match(pattern);
-          if (matches && matches.length > 0) {
-            console.log('[FALLBACK DEBUG] Found Google Forms personal data pattern:', matches[0]);
-            
-            // Determine keyword type from the match - be more specific
-            const match = matches[0].toLowerCase();
-            if (match.includes('email') || match.includes('e-mail') || match.includes('surel')) {
-              if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
-            } else if (match.includes('phone') || match.includes('nomor') || match.includes('telepon') || match.includes('handphone') || match.includes('hanphone') || match.includes('hp') || match.includes('whatsapp') || match.includes('telp') || match.includes('mobile') || match.includes('cell')) {
-              if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
-            } else if (match.includes('name') || match.includes('nama')) {
-              if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
-            } else if (match.includes('address') || match.includes('alamat') || match.includes('domisili') || match.includes('residence')) {
-              if (!detectedKeywords.includes('address')) detectedKeywords.push('address');
-            }
-          }
-        }
-        
-        // Only trigger if we found actual input fields (not just labels)
-        if (detectedKeywords.length > 0) {
+        if (personalDataFound) {
           hasPersonalDataQuestions = true;
-          console.log('[FALLBACK DEBUG] Personal data INPUT FIELDS detected:', detectedKeywords);
-        } else {
-          console.log('[FALLBACK DEBUG] No personal data input fields found');
-        }
-        
-        if (detectedKeywords.length > 0) {
-          console.log('[FALLBACK DEBUG] Personal data keywords detected:', detectedKeywords);
-        } else {
-          console.log('[FALLBACK DEBUG] No personal data keywords found');
-        }
-        
-      } catch (detectionError) {
-        console.log('[FALLBACK DEBUG] Personal data detection failed, skipping:', detectionError);
-      }
-      
-      // Special debugging for specific URLs
-      if (url.includes('1FAIpQLSdSGkjOa4F309mAXN4KHGxjgQRtkKHxr57NZFt_XQQFTT8OXg')) {
-        console.log('[FALLBACK DEBUG] SPECIAL DEBUG - Quiz form detected');
-        console.log('[FALLBACK DEBUG] Final question count before return:', questionCount);
-        console.log('[FALLBACK DEBUG] HTML length:', html.length);
-      }
-      
-      // Special debugging for Order Request form  
-      if (url.includes('1FAIpQLSdCpIuBC5BNKhl2qv077I-WlOCmYR_7RHAJY9RZXpdD9519IQ')) {
-        console.log('[FALLBACK DEBUG] SPECIAL DEBUG - Order Request form detected');
-        console.log('[FALLBACK DEBUG] Final question count:', questionCount);
-        console.log('[FALLBACK DEBUG] HTML length:', html.length);
-        
-        // Additional debug - try manual pattern search for better understanding
-        const debugPatterns = [
-          { name: 'Radio buttons', pattern: /type="radio"/g },
-          { name: 'Input fields', pattern: /<input[^>]*>/g },
-          { name: 'Question divs', pattern: /<div[^>]*question[^>]*>/gi },
-          { name: 'Required asterisks', pattern: /\*/g },
-          { name: 'Aria labels', pattern: /aria-label="[^"]*"/g },
-          // More structural patterns
-          { name: 'Radio groups (name attr)', pattern: /name="entry\.\d+"/g },
-          { name: 'Question containers', pattern: /data-item-id="\d+"/g },
-          { name: 'Form sections', pattern: /<div[^>]*role="group"/g },
-          { name: 'Question IDs', pattern: /entry\.\d+/g },
-          { name: 'FB form data', pattern: /FB_PUBLIC_LOAD_DATA_/g }
-        ];
-        
-        for (const { name, pattern } of debugPatterns) {
-          const matches = html.match(pattern);
-          console.log(`[FALLBACK DEBUG] ${name}: ${matches ? matches.length : 0} found`);
+          console.log(`[FALLBACK DEBUG] *** SETTING hasPersonalDataQuestions = true, detectedKeywords:`, detectedKeywords);
         }
       }
-      
-      console.log('[FALLBACK DEBUG] Safe extraction with fetch completed');
-      return {
-        title,
-        description,
-        questionCount,
-        platform: 'Google Forms',
-        url: url,
-        hasPersonalDataQuestions,
-        detectedKeywords
-      };
-      
-    } catch (fetchError) {
-      if (typeof timeoutId !== 'undefined') {
-        clearTimeout(timeoutId);
+
+      // Debug: Show relevant HTML snippets that might contain personal data
+      console.log('[FALLBACK DEBUG] Searching for phone patterns in HTML...');
+      const phoneDebugPatterns = [
+        /nomor\s*hanphone/gi,
+        /nomor\s*handphone/gi,
+        /nomor\s*telepon/gi,
+        /nomor\s*hp/gi,
+        /phone/gi,
+        /whatsapp/gi
+      ];
+
+      for (const pattern of phoneDebugPatterns) {
+        const matches = html.match(pattern);
+        if (matches && matches.length > 0) {
+          console.log(`[FALLBACK DEBUG] Found phone-related text: "${matches[0]}" (${matches.length} times)`);
+          // Show surrounding context
+          const index = html.search(pattern);
+          if (index !== -1) {
+            const context = html.substring(Math.max(0, index - 100), index + 200);
+            console.log(`[FALLBACK DEBUG] Context:`, context);
+          }
+        }
       }
-      
-      // Handle specific error types
-      if (fetchError.name === 'AbortError') {
-        console.log('[FALLBACK DEBUG] Request timeout (8 seconds exceeded)');
-        throw new Error('REQUEST_TIMEOUT');
+
+      // Look for Google Forms specific structure, not just regular HTML inputs
+      const googleFormsPatterns = [
+        // Google Forms question patterns - look for question text content with more specific patterns
+        // Only match actual personal data collection, not generic usage
+        /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:your email|email address|alamat email|e-?mail anda)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
+        /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:phone number|nomor telepon|nomor hp|nomor handphone|nomor hanphone|whatsapp number)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
+        /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:full name|first name|last name|nama lengkap|nama depan|nama belakang)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
+        /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:home address|mailing address|alamat rumah|alamat tempat tinggal)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
+      ];
+
+      // Google Forms uses aria-label and data-params for form structure
+      const googleFormsInputPatterns = [
+        // Look for actual input elements in Google Forms
+        /<input[^>]*aria-label=['"]*([^'"]*(?:email|e-mail)[^'"]*)/gi,
+        /<input[^>]*aria-label=['"]*([^'"]*(?:phone|nomor|telepon|handphone|hanphone|hp|whatsapp)[^'"]*)/gi,
+        /<input[^>]*aria-label=['"]*([^'"]*(?:name|nama)[^'"]*)/gi,
+        /<input[^>]*aria-label=['"]*([^'"]*(?:address|alamat)[^'"]*)/gi,
+
+        // Look for textarea elements
+        /<textarea[^>]*aria-label=['"]*([^'"]*(?:email|phone|nomor|name|nama|address|alamat)[^'"]*)/gi,
+      ];
+
+      // Look for question titles in Google Forms structure - more comprehensive patterns
+      const questionTitlePatterns = [
+        // English patterns
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:email|e-?mail|electronic mail)[^<]*)</gi,
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:phone|telephone|mobile|cell)[^<]*)</gi,
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:full name|first name|last name|name)[^<]*)</gi,
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:address|location|residence)[^<]*)</gi,
+
+        // Indonesian patterns
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat email|surel)[^<]*)</gi,
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nomor|telepon|handphone|hanphone|telp|hp|whatsapp|wa)[^<]*)</gi,
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nama lengkap|nama depan|nama belakang|nama)[^<]*)</gi,
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat|domisili|tempat tinggal)[^<]*)</gi,
+
+        // Also check span elements that might contain question text
+        /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:email|e-?mail|alamat email)[^<]*)</gi,
+        /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:phone|nomor|telepon|handphone|hanphone|hp|whatsapp)[^<]*)</gi,
+        /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:name|nama)[^<]*)</gi,
+      ];
+
+      // Check Google Forms patterns (question content)
+      const allPatterns = [...googleFormsPatterns, ...googleFormsInputPatterns, ...questionTitlePatterns];
+
+      for (const pattern of allPatterns) {
+        const matches = html.match(pattern);
+        if (matches && matches.length > 0) {
+          console.log('[FALLBACK DEBUG] Found Google Forms personal data pattern:', matches[0]);
+
+          // Determine keyword type from the match - be more specific
+          const match = matches[0].toLowerCase();
+          if (/\b(email|e-mail|surel)\b/i.test(match)) {
+            if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
+          } else if (/\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp|mobile|cell)\b/i.test(match)) {
+            if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
+          } else if (/\b(name|nama)\b/i.test(match)) {
+            if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
+          } else if (/\b(address|alamat|domisili|residence)\b/i.test(match)) {
+            if (!detectedKeywords.includes('address')) detectedKeywords.push('address');
+          } else if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(match)) {
+            if (!detectedKeywords.includes('nik/id')) detectedKeywords.push('nik/id');
+          }
+        }
+      }
+
+      // Only trigger if we found actual input fields (not just labels)
+      if (detectedKeywords.length > 0) {
+        hasPersonalDataQuestions = true;
+        console.log('[FALLBACK DEBUG] Personal data INPUT FIELDS detected:', detectedKeywords);
       } else {
-        console.log('[FALLBACK DEBUG] Fetch failed:', fetchError);
+        console.log('[FALLBACK DEBUG] No personal data input fields found');
       }
-      
-      // Don't return fallback data that looks real - instead throw error
-      // This prevents showing misleading mock data to users
-      throw new Error('EXTRACTION_FAILED');
+
+      if (detectedKeywords.length > 0) {
+        console.log('[FALLBACK DEBUG] Personal data keywords detected:', detectedKeywords);
+      } else {
+        console.log('[FALLBACK DEBUG] No personal data keywords found');
+      }
+
+    } catch (detectionError) {
+      console.log('[FALLBACK DEBUG] Personal data detection failed, skipping:', detectionError);
     }
-  
+
+    // Special debugging for specific URLs
+    if (url.includes('1FAIpQLSdSGkjOa4F309mAXN4KHGxjgQRtkKHxr57NZFt_XQQFTT8OXg')) {
+      console.log('[FALLBACK DEBUG] SPECIAL DEBUG - Quiz form detected');
+      console.log('[FALLBACK DEBUG] Final question count before return:', questionCount);
+      console.log('[FALLBACK DEBUG] HTML length:', html.length);
+    }
+
+    // Special debugging for Order Request form  
+    if (url.includes('1FAIpQLSdCpIuBC5BNKhl2qv077I-WlOCmYR_7RHAJY9RZXpdD9519IQ')) {
+      console.log('[FALLBACK DEBUG] SPECIAL DEBUG - Order Request form detected');
+      console.log('[FALLBACK DEBUG] Final question count:', questionCount);
+      console.log('[FALLBACK DEBUG] HTML length:', html.length);
+
+      // Additional debug - try manual pattern search for better understanding
+      const debugPatterns = [
+        { name: 'Radio buttons', pattern: /type="radio"/g },
+        { name: 'Input fields', pattern: /<input[^>]*>/g },
+        { name: 'Question divs', pattern: /<div[^>]*question[^>]*>/gi },
+        { name: 'Required asterisks', pattern: /\*/g },
+        { name: 'Aria labels', pattern: /aria-label="[^"]*"/g },
+        // More structural patterns
+        { name: 'Radio groups (name attr)', pattern: /name="entry\.\d+"/g },
+        { name: 'Question containers', pattern: /data-item-id="\d+"/g },
+        { name: 'Form sections', pattern: /<div[^>]*role="group"/g },
+        { name: 'Question IDs', pattern: /entry\.\d+/g },
+        { name: 'FB form data', pattern: /FB_PUBLIC_LOAD_DATA_/g }
+      ];
+
+      for (const { name, pattern } of debugPatterns) {
+        const matches = html.match(pattern);
+        console.log(`[FALLBACK DEBUG] ${name}: ${matches ? matches.length : 0} found`);
+      }
+    }
+
+    console.log('[FALLBACK DEBUG] Safe extraction with fetch completed');
+    return {
+      title,
+      description,
+      questionCount,
+      platform: 'Google Forms',
+      url: url,
+      hasPersonalDataQuestions,
+      detectedKeywords
+    };
+
+  } catch (fetchError: any) {
+    // Handle specific error types
+    if (fetchError.name === 'AbortError') {
+      console.log('[FALLBACK DEBUG] Request timeout (8 seconds exceeded)');
+      throw new Error('REQUEST_TIMEOUT');
+    } else {
+      console.log('[FALLBACK DEBUG] Fetch failed:', fetchError);
+    }
+
+    // Don't return fallback data that looks real - instead throw error
+    // This prevents showing misleading mock data to users
+    throw new Error('EXTRACTION_FAILED');
+  }
+
   /* ORIGINAL CODE COMMENTED OUT TO TEST FREEZE
   try {
     console.log('[FALLBACK DEBUG] Starting fallback extraction for URL:', url);

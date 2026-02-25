@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, Zap, PenLine, ShieldAlert, GraduationCap, Globe, ExternalLink, Info } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, CalendarCheck, Zap, PenLine, ShieldAlert, GraduationCap, Globe, ExternalLink, Info } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, supabase } from '../utils/supabase';
 import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -54,6 +54,7 @@ interface SurveySubmission {
   detected_keywords?: string[];
   leads?: string;
   voucher_code?: string;
+  has_transactions?: boolean;
   prize_per_winner?: number;
   winnerCount?: number;
   criteria?: string;
@@ -195,7 +196,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           questionCount: sub.question_count || 0,
           responseCount: 0, // Not tracked yet
           status: (sub.submission_status || sub.status || 'in_review') === 'pending' ? 'in_review' : (sub.submission_status || sub.status || 'in_review'),
-          payment_status: sub.payment_status || 'pending',
+          // We initially grab real payment_status, we will filter it if there are no transactions
+          payment_status: sub.payment_status,
           total_cost: sub.total_cost || 0,
           phone_number: sub.phone_number,
           university: sub.university,
@@ -210,22 +212,20 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           criteria: sub.criteria_responden,
           duration: sub.duration,
           admin_notes: sub.admin_notes,
+          has_transactions: false, // Default, will verify below
         }));
-        setSubmissions(transformed);
-        // Initial filter application handled by useEffect or derivation
-        setTotalSubmissions(count || 0);
 
-        // Fetch existing pages for these submissions
+        // Fetch existing pages & transactions for these submissions
         if (transformed.length > 0) {
           const submissionIds = transformed.map(s => s.id);
+
+          // 1. Fetch Pages
           const { data: pages, error: pagesError } = await supabase
             .from('survey_pages')
             .select('submission_id, slug, is_published')
             .in('submission_id', submissionIds);
 
-          if (pagesError) {
-            console.error('Error fetching survey pages:', pagesError);
-          }
+          if (pagesError) console.error('Error fetching survey pages:', pagesError);
 
           if (pages) {
             const pageMap: Record<string, { slug: string, is_published: boolean }> = {};
@@ -234,9 +234,37 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             });
             setExistingPages(pageMap);
           }
+
+          // 2. Fetch Transactions (Invoices) to override Supabase defaults
+          const { data: transactions, error: trxError } = await supabase
+            .from('transactions')
+            .select('form_submission_id')
+            .in('form_submission_id', submissionIds);
+
+          if (trxError) console.error('Error fetching transactions:', trxError);
+
+          if (transactions && transactions.length > 0) {
+            const trxSet = new Set(transactions.map(t => t.form_submission_id));
+            transformed.forEach(sub => {
+              if (trxSet.has(sub.id)) {
+                sub.has_transactions = true;
+              } else if (sub.payment_status === 'pending') {
+                // If no transaction exists but status says pending (DB default), strip it
+                sub.payment_status = undefined;
+              }
+            });
+          } else {
+            // No transactions at all, strip all 'pending' defaults
+            transformed.forEach(sub => {
+              if (sub.payment_status === 'pending') sub.payment_status = undefined;
+            });
+          }
         } else {
           setExistingPages({}); // Clear pages if no submissions
         }
+
+        setSubmissions(transformed);
+        setTotalSubmissions(count || 0);
       }
     } catch (error) {
       toast.error('Failed to load submissions');
@@ -550,7 +578,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 className="h-8 w-8 hover:bg-white hover:shadow-sm"
                 onClick={() => {
                   const newDate = new Date(currentDate);
-                  newDate.setMonth(newDate.getMonth() - 1);
+                  newDate.setMonth(newDate.getMonth() + 1);
                   setCurrentDate(newDate);
                   setCurrentPage(1);
                 }}
@@ -674,18 +702,29 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 <Table className="min-w-[1200px]">
                   <TableHeader className="bg-gray-50/50">
                     <TableRow className="border-b border-gray-100">
+                      <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10 pl-6">Submitted</TableHead>
                       <TableHead className="w-[300px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Form Details</TableHead>
                       <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Criteria & Incentive</TableHead>
-                      <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Researcher</TableHead>
-                      <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Submitted</TableHead>
-                      <TableHead className="w-[120px]">Status</TableHead>
-                      <TableHead className="w-[140px]">Payment</TableHead>
-                      <TableHead className="text-right w-[140px] pr-6">Publish & Pages</TableHead>
+                      <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Researcher</TableHead>
+                      <TableHead className="w-[120px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Payment</TableHead>
+                      <TableHead className="w-[220px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10 pt-3 pl-16 pr-8">Publish & Pages</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredSubmissions.map((submission) => (
-                      <TableRow key={submission.id} className="hover:bg-gray-50/50 transition-colors group">
+                      <TableRow key={submission.id} className="hover:bg-gray-50/50 transition-colors group group/row">
+                        {/* Submitted */}
+                        <TableCell className="align-top py-4 text-xs pl-6">
+                          <div className="flex flex-col text-gray-500">
+                            <span className="font-medium text-gray-900">
+                              {new Date(submission.submittedAt).toLocaleDateString('id-ID')}
+                            </span>
+                            <span>
+                              {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </TableCell>
+
                         {/* Form Details */}
                         <TableCell className="align-top py-4">
                           <div className="flex flex-col gap-1.5">
@@ -721,7 +760,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover/row:opacity-100 transition-opacity"
                                   onClick={() => handleOpenEditFormDetailsModal(submission)}
                                   title="Edit Form Details"
                                 >
@@ -805,6 +844,75 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 </div>
                               )}
                             </div>
+
+                            {/* Status Footer */}
+                            <div className="mt-1 pt-2 border-t border-gray-100/60">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">Review Status:</span>
+                                {(() => {
+                                  // Map post-approved statuses to "approved" for display
+                                  const getDisplayStatus = (status: string | undefined) => {
+                                    const s = status || 'pending';
+                                    if (['scheduling', 'publishing', 'completed', 'approved'].includes(s)) return 'approved';
+                                    return s;
+                                  };
+                                  const displayStatus = getDisplayStatus(submission.status);
+                                  return (
+                                    <>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
+                                            <Badge
+                                              variant="outline"
+                                              className={`
+                                                cursor-pointer px-2 py-0.5 text-[10px] uppercase tracking-wide border transition-all hover:ring-2 hover:ring-offset-1 h-5
+                                                ${displayStatus === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                                                  displayStatus === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                                                    displayStatus === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                      'bg-gray-100 text-gray-700 border-gray-200'}
+                                              `}
+                                            >
+                                              {displayStatus === 'in_review' ? 'Need Review' : (displayStatus.replace('_', ' '))}
+                                            </Badge>
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="start">
+                                          <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'in_review')}>
+                                            Need Review
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'approved')}>
+                                            Approved
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                            Rejected
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
+                                            Spam / Revision
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+
+                                      {/* Admin Notes Display */}
+                                      {displayStatus === 'rejected' && submission.admin_notes && (
+                                        <TooltipProvider>
+                                          <Tooltip delayDuration={300}>
+                                            <TooltipTrigger asChild>
+                                              <div className="flex items-center justify-center text-xs text-red-600 bg-red-50 p-1 rounded border border-red-100 cursor-help transition-colors hover:bg-red-100 ml-1">
+                                                <Info className="w-3.5 h-3.5 shrink-0" />
+                                              </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="max-w-[400px] bg-white p-3 shadow-xl border-red-100 text-slate-700">
+                                              <p className="font-semibold text-xs text-red-600 mb-1">Rejection Reason:</p>
+                                              <p className="text-sm leading-relaxed">{submission.admin_notes}</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
                           </div>
                         </TableCell>
 
@@ -813,6 +921,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           <div className="flex flex-col gap-2">
                             {submission.criteria ? (
                               <div className="relative group/criteria">
+                                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">Criteria:</div>
                                 <p className="text-xs text-gray-600 line-clamp-3 mb-1 pr-6" title={submission.criteria}>
                                   {submission.criteria || '-'}
                                 </p>
@@ -820,7 +929,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover/criteria:opacity-100 transition-opacity bg-white/80"
+                                  className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover/row:opacity-100 transition-opacity bg-white/80"
                                   onClick={() => handleOpenEditCriteriaModal(submission)}
                                   title="Edit Criteria"
                                 >
@@ -840,7 +949,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             )}
 
                             {submission.prize_per_winner ? (
-                              <div className="mt-2">
+                              <div className="mt-2 text-left">
+                                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">Incentive:</div>
                                 <div className="flex flex-wrap gap-1.5 mb-1.5">
                                   <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium rounded-md whitespace-nowrap">
                                     Rp {submission.prize_per_winner.toLocaleString('id-ID')}
@@ -856,7 +966,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 </div>
                               </div>
                             ) : (
-                              <div className="text-[10px] text-gray-400 italic mt-1">
+                              <div className="mt-2 text-[10px] text-gray-400 italic">
+                                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1 not-italic">Incentive:</div>
                                 No incentive
                               </div>
                             )}
@@ -871,230 +982,179 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             </span>
 
                             <div className="flex flex-col text-xs text-gray-500 gap-0.5 mt-0.5">
-                              {/* Subtitle Details */}
-                              <span className="truncate text-[10px] text-gray-400" title={submission.researcherEmail}>
-                                {submission.researcherEmail}
-                              </span>
-
                               {submission.phone_number && (
                                 <a
                                   href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-[10px] text-green-600 hover:underline w-fit"
+                                  className="text-[11px] font-medium text-green-600 hover:text-green-700 hover:underline w-fit"
                                 >
                                   {submission.phone_number}
                                 </a>
                               )}
 
-                              {(submission.university || submission.department) && (
-                                <div className="text-[10px] text-gray-500 italic mt-1 pt-1 border-t border-gray-100 leading-tight">
-                                  {submission.university && <div>{submission.university}</div>}
-                                  {submission.department && <div className="text-gray-400">{submission.department}</div>}
+                              <span className="truncate text-[10px] text-gray-400" title={submission.researcherEmail}>
+                                {submission.researcherEmail}
+                              </span>
+
+                              {(submission.education || submission.department || submission.university) && (
+                                <div className="mt-1.5 pt-1.5 border-t border-gray-100/80 flex flex-col gap-0.5">
+                                  {submission.education && (
+                                    <span className="inline-flex w-fit items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-purple-50 text-purple-700 border border-purple-100 capitalize">
+                                      {submission.education.replace(/_/g, ' ')}
+                                    </span>
+                                  )}
+                                  {submission.department && (
+                                    <span className="text-[10px] text-gray-500">{submission.department}</span>
+                                  )}
+                                  {submission.university && (
+                                    <span className="text-[10px] text-gray-500">{submission.university}</span>
+                                  )}
                                 </div>
                               )}
 
                               {submission.leads && (
-                                <div className="text-[10px] text-gray-400 mt-0.5">
-                                  Lead: {submission.leads}
+                                <div className="text-[10px] text-gray-400 mt-1.5 pt-1.5 border-t border-gray-100/80 leading-tight">
+                                  Lead: <span className="capitalize">{submission.leads.replace(/_/g, ' ')}</span>
                                 </div>
                               )}
                             </div>
                           </div>
-                        </TableCell>
-
-                        {/* Submitted */}
-                        <TableCell className="align-top py-4 text-xs">
-                          <div className="flex flex-col text-gray-500">
-                            <span className="font-medium text-gray-900">
-                              {new Date(submission.submittedAt).toLocaleDateString('id-ID')}
-                            </span>
-                            <span>
-                              {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                        </TableCell>
-
-                        {/* Status */}
-                        <TableCell className="align-top py-4">
-                          {(() => {
-                            // Map post-approved statuses to "approved" for display
-                            const getDisplayStatus = (status: string | undefined) => {
-                              const s = status || 'pending';
-                              if (['scheduling', 'publishing', 'completed', 'approved'].includes(s)) return 'approved';
-                              return s;
-                            };
-                            const displayStatus = getDisplayStatus(submission.status);
-                            return (
-                              <>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
-                                      <Badge
-                                        variant="outline"
-                                        className={`
-                                          cursor-pointer px-2 py-1 text-[10px] uppercase tracking-wide border transition-all hover:ring-2 hover:ring-offset-1
-                                          ${displayStatus === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
-                                            displayStatus === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
-                                              displayStatus === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                'bg-gray-100 text-gray-700 border-gray-200'}
-                                        `}
-                                      >
-                                        {displayStatus === 'in_review' ? 'Need Review' : (displayStatus.replace('_', ' '))}
-                                      </Badge>
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="start">
-                                    <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'in_review')}>
-                                      Need Review
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'approved')}>
-                                      Approved
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600 focus:text-red-600 focus:bg-red-50">
-                                      Rejected
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleOpenEditFormDetailsModal(submission)}>
-                                      <PenLine className="w-4 h-4 mr-2" />
-                                      Edit Details
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleOpenEditCriteriaModal(submission)}>
-                                      <PenLine className="w-4 h-4 mr-2" />
-                                      Edit Criteria
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleOpenPageBuilder(submission)}>
-                                      <Globe className="w-4 h-4 mr-2" />
-                                      Page Builder
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
-                                      Spam / Revision
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-
-                                {/* Admin Notes Display */}
-                                {displayStatus === 'rejected' && submission.admin_notes && (
-                                  <TooltipProvider>
-                                    <Tooltip delayDuration={300}>
-                                      <TooltipTrigger asChild>
-                                        <div className="mt-1.5 flex items-start gap-1 text-xs text-red-600 bg-red-50 p-1.5 rounded border border-red-100 max-w-[200px] cursor-help transition-colors hover:bg-red-100">
-                                          <Info className="w-3 h-3 shrink-0 mt-0.5" />
-                                          <span className="line-clamp-2 text-left">
-                                            {submission.admin_notes}
-                                          </span>
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent className="max-w-[400px] bg-white p-3 shadow-xl border-red-100 text-slate-700">
-                                        <p className="font-semibold text-xs text-red-600 mb-1">Rejection Reason:</p>
-                                        <p className="text-sm leading-relaxed">{submission.admin_notes}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                )}
-                              </>
-                            );
-                          })()}
                         </TableCell>
 
                         {/* Payment */}
                         <TableCell className="align-top py-4">
                           <div className="flex flex-col gap-1.5">
-                            {/* Row 1: Amount & Status Badge */}
-                            <div className="flex items-center justify-between gap-2">
-                              {/* Grand Total - Prominent (Matching Form Title Style) */}
-                              <span className={`text-sm font-bold whitespace-nowrap ${submission.payment_status === 'paid' ? 'text-green-700' : 'text-gray-900'}`}>
-                                {(() => {
-                                  const adCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
-                                  const incentive = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
-                                  const discount = calculateDiscount(submission.voucher_code, adCost);
-                                  const total = adCost + incentive - discount;
-                                  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(total);
-                                })()}
-                              </span>
+                            {/* Row 1: Amount & Button */}
+                            <div className="flex items-center justify-between mb-1.5 w-full">
+                              <div className="flex flex-col">
+                                {/* Grand Total - Prominent (Matching Form Title Style) */}
+                                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-0.5">Expected:</div>
+                                <span className={`text-[15px] font-bold whitespace-nowrap ${submission.payment_status === 'paid' ? 'text-green-700' : 'text-gray-900'}`}>
+                                  {(() => {
+                                    const adCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
+                                    const incentive = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
+                                    const discount = calculateDiscount(submission.voucher_code, adCost);
+                                    const total = adCost + incentive - discount;
+                                    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(total);
+                                  })()}
+                                </span>
+                              </div>
 
-                              {/* Status Badge - Chip Style (Matching Form Details Chips) */}
-                              <Badge
-                                variant="outline"
-                                className={`
-                                  h-5 px-1.5 py-0 text-[10px] uppercase tracking-wide border font-semibold rounded-md whitespace-nowrap
-                                  ${submission.payment_status === 'paid' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}
-                                `}
-                              >
-                                {submission.payment_status || 'Pending'}
-                              </Badge>
+                              {/* Invoice button: disabled before approved, always active once approved or beyond */}
+                              {(() => {
+                                const isEligibleForInvoice = ['approved', 'scheduling', 'publishing', 'completed'].includes(submission.status || '');
+                                return (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="shrink-0">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={!isEligibleForInvoice}
+                                            className="h-7 text-[10px] justify-center px-2.5 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium transition-colors"
+                                            onClick={() => isEligibleForInvoice && handleOpenInvoiceModal(submission)}
+                                          >
+                                            <Plus className="w-3 h-3 mr-1" />
+                                            Invoice
+                                          </Button>
+                                        </div>
+                                      </TooltipTrigger>
+                                      {!isEligibleForInvoice && (
+                                        <TooltipContent side="top">
+                                          <p className="text-xs">Form must be approved first</p>
+                                        </TooltipContent>
+                                      )}
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                );
+                              })()}
                             </div>
 
-                            {/* Row 2: Actions */}
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-[10px] flex-1 justify-center px-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium transition-colors"
-                                onClick={() => handleOpenInvoiceModal(submission)}
-                              >
-                                {submission.payment_status === 'paid' ? 'View Invoice' : 'Create Invoice'}
-                              </Button>
-                              <div className="shrink-0">
-                                <CopyInvoiceDropdown
-                                  formSubmissionId={submission.id}
-                                  refreshTrigger={invoiceRefreshTrigger}
-                                  isCompact={true}
-                                />
-                              </div>
+                            {/* Row 2: Invoices List */}
+                            <div className="flex flex-col w-full">
+                              <CopyInvoiceDropdown
+                                formSubmissionId={submission.id}
+                                refreshTrigger={invoiceRefreshTrigger}
+                                overrideStatus={submission.payment_status}
+                                inlineMode={true}
+                              />
                             </div>
                           </div>
                         </TableCell>
 
                         {/* Publish & Pages (New Column) */}
-                        <TableCell className="align-top py-4 text-right pr-6 space-y-2">
-                          <Button
-                            variant={submission.status === 'scheduling' ? 'default' : 'outline'}
-                            size="sm"
-                            className={`
-                                w-full text-xs font-medium shadow-sm transition-all justify-start
-                                ${submission.status === 'scheduling'
-                                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                                : 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200'}
-                              `}
-                            onClick={() => {
-                              setSelectedSubmissionForAds(submission);
-                              setIsPublishModalOpen(true);
-                            }}
-                          >
-                            <Calendar className={`w-3.5 h-3.5 mr-2 ${submission.status === 'scheduling' ? 'text-white/90' : 'text-gray-400'}`} />
-                            Schedule
-                          </Button>
-
-
-                          <div className="flex items-center gap-1 w-full">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className={`flex-1 text-xs font-medium shadow-sm transition-all justify-start ${existingPages[submission.id] ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200'}`}
-                              onClick={() => handleOpenPageBuilder(submission)}
-                            >
-                              <Globe className="w-3.5 h-3.5 mr-2" />
-                              {existingPages[submission.id] ? 'Edit Page' : 'Builder'}
-                            </Button>
-
-                            {existingPages[submission.id]?.is_published && (
+                        <TableCell className="align-top py-4 space-y-1.5 w-[220px] pl-16 pr-8">
+                          {['scheduling', 'publishing', 'completed'].includes(submission.status || '') ? (
+                            <div className="flex items-center gap-1.5">
+                              {/* Status badge (subtle) */}
+                              <div className="w-[120px] flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 animate-pulse" />
+                                <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                <span className="text-xs font-medium text-gray-700 tracking-wide">Scheduled</span>
+                              </div>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="px-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                                className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-blue-600 border-gray-200 hover:border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
+                                onClick={() => {
+                                  setSelectedSubmissionForAds(submission);
+                                  setIsPublishModalOpen(true);
+                                }}
+                                title="Edit Schedule"
+                              >
+                                <PenLine className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-[120px] justify-start h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200"
+                                onClick={() => {
+                                  setSelectedSubmissionForAds(submission);
+                                  setIsPublishModalOpen(true);
+                                }}
+                              >
+                                <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-gray-400" />
+                                <span className="truncate">Schedule</span>
+                              </Button>
+                            </div>
+                          )}
+
+
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={`w-[120px] justify-start h-8 text-xs font-medium shadow-sm transition-all ${existingPages[submission.id] ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200'}`}
+                              onClick={() => handleOpenPageBuilder(submission)}
+                            >
+                              <Globe className="w-3.5 h-3.5 mr-2 shrink-0" />
+                              <span className="truncate">{existingPages[submission.id] ? 'Edit Page' : 'Builder'}</span>
+                            </Button>
+
+                            {existingPages[submission.id]?.is_published ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0 h-8 w-8 p-0 border-indigo-200 text-indigo-600 hover:bg-indigo-50 shadow-sm"
                                 onClick={() => window.open(`/pages/${existingPages[submission.id].slug}`, '_blank')}
                                 title="Open Page"
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </Button>
+                            ) : (
+                              <div className="w-8 shrink-0" />
                             )}
                           </div>
-                        </TableCell >
-                      </TableRow >
-                    ))
-                    }
-                  </TableBody >
-                </Table >
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
 
                 {/* Pagination Controls */}
                 < div className="flex items-center justify-between px-4 py-4 border-t" >
@@ -1245,22 +1305,22 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       </div>
 
                       {/* Footer Actions */}
-                      <div className="flex gap-2 pt-2">
+                      <div className="flex flex-col gap-1.5 mb-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                          className="w-full bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 shadow-sm transition-all"
                           onClick={() => handleOpenInvoiceModal(submission)}
                         >
                           <Plus className="w-3.5 h-3.5 mr-1.5" />
                           Invoice
                         </Button>
-                        <div className="flex-1">
-                          <CopyInvoiceDropdown
-                            formSubmissionId={submission.id}
-                            refreshTrigger={invoiceRefreshTrigger}
-                          />
-                        </div>
+                        <CopyInvoiceDropdown
+                          formSubmissionId={submission.id}
+                          refreshTrigger={invoiceRefreshTrigger}
+                          overrideStatus={submission.payment_status}
+                          inlineMode={true}
+                        />
                       </div>
                     </div>
                   </Card>
@@ -1285,6 +1345,32 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               email: selectedSubmission.researcherEmail,
               phoneNumber: selectedSubmission.phone_number || ''
             }}
+            defaultItems={(() => {
+              const items = [];
+              const adCost = calculateTotalAdCost(selectedSubmission.questionCount || 0, selectedSubmission.duration || 0);
+              const discount = calculateDiscount(selectedSubmission.voucher_code, adCost);
+              const finalAdCost = adCost - discount;
+
+              if (finalAdCost > 0) {
+                items.push({
+                  name: 'Jakpat for University (ads)',
+                  qty: 1,
+                  price: finalAdCost,
+                  category: 'Jakpat for University (ads)'
+                });
+              }
+
+              const incentive = calculateIncentiveCost(selectedSubmission.winnerCount || 0, selectedSubmission.prize_per_winner || 0);
+              if (incentive > 0) {
+                items.push({
+                  name: 'Incentive for Respondents',
+                  qty: 1,
+                  price: incentive,
+                  category: 'Incentive'
+                });
+              }
+              return items;
+            })()}
             onSuccess={handleInvoiceCreated}
           />
         )

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { createManualInvoice } from '../utils/payment';
-import { createInvoice, createTransaction, updateFormStatus } from '../utils/supabase';
+import { createInvoice, createTransaction } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
 import { Trash2, Plus } from 'lucide-react';
 
@@ -25,6 +25,12 @@ interface CreateInvoiceModalProps {
     email?: string;
     phoneNumber?: string;
   };
+  defaultItems?: {
+    name: string;
+    qty: number;
+    price: number;
+    category: string;
+  }[];
   onSuccess?: () => void;
 }
 
@@ -42,12 +48,21 @@ export function CreateInvoiceModal({
   formSubmissionId,
   defaultAmount,
   customerInfo,
+  defaultItems,
   onSuccess
 }: CreateInvoiceModalProps) {
   // Items state
-  const [items, setItems] = useState<InvoiceItem[]>([
-    { id: '1', name: 'Jakpat for University (ads)', qty: 1, price: defaultAmount, category: 'Jakpat for University (ads)' }
-  ]);
+  const [items, setItems] = useState<InvoiceItem[]>(() => {
+    if (defaultItems && defaultItems.length > 0) {
+      return defaultItems.map((item, index) => ({
+        id: Date.now().toString() + index,
+        ...item
+      }));
+    }
+    return [
+      { id: '1', name: 'Jakpat for University (ads)', qty: 1, price: defaultAmount, category: 'Jakpat for University (ads)' }
+    ];
+  });
 
   const [note, setNote] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -62,10 +77,17 @@ export function CreateInvoiceModal({
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
-      setItems([{ id: Date.now().toString(), name: 'Jakpat for University (ads)', qty: 1, price: defaultAmount, category: 'Jakpat for University (ads)' }]);
+      if (defaultItems && defaultItems.length > 0) {
+        setItems(defaultItems.map((item, index) => ({
+          id: Date.now().toString() + index,
+          ...item
+        })));
+      } else {
+        setItems([{ id: Date.now().toString(), name: 'Jakpat for University (ads)', qty: 1, price: defaultAmount, category: 'Jakpat for University (ads)' }]);
+      }
       setNote('');
     }
-  }, [isOpen, defaultAmount]);
+  }, [isOpen, defaultAmount, defaultItems]);
 
   const handleAddItem = () => {
     setItems([
@@ -159,8 +181,7 @@ export function CreateInvoiceModal({
 
       await createTransaction(transactionData);
 
-      // Auto-update form status to 'in_review' when invoice is created
-      await updateFormStatus(formSubmissionId, 'in_review');
+
 
       toast.success('Invoice berhasil dibuat!');
 

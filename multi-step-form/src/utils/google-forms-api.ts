@@ -30,8 +30,8 @@ export interface GoogleFormsApiResponse {
 
 export class GoogleFormsApiService {
   private static instance: GoogleFormsApiService;
-  
-  private constructor() {}
+
+  private constructor() { }
 
   static getInstance(): GoogleFormsApiService {
     if (!GoogleFormsApiService.instance) {
@@ -53,12 +53,12 @@ export class GoogleFormsApiService {
       console.log('Extracting form data using Google Forms API for form:', formId);
 
       const url = `https://forms.googleapis.com/v1/forms/${formId}`;
-      
+
       const response = await googleAuth.makeAuthenticatedRequest(url);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        
+
         if (response.status === 404) {
           throw new Error('Form not found or you do not have access to this form');
         } else if (response.status === 403) {
@@ -69,7 +69,7 @@ export class GoogleFormsApiService {
       }
 
       const formData = await response.json();
-      
+
       console.log('Form data retrieved successfully:', formData.info?.title);
 
       // Parse the form data
@@ -166,7 +166,7 @@ export class GoogleFormsApiService {
   async extractToSurveyInfo(formId: string): Promise<SurveyInfo> {
     try {
       const result = await this.extractFormData(formId);
-      
+
       if (!result.success || !result.data) {
         throw new Error(result.error || 'Failed to extract form data');
       }
@@ -180,21 +180,37 @@ export class GoogleFormsApiService {
 
       formData.questions.forEach(question => {
         const titleLower = question.title.toLowerCase();
-        
-        if (titleLower.includes('email') || titleLower.includes('e-mail')) {
+
+        // 1. Email (word boundaries might fail on e-mail or email, better to keep it simple or use \bemail\b)
+        if (/\b(email|e-mail)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('email')) personalDataKeywords.push('email');
           hasPersonalDataQuestions = true;
         }
-        if (titleLower.includes('phone') || titleLower.includes('nomor') || titleLower.includes('telepon')) {
+        // 2. Phone (added henpon, hape variations)
+        if (/\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('phone')) personalDataKeywords.push('phone');
           hasPersonalDataQuestions = true;
         }
-        if (titleLower.includes('name') || titleLower.includes('nama')) {
+        // 3. Name (Full name, etc)
+        // 'nama' alone might be too generic depending on context, but let's bound it
+        if (/\b(name|nama|full name|nama lengkap|nama sesuai ktp|first name|last name|nama depan|nama belakang)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('name')) personalDataKeywords.push('name');
           hasPersonalDataQuestions = true;
         }
-        if (titleLower.includes('address') || titleLower.includes('alamat')) {
+        // 4. Address
+        if (/\b(address|alamat|alamat rumah|domisili|residence)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('address')) personalDataKeywords.push('address');
+          hasPersonalDataQuestions = true;
+        }
+        // 5. NIK/ID (CRITICAL: use word boundaries to avoid 'menikah', 'teknik')
+        if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(titleLower)) {
+          if (!personalDataKeywords.includes('nik/id')) personalDataKeywords.push('nik/id');
+          hasPersonalDataQuestions = true;
+        }
+
+        // 6. File Upload
+        if (question.type === 'file_upload') {
+          if (!personalDataKeywords.includes('file upload')) personalDataKeywords.push('file upload');
           hasPersonalDataQuestions = true;
         }
       });
@@ -228,7 +244,7 @@ export class GoogleFormsApiService {
       }
 
       const url = `https://forms.googleapis.com/v1/forms/${formId}/responses?pageSize=${limit}`;
-      
+
       const response = await googleAuth.makeAuthenticatedRequest(url);
 
       if (!response.ok) {

@@ -54,7 +54,8 @@ export const checkMayarApiStatus = async (): Promise<boolean> => {
 
     // Coba ping API Mayar melalui proxy untuk menghindari CORS
     console.log('Checking Mayar API status via proxy');
-    const response = await axios.post('/api/mayar-proxy', {
+    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
+    const response = await axios.post(`${origin}/api/mayar-proxy`, {
       endpoint: 'https://api.mayar.id/v1/ping',
       apiKey: apiKey,
       method: 'GET'
@@ -205,7 +206,7 @@ export const createPayment = async (paymentData: PaymentData) => {
         while (retryCount <= maxRetries) {
           try {
             response = await axios.post(
-              '/api/mayar-proxy',
+              `${origin}/api/mayar-proxy`,
               proxyRequestData,
               {
                 timeout: 15000 // 15 detik timeout
@@ -243,7 +244,7 @@ export const createPayment = async (paymentData: PaymentData) => {
         console.log('Trying standard endpoint with API key and webhook token included');
 
         response = await axios.post(
-          '/api/mayar-proxy',
+          `${origin}/api/mayar-proxy`,
           proxyRequestData,
           {
             timeout: 15000 // 15 detik timeout
@@ -425,9 +426,10 @@ export const verifyPayment = async (paymentId: string) => {
 
     console.log('Verifying payment with API key included');
 
+    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
     // Panggil proxy dengan metode POST tapi minta proxy melakukan GET request
     const response = await axios.post(
-      '/api/mayar-verify',
+      `${origin}/api/mayar-verify`,
       proxyRequestData
     );
 
@@ -528,13 +530,23 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
       webhookToken: webhookToken
     };
 
-    const response = await axios.post(
-      '/api/mayar-proxy',
-      proxyRequestData,
-      {
-        timeout: 15000 // 15 detik timeout
-      }
-    );
+    const fetchResponse = await fetch(`${origin}/api/mayar-proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(proxyRequestData),
+      // Increase timeout for fetch using AbortController if needed
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (!fetchResponse.ok) {
+      const errorText = await fetchResponse.text();
+      throw new Error(`Proxy error: ${fetchResponse.status} ${fetchResponse.statusText} - ${errorText}`);
+    }
+
+    const responseData = await fetchResponse.json();
+    const response = { data: responseData }; // shim for legacy axios extraction below
 
     console.log('Mayar API response:', response.data);
     console.log('Full Mayar response for debugging:', JSON.stringify(response.data, null, 2));

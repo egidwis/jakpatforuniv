@@ -145,6 +145,17 @@ export async function onRequest(context) {
         });
       }
 
+      // Update status invoice
+      const { error: updateInvoiceError } = await supabase
+        .from('invoices')
+        .update({ status: 'completed', paid_at: new Date().toISOString() })
+        .eq('payment_id', paymentId);
+
+      if (updateInvoiceError) {
+        console.error('Error updating invoice:', updateInvoiceError);
+        // Continue anyway, don't break the webhook flow since transaction succeeded
+      }
+
       // Update status form submission
       const { data: formSubmission, error: formError } = await supabase
         .from('form_submissions')
@@ -174,9 +185,9 @@ export async function onRequest(context) {
               '<p>Pembayaran Anda dengan ID <strong>' + paymentId + '</strong> telah berhasil diproses.</p>' +
               '<p>Detail Pembayaran:</p>' +
               '<ul>' +
-                '<li>Jumlah: Rp ' + (payloadData.data.amount / 100).toLocaleString('id-ID') + '</li>' +
-                '<li>Tanggal: ' + new Date(payloadData.data.created_at).toLocaleString('id-ID') + '</li>' +
-                '<li>Status: Selesai</li>' +
+              '<li>Jumlah: Rp ' + (payloadData.data.amount / 100).toLocaleString('id-ID') + '</li>' +
+              '<li>Tanggal: ' + new Date(payloadData.data.created_at).toLocaleString('id-ID') + '</li>' +
+              '<li>Status: Selesai</li>' +
               '</ul>' +
               '<p>Terima kasih atas partisipasi Anda.</p>'
           })

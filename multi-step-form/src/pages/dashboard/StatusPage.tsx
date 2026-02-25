@@ -477,7 +477,6 @@ export function StatusPage() {
 
                                         const hasLink = !!paymentLinks[submission.id!];
                                         const currentStepIndex = getCurrentStepIndex(submission, hasLink);
-
                                         // Handle revision/spam status (index = -1)
                                         if (currentStepIndex === -1) {
                                             return selectedStatus === 'revision';

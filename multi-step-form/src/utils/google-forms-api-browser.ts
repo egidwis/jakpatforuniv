@@ -227,31 +227,31 @@ export class GoogleFormsApiService {
         const titleLower = question.title.toLowerCase();
 
         // 1. Email
-        if (titleLower.includes('email') || titleLower.includes('e-mail')) {
+        if (/\b(email|e-mail)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('email')) personalDataKeywords.push('email');
           hasPersonalDataQuestions = true;
         }
 
-        // 2. Phone / WhatsApp
-        if (titleLower.includes('phone') || titleLower.includes('nomor telepon') || titleLower.includes('no. hp') || titleLower.includes('whatsapp') || titleLower.includes('wa')) {
+        // 2. Phone / WhatsApp (added henpon, hape variations)
+        if (/\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('phone')) personalDataKeywords.push('phone');
           hasPersonalDataQuestions = true;
         }
 
-        // 3. Full Name / KTP Name (Regular "Nama" is allowed)
-        if (titleLower.includes('nama lengkap') || titleLower.includes('full name') || titleLower.includes('nama sesuai ktp') || titleLower.includes('nama panjang')) {
+        // 3. Full Name / KTP Name
+        if (/\b(nama lengkap|full name|nama sesuai ktp|nama panjang|first name|last name|nama depan|nama belakang)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('full name')) personalDataKeywords.push('full name');
           hasPersonalDataQuestions = true;
         }
 
         // 4. Address
-        if (titleLower.includes('address') || titleLower.includes('alamat rumah')) {
+        if (/\b(address|alamat|alamat rumah|domisili|residence)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('address')) personalDataKeywords.push('address');
           hasPersonalDataQuestions = true;
         }
 
         // 5. NIK / ID Number
-        if (titleLower.includes('nik') || titleLower.includes('nomor induk kependudukan') || titleLower.includes('ktp') || titleLower.includes('id card')) {
+        if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('nik/id')) personalDataKeywords.push('nik/id');
           hasPersonalDataQuestions = true;
         }

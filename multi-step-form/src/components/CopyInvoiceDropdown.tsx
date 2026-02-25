@@ -10,24 +10,50 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { getInvoicesByFormSubmissionId } from '../utils/supabase';
-import type { Invoice } from '../utils/supabase';
+import { getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId } from '../utils/supabase';
 import { Copy, Link as LinkIcon } from 'lucide-react';
 
 interface CopyInvoiceDropdownProps {
   formSubmissionId: string;
   refreshTrigger?: number;
   isCompact?: boolean;
+  overrideStatus?: string | null;
+  inlineMode?: boolean;
 }
 
-export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompact }: CopyInvoiceDropdownProps) {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompact, overrideStatus, inlineMode }: CopyInvoiceDropdownProps) {
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchInvoices = async () => {
     try {
       setIsLoading(true);
-      const data = await getInvoicesByFormSubmissionId(formSubmissionId);
+      // Try fetching invoices first
+      let data = await getInvoicesByFormSubmissionId(formSubmissionId);
+
+      // If invoices table is empty, fall back to transactions to cover older automated flows
+      if (!data || data.length === 0) {
+        const txData = await getTransactionsByFormSubmissionId(formSubmissionId);
+        if (txData && txData.length > 0) {
+          // Map transaction data to look like an invoice for the dropdown
+          data = txData.map(tx => ({
+            id: tx.id,
+            payment_id: tx.payment_id,
+            status: overrideStatus && ['paid', 'completed'].includes(overrideStatus) ? 'completed' : tx.status,
+            amount: tx.amount,
+            invoice_url: tx.payment_url,
+            created_at: tx.created_at,
+            form_submission_id: tx.form_submission_id
+          }));
+        }
+      } else {
+        // If data exists natively in invoices, still apply override
+        data = data.map(inv => ({
+          ...inv,
+          status: overrideStatus && ['paid', 'completed'].includes(overrideStatus) ? 'completed' : inv.status
+        }));
+      }
+
       setInvoices(data);
     } catch (error) {
       console.error('Error fetching invoices:', error);
@@ -80,8 +106,42 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
   };
 
   // Don't render the button if there are no invoices
+  // Don't render the button if there are no invoices and not loading
   if (!isLoading && invoices.length === 0) {
     return null;
+  }
+
+  if (inlineMode) {
+    if (isLoading || invoices.length === 0) return null;
+
+    return (
+      <div className="flex flex-col gap-1 w-full mt-1.5 pt-1.5 border-t border-dashed border-gray-100 dark:border-gray-800">
+        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-0.5 px-0.5">Daftar Invoice</div>
+        {invoices.map((invoice, index) => (
+          <div
+            key={invoice.id || index}
+            className="flex items-center justify-between group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 p-1.5 rounded transition-colors border border-transparent hover:border-gray-100 dark:hover:border-gray-700"
+            onClick={() => copyToClipboard(invoice.invoice_url, invoice.payment_id)}
+            title="Klik untuk menyalin link"
+          >
+            <div className="flex flex-col gap-0.5 overflow-hidden">
+              <div className="flex items-center gap-1.5">
+                <Copy className="w-3 h-3 text-gray-400 group-hover:text-blue-500 shrink-0" />
+                <span className="font-mono text-[9px] text-gray-500 group-hover:text-blue-600 truncate">
+                  {invoice.payment_id.substring(0, 8)}...
+                </span>
+              </div>
+              <div className="text-[10px] font-semibold text-gray-700 dark:text-gray-300 pl-[18px]">
+                Rp {new Intl.NumberFormat('id-ID').format(invoice.amount)}
+              </div>
+            </div>
+            <div className="scale-75 origin-right shrink-0">
+              {getStatusBadge(invoice.status)}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
