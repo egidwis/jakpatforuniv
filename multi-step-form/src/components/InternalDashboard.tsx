@@ -917,70 +917,83 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
                         {/* Status */}
                         <TableCell className="align-top py-4">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
-                                <Badge
-                                  variant="outline"
-                                  className={`
-                                    cursor-pointer px-2 py-1 text-[10px] uppercase tracking-wide border transition-all hover:ring-2 hover:ring-offset-1
-                                    ${submission.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
-                                      submission.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
-                                        submission.status === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                          'bg-gray-100 text-gray-700 border-gray-200'}
-                                  `}
-                                >
-                                  {submission.status === 'in_review' ? 'Need Review' : (submission.status?.replace('_', ' ') || 'Pending')}
-                                </Badge>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
-                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'in_review')}>
-                                Need Review
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'approved')}>
-                                Approved
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600 focus:text-red-600 focus:bg-red-50">
-                                Rejected
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenEditFormDetailsModal(submission)}>
-                                <PenLine className="w-4 h-4 mr-2" />
-                                Edit Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenEditCriteriaModal(submission)}>
-                                <PenLine className="w-4 h-4 mr-2" />
-                                Edit Criteria
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenPageBuilder(submission)}>
-                                <Globe className="w-4 h-4 mr-2" />
-                                Page Builder
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
-                                Spam / Revision
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {(() => {
+                            // Map post-approved statuses to "approved" for display
+                            const getDisplayStatus = (status: string | undefined) => {
+                              const s = status || 'pending';
+                              if (['scheduling', 'publishing', 'completed', 'approved'].includes(s)) return 'approved';
+                              return s;
+                            };
+                            const displayStatus = getDisplayStatus(submission.status);
+                            return (
+                              <>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
+                                      <Badge
+                                        variant="outline"
+                                        className={`
+                                          cursor-pointer px-2 py-1 text-[10px] uppercase tracking-wide border transition-all hover:ring-2 hover:ring-offset-1
+                                          ${displayStatus === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                                            displayStatus === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                                              displayStatus === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                'bg-gray-100 text-gray-700 border-gray-200'}
+                                        `}
+                                      >
+                                        {displayStatus === 'in_review' ? 'Need Review' : (displayStatus.replace('_', ' '))}
+                                      </Badge>
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="start">
+                                    <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'in_review')}>
+                                      Need Review
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'approved')}>
+                                      Approved
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                      Rejected
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleOpenEditFormDetailsModal(submission)}>
+                                      <PenLine className="w-4 h-4 mr-2" />
+                                      Edit Details
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleOpenEditCriteriaModal(submission)}>
+                                      <PenLine className="w-4 h-4 mr-2" />
+                                      Edit Criteria
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleOpenPageBuilder(submission)}>
+                                      <Globe className="w-4 h-4 mr-2" />
+                                      Page Builder
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
+                                      Spam / Revision
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
 
-                          {/* Admin Notes Display */}
-                          {submission.status === 'rejected' && submission.admin_notes && (
-                            <TooltipProvider>
-                              <Tooltip delayDuration={300}>
-                                <TooltipTrigger asChild>
-                                  <div className="mt-1.5 flex items-start gap-1 text-xs text-red-600 bg-red-50 p-1.5 rounded border border-red-100 max-w-[200px] cursor-help transition-colors hover:bg-red-100">
-                                    <Info className="w-3 h-3 shrink-0 mt-0.5" />
-                                    <span className="line-clamp-2 text-left">
-                                      {submission.admin_notes}
-                                    </span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-[400px] bg-white p-3 shadow-xl border-red-100 text-slate-700">
-                                  <p className="font-semibold text-xs text-red-600 mb-1">Rejection Reason:</p>
-                                  <p className="text-sm leading-relaxed">{submission.admin_notes}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
+                                {/* Admin Notes Display */}
+                                {displayStatus === 'rejected' && submission.admin_notes && (
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={300}>
+                                      <TooltipTrigger asChild>
+                                        <div className="mt-1.5 flex items-start gap-1 text-xs text-red-600 bg-red-50 p-1.5 rounded border border-red-100 max-w-[200px] cursor-help transition-colors hover:bg-red-100">
+                                          <Info className="w-3 h-3 shrink-0 mt-0.5" />
+                                          <span className="line-clamp-2 text-left">
+                                            {submission.admin_notes}
+                                          </span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-[400px] bg-white p-3 shadow-xl border-red-100 text-slate-700">
+                                        <p className="font-semibold text-xs text-red-600 mb-1">Rejection Reason:</p>
+                                        <p className="text-sm leading-relaxed">{submission.admin_notes}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </>
+                            );
+                          })()}
                         </TableCell>
 
                         {/* Payment */}
