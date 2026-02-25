@@ -477,8 +477,13 @@ export function StatusPage() {
 
                                         const hasLink = !!paymentLinks[submission.id!];
                                         const currentStepIndex = getCurrentStepIndex(submission, hasLink);
-                                        const currentStepKey = steps[currentStepIndex].key;
 
+                                        // Handle revision/spam status (index = -1)
+                                        if (currentStepIndex === -1) {
+                                            return selectedStatus === 'revision';
+                                        }
+
+                                        const currentStepKey = steps[currentStepIndex]?.key;
                                         return currentStepKey === selectedStatus;
                                     })
                                     .map((submission) => {
