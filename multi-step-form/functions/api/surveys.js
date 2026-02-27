@@ -72,7 +72,7 @@ export async function onRequestGet(context) {
                 views: s.views_count || 0,
 
                 // Action URL
-                webview_url: `${baseUrl}/pages/${s.slug || s.id}`,
+                url: `${baseUrl}/pages/${s.slug || s.id}`,
 
                 // Native apps might want raw intro text without JSON blocks
                 // We can strip HTML or just send the title for the list view
