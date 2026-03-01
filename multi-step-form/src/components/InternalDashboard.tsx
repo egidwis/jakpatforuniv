@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, CalendarCheck, Zap, PenLine, ShieldAlert, GraduationCap, Globe, ExternalLink, Info } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, CalendarCheck, Zap, PenLine, ShieldAlert, Globe, ExternalLink, Info, MessageCircle, Mail } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, supabase } from '../utils/supabase';
 import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -745,16 +745,20 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                   </TooltipProvider>
 
                                   {submission.formUrl && (
-                                    <a
-                                      href={submission.formUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline decoration-blue-300 underline-offset-2 transition-colors mt-0.5"
-                                      title="Open Survey Link"
-                                    >
-                                      View Survey
-                                      <Eye className="h-3 w-3 ml-0.5" />
-                                    </a>
+                                    <div className="flex items-center mt-0.5">
+                                      <a
+                                        href={submission.formUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline decoration-blue-300 underline-offset-2 transition-colors max-w-[200px]"
+                                        title="Open Survey Link"
+                                      >
+                                        <Globe className="h-3 w-3 shrink-0" />
+                                        <span className="truncate">
+                                          {submission.formUrl.replace(/^https?:\/\//, '')}
+                                        </span>
+                                      </a>
+                                    </div>
                                   )}
                                 </div>
                                 <Button
@@ -773,7 +777,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             <div className="flex flex-wrap items-center gap-1.5 mb-2">
                               {/* Method Badge */}
                               <Badge variant="secondary" className={`
-                                px-1.5 py-0 h-5 text-[10px] font-medium border rounded-md whitespace-nowrap
+                                px-1.5 py-0 h-5 text-[10px] font-medium border rounded-full whitespace-nowrap
                                 ${submission.submission_method === 'google_import'
                                   ? 'bg-orange-50 text-orange-700 border-orange-200'
                                   : 'bg-indigo-50 text-indigo-700 border-indigo-200'}
@@ -782,13 +786,13 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               </Badge>
 
                               {/* Question Count Chip */}
-                              <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-md whitespace-nowrap">
+                              <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
                                 {submission.questionCount} Qs
                               </Badge>
 
                               {/* Duration Chip */}
                               {submission.duration ? (
-                                <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-md whitespace-nowrap">
+                                <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
                                   {submission.duration} Days
                                 </Badge>
                               ) : null}
@@ -823,7 +827,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <div className="flex items-center gap-1 text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 cursor-help hover:bg-purple-100 transition-colors">
+                                        <div className="flex items-center gap-1 text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full border border-purple-100 cursor-help hover:bg-purple-100 transition-colors">
                                           <Zap className="w-3 h-3 fill-purple-600" />
                                           <span>{submission.voucher_code}</span>
                                         </div>
@@ -853,7 +857,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                   // Map post-approved statuses to "approved" for display
                                   const getDisplayStatus = (status: string | undefined) => {
                                     const s = status || 'pending';
-                                    if (['scheduling', 'publishing', 'completed', 'approved'].includes(s)) return 'approved';
+                                    if (['scheduling', 'scheduled', 'publishing', 'completed', 'approved'].includes(s)) return 'approved';
                                     return s;
                                   };
                                   const displayStatus = getDisplayStatus(submission.status);
@@ -862,18 +866,18 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                           <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
-                                            <Badge
-                                              variant="outline"
+                                            <div
                                               className={`
-                                                cursor-pointer px-2 py-0.5 text-[10px] uppercase tracking-wide border transition-all hover:ring-2 hover:ring-offset-1 h-5
-                                                ${displayStatus === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
-                                                  displayStatus === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
-                                                    displayStatus === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                      'bg-gray-100 text-gray-700 border-gray-200'}
+                                                cursor-pointer px-3 py-1 rounded-md text-[10px] items-center justify-center uppercase tracking-wide font-bold border transition-all shadow-sm hover:shadow flex gap-1.5
+                                                ${displayStatus === 'approved' ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100' :
+                                                  displayStatus === 'rejected' ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100' :
+                                                    displayStatus === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100' :
+                                                      'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'}
                                               `}
                                             >
                                               {displayStatus === 'in_review' ? 'Need Review' : (displayStatus.replace('_', ' '))}
-                                            </Badge>
+                                              <ChevronDown className="w-3 h-3 opacity-70" />
+                                            </div>
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="start">
@@ -952,10 +956,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               <div className="mt-2 text-left">
                                 <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">Incentive:</div>
                                 <div className="flex flex-wrap gap-1.5 mb-1.5">
-                                  <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium rounded-md whitespace-nowrap">
+                                  <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium rounded-full whitespace-nowrap">
                                     Rp {submission.prize_per_winner.toLocaleString('id-ID')}
                                   </Badge>
-                                  <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-md whitespace-nowrap">
+                                  <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
                                     {submission.winnerCount || 0} user
                                   </Badge>
                                 </div>
@@ -981,21 +985,46 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               {submission.researcherName}
                             </span>
 
-                            <div className="flex flex-col text-xs text-gray-500 gap-0.5 mt-0.5">
-                              {submission.phone_number && (
-                                <a
-                                  href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[11px] font-medium text-green-600 hover:text-green-700 hover:underline w-fit"
-                                >
-                                  {submission.phone_number}
-                                </a>
-                              )}
+                            <div className="flex flex-col mt-1.5">
+                              <div className="flex items-center gap-2 mb-2">
+                                {submission.phone_number && (
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={200}>
+                                      <TooltipTrigger asChild>
+                                        <a
+                                          href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center justify-center p-1.5 rounded text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 transition-colors border border-green-100"
+                                        >
+                                          <MessageCircle className="w-3.5 h-3.5" />
+                                        </a>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top">
+                                        <p className="text-xs font-medium">{submission.phone_number}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
 
-                              <span className="truncate text-[10px] text-gray-400" title={submission.researcherEmail}>
-                                {submission.researcherEmail}
-                              </span>
+                                {submission.researcherEmail && (
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={200}>
+                                      <TooltipTrigger asChild>
+                                        <a
+                                          href={`mailto:${submission.researcherEmail}`}
+                                          className="inline-flex items-center justify-center p-1.5 rounded text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors border border-blue-100"
+                                        >
+                                          <Mail className="w-3.5 h-3.5" />
+                                        </a>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top">
+                                        <p className="text-xs font-medium">{submission.researcherEmail}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </div>
 
                               {(submission.education || submission.department || submission.university) && (
                                 <div className="mt-1.5 pt-1.5 border-t border-gray-100/80 flex flex-col gap-0.5">
@@ -1043,7 +1072,24 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
                               {/* Invoice button: disabled before approved, always active once approved or beyond */}
                               {(() => {
-                                const isEligibleForInvoice = ['approved', 'scheduling', 'publishing', 'completed'].includes(submission.status || '');
+                                const isEligibleForInvoice = ['approved', 'scheduling', 'scheduled', 'publishing', 'completed'].includes(submission.status || '');
+
+                                if (isEligibleForInvoice) {
+                                  return (
+                                    <div className="shrink-0">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 text-[10px] justify-center px-2.5 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium transition-colors"
+                                        onClick={() => handleOpenInvoiceModal(submission)}
+                                      >
+                                        <Plus className="w-3 h-3 mr-1" />
+                                        Invoice
+                                      </Button>
+                                    </div>
+                                  );
+                                }
+
                                 return (
                                   <TooltipProvider>
                                     <Tooltip>
@@ -1052,20 +1098,17 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                           <Button
                                             variant="outline"
                                             size="sm"
-                                            disabled={!isEligibleForInvoice}
-                                            className="h-7 text-[10px] justify-center px-2.5 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium transition-colors"
-                                            onClick={() => isEligibleForInvoice && handleOpenInvoiceModal(submission)}
+                                            disabled
+                                            className="h-7 text-[10px] justify-center px-2.5 border-gray-200 text-gray-400 font-medium cursor-not-allowed"
                                           >
                                             <Plus className="w-3 h-3 mr-1" />
                                             Invoice
                                           </Button>
                                         </div>
                                       </TooltipTrigger>
-                                      {!isEligibleForInvoice && (
-                                        <TooltipContent side="top">
-                                          <p className="text-xs">Form must be approved first</p>
-                                        </TooltipContent>
-                                      )}
+                                      <TooltipContent side="top">
+                                        <p className="text-xs">Form must be approved first</p>
+                                      </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
                                 );
@@ -1086,7 +1129,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
                         {/* Publish & Pages (New Column) */}
                         <TableCell className="align-top py-4 space-y-1.5 w-[220px] pl-16 pr-8">
-                          {['scheduling', 'publishing', 'completed'].includes(submission.status || '') ? (
+                          {['scheduled', 'publishing', 'completed'].includes(submission.status || '') ? (
                             <div className="flex items-center gap-1.5">
                               {/* Status badge (subtle) */}
                               <div className="w-[120px] flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md">
@@ -1252,16 +1295,18 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             className={`w-full px-3 py-2 text-xs font-medium rounded-lg border-0 cursor-pointer transition-all focus:ring-2 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 focus:ring-red-500' :
                               submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 focus:ring-blue-500' :
                                 submission.status === 'scheduling' ? 'bg-purple-100 text-purple-700 focus:ring-purple-500' :
-                                  submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 focus:ring-indigo-500' :
-                                    submission.status === 'completed' ? 'bg-gray-100 text-gray-800 focus:ring-gray-500' :
-                                      'bg-gray-100 text-gray-800'
+                                  submission.status === 'scheduled' ? 'bg-fuchsia-100 text-fuchsia-700 focus:ring-fuchsia-500' :
+                                    submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 focus:ring-indigo-500' :
+                                      submission.status === 'completed' ? 'bg-gray-100 text-gray-800 focus:ring-gray-500' :
+                                        'bg-gray-100 text-gray-800'
                               }`}
                             value={submission.status || 'in_review'}
                             onChange={(e) => handleStatusChange(submission.id, e.target.value)}
                           >
                             <option value="spam" className="bg-white text-gray-900">Spam</option>
                             <option value="in_review" className="bg-white text-gray-900">In Review</option>
-                            <option value="scheduling" className="bg-white text-gray-900">Scheduling</option>
+                            <option value="scheduling" className="bg-white text-gray-900">Ad Schedule</option>
+                            <option value="scheduled" className="bg-white text-gray-900">Scheduled</option>
                             <option value="publishing" className="bg-white text-gray-900">Publishing</option>
                             <option value="completed" className="bg-white text-gray-900">Completed</option>
                           </select>

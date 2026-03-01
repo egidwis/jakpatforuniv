@@ -159,7 +159,7 @@ export function InternalDashboardWithLayout() {
     },
     {
       id: 'scheduling' as Page,
-      label: 'Scheduling',
+      label: 'Ad Schedule',
       icon: FileText, // Or Calendar if imported
     },
     {

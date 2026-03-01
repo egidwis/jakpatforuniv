@@ -18,7 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { createScheduledAd, getScheduledAds } from '../utils/supabase';
+import { createScheduledAd, getScheduledAds, deleteScheduledAd, getScheduledAdsBySubmission, updateFormStatus } from '../utils/supabase';
 
 // Max 3 ads per day
 const MAX_ADS_PER_DAY = 3;
@@ -34,6 +34,7 @@ interface PublishAdsModalProps {
 export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSuccess }: PublishAdsModalProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [isFetchingAds, setIsFetchingAds] = useState(false);
+    const [existingAdId, setExistingAdId] = useState<string | null>(null);
 
     // Form state
     const [startDate, setStartDate] = useState<Date | null>(null);
@@ -53,9 +54,31 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
         if (isOpen) {
             setStartDate(null);
             setStartTime('15:00');
+            setExistingAdId(null);
             fetchExistingAds();
+            fetchMySchedule();
         }
-    }, [isOpen]);
+    }, [isOpen, submission]);
+
+    const fetchMySchedule = async () => {
+        if (!submission?.id) return;
+        try {
+            const myAds = await getScheduledAdsBySubmission(submission.id);
+            if (myAds && myAds.length > 0) {
+                const myAd = myAds[0];
+                setExistingAdId(myAd.id);
+                if (myAd.start_date) {
+                    const dateObj = new Date(myAd.start_date);
+                    setStartDate(dateObj);
+                    const hours = String(dateObj.getHours()).padStart(2, '0');
+                    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+                    setStartTime(`${hours}:${minutes}`);
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching my schedule:', e);
+        }
+    };
 
     const fetchExistingAds = async () => {
         setIsFetchingAds(true);
@@ -141,7 +164,11 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
 
             const adLink = pageSlug ? `https://jakpatforuniv.com/pages/${pageSlug}` : '';
 
-            // 2. Save to Supabase
+            // 2. Prevent duplicates by deleting old schedule if exists (Upsert logic)
+            if (existingAdId) {
+                await deleteScheduledAd(existingAdId);
+            }
+
             await createScheduledAd({
                 form_submission_id: submission.id!,
                 start_date: startDateObj.toISOString(),
@@ -151,6 +178,9 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                 google_calendar_event_id: '',
             });
 
+            // 3. Update Submission Status to 'scheduled'
+            await updateFormStatus(submission.id, 'scheduled');
+
             toast.success('Ad scheduled successfully!');
             onSuccess();
             onClose();
@@ -158,6 +188,23 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
         } catch (error: any) {
             console.error('Publish Error:', error);
             toast.error(error.message || 'Failed to schedule ad');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCancelSchedule = async () => {
+        if (!existingAdId) return;
+        setIsLoading(true);
+        try {
+            await deleteScheduledAd(existingAdId);
+            await updateFormStatus(submission.id, 'scheduling');
+            toast.success('Schedule removed successfully!');
+            onSuccess();
+            onClose();
+        } catch (error: any) {
+            console.error('Cancel Error:', error);
+            toast.error('Failed to remove schedule');
         } finally {
             setIsLoading(false);
         }
@@ -292,6 +339,11 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                 </div>
 
                 <DialogFooter>
+                    {existingAdId && (
+                        <Button variant="destructive" onClick={handleCancelSchedule} disabled={isLoading} className="mr-auto">
+                            Remove Schedule
+                        </Button>
+                    )}
                     <Button variant="outline" onClick={onClose} disabled={isLoading}>
                         Cancel
                     </Button>
