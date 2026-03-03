@@ -1,6 +1,32 @@
 import { createClient } from '@supabase/supabase-js';
 
 export async function onRequestGet(context) {
+    const corsHeaders = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'X-API-Key, Content-Type',
+    };
+
+    // 0. Authenticate - Require API Key
+    const apiKey = context.env.JFU_API_KEY;
+    const url = new URL(context.request.url);
+
+    // Accept key from header or query param
+    const providedKey =
+        context.request.headers.get('X-API-Key') ||
+        url.searchParams.get('api_key');
+
+    if (!apiKey || providedKey !== apiKey) {
+        return new Response(JSON.stringify({
+            status: 'error',
+            message: 'Unauthorized. Valid API key required.',
+        }), {
+            status: 401,
+            headers: corsHeaders,
+        });
+    }
+
     // 1. Initialize Supabase
     const supabaseUrl = context.env.VITE_SUPABASE_URL;
     const supabaseAnonKey = context.env.VITE_SUPABASE_ANON_KEY;
@@ -11,7 +37,7 @@ export async function onRequestGet(context) {
             message: 'Server configuration error'
         }), {
             status: 500,
-            headers: { 'Content-Type': 'application/json' }
+            headers: corsHeaders,
         });
     }
 
@@ -86,9 +112,7 @@ export async function onRequestGet(context) {
             data: cleanData
         }), {
             headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*', // Allow mobile app to hit this
-                'Access-Control-Allow-Methods': 'GET',
+                ...corsHeaders,
                 'Cache-Control': 'public, max-age=60' // Cache for 1 minute
             }
         });
@@ -99,10 +123,19 @@ export async function onRequestGet(context) {
             message: err.message
         }), {
             status: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
+            headers: corsHeaders,
         });
     }
+}
+
+// Handle CORS preflight for X-API-Key header
+export async function onRequestOptions() {
+    return new Response(null, {
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'X-API-Key, Content-Type',
+            'Access-Control-Max-Age': '86400',
+        }
+    });
 }
