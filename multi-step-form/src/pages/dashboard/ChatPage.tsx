@@ -143,6 +143,7 @@ Additional Important Information:
    - 51-70 questions: Rp 400.000
    - >70 questions: Rp 500.000
    - *Note: Price does not include respondent incentives.*
+   - **IMPORTANT - Grid/Matrix/Likert Scale Counting**: Pertanyaan dalam format grid, matrix, atau skala Likert dihitung PER BARIS/OPTION, bukan dihitung sebagai 1 pertanyaan. Contoh: jika ada 1 pertanyaan grid dengan 5 pernyataan/baris (misalnya "Sangat Tidak Setuju" sampai "Sangat Setuju" untuk 5 topik), maka itu dihitung sebagai 5 pertanyaan, BUKAN 1 pertanyaan. Ini berlaku untuk semua tipe pertanyaan grid/matrix di Google Form, Qualtrics, SurveyMonkey, dll.
 5. **features**:
    - **Randomization**: Rp 20.000 per link. Used to distribute multiple survey scenarios randomly.
 6. **Survey Ad Link**:
