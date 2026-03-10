@@ -32,7 +32,7 @@ export function ChatPage() {
         },
         {
             q: "Berapa rekomendasi insentif untuk responden?",
-            a: "Kami membatasi jumlah pemenang hingga maksimal 5 orang, namun untuk nominal hadiah tidak ada batasan, dapat disesuaikan kebutuhan. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
+            a: "Tidak ada batasan untuk jumlah pemenang (bisa lebih dari 5 orang) maupun nominal hadiah, keduanya dapat disesuaikan dengan kebutuhanmu. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
         },
         {
             q: "Bagaimana cara distribusi insentif?",
