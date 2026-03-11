@@ -33,7 +33,7 @@ export function ChatPage() {
         },
         {
             q: "Berapa rekomendasi insentif untuk responden?",
-            a: "Jumlah pemenang untuk distribusi standar dibatasi maksimal 5 orang agar distribusi hadiah bisa lebih merata. Namun, jika membutuhkan lebih dari 5 pemenang, bisa dibantu dengan metode distribusi custom (ada biaya tambahan). Silakan request ke admin JFU melalui chat ini. Untuk nominal hadiah, tidak ada batasan dan dapat disesuaikan dengan kebutuhanmu. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
+            a: "Jumlah pemenang undian kami batasi maksimal 5 orang agar distribusi hadiah bisa lebih merata dengan postingan iklan lainnya. Namun, jika membutuhkan lebih dari 5 pemenang, bisa dibantu dengan metode distribusi custom (ada biaya tambahan). Silakan request ke admin JFU melalui chat ini. Untuk nominal hadiah, tidak ada batasan dan dapat disesuaikan dengan kebutuhanmu. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
         },
         {
             q: "Bagaimana cara distribusi insentif?",
@@ -148,6 +148,7 @@ Rules:
 4. Be concise and friendly. Use Indonesian language.
 7. **Winner Count Request Flow**: If a user asks about having more than 5 winners:
    - Explain that the default max is 5 pemenang for standard distribution.
+   - The REASON is: "agar distribusi hadiah bisa lebih merata dengan postingan iklan lainnya" (so prizes are distributed evenly across ad campaigns). Always mention this reason.
    - If they need more than 5, it IS possible but uses a different distribution method with additional fees (biaya tambahan untuk custom reward distribution).
    - Ask them to submit the order form first with 5 winners so the system can save their submission data.
    - Assure them that during the payment or scheduling phase, the admin will contact them to discuss the custom distribution details.
