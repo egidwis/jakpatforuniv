@@ -376,6 +376,7 @@ export function StepTwoConfig({
                       Saat ini kami memprioritaskan survey dengan distribusi pemenang maksimal 5. Jika lebih dari 5, request terlebih dahulu ke admin JFU.{' '}
                       <Link
                         to="/dashboard/chat?message=Halo+kak,+aku+mau+request+jumlah+pemenang,+apakah+ini+maksimal+hanya+pemenang+5+orang+saja?"
+                        target="_blank"
                         className="font-semibold underline hover:no-underline"
                         style={{ color: '#0091ff' }}
                       >
