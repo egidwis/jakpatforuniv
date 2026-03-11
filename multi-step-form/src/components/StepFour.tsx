@@ -109,8 +109,8 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         voucher_code: formData.voucherCode,
         total_cost: costCalculation.totalCost,
         payment_status: 'pending',
-        // submission_method: isManualForm ? 'manual' : 'google_import', // TODO: Add column to Supabase later
-        // detected_keywords: formData.detectedKeywords || [] // TODO: Add column to Supabase later
+        submission_method: isManualForm ? 'manual' : 'google_import',
+        detected_keywords: formData.detectedKeywords || []
       };
 
       // Simpan data ke Supabase dengan penanganan error yang lebih baik

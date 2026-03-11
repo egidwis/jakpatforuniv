@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { HelpCircle, Send, Loader2, Bot } from 'lucide-react';
@@ -12,6 +12,7 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import ReactMarkdown from 'react-markdown';
+import { useSearchParams } from 'react-router-dom';
 
 export function ChatPage() {
     const { user } = useAuth();
@@ -32,7 +33,7 @@ export function ChatPage() {
         },
         {
             q: "Berapa rekomendasi insentif untuk responden?",
-            a: "Tidak ada batasan untuk jumlah pemenang (bisa lebih dari 5 orang) maupun nominal hadiah, keduanya dapat disesuaikan dengan kebutuhanmu. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
+            a: "Jumlah pemenang untuk distribusi standar dibatasi maksimal 5 orang agar distribusi hadiah bisa lebih merata. Namun, jika membutuhkan lebih dari 5 pemenang, bisa dibantu dengan metode distribusi custom (ada biaya tambahan). Silakan request ke admin JFU melalui chat ini. Untuk nominal hadiah, tidak ada batasan dan dapat disesuaikan dengan kebutuhanmu. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
         },
         {
             q: "Bagaimana cara distribusi insentif?",
@@ -76,6 +77,8 @@ export function ChatPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const autoSentRef = useRef(false);
 
     // Initial load for persistence
     useEffect(() => {
@@ -101,23 +104,9 @@ export function ChatPage() {
         }
     }, [messages]);
 
-    const handleSendMessage = async (e?: React.FormEvent) => {
-        e?.preventDefault();
-        if (!input.trim() || isLoading) return;
-
-        const userMessage = input.trim();
-        setInput('');
-        const newMessages = [...messages, { role: 'user' as const, content: userMessage }];
-        setMessages(newMessages);
-        setIsLoading(true);
-
-        // Save user message to DB
-        if (sessionId) {
-            saveChatMessage(sessionId, 'user', userMessage);
-        }
-
-        // System prompt construction
-        const systemPrompt = `You are Mimin AI, a helpful virtual assistant for Jakpat for Universities (JFU).
+    // Build system prompt (shared by handleSendMessage and sendMessageDirect)
+    const buildSystemPrompt = useCallback(() => {
+        return `You are Mimin AI, a helpful virtual assistant for Jakpat for Universities (JFU).
 Your goal is to assist students and lecturers with their academic survey needs using Jakpat.
 You are politely but strictly profesional.
 Context: Jakpat (Jajak Pendapat) is an online survey platform with valid respondents in Indonesia.
@@ -157,7 +146,91 @@ Rules:
    - Once the review is complete, the Jakpat Team will contact THEM directly via WhatsApp for the next steps (invoicing/scheduling).
 3. If the user asks about payment errors or complex issues that Mimin cannot answer, ask them to wait for the official team to contact them.
 4. Be concise and friendly. Use Indonesian language.
+7. **Winner Count Request Flow**: If a user asks about having more than 5 winners:
+   - Explain that the default max is 5 pemenang for standard distribution.
+   - If they need more than 5, it IS possible but uses a different distribution method with additional fees (biaya tambahan untuk custom reward distribution).
+   - Ask them to submit the order form first with 5 winners so the system can save their submission data.
+   - Assure them that during the payment or scheduling phase, the admin will contact them to discuss the custom distribution details.
+   - Be supportive and helpful.
 `;
+    }, [faqs]);
+
+    // Auto-send message from query param
+    const sendMessageDirect = useCallback(async (messageText: string) => {
+        if (!messageText.trim() || isLoading) return;
+
+        const userMessage = messageText.trim();
+        const newMessages = [...messages, { role: 'user' as const, content: userMessage }];
+        setMessages(newMessages);
+        setIsLoading(true);
+
+        if (sessionId) {
+            saveChatMessage(sessionId, 'user', userMessage);
+        }
+
+        const systemPrompt = buildSystemPrompt();
+
+        try {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    "model": "google/gemini-2.0-flash-lite-001",
+                    "messages": [
+                        { "role": "system", "content": systemPrompt },
+                        ...newMessages.map(m => ({ role: m.role, content: m.content }))
+                    ]
+                })
+            });
+
+            const data = await response.json();
+            const aiContent = data.choices?.[0]?.message?.content || "Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.";
+
+            setMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
+
+            if (sessionId) {
+                saveChatMessage(sessionId, 'assistant', aiContent);
+            }
+        } catch {
+            setMessages(prev => [...prev, { role: 'assistant', content: 'Maaf, terjadi kesalahan. Silakan coba lagi.' }]);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [messages, isLoading, sessionId]);
+
+    useEffect(() => {
+        const messageParam = searchParams.get('message');
+        if (messageParam && !autoSentRef.current && sessionId) {
+            autoSentRef.current = true;
+            // Clear the param from URL
+            setSearchParams(params => {
+                params.delete('message');
+                return params;
+            });
+            // Small delay to allow chat to initialize
+            setTimeout(() => sendMessageDirect(messageParam), 500);
+        }
+    }, [searchParams, sessionId, sendMessageDirect, setSearchParams]);
+
+    const handleSendMessage = async (e?: React.FormEvent) => {
+        e?.preventDefault();
+        if (!input.trim() || isLoading) return;
+
+        const userMessage = input.trim();
+        setInput('');
+        const newMessages = [...messages, { role: 'user' as const, content: userMessage }];
+        setMessages(newMessages);
+        setIsLoading(true);
+
+        // Save user message to DB
+        if (sessionId) {
+            saveChatMessage(sessionId, 'user', userMessage);
+        }
+
+        const systemPrompt = buildSystemPrompt();
 
         try {
             const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

@@ -3,6 +3,7 @@ import type { SurveyFormData } from '../types';
 import { CheckCircle, Settings, Gift, AlertCircle, Info, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../i18n/LanguageContext';
+import { Link } from 'react-router-dom';
 
 // Helper function to get recommended prize based on question count
 const getRecommendedPrize = (questionCount: number): number => {
@@ -350,7 +351,8 @@ export function StepTwoConfig({
                   placeholder={t('winnerCountPlaceholder')}
                   value={formData.winnerCount}
                   onChange={(e) => {
-                    updateFormData({ winnerCount: parseInt(e.target.value) || 0 });
+                    const val = parseInt(e.target.value) || 0;
+                    updateFormData({ winnerCount: Math.min(val, 5) });
                     if (attemptedSubmit && errors.winnerCount) {
                       setErrors({ ...errors, winnerCount: undefined });
                     }
@@ -366,11 +368,23 @@ export function StepTwoConfig({
                 <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
                   <AlertCircle className="w-3 h-3" /> {t('errorMinWinners')}
                 </p>
-              ) : formData.winnerCount > 5 ? (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {t('errorMaxWinners')}
+              ) : (
+                <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                  <span className="flex items-start gap-1">
+                    <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
+                    <span>
+                      Saat ini kami memprioritaskan survey dengan distribusi pemenang maksimal 5. Jika lebih dari 5, request terlebih dahulu ke admin JFU.{' '}
+                      <Link
+                        to="/dashboard/chat?message=Halo+kak,+aku+mau+request+jumlah+pemenang,+apakah+ini+maksimal+hanya+pemenang+5+orang+saja?"
+                        className="font-semibold underline hover:no-underline"
+                        style={{ color: '#0091ff' }}
+                      >
+                        Request Jumlah Pemenang
+                      </Link>
+                    </span>
+                  </span>
                 </p>
-              ) : null}
+              )}
             </div>
           </div>
 
