@@ -129,6 +129,13 @@ export function InternalDashboardWithLayout() {
     return <InternalDashboard />;
   }
 
+  // Admin-only guard: redirect non-admin users to /dashboard
+  const ADMIN_EMAIL = 'product@jakpat.net';
+  if (user.email !== ADMIN_EMAIL) {
+    window.location.href = '/dashboard';
+    return null;
+  }
+
   const menuItems = [
     {
       id: 'submissions' as Page,
