@@ -71,49 +71,47 @@ export async function onRequestGet(context) {
         });
 
         // 3. Transform Data for Mobile App
-        const baseUrl = new URL(context.request.url).origin; // or hardcode 'https://submit.jakpatforuniv.com'
+        const baseUrl = new URL(context.request.url).origin;
 
         const cleanData = validSurveys.map(s => {
-            // Parse banner if it's stored weirdly, otherwise use directly
-            // Parse description blocks if needed, but mobile app might just want a summary
-            // For now, let's keep it simple
-
             return {
                 id: s.id,
                 slug: s.slug || s.id,
                 title: s.title,
-                // Calculate status/tag based on date
-                is_new: (new Date() - new Date(s.created_at)) < (7 * 24 * 60 * 60 * 1000), // < 7 days
-
-                // Display info
+                is_new: (new Date() - new Date(s.created_at)) < (7 * 24 * 60 * 60 * 1000),
                 banner_url: s.banner_url || null,
                 reward: {
                     amount: parseInt(s.rewards_amount || 0),
                     quota: parseInt(s.rewards_count || 0),
                     currency: 'IDR'
                 },
-
-                // Meta
                 published_at: s.created_at,
                 views: s.views_count || 0,
-
-                // Action URL
                 url: `${baseUrl}/pages/${s.slug || s.id}`,
-
-                // Native apps might want raw intro text without JSON blocks
-                // We can strip HTML or just send the title for the list view
             };
         });
 
-        // 4. Return JSON
+        // Sort by published_at descending (newest first)
+        cleanData.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+
+        // 4. Apply limit (default 20)
+        const LIMIT = 20;
+        const totalCount = cleanData.length;
+        const hasMore = totalCount > LIMIT;
+        const paginatedData = cleanData.slice(0, LIMIT);
+
+        // 5. Return JSON
         return new Response(JSON.stringify({
             status: 'success',
-            count: cleanData.length,
-            data: cleanData
+            count: totalCount,
+            showing: paginatedData.length,
+            has_more: hasMore,
+            ...(hasMore && { more_url: `${baseUrl}/pages` }),
+            data: paginatedData
         }), {
             headers: {
                 ...corsHeaders,
-                'Cache-Control': 'public, max-age=60' // Cache for 1 minute
+                'Cache-Control': 'public, max-age=60'
             }
         });
 
