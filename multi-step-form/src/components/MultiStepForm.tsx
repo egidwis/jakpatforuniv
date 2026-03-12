@@ -194,8 +194,31 @@ export function MultiStepForm() {
         />
       )}
 
+
       {/* Form Content */}
       <div className="form-content mt-8 max-w-5xl mx-auto px-6 pb-24">
+        {/* Lebaran Holiday Banner — auto-hides after 25 Mar 2026 12:00 WIB */}
+        {(() => {
+          const bannerExpiry = new Date('2026-03-25T05:00:00Z'); // 12:00 WIB
+          if (new Date() < bannerExpiry) {
+            return (
+              <div className="relative overflow-hidden rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 px-5 py-4 shadow-sm mb-6">
+                <div className="absolute top-0 right-0 w-32 h-32 opacity-[0.07] text-7xl pointer-events-none flex items-center justify-center">🕌</div>
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl mt-0.5 shrink-0">🌙</span>
+                  <div className="flex flex-col gap-1.5">
+                    <h3 className="text-sm font-bold text-amber-900">Pemberitahuan Libur Idul Fitri 1447 H</h3>
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      Kami akan <strong>libur sementara</strong> pada <strong>18–24 Maret 2026</strong>. Selama periode tersebut, layanan pemasangan iklan survei <strong>belum dapat diproses</strong>. Pesanan dan pembayaran yang masuk akan mulai kami proses kembali pada <strong>25 Maret 2026</strong>.
+                    </p>
+                    <p className="text-xs text-amber-700 font-medium mt-0.5"><br></br>Selamat Hari Raya Idul Fitri. Mohon maaf lahir dan batin. ✨</p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
         {currentStep === 1 && (
           <StepOne
             key={resetKey}
