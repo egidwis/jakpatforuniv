@@ -58,7 +58,8 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
             fetchExistingAds();
             fetchMySchedule();
         }
-    }, [isOpen, submission]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, submission?.id]);
 
     const fetchMySchedule = async () => {
         if (!submission?.id) return;

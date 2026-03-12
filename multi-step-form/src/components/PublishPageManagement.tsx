@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Loader2, Search, ExternalLink, RefreshCw, PenLine } from 'lucide-react';
+import { Loader2, Search, ExternalLink, RefreshCw, PenLine, Plus } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { RespondentsListModal } from './PublishPage/RespondentsListModal';
 import { toast } from 'sonner';
@@ -22,6 +22,7 @@ interface PageData {
     form_submissions?: {
         title: string;
         full_name: string;
+        university?: string;
     };
     page_respondents?: { count: number }[];
 }
@@ -48,7 +49,8 @@ export function PublishPageManagement() {
                     *,
                     form_submissions (
                         title,
-                        full_name
+                        full_name,
+                        university
                     ),
                     page_respondents (
                         count
@@ -120,180 +122,255 @@ export function PublishPageManagement() {
 
     return (
         <div className="container mx-auto p-4 md:p-8 space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Publish Page Management</h1>
-                    <p className="text-muted-foreground">Manage survey pages, schedule, and view performance.</p>
-                </div>
-                <Button onClick={fetchPages} variant="outline" size="sm" disabled={loading}>
-                    <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                    Refresh
-                </Button>
-            </div>
+            {/* Unified Toolbar Container */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
+                {/* Top Row: Search and Actions */}
+                <div className="flex flex-row items-center gap-4 w-full">
+                    {/* Search */}
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Input
+                            placeholder="Search by title, researcher..."
+                            className="pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm w-full shadow-sm"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
 
-            <div className="flex items-center gap-4 bg-white p-2 rounded-lg border shadow-sm max-w-md">
-                <Search className="w-4 h-4 text-gray-400 ml-2" />
-                <Input
-                    placeholder="Search by title, researcher..."
-                    className="border-0 focus-visible:ring-0 h-8"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
-            </div>
-
-            {/* Custom Tabs */}
-            <div className="w-full">
-                <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
-                    {['draft', 'published', 'finish'].map((tab) => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            className={`
-                                flex-1 flex items-center justify-center py-2.5 text-sm font-medium rounded-md transition-all
-                                ${activeTab === tab
-                                    ? 'bg-white text-blue-600 shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}
-                            `}
+                    {/* Action Button */}
+                    <div className="flex items-center shrink-0">
+                        <Button
+                            onClick={() => {
+                                setSelectedPage(null);
+                                setIsPageBuilderOpen(true);
+                            }}
+                            variant="default"
+                            size="sm"
+                            className="h-9 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                         >
-                            {tab === 'draft' && 'Draft / Scheduled'}
-                            {tab === 'published' && 'Published (On-going)'}
-                            {tab === 'finish' && 'Finished'}
-                        </button>
-                    ))}
+                            <Plus className="w-4 h-4 mr-1" />
+                            Announcement Page
+                        </Button>
+                    </div>
                 </div>
 
-                <div className="mt-6">
-                    <Card>
-                        <CardContent className="p-0">
-                            {loading ? (
-                                <div className="flex justify-center p-8">
-                                    <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                                </div>
-                            ) : filteredPages.length === 0 ? (
-                                <div className="p-8 text-center text-gray-500">
-                                    No pages found in this category.
-                                </div>
-                            ) : (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Page Title & Slug</TableHead>
-                                            <TableHead>Researcher</TableHead>
-                                            <TableHead>Schedule</TableHead>
-                                            <TableHead>Stats</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {filteredPages.map((page) => (
-                                            <TableRow key={page.id}>
-                                                <TableCell>
+                <div className="h-px bg-gray-100 w-full" />
+
+                {/* Bottom Row: Filters & Refresh */}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    {/* Tabs */}
+                    <div className="flex items-center gap-2 p-1 bg-gray-50/80 backdrop-blur-sm rounded-lg border border-gray-100/50 w-max max-w-full overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
+                        {[
+                            { id: 'draft', label: 'Draft / Scheduled', count: pages.filter(p => !p.is_published || (p.publish_start_date && new Date(p.publish_start_date) > new Date())).length, color: 'bg-gray-100 text-gray-700' },
+                            { id: 'published', label: 'Published (On-going)', count: pages.filter(p => p.is_published && (!p.publish_start_date || new Date(p.publish_start_date) <= new Date()) && (!p.publish_end_date || new Date(p.publish_end_date) > new Date())).length, color: 'bg-blue-50 text-blue-700' },
+                            { id: 'finish', label: 'Finished', count: pages.filter(p => p.publish_end_date && new Date(p.publish_end_date) < new Date()).length, color: 'bg-emerald-50 text-emerald-700' },
+                        ].map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`
+                                    flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap shrink-0
+                                    ${activeTab === tab.id
+                                        ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-200'
+                                        : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-900'}
+                                `}
+                            >
+                                {tab.label}
+                                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                    {tab.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Refresh */}
+                    <div className="flex items-center ml-auto shrink-0">
+                        <Button
+                            onClick={fetchPages}
+                            variant="outline"
+                            size="sm"
+                            disabled={loading}
+                            className="h-9 w-9 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200 shrink-0 shadow-sm"
+                            title="Refresh data"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Table Card */}
+            <div>
+                <Card className="shadow-sm border-gray-200 bg-white">
+                    <CardContent className="p-0">
+                        {loading ? (
+                            <div className="flex justify-center p-8">
+                                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                            </div>
+                        ) : filteredPages.length === 0 ? (
+                            <div className="p-8 text-center text-gray-500">
+                                No pages found in this category.
+                            </div>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Page Info</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Statistic</TableHead>
+                                        <TableHead className="text-right">Action</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredPages.map((page) => (
+                                        <TableRow key={page.id} className="align-top">
+                                            <TableCell>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="font-semibold text-gray-900">{page.title}</span>
+                                                    <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono">
+                                                        <span>ID: {page.id}</span>
+                                                    </div>
+                                                    {page.submission_id && page.form_submissions?.full_name && (
+                                                        <div className="text-xs text-gray-500 font-medium mt-1">
+                                                            {page.form_submissions.full_name}
+                                                            {page.form_submissions.university ? ` - ${page.form_submissions.university}` : ''}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col text-sm">
+                                                    {!page.submission_id ? (
+                                                        <span className="font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-purple-100">Announcement</span>
+                                                    ) : (
+                                                        <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-blue-100">Survey Ad</span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col gap-1.5 text-xs">
+                                                    {(() => {
+                                                        const now = new Date();
+                                                        const startDate = page.publish_start_date ? new Date(page.publish_start_date) : null;
+                                                        const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
+
+                                                        if (!page.is_published) {
+                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded w-fit">Drafted</span>;
+                                                        }
+                                                        if (endDate && endDate < now) {
+                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded w-fit">Completed</span>;
+                                                        }
+                                                        if (startDate && startDate > now) {
+                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded w-fit">Scheduled</span>;
+                                                        }
+                                                        return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-green-50 text-green-700 border border-green-100 rounded w-fit">Live</span>;
+                                                    })()}
+
+                                                    {page.submission_id && (
+                                                        <div className="flex flex-col mt-1 gap-1">
+                                                            {page.publish_start_date ? (
+                                                                <span className="text-gray-500 text-[11px]">
+                                                                    Start: {new Date(page.publish_start_date).toLocaleDateString()}
+                                                                </span>
+                                                            ) : null}
+                                                            {page.publish_end_date ? (
+                                                                <span className="text-gray-500 text-[11px]">
+                                                                    End: {new Date(page.publish_end_date).toLocaleDateString()}
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="align-top">
+                                                <div className="flex flex-col gap-2">
                                                     <div className="flex flex-col">
-                                                        <span className="font-medium text-gray-900">{page.title}</span>
-                                                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                                                            <span className="font-mono bg-gray-100 px-1 rounded">/{page.slug}</span>
-                                                            {page.form_submissions?.title && (
-                                                                <span className="truncate max-w-[150px]" title={page.form_submissions.title}>
-                                                                    • {page.form_submissions.title}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex flex-col text-sm">
-                                                        <span className="font-medium">{page.form_submissions?.full_name || 'Unknown'}</span>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex flex-col gap-1 text-xs">
-                                                        {page.publish_start_date ? (
-                                                            <span className="text-green-700 bg-green-50 px-1.5 py-0.5 rounded w-fit">
-                                                                Start: {new Date(page.publish_start_date).toLocaleString()}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-gray-400 italic">No start date</span>
-                                                        )}
-                                                        {page.publish_end_date ? (
-                                                            <span className="text-red-700 bg-red-50 px-1.5 py-0.5 rounded w-fit">
-                                                                End: {new Date(page.publish_end_date).toLocaleString()}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-gray-400 italic">No end date</span>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex gap-4">
-                                                        <div className="flex flex-col items-center">
-                                                            <Button
-                                                                variant="ghost"
-                                                                className="h-auto p-0 hover:bg-transparent"
+                                                        {page.submission_id ? (
+                                                            <button
                                                                 onClick={() => setViewRespondentsPage(page)}
+                                                                className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer hover:underline text-left"
                                                             >
-                                                                <span className="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer decoration-blue-200 decoration-2 underline-offset-4 hover:underline">
-                                                                    {page.page_respondents?.[0]?.count || 0}
-                                                                </span>
-                                                            </Button>
-                                                            <span className="text-[10px] text-gray-500 uppercase">Respondents</span>
-                                                        </div>
-                                                        <div className="h-8 w-px bg-gray-200" />
-                                                        <div className="flex flex-col items-center">
-                                                            <span className="text-lg font-bold text-gray-900">
-                                                                {page.views_count || 0}
-                                                            </span>
-                                                            <span className="text-[10px] text-gray-500 uppercase">Views</span>
-                                                        </div>
+                                                                {page.page_respondents?.[0]?.count || 0}
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-sm font-bold text-gray-400">-</span>
+                                                        )}
+                                                        <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Respondents</span>
                                                     </div>
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-2">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-bold text-gray-900">{page.views_count || 0}</span>
+                                                        <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Views</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right align-top">
+                                                <div className="flex justify-end gap-1.5 items-start pt-0.5">
+                                                    {page.is_published && (
                                                         <Button
-                                                            variant="outline"
+                                                            variant="ghost"
                                                             size="sm"
                                                             onClick={() => window.open(`/pages/${page.slug}`, '_blank')}
                                                             title="View Live Page"
+                                                            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
                                                         >
                                                             <ExternalLink className="w-4 h-4" />
                                                         </Button>
+                                                    )}
+
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleEditPage(page)}
+                                                        title="Edit Page"
+                                                        className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 border-gray-200"
+                                                    >
+                                                        <PenLine className="w-4 h-4" />
+                                                    </Button>
+
+                                                    {page.submission_id && (
                                                         <Button
-                                                            variant="default"
                                                             size="sm"
-                                                            onClick={() => handleEditPage(page)}
-                                                            className="bg-blue-600 hover:bg-blue-700"
+                                                            onClick={() => setViewRespondentsPage(page)}
+                                                            title="View Submission"
+                                                            className="h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white"
                                                         >
-                                                            <PenLine className="w-4 h-4 mr-1" /> Edit
+                                                            Submissions
                                                         </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
             </div>
 
-            {isPageBuilderOpen && selectedPage && (
-                <PageBuilderModal
-                    isOpen={isPageBuilderOpen}
-                    onClose={handleCloseBuilder}
-                    onSuccess={handleCloseBuilder}
-                    initialData={selectedPage}
-                    submissionId={selectedPage.submission_id}
-                />
-            )}
+            {
+                isPageBuilderOpen && (
+                    <PageBuilderModal
+                        isOpen={isPageBuilderOpen}
+                        onClose={handleCloseBuilder}
+                        onSuccess={handleCloseBuilder}
+                        initialData={selectedPage || undefined}
+                        submissionId={selectedPage?.submission_id}
+                    />
+                )
+            }
 
-            {viewRespondentsPage && (
-                <RespondentsListModal
-                    isOpen={!!viewRespondentsPage}
-                    onClose={() => setViewRespondentsPage(null)}
-                    pageId={viewRespondentsPage.id}
-                    pageTitle={viewRespondentsPage.title}
-                />
-            )}
-        </div>
+            {
+                viewRespondentsPage && (
+                    <RespondentsListModal
+                        isOpen={!!viewRespondentsPage}
+                        onClose={() => setViewRespondentsPage(null)}
+                        pageId={viewRespondentsPage.id}
+                        pageTitle={viewRespondentsPage.title}
+                    />
+                )
+            }
+        </div >
     );
 }

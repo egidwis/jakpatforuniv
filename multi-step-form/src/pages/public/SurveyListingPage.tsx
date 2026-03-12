@@ -74,12 +74,12 @@ export function SurveyListingPage() {
                     {pages.map((page) => (
                         <Card key={page.id} className="group flex flex-col overflow-hidden border-0 shadow-sm ring-1 ring-gray-200 hover:shadow-2xl hover:ring-2 hover:ring-blue-500/20 transition-all duration-300 transform hover:-translate-y-1 bg-white dark:bg-gray-800 rounded-2xl">
                             {/* Image Section */}
-                            <div className="relative h-52 overflow-hidden bg-gray-100">
+                            <div className="relative aspect-[2.5/1] w-full overflow-hidden bg-gray-100">
                                 {page.banner_url ? (
                                     <img
                                         src={page.banner_url}
                                         alt={page.title}
-                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                     />
                                 ) : (
                                     <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-300">
@@ -91,11 +91,11 @@ export function SurveyListingPage() {
                                 {/* Overlay Gradient */}
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60" />
 
-                                {/* Floating Badge - Reward */}
-                                {page.rewards_amount && (
+                                {/* Floating Badge - Reward (Hidden for Standalone) */}
+                                {page.submission_id && page.rewards_amount && (
                                     <div className="absolute top-4 right-4 bg-yellow-400/90 backdrop-blur-sm text-yellow-950 font-bold px-3 py-1.5 rounded-full text-xs shadow-lg flex items-center gap-1 border border-yellow-200 animate-pulse">
                                         <span className="text-xs">💰</span>
-                                        Rp {parseInt(page.rewards_amount).toLocaleString('id-ID')}
+                                        Rp {(parseInt(page.rewards_amount) * (page.rewards_count || 1)).toLocaleString('id-ID')}
                                     </div>
                                 )}
                             </div>
@@ -108,10 +108,12 @@ export function SurveyListingPage() {
 
                                     {/* Usage Stats or Meta */}
                                     <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 font-medium pt-2">
-                                        <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md">
-                                            <Trophy className="w-4 h-4" />
-                                            <span>{page.rewards_count} Pemenang</span>
-                                        </div>
+                                        {page.submission_id && (
+                                            <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md">
+                                                <Trophy className="w-4 h-4" />
+                                                <span>{page.rewards_count} Pemenang</span>
+                                            </div>
+                                        )}
                                         <div className="flex items-center gap-1.5 bg-gray-100 text-gray-600 px-2.5 py-1 rounded-md">
                                             <Users className="w-4 h-4" />
                                             <span>{page.views_count || 0} views</span>
@@ -123,7 +125,7 @@ export function SurveyListingPage() {
                             <CardFooter className="p-6 pt-0 mt-auto">
                                 <Button asChild className="w-full h-11 text-base font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-600/40 transition-all rounded-xl bg-blue-600 hover:bg-blue-700">
                                     <Link to={`/pages/${page.slug}`}>
-                                        Ikuti Survei Sekarang
+                                        {page.submission_id ? 'Ikuti Survei Sekarang' : 'Lihat Selengkapnya'}
                                         <ExternalLink className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                                     </Link>
                                 </Button>

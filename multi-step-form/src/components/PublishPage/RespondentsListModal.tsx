@@ -22,12 +22,12 @@ import { toast } from 'sonner';
 
 interface Respondent {
     id: string;
-    respondent_name: string;
     jakpat_id: string;
     proof_url: string;
     created_at: string;
-    contact_info?: string;
+    ewallet_provider?: string;
     e_wallet_number?: string;
+    custom_answers?: any;
 }
 
 interface RespondentsListModalProps {
@@ -183,7 +183,7 @@ export function RespondentsListModal({ isOpen, onClose, pageId, pageTitle }: Res
                 <DialogHeader>
                     <div className="flex items-center justify-between mr-4">
                         <div>
-                            <DialogTitle>Respondents List</DialogTitle>
+                            <DialogTitle>Survey Submissions</DialogTitle>
                             <DialogDescription className="mt-1">
                                 Survey: <span className="font-medium text-foreground">{pageTitle}</span>
                             </DialogDescription>
@@ -255,9 +255,8 @@ export function RespondentsListModal({ isOpen, onClose, pageId, pageTitle }: Res
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Date</TableHead>
-                                    <TableHead>Name</TableHead>
                                     <TableHead>Jakpat ID</TableHead>
-                                    <TableHead>Contact / E-Wallet</TableHead>
+                                    <TableHead>E-Wallet</TableHead>
                                     <TableHead className="text-right">Proof</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -267,19 +266,22 @@ export function RespondentsListModal({ isOpen, onClose, pageId, pageTitle }: Res
                                         <TableCell className="text-xs text-gray-500 whitespace-nowrap">
                                             {moment(respondent.created_at).format('DD MMM YYYY HH:mm')}
                                         </TableCell>
-                                        <TableCell className="font-medium">
-                                            {respondent.respondent_name}
-                                        </TableCell>
                                         <TableCell>
-                                            <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-xs">
+                                            <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-xs text-slate-700">
                                                 {respondent.jakpat_id}
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-sm">
-                                            <div className="flex flex-col gap-0.5">
-                                                <span>{respondent.contact_info || '-'}</span>
-                                                <span className="text-xs text-gray-400">{respondent.e_wallet_number}</span>
-                                            </div>
+                                            {respondent.e_wallet_number ? (
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 capitalize">
+                                                        {respondent.ewallet_provider || 'E-Wallet'}
+                                                    </span>
+                                                    <span className="text-xs text-gray-600 font-mono tracking-wide">{respondent.e_wallet_number}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-400 text-xs italic">-</span>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {respondent.proof_url ? (

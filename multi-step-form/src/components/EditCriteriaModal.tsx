@@ -36,12 +36,13 @@ export function EditCriteriaModal({ isOpen, onClose, submission, onUpdate, onSuc
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (submission) {
+        if (isOpen && submission) {
             setCriteria(submission.criteria || '');
             setPrizePerWinner(submission.prize_per_winner?.toString() || '');
             setWinnerCount(submission.winnerCount?.toString() || '');
         }
-    }, [submission]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, submission?.id]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -373,15 +373,15 @@ export function StepTwoConfig({
                   <span className="flex items-start gap-1">
                     <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
                     <span>
-                      Saat ini kami memprioritaskan survey dengan distribusi pemenang maksimal 5. Jika lebih dari 5, request terlebih dahulu ke admin JFU.{' '}
+                      {t('maxWinnerWarning')}{' '}
                       <Link
-                        to="/dashboard/chat?message=Halo+kak,+aku+mau+request+jumlah+pemenang,+apakah+ini+maksimal+hanya+pemenang+5+orang+saja?"
+                        to="/dashboard/chat"
                         target="_blank"
                         className="font-semibold underline hover:no-underline"
                         style={{ color: '#0091ff' }}
                       >
-                        Request Jumlah Pemenang
-                      </Link>
+                        {t('contactAdmin')}
+                      </Link>.
                     </span>
                   </span>
                 </p>

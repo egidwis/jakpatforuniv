@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, CalendarCheck, Zap, PenLine, ShieldAlert, Globe, ExternalLink, Info, MessageCircle, Mail } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, Plus, Calendar, CalendarCheck, Zap, PenLine, ShieldAlert, Globe, Info, MessageCircle, Mail } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, supabase } from '../utils/supabase';
 import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
@@ -59,6 +59,8 @@ interface SurveySubmission {
   winnerCount?: number;
   criteria?: string;
   duration?: number;
+  start_date?: string;
+  end_date?: string;
   admin_notes?: string;
 }
 
@@ -113,7 +115,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [pageBuilderData, setPageBuilderData] = useState<any>(null);
 
   // Map submission_id -> page data (slug, is_published)
-  const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean }>>({});
+  const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null }>>({});
 
   // Admin Access Check
   // STRICT: Only product@jakpat.net is allowed
@@ -211,6 +213,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           winnerCount: sub.winner_count,
           criteria: sub.criteria_responden,
           duration: sub.duration,
+          start_date: sub.start_date,
+          end_date: sub.end_date,
           admin_notes: sub.admin_notes,
           has_transactions: false, // Default, will verify below
         }));
@@ -222,15 +226,15 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           // 1. Fetch Pages
           const { data: pages, error: pagesError } = await supabase
             .from('survey_pages')
-            .select('submission_id, slug, is_published')
+            .select('submission_id, slug, is_published, publish_start_date, publish_end_date')
             .in('submission_id', submissionIds);
 
           if (pagesError) console.error('Error fetching survey pages:', pagesError);
 
           if (pages) {
-            const pageMap: Record<string, { slug: string, is_published: boolean }> = {};
+            const pageMap: Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null }> = {};
             pages.forEach(p => {
-              pageMap[p.submission_id] = { slug: p.slug, is_published: p.is_published };
+              pageMap[p.submission_id] = { slug: p.slug, is_published: p.is_published, publish_start_date: p.publish_start_date, publish_end_date: p.publish_end_date };
             });
             setExistingPages(pageMap);
           }
@@ -259,6 +263,28 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               if (sub.payment_status === 'pending') sub.payment_status = undefined;
             });
           }
+
+          // 3. Fetch Scheduled Ads dates to get precise timestamptz (since form_submissions.start_date is DATE and drops time)
+          const { data: ads, error: adsError } = await supabase
+            .from('scheduled_ads')
+            .select('form_submission_id, start_date, end_date')
+            .in('form_submission_id', submissionIds);
+
+          if (adsError) console.error('Error fetching scheduled ads:', adsError);
+
+          if (ads && ads.length > 0) {
+            const adMap: Record<string, any> = {};
+            ads.forEach((ad: any) => {
+              adMap[ad.form_submission_id] = ad;
+            });
+            transformed.forEach(sub => {
+              if (adMap[sub.id]) {
+                sub.start_date = adMap[sub.id].start_date;
+                sub.end_date = adMap[sub.id].end_date;
+              }
+            });
+          }
+
         } else {
           setExistingPages({}); // Clear pages if no submissions
         }
@@ -1168,29 +1194,77 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           )}
 
 
-                          <div className="flex items-center gap-1.5">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className={`w-[120px] justify-start h-8 text-xs font-medium shadow-sm transition-all ${existingPages[submission.id] ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200'}`}
-                              onClick={() => handleOpenPageBuilder(submission)}
-                            >
-                              <Globe className="w-3.5 h-3.5 mr-2 shrink-0" />
-                              <span className="truncate">{existingPages[submission.id] ? 'Edit Page' : 'Builder'}</span>
-                            </Button>
+                          <div className="flex items-center gap-1.5 mt-2">
+                            {existingPages[submission.id] ? (() => {
+                              const page = existingPages[submission.id];
+                              const now = new Date();
+                              const startDate = page.publish_start_date ? new Date(page.publish_start_date) : null;
+                              const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
 
-                            {existingPages[submission.id]?.is_published ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="shrink-0 h-8 w-8 p-0 border-indigo-200 text-indigo-600 hover:bg-indigo-50 shadow-sm"
-                                onClick={() => window.open(`/pages/${existingPages[submission.id].slug}`, '_blank')}
-                                title="Open Page"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </Button>
-                            ) : (
-                              <div className="w-8 shrink-0" />
+                              // Determine page status
+                              let statusLabel = 'Drafted';
+                              let dotColor = 'bg-gray-400';
+                              let pillStyle = 'bg-gray-50/80 border-gray-200/70 text-gray-600';
+                              if (page.is_published) {
+                                if (endDate && endDate < now) {
+                                  statusLabel = 'Completed';
+                                  dotColor = 'bg-gray-400';
+                                  pillStyle = 'bg-gray-50/80 border-gray-200/70 text-gray-600';
+                                } else if (startDate && startDate > now) {
+                                  statusLabel = 'Scheduled';
+                                  dotColor = 'bg-blue-500 animate-pulse';
+                                  pillStyle = 'bg-gray-50/80 border-gray-200/70 text-gray-700';
+                                } else {
+                                  statusLabel = 'Live';
+                                  dotColor = 'bg-green-500 animate-pulse';
+                                  pillStyle = 'bg-green-50/80 border-green-200/70 text-green-700';
+                                }
+                              }
+
+                              return (
+                                <>
+                                  {/* Status Pill */}
+                                  <div className={`w-[120px] flex items-center justify-start gap-1.5 px-2.5 h-8 border rounded-md ${pillStyle}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+                                    <Globe className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                                    <span className="text-xs font-medium tracking-wide">{statusLabel}</span>
+                                  </div>
+                                  {/* Edit Button */}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-indigo-600 border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 transition-colors shadow-sm"
+                                    onClick={() => handleOpenPageBuilder(submission)}
+                                    title="Edit Page"
+                                  >
+                                    <PenLine className="w-3.5 h-3.5" />
+                                  </Button>
+                                </>
+                              );
+                            })() : (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={submission.status !== 'scheduled'}
+                                        className="w-[120px] justify-start h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200"
+                                        onClick={() => handleOpenPageBuilder(submission)}
+                                      >
+                                        <Globe className="w-3.5 h-3.5 mr-2 shrink-0" />
+                                        <span className="truncate">Page</span>
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {submission.status !== 'scheduled' && (
+                                    <TooltipContent>
+                                      <p>Must schedule the ad before building a page</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
                             )}
                           </div>
                         </TableCell>
@@ -1486,7 +1560,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         submissionId={selectedSubmissionForPage?.id || ''}
         initialData={pageBuilderData}
         onSuccess={handlePageBuilt}
-        submissionTitle={selectedSubmissionForPage?.formTitle}
+        submissionTitle={selectedSubmissionForPage?.formTitle || ''}
+        submissionStartDate={selectedSubmissionForPage?.start_date}
+        submissionEndDate={selectedSubmissionForPage?.end_date}
       />
     </div>
   );

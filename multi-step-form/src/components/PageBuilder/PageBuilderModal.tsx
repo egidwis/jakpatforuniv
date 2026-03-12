@@ -9,25 +9,18 @@ import { supabase } from '@/utils/supabase';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Eye, Save, Trash2, Plus, Image as ImageIcon, Upload, Link as LinkIcon, Check, X } from 'lucide-react';
+import { Loader2, Eye, Save, Trash2, Plus, Image as ImageIcon, Upload, Link as LinkIcon, Check, Trophy, Users, Calendar } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
-import DatePicker from 'react-datepicker';
-import "react-datepicker/dist/react-datepicker.css";
-
-// Fix z-index for datepicker in modal
-const datePickerStyle = `
-  .react-datepicker-popper {
-    z-index: 9999 !important;
-  }
-`;
 
 interface PageBuilderModalProps {
     isOpen: boolean;
     onClose: () => void;
-    submissionId: string;
+    submissionId?: string; // Optional for standalone pages
     initialData?: any; // If editing existing page
     onSuccess: () => void;
     submissionTitle?: string; // Title from the submission for auto-fill
+    submissionStartDate?: string;
+    submissionEndDate?: string;
 }
 
 // Helper: generate slug from title
@@ -41,7 +34,10 @@ const generateSlug = (title: string): string => {
         .slice(0, 60);                 // max 60 chars
 };
 
-export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle }: PageBuilderModalProps) {
+export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate }: PageBuilderModalProps) {
+    const isStandalone = !submissionId;
+
+    const [savedPageId, setSavedPageId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         slug: '',
@@ -113,6 +109,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
     useEffect(() => {
         if (isOpen) {
+            setSavedPageId(null); // Reset for fresh modal session
             if (initialData) {
                 setFormData({
                     slug: initialData.slug,
@@ -123,8 +120,8 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     is_published: initialData.is_published,
                     blocks: initialData.blocks || {},
                     custom_fields: initialData.custom_fields || [],
-                    publish_start_date: initialData.publish_start_date ? new Date(initialData.publish_start_date).toISOString().slice(0, 16) : '',
-                    publish_end_date: initialData.publish_end_date ? new Date(initialData.publish_end_date).toISOString().slice(0, 16) : '',
+                    publish_start_date: submissionStartDate ? submissionStartDate : (initialData.publish_start_date ? initialData.publish_start_date : ''),
+                    publish_end_date: submissionEndDate ? submissionEndDate : (initialData.publish_end_date ? initialData.publish_end_date : ''),
                 });
             } else {
                 // Reset for new page, auto-fill from submission title if available
@@ -139,8 +136,8 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     is_published: false,
                     blocks: {},
                     custom_fields: [],
-                    publish_start_date: '',
-                    publish_end_date: '',
+                    publish_start_date: submissionStartDate ? submissionStartDate : '',
+                    publish_end_date: submissionEndDate ? submissionEndDate : '',
                 });
             }
             if (isOpen) {
@@ -160,12 +157,11 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             let isPublished = overrideStatus !== undefined ? overrideStatus : formData.is_published;
 
             // Auto-publish: If schedule is set and we're just saving (not explicitly unpublishing), set to Live
-            if (overrideStatus === undefined && formData.publish_start_date) {
+            if (overrideStatus === undefined && formData.publish_start_date && !isStandalone) {
                 isPublished = true;
             }
 
-            const payload = {
-                submission_id: submissionId,
+            const payload: any = {
                 slug: formData.slug,
                 title: formData.title,
                 banner_url: formData.banner_url,
@@ -180,24 +176,43 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 updated_at: new Date().toISOString(),
             };
 
-            if (initialData?.id) {
+            // Only attach submission_id if it exists
+            if (submissionId) {
+                payload.submission_id = submissionId;
+            } else {
+                payload.submission_id = null;
+            }
+
+            const existingId = initialData?.id || savedPageId;
+
+            if (existingId) {
                 // Update
                 const { error } = await supabase
                     .from('survey_pages')
                     .update(payload)
-                    .eq('id', initialData.id);
+                    .eq('id', existingId);
                 if (error) throw error;
                 toast.success('Page updated successfully');
             } else {
                 // Create
-                const { error } = await supabase
+                const { data, error } = await supabase
                     .from('survey_pages')
-                    .insert([payload]);
+                    .insert([payload])
+                    .select('id')
+                    .single();
                 if (error) throw error;
+                setSavedPageId(data.id);
                 toast.success('Page created successfully');
             }
             onSuccess();
-            onClose();
+
+            // Publish/Unpublish → close modal & refresh
+            if (overrideStatus !== undefined) {
+                onClose();
+            } else {
+                // Save Draft → keep modal open, sync local state
+                setFormData(prev => ({ ...prev, is_published: isPublished }));
+            }
         } catch (error: any) {
             console.error('Error saving page:', error);
             toast.error(error.message || 'Failed to save page');
@@ -208,162 +223,215 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-4xl h-[85vh] flex flex-col gap-0 overflow-hidden p-0">
+            <DialogContent
+                className="max-w-5xl h-[90vh] flex flex-col p-0 overflow-hidden"
+                onInteractOutside={(e) => e.preventDefault()}
+            >
+                {/* Header */}
                 <DialogHeader className="px-6 py-4 border-b">
                     <DialogTitle>{initialData ? 'Edit Page' : 'Create New Page'}</DialogTitle>
                 </DialogHeader>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <Label>Page Slug (URL)</Label>
-                            <div className="flex items-center gap-2">
-                                <span className="text-gray-500 text-sm">/pages/</span>
-                                <Input
-                                    value={formData.slug}
-                                    onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
-                                    placeholder="my-awesome-survey"
-                                />
-                            </div>
+                <div className="flex-1 overflow-y-auto p-6 pb-0 flex flex-col gap-8">
+                    {/* General Settings */}
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="text-lg font-medium text-gray-900">General Information</h3>
+                            <p className="text-sm text-gray-500">Set up the basic details for your survey page.</p>
                         </div>
-                        <div className="space-y-2">
-                            <Label>Page Title</Label>
-                            <Input
-                                value={formData.title}
-                                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                placeholder="Survey Title"
-                            />
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-semibold">Page Title</Label>
+                                    <Input
+                                        value={formData.title}
+                                        onChange={(e) => {
+                                            const newTitle = e.target.value;
+                                            setFormData({ ...formData, title: newTitle, slug: generateSlug(newTitle) });
+                                        }}
+                                        placeholder="e.g. Survey Kepuasan Pelanggan 2026"
+                                        className="h-11"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-semibold">Page URL Configuration</Label>
+                                    <div className="flex rounded-md shadow-sm">
+                                        <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm">
+                                            /pages/
+                                        </span>
+                                        <Input
+                                            value={formData.slug}
+                                            disabled
+                                            className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md bg-gray-50 text-gray-500 border-gray-300 focus:ring-0 cursor-not-allowed sm:text-sm h-11"
+                                            placeholder="auto-generated-slug"
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-gray-400">URL is automatically generated from the title to ensure consistency.</p>
+                                </div>
+                            </div>
+
+                            {/* Campaign Summary Card - hidden for standalone announcements */}
+                            {!isStandalone && (
+                                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100/60 rounded-xl p-5 flex flex-col justify-center space-y-4 shadow-sm">
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-blue-900 mb-1">Campaign Rewards Info</h4>
+                                        <p className="text-[11px] text-blue-600/80">Configured via submission dashboard</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-white/80 backdrop-blur-sm rounded-lg p-3 border border-blue-100/50 shadow-sm flex flex-col justify-between">
+                                            <div className="flex items-center gap-1.5 mb-2">
+                                                <Trophy className="w-3.5 h-3.5 text-blue-600" />
+                                                <Label className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Total Prize Pool</Label>
+                                            </div>
+                                            <div className="text-lg font-bold text-gray-900 leading-none">
+                                                {formData.rewards_amount ? `Rp ${parseInt(formData.rewards_amount.toString()).toLocaleString('id-ID')}` : '-'}
+                                            </div>
+                                        </div>
+                                        <div className="bg-white/80 backdrop-blur-sm rounded-lg p-3 border border-blue-100/50 shadow-sm flex flex-col justify-between">
+                                            <div className="flex items-center gap-1.5 mb-2">
+                                                <Users className="w-3.5 h-3.5 text-blue-600" />
+                                                <Label className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Expected Winners</Label>
+                                            </div>
+                                            <div className="text-lg font-bold text-gray-900 leading-none">
+                                                {formData.rewards_count} <span className="text-sm font-medium text-gray-500">People</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-6">
-                        <div className="space-y-3 col-span-3 lg:col-span-1">
-                            <Label>Banner Image</Label>
+                    <hr className="border-gray-100" />
 
-                            {/* Banner Tabs */}
-                            <div className="flex bg-gray-100 p-1 rounded-lg mb-2">
-                                <button
-                                    onClick={() => setBannerTab('upload')}
-                                    className={`flex-1 flex items-center justify-center py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    <Upload className="w-3 h-3 mr-1.5" /> Upload
-                                </button>
-                                <button
-                                    onClick={() => setBannerTab('library')}
-                                    className={`flex-1 flex items-center justify-center py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'library' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    <ImageIcon className="w-3 h-3 mr-1.5" /> Recent
-                                </button>
-                                <button
-                                    onClick={() => setBannerTab('link')}
-                                    className={`flex-1 flex items-center justify-center py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'link' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    <LinkIcon className="w-3 h-3 mr-1.5" /> URL
-                                </button>
-                            </div>
+                    {/* Banner Image */}
+                    <div className="space-y-4">
+                        <div>
+                            <h3 className="text-lg font-medium text-gray-900">Featured Banner</h3>
+                            <p className="text-sm text-gray-500">Upload a compelling image to increase click-through rates.</p>
+                        </div>
 
-                            {/* Content based on Tab */}
-                            <div className="min-h-[100px] border rounded-lg p-3 bg-gray-50/50">
-                                {bannerTab === 'upload' && (
-                                    <div className="text-center">
-                                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 transition-colors hover:bg-white hover:border-blue-400 cursor-pointer relative">
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={handleBannerUpload}
-                                                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-                                                disabled={uploadingBanner}
-                                            />
-                                            {uploadingBanner ? (
-                                                <div className="flex flex-col items-center">
-                                                    <Loader2 className="w-6 h-6 animate-spin text-blue-500 mb-2" />
-                                                    <span className="text-xs text-gray-500">Compressing & Uploading...</span>
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col items-center">
-                                                    <Upload className="w-6 h-6 text-gray-400 mb-2" />
-                                                    <span className="text-xs font-medium text-gray-700">Click to Upload</span>
-                                                    <span className="text-[10px] text-gray-400 mt-1">Max 500KB (Auto-compressed)</span>
-                                                </div>
-                                            )}
-                                        </div>
+                        <div className="max-w-2xl bg-gray-50/50 rounded-xl p-4 border border-gray-100">
+                            {!formData.banner_url ? (
+                                <>
+                                    {/* Banner Tabs */}
+                                    <div className="flex bg-gray-100 p-1 rounded-lg mb-4 w-max">
+                                        <button
+                                            onClick={() => setBannerTab('upload')}
+                                            className={`flex items-center justify-center px-4 py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            <Upload className="w-3 h-3 mr-1.5" /> Upload
+                                        </button>
+                                        <button
+                                            onClick={() => setBannerTab('library')}
+                                            className={`flex items-center justify-center px-4 py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'library' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            <ImageIcon className="w-3 h-3 mr-1.5" /> Recent
+                                        </button>
+                                        <button
+                                            onClick={() => setBannerTab('link')}
+                                            className={`flex items-center justify-center px-4 py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'link' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            <LinkIcon className="w-3 h-3 mr-1.5" /> URL
+                                        </button>
                                     </div>
-                                )}
 
-                                {bannerTab === 'library' && (
-                                    <div className="grid grid-cols-3 gap-2 max-h-[120px] overflow-y-auto p-1">
-                                        {recentBanners.map((url, i) => (
-                                            <div
-                                                key={i}
-                                                onClick={() => setFormData(prev => ({ ...prev, banner_url: url }))}
-                                                className={`relative aspect-video rounded-md overflow-hidden cursor-pointer border-2 transition-all ${formData.banner_url === url ? 'border-blue-500 ring-2 ring-blue-200' : 'border-transparent hover:border-gray-300'}`}
-                                            >
-                                                <img src={url} alt={`Banner ${i}`} className="w-full h-full object-cover" />
-                                                {formData.banner_url === url && (
-                                                    <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
-                                                        <Check className="w-4 h-4 text-white drop-shadow-md" />
+                                    {/* Content based on Tab */}
+                                    <div className="min-h-[100px]">
+                                        {bannerTab === 'upload' && (
+                                            <div className="text-center">
+                                                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 transition-colors hover:bg-white hover:border-blue-400 cursor-pointer relative bg-white">
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={handleBannerUpload}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                                                        disabled={uploadingBanner}
+                                                    />
+                                                    {uploadingBanner ? (
+                                                        <div className="flex flex-col items-center">
+                                                            <Loader2 className="w-6 h-6 animate-spin text-blue-500 mb-2" />
+                                                            <span className="text-xs text-gray-500">Compressing & Uploading...</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="bg-blue-50 p-3 rounded-full mb-3">
+                                                                <Upload className="w-6 h-6 text-blue-500" />
+                                                            </div>
+                                                            <span className="text-sm font-medium text-gray-700">Click to Upload Banner</span>
+                                                            <span className="text-xs text-gray-400 mt-1">PNG, JPG up to 500KB (Auto-compressed)</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {bannerTab === 'library' && (
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-[140px] overflow-y-auto p-1">
+                                                {recentBanners.map((url, i) => (
+                                                    <div
+                                                        key={i}
+                                                        onClick={() => setFormData(prev => ({ ...prev, banner_url: url }))}
+                                                        className={`relative aspect-video rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${formData.banner_url === url ? 'border-blue-500 ring-2 ring-blue-200' : 'border-transparent hover:border-gray-300'}`}
+                                                    >
+                                                        <img src={url} alt={`Banner ${i}`} className="w-full h-full object-cover bg-gray-100" />
+                                                        {formData.banner_url === url && (
+                                                            <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
+                                                                <div className="bg-blue-500 rounded-full p-1 shadow-sm">
+                                                                    <Check className="w-4 h-4 text-white" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                {recentBanners.length === 0 && (
+                                                    <div className="col-span-full text-center py-6 text-sm text-gray-500 bg-white rounded-lg border border-dashed">
+                                                        No recent banners found.
                                                     </div>
                                                 )}
                                             </div>
-                                        ))}
-                                        {recentBanners.length === 0 && (
-                                            <div className="col-span-3 text-center py-4 text-xs text-gray-500">
-                                                No recent banners found.
+                                        )}
+
+                                        {bannerTab === 'link' && (
+                                            <div className="space-y-2 bg-white rounded-lg p-1">
+                                                <Input
+                                                    value={formData.banner_url}
+                                                    onChange={(e) => setFormData({ ...formData, banner_url: e.target.value })}
+                                                    placeholder="https://example.com/image.jpg"
+                                                    className="h-11 border-gray-200"
+                                                />
                                             </div>
                                         )}
                                     </div>
-                                )}
-
-                                {bannerTab === 'link' && (
-                                    <div className="space-y-2">
-                                        <Input
-                                            value={formData.banner_url}
-                                            onChange={(e) => setFormData({ ...formData, banner_url: e.target.value })}
-                                            placeholder="https://example.com/image.jpg"
-                                            className="text-xs"
-                                        />
+                                </>
+                            ) : (
+                                <div className="pt-2">
+                                    <Label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Selected Banner Preview</Label>
+                                    <div className="relative w-full max-w-sm h-32 rounded-lg overflow-hidden bg-gray-200 group border border-gray-200 shadow-sm">
+                                        <img src={formData.banner_url} alt="Preview" className="w-full h-full object-cover" />
+                                        <button
+                                            onClick={() => setFormData(prev => ({ ...prev, banner_url: '' }))}
+                                            className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-sm backdrop-blur-sm"
+                                            title="Remove Banner"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                )}
-
-                                {/* Preview Section (if URL exists) */}
-                                {formData.banner_url && (
-                                    <div className="mt-3 pt-3 border-t">
-                                        <Label className="text-[10px] text-gray-500 mb-1 block">Selected Banner:</Label>
-                                        <div className="relative w-full h-24 rounded-md overflow-hidden bg-gray-200 group">
-                                            <img src={formData.banner_url} alt="Preview" className="w-full h-full object-cover" />
-                                            <button
-                                                onClick={() => setFormData(prev => ({ ...prev, banner_url: '' }))}
-                                                className="absolute top-1 right-1 bg-black/50 hover:bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                                title="Remove Banner"
-                                            >
-                                                <Trash2 className="w-3 h-3" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Rewards Amount (Rp)</Label>
-                            <Input
-                                value={formData.rewards_amount}
-                                onChange={(e) => setFormData({ ...formData, rewards_amount: e.target.value })}
-                                placeholder="50000"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Number of Winners</Label>
-                            <Input
-                                type="number"
-                                value={formData.rewards_count}
-                                onChange={(e) => setFormData({ ...formData, rewards_count: parseInt(e.target.value) })}
-                            />
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    <div className="space-y-2">
-                        <Label>Page Content</Label>
-                        <div className="border rounded-lg min-h-[400px]">
+                    <hr className="border-gray-100" />
+
+                    {/* Content Editor */}
+                    <div className="space-y-4">
+                        <div>
+                            <h3 className="text-lg font-medium text-gray-900">Page Content</h3>
+                            <p className="text-sm text-gray-500">Write the details, instructions, or terms for your survey.</p>
+                        </div>
+                        <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm min-h-[400px]">
                             <BlockEditor
                                 content={formData.blocks}
                                 onChange={(newContent) => setFormData({ ...formData, blocks: newContent })}
@@ -535,63 +603,71 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     </div>
                 </div>
 
-                <div className="p-4 border-t bg-gray-50/80 backdrop-blur-sm flex flex-col xl:flex-row items-center justify-between gap-4">
-                    {/* Left Side: Controls & Settings */}
-                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
+                <div className="p-4 border-t bg-gray-50/80 backdrop-blur-sm flex items-center justify-between gap-4 mt-auto">
+                    {/* Left Side: Status + Schedule Capsule */}
+                    <div className="flex items-center gap-2 flex-shrink min-w-0 mr-auto">
+                        {/* Status Badge */}
+                        {(() => {
+                            const startDate = formData.publish_start_date ? new Date(formData.publish_start_date) : null;
+                            const isLive = formData.is_published && (isStandalone || !startDate || startDate <= new Date());
+                            const isDraft = !formData.is_published;
+                            if (isDraft) return (
+                                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-gray-200 text-gray-600 rounded-full flex-shrink-0">
+                                    Draft
+                                </span>
+                            );
+                            if (isLive) return (
+                                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-green-100 text-green-700 rounded-full flex-shrink-0">
+                                    Live
+                                </span>
+                            );
+                            return null; // Scheduled but not yet live → no badge
+                        })()}
 
-
-
-                        {/* Schedule Capsule */}
-                        <div className="flex items-center p-1 bg-white border rounded-md shadow-sm w-full sm:w-auto">
-                            <div className="px-2 py-1 bg-gray-50 rounded border border-gray-100 mr-2">
-                                <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Schedule</span>
+                        {/* Schedule Capsule - hidden for standalone */}
+                        {!isStandalone && (
+                            <div className="flex items-center p-1 bg-white border rounded-md shadow-sm overflow-hidden flex-shrink min-w-0 w-auto ml-2">
+                                <div className="px-2 py-1 bg-gray-50 rounded border border-gray-100 mr-2 flex-shrink-0 hidden sm:block">
+                                    <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Scheduled At</span>
+                                </div>
+                                <div className="flex items-center gap-2 px-1 text-[11px] font-medium text-gray-600 truncate min-w-0">
+                                    <span className="truncate">
+                                        {formData.publish_start_date
+                                            ? new Date(formData.publish_start_date).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                            : 'Not Set'}
+                                    </span>
+                                    <span className="text-gray-300 mx-1 flex-shrink-0">to</span>
+                                    <span className="truncate">
+                                        {formData.publish_end_date
+                                            ? new Date(formData.publish_end_date).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                            : 'Not Set'}
+                                    </span>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2 px-1 text-[11px] font-medium text-gray-600">
-                                <style>{datePickerStyle}</style>
-                                <DatePicker
-                                    selected={formData.publish_start_date ? new Date(formData.publish_start_date) : null}
-                                    onChange={(date: Date | null) => setFormData({ ...formData, publish_start_date: date ? date.toISOString() : '' })}
-                                    showTimeSelect
-                                    timeFormat="HH:mm"
-                                    timeIntervals={15}
-                                    dateFormat="dd/MM/yyyy HH:mm"
-                                    placeholderText="Start Date"
-                                    className="bg-transparent border-none p-0 focus:outline-none w-[110px] text-right cursor-pointer hover:text-blue-600 transition-colors"
-                                />
-                                <span className="text-gray-300 mx-1">to</span>
-                                <DatePicker
-                                    selected={formData.publish_end_date ? new Date(formData.publish_end_date) : null}
-                                    onChange={(date: Date | null) => setFormData({ ...formData, publish_end_date: date ? date.toISOString() : '' })}
-                                    showTimeSelect
-                                    timeFormat="HH:mm"
-                                    timeIntervals={15}
-                                    dateFormat="dd/MM/yyyy HH:mm"
-                                    placeholderText="End Date"
-                                    minDate={formData.publish_start_date ? new Date(formData.publish_start_date) : undefined}
-                                    className="bg-transparent border-none p-0 focus:outline-none w-[110px] cursor-pointer hover:text-blue-600 transition-colors"
-                                />
-                                {(formData.publish_start_date || formData.publish_end_date) && (
-                                    <button
-                                        onClick={() => setFormData({ ...formData, publish_start_date: '', publish_end_date: '' })}
-                                        className="ml-1 p-0.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors"
-                                        title="Clear Schedule"
-                                    >
-                                        <X className="w-3 h-3" />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Right Side: Actions */}
-                    <div className="flex gap-2 w-full xl:w-auto justify-end border-t xl:border-t-0 pt-3 xl:pt-0">
-                        <Button variant="ghost" onClick={onClose} size="sm" className="h-8 text-xs text-gray-500 hover:text-gray-900">Cancel</Button>
-                        {initialData?.slug && (
-                            <Button variant="outline" size="sm" onClick={() => window.open(`/pages/${formData.slug}`, '_blank')} className="h-8 text-xs bg-white">
-                                <Eye className="w-3 h-3 mr-1.5" />
-                                Preview
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        {(initialData?.slug || savedPageId) && (
+                            <Button title="Preview Page" variant="outline" size="icon" onClick={() => window.open(`/pages/${formData.slug}`, '_blank')} className="h-9 w-9 bg-white border-gray-200 text-gray-700 hover:bg-gray-50 shrink-0">
+                                <Eye className="w-4 h-4" />
                             </Button>
                         )}
+
+                        <Button
+                            title="Save as Draft"
+                            onClick={() => handleSave(false)}
+                            disabled={loading}
+                            variant="outline"
+                            size="sm"
+                            className="h-9 text-sm text-gray-700 hover:bg-gray-50 border-gray-200 shrink-0 flex items-center gap-1.5"
+                        >
+                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            <span className="hidden sm:inline">Save Draft</span>
+                        </Button>
+
+                        <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block"></div>
 
                         {formData.is_published ? (
                             <Button
@@ -599,31 +675,28 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                 size="sm"
                                 onClick={() => handleSave(false)}
                                 disabled={loading}
-                                className="h-8 text-xs bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                className="h-9 text-sm border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 shrink-0"
                             >
-                                Unpublish
+                                {isStandalone ? 'Unpublish' : (formData.publish_start_date && new Date(formData.publish_start_date) > new Date() ? 'Change to Draft' : 'Unpublish')}
                             </Button>
                         ) : (
                             <Button
-                                variant="outline"
+                                variant="default"
                                 size="sm"
                                 onClick={() => handleSave(true)}
                                 disabled={loading}
-                                className="h-8 text-xs bg-white border-green-200 text-green-600 hover:bg-green-50 hover:text-green-700 hover:border-green-300"
+                                className={`h-9 text-sm text-white shadow-sm font-medium px-6 shrink-0 ${!isStandalone && formData.publish_start_date && new Date(formData.publish_start_date) > new Date()
+                                    ? 'bg-blue-600 hover:bg-blue-700'
+                                    : 'bg-green-600 hover:bg-green-700'
+                                    }`}
                             >
-                                Publish
+                                {!isStandalone && formData.publish_start_date && new Date(formData.publish_start_date) > new Date() ? (
+                                    <><Calendar className="w-4 h-4 mr-1.5" /> Schedule</>
+                                ) : (
+                                    'Publish Now'
+                                )}
                             </Button>
                         )}
-
-                        <Button
-                            onClick={() => handleSave()}
-                            disabled={loading}
-                            size="sm"
-                            className="bg-blue-600 hover:bg-blue-700 text-white h-8 text-xs shadow-sm"
-                        >
-                            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                            Save Page
-                        </Button>
                     </div>
                 </div>
             </DialogContent>

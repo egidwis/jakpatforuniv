@@ -87,7 +87,8 @@ export function CreateInvoiceModal({
       }
       setNote('');
     }
-  }, [isOpen, defaultAmount, defaultItems]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleAddItem = () => {
     setItems([

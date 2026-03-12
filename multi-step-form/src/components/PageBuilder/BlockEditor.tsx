@@ -2,8 +2,9 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
+import Link from '@tiptap/extension-link';
 import { Button } from '@/components/ui/button';
-import { Bold, Italic, List, ListOrdered, Image as ImageIcon, Heading1, Heading2 } from 'lucide-react';
+import { Bold, Italic, List, ListOrdered, Image as ImageIcon, Heading1, Heading2, Link as LinkIcon } from 'lucide-react';
 import { supabase } from '@/utils/supabase';
 import imageCompression from 'browser-image-compression';
 import { toast } from 'sonner';
@@ -18,7 +19,18 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
     const editor = useEditor({
         extensions: [
             StarterKit,
-            Image,
+            Image.configure({
+                inline: true,
+                allowBase64: true,
+            }),
+            Link.configure({
+                openOnClick: false,
+                autolink: true,
+                linkOnPaste: true,
+                HTMLAttributes: {
+                    class: 'text-blue-600 hover:text-blue-800 underline cursor-pointer',
+                },
+            }),
             Placeholder.configure({
                 placeholder: 'Write something amazing...',
             }),
@@ -30,7 +42,7 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
         },
         editorProps: {
             attributes: {
-                class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[300px] p-4 border rounded-md dark:prose-invert',
+                class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[300px] p-4 border rounded-md dark:prose-invert [&_.ProseMirror-selectednode]:ring-2 [&_.ProseMirror-selectednode]:ring-blue-500 [&_.ProseMirror-selectednode]:ring-offset-2 [&_.ProseMirror-selectednode]:rounded-md transition-all',
             },
         },
     });
@@ -57,7 +69,7 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
 
                     // Upload to Supabase
                     const fileName = `${Date.now()}-${file.name}`;
-                    const { data, error } = await supabase.storage
+                    const { error } = await supabase.storage
                         .from('page-uploads')
                         .upload(fileName, compressedFile);
 
@@ -77,6 +89,27 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
             }
         };
         input.click();
+    };
+
+    const setLink = () => {
+        const previousUrl = editor.getAttributes('link').href;
+
+        // Use prompt for a simple intuitive UI
+        const url = window.prompt('URL', previousUrl);
+
+        // cancelled
+        if (url === null) {
+            return;
+        }
+
+        // empty
+        if (url === '') {
+            editor.chain().focus().extendMarkRange('link').unsetLink().run();
+            return;
+        }
+
+        // update link
+        editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
     };
 
     return (
@@ -137,6 +170,16 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
                         onClick={handleImageUpload}
                     >
                         <ImageIcon className="w-4 h-4" />
+                    </Button>
+                    <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={setLink}
+                        className={editor.isActive('link') ? 'bg-gray-200 dark:bg-gray-700' : ''}
+                        title="Add Link"
+                    >
+                        <LinkIcon className="w-4 h-4" />
                     </Button>
                 </div>
             )}

@@ -23,6 +23,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/supabase-js": "^2.89.0",
     "@tiptap/extension-image": "^3.19.0",
+    "@tiptap/extension-link": "^3.20.0",
     "@tiptap/extension-placeholder": "^3.19.0",
     "@tiptap/react": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",

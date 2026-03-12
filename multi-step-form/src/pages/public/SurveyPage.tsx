@@ -3,13 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Loader2, Upload, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartphone, User, HelpCircle, ShieldAlert } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartphone, HelpCircle, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import imageCompression from 'browser-image-compression';
 
@@ -29,9 +27,10 @@ export function SurveyPage() {
         respondent_name: '',
         jakpat_id: '',
         nik: '',
-        province: '',
+        alamat: '',
+        email: '',
+        ewallet_provider: 'gopay', // Default e-wallet
         e_wallet_number: '',
-        contact_info: '', // Email or Phone
         proof_url: '',
         custom_answers: {} as Record<string, any>,
     });
@@ -78,7 +77,9 @@ export function SurveyPage() {
                 .select(`
             *,
             form_submissions (
-                survey_url
+                survey_url,
+                start_date,
+                end_date
             )
         `)
                 .eq('slug', slug)
@@ -87,10 +88,11 @@ export function SurveyPage() {
 
             if (error) throw error;
 
-            // Check Schedule
+            // Check Schedule from joined form_submissions table
+            const formObj = Array.isArray(data.form_submissions) ? data.form_submissions[0] : data.form_submissions;
             const now = new Date();
-            const startDate = data.publish_start_date ? new Date(data.publish_start_date) : null;
-            const endDate = data.publish_end_date ? new Date(data.publish_end_date) : null;
+            const startDate = formObj?.start_date ? new Date(formObj.start_date) : null;
+            const endDate = formObj?.end_date ? new Date(formObj.end_date) : null;
 
             if (startDate && startDate > now) {
                 // Not started yet
@@ -276,10 +278,21 @@ export function SurveyPage() {
         }
     };
 
+    const [ewalletErrors, setEwalletErrors] = useState({ provider: false, number: false });
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.respondent_name || !formData.e_wallet_number) {
-            toast.error('Please fill in all required fields');
+        
+        const errors = {
+            provider: !formData.ewallet_provider,
+            number: !formData.e_wallet_number
+        };
+        
+        setEwalletErrors(errors);
+
+        // We only check for ewallet fields since respondent_name was moved to the master profile
+        if (errors.provider || errors.number) {
+            toast.error('Pastikan provider e-wallet dan nomor handphone telah diisi');
             return;
         }
 
@@ -293,7 +306,7 @@ export function SurveyPage() {
             }
         }
 
-        // NIK validation (basic length check)
+        // NIK validation (basic length check) if filled
         if (formData.nik && formData.nik.length !== 16) {
             toast.error('NIK must be 16 digits');
             return;
@@ -330,20 +343,20 @@ export function SurveyPage() {
                 .from('page_respondents')
                 .insert([{
                     page_id: pageData.id,
-                    ...formData,
-                    proof_url: proofUrl,
+                    jakpat_id: formData.jakpat_id,
+                    e_wallet_number: formData.e_wallet_number,
+                    ewallet_provider: formData.ewallet_provider,
+                    custom_answers: formData.custom_answers,
+                    proof_url: proofUrl
                 }]);
 
             if (dbError) throw dbError;
 
             // Save to localStorage for next time
             localStorage.setItem('jakpat_respondent_data', JSON.stringify({
-                respondent_name: formData.respondent_name,
                 jakpat_id: formData.jakpat_id,
-                nik: formData.nik,
-                province: formData.province,
+                ewallet_provider: formData.ewallet_provider,
                 e_wallet_number: formData.e_wallet_number,
-                contact_info: formData.contact_info,
                 custom_answers: formData.custom_answers
             }));
 
@@ -351,7 +364,7 @@ export function SurveyPage() {
 
             // Show success state or redirect
             setTimeout(() => {
-                navigate('/pages'); // Redirect to survey listing
+                window.location.href = '/survey-success.html'; // Redirect to standalone success page suitable for WebView
             }, 2000);
 
         } catch (error: any) {
@@ -376,12 +389,25 @@ export function SurveyPage() {
                     return (
                         <p key={index} className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
                             {block.content.map((child: any, i: number) => {
+                                let element: React.ReactNode = null;
+
                                 if (child.type === 'text') {
-                                    return <span key={i} className={`${child.marks?.some((m: any) => m.type === 'bold') ? 'font-bold' : ''} ${child.marks?.some((m: any) => m.type === 'italic') ? 'italic' : ''}`}>{child.text}</span>;
+                                    element = <span key={i} className={`${child.marks?.some((m: any) => m.type === 'bold') ? 'font-bold' : ''} ${child.marks?.some((m: any) => m.type === 'italic') ? 'italic' : ''}`}>{child.text}</span>;
                                 } else if (child.type === 'image') {
-                                    return <img key={i} src={child.attrs.src} alt={child.attrs.alt} className="max-w-full rounded-lg my-4" />;
+                                    element = <img key={i} src={child.attrs.src} alt={child.attrs.alt} className="max-w-full rounded-lg my-4" />;
                                 }
-                                return null;
+
+                                // Check for link mark
+                                const linkMark = child.marks?.find((m: any) => m.type === 'link');
+                                if (linkMark && element) {
+                                    return (
+                                        <a key={i} href={linkMark.attrs.href} target={linkMark.attrs.target || '_blank'} rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                                            {element}
+                                        </a>
+                                    );
+                                }
+
+                                return element;
                             })}
                         </p>
                     );
@@ -445,16 +471,37 @@ export function SurveyPage() {
         }
     }
 
+    const checkEmbeddable = (url: string) => {
+        try {
+            const domain = new URL(url).hostname.toLowerCase();
+            const embeddableDomains = [
+                'docs.google.com',
+                'forms.gle',
+                'typeform.com',
+                'surveymonkey.com',
+                'forms.office.com',
+                'qualtrics.com',
+                'tally.so',
+                'fillout.com'
+            ];
+            return embeddableDomains.some(d => domain.includes(d));
+        } catch (e) {
+            return false;
+        }
+    };
+
+    const isEmbeddable = checkEmbeddable(surveyUrl);
+
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
             {/* Banner */}
             {pageData.banner_url && (
-                <div className="w-full h-[200px] md:h-[300px] overflow-hidden">
+                <div className="relative aspect-[2.5/1] w-full overflow-hidden bg-gray-100 dark:bg-gray-800">
                     <img src={pageData.banner_url} alt="Cover" className="w-full h-full object-cover" />
                 </div>
             )}
 
-            <div className="max-w-4xl mx-auto px-4 -mt-10 relative z-10">
+            <div className="max-w-4xl mx-auto px-0 sm:px-4 -mt-4 sm:-mt-10 relative z-10 w-full">
                 {/* Stepper (Hidden for now as per request) */}
                 {/* <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-8">
                     <div className="flex items-center justify-between relative">
@@ -491,12 +538,12 @@ export function SurveyPage() {
                 <div className="space-y-6">
                     {/* STEP 1: INFO */}
                     {currentStep === 1 && (
-                        <Card className="shadow-lg border-t-4 border-t-blue-500">
-                            <CardHeader>
+                        <Card className="shadow-none sm:shadow-lg border-x-0 border-b-0 border-t-4 border-t-blue-500 rounded-none sm:rounded-xl">
+                            <CardHeader className="px-4 py-5 md:p-6">
                                 <div className="flex gap-2 mb-2">
                                     <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Active</span>
-                                    {pageData.rewards_amount && (
-                                        <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-medium">Reward: Rp {parseInt(pageData.rewards_amount).toLocaleString()}</span>
+                                    {pageData.submission_id && pageData.rewards_amount && (
+                                        <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-medium">Reward: Rp {(parseInt(pageData.rewards_amount) * (pageData.rewards_count || 1)).toLocaleString('id-ID')}</span>
                                     )}
                                 </div>
                                 <CardTitle className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
@@ -508,31 +555,33 @@ export function SurveyPage() {
                                     <span>{pageData.views_count} views</span>
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent className="prose dark:prose-invert max-w-none">
+                            <CardContent className="px-4 pb-6 md:px-6 md:pb-6 prose dark:prose-invert max-w-none">
                                 {renderBlocks(pageData.blocks)}
                             </CardContent>
-                            <div className="p-6 border-t bg-gray-50 flex justify-end">
-                                <Button onClick={nextStep} size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
-                                    Mulai Survey <ArrowRight className="w-4 h-4 ml-2" />
-                                </Button>
-                            </div>
+                            {pageData.submission_id && (
+                                <div className="p-6 border-t bg-gray-50 flex justify-end">
+                                    <Button onClick={nextStep} size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
+                                        Mulai Survey <ArrowRight className="w-4 h-4 ml-2" />
+                                    </Button>
+                                </div>
+                            )}
                         </Card>
                     )}
 
                     {/* STEP 2: SCREENING (ID & Questions) */}
                     {currentStep === 2 && (
-                        <Card className="shadow-lg">
-                            <CardHeader>
-                                <CardTitle>Data Awal & Screening</CardTitle>
+                        <Card className="shadow-none sm:shadow-lg border-0 sm:border rounded-none sm:rounded-xl">
+                            <CardHeader className="px-4 pt-5 pb-2 md:px-6 md:pt-6 md:pb-2">
+                                <CardTitle>Screening</CardTitle>
                                 <CardDescription>
                                     Mohon lengkapi data berikut sebelum melanjutkan ke pengisian survei.
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-6">
+                            <CardContent className="px-4 pt-4 pb-6 md:px-6 md:pb-6 space-y-6">
                                 {/* Jakpat ID Check */}
-                                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <Label htmlFor="jakpat_id_step2" className="text-blue-900 font-semibold block">Masukkan Jakpat ID kamu sebelum mengisi:</Label>
+                                <div className="bg-blue-50 border-y sm:border border-blue-100 -mx-4 sm:mx-0 sm:rounded-lg p-4 sm:p-5">
+                                    <div className="flex flex-col items-start gap-1.5 mb-3">
+                                        <Label htmlFor="jakpat_id_step2" className="text-blue-900 font-semibold block leading-tight">Jakpat ID</Label>
                                         <button
                                             type="button"
                                             onClick={() => setIsHelpOpen(true)}
@@ -601,7 +650,7 @@ export function SurveyPage() {
 
                                 {/* Custom Fields Section (Screening) */}
                                 {pageData.custom_fields && pageData.custom_fields.length > 0 && (
-                                    <div className={`space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-100 transition-opacity duration-300 ${(!hasCheckedDuplicate || !!duplicateError || checkingDuplicate) ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <div className={`space-y-4 p-4 sm:p-5 -mx-4 sm:mx-0 bg-gray-50 border-y sm:border border-gray-100 sm:rounded-lg transition-opacity duration-300 ${(!hasCheckedDuplicate || !!duplicateError || checkingDuplicate) ? 'opacity-50 pointer-events-none' : ''}`}>
                                         <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                                             <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
                                             Pertanyaan Tambahan
@@ -622,26 +671,39 @@ export function SurveyPage() {
                                                             disabled={!hasCheckedDuplicate || !!duplicateError || checkingDuplicate}
                                                         />
                                                     ) : field.type === 'select' ? (
-                                                        <Select
-                                                            value={formData.custom_answers[field.label] || undefined}
-                                                            onValueChange={(val) => handleCustomFieldChange(field.label, val)}
-                                                            disabled={!hasCheckedDuplicate || !!duplicateError || checkingDuplicate}
-                                                        >
-                                                            <SelectTrigger className="bg-white text-gray-700">
-                                                                <SelectValue placeholder="Pilih Jawaban" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {field.options ? (
-                                                                    field.options.split(',').map((opt: string, i: number) => (
-                                                                        <SelectItem key={i} value={opt.trim()}>
-                                                                            {opt.trim()}
-                                                                        </SelectItem>
-                                                                    ))
-                                                                ) : (
-                                                                    <SelectItem value="no-options" disabled>No options defined</SelectItem>
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
+                                                        <div className="space-y-3 mt-2">
+                                                            {field.options ? (
+                                                                field.options.split(',').map((opt: string, i: number) => {
+                                                                    const optionValue = opt.trim();
+                                                                    const isSelected = formData.custom_answers[field.label] === optionValue;
+                                                                    const isDisabled = !hasCheckedDuplicate || !!duplicateError || checkingDuplicate;
+                                                                    return (
+                                                                        <label
+                                                                            key={i}
+                                                                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isSelected ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white hover:border-blue-300'} ${isDisabled ? 'opacity-50 pointer-events-none' : ''}`}
+                                                                        >
+                                                                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 ${isSelected ? 'border-blue-600' : 'border-gray-300'}`}>
+                                                                                {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+                                                                            </div>
+                                                                            <input
+                                                                                type="radio"
+                                                                                name={field.label}
+                                                                                value={optionValue}
+                                                                                checked={isSelected}
+                                                                                onChange={() => handleCustomFieldChange(field.label, optionValue)}
+                                                                                disabled={isDisabled}
+                                                                                className="sr-only"
+                                                                            />
+                                                                            <span className={`text-sm ${isSelected ? 'text-blue-900 font-medium' : 'text-gray-700'}`}>
+                                                                                {optionValue}
+                                                                            </span>
+                                                                        </label>
+                                                                    );
+                                                                })
+                                                            ) : (
+                                                                <div className="text-sm text-gray-500 italic">No options defined</div>
+                                                            )}
+                                                        </div>
                                                     ) : (
                                                         <Input
                                                             type={field.type === 'number' ? 'number' : 'text'}
@@ -687,29 +749,56 @@ export function SurveyPage() {
 
                     {/* STEP 3: EMBED & PROOF */}
                     {currentStep === 3 && (
-                        <Card className="shadow-lg">
-                            <CardHeader>
+                        <Card className="shadow-none sm:shadow-lg border-0 sm:border rounded-none sm:rounded-xl">
+                            <CardHeader className="px-4 py-5 md:p-6">
                                 <CardTitle>Isi Survey & Upload Bukti</CardTitle>
                                 <CardDescription>
                                     Silakan isi survey di bawah ini sampai selesai, lalu screenshot halaman akhirnya.
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-6">
-                                {/* Iframe Embed */}
-                                <div className="w-full h-[600px] border rounded-lg overflow-hidden relative bg-gray-100">
-                                    <iframe
-                                        src={surveyUrl}
-                                        className="w-full h-full"
-                                        title="Survey Form"
-                                        allowFullScreen
-                                    ></iframe>
-                                    <div className="absolute top-0 right-0 p-2 bg-white/80 backdrop-blur-sm rounded-bl-lg text-xs text-gray-500">
-                                        External Form
+                            <CardContent className="px-4 pb-6 md:px-6 md:pb-6 space-y-6">
+                                {/* Iframe Embed or External Link */}
+                                {isEmbeddable ? (
+                                    <>
+                                        <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg p-4 text-sm flex gap-3 items-start shadow-sm">
+                                            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+                                            <p className="text-blue-900/90 leading-relaxed">
+                                                Jika form di bawah ini tampak kosong atau error, silakan{' '}
+                                                <a href={surveyUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 hover:text-blue-800 hover:underline flex items-center inline-flex gap-1" style={{ display: 'inline-flex' }}>
+                                                    Buka Survei di Layar Penuh <ExternalLink className="w-3 h-3" />
+                                                </a>{' '}
+                                                untuk mengisinya secara aman.
+                                            </p>
+                                        </div>
+
+                                        <div className="-mx-4 sm:mx-0 w-auto sm:w-full h-[75vh] min-h-[500px] sm:h-[600px] border-y sm:border rounded-none sm:rounded-lg overflow-hidden relative bg-gray-100">
+                                            <iframe
+                                                src={surveyUrl}
+                                                className="w-full h-full"
+                                                title="Survey Form"
+                                                allowFullScreen
+                                            ></iframe>
+                                            <div className="absolute top-0 right-0 p-2 bg-white/80 backdrop-blur-sm rounded-bl-lg text-xs font-medium text-gray-500 flex items-center gap-1 shadow-sm">
+                                                External Form
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="border border-dashed border-gray-300 rounded-2xl bg-gray-50 p-8 sm:p-12 text-center flex flex-col items-center justify-center">
+                                        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6 shadow-sm ring-4 ring-white">
+                                            <ExternalLink className="w-8 h-8 ml-1" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-gray-900 mb-2">Buka Survei di Tab Baru</h3>
+                                        <p className="text-gray-500 max-w-sm mx-auto mb-6 text-sm leading-relaxed">
+                                            Sistem keamanan dari penyedia survei ini mengharuskan pengisian dilakukan di halaman utamanya. Silakan klik tombol di bawah untuk memulai.
+                                        </p>
+                                        <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto px-8 shadow-md font-semibold">
+                                            <a href={surveyUrl} target="_blank" rel="noopener noreferrer">
+                                                Lanjutkan ke Survei <ExternalLink className="w-4 h-4 ml-2" />
+                                            </a>
+                                        </Button>
                                     </div>
-                                </div>
-                                <div className="text-center text-sm text-gray-500">
-                                    Tidak bisa mengisi form di atas? <a href={surveyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Buka di tab baru</a>
-                                </div>
+                                )}
 
                                 {/* Proof Upload */}
                                 <div className="space-y-2 pt-4 border-t">
@@ -746,7 +835,7 @@ export function SurveyPage() {
                                     <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
                                 </Button>
                                 <Button onClick={nextStep} className="bg-blue-600 hover:bg-blue-700 text-white">
-                                    Lanjut ke Data Diri <ArrowRight className="w-4 h-4 ml-2" />
+                                    Lanjut <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                             </div>
                         </Card>
@@ -756,7 +845,7 @@ export function SurveyPage() {
                     {currentStep === 4 && (
                         <Card className="shadow-lg">
                             <CardHeader>
-                                <CardTitle>Data Diri & Pencairan Reward</CardTitle>
+                                <CardTitle>Data Diri Hadiah Undian</CardTitle>
                                 <CardDescription>
                                     Lengkapi data berikut untuk verifikasi dan pengiriman reward.
                                 </CardDescription>
@@ -764,73 +853,78 @@ export function SurveyPage() {
                             <CardContent>
                                 <form onSubmit={handleSubmit} className="space-y-6">
 
-                                    {/* Custom Fields moved to Step 2 */}
+                                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 mb-6">
+                                        <p className="text-sm text-blue-900 leading-relaxed mb-4">
+                                            Penentuan pemenang undian kini disesuaikan dengan <strong>Profil Jakpat</strong> kamu, lho!
+                                        </p>
+                                        <p className="text-sm text-blue-900 leading-relaxed mb-4">
+                                            Pastikan kamu sudah mengisi atau memperbarui <strong>“Survey Tentang Kamu”</strong> di menu Survey agar data dirimu selalu <em>up-to-date</em>.
+                                        </p>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="respondent_name">Nama Lengkap *</Label>
-                                            <div className="relative">
-                                                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                                                <Input
-                                                    id="respondent_name"
-                                                    name="respondent_name"
-                                                    value={formData.respondent_name}
-                                                    onChange={handleInputChange}
-                                                    required
-                                                    className="pl-9"
-                                                    placeholder="Sesuai KTP"
-                                                />
+                                        {/* Survey Banner Guidance Image */}
+                                        <div className="w-full bg-white rounded-lg overflow-hidden flex items-center justify-center border border-gray-200 relative group">
+                                            <img src="/survey-tentang-kamu-guide.png" alt="Panduan Survey Tentang Kamu" className="w-full h-auto object-contain" />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4 pt-4 border-t">
+                                        <div className="space-y-3">
+                                            <Label className="text-sm font-medium">
+                                                Pilih E-Wallet Reward
+                                                {ewalletErrors.provider && <span className="text-red-500 ml-1 text-xs">* Wajib dipilih</span>}
+                                            </Label>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <label className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${formData.ewallet_provider === 'gopay' ? 'border-blue-500 bg-blue-50/50 text-blue-800 font-medium' : ewalletErrors.provider ? 'border-red-400 bg-red-50/30' : 'border-gray-200 bg-white hover:border-blue-200'}`}>
+                                                    <input
+                                                        type="radio"
+                                                        name="ewallet_provider"
+                                                        value="gopay"
+                                                        checked={formData.ewallet_provider === 'gopay'}
+                                                        onChange={(e) => {
+                                                            setFormData(prev => ({ ...prev, ewallet_provider: e.target.value }));
+                                                            if (ewalletErrors.provider) setEwalletErrors(prev => ({ ...prev, provider: false }));
+                                                        }}
+                                                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                                    />
+                                                    GoPay
+                                                </label>
+                                                <label className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${formData.ewallet_provider === 'dana' ? 'border-blue-500 bg-blue-50/50 text-blue-800 font-medium' : ewalletErrors.provider ? 'border-red-400 bg-red-50/30' : 'border-gray-200 bg-white hover:border-blue-200'}`}>
+                                                    <input
+                                                        type="radio"
+                                                        name="ewallet_provider"
+                                                        value="dana"
+                                                        checked={formData.ewallet_provider === 'dana'}
+                                                        onChange={(e) => {
+                                                            setFormData(prev => ({ ...prev, ewallet_provider: e.target.value }));
+                                                            if (ewalletErrors.provider) setEwalletErrors(prev => ({ ...prev, provider: false }));
+                                                        }}
+                                                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                                    />
+                                                    DANA
+                                                </label>
                                             </div>
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="province">Provinsi Domisili</Label>
-                                            <Input
-                                                id="province"
-                                                name="province"
-                                                value={formData.province}
-                                                onChange={handleInputChange}
-                                                placeholder="Contoh: Jawa Barat"
-                                            />
-                                        </div>
-                                    </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
-                                            <Label htmlFor="nik">NIK (16 Digit - Untuk Validasi)</Label>
+                                            <Label htmlFor="e_wallet_number" className="text-sm font-medium">
+                                                Nomor Handphone E-Wallet
+                                                {ewalletErrors.number && <span className="text-red-500 ml-1 text-xs">* Wajib diisi</span>}
+                                            </Label>
                                             <Input
-                                                id="nik"
-                                                name="nik"
-                                                value={formData.nik}
-                                                onChange={handleInputChange}
-                                                placeholder="3201xxxxxxxxxxxx"
-                                                maxLength={16}
+                                                id="e_wallet_number"
+                                                name="e_wallet_number"
+                                                value={formData.e_wallet_number}
+                                                onChange={(e) => {
+                                                    handleInputChange(e);
+                                                    if (ewalletErrors.number) setEwalletErrors(prev => ({ ...prev, number: false }));
+                                                }}
+                                                required
+                                                type="tel"
+                                                placeholder={`Contoh: 0812xxxxxxxx`}
+                                                className={`h-12 text-lg placeholder:text-gray-300 ${ewalletErrors.number ? 'border-red-400 focus-visible:ring-red-500' : 'border-blue-200 focus-visible:ring-blue-500'}`}
                                             />
-                                            <p className="text-[10px] text-gray-400">Kami menjaga kerahasiaan data NIK Anda.</p>
+                                            <p className="text-xs text-gray-500">Pastikan nomor aktif dan terdaftar di E-Wallet pilihanmu.</p>
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="contact_info">Email</Label>
-                                            <Input
-                                                id="contact_info"
-                                                name="contact_info"
-                                                value={formData.contact_info}
-                                                onChange={handleInputChange}
-                                                placeholder="email@example.com"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2 pt-4 border-t">
-                                        <Label htmlFor="e_wallet_number" className="text-lg text-blue-800">Nomor E-Wallet (Reward)</Label>
-                                        <Input
-                                            id="e_wallet_number"
-                                            name="e_wallet_number"
-                                            value={formData.e_wallet_number}
-                                            onChange={handleInputChange}
-                                            required
-                                            placeholder="0812xxx (GoPay/OVO/Dana/ShopeePay)"
-                                            className="h-12 text-lg border-blue-200 focus-visible:ring-blue-500"
-                                        />
-                                        <p className="text-xs text-gray-500">Pastikan nomor aktif dan terdaftar di E-Wallet.</p>
                                     </div>
                                 </form>
                             </CardContent>
@@ -838,7 +932,7 @@ export function SurveyPage() {
                                 <Button onClick={prevStep} variant="outline">
                                     <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
                                 </Button>
-                                <Button onClick={handleSubmit} className="bg-green-600 hover:bg-green-700 text-white min-w-[140px]" disabled={submitting}>
+                                <Button onClick={handleSubmit} className="bg-green-600 hover:bg-green-700 text-white min-w-[100px]" disabled={submitting}>
                                     {submitting ? (
                                         <>
                                             <Loader2 className="w-5 h-5 mr-2 animate-spin" />
@@ -846,7 +940,7 @@ export function SurveyPage() {
                                         </>
                                     ) : (
                                         <>
-                                            Kirim Data <Check className="w-4 h-4 ml-2" />
+                                            Submit <Check className="w-4 h-4 ml-2" />
                                         </>
                                     )}
                                 </Button>

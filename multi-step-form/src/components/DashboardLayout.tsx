@@ -28,7 +28,7 @@ export function DashboardLayout() {
 
   const navItems = [
     {
-      label: 'Submit Survey',
+      label: 'Ad Order Form',
       path: '/dashboard/submit',
       icon: <FileText className="w-5 h-5" />
     },
@@ -38,7 +38,7 @@ export function DashboardLayout() {
       icon: <LayoutDashboard className="w-5 h-5" />
     },
     {
-      label: 'Bantuan',
+      label: 'Support',
       path: '/dashboard/chat',
       icon: <MessageSquare className="w-5 h-5" />
     }
@@ -68,7 +68,7 @@ export function DashboardLayout() {
               <img src={jfuIcon} alt="JFU Icon" className="w-10 h-10 object-contain flex-shrink-0" />
               <div>
                 <h1 className="text-xl font-bold bg-clip-text text-transparent leading-tight" style={{ backgroundImage: 'linear-gradient(to right, #0091ff, #0077cc)' }}>
-                  JFU Dashboard
+                  Dashboard
                 </h1>
                 <p className="text-xs text-gray-500 mt-0.5">Jakpat For University</p>
               </div>

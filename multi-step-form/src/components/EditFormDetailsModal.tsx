@@ -35,13 +35,14 @@ export function EditFormDetailsModal({ isOpen, onClose, submission, onUpdate }: 
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (submission) {
+        if (isOpen && submission) {
             setTitle(submission.formTitle || '');
             setFormUrl(submission.formUrl || '');
             setQuestionCount(submission.questionCount?.toString() || '');
             setDuration(submission.duration?.toString() || '');
         }
-    }, [submission]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, submission?.id]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
