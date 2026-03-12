@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { getAllChatSessions, getChatMessages, type ChatSession, type ChatMessage } from '@/utils/supabase';
 import { MessageSquare, User, Calendar, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 export function ConversationsPage() {
     const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -114,7 +115,18 @@ export function ConversationsPage() {
                                             : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm'
                                         }
                                     `}>
-                                        <p>{msg.content}</p>
+                                        <ReactMarkdown
+                                            components={{
+                                                p: (props) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
+                                                ul: (props) => <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />,
+                                                ol: (props) => <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />,
+                                                li: (props) => <li className="pl-1" {...props} />,
+                                                strong: (props) => <span className="font-bold" {...props} />,
+                                                a: (props) => <a className="underline hover:text-blue-200 transition-colors" target="_blank" rel="noopener noreferrer" {...props} />,
+                                            }}
+                                        >
+                                            {msg.content}
+                                        </ReactMarkdown>
                                         <p className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-blue-100' : 'text-gray-400'}`}>
                                             {new Date(msg.created_at).toLocaleTimeString('id-ID')}
                                         </p>
