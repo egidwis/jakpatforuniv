@@ -224,7 +224,7 @@ export function PublishPageManagement() {
                                 </TableHeader>
                                 <TableBody>
                                     {filteredPages.map((page) => (
-                                        <TableRow key={page.id} className="align-top">
+                                        <TableRow key={page.id} className="align-top [&>td]:align-top">
                                             <TableCell>
                                                 <div className="flex flex-col gap-1.5">
                                                     <span className="font-semibold text-gray-900">{page.title}</span>
@@ -256,27 +256,27 @@ export function PublishPageManagement() {
                                                         const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
 
                                                         if (!page.is_published) {
-                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded w-fit">Drafted</span>;
+                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full w-fit">Drafted</span>;
                                                         }
                                                         if (endDate && endDate < now) {
-                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded w-fit">Completed</span>;
+                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full w-fit">Completed</span>;
                                                         }
                                                         if (startDate && startDate > now) {
-                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded w-fit">Scheduled</span>;
+                                                            return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-full w-fit">Scheduled</span>;
                                                         }
-                                                        return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-green-50 text-green-700 border border-green-100 rounded w-fit">Live</span>;
+                                                        return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-green-50 text-green-700 border border-green-100 rounded-full w-fit">Live</span>;
                                                     })()}
 
                                                     {page.submission_id && (
                                                         <div className="flex flex-col mt-1 gap-1">
                                                             {page.publish_start_date ? (
                                                                 <span className="text-gray-500 text-[11px]">
-                                                                    Start: {new Date(page.publish_start_date).toLocaleDateString()}
+                                                                    Start: {new Date(page.publish_start_date).toLocaleDateString()}, {new Date(page.publish_start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                 </span>
                                                             ) : null}
                                                             {page.publish_end_date ? (
                                                                 <span className="text-gray-500 text-[11px]">
-                                                                    End: {new Date(page.publish_end_date).toLocaleDateString()}
+                                                                    End: {new Date(page.publish_end_date).toLocaleDateString()}, {new Date(page.publish_end_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                 </span>
                                                             ) : null}
                                                         </div>

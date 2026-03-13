@@ -221,6 +221,31 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
         }
     };
 
+    const handleDelete = async () => {
+        const existingId = initialData?.id || savedPageId;
+        if (!existingId) return;
+
+        const confirmed = window.confirm('Are you sure you want to delete this draft page? This action cannot be undone.');
+        if (!confirmed) return;
+
+        setLoading(true);
+        try {
+            const { error } = await supabase
+                .from('survey_pages')
+                .delete()
+                .eq('id', existingId);
+            if (error) throw error;
+            toast.success('Page deleted successfully');
+            onSuccess();
+            onClose();
+        } catch (error: any) {
+            console.error('Error deleting page:', error);
+            toast.error(error.message || 'Failed to delete page');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent
@@ -655,47 +680,82 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                             </Button>
                         )}
 
-                        <Button
-                            title="Save as Draft"
-                            onClick={() => handleSave(false)}
-                            disabled={loading}
-                            variant="outline"
-                            size="sm"
-                            className="h-9 text-sm text-gray-700 hover:bg-gray-50 border-gray-200 shrink-0 flex items-center gap-1.5"
-                        >
-                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            <span className="hidden sm:inline">Save Draft</span>
-                        </Button>
-
-                        <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block"></div>
-
                         {formData.is_published ? (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleSave(false)}
-                                disabled={loading}
-                                className="h-9 text-sm border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 shrink-0"
-                            >
-                                {isStandalone ? 'Unpublish' : (formData.publish_start_date && new Date(formData.publish_start_date) > new Date() ? 'Change to Draft' : 'Unpublish')}
-                            </Button>
+                            <>
+                                {/* Published/Scheduled page: Change to Draft (secondary) + Update Page (primary) */}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleSave(false)}
+                                    disabled={loading}
+                                    className="h-9 text-sm border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 shrink-0"
+                                >
+                                    {isStandalone ? 'Unpublish' : 'Change to Draft'}
+                                </Button>
+
+                                <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block"></div>
+
+                                <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleSave(true)}
+                                    disabled={loading}
+                                    className="h-9 text-sm text-white shadow-sm font-medium px-6 shrink-0 bg-blue-600 hover:bg-blue-700"
+                                >
+                                    {loading ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                                    Update Page
+                                </Button>
+                            </>
                         ) : (
-                            <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleSave(true)}
-                                disabled={loading}
-                                className={`h-9 text-sm text-white shadow-sm font-medium px-6 shrink-0 ${!isStandalone && formData.publish_start_date && new Date(formData.publish_start_date) > new Date()
-                                    ? 'bg-blue-600 hover:bg-blue-700'
-                                    : 'bg-green-600 hover:bg-green-700'
-                                    }`}
-                            >
-                                {!isStandalone && formData.publish_start_date && new Date(formData.publish_start_date) > new Date() ? (
-                                    <><Calendar className="w-4 h-4 mr-1.5" /> Schedule</>
-                                ) : (
-                                    'Publish Now'
+                            <>
+                                {/* Draft page: Delete (destructive) + Save Draft (secondary) + Publish/Schedule (primary) */}
+                                {(initialData?.id || savedPageId) && (
+                                    <>
+                                        <Button
+                                            title="Delete Draft"
+                                            onClick={handleDelete}
+                                            disabled={loading}
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-9 w-9 border-red-200 text-red-500 hover:bg-red-50 hover:text-red-700 shrink-0"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                        <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block"></div>
+                                    </>
                                 )}
-                            </Button>
+
+                                <Button
+                                    title="Save as Draft"
+                                    onClick={() => handleSave(false)}
+                                    disabled={loading}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-9 text-sm text-gray-700 hover:bg-gray-50 border-gray-200 shrink-0 flex items-center gap-1.5"
+                                >
+                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                    <span className="hidden sm:inline">Save Draft</span>
+                                </Button>
+
+                                <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block"></div>
+
+                                <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleSave(true)}
+                                    disabled={loading}
+                                    className={`h-9 text-sm text-white shadow-sm font-medium px-6 shrink-0 ${!isStandalone && formData.publish_start_date && new Date(formData.publish_start_date) > new Date()
+                                        ? 'bg-blue-600 hover:bg-blue-700'
+                                        : 'bg-green-600 hover:bg-green-700'
+                                        }`}
+                                >
+                                    {!isStandalone && formData.publish_start_date && new Date(formData.publish_start_date) > new Date() ? (
+                                        <><Calendar className="w-4 h-4 mr-1.5" /> Schedule</>
+                                    ) : (
+                                        'Publish Now'
+                                    )}
+                                </Button>
+                            </>
                         )}
                     </div>
                 </div>

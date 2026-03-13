@@ -88,11 +88,10 @@ export function SurveyPage() {
 
             if (error) throw error;
 
-            // Check Schedule from joined form_submissions table
-            const formObj = Array.isArray(data.form_submissions) ? data.form_submissions[0] : data.form_submissions;
+            // Check Schedule from survey_pages table (publish_start_date / publish_end_date)
             const now = new Date();
-            const startDate = formObj?.start_date ? new Date(formObj.start_date) : null;
-            const endDate = formObj?.end_date ? new Date(formObj.end_date) : null;
+            const startDate = data.publish_start_date ? new Date(data.publish_start_date) : null;
+            const endDate = data.publish_end_date ? new Date(data.publish_end_date) : null;
 
             if (startDate && startDate > now) {
                 // Not started yet
@@ -107,6 +106,7 @@ export function SurveyPage() {
                 setLoading(false);
                 return;
             }
+
 
             setPageData(data);
 
@@ -181,7 +181,7 @@ export function SurveyPage() {
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [formData.jakpat_id]);
+    }, [formData.jakpat_id, pageData?.id]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -314,6 +314,21 @@ export function SurveyPage() {
 
         setSubmitting(true);
         try {
+            // Re-check duplicate before inserting (safety net)
+            const cleanJakpatId = formData.jakpat_id.trim();
+            const { count: dupCount, error: dupError } = await supabase
+                .from('page_respondents')
+                .select('id', { count: 'exact', head: true })
+                .eq('page_id', pageData.id)
+                .eq('jakpat_id', cleanJakpatId);
+
+            if (dupError) throw dupError;
+            if (dupCount && dupCount > 0) {
+                toast.error('Jakpat ID ini sudah pernah mengisi survei ini.');
+                setSubmitting(false);
+                return;
+            }
+
             let proofUrl = '';
 
             // Upload Proof if exists
@@ -343,7 +358,7 @@ export function SurveyPage() {
                 .from('page_respondents')
                 .insert([{
                     page_id: pageData.id,
-                    jakpat_id: formData.jakpat_id,
+                    jakpat_id: cleanJakpatId,
                     e_wallet_number: formData.e_wallet_number,
                     ewallet_provider: formData.ewallet_provider,
                     custom_answers: formData.custom_answers,
@@ -541,9 +556,14 @@ export function SurveyPage() {
                         <Card className="shadow-none sm:shadow-lg border-x-0 border-b-0 border-t-4 border-t-blue-500 rounded-none sm:rounded-xl">
                             <CardHeader className="px-4 py-5 md:p-6">
                                 <div className="flex gap-2 mb-2">
+                                    {pageData.submission_id ? (
+                                        <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium">Survei Undian</span>
+                                    ) : (
+                                        <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">Announcement</span>
+                                    )}
                                     <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Active</span>
                                     {pageData.submission_id && pageData.rewards_amount && (
-                                        <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-medium">Reward: Rp {(parseInt(pageData.rewards_amount) * (pageData.rewards_count || 1)).toLocaleString('id-ID')}</span>
+                                        <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-medium">Total Reward: Rp {(parseInt(pageData.rewards_amount) * (pageData.rewards_count || 1)).toLocaleString('id-ID')}</span>
                                     )}
                                 </div>
                                 <CardTitle className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
@@ -620,7 +640,18 @@ export function SurveyPage() {
                                                         variant="outline"
                                                         size="sm"
                                                         className="border-orange-300 text-orange-800 hover:bg-orange-100 hover:text-orange-900 h-8 text-xs bg-white"
-                                                        onClick={() => navigate('/pages')}
+                                                        onClick={() => {
+                                                            // Try to close WebView with fallbacks
+                                                            try {
+                                                                if ((window as any).ReactNativeWebView) {
+                                                                    (window as any).ReactNativeWebView.postMessage(JSON.stringify({ action: 'close' }));
+                                                                    return;
+                                                                }
+                                                            } catch (e) { }
+                                                            try { window.close(); } catch (e) { }
+                                                            setTimeout(() => { window.location.href = 'jakpat://close'; }, 300);
+                                                            setTimeout(() => { if (!document.hidden) window.history.back(); }, 800);
+                                                        }}
                                                     >
                                                         Explore Survei Lainnya <ArrowRight className="w-3 h-3 ml-1.5" />
                                                     </Button>

@@ -175,19 +175,45 @@
     </div>
 
     <!-- Trigger the close intent for the App's Webview listener -->
-    <a href="jakpat://close"
-      onclick="try{window.ReactNativeWebView.postMessage(JSON.stringify({action:'close'}))}catch(e){}"
+    <a href="javascript:void(0)"
+      onclick="closeWebView()"
       class="cta-button">
       Kembali ke Beranda App
     </a>
   </div>
 
   <script>
-    // Set auto close timer to gracefully exit if webview bridges take too long manually
-    setTimeout(() => {
+    function closeWebView() {
+      // Try multiple methods to close the WebView
+      // 1. React Native WebView bridge
       try {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ action: 'close' }));
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ action: 'close' }));
+          return;
+        }
       } catch (e) { }
+
+      // 2. Try window.close() (works in some WebViews)
+      try {
+        window.close();
+      } catch (e) { }
+
+      // 3. Try deep link scheme
+      setTimeout(function () {
+        window.location.href = 'jakpat://close';
+      }, 300);
+
+      // 4. Fallback: go back in history
+      setTimeout(function () {
+        if (!document.hidden) {
+          window.history.back();
+        }
+      }, 800);
+    }
+
+    // Auto close after 10s as graceful fallback
+    setTimeout(function () {
+      closeWebView();
     }, 10000);
   </script>
 </body>
