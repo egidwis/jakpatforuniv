@@ -85,14 +85,17 @@ export async function onRequestGet(context) {
                     quota: parseInt(s.rewards_count || 0),
                     currency: 'IDR'
                 },
-                published_at: s.created_at,
+                publish_date: new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
+                _sort_date: s.created_at,
                 views: s.views_count || 0,
                 url: `${baseUrl}/pages/${s.slug || s.id}`,
             };
         });
 
-        // Sort by published_at descending (newest first)
-        cleanData.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+        // Sort by date descending (newest first)
+        cleanData.sort((a, b) => new Date(b._sort_date) - new Date(a._sort_date));
+        // Remove internal sort key
+        cleanData.forEach(d => delete d._sort_date);
 
         // 4. Apply limit (default 20)
         const LIMIT = 20;
