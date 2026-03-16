@@ -87,7 +87,7 @@ export async function onRequestGet(context) {
                 },
                 publish_date: new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
                 _sort_date: s.created_at,
-                views: s.views_count || 0,
+                viewed: s.views_count || 0,
                 url: `${baseUrl}/pages/${s.slug || s.id}`,
             };
         });
