@@ -266,7 +266,16 @@ export function SurveyPage() {
 
             toast.success('Terima kasih sudah mengisi survey ini ya 😊');
             setTimeout(() => {
-                navigate('/pages');
+                // Close WebView with fallbacks instead of navigating to /pages
+                try {
+                    if ((window as any).ReactNativeWebView) {
+                        (window as any).ReactNativeWebView.postMessage(JSON.stringify({ action: 'close' }));
+                        return;
+                    }
+                } catch (e) { }
+                try { window.close(); } catch (e) { }
+                setTimeout(() => { window.location.href = 'jakpat://close'; }, 300);
+                setTimeout(() => { if (!document.hidden) window.history.back(); }, 800);
             }, 2000);
 
         } catch (error) {
@@ -466,7 +475,18 @@ export function SurveyPage() {
                 <p className="text-gray-500 max-w-md">
                     Halaman survei yang Anda cari mungkin belum dimulai, sudah berakhir, atau telah dihapus.
                 </p>
-                <Button variant="outline" className="mt-6" onClick={() => navigate('/pages')}>
+                <Button variant="outline" className="mt-6" onClick={() => {
+                    // Try to close WebView with fallbacks (respondents access via app WebView)
+                    try {
+                        if ((window as any).ReactNativeWebView) {
+                            (window as any).ReactNativeWebView.postMessage(JSON.stringify({ action: 'close' }));
+                            return;
+                        }
+                    } catch (e) { }
+                    try { window.close(); } catch (e) { }
+                    setTimeout(() => { window.location.href = 'jakpat://close'; }, 300);
+                    setTimeout(() => { if (!document.hidden) window.history.back(); }, 800);
+                }}>
                     Kembali ke Daftar Survei
                 </Button>
             </div>
