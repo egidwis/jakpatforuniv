@@ -117,12 +117,12 @@ export function SurveyPage() {
 
                 if (!hasViewed) {
                     supabase
-                        .from('survey_pages')
-                        .update({ views_count: (data.views_count || 0) + 1 })
-                        .eq('id', data.id)
+                        .rpc('increment_page_view', { page_id: data.id })
                         .then(({ error }) => {
                             if (!error) {
                                 localStorage.setItem(viewKey, 'true');
+                            } else {
+                                console.error('Error incrementing view count:', error);
                             }
                         });
                 }
