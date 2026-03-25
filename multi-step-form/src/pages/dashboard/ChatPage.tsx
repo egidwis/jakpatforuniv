@@ -32,6 +32,10 @@ export function ChatPage() {
             a: "Responden umum Indonesia usia 17 tahun ke atas yang tersebar di seluruh Indonesia."
         },
         {
+            q: "Bagaimana demografi responden Jakpat?",
+            a: "Jakpat memiliki total 1,7 juta responden. Sebaran wilayah terbesar: Jawa Barat (23.5%), Sumatera (16.3%), Jawa Timur (14.9%), Jawa Tengah (12.4%), DKI Jakarta (11.9%). Gender: Laki-laki 60.9%, Perempuan 39.1%. Usia terbesar di 18-24 tahun (42.7%). Profesi: Worker (32.7%), JobSeeker (22.5%), College (16.0%), Student (12.4%). Status: Menikah 65.49%, Belum Menikah 34.6%."
+        },
+        {
             q: "Berapa rekomendasi insentif untuk responden?",
             a: "Jumlah pemenang undian kami batasi maksimal 5 orang agar distribusi hadiah bisa lebih merata dengan postingan iklan lainnya. Namun, jika membutuhkan lebih dari 5 pemenang, bisa dibantu dengan metode distribusi custom (ada biaya tambahan). Silakan request ke admin JFU melalui chat ini. Untuk nominal hadiah, tidak ada batasan dan dapat disesuaikan dengan kebutuhanmu. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
         },
@@ -137,6 +141,30 @@ Additional Important Information:
    - **Randomization**: Rp 20.000 per link. Used to distribute multiple survey scenarios randomly.
 6. **Survey Ad Link**:
    - Link iklan akan diinfokan dari admin setelah iklan publish.
+
+7. **Respondent Demography Data** (Total: 1.7 juta responden, data diupdate secara berkala):
+   - **Sebaran Wilayah**:
+     - Jawa Barat: 23.5%
+     - Sumatera: 16.3%
+     - Jawa Timur: 14.9%
+     - Jawa Tengah: 12.4%
+     - DKI Jakarta: 11.9%
+     - Banten: 6.1%
+     - Kalimantan: 5.5%
+     - Sulawesi: 4.0%
+     - Bali Nusa: 3.3%
+     - DI Yogyakarta: 2.5%
+     - Maluku Papua: 0.6%
+   - **Gender**: Laki-laki 60.9%, Perempuan 39.1%
+   - **Usia**:
+     - <17 tahun: 7.7%
+     - 18-24 tahun: 42.7% (terbesar)
+     - 25-30 tahun: 23.1%
+     - 31-35 tahun: 12.5%
+     - 36-40 tahun: 6.9%
+     - 40+ tahun: 7.1%
+   - **Profesi**: Worker 32.7%, JobSeeker 22.5%, College 16.0%, Student 12.4%, Housewife 9.7%, Entrepreneur 6.8%
+   - **Status Pernikahan**: Menikah 65.49%, Belum Menikah 34.6%
 
 Rules:
 1. Answer based on the FAQ and Additional Information provided.
