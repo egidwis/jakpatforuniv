@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 // import { Switch } from '@/components/ui/switch'; // Removed unused
 import { BlockEditor } from './BlockEditor';
 import { supabase } from '@/utils/supabase';
@@ -23,6 +24,7 @@ interface PageBuilderModalProps {
     submissionEndDate?: string;
     submissionPrizePerWinner?: number;
     submissionWinnerCount?: number;
+    submissionCriteria?: string;
 }
 
 // Helper: generate slug from title
@@ -36,7 +38,7 @@ const generateSlug = (title: string): string => {
         .slice(0, 60);                 // max 60 chars
 };
 
-export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount }: PageBuilderModalProps) {
+export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount, submissionCriteria }: PageBuilderModalProps) {
     const isStandalone = !submissionId;
 
     const [savedPageId, setSavedPageId] = useState<string | null>(null);
@@ -51,6 +53,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
         custom_fields: [] as any[], // Array of { label, placeholder, type, required, options }
         publish_start_date: '',
         publish_end_date: '',
+        criteria_responden: '',
     });
 
     const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -120,6 +123,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     custom_fields: initialData.custom_fields || [],
                     publish_start_date: submissionStartDate ? submissionStartDate : (initialData.publish_start_date ? initialData.publish_start_date : ''),
                     publish_end_date: submissionEndDate ? submissionEndDate : (initialData.publish_end_date ? initialData.publish_end_date : ''),
+                    criteria_responden: submissionCriteria || initialData.criteria_responden || '',
                 });
             } else {
                 // Reset for new page, auto-fill from submission title if available
@@ -135,13 +139,21 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     custom_fields: [],
                     publish_start_date: submissionStartDate ? submissionStartDate : '',
                     publish_end_date: submissionEndDate ? submissionEndDate : '',
+                    criteria_responden: submissionCriteria || '',
                 });
             }
             if (isOpen) {
                 fetchRecentBanners();
             }
         }
-    }, [isOpen, initialData]);
+    }, [isOpen, initialData, submissionTitle, submissionStartDate, submissionEndDate, submissionCriteria]);
+
+    // Ensure criteria overrides safely if it arrives late
+    useEffect(() => {
+        if (isOpen && submissionCriteria && !formData.criteria_responden) {
+            setFormData(prev => ({ ...prev, criteria_responden: submissionCriteria }));
+        }
+    }, [submissionCriteria, isOpen]);
 
     const handleSave = async (overrideStatus?: boolean) => {
         if (!formData.slug || !formData.title) {
@@ -179,6 +191,15 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             }
 
             const existingId = initialData?.id || savedPageId;
+
+            // Update form_submissions criteria_responden if edited and related to a submission
+            if (submissionId && formData.criteria_responden !== submissionCriteria) {
+                const { error: criteriaError } = await supabase
+                    .from('form_submissions')
+                    .update({ criteria_responden: formData.criteria_responden })
+                    .eq('id', submissionId);
+                if (criteriaError) console.error('Failed to update submission criteria:', criteriaError);
+            }
 
             if (existingId) {
                 // Update
@@ -264,157 +285,15 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                             placeholder="Page Title"
                             className="text-3xl font-bold bg-white border border-gray-200 focus:border-blue-500 shadow-sm px-3 h-auto py-2 rounded-lg transition-all"
                         />
-                        <div className="flex-1 overflow-hidden min-h-[400px] flex flex-col">
+                        <div className="shrink-0">
                             <BlockEditor
                                 content={formData.blocks}
                                 onChange={(newContent) => setFormData({ ...formData, blocks: newContent })}
                             />
                         </div>
-                    </div>
 
-                    {/* Sidebar Settings (Right Pane) */}
-                    <div className="w-[360px] overflow-y-auto bg-gray-50/50 p-5 flex flex-col gap-6 flex-shrink-0 border-l border-gray-100">
-                        {/* URL Config */}
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Page URL</Label>
-                            <div className="flex rounded-md shadow-sm">
-                                <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-100 text-gray-500 sm:text-xs">
-                                    /pages/
-                                </span>
-                                <Input
-                                    value={formData.slug}
-                                    disabled
-                                    className="flex-1 min-w-0 block w-full px-2 py-1.5 rounded-none rounded-r-md bg-white text-gray-500 border-gray-300 focus:ring-0 cursor-not-allowed sm:text-xs h-8"
-                                    placeholder="auto-generated-slug"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Banner Image */}
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Featured Banner</Label>
-                            <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm relative overflow-hidden group">
-                                {!formData.banner_url ? (
-                                    <div className="flex flex-col gap-2.5">
-                                        <div className="flex bg-gray-100 p-1 rounded-md w-full">
-                                            <button
-                                                onClick={() => setBannerTab('upload')}
-                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                            >
-                                                UPLOAD
-                                            </button>
-                                            <button
-                                                onClick={() => setBannerTab('library')}
-                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'library' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                            >
-                                                RECENT
-                                            </button>
-                                            <button
-                                                onClick={() => setBannerTab('link')}
-                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'link' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                            >
-                                                URL
-                                            </button>
-                                        </div>
-
-                                        {bannerTab === 'upload' && (
-                                            <div className="border border-dashed border-gray-300 rounded-md p-3 transition-colors hover:bg-gray-50 hover:border-blue-400 cursor-pointer relative bg-white flex flex-col items-center justify-center min-h-[80px]">
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={handleBannerUpload}
-                                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-                                                    disabled={uploadingBanner}
-                                                />
-                                                {uploadingBanner ? (
-                                                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-                                                ) : (
-                                                    <div className="flex flex-col items-center text-center">
-                                                        <Upload className="w-4 h-4 text-gray-400 mb-1" />
-                                                        <span className="text-[11px] font-medium text-gray-600">Click to Upload</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {bannerTab === 'library' && (
-                                            <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1">
-                                                {recentBanners.map((url, i) => (
-                                                    <div
-                                                        key={i}
-                                                        onClick={() => setFormData(prev => ({ ...prev, banner_url: url }))}
-                                                        className={`relative aspect-video rounded-md overflow-hidden cursor-pointer border transition-all ${formData.banner_url === url ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'}`}
-                                                    >
-                                                        <img src={url} alt={`Banner ${i}`} className="w-full h-full object-cover" />
-                                                        {formData.banner_url === url && (
-                                                            <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
-                                                                <div className="bg-blue-500 rounded-full p-0.5 shadow-sm">
-                                                                    <Check className="w-3 h-3 text-white" />
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                                {recentBanners.length === 0 && (
-                                                    <div className="col-span-2 text-center py-4 text-xs text-gray-500">
-                                                        No recent banners.
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {bannerTab === 'link' && (
-                                            <Input
-                                                value={formData.banner_url}
-                                                onChange={(e) => setFormData({ ...formData, banner_url: e.target.value })}
-                                                placeholder="https://example.com/image.jpg"
-                                                className="h-8 text-xs"
-                                            />
-                                        )}
-                                    </div>
-                                ) : (
-                                    <>
-                                        <img src={formData.banner_url} alt="Preview" className="w-full aspect-video object-cover rounded-md" />
-                                        <button
-                                            onClick={() => setFormData(prev => ({ ...prev, banner_url: '' }))}
-                                            className="absolute top-3 right-3 bg-black/60 hover:bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-all shadow-sm backdrop-blur-sm"
-                                        >
-                                            <Trash2 className="w-3 h-3" />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Campaign Summary Card (read-only from submission props) */}
-                        {!isStandalone && submissionPrizePerWinner && submissionWinnerCount && (
-                            <div className="space-y-2">
-                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Campaign Rewards</Label>
-                                <div className="bg-white border border-blue-100/60 rounded-lg p-3 flex flex-col space-y-2 shadow-sm">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5">
-                                            <Trophy className="w-3.5 h-3.5 text-blue-600" />
-                                            <span className="text-xs font-medium text-gray-600">Total Prize</span>
-                                        </div>
-                                        <span className="text-sm font-bold text-gray-900">
-                                            Rp {(submissionPrizePerWinner * submissionWinnerCount).toLocaleString('id-ID')}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5">
-                                            <Users className="w-3.5 h-3.5 text-blue-600" />
-                                            <span className="text-xs font-medium text-gray-600">Winners</span>
-                                        </div>
-                                        <span className="text-sm font-bold text-gray-900">
-                                            {submissionWinnerCount}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Custom Fields */}
-                        <div className="space-y-2 border-t border-gray-200/50 pt-3">
+                        {/* Extra Questions (moved from sidebar) */}
+                        <div className="space-y-2 border-t border-gray-200/50 pt-4">
                             <div className="flex items-center justify-between pb-1">
                                 <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Extra Questions ({formData.custom_fields.length})</Label>
                                 <Button
@@ -564,6 +443,162 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                 ))}
                             </div>
                         </div>
+                    </div>
+
+                    {/* Sidebar Settings (Right Pane) */}
+                    <div className="w-[360px] overflow-y-auto bg-gray-50/50 p-5 flex flex-col gap-6 flex-shrink-0 border-l border-gray-100">
+                        {/* URL Config */}
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Page URL</Label>
+                            <div className="flex rounded-md shadow-sm">
+                                <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-100 text-gray-500 sm:text-xs">
+                                    /pages/
+                                </span>
+                                <Input
+                                    value={formData.slug}
+                                    disabled
+                                    className="flex-1 min-w-0 block w-full px-2 py-1.5 rounded-none rounded-r-md bg-white text-gray-500 border-gray-300 focus:ring-0 cursor-not-allowed sm:text-xs h-8"
+                                    placeholder="auto-generated-slug"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Banner Image */}
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Featured Banner</Label>
+                            <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm relative overflow-hidden group">
+                                {!formData.banner_url ? (
+                                    <div className="flex flex-col gap-2.5">
+                                        <div className="flex bg-gray-100 p-1 rounded-md w-full">
+                                            <button
+                                                onClick={() => setBannerTab('upload')}
+                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >
+                                                UPLOAD
+                                            </button>
+                                            <button
+                                                onClick={() => setBannerTab('library')}
+                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'library' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >
+                                                RECENT
+                                            </button>
+                                            <button
+                                                onClick={() => setBannerTab('link')}
+                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'link' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >
+                                                URL
+                                            </button>
+                                        </div>
+
+                                        {bannerTab === 'upload' && (
+                                            <div className="border border-dashed border-gray-300 rounded-md p-3 transition-colors hover:bg-gray-50 hover:border-blue-400 cursor-pointer relative bg-white flex flex-col items-center justify-center min-h-[80px]">
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleBannerUpload}
+                                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                                                    disabled={uploadingBanner}
+                                                />
+                                                {uploadingBanner ? (
+                                                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                                                ) : (
+                                                    <div className="flex flex-col items-center text-center">
+                                                        <Upload className="w-4 h-4 text-gray-400 mb-1" />
+                                                        <span className="text-[11px] font-medium text-gray-600">Click to Upload</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {bannerTab === 'library' && (
+                                            <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1">
+                                                {recentBanners.map((url, i) => (
+                                                    <div
+                                                        key={i}
+                                                        onClick={() => setFormData(prev => ({ ...prev, banner_url: url }))}
+                                                        className={`relative aspect-video rounded-md overflow-hidden cursor-pointer border transition-all ${formData.banner_url === url ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'}`}
+                                                    >
+                                                        <img src={url} alt={`Banner ${i}`} className="w-full h-full object-cover" />
+                                                        {formData.banner_url === url && (
+                                                            <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
+                                                                <div className="bg-blue-500 rounded-full p-0.5 shadow-sm">
+                                                                    <Check className="w-3 h-3 text-white" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                {recentBanners.length === 0 && (
+                                                    <div className="col-span-2 text-center py-4 text-xs text-gray-500">
+                                                        No recent banners.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {bannerTab === 'link' && (
+                                            <Input
+                                                value={formData.banner_url}
+                                                onChange={(e) => setFormData({ ...formData, banner_url: e.target.value })}
+                                                placeholder="https://example.com/image.jpg"
+                                                className="h-8 text-xs"
+                                            />
+                                        )}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <img src={formData.banner_url} alt="Preview" className="w-full aspect-video object-cover rounded-md" />
+                                        <button
+                                            onClick={() => setFormData(prev => ({ ...prev, banner_url: '' }))}
+                                            className="absolute top-3 right-3 bg-black/60 hover:bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-all shadow-sm backdrop-blur-sm"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Campaign Summary Card (read-only from submission props) */}
+                        {!isStandalone && submissionPrizePerWinner && submissionWinnerCount && (
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Campaign Rewards</Label>
+                                <div className="bg-white border border-blue-100/60 rounded-lg p-3 flex flex-col space-y-2 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <Trophy className="w-3.5 h-3.5 text-blue-600" />
+                                            <span className="text-xs font-medium text-gray-600">Total Prize</span>
+                                        </div>
+                                        <span className="text-sm font-bold text-gray-900">
+                                            Rp {(submissionPrizePerWinner * submissionWinnerCount).toLocaleString('id-ID')}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <Users className="w-3.5 h-3.5 text-blue-600" />
+                                            <span className="text-xs font-medium text-gray-600">Winners</span>
+                                        </div>
+                                        <span className="text-sm font-bold text-gray-900">
+                                            {submissionWinnerCount}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Criteria Responden */}
+                        {!isStandalone && (
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Respondent Criteria</Label>
+                                <Textarea
+                                    value={formData.criteria_responden || ''}
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, criteria_responden: e.target.value })}
+                                    placeholder="Enter respondent criteria to be displayed to public..."
+                                    className="h-28 text-sm resize-none bg-white border-gray-200 focus:border-blue-500 shadow-sm transition-all"
+                                />
+                            </div>
+                        )}
+
                     </div>
                 </div>
 

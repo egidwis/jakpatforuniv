@@ -1565,6 +1565,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         submissionEndDate={selectedSubmissionForPage?.end_date}
         submissionPrizePerWinner={selectedSubmissionForPage?.prize_per_winner}
         submissionWinnerCount={selectedSubmissionForPage?.winnerCount}
+        submissionCriteria={selectedSubmissionForPage?.criteria}
       />
     </div>
   );

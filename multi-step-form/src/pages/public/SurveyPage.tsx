@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { supabase, getCdnUrl } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,6 @@ import imageCompression from 'browser-image-compression';
 
 export function SurveyPage() {
     const { slug } = useParams();
-    const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [pageData, setPageData] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
@@ -81,7 +80,8 @@ export function SurveyPage() {
                 start_date,
                 end_date,
                 prize_per_winner,
-                winner_count
+                winner_count,
+                criteria_responden
             )
         `)
                 .eq('slug', slug)
@@ -577,15 +577,14 @@ export function SurveyPage() {
                     {currentStep === 1 && (
                         <Card className="shadow-none sm:shadow-lg border-x-0 border-b-0 border-t-4 border-t-blue-500 rounded-none sm:rounded-xl">
                             <CardHeader className="px-4 py-5 md:p-6">
-                                <div className="flex gap-2 mb-2">
+                                <div className="flex flex-wrap items-center gap-2 mb-3">
                                     {pageData.submission_id ? (
-                                        <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium">Survei Undian</span>
+                                        <span className="bg-blue-100 text-blue-700 text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap">Survei Undian</span>
                                     ) : (
-                                        <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">Announcement</span>
+                                        <span className="bg-purple-100 text-purple-700 text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap">Announcement</span>
                                     )}
-                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Active</span>
                                     {pageData.submission_id && pageData.form_submissions?.prize_per_winner && pageData.form_submissions?.winner_count && (
-                                        <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-medium">Total Reward: Rp {(pageData.form_submissions.prize_per_winner * pageData.form_submissions.winner_count).toLocaleString('id-ID')}</span>
+                                        <span className="bg-yellow-100 text-yellow-800 text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap">Total Reward: Rp {(pageData.form_submissions.prize_per_winner * pageData.form_submissions.winner_count).toLocaleString('id-ID')}</span>
                                     )}
                                 </div>
                                 <CardTitle className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
@@ -597,8 +596,16 @@ export function SurveyPage() {
                                     <span>{pageData.views_count} views</span>
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent className="px-4 pb-6 md:px-6 md:pb-6 prose dark:prose-invert max-w-none">
-                                {renderBlocks(pageData.blocks)}
+                            <CardContent className="px-4 pb-6 md:px-6 md:pb-6">
+                                {pageData.form_submissions?.criteria_responden && (
+                                    <div className="mb-6 p-4 bg-blue-50/50 rounded-lg border border-blue-100">
+                                        <h4 className="font-semibold text-blue-900 mb-2 text-sm uppercase tracking-wider">Kriteria Responden</h4>
+                                        <p className="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">{pageData.form_submissions.criteria_responden}</p>
+                                    </div>
+                                )}
+                                <div className="prose dark:prose-invert max-w-none">
+                                    {renderBlocks(pageData.blocks)}
+                                </div>
                             </CardContent>
                             {pageData.submission_id && (
                                 <div className="p-6 border-t bg-gray-50 flex justify-end">
