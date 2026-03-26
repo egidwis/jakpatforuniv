@@ -708,7 +708,9 @@ export const getScheduledAds = async () => {
         *,
         form_submissions (
           title,
-          full_name
+          full_name,
+          winner_count,
+          prize_per_winner
         )
       `)
       .order('start_date', { ascending: true });
@@ -719,7 +721,9 @@ export const getScheduledAds = async () => {
     return data.map((item: any) => ({
       ...item,
       form_title: item.form_submissions?.title || 'Unknown Title',
-      researcher_name: item.form_submissions?.full_name || 'Unknown Researcher'
+      researcher_name: item.form_submissions?.full_name || 'Unknown Researcher',
+      winner_count: item.form_submissions?.winner_count || 0,
+      prize_per_winner: item.form_submissions?.prize_per_winner || 0
     }));
   } catch (error: any) {
     console.error('Error fetching scheduled ads:', error);

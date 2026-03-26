@@ -79,7 +79,9 @@ export function SurveyPage() {
             form_submissions (
                 survey_url,
                 start_date,
-                end_date
+                end_date,
+                prize_per_winner,
+                winner_count
             )
         `)
                 .eq('slug', slug)
@@ -582,8 +584,8 @@ export function SurveyPage() {
                                         <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">Announcement</span>
                                     )}
                                     <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">Active</span>
-                                    {pageData.submission_id && pageData.rewards_amount && (
-                                        <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-medium">Total Reward: Rp {(parseInt(pageData.rewards_amount) * (pageData.rewards_count || 1)).toLocaleString('id-ID')}</span>
+                                    {pageData.submission_id && pageData.form_submissions?.prize_per_winner && pageData.form_submissions?.winner_count && (
+                                        <span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-medium">Total Reward: Rp {(pageData.form_submissions.prize_per_winner * pageData.form_submissions.winner_count).toLocaleString('id-ID')}</span>
                                     )}
                                 </div>
                                 <CardTitle className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 leading-tight">

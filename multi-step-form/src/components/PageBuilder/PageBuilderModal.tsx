@@ -9,7 +9,7 @@ import { supabase } from '@/utils/supabase';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Eye, Save, Trash2, Plus, Image as ImageIcon, Upload, Link as LinkIcon, Check, Trophy, Users, Calendar } from 'lucide-react';
+import { Loader2, Eye, Save, Trash2, Plus, Upload, Check, Trophy, Users, Calendar } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
 interface PageBuilderModalProps {
@@ -21,6 +21,8 @@ interface PageBuilderModalProps {
     submissionTitle?: string; // Title from the submission for auto-fill
     submissionStartDate?: string;
     submissionEndDate?: string;
+    submissionPrizePerWinner?: number;
+    submissionWinnerCount?: number;
 }
 
 // Helper: generate slug from title
@@ -34,7 +36,7 @@ const generateSlug = (title: string): string => {
         .slice(0, 60);                 // max 60 chars
 };
 
-export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate }: PageBuilderModalProps) {
+export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount }: PageBuilderModalProps) {
     const isStandalone = !submissionId;
 
     const [savedPageId, setSavedPageId] = useState<string | null>(null);
@@ -43,8 +45,6 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
         slug: '',
         title: '',
         banner_url: '',
-        rewards_amount: '',
-        rewards_count: 5,
         is_published: false,
 
         blocks: {} as any, // Tiptap JSON content
@@ -115,8 +115,6 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     slug: initialData.slug,
                     title: initialData.title,
                     banner_url: initialData.banner_url || '',
-                    rewards_amount: initialData.rewards_amount || '',
-                    rewards_count: initialData.rewards_count || 5,
                     is_published: initialData.is_published,
                     blocks: initialData.blocks || {},
                     custom_fields: initialData.custom_fields || [],
@@ -127,12 +125,11 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 // Reset for new page, auto-fill from submission title if available
                 const autoTitle = submissionTitle || '';
                 const autoSlug = autoTitle ? generateSlug(autoTitle) : '';
+
                 setFormData({
                     slug: autoSlug,
                     title: autoTitle,
                     banner_url: '',
-                    rewards_amount: '50000',
-                    rewards_count: 5,
                     is_published: false,
                     blocks: {},
                     custom_fields: [],
@@ -165,8 +162,6 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 slug: formData.slug,
                 title: formData.title,
                 banner_url: formData.banner_url,
-                rewards_amount: formData.rewards_amount,
-                rewards_count: formData.rewards_count,
                 is_published: isPublished,
                 publish_start_date: formData.publish_start_date || null,
                 publish_end_date: formData.publish_end_date || null,
@@ -257,206 +252,19 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     <DialogTitle>{initialData ? 'Edit Page' : 'Create New Page'}</DialogTitle>
                 </DialogHeader>
 
-                <div className="flex-1 overflow-y-auto p-6 pb-0 flex flex-col gap-8">
-                    {/* General Settings */}
-                    <div className="space-y-6">
-                        <div>
-                            <h3 className="text-lg font-medium text-gray-900">General Information</h3>
-                            <p className="text-sm text-gray-500">Set up the basic details for your survey page.</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-semibold">Page Title</Label>
-                                    <Input
-                                        value={formData.title}
-                                        onChange={(e) => {
-                                            const newTitle = e.target.value;
-                                            setFormData({ ...formData, title: newTitle, slug: generateSlug(newTitle) });
-                                        }}
-                                        placeholder="e.g. Survey Kepuasan Pelanggan 2026"
-                                        className="h-11"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-semibold">Page URL Configuration</Label>
-                                    <div className="flex rounded-md shadow-sm">
-                                        <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm">
-                                            /pages/
-                                        </span>
-                                        <Input
-                                            value={formData.slug}
-                                            disabled
-                                            className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md bg-gray-50 text-gray-500 border-gray-300 focus:ring-0 cursor-not-allowed sm:text-sm h-11"
-                                            placeholder="auto-generated-slug"
-                                        />
-                                    </div>
-                                    <p className="text-[11px] text-gray-400">URL is automatically generated from the title to ensure consistency.</p>
-                                </div>
-                            </div>
-
-                            {/* Campaign Summary Card - hidden for standalone announcements */}
-                            {!isStandalone && (
-                                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100/60 rounded-xl p-5 flex flex-col justify-center space-y-4 shadow-sm">
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-blue-900 mb-1">Campaign Rewards Info</h4>
-                                        <p className="text-[11px] text-blue-600/80">Configured via submission dashboard</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="bg-white/80 backdrop-blur-sm rounded-lg p-3 border border-blue-100/50 shadow-sm flex flex-col justify-between">
-                                            <div className="flex items-center gap-1.5 mb-2">
-                                                <Trophy className="w-3.5 h-3.5 text-blue-600" />
-                                                <Label className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Total Prize Pool</Label>
-                                            </div>
-                                            <div className="text-lg font-bold text-gray-900 leading-none">
-                                                {formData.rewards_amount ? `Rp ${parseInt(formData.rewards_amount.toString()).toLocaleString('id-ID')}` : '-'}
-                                            </div>
-                                        </div>
-                                        <div className="bg-white/80 backdrop-blur-sm rounded-lg p-3 border border-blue-100/50 shadow-sm flex flex-col justify-between">
-                                            <div className="flex items-center gap-1.5 mb-2">
-                                                <Users className="w-3.5 h-3.5 text-blue-600" />
-                                                <Label className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Expected Winners</Label>
-                                            </div>
-                                            <div className="text-lg font-bold text-gray-900 leading-none">
-                                                {formData.rewards_count} <span className="text-sm font-medium text-gray-500">People</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <hr className="border-gray-100" />
-
-                    {/* Banner Image */}
-                    <div className="space-y-4">
-                        <div>
-                            <h3 className="text-lg font-medium text-gray-900">Featured Banner</h3>
-                            <p className="text-sm text-gray-500">Upload a compelling image to increase click-through rates.</p>
-                        </div>
-
-                        <div className="max-w-2xl bg-gray-50/50 rounded-xl p-4 border border-gray-100">
-                            {!formData.banner_url ? (
-                                <>
-                                    {/* Banner Tabs */}
-                                    <div className="flex bg-gray-100 p-1 rounded-lg mb-4 w-max">
-                                        <button
-                                            onClick={() => setBannerTab('upload')}
-                                            className={`flex items-center justify-center px-4 py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                        >
-                                            <Upload className="w-3 h-3 mr-1.5" /> Upload
-                                        </button>
-                                        <button
-                                            onClick={() => setBannerTab('library')}
-                                            className={`flex items-center justify-center px-4 py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'library' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                        >
-                                            <ImageIcon className="w-3 h-3 mr-1.5" /> Recent
-                                        </button>
-                                        <button
-                                            onClick={() => setBannerTab('link')}
-                                            className={`flex items-center justify-center px-4 py-1.5 text-xs font-medium rounded-md transition-all ${bannerTab === 'link' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                        >
-                                            <LinkIcon className="w-3 h-3 mr-1.5" /> URL
-                                        </button>
-                                    </div>
-
-                                    {/* Content based on Tab */}
-                                    <div className="min-h-[100px]">
-                                        {bannerTab === 'upload' && (
-                                            <div className="text-center">
-                                                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 transition-colors hover:bg-white hover:border-blue-400 cursor-pointer relative bg-white">
-                                                    <input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        onChange={handleBannerUpload}
-                                                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-                                                        disabled={uploadingBanner}
-                                                    />
-                                                    {uploadingBanner ? (
-                                                        <div className="flex flex-col items-center">
-                                                            <Loader2 className="w-6 h-6 animate-spin text-blue-500 mb-2" />
-                                                            <span className="text-xs text-gray-500">Compressing & Uploading...</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex flex-col items-center">
-                                                            <div className="bg-blue-50 p-3 rounded-full mb-3">
-                                                                <Upload className="w-6 h-6 text-blue-500" />
-                                                            </div>
-                                                            <span className="text-sm font-medium text-gray-700">Click to Upload Banner</span>
-                                                            <span className="text-xs text-gray-400 mt-1">PNG, JPG up to 500KB (Auto-compressed)</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {bannerTab === 'library' && (
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-[140px] overflow-y-auto p-1">
-                                                {recentBanners.map((url, i) => (
-                                                    <div
-                                                        key={i}
-                                                        onClick={() => setFormData(prev => ({ ...prev, banner_url: url }))}
-                                                        className={`relative aspect-video rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${formData.banner_url === url ? 'border-blue-500 ring-2 ring-blue-200' : 'border-transparent hover:border-gray-300'}`}
-                                                    >
-                                                        <img src={url} alt={`Banner ${i}`} className="w-full h-full object-cover bg-gray-100" />
-                                                        {formData.banner_url === url && (
-                                                            <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
-                                                                <div className="bg-blue-500 rounded-full p-1 shadow-sm">
-                                                                    <Check className="w-4 h-4 text-white" />
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                                {recentBanners.length === 0 && (
-                                                    <div className="col-span-full text-center py-6 text-sm text-gray-500 bg-white rounded-lg border border-dashed">
-                                                        No recent banners found.
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {bannerTab === 'link' && (
-                                            <div className="space-y-2 bg-white rounded-lg p-1">
-                                                <Input
-                                                    value={formData.banner_url}
-                                                    onChange={(e) => setFormData({ ...formData, banner_url: e.target.value })}
-                                                    placeholder="https://example.com/image.jpg"
-                                                    className="h-11 border-gray-200"
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="pt-2">
-                                    <Label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Selected Banner Preview</Label>
-                                    <div className="relative w-full max-w-sm h-32 rounded-lg overflow-hidden bg-gray-200 group border border-gray-200 shadow-sm">
-                                        <img src={formData.banner_url} alt="Preview" className="w-full h-full object-cover" />
-                                        <button
-                                            onClick={() => setFormData(prev => ({ ...prev, banner_url: '' }))}
-                                            className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-sm backdrop-blur-sm"
-                                            title="Remove Banner"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <hr className="border-gray-100" />
-
-                    {/* Content Editor */}
-                    <div className="space-y-4">
-                        <div>
-                            <h3 className="text-lg font-medium text-gray-900">Page Content</h3>
-                            <p className="text-sm text-gray-500">Write the details, instructions, or terms for your survey.</p>
-                        </div>
-                        <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm min-h-[400px]">
+                <div className="flex-1 overflow-hidden flex flex-row w-full">
+                    {/* Main Content (Left Pane) */}
+                    <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 bg-white">
+                        <Input
+                            value={formData.title}
+                            onChange={(e) => {
+                                const newTitle = e.target.value;
+                                setFormData({ ...formData, title: newTitle, slug: generateSlug(newTitle) });
+                            }}
+                            placeholder="Page Title"
+                            className="text-3xl font-bold bg-white border border-gray-200 focus:border-blue-500 shadow-sm px-3 h-auto py-2 rounded-lg transition-all"
+                        />
+                        <div className="flex-1 overflow-hidden min-h-[400px] flex flex-col">
                             <BlockEditor
                                 content={formData.blocks}
                                 onChange={(newContent) => setFormData({ ...formData, blocks: newContent })}
@@ -464,93 +272,282 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         </div>
                     </div>
 
-                    <div className="space-y-4 pt-4 border-t">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-base font-semibold">Custom Fields (Additional Questions)</Label>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setFormData({ ...formData, custom_fields: [...formData.custom_fields, { label: '', placeholder: '', type: 'text', required: false, options: '' }] })}
-                            >
-                                <Plus className="w-4 h-4 mr-2" />
-                                Add Field
-                            </Button>
+                    {/* Sidebar Settings (Right Pane) */}
+                    <div className="w-[360px] overflow-y-auto bg-gray-50/50 p-5 flex flex-col gap-6 flex-shrink-0 border-l border-gray-100">
+                        {/* URL Config */}
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Page URL</Label>
+                            <div className="flex rounded-md shadow-sm">
+                                <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-100 text-gray-500 sm:text-xs">
+                                    /pages/
+                                </span>
+                                <Input
+                                    value={formData.slug}
+                                    disabled
+                                    className="flex-1 min-w-0 block w-full px-2 py-1.5 rounded-none rounded-r-md bg-white text-gray-500 border-gray-300 focus:ring-0 cursor-not-allowed sm:text-xs h-8"
+                                    placeholder="auto-generated-slug"
+                                />
+                            </div>
                         </div>
 
-                        {formData.custom_fields.length === 0 && (
-                            <div className="text-center p-6 border-2 border-dashed rounded-lg bg-gray-50 text-gray-500 text-sm">
-                                No custom fields added. Click "Add Field" to ask additional questions to respondents.
+                        {/* Banner Image */}
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Featured Banner</Label>
+                            <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm relative overflow-hidden group">
+                                {!formData.banner_url ? (
+                                    <div className="flex flex-col gap-2.5">
+                                        <div className="flex bg-gray-100 p-1 rounded-md w-full">
+                                            <button
+                                                onClick={() => setBannerTab('upload')}
+                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >
+                                                UPLOAD
+                                            </button>
+                                            <button
+                                                onClick={() => setBannerTab('library')}
+                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'library' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >
+                                                RECENT
+                                            </button>
+                                            <button
+                                                onClick={() => setBannerTab('link')}
+                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'link' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >
+                                                URL
+                                            </button>
+                                        </div>
+
+                                        {bannerTab === 'upload' && (
+                                            <div className="border border-dashed border-gray-300 rounded-md p-3 transition-colors hover:bg-gray-50 hover:border-blue-400 cursor-pointer relative bg-white flex flex-col items-center justify-center min-h-[80px]">
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleBannerUpload}
+                                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                                                    disabled={uploadingBanner}
+                                                />
+                                                {uploadingBanner ? (
+                                                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                                                ) : (
+                                                    <div className="flex flex-col items-center text-center">
+                                                        <Upload className="w-4 h-4 text-gray-400 mb-1" />
+                                                        <span className="text-[11px] font-medium text-gray-600">Click to Upload</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {bannerTab === 'library' && (
+                                            <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1">
+                                                {recentBanners.map((url, i) => (
+                                                    <div
+                                                        key={i}
+                                                        onClick={() => setFormData(prev => ({ ...prev, banner_url: url }))}
+                                                        className={`relative aspect-video rounded-md overflow-hidden cursor-pointer border transition-all ${formData.banner_url === url ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'}`}
+                                                    >
+                                                        <img src={url} alt={`Banner ${i}`} className="w-full h-full object-cover" />
+                                                        {formData.banner_url === url && (
+                                                            <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
+                                                                <div className="bg-blue-500 rounded-full p-0.5 shadow-sm">
+                                                                    <Check className="w-3 h-3 text-white" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                {recentBanners.length === 0 && (
+                                                    <div className="col-span-2 text-center py-4 text-xs text-gray-500">
+                                                        No recent banners.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {bannerTab === 'link' && (
+                                            <Input
+                                                value={formData.banner_url}
+                                                onChange={(e) => setFormData({ ...formData, banner_url: e.target.value })}
+                                                placeholder="https://example.com/image.jpg"
+                                                className="h-8 text-xs"
+                                            />
+                                        )}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <img src={formData.banner_url} alt="Preview" className="w-full aspect-video object-cover rounded-md" />
+                                        <button
+                                            onClick={() => setFormData(prev => ({ ...prev, banner_url: '' }))}
+                                            className="absolute top-3 right-3 bg-black/60 hover:bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-all shadow-sm backdrop-blur-sm"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Campaign Summary Card (read-only from submission props) */}
+                        {!isStandalone && submissionPrizePerWinner && submissionWinnerCount && (
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Campaign Rewards</Label>
+                                <div className="bg-white border border-blue-100/60 rounded-lg p-3 flex flex-col space-y-2 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <Trophy className="w-3.5 h-3.5 text-blue-600" />
+                                            <span className="text-xs font-medium text-gray-600">Total Prize</span>
+                                        </div>
+                                        <span className="text-sm font-bold text-gray-900">
+                                            Rp {(submissionPrizePerWinner * submissionWinnerCount).toLocaleString('id-ID')}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <Users className="w-3.5 h-3.5 text-blue-600" />
+                                            <span className="text-xs font-medium text-gray-600">Winners</span>
+                                        </div>
+                                        <span className="text-sm font-bold text-gray-900">
+                                            {submissionWinnerCount}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
-                        <div className="space-y-4">
-                            {formData.custom_fields.map((field, index) => (
-                                <div key={index} className="flex gap-4 items-start p-4 bg-gray-50 rounded-lg border">
-                                    <div className="flex-1 grid grid-cols-2 gap-4">
+                        {/* Custom Fields */}
+                        <div className="space-y-2 border-t border-gray-200/50 pt-3">
+                            <div className="flex items-center justify-between pb-1">
+                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Extra Questions ({formData.custom_fields.length})</Label>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() => setFormData({ ...formData, custom_fields: [...formData.custom_fields, { label: '', placeholder: '', type: 'text', required: false, options: '' }] })}
+                                >
+                                    <Plus className="w-3 h-3 mr-1" /> ADD
+                                </Button>
+                            </div>
+
+                            {formData.custom_fields.length === 0 && (
+                                <div className="text-center py-4 text-xs text-gray-400 italic">
+                                    No extra questions added.
+                                </div>
+                            )}
+
+                            <div className="space-y-3">
+                                {formData.custom_fields.map((field, index) => (
+                                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-2.5 relative group shadow-sm transition-all hover:border-gray-300">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-5 w-5 absolute right-1.5 top-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:bg-red-50 rounded"
+                                            onClick={() => {
+                                                const newFields = formData.custom_fields.filter((_, i) => i !== index);
+                                                setFormData({ ...formData, custom_fields: newFields });
+                                            }}
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </Button>
+
                                         <div className="space-y-2">
-                                            <Label className="text-xs text-gray-500">Field Label (Question)</Label>
-                                            <Input
-                                                value={field.label}
-                                                onChange={(e) => {
-                                                    const newFields = [...formData.custom_fields];
-                                                    newFields[index].label = e.target.value;
-                                                    setFormData({ ...formData, custom_fields: newFields });
-                                                }}
-                                                placeholder="e.g. Usia"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs text-gray-500">Placeholder</Label>
-                                            <Input
-                                                value={field.placeholder}
-                                                onChange={(e) => {
-                                                    const newFields = [...formData.custom_fields];
-                                                    newFields[index].placeholder = e.target.value;
-                                                    setFormData({ ...formData, custom_fields: newFields });
-                                                }}
-                                                placeholder="e.g. Masukkan usia anda"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs text-gray-500">Type</Label>
-                                            <Select
-                                                value={field.type}
-                                                onValueChange={(val) => {
-                                                    const newFields = [...formData.custom_fields];
-                                                    newFields[index].type = val;
-                                                    setFormData({ ...formData, custom_fields: newFields });
-                                                }}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="text">Text (Short Answer)</SelectItem>
-                                                    <SelectItem value="number">Number</SelectItem>
-                                                    <SelectItem value="textarea">Text Area (Long Answer)</SelectItem>
-                                                    <SelectItem value="select">Multiple Choice (Dropdown)</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        {field.type === 'select' && (
-                                            <div className="space-y-2 col-span-2">
-                                                <Label className="text-xs text-gray-500">Options (Separated by comma)</Label>
+                                            <div className="pr-5">
                                                 <Input
-                                                    value={field.options}
+                                                    value={field.label}
                                                     onChange={(e) => {
                                                         const newFields = [...formData.custom_fields];
-                                                        newFields[index].options = e.target.value;
+                                                        newFields[index].label = e.target.value;
                                                         setFormData({ ...formData, custom_fields: newFields });
                                                     }}
-                                                    placeholder="Option 1, Option 2, Option 3"
+                                                    placeholder="Question title"
+                                                    className="h-6 text-xs font-semibold px-1.5 border-transparent hover:border-gray-200 focus:border-blue-500 rounded shadow-none"
                                                 />
                                             </div>
-                                        )}
-                                        <div className="flex flex-col space-y-4 pt-4 col-span-2">
-                                            <div className="flex items-center space-x-2">
+
+                                            <div className="grid grid-cols-2 gap-2 pl-1.5">
+                                                <Select
+                                                    value={field.type}
+                                                    onValueChange={(val) => {
+                                                        const newFields = [...formData.custom_fields];
+                                                        newFields[index].type = val;
+                                                        setFormData({ ...formData, custom_fields: newFields });
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="h-6 text-[11px] px-2 shadow-sm border-gray-200 text-gray-700 bg-gray-50 hover:bg-gray-100 transition-colors">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="text" className="text-[11px]">Short Answer</SelectItem>
+                                                        <SelectItem value="number" className="text-[11px]">Number</SelectItem>
+                                                        <SelectItem value="textarea" className="text-[11px]">Long Answer</SelectItem>
+                                                        <SelectItem value="select" className="text-[11px]">Dropdown</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+
+                                                <div className="flex items-center space-x-1.5 pl-1">
+                                                    <Checkbox
+                                                        id={`required-${index}`}
+                                                        className="w-3 h-3 rounded-[2px] border-gray-300 data-[state=checked]:bg-blue-600"
+                                                        checked={field.required}
+                                                        onCheckedChange={(checked) => {
+                                                            const newFields = [...formData.custom_fields];
+                                                            newFields[index].required = checked as boolean;
+                                                            setFormData({ ...formData, custom_fields: newFields });
+                                                        }}
+                                                    />
+                                                    <Label htmlFor={`required-${index}`} className="text-[10px] font-medium cursor-pointer text-gray-600">Required</Label>
+                                                </div>
+                                            </div>
+
+                                            {field.type === 'select' && (
+                                                <div className="space-y-1.5 pl-1.5 pt-1">
+                                                    <Input
+                                                        value={field.options}
+                                                        onChange={(e) => {
+                                                            const newFields = [...formData.custom_fields];
+                                                            newFields[index].options = e.target.value;
+                                                            setFormData({ ...formData, custom_fields: newFields });
+                                                        }}
+                                                        placeholder="Opt1, Opt2, Opt3"
+                                                        className="h-6 text-[11px] px-2 border-gray-200 shadow-sm bg-gray-50 focus:bg-white"
+                                                    />
+
+                                                    {field.is_screening && (
+                                                        <div className="bg-blue-50/50 border border-blue-100 rounded-md p-2 mt-1 shadow-sm">
+                                                            <span className="text-[9px] font-bold text-blue-700 uppercase mb-1.5 block">Valid Answers (Screening)</span>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {(field.options || '').split(',').map((opt: string, i: number) => {
+                                                                    const optVal = opt.trim();
+                                                                    if (!optVal) return null;
+                                                                    return (
+                                                                        <div key={i} className="flex items-center space-x-1.5 bg-white px-1.5 py-0.5 rounded border border-blue-100 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-blue-300">
+                                                                            <Checkbox
+                                                                                id={`valid-${index}-${i}`}
+                                                                                className="w-2.5 h-2.5 rounded-[2px] bg-white border-blue-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                                                                checked={(field.valid_options || []).includes(optVal)}
+                                                                                onCheckedChange={(checked) => {
+                                                                                    const newFields = [...formData.custom_fields];
+                                                                                    const currentValid = field.valid_options || [];
+                                                                                    if (checked) {
+                                                                                        newFields[index].valid_options = [...currentValid, optVal];
+                                                                                    } else {
+                                                                                        newFields[index].valid_options = currentValid.filter((v: string) => v !== optVal);
+                                                                                    }
+                                                                                    setFormData({ ...formData, custom_fields: newFields });
+                                                                                }}
+                                                                            />
+                                                                            <Label htmlFor={`valid-${index}-${i}`} className="text-[10px] cursor-pointer text-blue-900 font-medium leading-none mt-0.5">{optVal}</Label>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center space-x-1.5 pt-1.5 mt-1 border-t border-gray-100 pl-1.5">
                                                 <Checkbox
                                                     id={`screening-${index}`}
-                                                    className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                                    className="w-3 h-3 rounded-[2px] border-gray-300 data-[state=checked]:bg-blue-600"
                                                     checked={field.is_screening || false}
                                                     onCheckedChange={(checked) => {
                                                         const newFields = [...formData.custom_fields];
@@ -558,72 +555,14 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                                         setFormData({ ...formData, custom_fields: newFields });
                                                     }}
                                                 />
-                                                <Label htmlFor={`screening-${index}`} className="text-sm font-normal">
-                                                    Is Screening Question?
+                                                <Label htmlFor={`screening-${index}`} className="text-[10px] font-medium cursor-pointer text-gray-500 hover:text-gray-700">
+                                                    Use as screening question
                                                 </Label>
-                                            </div>
-
-                                            {field.is_screening && field.type === 'select' && (
-                                                <div className="space-y-2 border-l-2 border-blue-200 pl-4 py-2 bg-blue-50/50 rounded-r-md">
-                                                    <Label className="text-xs font-semibold text-blue-800">Valid Options (Responden Lolos)</Label>
-                                                    <p className="text-[10px] text-gray-500 mb-2">Check options that allow respondent to proceed.</p>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        {(field.options || '').split(',').map((opt: string, i: number) => {
-                                                            const optVal = opt.trim();
-                                                            if (!optVal) return null;
-                                                            return (
-                                                                <div key={i} className="flex items-center space-x-2">
-                                                                    <Checkbox
-                                                                        id={`valid-${index}-${i}`}
-                                                                        className="bg-white data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                                                                        checked={(field.valid_options || []).includes(optVal)}
-                                                                        onCheckedChange={(checked) => {
-                                                                            const newFields = [...formData.custom_fields];
-                                                                            const currentValid = field.valid_options || [];
-                                                                            if (checked) {
-                                                                                newFields[index].valid_options = [...currentValid, optVal];
-                                                                            } else {
-                                                                                newFields[index].valid_options = currentValid.filter((v: string) => v !== optVal);
-                                                                            }
-                                                                            setFormData({ ...formData, custom_fields: newFields });
-                                                                        }}
-                                                                    />
-                                                                    <Label htmlFor={`valid-${index}-${i}`} className="text-xs cursor-pointer">{optVal}</Label>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            <div className="flex items-center space-x-2">
-                                                <Checkbox
-                                                    id={`required-${index}`}
-                                                    className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                                                    checked={field.required}
-                                                    onCheckedChange={(checked) => {
-                                                        const newFields = [...formData.custom_fields];
-                                                        newFields[index].required = checked as boolean;
-                                                        setFormData({ ...formData, custom_fields: newFields });
-                                                    }}
-                                                />
-                                                <Label htmlFor={`required-${index}`} className="text-sm font-normal">Required</Label>
                                             </div>
                                         </div>
                                     </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="text-red-500 hover:text-red-700 hover:bg-red-50 mt-1"
-                                        onClick={() => {
-                                            const newFields = formData.custom_fields.filter((_, i) => i !== index);
-                                            setFormData({ ...formData, custom_fields: newFields });
-                                        }}
-                                    >
-                                        <Trash2 className="w-5 h-5" />
-                                    </Button>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>

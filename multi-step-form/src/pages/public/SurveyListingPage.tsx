@@ -17,7 +17,7 @@ export function SurveyListingPage() {
         try {
             const { data, error } = await supabase
                 .from('survey_pages')
-                .select('*')
+                .select('*, form_submissions!submission_id(prize_per_winner, winner_count)')
                 .eq('is_published', true)
                 .order('created_at', { ascending: false });
 
@@ -46,6 +46,20 @@ export function SurveyListingPage() {
         }
     };
 
+    // Helper to get live reward data from joined form_submissions
+    const getSubmissionData = (page: any) => {
+        const sub = page.form_submissions;
+        if (!sub) return null;
+        // Handle both array (one-to-many) and object (one-to-one) shapes
+        const data = Array.isArray(sub) ? sub[0] : sub;
+        if (!data) return null;
+        return {
+            prizePerWinner: data.prize_per_winner || 0,
+            winnerCount: data.winner_count || 0,
+            totalReward: (data.prize_per_winner || 0) * (data.winner_count || 0),
+        };
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -71,7 +85,9 @@ export function SurveyListingPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {pages.map((page) => (
+                    {pages.map((page) => {
+                        const subData = getSubmissionData(page);
+                        return (
                         <Card key={page.id} className="group flex flex-col overflow-hidden border-0 shadow-sm ring-1 ring-gray-200 hover:shadow-2xl hover:ring-2 hover:ring-blue-500/20 transition-all duration-300 transform hover:-translate-y-1 bg-white dark:bg-gray-800 rounded-2xl">
                             {/* Image Section */}
                             <div className="relative aspect-[2.5/1] w-full overflow-hidden bg-gray-100">
@@ -92,12 +108,7 @@ export function SurveyListingPage() {
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60" />
 
                                 {/* Floating Badge - Reward (Hidden for Standalone) */}
-                                {page.submission_id && page.rewards_amount && (
-                                    <div className="absolute top-4 right-4 bg-yellow-400/90 backdrop-blur-sm text-yellow-950 font-bold px-3 py-1.5 rounded-full text-xs shadow-lg flex items-center gap-1 border border-yellow-200 animate-pulse">
-                                        <span className="text-xs">💰</span>
-                                        Rp {(parseInt(page.rewards_amount) * (page.rewards_count || 1)).toLocaleString('id-ID')}
-                                    </div>
-                                )}
+                                {/* Removed old floating badge logic */}
                             </div>
 
                             <CardContent className="flex-1 p-6 space-y-4">
@@ -108,11 +119,21 @@ export function SurveyListingPage() {
 
                                     {/* Usage Stats or Meta */}
                                     <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 font-medium pt-2">
-                                        {page.submission_id && (
-                                            <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md">
-                                                <Trophy className="w-4 h-4" />
-                                                <span>{page.rewards_count} Pemenang</span>
-                                            </div>
+                                        {page.submission_id && subData && (
+                                            <>
+                                                {subData.totalReward > 0 && (
+                                                    <div className="flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 text-yellow-700 px-2.5 py-1 rounded-md">
+                                                        <span className="text-xs">💰</span>
+                                                        <span>Rp {subData.totalReward.toLocaleString('id-ID')}</span>
+                                                    </div>
+                                                )}
+                                                {subData.winnerCount > 0 && (
+                                                    <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md">
+                                                        <Trophy className="w-4 h-4" />
+                                                        <span>{subData.winnerCount} Pemenang</span>
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                         <div className="flex items-center gap-1.5 bg-gray-100 text-gray-600 px-2.5 py-1 rounded-md">
                                             <Users className="w-4 h-4" />
@@ -131,7 +152,8 @@ export function SurveyListingPage() {
                                 </Button>
                             </CardFooter>
                         </Card>
-                    ))}
+                        );
+                    })}
 
                     {pages.length === 0 && (
                         <div className="col-span-full py-20 text-center">

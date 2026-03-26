@@ -1563,6 +1563,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         submissionTitle={selectedSubmissionForPage?.formTitle || ''}
         submissionStartDate={selectedSubmissionForPage?.start_date}
         submissionEndDate={selectedSubmissionForPage?.end_date}
+        submissionPrizePerWinner={selectedSubmissionForPage?.prize_per_winner}
+        submissionWinnerCount={selectedSubmissionForPage?.winnerCount}
       />
     </div>
   );

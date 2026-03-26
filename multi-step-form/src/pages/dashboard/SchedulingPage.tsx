@@ -4,7 +4,8 @@ import type { View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './SchedulingPage.css'; // Add custom CSS overrides
-import { getScheduledAds } from '@/utils/supabase'; // Fixed import
+import { getScheduledAds, supabase } from '@/utils/supabase'; // Added supabase
+import { PageBuilderModal } from '@/components/PageBuilder/PageBuilderModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -48,9 +49,13 @@ export function SchedulingPage() {
     const [view, setView] = useState<View>(Views.MONTH);
     const [date, setDate] = useState(new Date());
 
-    // Selected Event State for Dialog
     const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
     const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
+
+    // Publish Page State
+    const [isPublishPageModalOpen, setIsPublishPageModalOpen] = useState(false);
+    const [existingPublishPage, setExistingPublishPage] = useState<any>(null);
+    const [isLoadingPublishPage, setIsLoadingPublishPage] = useState(false);
 
     // Stats & Filters State
     const [stats, setStats] = useState({
@@ -210,9 +215,27 @@ export function SchedulingPage() {
         );
     };
 
-    const handleSelectEvent = (event: CalendarEvent) => {
+    const handleSelectEvent = async (event: CalendarEvent) => {
         setSelectedEvent(event);
         setIsEventDialogOpen(true);
+        
+        // Fetch existing publish page
+        setIsLoadingPublishPage(true);
+        setExistingPublishPage(null);
+        try {
+            const { data } = await supabase
+                .from('survey_pages')
+                .select('*')
+                .eq('submission_id', event.resource.form_submission_id)
+                .single();
+            if (data) {
+                setExistingPublishPage(data);
+            }
+        } catch (err) {
+            // Ignore error if not found or other issue
+        } finally {
+            setIsLoadingPublishPage(false);
+        }
     };
 
     const filteredEvents = events;
@@ -465,6 +488,23 @@ export function SchedulingPage() {
                             </div>
 
                             <DialogFooter>
+                                <Button
+                                    variant="default"
+                                    onClick={() => setIsPublishPageModalOpen(true)}
+                                    disabled={isLoadingPublishPage}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                                >
+                                    {isLoadingPublishPage ? (
+                                        <>
+                                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                            Checking...
+                                        </>
+                                    ) : existingPublishPage ? (
+                                        'Edit Publish Page'
+                                    ) : (
+                                        'Create Publish Page'
+                                    )}
+                                </Button>
                                 <Button variant="outline" onClick={() => setIsEventDialogOpen(false)}>
                                     Close
                                 </Button>
@@ -473,6 +513,25 @@ export function SchedulingPage() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            {isPublishPageModalOpen && selectedEvent && (
+                <PageBuilderModal
+                    isOpen={isPublishPageModalOpen}
+                    onClose={() => setIsPublishPageModalOpen(false)}
+                    onSuccess={() => {
+                        setIsPublishPageModalOpen(false);
+                        // Refetch the page status so button updates to "Edit" next time
+                        handleSelectEvent(selectedEvent);
+                    }}
+                    submissionId={selectedEvent.resource.form_submission_id}
+                    submissionTitle={selectedEvent.resource.form_title}
+                    submissionStartDate={selectedEvent.resource.start_date}
+                    submissionEndDate={selectedEvent.resource.end_date}
+                    submissionPrizePerWinner={selectedEvent.resource.prize_per_winner}
+                    submissionWinnerCount={selectedEvent.resource.winner_count}
+                    initialData={existingPublishPage || undefined}
+                />
+            )}
         </div>
     );
 }
