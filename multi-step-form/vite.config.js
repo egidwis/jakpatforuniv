@@ -130,7 +130,13 @@ export default defineConfig({
     },
   },
   server: {
-    proxy: {},
+    proxy: {
+      '/cdn': {
+        target: 'https://zewuzezbmrmpttysjvpg.supabase.co/storage/v1/object/public',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/cdn/, ''),
+      },
+    },
   },
   build: {
     outDir: 'dist',
