@@ -9,22 +9,29 @@
 
 /* Header Cells (Days of week) */
 .rbc-month-view .rbc-header {
-  padding: 0.85rem 0.5rem;
+  padding: 1rem 0;
   font-weight: 700;
   font-size: 0.75rem;
-  color: #475569;
-  /* slate-600 */
+  color: #334155;
+  /* slate-700 */
   background-color: #f8fafc;
   /* slate-50 */
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 2px solid #e2e8f0;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid #e2e8f0;
+  border-top: 1px solid #e2e8f0;
   /* slate-200 */
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Day background and grid lines */
 .rbc-month-view {
-  border: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background-color: white;
 }
 
 .rbc-day-bg {
@@ -47,7 +54,7 @@
 }
 
 .rbc-header+.rbc-header {
-  border-left: 1px solid #f1f5f9;
+  border-left: none !important;
   /* slate-100 */
 }
 
@@ -161,4 +168,28 @@
 .rbc-time-header>.rbc-row:nth-child(2),
 .rbc-allday-cell {
   display: none !important;
+}
+
+/* Agenda View Overrides for proper list styling */
+.rbc-agenda-view table.rbc-agenda-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.rbc-agenda-view table.rbc-agenda-table thead th:nth-child(2),
+.rbc-agenda-time-cell {
+  display: none !important;
+}
+
+.rbc-agenda-view table.rbc-agenda-table .rbc-agenda-date-cell {
+  vertical-align: top;
+  padding-top: 0.5rem;
+  padding-right: 1.5rem;
+  padding-left: 0.5rem;
+}
+
+.rbc-agenda-view table.rbc-agenda-table .rbc-agenda-event-cell {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  vertical-align: top;
 }
