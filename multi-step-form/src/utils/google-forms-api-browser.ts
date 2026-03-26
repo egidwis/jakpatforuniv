@@ -263,6 +263,14 @@ export class GoogleFormsApiService {
         }
       });
 
+      // Check Google Form's built-in "Collect email addresses" setting
+      if (formData.settings?.collectEmail) {
+        if (!personalDataKeywords.includes('email otomatis')) {
+          personalDataKeywords.push('email otomatis');
+        }
+        hasPersonalDataQuestions = true;
+      }
+
       return {
         title: formData.title,
         description: formData.description || 'Form description not available',

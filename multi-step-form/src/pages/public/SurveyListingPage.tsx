@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/utils/supabase';
+import { supabase, getCdnUrl } from '@/utils/supabase';
 import { Card, CardContent, CardFooter, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Users, Trophy, ExternalLink } from 'lucide-react';
@@ -93,7 +93,7 @@ export function SurveyListingPage() {
                             <div className="relative aspect-[2.5/1] w-full overflow-hidden bg-gray-100">
                                 {page.banner_url ? (
                                     <img
-                                        src={page.banner_url}
+                                        src={getCdnUrl(page.banner_url)}
                                         alt={page.title}
                                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                     />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '@/utils/supabase';
+import { supabase, getCdnUrl } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -534,7 +534,7 @@ export function SurveyPage() {
             {/* Banner */}
             {pageData.banner_url && (
                 <div className="relative aspect-[2.5/1] w-full overflow-hidden bg-gray-100 dark:bg-gray-800">
-                    <img src={pageData.banner_url} alt="Cover" className="w-full h-full object-cover" />
+                    <img src={getCdnUrl(pageData.banner_url)} alt="Cover" className="w-full h-full object-cover" />
                 </div>
             )}
 

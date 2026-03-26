@@ -70,8 +70,9 @@
 .rbc-event {
   padding: 0px !important;
   border-radius: 6px !important;
-  margin: 1px 4px !important;
+  margin: 1px 2px !important;
   transition: transform 0.1s ease, box-shadow 0.1s ease;
+  height: 18px !important;
 }
 
 .rbc-event-label {
@@ -82,10 +83,6 @@
   transform: translateY(-1px);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
   z-index: 5;
-}
-
-.rbc-event-content {
-  height: 100%;
 }
 
 .rbc-show-more {

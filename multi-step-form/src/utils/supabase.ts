@@ -21,6 +21,21 @@ console.log('Running in offline mode:', isPlaceholderUrl || isPlaceholderKey);
 // Buat Supabase client dengan URL dan key yang valid
 export const supabase = createClient(validSupabaseUrl, validSupabaseKey);
 
+/**
+ * Rewrites a Supabase Storage public URL to use our Cloudflare CDN proxy.
+ * This eliminates Supabase cached egress costs since Cloudflare serves from its own cache.
+ * 
+ * Input:  https://xxx.supabase.co/storage/v1/object/public/page-uploads/banners/img.webp
+ * Output: /cdn/page-uploads/banners/img.webp
+ */
+export const getCdnUrl = (url: string | null | undefined): string => {
+    if (!url) return '';
+    const marker = '/storage/v1/object/public/';
+    const idx = url.indexOf(marker);
+    if (idx === -1) return url; // Not a Supabase Storage URL, return as-is
+    return '/cdn/' + url.substring(idx + marker.length);
+};
+
 // Fungsi untuk memeriksa koneksi Supabase
 export const checkSupabaseConnection = async (): Promise<boolean> => {
   try {

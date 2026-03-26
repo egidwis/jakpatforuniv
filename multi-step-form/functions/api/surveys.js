@@ -79,7 +79,7 @@ export async function onRequestGet(context) {
                 slug: s.slug || s.id,
                 title: s.title,
                 is_new: (new Date() - new Date(s.created_at)) < (7 * 24 * 60 * 60 * 1000),
-                banner_url: s.banner_url || null,
+                banner_url: s.banner_url ? `${baseUrl}/cdn/${s.banner_url.split('/storage/v1/object/public/')[1] || ''}` : null,
                 reward: {
                     amount: parseInt(s.rewards_amount || 0),
                     quota: parseInt(s.rewards_count || 0),
