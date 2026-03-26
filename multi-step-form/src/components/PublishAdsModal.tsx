@@ -88,12 +88,18 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
             const counts: Record<string, number> = {};
 
             ads.forEach((ad: any) => {
-                if (ad.start_date && ad.form_submission_id !== submission.id) {
-                    // Ignore this submission's own schedule if editing, 
-                    // and parse date using standard format (to local YYYY-MM-DD)
-                    const dateObj = new Date(ad.start_date);
-                    const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
-                    counts[dateStr] = (counts[dateStr] || 0) + 1;
+                if (ad.start_date && ad.end_date && ad.form_submission_id !== submission.id) {
+                    // Count this ad for EVERY day it spans (start_date to end_date)
+                    const current = new Date(ad.start_date);
+                    current.setHours(0, 0, 0, 0);
+                    const endDay = new Date(ad.end_date);
+                    endDay.setHours(0, 0, 0, 0);
+
+                    while (current < endDay) {
+                        const dateStr = getDateString(current);
+                        counts[dateStr] = (counts[dateStr] || 0) + 1;
+                        current.setDate(current.getDate() + 1);
+                    }
                 }
             });
 
@@ -151,6 +157,28 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
         if (!startDate || !startTime) {
             toast.error('Please select both start date and time');
             return;
+        }
+
+        // Validate that ALL days in the booking range have capacity
+        const [valHours, valMinutes] = startTime.split(':').map(Number);
+        const valStart = new Date(startDate);
+        valStart.setHours(valHours, valMinutes, 0, 0);
+        const valEnd = new Date(valStart);
+        valEnd.setDate(valEnd.getDate() + submissionDuration);
+
+        const checkDay = new Date(valStart);
+        checkDay.setHours(0, 0, 0, 0);
+        const checkEndDay = new Date(valEnd);
+        checkEndDay.setHours(0, 0, 0, 0);
+
+        while (checkDay < checkEndDay) {
+            const dayStr = getDateString(checkDay);
+            const dayCount = adCountsByDate[dayStr] || 0;
+            if (dayCount >= MAX_ADS_PER_DAY) {
+                toast.error(`Tanggal ${checkDay.toLocaleDateString('id-ID')} sudah penuh (${MAX_ADS_PER_DAY}/${MAX_ADS_PER_DAY} iklan). Pilih tanggal lain.`);
+                return;
+            }
+            checkDay.setDate(checkDay.getDate() + 1);
         }
 
         setIsLoading(true);

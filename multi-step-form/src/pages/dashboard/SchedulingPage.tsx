@@ -147,17 +147,17 @@ export function SchedulingPage() {
         if (view === Views.MONTH) {
             const startTimeStr = new Date(event.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
             return (
-                <div className="flex items-center px-1.5 py-0.5 w-full h-full focus:outline-none overflow-hidden" style={{ color: theme.text }}>
+                <div className="flex items-center px-1 py-0 w-full h-full focus:outline-none overflow-hidden" style={{ color: theme.text }}>
                     <span
-                        className="text-[8px] px-1 rounded-[3px] font-bold tracking-wider uppercase flex-shrink-0 leading-none mr-1.5 py-[2px]"
+                        className="text-[7px] px-1 rounded-[2px] font-bold tracking-wider uppercase flex-shrink-0 leading-none mr-1 py-[1.5px]"
                         style={{ backgroundColor: theme.badgeBg, color: theme.badgeText }}
                     >
                         AD
                     </span>
-                    <span className="text-[9px] font-bold mr-1.5 opacity-70 flex-shrink-0 tracking-wide">
+                    <span className="text-[8px] font-bold mr-1 opacity-70 flex-shrink-0 tracking-wide">
                         {startTimeStr}
                     </span>
-                    <span className="truncate text-[10px] font-semibold leading-tight flex-1">
+                    <span className="truncate text-[9px] font-semibold leading-tight flex-1">
                         {event.resource.form_title}
                     </span>
                 </div>
@@ -185,8 +185,8 @@ export function SchedulingPage() {
     const CustomDateHeader = ({ label, date }: { label: string, date: Date }) => {
         const isToday = moment(date).isSame(moment(), 'day');
         return (
-            <div className="flex justify-end p-1.5">
-                <div className={`w-7 h-7 flex items-center justify-center rounded-full text-xs font-semibold transition-colors ${isToday ? 'bg-blue-600 text-white shadow-sm shadow-blue-200' : 'text-slate-700 hover:bg-slate-100'}`}>
+            <div className="flex justify-end p-1">
+                <div className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold transition-colors ${isToday ? 'bg-blue-600 text-white shadow-sm shadow-blue-200' : 'text-slate-700 hover:bg-slate-100'}`}>
                     {label}
                 </div>
             </div>
@@ -283,8 +283,8 @@ export function SchedulingPage() {
 
             {/* Calendar & Filters */}
             <Card className="flex-1 flex flex-col shadow-sm border-slate-200 min-h-[750px] overflow-hidden">
-                <div className="border-b border-slate-100 bg-slate-50/50 p-4 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
+                <div className="border-b border-slate-100 bg-slate-50/50 p-4 flex flex-row items-center justify-between gap-4 overflow-x-auto">
+                    <div className="flex items-center gap-2 sm:gap-3 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm shrink-0">
                         <Button
                             variant="ghost"
                             size="icon"
@@ -326,7 +326,7 @@ export function SchedulingPage() {
                         </Button>
                     </div>
 
-                    <div className="flex bg-slate-200/50 p-1 rounded-lg">
+                    <div className="flex bg-slate-200/50 p-1 rounded-lg shrink-0">
                         <button
                             onClick={() => setView(Views.MONTH)}
                             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${view === Views.MONTH ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
