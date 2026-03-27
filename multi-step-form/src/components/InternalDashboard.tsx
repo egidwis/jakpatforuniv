@@ -694,12 +694,99 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-              <RefreshCw className="w-12 h-12 text-primary animate-spin mx-auto mb-4" />
-              <p className="text-muted-foreground font-medium">Loading submissions...</p>
+          <>
+            {/* Desktop Table View Skeleton - hidden on mobile */}
+            <div className="hidden md:block h-[calc(100vh-210px)] min-h-[400px]">
+              <div className="overflow-auto h-full w-full pb-4 pr-2">
+                <Table className="min-w-[1200px] border-separate border-spacing-y-3">
+                  <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
+                    <TableRow className="border-none hover:bg-transparent">
+                      <TableHead className="w-[80px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-4">No</TableHead>
+                      <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Contact Info</TableHead>
+                      <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Survey Page</TableHead>
+                      <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">University</TableHead>
+                      <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Department</TableHead>
+                      <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Survey Topic</TableHead>
+                      <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 text-center">Status</TableHead>
+                      <TableHead className="w-[120px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 text-right rounded-r-xl pr-4">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array(5).fill(0).map((_, i) => (
+                      <TableRow key={`skeleton-desktop-${i}`} className="bg-white border-none shadow-sm rounded-xl">
+                        <TableCell className="align-middle py-4 border-y border-l border-gray-200 rounded-l-xl pl-4 flex items-center justify-center">
+                          <div className="w-6 h-6 rounded-full bg-gray-100 animate-pulse"></div>
+                        </TableCell>
+                        <TableCell className="align-top py-4 border-y border-gray-200">
+                          <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded mb-2"></div>
+                          <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
+                        </TableCell>
+                        <TableCell className="align-top py-4 border-y border-gray-200">
+                          <div className="h-4 w-5/6 bg-gray-200 animate-pulse rounded mb-2"></div>
+                          <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
+                        </TableCell>
+                        <TableCell className="align-top py-4 border-y border-gray-200">
+                          <div className="h-4 w-full bg-gray-200 animate-pulse rounded"></div>
+                        </TableCell>
+                        <TableCell className="align-top py-4 border-y border-gray-200">
+                          <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded"></div>
+                        </TableCell>
+                        <TableCell className="align-top py-4 border-y border-gray-200">
+                          <div className="h-4 w-full bg-gray-200 animate-pulse rounded mb-2"></div>
+                          <div className="h-4 w-5/6 bg-gray-200 animate-pulse rounded"></div>
+                        </TableCell>
+                        <TableCell className="align-top py-4 border-y border-gray-200 text-center">
+                          <div className="h-6 w-24 bg-gray-200 rounded-full animate-pulse mx-auto mb-2"></div>
+                          <div className="h-3 w-16 bg-gray-100 rounded animate-pulse mx-auto"></div>
+                        </TableCell>
+                        <TableCell className="align-top py-4 border-y border-r border-gray-200 rounded-r-xl pr-4 text-right">
+                          <div className="flex justify-end gap-2">
+                             <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
+                             <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
-          </div>
+
+            {/* Mobile Card View Skeleton - hidden on desktop */}
+            <div className="md:hidden space-y-4">
+              {Array(3).fill(0).map((_, i) => (
+                <Card key={`skeleton-mobile-${i}`} className="overflow-hidden mb-4 shadow-sm border-0">
+                  <div className="p-4 border-b bg-gray-50/50 flex justify-between items-start">
+                    <div>
+                       <div className="h-5 w-40 bg-gray-200 rounded animate-pulse mb-2"></div>
+                       <div className="h-4 w-32 bg-gray-100 rounded animate-pulse"></div>
+                    </div>
+                    <div className="h-6 w-16 rounded-full bg-gray-200 animate-pulse"></div>
+                  </div>
+                  <CardContent className="p-4 space-y-4">
+                    <div className="space-y-2">
+                      <div className="h-3 w-16 bg-gray-100 rounded animate-pulse"></div>
+                      <div className="h-4 w-48 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="h-3 w-16 bg-gray-100 rounded animate-pulse"></div>
+                        <div className="h-4 w-full bg-gray-200 rounded animate-pulse"></div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="h-3 w-20 bg-gray-100 rounded animate-pulse"></div>
+                        <div className="h-4 w-full bg-gray-200 rounded animate-pulse"></div>
+                      </div>
+                    </div>
+                    <div className="pt-4 flex justify-end gap-2">
+                      <div className="h-9 w-full bg-gray-200 rounded animate-pulse"></div>
+                      <div className="h-9 w-full bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </>
         ) : submissions.length === 0 ? (
           <Card className="p-12 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
@@ -723,24 +810,24 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         ) : (
           <>
             {/* Desktop Table View - hidden on mobile */}
-            <Card className="hidden md:block shadow-sm border-gray-200">
-              <div className="overflow-x-auto">
-                <Table className="min-w-[1200px]">
-                  <TableHeader className="bg-gray-50/50">
-                    <TableRow className="border-b border-gray-100">
-                      <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10 pl-6">Submitted</TableHead>
-                      <TableHead className="w-[300px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Form Details</TableHead>
-                      <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Criteria & Incentive</TableHead>
-                      <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Researcher</TableHead>
-                      <TableHead className="w-[120px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Payment</TableHead>
-                      <TableHead className="w-[220px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10 pt-3 pl-16 pr-8">Publish & Pages</TableHead>
+            <div className="hidden md:block h-[calc(100vh-210px)] min-h-[400px]">
+              <div className="overflow-auto h-full w-full pb-4 pr-2">
+                <Table className="min-w-[1200px] border-separate border-spacing-y-3">
+                  <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
+                    <TableRow className="border-none hover:bg-transparent">
+                      <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 pl-6 rounded-l-xl">Submitted</TableHead>
+                      <TableHead className="w-[300px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Form Details</TableHead>
+                      <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Criteria & Incentive</TableHead>
+                      <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Researcher</TableHead>
+                      <TableHead className="w-[120px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Payment</TableHead>
+                      <TableHead className="w-[220px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 pt-3 pl-16 pr-8 rounded-r-xl">Publish & Pages</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredSubmissions.map((submission) => (
-                      <TableRow key={submission.id} className="hover:bg-gray-50/50 transition-colors group group/row">
+                      <TableRow key={submission.id} className="bg-white hover:bg-gray-50/80 transition-shadow shadow-sm hover:shadow border-none rounded-xl group group/row">
                         {/* Submitted */}
-                        <TableCell className="align-top py-4 text-xs pl-6">
+                        <TableCell className="align-top py-4 text-xs pl-6 border-y border-l border-gray-200 rounded-l-xl">
                           <div className="flex flex-col text-gray-500">
                             <span className="font-medium text-gray-900">
                               {new Date(submission.submittedAt).toLocaleDateString('id-ID')}
@@ -752,7 +839,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         </TableCell>
 
                         {/* Form Details */}
-                        <TableCell className="align-top py-4">
+                        <TableCell className="align-top py-4 border-y border-gray-200">
                           <div className="flex flex-col gap-1.5">
                             <div>
                               <div className="flex items-start justify-between gap-2 group relative">
@@ -947,7 +1034,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         </TableCell>
 
                         {/* Criteria & Incentive */}
-                        <TableCell className="align-top py-4">
+                        <TableCell className="align-top py-4 border-y border-gray-200">
                           <div className="flex flex-col gap-2">
                             {submission.criteria ? (
                               <div className="relative group/criteria">
@@ -1005,7 +1092,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         </TableCell>
 
                         {/* Researcher */}
-                        <TableCell className="align-top py-4">
+                        <TableCell className="align-top py-4 border-y border-gray-200">
                           <div className="flex flex-col gap-0.5">
                             <span className="text-sm font-semibold text-gray-900 leading-tight">
                               {submission.researcherName}
@@ -1078,7 +1165,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         </TableCell>
 
                         {/* Payment */}
-                        <TableCell className="align-top py-4">
+                        <TableCell className="align-top py-4 border-y border-gray-200">
                           <div className="flex flex-col gap-1.5">
                             {/* Row 1: Amount & Button */}
                             <div className="flex items-center justify-between mb-1.5 w-full">
@@ -1154,7 +1241,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         </TableCell>
 
                         {/* Publish & Pages (New Column) */}
-                        <TableCell className="align-top py-4 space-y-1.5 w-[220px] pl-16 pr-8">
+                        <TableCell className="align-top py-4 space-y-1.5 w-[220px] pl-16 pr-8 border-y border-r border-gray-200 rounded-r-xl">
                           {['scheduled', 'publishing', 'completed'].includes(submission.status || '') ? (
                             <div className="flex items-center gap-1.5">
                               {/* Status badge (subtle) */}
@@ -1274,7 +1361,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 </Table>
 
                 {/* Pagination Controls */}
-                < div className="flex items-center justify-between px-4 py-4 border-t" >
+                < div className="flex items-center justify-between px-4 py-4 border-t mt-4" >
                   <div className="text-sm text-gray-500">
                     Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalSubmissions)} of {totalSubmissions} results
                   </div>
@@ -1301,7 +1388,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   </div>
                 </div >
               </div >
-            </Card >
+            </div >
 
             {/* Mobile Card View - shown only on mobile */}
             < div className="md:hidden space-y-4" >

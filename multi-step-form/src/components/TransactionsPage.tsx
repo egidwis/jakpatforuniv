@@ -9,10 +9,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +17,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, Search, RefreshCw, Download, Filter } from 'lucide-react';
+import { Search, RefreshCw, Download, Filter } from 'lucide-react';
 
 
 interface Transaction {
@@ -391,33 +387,61 @@ export function TransactionsPage() {
       </div>
 
       {/* Main Table Card */}
-      <Card className="shadow-sm border-gray-200 bg-white">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader className="bg-gray-50/50">
-              <TableRow className="border-b border-gray-100">
-                <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Survei & Peneliti</TableHead>
-                <TableHead className="w-[450px] text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Item & Detail</TableHead>
-                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Metode</TableHead>
-                <TableHead className="text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Total</TableHead>
-                <TableHead className="text-center text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Status</TableHead>
-                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-10">Tanggal</TableHead>
-                <TableHead className="w-[50px] h-10"></TableHead>
+      <div className="h-[calc(100vh-210px)] min-h-[400px]">
+        <div className="overflow-auto h-full w-full pb-4 pr-2">
+          <Table className="border-separate border-spacing-y-3">
+            <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
+              <TableRow className="border-none hover:bg-transparent">
+                <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-4">Survei & Peneliti</TableHead>
+                <TableHead className="w-[450px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Item & Detail</TableHead>
+                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Metode</TableHead>
+                <TableHead className="text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Total</TableHead>
+                <TableHead className="text-center text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Status</TableHead>
+                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Tanggal</TableHead>
+                <TableHead className="w-[50px] h-12 rounded-r-xl pr-4"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-48 text-center">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
-                      <span className="text-muted-foreground text-sm">Memuat data...</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                Array(5).fill(0).map((_, i) => (
+                  <TableRow key={`skeleton-${i}`} className="bg-white border-none shadow-sm rounded-xl">
+                    <TableCell className="align-top py-4 border-y border-l border-gray-200 rounded-l-xl pl-4">
+                      <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded mb-2"></div>
+                      <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
+                    </TableCell>
+                    <TableCell className="align-top py-4 border-y border-gray-200">
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <div className="h-4 w-32 bg-gray-200 animate-pulse rounded"></div>
+                          <div className="h-4 w-20 bg-gray-200 animate-pulse rounded"></div>
+                        </div>
+                        <div className="flex justify-between overflow-hidden">
+                          <div className="h-4 w-40 bg-gray-100 animate-pulse rounded"></div>
+                          <div className="h-4 w-16 bg-gray-100 animate-pulse rounded"></div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top py-4 border-y border-gray-200">
+                      <div className="h-6 w-20 bg-gray-200 animate-pulse rounded-md"></div>
+                    </TableCell>
+                    <TableCell className="text-right align-top py-4 border-y border-gray-200">
+                      <div className="h-4 w-24 bg-gray-200 animate-pulse rounded ml-auto"></div>
+                    </TableCell>
+                    <TableCell className="text-center align-top py-4 border-y border-gray-200">
+                      <div className="h-6 w-20 bg-gray-200 animate-pulse rounded-md mx-auto"></div>
+                    </TableCell>
+                    <TableCell className="align-top py-4 border-y border-gray-200">
+                      <div className="h-4 w-24 bg-gray-200 animate-pulse rounded mb-2"></div>
+                      <div className="h-3 w-16 bg-gray-100 animate-pulse rounded"></div>
+                    </TableCell>
+                    <TableCell className="text-right align-top py-4 pr-4 border-y border-r border-gray-200 rounded-r-xl">
+                      <div className="h-8 w-8 bg-gray-200 animate-pulse rounded ml-auto"></div>
+                    </TableCell>
+                  </TableRow>
+                ))
               ) : filteredTransactions.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-48 text-center">
+                <TableRow className="bg-white border-none shadow-sm rounded-xl">
+                  <TableCell colSpan={7} className="h-48 text-center border border-gray-200 rounded-xl">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="h-12 w-12 bg-gray-50 rounded-full flex items-center justify-center">
                         <Filter className="h-6 w-6 text-gray-300" />
@@ -447,9 +471,9 @@ export function TransactionsPage() {
                   }
 
                   return (
-                    <TableRow key={transaction.id} className="hover:bg-gray-50/50 transition-colors group">
+                    <TableRow key={transaction.id} className="bg-white hover:bg-gray-50/80 transition-shadow shadow-sm hover:shadow border-none rounded-xl group">
 
-                      <TableCell className="align-top py-4">
+                      <TableCell className="align-top py-4 border-y border-l border-gray-200 rounded-l-xl pl-4">
                         <div className="flex flex-col gap-1">
                           <span className="font-semibold text-gray-900 line-clamp-2 text-sm" title={transaction.form_submissions?.title}>
                             {transaction.form_submissions?.title || 'Judul tidak tersedia'}
@@ -460,7 +484,7 @@ export function TransactionsPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="align-top py-4">
+                      <TableCell className="align-top py-4 border-y border-gray-200">
                         <div className="space-y-3">
                           {items.length > 0 ? (
                             <div className="space-y-3">
@@ -496,19 +520,19 @@ export function TransactionsPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="align-top py-4">
+                      <TableCell className="align-top py-4 border-y border-gray-200">
                         {getMethodBadge(transaction.payment_method)}
                       </TableCell>
-                      <TableCell className="text-right align-top py-4 font-mono font-bold text-gray-900 text-sm tracking-tight">
+                      <TableCell className="text-right align-top py-4 font-mono font-bold text-gray-900 text-sm tracking-tight border-y border-gray-200">
                         {formatCurrency(transaction.amount)}
                       </TableCell>
-                      <TableCell className="text-center align-top py-4">
+                      <TableCell className="text-center align-top py-4 border-y border-gray-200">
                         {getStatusBadge(transaction.status)}
                       </TableCell>
-                      <TableCell className="align-top py-4 text-xs text-gray-500">
+                      <TableCell className="align-top py-4 text-xs text-gray-500 border-y border-gray-200">
                         {formatDate(transaction.created_at)}
                       </TableCell>
-                      <TableCell className="text-right align-top py-4 pr-4">
+                      <TableCell className="text-right align-top py-4 pr-4 border-y border-r border-gray-200 rounded-r-xl">
                         {transaction.payment_url && (
                           <Button
                             variant="secondary"
@@ -533,8 +557,8 @@ export function TransactionsPage() {
               )}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div >
   );
 }

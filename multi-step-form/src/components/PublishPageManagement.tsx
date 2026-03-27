@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Card, CardContent } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Loader2, Search, ExternalLink, RefreshCw, PenLine, Plus } from 'lucide-react';
+import { Search, ExternalLink, RefreshCw, PenLine, Plus } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { RespondentsListModal } from './PublishPage/RespondentsListModal';
 import { toast } from 'sonner';
@@ -200,32 +199,67 @@ export function PublishPageManagement() {
             </div>
 
             {/* Main Table Card */}
-            <div>
-                <Card className="shadow-sm border-gray-200 bg-white">
-                    <CardContent className="p-0">
-                        {loading ? (
-                            <div className="flex justify-center p-8">
-                                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                            </div>
-                        ) : filteredPages.length === 0 ? (
-                            <div className="p-8 text-center text-gray-500">
-                                No pages found in this category.
-                            </div>
-                        ) : (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Page Info</TableHead>
-                                        <TableHead>Type</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Statistic</TableHead>
-                                        <TableHead className="text-right">Action</TableHead>
+            <div className="h-[calc(100vh-210px)] min-h-[400px]">
+                <div className="overflow-auto h-full w-full pb-4 pr-2">
+                    <Table className="border-separate border-spacing-y-3">
+                        <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
+                            <TableRow className="border-none hover:bg-transparent">
+                                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-4">Page Info</TableHead>
+                                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Type</TableHead>
+                                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Status</TableHead>
+                                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Statistic</TableHead>
+                                <TableHead className="text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-r-xl pr-4">Action</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                Array(5).fill(0).map((_, i) => (
+                                    <TableRow key={`skeleton-${i}`} className="bg-white border-none shadow-sm rounded-xl">
+                                        <TableCell className="border-y border-l border-gray-200 rounded-l-xl pl-4 py-4">
+                                            <div className="h-5 w-3/4 bg-gray-200 animate-pulse rounded mb-2"></div>
+                                            <div className="h-3 w-32 bg-gray-100 animate-pulse rounded"></div>
+                                        </TableCell>
+                                        <TableCell className="border-y border-gray-200 py-4">
+                                            <div className="h-5 w-20 bg-gray-200 animate-pulse rounded-full"></div>
+                                        </TableCell>
+                                        <TableCell className="border-y border-gray-200 py-4">
+                                            <div className="h-5 w-20 bg-gray-200 animate-pulse rounded-full mb-2"></div>
+                                            <div className="h-3 w-24 bg-gray-100 animate-pulse rounded mb-1"></div>
+                                            <div className="h-3 w-24 bg-gray-100 animate-pulse rounded"></div>
+                                        </TableCell>
+                                        <TableCell className="border-y border-gray-200 py-4">
+                                            <div className="flex flex-col gap-3">
+                                                <div>
+                                                    <div className="h-4 w-12 bg-gray-200 animate-pulse rounded mb-1"></div>
+                                                    <div className="h-3 w-20 bg-gray-100 animate-pulse rounded"></div>
+                                                </div>
+                                                <div>
+                                                    <div className="h-4 w-12 bg-gray-200 animate-pulse rounded mb-1"></div>
+                                                    <div className="h-3 w-16 bg-gray-100 animate-pulse rounded"></div>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right border-y border-r border-gray-200 rounded-r-xl pr-4 py-4">
+                                            <div className="flex justify-end gap-2">
+                                                <div className="h-8 w-8 bg-gray-200 animate-pulse rounded"></div>
+                                                <div className="h-8 w-8 bg-gray-200 animate-pulse rounded"></div>
+                                                <div className="h-8 w-24 bg-blue-200 animate-pulse rounded"></div>
+                                            </div>
+                                        </TableCell>
                                     </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredPages.map((page) => (
-                                        <TableRow key={page.id} className="align-top [&>td]:align-top">
-                                            <TableCell>
+                                ))
+                            ) : filteredPages.length === 0 ? (
+                                <TableRow className="bg-white border-none shadow-sm rounded-xl">
+                                    <TableCell colSpan={5} className="h-48 text-center border border-gray-200 rounded-xl">
+                                        <div className="p-8 text-center text-gray-500">
+                                            No pages found in this category.
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                filteredPages.map((page) => (
+                                    <TableRow key={page.id} className="bg-white hover:bg-gray-50/80 transition-shadow shadow-sm hover:shadow border-none rounded-xl group align-top [&>td]:align-top">
+                                        <TableCell className="border-y border-l border-gray-200 rounded-l-xl pl-4">
                                                 <div className="flex flex-col gap-1.5">
                                                     <span className="font-semibold text-gray-900">{page.title}</span>
                                                     <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono">
@@ -239,7 +273,7 @@ export function PublishPageManagement() {
                                                     )}
                                                 </div>
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="border-y border-gray-200">
                                                 <div className="flex flex-col text-sm">
                                                     {!page.submission_id ? (
                                                         <span className="font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-purple-100">Announcement</span>
@@ -248,7 +282,7 @@ export function PublishPageManagement() {
                                                     )}
                                                 </div>
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="border-y border-gray-200">
                                                 <div className="flex flex-col gap-1.5 text-xs">
                                                     {(() => {
                                                         const now = new Date();
@@ -283,7 +317,7 @@ export function PublishPageManagement() {
                                                     )}
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="align-top">
+                                            <TableCell className="border-y border-gray-200">
                                                 <div className="flex flex-col gap-2">
                                                     <div className="flex flex-col">
                                                         {page.submission_id ? (
@@ -304,7 +338,7 @@ export function PublishPageManagement() {
                                                     </div>
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-right align-top">
+                                            <TableCell className="text-right border-y border-r border-gray-200 rounded-r-xl pr-4">
                                                 <div className="flex justify-end gap-1.5 items-start pt-0.5">
                                                     {page.is_published && (
                                                         <Button
@@ -341,12 +375,11 @@ export function PublishPageManagement() {
                                                 </div>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        )}
-                    </CardContent>
-                </Card>
+                                    ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
             </div>
 
             {

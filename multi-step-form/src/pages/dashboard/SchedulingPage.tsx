@@ -660,7 +660,32 @@ export function SchedulingPage() {
                 <CardContent className="p-0 flex-1 relative rounded-b-xl">
                     {/* Calendar Container */}
                     <div className="absolute inset-0 p-4 overflow-y-auto">
-                        {view === Views.AGENDA ? (
+                        {loading && events.length === 0 ? (
+                            <div className="flex flex-col gap-8 w-full h-full animate-pulse p-4 pt-8">
+                                {Array(3).fill(0).map((_, i) => (
+                                    <div key={`sched-skeleton-${i}`} className="flex flex-col md:flex-row gap-6 w-full">
+                                        <div className="w-full md:w-36 shrink-0 md:sticky md:top-0 h-fit py-2">
+                                            <div className="h-8 w-3/4 bg-slate-200 rounded-lg"></div>
+                                        </div>
+                                        <div className="flex-1 grid grid-cols-2 gap-4 lg:gap-8 border-l-2 border-slate-100 pl-4 lg:pl-8 py-2">
+                                            <div className="flex flex-col gap-3">
+                                                <div className="h-3 w-40 bg-rose-200 rounded-full mb-1"></div>
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="h-32 w-full bg-slate-100 rounded-xl border border-slate-200"></div>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col gap-3">
+                                                <div className="h-3 w-40 bg-teal-200 rounded-full mb-1"></div>
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="h-32 w-full bg-slate-100 rounded-xl border border-slate-200"></div>
+                                                    <div className="h-32 w-full bg-slate-100 rounded-xl border border-slate-200"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : view === Views.AGENDA ? (
                             <CustomAgendaListView events={filteredEvents} currentDate={date} onSelectEvent={handleSelectEvent} />
                         ) : (
                             <Calendar
