@@ -2687,7 +2687,7 @@ select.form-input.border-red-500:focus {
   .method-selection-container,
   .google-form-flow-container,
   .manual-flow-container {
-    padding: 1rem 0.75rem;
+    padding: 4.5rem 0.75rem 2rem;
   }
 
   .method-selection-header {

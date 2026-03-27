@@ -40,18 +40,18 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                     <div className="flex items-center justify-between">
 
                         {/* LEFT: Menu & Mini Stepper */}
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 md:gap-4">
                             {/* Hamburger Menu (Mobile Only) */}
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="md:hidden mr-2 -ml-2"
+                                className="md:hidden mr-0 -ml-2"
                                 onClick={onToggleSidebar}
                             >
-                                <Menu className="w-6 h-6 text-gray-700" />
+                                <Menu className="w-5 h-5 md:w-6 md:h-6 text-gray-700" />
                             </Button>
 
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-0.5 md:gap-1">
                                 {steps.map((step, idx) => {
                                     const isCompleted = currentStep > step.number;
                                     const isActive = currentStep === step.number;
@@ -60,20 +60,20 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                                         <div key={step.number} className="flex items-center">
                                             {/* Line Connector (except first) */}
                                             {idx > 0 && (
-                                                <div className={`w-8 h-0.5 mx-2 rounded-full transition-colors duration-300`} style={{ backgroundColor: isCompleted || isActive ? '#0091ff' : '#e5e7eb' }} />
+                                                <div className={`w-3 md:w-8 h-0.5 mx-0.5 md:mx-2 rounded-full transition-colors duration-300`} style={{ backgroundColor: isCompleted || isActive ? '#0091ff' : '#e5e7eb' }} />
                                             )}
 
                                             {/* Circle */}
                                             <div
                                                 className={`
-                        w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ring-4 ring-white transition-all duration-300
+                        w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center font-bold text-[10px] md:text-xs ring-2 md:ring-4 ring-white transition-all duration-300
                         ${isActive ? 'text-white shadow-md scale-110' : ''}
                         ${isCompleted ? 'text-white' : ''}
                         ${!isActive && !isCompleted ? 'bg-gray-100 text-gray-400 border border-gray-200' : ''}
                       `}
                                                 style={isActive || isCompleted ? { backgroundColor: '#0091ff' } : {}}
                                             >
-                                                {isCompleted ? <Check className="w-4 h-4" /> : step.number}
+                                                {isCompleted ? <Check className="w-3 h-3 md:w-4 md:h-4" /> : step.number}
                                             </div>
                                         </div>
                                     );
@@ -81,18 +81,19 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                             </div>
 
                             {/* Step Title Indicator */}
-                            <div className="h-8 w-px bg-gray-200 mx-4 hidden md:block" />
-                            <div className="hidden md:flex flex-col">
+                            <div className="h-8 w-px bg-gray-200 mx-2 md:mx-4 hidden sm:block" />
+                            <div className="hidden sm:flex flex-col">
                                 <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Current Step</span>
-                                <span className="text-sm font-bold text-gray-900">{steps[currentStep - 1]?.title || 'Survey'}</span>
+                                <span className="text-sm font-bold text-gray-900 line-clamp-1 max-w-[100px] md:max-w-none">{steps[currentStep - 1]?.title || 'Survey'}</span>
                             </div>
                         </div>
 
                         {/* RIGHT: Cost & Info */}
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-2 md:gap-6">
                             <div className="text-right">
-                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Estimated Cost</p>
-                                <p className="text-lg font-bold" style={{ color: '#0091ff' }}>Rp{formatRupiah(calculation.totalCost)}</p>
+                                <p className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider hidden sm:block">Estimated Cost</p>
+                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider sm:hidden">Cost</p>
+                                <p className="text-sm md:text-lg font-bold" style={{ color: '#0091ff' }}>Rp{formatRupiah(calculation.totalCost)}</p>
                             </div>
 
                             {onReset && (

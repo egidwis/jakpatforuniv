@@ -5,9 +5,9 @@ import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactio
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle, AlertCircle, Trash2 } from 'lucide-react';
+import { Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle, AlertCircle, Trash2, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
 
 // Define the status steps in order
@@ -226,6 +226,7 @@ function ProgressTracker({ currentStep, paymentLink, steps }: { currentStep: num
 export function StatusPage() {
     const { user } = useAuth();
     const { t } = useLanguage();
+    const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
     const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -422,9 +423,25 @@ export function StatusPage() {
 
     return (
         <div className="p-6 md:p-8 max-w-6xl mx-auto">
+            {/* Floating Mobile Header */}
+            <div className="fixed top-4 left-4 right-4 z-40 md:hidden">
+                <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-between">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={toggleSidebar}
+                        className="-ml-2 h-9 w-9"
+                    >
+                        <Menu className="w-5 h-5 text-gray-700" />
+                    </Button>
+                    <span className="text-sm font-semibold text-gray-700">Track Status</span>
+                    <div className="w-9" />
+                </div>
+            </div>
+            <div className="h-14 md:hidden" />{/* Spacer for floating header */}
             <div className="space-y-8">
                 <div className="space-y-6">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="hidden md:flex items-center gap-2 mb-2">
                         <h1 className="text-xl font-semibold text-gray-800 dark:text-white">{t('pageTitle')}</h1>
                     </div>
 

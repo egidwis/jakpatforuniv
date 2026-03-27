@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { HelpCircle, Send, Bot } from 'lucide-react';
+import { HelpCircle, Send, Bot, Menu } from 'lucide-react';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
 import { getOrCreateChatSession, getChatMessages, saveChatMessage } from '@/utils/supabase';
@@ -12,10 +13,11 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import ReactMarkdown from 'react-markdown';
-import { useSearchParams } from 'react-router-dom';
+
 
 export function ChatPage() {
     const { user } = useAuth();
+    const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
 
 
     const faqs = [
@@ -296,7 +298,23 @@ Rules:
     };
 
     return (
-        <div className="p-6 md:p-8 max-w-6xl mx-auto h-[calc(100vh-4rem)] flex flex-col">
+        <div className="p-6 md:p-8 max-w-6xl mx-auto h-screen md:h-[calc(100vh-4rem)] flex flex-col">
+            {/* Floating Mobile Header */}
+            <div className="fixed top-4 left-4 right-4 z-40 md:hidden">
+                <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-between">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={toggleSidebar}
+                        className="-ml-2 h-9 w-9"
+                    >
+                        <Menu className="w-5 h-5 text-gray-700" />
+                    </Button>
+                    <span className="text-sm font-semibold text-gray-700">Support</span>
+                    <div className="w-9" />
+                </div>
+            </div>
+            <div className="h-16 shrink-0 md:hidden" />{/* Spacer for floating header */}
             <div className="space-y-4 h-full flex flex-col pt-2">
                 <div className="grid md:grid-cols-2 gap-6 items-start flex-1 min-h-0">
                     {/* FAQ Card - Left Side */}
@@ -398,10 +416,10 @@ Rules:
                                     disabled={isLoading}
                                     className="flex-1 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 focus-visible:ring-blue-500 focus-visible:ring-offset-0 focus-visible:border-blue-500 py-6 pl-4 pr-14 rounded-xl text-[15px] shadow-sm transition-all placeholder:text-gray-400"
                                 />
-                                <Button 
-                                    type="submit" 
-                                    size="icon" 
-                                    disabled={isLoading || !input.trim()} 
+                                <Button
+                                    type="submit"
+                                    size="icon"
+                                    disabled={isLoading || !input.trim()}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-all disabled:opacity-50"
                                 >
                                     <Send className="w-4 h-4 ml-0.5" />

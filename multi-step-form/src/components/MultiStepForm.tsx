@@ -8,6 +8,8 @@ import { StepTwo } from './StepTwo';
 import { StepThree } from './StepThree';
 import { StepFour } from './StepFour';
 import { UnifiedHeader } from './UnifiedHeader';
+import { Menu } from 'lucide-react';
+import { Button } from './ui/button';
 
 // Fungsi untuk mendapatkan tanggal hari ini dalam format YYYY-MM-DD
 const getTodayDate = () => {
@@ -185,15 +187,29 @@ export function MultiStepForm() {
 
   return (
     <div className={`multi-step-form ${isHeaderVisible ? 'pt-24' : ''}`}>
-      {isHeaderVisible && (
+      {isHeaderVisible ? (
         <UnifiedHeader
           currentStep={currentStep}
           formData={formData}
           onToggleSidebar={toggleSidebar}
           onReset={handleReset}
         />
+      ) : (
+        <div className="fixed top-4 left-4 right-4 z-40 md:hidden">
+          <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              className="-ml-2 h-9 w-9"
+            >
+              <Menu className="w-5 h-5 text-gray-700" />
+            </Button>
+            <span className="text-sm font-semibold text-gray-700">Dashboard</span>
+            <div className="w-9" /> {/* spacer to center title */}
+          </div>
+        </div>
       )}
-
 
       {/* Form Content */}
       <div className="form-content mt-8 max-w-5xl mx-auto px-6 pb-24">
