@@ -207,6 +207,7 @@ export interface ScheduledAd {
   ad_link: string;
   notes?: string;
   google_calendar_event_id?: string;
+  is_extra_ad?: boolean;
   created_at?: string;
   created_by?: string;
   // Joins

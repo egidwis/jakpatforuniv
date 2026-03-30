@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Clock } from 'lucide-react';
+import { Loader2, Clock, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -18,10 +18,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { createScheduledAd, getScheduledAds, deleteScheduledAd, getScheduledAdsBySubmission } from '../utils/supabase';
+import { supabase, createScheduledAd, getScheduledAds, deleteScheduledAd, getScheduledAdsBySubmission } from '../utils/supabase';
 
-// Max 3 ads per day
+// Max 3 regular ads per day, 1 extra ad per day
 const MAX_ADS_PER_DAY = 3;
+const MAX_EXTRA_ADS_PER_DAY = 1;
 
 interface PublishAdsModalProps {
     isOpen: boolean;
@@ -35,13 +36,18 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
     const [isLoading, setIsLoading] = useState(false);
     const [isFetchingAds, setIsFetchingAds] = useState(false);
     const [existingAdId, setExistingAdId] = useState<string | null>(null);
+    const [existingIsExtra, setExistingIsExtra] = useState(false);
 
     // Form state
     const [startDate, setStartDate] = useState<Date | null>(null);
     const [startTime, setStartTime] = useState<string>('15:00');
 
-    // We need to count ads per date string "YYYY-MM-DD"
-    const [adCountsByDate, setAdCountsByDate] = useState<Record<string, number>>({});
+    // Extra Ad toggle
+    const [isExtraMode, setIsExtraMode] = useState(false);
+
+    // We need to count ads per date string "YYYY-MM-DD" — separate for regular and extra
+    const [regularCountsByDate, setRegularCountsByDate] = useState<Record<string, number>>({});
+    const [extraCountsByDate, setExtraCountsByDate] = useState<Record<string, number>>({});
 
     // Safe accessors
     const researcherName = submission.researcherName || submission.full_name || '-';
@@ -49,12 +55,18 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
     const title = submission.formTitle || submission.title || 'Untitled';
     const submissionDuration = submission.duration || 1;
 
+    // Active counts based on mode
+    const activeCountsByDate = isExtraMode ? extraCountsByDate : regularCountsByDate;
+    const activeMaxPerDay = isExtraMode ? MAX_EXTRA_ADS_PER_DAY : MAX_ADS_PER_DAY;
+
     // Reset state & fetch ads when opened
     useEffect(() => {
         if (isOpen) {
             setStartDate(null);
             setStartTime('15:00');
             setExistingAdId(null);
+            setExistingIsExtra(false);
+            setIsExtraMode(false);
             fetchExistingAds();
             fetchMySchedule();
         }
@@ -68,6 +80,8 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
             if (myAds && myAds.length > 0) {
                 const myAd = myAds[0];
                 setExistingAdId(myAd.id);
+                setExistingIsExtra(!!myAd.is_extra_ad);
+                setIsExtraMode(!!myAd.is_extra_ad);
                 if (myAd.start_date) {
                     const dateObj = new Date(myAd.start_date);
                     setStartDate(dateObj);
@@ -85,7 +99,8 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
         setIsFetchingAds(true);
         try {
             const ads = await getScheduledAds();
-            const counts: Record<string, number> = {};
+            const regularCounts: Record<string, number> = {};
+            const extraCounts: Record<string, number> = {};
 
             ads.forEach((ad: any) => {
                 if (ad.start_date && ad.end_date && ad.form_submission_id !== submission.id) {
@@ -95,15 +110,18 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                     const endDay = new Date(ad.end_date);
                     endDay.setHours(0, 0, 0, 0);
 
+                    const targetCounts = ad.is_extra_ad ? extraCounts : regularCounts;
+
                     while (current < endDay) {
                         const dateStr = getDateString(current);
-                        counts[dateStr] = (counts[dateStr] || 0) + 1;
+                        targetCounts[dateStr] = (targetCounts[dateStr] || 0) + 1;
                         current.setDate(current.getDate() + 1);
                     }
                 }
             });
 
-            setAdCountsByDate(counts);
+            setRegularCountsByDate(regularCounts);
+            setExtraCountsByDate(extraCounts);
         } catch (error) {
             console.error("Failed to fetch ads for capacity checking:", error);
             toast.error("Failed to check schedule capacity.");
@@ -173,9 +191,10 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
 
         while (checkDay < checkEndDay) {
             const dayStr = getDateString(checkDay);
-            const dayCount = adCountsByDate[dayStr] || 0;
-            if (dayCount >= MAX_ADS_PER_DAY) {
-                toast.error(`Tanggal ${checkDay.toLocaleDateString('id-ID')} sudah penuh (${MAX_ADS_PER_DAY}/${MAX_ADS_PER_DAY} iklan). Pilih tanggal lain.`);
+            const dayCount = activeCountsByDate[dayStr] || 0;
+            if (dayCount >= activeMaxPerDay) {
+                const typeLabel = isExtraMode ? 'Extra Ad' : 'iklan';
+                toast.error(`Tanggal ${checkDay.toLocaleDateString('id-ID')} sudah penuh (${activeMaxPerDay}/${activeMaxPerDay} ${typeLabel}). Pilih tanggal lain.`);
                 return;
             }
             checkDay.setDate(checkDay.getDate() + 1);
@@ -205,7 +224,16 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                 ad_link: adLink,
                 notes: '', // Notes removed from UI
                 google_calendar_event_id: '',
+                is_extra_ad: isExtraMode,
             });
+
+            // 3. Sync is_extra_ad flag to survey_pages
+            if (pageSlug) {
+                await supabase
+                    .from('survey_pages')
+                    .update({ is_extra_ad: isExtraMode })
+                    .eq('slug', pageSlug);
+            }
 
             toast.success('Ad scheduled successfully!');
             onSuccess();
@@ -224,6 +252,15 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
         setIsLoading(true);
         try {
             await deleteScheduledAd(existingAdId);
+
+            // Reset is_extra_ad on survey_pages when cancelling
+            if (pageSlug) {
+                await supabase
+                    .from('survey_pages')
+                    .update({ is_extra_ad: false })
+                    .eq('slug', pageSlug);
+            }
+
             toast.success('Schedule removed successfully!');
             onSuccess();
             onClose();
@@ -232,6 +269,15 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
             toast.error('Failed to remove schedule');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // Reset date selection when toggling mode (unless editing existing)
+    const handleModeToggle = (extra: boolean) => {
+        setIsExtraMode(extra);
+        // Only reset date if not editing existing schedule with same mode
+        if (!existingAdId || existingIsExtra !== extra) {
+            setStartDate(null);
         }
     };
 
@@ -259,7 +305,52 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                         </div>
                     </div>
 
+                    {/* Ad Type Toggle */}
+                    <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Ad Type</Label>
+                        <div className="flex bg-gray-100 p-1 rounded-lg w-full">
+                            <button
+                                type="button"
+                                onClick={() => handleModeToggle(false)}
+                                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all ${
+                                    !isExtraMode
+                                        ? 'bg-white shadow-sm text-blue-700 ring-1 ring-blue-200'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                Regular Ad
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                    !isExtraMode ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'
+                                }`}>
+                                    max {MAX_ADS_PER_DAY}/day
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleModeToggle(true)}
+                                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all ${
+                                    isExtraMode
+                                        ? 'bg-white shadow-sm text-amber-700 ring-1 ring-amber-200'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                Extra Ad
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                    isExtraMode ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-500'
+                                }`}>
+                                    max {MAX_EXTRA_ADS_PER_DAY}/day
+                                </span>
+                            </button>
+                        </div>
 
+                        {/* Extra Ad info banner */}
+                        {isExtraMode && (
+                            <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs animate-in fade-in slide-in-from-top-1 duration-200">
+                                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                <span>Extra Ad akan ditampilkan di <strong>posisi paling bawah</strong> pada daftar survei publik.</span>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Schedule Inputs */}
                     <div className="flex flex-col gap-4">
@@ -273,15 +364,17 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 py-1 px-1">
                                 {availableDates.map((date) => {
                                     const dateStr = getDateString(date);
-                                    const count = adCountsByDate[dateStr] || 0;
-                                    const isFull = count >= MAX_ADS_PER_DAY;
+                                    const count = activeCountsByDate[dateStr] || 0;
+                                    const isFull = count >= activeMaxPerDay;
                                     const isSelected = startDate && getDateString(startDate) === dateStr;
 
                                     let statusColors = 'bg-white border-slate-200 hover:border-blue-400 shadow-sm';
                                     if (isFull) {
                                         statusColors = 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed';
                                     } else if (isSelected) {
-                                        statusColors = 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
+                                        statusColors = isExtraMode
+                                            ? 'bg-amber-50 border-amber-600 ring-1 ring-amber-600 shadow-md'
+                                            : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
                                     }
 
                                     let dotColor = 'bg-emerald-500';
@@ -299,13 +392,13 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                                             <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
                                                 {date.toLocaleDateString('id-ID', { weekday: 'short' })}
                                             </span>
-                                            <span className={`font-extrabold text-[15px] leading-tight mb-1 ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
+                                            <span className={`font-extrabold text-[15px] leading-tight mb-1 ${isSelected ? (isExtraMode ? 'text-amber-900' : 'text-blue-900') : 'text-slate-800'}`}>
                                                 {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
                                             </span>
                                             <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
                                                 <div className={`w-1 h-1 rounded-full ${dotColor}`} />
                                                 <span className={`text-[9px] font-semibold ${isFull ? 'text-red-700' : 'text-slate-600'}`}>
-                                                    {count}/{MAX_ADS_PER_DAY}
+                                                    {count}/{activeMaxPerDay}
                                                 </span>
                                             </div>
                                         </button>
@@ -372,14 +465,14 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                     <Button variant="outline" onClick={onClose} disabled={isLoading}>
                         Cancel
                     </Button>
-                    <Button onClick={handlePublish} disabled={isLoading || !startDate} className="bg-blue-600 hover:bg-blue-700">
+                    <Button onClick={handlePublish} disabled={isLoading || !startDate} className={isExtraMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}>
                         {isLoading ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 Booking Slot...
                             </>
                         ) : (
-                            'Book Schedule'
+                            isExtraMode ? 'Book Extra Slot' : 'Book Schedule'
                         )}
                     </Button>
                 </DialogFooter>

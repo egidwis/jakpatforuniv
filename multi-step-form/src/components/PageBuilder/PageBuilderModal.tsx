@@ -25,6 +25,7 @@ interface PageBuilderModalProps {
     submissionPrizePerWinner?: number;
     submissionWinnerCount?: number;
     submissionCriteria?: string;
+    isExtraAd?: boolean; // Whether this page is an Extra Ad (set via PublishAdsModal)
 }
 
 // Helper: generate slug from title
@@ -38,7 +39,7 @@ const generateSlug = (title: string): string => {
         .slice(0, 60);                 // max 60 chars
 };
 
-export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount, submissionCriteria }: PageBuilderModalProps) {
+export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount, submissionCriteria, isExtraAd }: PageBuilderModalProps) {
     const isStandalone = !submissionId;
 
     const [savedPageId, setSavedPageId] = useState<string | null>(null);
@@ -181,6 +182,8 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 blocks: formData.blocks,
                 custom_fields: formData.custom_fields,
                 updated_at: new Date().toISOString(),
+                // Preserve is_extra_ad: use prop if provided, else keep existing value
+                is_extra_ad: isExtraAd ?? initialData?.is_extra_ad ?? false,
             };
 
             // Only attach submission_id if it exists

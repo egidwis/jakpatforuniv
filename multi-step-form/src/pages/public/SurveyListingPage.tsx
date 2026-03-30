@@ -38,6 +38,13 @@ export function SurveyListingPage() {
                 return true;
             });
 
+            // Sort: Extra Ad pages always at the bottom
+            activePages.sort((a, b) => {
+                if (a.is_extra_ad && !b.is_extra_ad) return 1;
+                if (!a.is_extra_ad && b.is_extra_ad) return -1;
+                return 0; // Preserve existing order for same type
+            });
+
             setPages(activePages);
         } catch (error) {
             console.error('Error loading pages:', error);

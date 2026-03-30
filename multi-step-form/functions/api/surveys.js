@@ -52,7 +52,7 @@ export async function onRequestGet(context) {
         // - Within valid date range (start <= now <= end) OR dates are null
         const { data: surveys, error } = await supabase
             .from('survey_pages')
-            .select('*')
+            .select('*, form_submissions!submission_id(prize_per_winner, winner_count)')
             .eq('is_published', true)
             .order('created_at', { ascending: false });
 
@@ -81,8 +81,14 @@ export async function onRequestGet(context) {
                 is_new: (new Date() - new Date(s.created_at)) < (7 * 24 * 60 * 60 * 1000),
                 banner_url: s.banner_url ? `${baseUrl}/cdn/${s.banner_url.split('/storage/v1/object/public/')[1] || ''}` : null,
                 reward: {
-                    amount: parseInt(s.rewards_amount || 0),
-                    quota: parseInt(s.rewards_count || 0),
+                    amount: (() => {
+                        const sub = Array.isArray(s.form_submissions) ? s.form_submissions[0] : s.form_submissions;
+                        return (sub?.prize_per_winner || 0) * (sub?.winner_count || 0);
+                    })(),
+                    quota: (() => {
+                        const sub = Array.isArray(s.form_submissions) ? s.form_submissions[0] : s.form_submissions;
+                        return sub?.winner_count || 0;
+                    })(),
                     currency: 'IDR'
                 },
                 publish_date: new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),

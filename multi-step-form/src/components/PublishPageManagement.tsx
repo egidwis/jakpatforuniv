@@ -13,6 +13,7 @@ interface PageData {
     slug: string;
     title: string;
     is_published: boolean;
+    is_extra_ad: boolean;
     views_count: number;
     publish_start_date: string | null;
     publish_end_date: string | null;
@@ -117,7 +118,12 @@ export function PublishPageManagement() {
         fetchPages(); // Refresh data
     };
 
-    const filteredPages = filterPages(activeTab);
+    const filteredPages = filterPages(activeTab).sort((a, b) => {
+        // Extra Ads always at the bottom within each tab
+        if (a.is_extra_ad && !b.is_extra_ad) return 1;
+        if (!a.is_extra_ad && b.is_extra_ad) return -1;
+        return 0;
+    });
 
     return (
         <div className="container mx-auto p-4 md:p-8 space-y-6">
@@ -275,7 +281,9 @@ export function PublishPageManagement() {
                                             </TableCell>
                                             <TableCell className="border-y border-gray-200">
                                                 <div className="flex flex-col text-sm">
-                                                    {!page.submission_id ? (
+                                                    {page.is_extra_ad ? (
+                                                        <span className="font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-amber-100">Extra Ad</span>
+                                                    ) : !page.submission_id ? (
                                                         <span className="font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-purple-100">Announcement</span>
                                                     ) : (
                                                         <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-blue-100">Survey Ad</span>
