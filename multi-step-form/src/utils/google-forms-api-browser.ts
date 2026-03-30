@@ -245,7 +245,7 @@ export class GoogleFormsApiService {
         }
 
         // 4. Address
-        if (/\b(address|alamat|alamat rumah|domisili|residence)\b/i.test(titleLower)) {
+        if (/\b(address|alamat|alamat rumah|alamat lengkap)\b/i.test(titleLower)) {
           if (!personalDataKeywords.includes('address')) personalDataKeywords.push('address');
           hasPersonalDataQuestions = true;
         }

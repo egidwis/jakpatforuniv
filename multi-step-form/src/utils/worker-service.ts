@@ -582,7 +582,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat email|surel)[^<]*)</gi,
         /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nomor|telepon|handphone|hanphone|telp|hp|whatsapp|wa)[^<]*)</gi,
         /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:nama lengkap|nama depan|nama belakang|nama)[^<]*)</gi,
-        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat|domisili|tempat tinggal)[^<]*)</gi,
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat lengkap|alamat rumah|alamat tempat tinggal|alamat)[^<]*)</gi,
 
         // Also check span elements that might contain question text
         /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:email|e-?mail|alamat email)[^<]*)</gi,
@@ -606,7 +606,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
             if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
           } else if (/\b(name|nama)\b/i.test(match)) {
             if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
-          } else if (/\b(address|alamat|domisili|residence)\b/i.test(match)) {
+          } else if (/\b(address|alamat|alamat rumah|alamat lengkap)\b/i.test(match)) {
             if (!detectedKeywords.includes('address')) detectedKeywords.push('address');
           } else if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(match)) {
             if (!detectedKeywords.includes('nik/id')) detectedKeywords.push('nik/id');
