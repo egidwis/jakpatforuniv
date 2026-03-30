@@ -18,7 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { createScheduledAd, getScheduledAds, deleteScheduledAd, getScheduledAdsBySubmission, updateFormStatus } from '../utils/supabase';
+import { createScheduledAd, getScheduledAds, deleteScheduledAd, getScheduledAdsBySubmission } from '../utils/supabase';
 
 // Max 3 ads per day
 const MAX_ADS_PER_DAY = 3;
@@ -207,9 +207,6 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                 google_calendar_event_id: '',
             });
 
-            // 3. Update Submission Status to 'scheduled'
-            await updateFormStatus(submission.id, 'scheduled');
-
             toast.success('Ad scheduled successfully!');
             onSuccess();
             onClose();
@@ -227,7 +224,6 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
         setIsLoading(true);
         try {
             await deleteScheduledAd(existingAdId);
-            await updateFormStatus(submission.id, 'scheduling');
             toast.success('Schedule removed successfully!');
             onSuccess();
             onClose();

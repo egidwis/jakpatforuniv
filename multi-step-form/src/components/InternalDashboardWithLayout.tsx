@@ -159,12 +159,12 @@ export function InternalDashboardWithLayout() {
     },
     {
       id: 'scheduling' as Page,
-      label: 'Ad Schedule',
+      label: 'Ads Schedule',
       icon: FileText, // Or Calendar if imported
     },
     {
       id: 'publish-page' as Page,
-      label: 'Publish Page',
+      label: 'Pages',
       icon: Globe,
     },
   ];

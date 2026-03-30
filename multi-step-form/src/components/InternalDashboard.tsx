@@ -77,6 +77,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
 
+  // Derived schedule state: Set of submission IDs that have a scheduled_ads record
+  const [scheduledSubmissionIds, setScheduledSubmissionIds] = useState<Set<string>>(new Set());
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(50); // Default 50 items per page
@@ -272,10 +275,12 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
           if (adsError) console.error('Error fetching scheduled ads:', adsError);
 
+          const scheduledIds = new Set<string>();
           if (ads && ads.length > 0) {
             const adMap: Record<string, any> = {};
             ads.forEach((ad: any) => {
               adMap[ad.form_submission_id] = ad;
+              scheduledIds.add(ad.form_submission_id);
             });
             transformed.forEach(sub => {
               if (adMap[sub.id]) {
@@ -284,6 +289,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               }
             });
           }
+          setScheduledSubmissionIds(scheduledIds);
 
         } else {
           setExistingPages({}); // Clear pages if no submissions
@@ -967,10 +973,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               <div className="flex items-center gap-2">
                                 <span className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">Review Status:</span>
                                 {(() => {
-                                  // Map post-approved statuses to "approved" for display
+                                  // Map post-approved & legacy schedule statuses to "approved" for display
                                   const getDisplayStatus = (status: string | undefined) => {
                                     const s = status || 'pending';
-                                    if (['scheduling', 'scheduled', 'publishing', 'completed', 'approved'].includes(s)) return 'approved';
+                                    if (['approved', 'scheduling', 'scheduled', 'publishing', 'completed'].includes(s)) return 'approved';
                                     return s;
                                   };
                                   const displayStatus = getDisplayStatus(submission.status);
@@ -1242,7 +1248,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
                         {/* Publish & Pages (New Column) */}
                         <TableCell className="align-top py-4 space-y-1.5 w-[220px] pl-16 pr-8 border-y border-r border-gray-200 rounded-r-xl">
-                          {['scheduled', 'publishing', 'completed'].includes(submission.status || '') ? (
+                          {scheduledSubmissionIds.has(submission.id) ? (
                             <div className="flex items-center gap-1.5">
                               {/* Status badge (subtle) */}
                               <div className="w-[120px] flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md">
@@ -1336,7 +1342,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                       <Button
                                         variant="outline"
                                         size="sm"
-                                        disabled={submission.status !== 'scheduled'}
+                                        disabled={!scheduledSubmissionIds.has(submission.id)}
                                         className="w-[120px] justify-start h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200"
                                         onClick={() => handleOpenPageBuilder(submission)}
                                       >
@@ -1345,7 +1351,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                       </Button>
                                     </div>
                                   </TooltipTrigger>
-                                  {submission.status !== 'scheduled' && (
+                                  {!scheduledSubmissionIds.has(submission.id) && (
                                     <TooltipContent>
                                       <p>Must schedule the ad before building a page</p>
                                     </TooltipContent>
@@ -1455,21 +1461,17 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           <select
                             className={`w-full px-3 py-2 text-xs font-medium rounded-lg border-0 cursor-pointer transition-all focus:ring-2 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 focus:ring-red-500' :
                               submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 focus:ring-blue-500' :
-                                submission.status === 'scheduling' ? 'bg-purple-100 text-purple-700 focus:ring-purple-500' :
-                                  submission.status === 'scheduled' ? 'bg-fuchsia-100 text-fuchsia-700 focus:ring-fuchsia-500' :
-                                    submission.status === 'publishing' ? 'bg-indigo-100 text-indigo-700 focus:ring-indigo-500' :
-                                      submission.status === 'completed' ? 'bg-gray-100 text-gray-800 focus:ring-gray-500' :
-                                        'bg-gray-100 text-gray-800'
+                                submission.status === 'rejected' ? 'bg-red-100 text-red-700 focus:ring-red-500' :
+                                  submission.status === 'approved' ? 'bg-green-100 text-green-700 focus:ring-green-500' :
+                                    'bg-gray-100 text-gray-800'
                               }`}
                             value={submission.status || 'in_review'}
                             onChange={(e) => handleStatusChange(submission.id, e.target.value)}
                           >
                             <option value="spam" className="bg-white text-gray-900">Spam</option>
                             <option value="in_review" className="bg-white text-gray-900">In Review</option>
-                            <option value="scheduling" className="bg-white text-gray-900">Ad Schedule</option>
-                            <option value="scheduled" className="bg-white text-gray-900">Scheduled</option>
-                            <option value="publishing" className="bg-white text-gray-900">Publishing</option>
-                            <option value="completed" className="bg-white text-gray-900">Completed</option>
+                            <option value="approved" className="bg-white text-gray-900">Approved</option>
+                            <option value="rejected" className="bg-white text-gray-900">Rejected</option>
                           </select>
                         </div>
                         <div className="space-y-1">
