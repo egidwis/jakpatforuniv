@@ -3,9 +3,10 @@ import { supabase } from '@/utils/supabase';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Search, ExternalLink, RefreshCw, PenLine, Plus } from 'lucide-react';
+import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { RespondentsListModal } from './PublishPage/RespondentsListModal';
+import { WinnerSelectionModal } from './WinnerSelectionModal';
 import { toast } from 'sonner';
 
 interface PageData {
@@ -18,6 +19,8 @@ interface PageData {
     publish_start_date: string | null;
     publish_end_date: string | null;
     submission_id: string;
+    rewards_amount: string | null;
+    rewards_count: number | null;
     created_at: string;
     form_submissions?: {
         title: string;
@@ -39,6 +42,9 @@ export function PublishPageManagement() {
 
     // Respondents Modal State
     const [viewRespondentsPage, setViewRespondentsPage] = useState<PageData | null>(null);
+
+    // Winner Selection Modal State
+    const [winnerSelectionPage, setWinnerSelectionPage] = useState<PageData | null>(null);
 
     const fetchPages = async () => {
         setLoading(true);
@@ -371,14 +377,26 @@ export function PublishPageManagement() {
                                                     </Button>
 
                                                     {page.submission_id && (
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() => setViewRespondentsPage(page)}
-                                                            title="View Submission"
-                                                            className="h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white"
-                                                        >
-                                                            Submissions
-                                                        </Button>
+                                                        <>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => setWinnerSelectionPage(page)}
+                                                                title="Pilih Pemenang"
+                                                                className="h-8 px-2.5 text-yellow-700 border-yellow-300 hover:bg-yellow-50"
+                                                            >
+                                                                <Trophy className="w-3.5 h-3.5 mr-1" />
+                                                                Pemenang
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => setViewRespondentsPage(page)}
+                                                                title="View Submission"
+                                                                className="h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white"
+                                                            >
+                                                                Submissions
+                                                            </Button>
+                                                        </>
                                                     )}
                                                 </div>
                                             </TableCell>
@@ -409,6 +427,19 @@ export function PublishPageManagement() {
                         onClose={() => setViewRespondentsPage(null)}
                         pageId={viewRespondentsPage.id}
                         pageTitle={viewRespondentsPage.title}
+                    />
+                )
+            }
+
+            {
+                winnerSelectionPage && (
+                    <WinnerSelectionModal
+                        isOpen={!!winnerSelectionPage}
+                        onClose={() => setWinnerSelectionPage(null)}
+                        pageId={winnerSelectionPage.id}
+                        pageTitle={winnerSelectionPage.title}
+                        rewardAmount={parseInt(winnerSelectionPage.rewards_amount || '0')}
+                        rewardCount={winnerSelectionPage.rewards_count || 5}
                     />
                 )
             }
