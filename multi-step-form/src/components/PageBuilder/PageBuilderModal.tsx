@@ -114,47 +114,63 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
     useEffect(() => {
         if (isOpen) {
             setSavedPageId(null); // Reset for fresh modal session
-            if (initialData) {
-                setFormData({
-                    slug: initialData.slug,
-                    title: initialData.title,
-                    banner_url: initialData.banner_url || '',
-                    is_published: initialData.is_published,
-                    blocks: initialData.blocks || {},
-                    custom_fields: initialData.custom_fields || [],
-                    publish_start_date: submissionStartDate ? submissionStartDate : (initialData.publish_start_date ? initialData.publish_start_date : ''),
-                    publish_end_date: submissionEndDate ? submissionEndDate : (initialData.publish_end_date ? initialData.publish_end_date : ''),
-                    criteria_responden: submissionCriteria || initialData.criteria_responden || '',
-                });
-            } else {
-                // Reset for new page, auto-fill from submission title if available
-                const autoTitle = submissionTitle || '';
-                const autoSlug = autoTitle ? generateSlug(autoTitle) : '';
 
-                setFormData({
-                    slug: autoSlug,
-                    title: autoTitle,
-                    banner_url: '',
-                    is_published: false,
-                    blocks: {},
-                    custom_fields: [],
-                    publish_start_date: submissionStartDate ? submissionStartDate : '',
-                    publish_end_date: submissionEndDate ? submissionEndDate : '',
-                    criteria_responden: submissionCriteria || '',
-                });
-            }
-            if (isOpen) {
-                fetchRecentBanners();
-            }
-        }
-    }, [isOpen, initialData, submissionTitle, submissionStartDate, submissionEndDate, submissionCriteria]);
+            // Async helper: fetch criteria from DB if not provided via props
+            const initFormData = async () => {
+                let resolvedCriteria = submissionCriteria || '';
 
-    // Ensure criteria overrides safely if it arrives late
-    useEffect(() => {
-        if (isOpen && submissionCriteria && !formData.criteria_responden) {
-            setFormData(prev => ({ ...prev, criteria_responden: submissionCriteria }));
+                // Self-fetch criteria from form_submissions if submissionId exists
+                // but submissionCriteria prop was not passed by parent
+                if (!resolvedCriteria && submissionId) {
+                    try {
+                        const { data: submission } = await supabase
+                            .from('form_submissions')
+                            .select('criteria_responden')
+                            .eq('id', submissionId)
+                            .single();
+                        if (submission?.criteria_responden) {
+                            resolvedCriteria = submission.criteria_responden;
+                        }
+                    } catch (e) {
+                        console.warn('Failed to fetch submission criteria:', e);
+                    }
+                }
+
+                if (initialData) {
+                    setFormData({
+                        slug: initialData.slug,
+                        title: initialData.title,
+                        banner_url: initialData.banner_url || '',
+                        is_published: initialData.is_published,
+                        blocks: initialData.blocks || {},
+                        custom_fields: initialData.custom_fields || [],
+                        publish_start_date: submissionStartDate ? submissionStartDate : (initialData.publish_start_date ? initialData.publish_start_date : ''),
+                        publish_end_date: submissionEndDate ? submissionEndDate : (initialData.publish_end_date ? initialData.publish_end_date : ''),
+                        criteria_responden: resolvedCriteria || initialData.criteria_responden || '',
+                    });
+                } else {
+                    // Reset for new page, auto-fill from submission title if available
+                    const autoTitle = submissionTitle || '';
+                    const autoSlug = autoTitle ? generateSlug(autoTitle) : '';
+
+                    setFormData({
+                        slug: autoSlug,
+                        title: autoTitle,
+                        banner_url: '',
+                        is_published: false,
+                        blocks: {},
+                        custom_fields: [],
+                        publish_start_date: submissionStartDate ? submissionStartDate : '',
+                        publish_end_date: submissionEndDate ? submissionEndDate : '',
+                        criteria_responden: resolvedCriteria,
+                    });
+                }
+            };
+
+            initFormData();
+            fetchRecentBanners();
         }
-    }, [submissionCriteria, isOpen]);
+    }, [isOpen, initialData, submissionTitle, submissionStartDate, submissionEndDate, submissionCriteria, submissionId]);
 
     const handleSave = async (overrideStatus?: boolean) => {
         if (!formData.slug || !formData.title) {
