@@ -215,9 +215,28 @@ export interface ScheduledAd {
   researcher_name?: string; // from form_submissions
 }
 
-// Fungsi untuk menyimpan form submission
+// Fungsi untuk menyimpan form submission (with duplicate detection)
 export const saveFormSubmission = async (formData: FormSubmission) => {
   try {
+    // Duplicate detection: check if same email + title + total_cost exists within last 60 seconds
+    if (formData.email && formData.title) {
+      const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
+      const { data: existing } = await supabase
+        .from('form_submissions')
+        .select('*')
+        .eq('email', formData.email)
+        .eq('title', formData.title)
+        .eq('total_cost', formData.total_cost)
+        .gte('created_at', sixtySecondsAgo)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        console.warn('Duplicate submission detected, returning existing record:', existing[0].id);
+        return existing[0];
+      }
+    }
+
     const { data, error } = await supabase
       .from('form_submissions')
       .insert([formData])

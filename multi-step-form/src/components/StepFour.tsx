@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
@@ -38,6 +38,8 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
 
   const [voucherInfo, setVoucherInfo] = useState<{ isValid: boolean; message?: string; discount?: number }>({ isValid: false });
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   // Hitung biaya saat form data berubah
   useEffect(() => {
@@ -61,15 +63,27 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
 
   // Fungsi untuk menyimpan data ke Supabase dan membuat pembayaran
   const handleSubmit = async () => {
+    // Guard: prevent double-submit using ref (synchronous, immune to React batching)
+    if (isSubmittingRef.current) {
+      console.log('Submit already in progress, ignoring duplicate click');
+      return;
+    }
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+
     try {
       // Validasi data
       if (!isTermsAccepted) {
         toast.error(t('errorTermsRequired'));
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
         return;
       }
 
       if (!formData.title || !formData.description || !formData.questionCount || !formData.duration) {
         toast.error(t('errorCompleteAllSurveyData'));
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
         return;
       }
 
@@ -129,6 +143,8 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         console.error('Error saat menyimpan data:', saveError);
         toast.dismiss(loadingToast);
         toast.error(t('errorSavingData'));
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
         return;
       }
 
@@ -222,11 +238,15 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
           toast.dismiss(loadingToast);
           console.error('Error saat membuat pembayaran:', paymentError);
           toast.error(t('errorPaymentFailed'));
+          isSubmittingRef.current = false;
+          setIsSubmitting(false);
         }
       }
     } catch (error: any) {
       console.error('Error saat menyimpan data:', error);
       toast.error(t('errorSavingDataGeneric'));
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -505,8 +525,13 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
           <button
             type="button"
             onClick={handleSubmit}
+            disabled={isSubmitting}
             className={`
-            px-8 py-3 rounded-xl text-white font-bold text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2
+            px-8 py-3 rounded-xl text-white font-bold text-base shadow-lg transition-all duration-200 flex items-center gap-2
+            ${isSubmitting
+                ? 'opacity-60 cursor-not-allowed pointer-events-none'
+                : 'hover:shadow-xl hover:-translate-y-0.5'
+              }
             ${formData.hasPersonalDataQuestions
                 ? 'bg-amber-500 hover:bg-amber-600'
                 : 'shadow-lg hover:shadow-xl'
@@ -514,7 +539,15 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
           `}
             style={!formData.hasPersonalDataQuestions ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
           >
-            {formData.hasPersonalDataQuestions ? (
+            {isSubmitting ? (
+              <>
+                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Memproses...
+              </>
+            ) : formData.hasPersonalDataQuestions ? (
               <>
                 <Send size={18} />
                 {t('submitForReview')}
