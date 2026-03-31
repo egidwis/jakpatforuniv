@@ -130,7 +130,11 @@ export class GoogleFormsApiService {
       settings: {
         isPublic: !apiResponse.settings?.quizSettings?.isQuiz,
         allowResponseEditing: apiResponse.settings?.allowResponseEditing || false,
-        collectEmail: apiResponse.settings?.collectEmail || false,
+        // Google Forms API uses `emailCollectionType` enum, NOT `collectEmail` boolean
+        // Values: "DO_NOT_COLLECT", "VERIFIED", "RESPONDER_INPUT"
+        collectEmail: apiResponse.settings?.emailCollectionType
+          ? apiResponse.settings.emailCollectionType !== 'DO_NOT_COLLECT'
+          : false,
       }
     };
   }
@@ -214,6 +218,14 @@ export class GoogleFormsApiService {
           hasPersonalDataQuestions = true;
         }
       });
+
+      // Check Google Form's built-in "Collect email addresses" setting
+      if (formData.settings?.collectEmail) {
+        if (!personalDataKeywords.includes('email otomatis')) {
+          personalDataKeywords.push('email otomatis');
+        }
+        hasPersonalDataQuestions = true;
+      }
 
       return {
         title: formData.title,

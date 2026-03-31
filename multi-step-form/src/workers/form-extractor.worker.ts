@@ -192,6 +192,10 @@ function detectPersonalDataKeywords(html: string): { hasPersonalData: boolean; k
     /Record\s+[^@]+@[^@]+\.[^@]+\s+as\s+the\s+email\s+to\s+be\s+included/i,
     /email\s+to\s+be\s+included\s+with\s+my\s+response/i,
     /collect\s+email\s+addresses/i,
+    // Indonesian patterns
+    /Rekam\s+[^@]+@[^@]+\.[^@]+\s+sebagai\s+email\s+yang\s+akan\s+disertakan/i,
+    /email\s+yang\s+akan\s+disertakan\s+dengan\s+tanggapan\s+saya/i,
+    /kumpulkan\s+alamat\s+email/i,
     // More specific patterns for email collection UI
     /checkbox.*email.*response/i,
     /record.*@.*email/i
