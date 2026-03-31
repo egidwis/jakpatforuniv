@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
     Loader2,
     Trophy,
@@ -30,6 +31,8 @@ import {
     Clock,
     ImageIcon,
     User,
+    Search,
+    Filter,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -42,6 +45,7 @@ interface MergedRespondent {
     custom_answers: any;
     submitted_at: string;
     // Masterdata
+    user_id: number | null;
     ktp_name: string | null;
     display_name: string | null;
     email: string | null;
@@ -90,6 +94,11 @@ export function WinnerSelectionModal({
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [showNotEligible, setShowNotEligible] = useState(false);
     const [criteria, setCriteria] = useState<string>('');
+
+    // Filter states
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterWallet, setFilterWallet] = useState('all');
+    const [filterProvince, setFilterProvince] = useState('all');
 
     // Fetch all data
     useEffect(() => {
@@ -196,6 +205,7 @@ export function WinnerSelectionModal({
                     e_wallet_number: pr.e_wallet_number,
                     custom_answers: pr.custom_answers,
                     submitted_at: pr.created_at,
+                    user_id: md.user_id || null,
                     ktp_name: md.ktp_name || null,
                     display_name: md.display_name || null,
                     email: md.email || null,
@@ -221,6 +231,35 @@ export function WinnerSelectionModal({
     const eligible = useMemo(() => respondents.filter(r => r.is_eligible), [respondents]);
     const notEligible = useMemo(() => respondents.filter(r => !r.is_eligible), [respondents]);
 
+    // Get unique wallet providers & provinces for filter dropdowns
+    const walletProviders = useMemo(() => {
+        const providers = new Set(eligible.map(r => r.ewallet_provider).filter(Boolean) as string[]);
+        return Array.from(providers).sort();
+    }, [eligible]);
+
+    const provinces = useMemo(() => {
+        const provs = new Set(eligible.map(r => r.province).filter(Boolean) as string[]);
+        return Array.from(provs).sort();
+    }, [eligible]);
+
+    // Filtered eligible list
+    const filteredEligible = useMemo(() => {
+        return eligible.filter(r => {
+            // Search by name or jakpat_id
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                const matchName = (r.ktp_name || '').toLowerCase().includes(q) || (r.display_name || '').toLowerCase().includes(q);
+                const matchId = r.jakpat_id.toLowerCase().includes(q);
+                if (!matchName && !matchId) return false;
+            }
+            // Filter by wallet provider
+            if (filterWallet !== 'all' && r.ewallet_provider !== filterWallet) return false;
+            // Filter by province
+            if (filterProvince !== 'all' && r.province !== filterProvince) return false;
+            return true;
+        });
+    }, [eligible, searchQuery, filterWallet, filterProvince]);
+
     // Already selected as winners for this survey?
     const hasExistingWinners = existingWinners.length > 0;
 
@@ -237,10 +276,11 @@ export function WinnerSelectionModal({
         });
     };
 
-    // Random pick
+    // Random pick (from filtered list)
     const handleRandomPick = () => {
-        const count = Math.min(rewardCount, eligible.length);
-        const shuffled = [...eligible].sort(() => Math.random() - 0.5);
+        const pool = filteredEligible;
+        const count = Math.min(rewardCount, pool.length);
+        const shuffled = [...pool].sort(() => Math.random() - 0.5);
         const picked = shuffled.slice(0, count);
         setSelectedIds(new Set(picked.map(p => p.jakpat_id)));
         toast.success(`${count} responden dipilih secara random`);
@@ -455,6 +495,50 @@ export function WinnerSelectionModal({
                             </div>
                         </div>
 
+                        {/* Filter Bar */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Search */}
+                            <div className="relative flex-1 min-w-[180px]">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                <Input
+                                    placeholder="Cari nama / Jakpat ID..."
+                                    className="pl-8 h-8 text-xs bg-gray-50 border-gray-200"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            {/* E-Wallet Filter */}
+                            <select
+                                value={filterWallet}
+                                onChange={(e) => setFilterWallet(e.target.value)}
+                                className="h-8 text-xs border border-gray-200 rounded-md px-2 bg-gray-50 text-gray-700 cursor-pointer"
+                            >
+                                <option value="all">Semua E-Wallet</option>
+                                {walletProviders.map(p => (
+                                    <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                                ))}
+                            </select>
+                            {/* Province Filter */}
+                            <select
+                                value={filterProvince}
+                                onChange={(e) => setFilterProvince(e.target.value)}
+                                className="h-8 text-xs border border-gray-200 rounded-md px-2 bg-gray-50 text-gray-700 cursor-pointer"
+                            >
+                                <option value="all">Semua Provinsi</option>
+                                {provinces.map(p => (
+                                    <option key={p} value={p}>{p}</option>
+                                ))}
+                            </select>
+                            {(searchQuery || filterWallet !== 'all' || filterProvince !== 'all') && (
+                                <button
+                                    onClick={() => { setSearchQuery(''); setFilterWallet('all'); setFilterProvince('all'); }}
+                                    className="text-[10px] text-gray-500 hover:text-gray-700 underline"
+                                >
+                                    Reset filter
+                                </button>
+                            )}
+                        </div>
+
                         {/* Actions */}
                         <div className="flex items-center gap-2">
                             <Button
@@ -462,10 +546,10 @@ export function WinnerSelectionModal({
                                 variant="outline"
                                 size="sm"
                                 className="text-xs"
-                                disabled={eligible.length === 0}
+                                disabled={filteredEligible.length === 0}
                             >
                                 <Shuffle className="w-3.5 h-3.5 mr-1.5" />
-                                Random Pick {Math.min(rewardCount, eligible.length)} Pemenang
+                                Random Pick {Math.min(rewardCount, filteredEligible.length)} Pemenang
                             </Button>
                             {selectedIds.size > 0 && (
                                 <Button
@@ -477,6 +561,13 @@ export function WinnerSelectionModal({
                                     Clear Selection
                                 </Button>
                             )}
+                            {/* Show filtered count if filtering */}
+                            {(searchQuery || filterWallet !== 'all' || filterProvince !== 'all') && (
+                                <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                                    <Filter className="w-3 h-3" />
+                                    {filteredEligible.length} / {eligible.length} ditampilkan
+                                </span>
+                            )}
                         </div>
 
                         {/* Eligible Table */}
@@ -486,6 +577,7 @@ export function WinnerSelectionModal({
                                     <TableRow>
                                         <TableHead className="w-10 text-xs"></TableHead>
                                         <TableHead className="text-xs">Jakpat ID</TableHead>
+                                        <TableHead className="text-xs">User ID</TableHead>
                                         <TableHead className="text-xs"><User className="w-3 h-3 inline mr-1" />Nama</TableHead>
                                         <TableHead className="text-xs"><MapPin className="w-3 h-3 inline mr-1" />Lokasi</TableHead>
                                         <TableHead className="text-xs">E-Wallet</TableHead>
@@ -493,14 +585,14 @@ export function WinnerSelectionModal({
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {eligible.length === 0 ? (
+                                    {filteredEligible.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-center py-8 text-gray-400">
+                                            <TableCell colSpan={7} className="text-center py-8 text-gray-400">
                                                 Tidak ada responden yang eligible
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        eligible.map(r => (
+                                        filteredEligible.map(r => (
                                             <TableRow
                                                 key={r.respondent_id}
                                                 className={`cursor-pointer transition-colors ${selectedIds.has(r.jakpat_id) ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}
@@ -514,6 +606,9 @@ export function WinnerSelectionModal({
                                                 </TableCell>
                                                 <TableCell>
                                                     <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{r.jakpat_id}</span>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-gray-500 font-mono">
+                                                    {r.user_id || <span className="text-gray-300">—</span>}
                                                 </TableCell>
                                                 <TableCell className="text-sm">
                                                     {r.ktp_name || r.display_name || <span className="text-gray-400 italic text-xs">Not in masterdata</span>}
