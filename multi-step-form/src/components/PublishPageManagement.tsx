@@ -124,12 +124,13 @@ export function PublishPageManagement() {
         fetchPages(); // Refresh data
     };
 
-    const filteredPages = filterPages(activeTab).sort((a, b) => {
-        // Extra Ads always at the bottom within each tab
-        if (a.is_extra_ad && !b.is_extra_ad) return 1;
-        if (!a.is_extra_ad && b.is_extra_ad) return -1;
-        return 0;
-    });
+    // Sort by page type: Regular Ad → Extra Ad → Announcement
+    const getPagePriority = (page: PageData) => {
+        if (page.submission_id && !page.is_extra_ad) return 0; // Regular Ad
+        if (page.submission_id && page.is_extra_ad) return 1;  // Extra Ad
+        return 2; // Announcement (no submission_id)
+    };
+    const filteredPages = filterPages(activeTab).sort((a, b) => getPagePriority(a) - getPagePriority(b));
 
     return (
         <div className="container mx-auto p-4 md:p-8 space-y-6">

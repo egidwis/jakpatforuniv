@@ -1591,6 +1591,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             isOpen={isPublishModalOpen}
             onClose={handleClosePublishModal}
             submission={selectedSubmissionForAds as any} // Cast because wrapper types slightly differ but core fields match
+            pageSlug={selectedSubmissionForAds ? existingPages[selectedSubmissionForAds.id]?.slug : undefined}
             onSuccess={() => {
               loadSubmissions(); // Refresh table to show updated status
               handleClosePublishModal();

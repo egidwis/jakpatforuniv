@@ -227,12 +227,25 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                 is_extra_ad: isExtraMode,
             });
 
-            // 3. Sync is_extra_ad flag to survey_pages
+            // 3. Sync is_extra_ad flag (and created_at for mobile app ordering) to survey_pages
+            // Mobile app sorts by created_at DESC, so shifting Extra Ad back by 1 hour
+            // pushes it below regular ads in the listing.
+            const syncData: Record<string, any> = { is_extra_ad: isExtraMode };
+            if (isExtraMode) {
+                syncData.created_at = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+            }
+
             if (pageSlug) {
                 await supabase
                     .from('survey_pages')
-                    .update({ is_extra_ad: isExtraMode })
+                    .update(syncData)
                     .eq('slug', pageSlug);
+            } else if (submission.id) {
+                // Fallback: sync using submission_id when pageSlug is not available
+                await supabase
+                    .from('survey_pages')
+                    .update(syncData)
+                    .eq('submission_id', submission.id);
             }
 
             toast.success('Ad scheduled successfully!');
@@ -259,6 +272,12 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                     .from('survey_pages')
                     .update({ is_extra_ad: false })
                     .eq('slug', pageSlug);
+            } else if (submission.id) {
+                // Fallback: reset using submission_id
+                await supabase
+                    .from('survey_pages')
+                    .update({ is_extra_ad: false })
+                    .eq('submission_id', submission.id);
             }
 
             toast.success('Schedule removed successfully!');

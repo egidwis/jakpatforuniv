@@ -38,12 +38,13 @@ export function SurveyListingPage() {
                 return true;
             });
 
-            // Sort: Extra Ad pages always at the bottom
-            activePages.sort((a, b) => {
-                if (a.is_extra_ad && !b.is_extra_ad) return 1;
-                if (!a.is_extra_ad && b.is_extra_ad) return -1;
-                return 0; // Preserve existing order for same type
-            });
+            // Sort by page type: Regular Ad → Extra Ad → Announcement
+            const getPagePriority = (page: any) => {
+                if (page.submission_id && !page.is_extra_ad) return 0; // Regular Ad
+                if (page.submission_id && page.is_extra_ad) return 1;  // Extra Ad
+                return 2; // Announcement (no submission_id)
+            };
+            activePages.sort((a, b) => getPagePriority(a) - getPagePriority(b));
 
             setPages(activePages);
         } catch (error) {
