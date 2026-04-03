@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { RespondentsListModal } from './PublishPage/RespondentsListModal';
-import { WinnerSelectionModal } from './WinnerSelectionModal';
+import { WinnerManagementView } from './WinnerManagementView';
 import { toast } from 'sonner';
 
 interface PageData {
@@ -19,13 +19,13 @@ interface PageData {
     publish_start_date: string | null;
     publish_end_date: string | null;
     submission_id: string;
-    rewards_amount: string | null;
-    rewards_count: number | null;
     created_at: string;
     form_submissions?: {
         title: string;
         full_name: string;
         university?: string;
+        prize_per_winner?: number;
+        winner_count?: number;
     };
     page_respondents?: { count: number }[];
 }
@@ -56,7 +56,9 @@ export function PublishPageManagement() {
                     form_submissions (
                         title,
                         full_name,
-                        university
+                        university,
+                        prize_per_winner,
+                        winner_count
                     ),
                     page_respondents (
                         count
@@ -131,6 +133,20 @@ export function PublishPageManagement() {
         return 2; // Announcement (no submission_id)
     };
     const filteredPages = filterPages(activeTab).sort((a, b) => getPagePriority(a) - getPagePriority(b));
+
+    if (winnerSelectionPage) {
+        return (
+            <div className="h-full pt-4 md:pt-0 overflow-hidden bg-gray-50/50">
+                <WinnerManagementView
+                    pageId={winnerSelectionPage.id}
+                    pageTitle={winnerSelectionPage.title}
+                    rewardAmount={winnerSelectionPage.form_submissions?.prize_per_winner || 0}
+                    rewardCount={winnerSelectionPage.form_submissions?.winner_count || 5}
+                    onBack={() => setWinnerSelectionPage(null)}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="container mx-auto p-4 md:p-8 space-y-6">
@@ -432,18 +448,7 @@ export function PublishPageManagement() {
                 )
             }
 
-            {
-                winnerSelectionPage && (
-                    <WinnerSelectionModal
-                        isOpen={!!winnerSelectionPage}
-                        onClose={() => setWinnerSelectionPage(null)}
-                        pageId={winnerSelectionPage.id}
-                        pageTitle={winnerSelectionPage.title}
-                        rewardAmount={parseInt(winnerSelectionPage.rewards_amount || '0')}
-                        rewardCount={winnerSelectionPage.rewards_count || 5}
-                    />
-                )
-            }
+
         </div >
     );
 }
