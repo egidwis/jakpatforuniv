@@ -8,6 +8,11 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    Dialog,
+    DialogContent,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -16,7 +21,6 @@ import {
     Trophy,
     Shuffle,
     Check,
-    ExternalLink,
     ChevronDown,
     ChevronUp,
     AlertCircle,
@@ -98,6 +102,7 @@ export function WinnerManagementView({
     const [showNotEligible, setShowNotEligible] = useState(false);
     const [criteria, setCriteria] = useState<string>('');
     const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [previewProof, setPreviewProof] = useState<string | null>(null);
 
     // Filter states
     const [searchQuery, setSearchQuery] = useState('');
@@ -139,42 +144,44 @@ export function WinnerManagementView({
             };
 
             if (jakpatIds.length > 0) {
-                // Generate variants to handle case sensitivity and trailing spaces in DB
-                const variants = new Set<string>();
+                // Deduplicate sanitized IDs for efficient querying
+                const uniqueSanitized = new Set<string>();
                 jakpatIds.forEach((rawId: string) => {
                     if (!rawId) return;
-                    
-                    // 1. Original variations
-                    const trimmed = rawId.trim();
-                    variants.add(trimmed);
-                    variants.add(rawId);
-                    
-                    // 2. Fully sanitized variation (formula equivalent)
-                    const sanitized = sanitizeJakpatId(rawId);
-                    variants.add(sanitized);
-                    
-                    // 3. Permutations based on sanitized ID
-                    variants.add(sanitized.toUpperCase());
-                    variants.add(sanitized + ' '); // In case DB has trailing space
-                    if (sanitized.length > 0) {
-                        variants.add(sanitized.charAt(0).toUpperCase() + sanitized.slice(1));
+                    uniqueSanitized.add(sanitizeJakpatId(rawId));
+                });
+                const sanitizedList = Array.from(uniqueSanitized).filter(Boolean);
+
+                // Batch query in chunks of 50 to avoid PostgREST URL length limits
+                const BATCH_SIZE = 50;
+                const allMdData: any[] = [];
+                for (let i = 0; i < sanitizedList.length; i += BATCH_SIZE) {
+                    const batch = sanitizedList.slice(i, i + BATCH_SIZE);
+                    const { data: mdBatch } = await supabase
+                        .from('respondents-masterdata')
+                        .select('*')
+                        .in('jakpat_id', batch);
+                    if (mdBatch) allMdData.push(...mdBatch);
+                }
+
+                // Also try fetching by original (unsanitized) IDs in case DB has exact matches
+                const uniqueOriginals = [...new Set(jakpatIds.filter(Boolean).map((id: string) => id.trim()))];
+                for (let i = 0; i < uniqueOriginals.length; i += BATCH_SIZE) {
+                    const batch = uniqueOriginals.slice(i, i + BATCH_SIZE);
+                    const { data: mdBatch } = await supabase
+                        .from('respondents-masterdata')
+                        .select('*')
+                        .in('jakpat_id', batch);
+                    if (mdBatch) allMdData.push(...mdBatch);
+                }
+
+                // Build map using sanitized keys (deduplicates naturally)
+                allMdData.forEach((m: any) => {
+                    const key = sanitizeJakpatId(m.jakpat_id);
+                    if (key) {
+                        masterdataMap[key] = m;
                     }
                 });
-
-                const { data: mdData } = await supabase
-                    .from('respondents-masterdata')
-                    .select('*')
-                    .in('jakpat_id', Array.from(variants));
-
-                if (mdData) {
-                    mdData.forEach((m: any) => {
-                        // Store the DB record using the strictly sanitized key
-                        const key = sanitizeJakpatId(m.jakpat_id);
-                        if (key) {
-                            masterdataMap[key] = m;
-                        }
-                    });
-                }
             }
 
             // 3. Fetch recent winners (last 6 months) across ALL surveys
@@ -786,11 +793,11 @@ export function WinnerManagementView({
                                                                     className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        window.open(getCdnUrl(r.proof_url!), '_blank');
+                                                                        setPreviewProof(getCdnUrl(r.proof_url!));
                                                                     }}
                                                                     title="Lihat Bukti"
                                                                 >
-                                                                    <ExternalLink className="h-4 w-4" />
+                                                                    <ImageIcon className="h-4 w-4" />
                                                                 </Button>
                                                             )}
                                                         </TableCell>
@@ -877,6 +884,23 @@ export function WinnerManagementView({
                     </div>
                 </div>
             )}
+
+            {/* Proof Preview Modal */}
+            <Dialog open={!!previewProof} onOpenChange={(open) => !open && setPreviewProof(null)}>
+                <DialogContent className="max-w-3xl border-none shadow-2xl bg-transparent sm:rounded-2xl p-0 overflow-hidden flex flex-col items-center justify-center">
+                    <DialogTitle className="sr-only">Proof Preview</DialogTitle>
+                    {previewProof && (
+                        <div className="relative group max-h-[85vh] w-full flex items-center justify-center bg-black/40 backdrop-blur-sm rounded-xl">
+                            <img 
+                                src={previewProof} 
+                                alt="Proof Verification" 
+                                className="max-h-[85vh] w-auto max-w-full object-contain rounded-xl shadow-lg ring-1 ring-white/10"
+                            />
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
         </div>
     );
 }
