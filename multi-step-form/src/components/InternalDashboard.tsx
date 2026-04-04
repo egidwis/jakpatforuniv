@@ -537,7 +537,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   }
 
   return (
-    <div className={hideAuth ? '' : 'min-h-screen bg-background'}>
+    <div className={hideAuth ? 'h-full flex flex-col' : 'min-h-screen flex flex-col bg-background'}>
       {/* Header - Only show if not using sidebar layout */}
       {!hideAuth && (
         <div className="bg-card border-b border-border">
@@ -579,47 +579,69 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       )}
 
       {/* Content */}
-      <div className={hideAuth ? 'p-4 md:px-6 md:py-4' : 'max-w-[1400px] mx-auto px-4 sm:px-6 py-6'}>
+      <div className={hideAuth ? 'p-4 pb-0 md:px-6 md:pt-4 md:pb-0 flex-1 min-h-0 flex flex-col' : 'max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-6 sm:pb-0 flex-1 min-h-0 flex flex-col'}>
 
-        {/* Unified Toolbar Container */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex flex-col gap-4">
+        <div className="bg-white p-4 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0 relative z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)]">
 
-          {/* Top Row: Month Selector & Search */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          {/* Top Row: Month Selector & Actions */}
+          <div className="flex flex-row items-center gap-4 w-full">
             {/* Left: Month Selector */}
-            <div className="flex items-center gap-3 bg-gray-50/80 p-1.5 rounded-lg border border-gray-200/50">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 hover:bg-white hover:shadow-sm"
-                onClick={() => {
-                  const newDate = new Date(currentDate);
-                  newDate.setMonth(newDate.getMonth() - 1);
-                  setCurrentDate(newDate);
-                  setCurrentPage(1);
-                }}
-              >
-                <ChevronLeft className="h-4 w-4 text-gray-600" />
-              </Button>
-              <h2 className="text-sm font-semibold min-w-[140px] text-center text-gray-700 select-none">
-                {currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
-              </h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 hover:bg-white hover:shadow-sm"
-                onClick={() => {
-                  const newDate = new Date(currentDate);
-                  newDate.setMonth(newDate.getMonth() + 1);
-                  setCurrentDate(newDate);
-                  setCurrentPage(1);
-                }}
-              >
-                <ChevronRight className="h-4 w-4 text-gray-600" />
-              </Button>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-gray-600">Periode</span>
+              <div className="flex items-center gap-3 bg-gray-50/80 p-1.5 rounded-lg border border-gray-200/50">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-white hover:shadow-sm"
+                  onClick={() => {
+                    const newDate = new Date(currentDate);
+                    newDate.setMonth(newDate.getMonth() - 1);
+                    setCurrentDate(newDate);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4 text-gray-600" />
+                </Button>
+                <h2 className="text-sm font-semibold min-w-[140px] text-center text-gray-700 select-none">
+                  {currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-white hover:shadow-sm"
+                  onClick={() => {
+                    const newDate = new Date(currentDate);
+                    newDate.setMonth(newDate.getMonth() + 1);
+                    setCurrentDate(newDate);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <ChevronRight className="h-4 w-4 text-gray-600" />
+                </Button>
+              </div>
             </div>
 
-            {/* Right: Search */}
+            {/* Right: Actions */}
+            <div className="flex items-center gap-2 shrink-0 ml-auto">
+              {/* ... other code ... */}
+              <Button
+                onClick={loadSubmissions}
+                variant="outline"
+                size="sm"
+                disabled={loading}
+                className="h-8 w-8 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
+                title="Refresh data"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+          </div>
+
+          <div className="h-px bg-gray-100 w-full" />
+
+          {/* Bottom Row: Search & Filters */}
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Left: Search */}
             <div className="flex-1 min-w-[300px] max-w-md relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
@@ -630,14 +652,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 onChange={(e) => handleSearchChange(e.target.value)}
               />
             </div>
-          </div>
 
-          <div className="h-px bg-gray-100 w-full" />
-
-          {/* Bottom Row: Filters & Actions */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-
-            {/* Status Filters */}
+            {/* Right: Status Filters */}
             <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
               {[
                 { id: 'all', label: 'All', count: statusCounts.all, color: 'bg-gray-100 text-gray-700' },
@@ -651,7 +667,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   key={tab.id}
                   onClick={() => setStatusFilter(tab.id)}
                   className={`
-                    flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap
+                    flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap h-9
                     ${statusFilter === tab.id
                       ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-200'
                       : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-900'}
@@ -672,38 +688,22 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 </button>
               ))}
             </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-2 shrink-0 ml-auto">
-              {/* ... other code ... */}
-              <Button
-                onClick={loadSubmissions}
-                variant="outline"
-                size="sm"
-                disabled={loading}
-                className="h-8 w-8 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
-                title="Refresh data"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
           </div>
+
+          {searchQuery && (
+            <>
+              <div className="h-px bg-gray-100 w-full" />
+              <p className="text-sm text-gray-500">
+                Found {filteredSubmissions.length} result{filteredSubmissions.length !== 1 ? 's' : ''} for "{searchQuery}"
+              </p>
+            </>
+          )}
         </div>
-
-        {/* Search Results Counter */}
-        {searchQuery && (
-          <div className="mb-4">
-            <p className="text-sm text-muted-foreground">
-              Found {filteredSubmissions.length} result{filteredSubmissions.length !== 1 ? 's' : ''} for "{searchQuery}"
-            </p>
-          </div>
-        )}
 
         {loading ? (
           <>
             {/* Desktop Table View Skeleton - hidden on mobile */}
-            <div className="hidden md:block h-[calc(100vh-210px)] min-h-[400px]">
-              <div className="overflow-auto h-full w-full pb-4 pr-2">
+            <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2">
                 <Table className="min-w-[1200px] border-separate border-spacing-y-3">
                   <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
                     <TableRow className="border-none hover:bg-transparent">
@@ -747,15 +747,14 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         </TableCell>
                         <TableCell className="align-top py-4 border-y border-r border-gray-200 rounded-r-xl pr-4 text-right">
                           <div className="flex justify-end gap-2">
-                             <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
-                             <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
+                            <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
+                            <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
                           </div>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
             </div>
 
             {/* Mobile Card View Skeleton - hidden on desktop */}
@@ -764,8 +763,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 <Card key={`skeleton-mobile-${i}`} className="overflow-hidden mb-4 shadow-sm border-0">
                   <div className="p-4 border-b bg-gray-50/50 flex justify-between items-start">
                     <div>
-                       <div className="h-5 w-40 bg-gray-200 rounded animate-pulse mb-2"></div>
-                       <div className="h-4 w-32 bg-gray-100 rounded animate-pulse"></div>
+                      <div className="h-5 w-40 bg-gray-200 rounded animate-pulse mb-2"></div>
+                      <div className="h-4 w-32 bg-gray-100 rounded animate-pulse"></div>
                     </div>
                     <div className="h-6 w-16 rounded-full bg-gray-200 animate-pulse"></div>
                   </div>
@@ -816,17 +815,24 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         ) : (
           <>
             {/* Desktop Table View - hidden on mobile */}
-            <div className="hidden md:block h-[calc(100vh-210px)] min-h-[400px]">
-              <div className="overflow-auto h-full w-full pb-4 pr-2">
-                <Table className="min-w-[1200px] border-separate border-spacing-y-3">
+            <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2">
+                <Table className="min-w-[1200px] border-separate border-spacing-y-3 table-fixed">
+                  <colgroup>
+                    <col style={{ width: '110px' }} />
+                    <col style={{ width: '290px' }} />
+                    <col style={{ width: '200px' }} />
+                    <col style={{ width: '190px' }} />
+                    <col style={{ width: '210px' }} />
+                    <col style={{ width: '200px' }} />
+                  </colgroup>
                   <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
-                    <TableRow className="border-none hover:bg-transparent">
-                      <TableHead className="w-[100px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 pl-6 rounded-l-xl">Submitted</TableHead>
-                      <TableHead className="w-[300px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Form Details</TableHead>
-                      <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Criteria & Incentive</TableHead>
-                      <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Researcher</TableHead>
-                      <TableHead className="w-[120px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Payment</TableHead>
-                      <TableHead className="w-[220px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 pt-3 pl-16 pr-8 rounded-r-xl">Publish & Pages</TableHead>
+                    <TableRow className="border-none hover:bg-transparent shadow-none">
+                      <TableHead className="w-[110px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-6 border-y border-l border-transparent rounded-l-xl">Submitted</TableHead>
+                      <TableHead className="w-[290px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Form Details</TableHead>
+                      <TableHead className="w-[200px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Criteria & Incentive</TableHead>
+                      <TableHead className="w-[190px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Researcher</TableHead>
+                      <TableHead className="w-[210px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Payment</TableHead>
+                      <TableHead className="w-[200px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-8 pr-6 border-y border-r border-transparent rounded-r-xl">Publish & Pages</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1247,7 +1253,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                         </TableCell>
 
                         {/* Publish & Pages (New Column) */}
-                        <TableCell className="align-top py-4 space-y-1.5 w-[220px] pl-16 pr-8 border-y border-r border-gray-200 rounded-r-xl">
+                        <TableCell className="align-top py-4 space-y-1.5 pl-8 pr-6 border-y border-r border-gray-200 rounded-r-xl">
                           {scheduledSubmissionIds.has(submission.id) ? (
                             <div className="flex items-center gap-1.5">
                               {/* Status badge (subtle) */}
@@ -1393,7 +1399,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                     </Button>
                   </div>
                 </div >
-              </div >
             </div >
 
             {/* Mobile Card View - shown only on mobile */}

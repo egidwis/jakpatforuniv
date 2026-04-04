@@ -192,46 +192,50 @@ export function TransactionsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="p-4 pb-0 md:px-6 md:pt-4 md:pb-0 flex-1 min-h-0 flex flex-col">
       {/* Unified Toolbar */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
+      <div className="bg-white p-4 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0 relative z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)]">
 
         {/* Top Row: Date | Export & Revenue */}
         <div className="flex flex-row items-center justify-between gap-4 w-full">
           {/* Left: Date Selectors */}
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-gray-700">Periode</span>
+            <span className="text-sm font-semibold text-gray-600">Periode</span>
 
-            {/* Month Dropdown */}
-            <div className="relative">
-              <select
-                className="h-10 pl-3 pr-8 text-sm font-medium bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer hover:bg-gray-100 transition-colors shadow-sm w-36"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              >
-                <option value={-1}>Semua Bulan</option>
-                {['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].map((month, index) => (
-                  <option key={index} value={index}>{month}</option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="flex items-center gap-2 bg-gray-50/80 p-1.5 rounded-lg border border-gray-200/50">
+              {/* Month Dropdown */}
+              <div className="relative">
+                <select
+                  className="h-8 pl-3 pr-8 text-sm font-semibold bg-transparent border-0 rounded-md focus:outline-none focus:ring-0 appearance-none cursor-pointer hover:bg-white hover:shadow-sm transition-all w-36 text-gray-700"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                >
+                  <option value={-1}>Semua Bulan</option>
+                  {['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].map((month, index) => (
+                    <option key={index} value={index}>{month}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
               </div>
-            </div>
 
-            {/* Year Dropdown */}
-            <div className="relative">
-              <select
-                className="h-10 pl-3 pr-8 text-sm font-medium bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer hover:bg-gray-100 transition-colors shadow-sm w-24"
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              >
-                {[2024, 2025, 2026, 2027].map((year) => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              <div className="w-px h-4 bg-gray-200" />
+
+              {/* Year Dropdown */}
+              <div className="relative">
+                <select
+                  className="h-8 pl-3 pr-8 text-sm font-semibold bg-transparent border-0 rounded-md focus:outline-none focus:ring-0 appearance-none cursor-pointer hover:bg-white hover:shadow-sm transition-all w-24 text-gray-700"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                >
+                  {[2024, 2025, 2026, 2027].map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
               </div>
             </div>
           </div>
@@ -387,18 +391,24 @@ export function TransactionsPage() {
       </div>
 
       {/* Main Table Card */}
-      <div className="h-[calc(100vh-210px)] min-h-[400px]">
-        <div className="overflow-auto h-full w-full pb-4 pr-2">
-          <Table className="border-separate border-spacing-y-3">
+      <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2">
+          <Table className="min-w-[1200px] border-separate border-spacing-y-3 table-fixed">
+            <colgroup>
+              <col style={{ width: '250px' }} />
+              <col style={{ width: '450px' }} />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '180px' }} />
+            </colgroup>
             <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
               <TableRow className="border-none hover:bg-transparent">
                 <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-4">Survei & Peneliti</TableHead>
                 <TableHead className="w-[450px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Item & Detail</TableHead>
-                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Metode</TableHead>
-                <TableHead className="text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Total</TableHead>
-                <TableHead className="text-center text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Status</TableHead>
-                <TableHead className="text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Tanggal</TableHead>
-                <TableHead className="w-[50px] h-12 rounded-r-xl pr-4"></TableHead>
+                <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Metode</TableHead>
+                <TableHead className="w-[150px] text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Total</TableHead>
+                <TableHead className="w-[150px] text-center text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Status</TableHead>
+                <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-r-xl pr-4">Tanggal</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -434,14 +444,13 @@ export function TransactionsPage() {
                       <div className="h-4 w-24 bg-gray-200 animate-pulse rounded mb-2"></div>
                       <div className="h-3 w-16 bg-gray-100 animate-pulse rounded"></div>
                     </TableCell>
-                    <TableCell className="text-right align-top py-4 pr-4 border-y border-r border-gray-200 rounded-r-xl">
-                      <div className="h-8 w-8 bg-gray-200 animate-pulse rounded ml-auto"></div>
+                    <TableCell className="align-top py-4 pr-4 border-y border-r border-gray-200 rounded-r-xl">
                     </TableCell>
                   </TableRow>
                 ))
               ) : filteredTransactions.length === 0 ? (
                 <TableRow className="bg-white border-none shadow-sm rounded-xl">
-                  <TableCell colSpan={7} className="h-48 text-center border border-gray-200 rounded-xl">
+                  <TableCell colSpan={6} className="h-48 text-center border border-gray-200 rounded-xl">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="h-12 w-12 bg-gray-50 rounded-full flex items-center justify-center">
                         <Filter className="h-6 w-6 text-gray-300" />
@@ -529,27 +538,27 @@ export function TransactionsPage() {
                       <TableCell className="text-center align-top py-4 border-y border-gray-200">
                         {getStatusBadge(transaction.status)}
                       </TableCell>
-                      <TableCell className="align-top py-4 text-xs text-gray-500 border-y border-gray-200">
-                        {formatDate(transaction.created_at)}
-                      </TableCell>
-                      <TableCell className="text-right align-top py-4 pr-4 border-y border-r border-gray-200 rounded-r-xl">
-                        {transaction.payment_url && (
-                          <Button
-                            variant="secondary"
-                            size="icon"
-                            className="h-8 w-8 text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 transition-colors"
-                            title="Download Invoice"
-                            asChild
-                          >
-                            <a
-                              href={`/invoices/${transaction.payment_id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                      <TableCell className="align-top py-4 text-xs text-gray-500 border-y border-r border-gray-200 rounded-r-xl pr-4">
+                        <div className="flex items-center justify-between gap-2">
+                          {formatDate(transaction.created_at)}
+                          {transaction.payment_url && (
+                            <Button
+                              variant="secondary"
+                              size="icon"
+                              className="h-8 w-8 text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 transition-colors shrink-0"
+                              title="Download Invoice"
+                              asChild
                             >
-                              <Download className="h-4 w-4" />
-                            </a>
-                          </Button>
-                        )}
+                              <a
+                                href={`/invoices/${transaction.payment_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <Download className="h-4 w-4" />
+                              </a>
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -557,7 +566,6 @@ export function TransactionsPage() {
               )}
             </TableBody>
           </Table>
-        </div>
       </div>
     </div >
   );
