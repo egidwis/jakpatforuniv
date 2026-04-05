@@ -95,6 +95,8 @@ export function SubmissionsManagerView({
     onBack,
 }: SubmissionsManagerViewProps) {
     const [loading, setLoading] = useState(true);
+    const [loadingProgress, setLoadingProgress] = useState(0);
+    const [loadingText, setLoadingText] = useState('Memuat data...');
     const [saving, setSaving] = useState(false);
     const [respondents, setRespondents] = useState<MergedRespondent[]>([]);
     const [existingWinners, setExistingWinners] = useState<ExistingWinner[]>([]);
@@ -123,8 +125,12 @@ export function SubmissionsManagerView({
 
     const fetchData = async () => {
         setLoading(true);
+        setLoadingProgress(0);
+        setLoadingText('Terhubung ke database...');
         try {
             // 1. Fetch respondents
+            setLoadingText('Mengambil data responden...');
+            setLoadingProgress(5);
             const { data: prData, error: prError } = await supabase
                 .from('page_respondents')
                 .select('*')
@@ -132,6 +138,9 @@ export function SubmissionsManagerView({
                 .order('created_at', { ascending: true });
 
             if (prError) throw prError;
+
+            setLoadingProgress(20);
+            setLoadingText('Mencocokkan data master (0%)...');
 
             // 2. Fetch masterdata for all jakpat_ids
             const jakpatIds = (prData || []).map((r: any) => r.jakpat_id);
@@ -156,6 +165,14 @@ export function SubmissionsManagerView({
                 const sanitizedList = Array.from(uniqueSanitized).filter(Boolean);
 
                 const BATCH_SIZE = 50;
+                const totalSanitizedBatches = Math.ceil(sanitizedList.length / BATCH_SIZE);
+
+                const uniqueOriginals = [...new Set(jakpatIds.filter(Boolean).map((id: string) => id.trim()))];
+                const totalOriginalBatches = Math.ceil(uniqueOriginals.length / BATCH_SIZE);
+
+                const totalBatches = totalSanitizedBatches + totalOriginalBatches;
+                let completedBatches = 0;
+
                 const allMdData: any[] = [];
                 for (let i = 0; i < sanitizedList.length; i += BATCH_SIZE) {
                     const batch = sanitizedList.slice(i, i + BATCH_SIZE);
@@ -164,9 +181,13 @@ export function SubmissionsManagerView({
                         .select('*')
                         .in('jakpat_id', batch);
                     if (mdBatch) allMdData.push(...mdBatch);
+
+                    completedBatches++;
+                    const p = Math.round(20 + (completedBatches / totalBatches) * 50);
+                    setLoadingProgress(p);
+                    setLoadingText(`Mencocokkan data master (${Math.round((completedBatches / totalBatches) * 100)}%)...`);
                 }
 
-                const uniqueOriginals = [...new Set(jakpatIds.filter(Boolean).map((id: string) => id.trim()))];
                 for (let i = 0; i < uniqueOriginals.length; i += BATCH_SIZE) {
                     const batch = uniqueOriginals.slice(i, i + BATCH_SIZE);
                     const { data: mdBatch } = await supabase
@@ -174,6 +195,11 @@ export function SubmissionsManagerView({
                         .select('*')
                         .in('jakpat_id', batch);
                     if (mdBatch) allMdData.push(...mdBatch);
+
+                    completedBatches++;
+                    const p = Math.round(20 + (completedBatches / totalBatches) * 50);
+                    setLoadingProgress(p);
+                    setLoadingText(`Mencocokkan data master (${Math.round((completedBatches / totalBatches) * 100)}%)...`);
                 }
 
                 allMdData.forEach((m: any) => {
@@ -182,9 +208,13 @@ export function SubmissionsManagerView({
                         masterdataMap[key] = m;
                     }
                 });
+            } else {
+                setLoadingProgress(70);
             }
 
             // 3. Fetch recent winners (last 6 months) across ALL surveys
+            setLoadingText('Memeriksa riwayat pemenang...');
+            setLoadingProgress(75);
             const sixMonthsAgo = new Date();
             sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
@@ -200,6 +230,7 @@ export function SubmissionsManagerView({
             );
 
             // 4. Fetch existing winners for THIS survey
+            setLoadingProgress(80);
             const { data: existingData } = await supabase
                 .from('survey_winners')
                 .select('*')
@@ -221,6 +252,7 @@ export function SubmissionsManagerView({
             setExistingWinners(enrichedWinners);
 
             // 5. Fetch criteria from form_submissions
+            setLoadingProgress(90);
             const { data: pageData } = await supabase
                 .from('survey_pages')
                 .select('submission_id, form_submissions(criteria_responden)')
@@ -232,6 +264,8 @@ export function SubmissionsManagerView({
             }
 
             // 6. Merge and categorize
+            setLoadingText('Memproses data akhir...');
+            setLoadingProgress(95);
             const merged: MergedRespondent[] = (prData || []).map((pr: any) => {
                 const lookupKey = sanitizeJakpatId(pr.jakpat_id);
                 const md = masterdataMap[lookupKey] || {};
@@ -253,6 +287,10 @@ export function SubmissionsManagerView({
                     } catch {
                         // ignore
                     }
+                }
+
+                if (!md.user_id) {
+                    reasons.push('Data tidak ditemukan di masterdata');
                 }
 
                 return {
@@ -278,6 +316,7 @@ export function SubmissionsManagerView({
             });
 
             setRespondents(merged);
+            setLoadingProgress(100);
         } catch (error: any) {
             console.error('Error fetching data:', error);
             toast.error('Gagal memuat data responden');
@@ -300,7 +339,7 @@ export function SubmissionsManagerView({
     const handleDeleteProof = async (respondent: MergedRespondent) => {
         if (!respondent.proof_url) return;
         setDeletingId(respondent.respondent_id);
-        
+
         try {
             const filePath = getStoragePath(respondent.proof_url);
             if (filePath) {
@@ -317,14 +356,14 @@ export function SubmissionsManagerView({
 
             if (dbError) throw dbError;
 
-            setRespondents(prev => prev.map(r => 
-                r.respondent_id === respondent.respondent_id ? 
-                { 
-                    ...r, 
-                    proof_url: null, 
-                    is_eligible: false, 
-                    ineligible_reasons: [...r.ineligible_reasons.filter(x => !x.includes('bukti')), 'Tidak upload bukti (proof)']
-                } : r
+            setRespondents(prev => prev.map(r =>
+                r.respondent_id === respondent.respondent_id ?
+                    {
+                        ...r,
+                        proof_url: null,
+                        is_eligible: false,
+                        ineligible_reasons: [...r.ineligible_reasons.filter(x => !x.includes('bukti')), 'Tidak upload bukti (proof)']
+                    } : r
             ));
 
             window.dispatchEvent(new Event('proof-storage-changed'));
@@ -363,8 +402,8 @@ export function SubmissionsManagerView({
 
             if (dbError) throw dbError;
 
-            setRespondents(prev => prev.map(r => ({ 
-                ...r, 
+            setRespondents(prev => prev.map(r => ({
+                ...r,
                 proof_url: null,
                 is_eligible: false,
                 ineligible_reasons: [...r.ineligible_reasons.filter(x => !x.includes('bukti')), 'Tidak upload bukti (proof)']
@@ -384,7 +423,7 @@ export function SubmissionsManagerView({
     // Combined filtered & sorted list
     const filteredRespondents = useMemo(() => {
         const existingWinnerJakpatIds = new Set(existingWinners.map(w => w.jakpat_id));
-        
+
         let filtered = respondents.filter(r => {
             // Except existing winners if in selection mode to avoid selecting twice
             if (isSelectionMode && existingWinnerJakpatIds.has(r.jakpat_id)) return false;
@@ -430,12 +469,7 @@ export function SubmissionsManagerView({
     const eligibleCount = filteredRespondents.filter(r => r.is_eligible).length;
     const totalProofCount = respondents.filter(r => r.proof_url).length;
 
-    const toggleSelect = (jakpatId: string, isEligible: boolean) => {
-        if (!isEligible) {
-            toast.error('Responden ini tidak memenuhi syarat (Not Eligible)');
-            return;
-        }
-
+    const toggleSelect = (jakpatId: string) => {
         setSelectedIds(prev => {
             const next = new Set(prev);
             if (next.has(jakpatId)) {
@@ -532,8 +566,8 @@ export function SubmissionsManagerView({
         <div className="flex flex-col h-full w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Breadcrumb Header */}
             <div className="flex items-center px-6 py-4 border-b border-gray-200 bg-gray-50/80 backdrop-blur-sm sticky top-0 z-10 w-full shrink-0">
-                <button 
-                    onClick={onBack} 
+                <button
+                    onClick={onBack}
                     className="mr-4 p-1.5 rounded-md hover:bg-gray-200 transition-colors text-gray-500 hover:text-gray-900 border border-transparent hover:border-gray-300 bg-white shadow-sm"
                     title="Kembali ke Daftar Halaman"
                 >
@@ -551,44 +585,68 @@ export function SubmissionsManagerView({
             </div>
 
             {/* Content Header & Proof Bulk Delete */}
-            <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-white">
-                <div className="flex items-center gap-4 flex-1">
-                    <div className="flex items-center gap-1.5">
-                        <User className="w-4 h-4 text-blue-500" />
-                        <h2 className="text-lg font-semibold text-gray-900">Submissions</h2>
-                    </div>
-                    {rewardCount > 0 && (
-                        <>
-                            <span className="text-gray-300">|</span>
-                            <p className="text-sm text-gray-600 font-medium">Reward: Rp {(rewardAmount || 0).toLocaleString('id-ID')} × {rewardCount}</p>
-                        </>
-                    )}
-                </div>
-
-                {/* Bulk Proof Delete Action */}
-                {totalProofCount > 0 && !loading && (
-                    <div className="flex items-center bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm shrink-0">
-                        <div className="flex items-center gap-2 text-xs text-amber-800 mr-3">
-                            <FileText className="h-4 w-4" />
-                            <span><strong>{totalProofCount}</strong> file proof (~{((totalProofCount * 100) / 1024).toFixed(0)} KB)</span>
+            <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-4 shrink-0 bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-4 w-full">
+                    <div className="flex items-center gap-4 flex-1">
+                        <div className="flex items-center gap-1.5">
+                            <User className="w-4 h-4 text-blue-500" />
+                            <h2 className="text-lg font-semibold text-gray-900">Submissions</h2>
                         </div>
-                        {!showBulkConfirm ? (
+                        {rewardCount > 0 && (
+                            <>
+                                <span className="text-gray-300">|</span>
+                                <p className="text-sm text-gray-600 font-medium">Reward: Rp {(rewardAmount || 0).toLocaleString('id-ID')} × {rewardCount}</p>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                        {isSelectionMode && (
                             <Button
-                                variant="outline" size="sm"
-                                className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 bg-white"
-                                onClick={() => setShowBulkConfirm(true)}
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs font-semibold text-gray-600 border-gray-200 hover:bg-gray-100"
+                                onClick={() => {
+                                    setIsSelectionMode(false);
+                                    setSelectedIds(new Set());
+                                }}
                             >
-                                <Trash2 className="h-3 w-3 mr-1" /> Hapus File Proof
+                                Batal Pemilihan
                             </Button>
-                        ) : (
-                            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
-                                <span className="text-xs text-red-700 font-bold hidden md:inline ml-2">Yakin?</span>
-                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowBulkConfirm(false)} disabled={bulkDeleting}>Batal</Button>
-                                <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={handleBulkDeleteProofs} disabled={bulkDeleting}>
-                                    {bulkDeleting ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> ...</> : 'Ya, Hapus Semua'}
-                                </Button>
+                        )}
+                        {/* Bulk Proof Delete Action */}
+                        {totalProofCount > 0 && !loading && (
+                            <div className="flex items-center bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 shadow-sm">
+                                <div className="flex items-center gap-2 text-xs text-amber-800 mr-3">
+                                    <FileText className="h-4 w-4" />
+                                    <span><strong>{totalProofCount}</strong> file proof (~{((totalProofCount * 100) / 1024).toFixed(0)} KB)</span>
+                                </div>
+                                {!showBulkConfirm ? (
+                                    <Button
+                                        variant="outline" size="sm"
+                                        className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 bg-white"
+                                        onClick={() => setShowBulkConfirm(true)}
+                                    >
+                                        <Trash2 className="h-3 w-3 mr-1" /> Hapus File Proof
+                                    </Button>
+                                ) : (
+                                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
+                                        <span className="text-xs text-red-700 font-bold hidden md:inline ml-2">Yakin?</span>
+                                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowBulkConfirm(false)} disabled={bulkDeleting}>Batal</Button>
+                                        <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={handleBulkDeleteProofs} disabled={bulkDeleting}>
+                                            {bulkDeleting ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> ...</> : 'Ya, Hapus Semua'}
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         )}
+                    </div>
+                </div>
+
+                {criteria && (!hasExistingWinners || isSelectionMode) && (
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-lg px-4 py-2.5 text-xs text-blue-800 shadow-sm w-full animate-in fade-in">
+                        <span className="font-semibold block mb-1">Syarat Responden Survey Ini:</span>
+                        {criteria}
                     </div>
                 )}
             </div>
@@ -597,9 +655,25 @@ export function SubmissionsManagerView({
                 <div className="p-6 h-full flex flex-col">
                     {loading ? (
                         <div className="flex flex-1 items-center justify-center min-h-[300px]">
-                            <div className="flex flex-col items-center gap-3">
-                                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                                <span className="text-sm text-gray-500">Memuat data submissions...</span>
+                            <div className="flex flex-col w-full max-w-sm px-6">
+                                <div className="flex flex-col items-center gap-4 mb-4">
+                                    <div className="relative">
+                                        <div className="absolute inset-0 bg-blue-100 rounded-full blur-md opacity-50 animate-pulse" />
+                                        <Loader2 className="h-10 w-10 animate-spin text-blue-600 relative z-10" />
+                                    </div>
+                                </div>
+                                <div className="flex justify-between text-xs font-semibold text-gray-500 mb-2">
+                                    <span className="animate-pulse tracking-wide">{loadingText}</span>
+                                    <span className="text-blue-600 font-bold">{loadingProgress}%</span>
+                                </div>
+                                <div className="w-full bg-gray-100/80 rounded-full h-2.5 overflow-hidden shadow-inner border border-gray-100">
+                                    <div
+                                        className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all duration-300 ease-out shadow-[inset_0_1px_rgba(255,255,255,0.3)] relative overflow-hidden"
+                                        style={{ width: `${loadingProgress}%` }}
+                                    >
+                                        <div className="absolute top-0 bottom-0 left-0 right-0 bg-[linear-gradient(45deg,rgba(255,255,255,.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,.15)_50%,rgba(255,255,255,.15)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[progress-bar-stripes_1s_linear_infinite]"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     ) : hasExistingWinners && !isSelectionMode ? (
@@ -662,13 +736,6 @@ export function SubmissionsManagerView({
                     ) : (
                         /* ===== SUBMISSIONS / SELECTION VIEW ===== */
                         <div className="flex-1 flex flex-col space-y-4">
-                            {criteria && (
-                                <div className="bg-blue-50/50 border border-blue-100 rounded-lg px-4 py-2.5 text-xs text-blue-800 shadow-sm mx-auto w-full">
-                                    <span className="font-semibold block mb-1">Syarat Responden Survey Ini:</span> 
-                                    {criteria}
-                                </div>
-                            )}
-
                             <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                                 {/* Table Toolbar */}
                                 <div className="p-4 border-b border-gray-100 flex flex-col gap-3 bg-gray-50/50">
@@ -759,8 +826,7 @@ export function SubmissionsManagerView({
                                                             <TableCell className="text-center py-3">
                                                                 <Checkbox
                                                                     checked={selectedIds.has(r.jakpat_id)}
-                                                                    onCheckedChange={() => toggleSelect(r.jakpat_id, r.is_eligible)}
-                                                                    disabled={!r.is_eligible}
+                                                                    onCheckedChange={() => toggleSelect(r.jakpat_id)}
                                                                     className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                                                 />
                                                             </TableCell>

@@ -3,7 +3,7 @@ import { supabase } from '@/utils/supabase';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsManagerView } from './SubmissionsManagerView';
 import { toast } from 'sonner';
@@ -27,6 +27,7 @@ interface PageData {
         winner_count?: number;
     };
     current_winners_count?: number;
+    has_pending_proofs?: boolean;
     page_respondents?: { count: number }[];
 }
 
@@ -108,6 +109,35 @@ export function PublishPageManagement() {
                     .select('page_id')
                     .in('page_id', pageIds);
 
+                const pagesNeedingProofsCheck = pagesWithWinners.filter(p => {
+                    const s = p.form_submissions;
+                    const hasRewards = !!s?.prize_per_winner && s.prize_per_winner > 0;
+                    return hasRewards && (s?.winner_count || 0) > 0;
+                }).map(p => p.id);
+
+                let pagesWithProofs = new Set<string>();
+                if (pagesNeedingProofsCheck.length > 0) {
+                    const chunkSize = 10;
+                    for (let i = 0; i < pagesNeedingProofsCheck.length; i += chunkSize) {
+                        const batch = pagesNeedingProofsCheck.slice(i, i + chunkSize);
+                        const promises = batch.map(id =>
+                            supabase
+                                .from('page_respondents')
+                                .select('page_id')
+                                .eq('page_id', id)
+                                .not('proof_url', 'is', null)
+                                .neq('proof_url', '')
+                                .limit(1)
+                        );
+                        const results = await Promise.all(promises);
+                        results.forEach(res => {
+                            if (res.data && res.data.length > 0) {
+                                pagesWithProofs.add(res.data[0].page_id);
+                            }
+                        });
+                    }
+                }
+
                 const winnerCounts: Record<string, number> = {};
                 if (winnersData) {
                     winnersData.forEach(w => {
@@ -119,6 +149,7 @@ export function PublishPageManagement() {
 
                 pagesWithWinners.forEach(p => {
                     p.current_winners_count = winnerCounts[p.id] || 0;
+                    p.has_pending_proofs = pagesWithProofs.has(p.id);
                 });
             }
 
@@ -197,7 +228,10 @@ export function PublishPageManagement() {
                     pageTitle={activeSubmissionPage.title}
                     rewardAmount={activeSubmissionPage.form_submissions?.prize_per_winner || 0}
                     rewardCount={activeSubmissionPage.form_submissions?.winner_count || 5}
-                    onBack={() => setActiveSubmissionPage(null)}
+                    onBack={() => {
+                        setActiveSubmissionPage(null);
+                        fetchPages();
+                    }}
                 />
             </div>
         );
@@ -310,192 +344,176 @@ export function PublishPageManagement() {
             {/* Main Table Card */}
             <div className="flex-1 min-h-0 overflow-auto pb-4 pr-2">
                 <Table className="min-w-[1200px] border-separate border-spacing-y-3 table-fixed">
-                        <colgroup>
-                            <col style={{ width: '350px' }} />
-                            <col style={{ width: '150px' }} />
-                            <col style={{ width: '250px' }} />
-                            <col style={{ width: '200px' }} />
-                            <col style={{ width: '250px' }} />
-                        </colgroup>
-                        <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
-                            <TableRow className="border-none hover:bg-transparent">
-                                <TableHead className="w-[350px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-6 border-y border-l border-transparent">Page Info</TableHead>
-                                <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 border-y border-transparent">Type</TableHead>
-                                <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 border-y border-transparent">Status</TableHead>
-                                <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 border-y border-transparent">Statistic</TableHead>
-                                <TableHead className="w-[250px] text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-r-xl pr-4 border-y border-r border-transparent">Action</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {loading ? (
-                                Array(5).fill(0).map((_, i) => (
-                                    <TableRow key={`skeleton-${i}`} className="bg-white border-none shadow-sm rounded-xl">
-                                        <TableCell className="border-y border-l border-gray-200 rounded-l-xl pl-6 py-4">
-                                            <div className="h-5 w-3/4 bg-gray-200 animate-pulse rounded mb-2"></div>
-                                            <div className="h-3 w-32 bg-gray-100 animate-pulse rounded"></div>
-                                        </TableCell>
-                                        <TableCell className="border-y border-gray-200 py-4">
-                                            <div className="h-5 w-20 bg-gray-200 animate-pulse rounded-full"></div>
-                                        </TableCell>
-                                        <TableCell className="border-y border-gray-200 py-4">
-                                            <div className="h-5 w-20 bg-gray-200 animate-pulse rounded-full mb-2"></div>
-                                            <div className="h-3 w-24 bg-gray-100 animate-pulse rounded mb-1"></div>
-                                            <div className="h-3 w-24 bg-gray-100 animate-pulse rounded"></div>
-                                        </TableCell>
-                                        <TableCell className="border-y border-gray-200 py-4">
-                                            <div className="flex flex-col gap-3">
-                                                <div>
-                                                    <div className="h-4 w-12 bg-gray-200 animate-pulse rounded mb-1"></div>
-                                                    <div className="h-3 w-20 bg-gray-100 animate-pulse rounded"></div>
-                                                </div>
-                                                <div>
-                                                    <div className="h-4 w-12 bg-gray-200 animate-pulse rounded mb-1"></div>
-                                                    <div className="h-3 w-16 bg-gray-100 animate-pulse rounded"></div>
-                                                </div>
+                    <colgroup>
+                        <col style={{ width: '350px' }} />
+                        <col style={{ width: '150px' }} />
+                        <col style={{ width: '250px' }} />
+                        <col style={{ width: '200px' }} />
+                        <col style={{ width: '250px' }} />
+                    </colgroup>
+                    <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
+                        <TableRow className="border-none hover:bg-transparent">
+                            <TableHead className="w-[350px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-6 border-y border-l border-transparent">Page Info</TableHead>
+                            <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 border-y border-transparent">Type</TableHead>
+                            <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 border-y border-transparent">Status</TableHead>
+                            <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 border-y border-transparent">Statistic</TableHead>
+                            <TableHead className="w-[250px] text-right text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-r-xl pr-4 border-y border-r border-transparent">Action</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? (
+                            Array(5).fill(0).map((_, i) => (
+                                <TableRow key={`skeleton-${i}`} className="bg-white border-none shadow-sm rounded-xl">
+                                    <TableCell className="border-y border-l border-gray-200 rounded-l-xl pl-6 py-4">
+                                        <div className="h-5 w-3/4 bg-gray-200 animate-pulse rounded mb-2"></div>
+                                        <div className="h-3 w-32 bg-gray-100 animate-pulse rounded"></div>
+                                    </TableCell>
+                                    <TableCell className="border-y border-gray-200 py-4">
+                                        <div className="h-5 w-20 bg-gray-200 animate-pulse rounded-full"></div>
+                                    </TableCell>
+                                    <TableCell className="border-y border-gray-200 py-4">
+                                        <div className="h-5 w-20 bg-gray-200 animate-pulse rounded-full mb-2"></div>
+                                        <div className="h-3 w-24 bg-gray-100 animate-pulse rounded mb-1"></div>
+                                        <div className="h-3 w-24 bg-gray-100 animate-pulse rounded"></div>
+                                    </TableCell>
+                                    <TableCell className="border-y border-gray-200 py-4">
+                                        <div className="flex flex-col gap-3">
+                                            <div>
+                                                <div className="h-4 w-12 bg-gray-200 animate-pulse rounded mb-1"></div>
+                                                <div className="h-3 w-20 bg-gray-100 animate-pulse rounded"></div>
                                             </div>
-                                        </TableCell>
-                                        <TableCell className="text-right border-y border-r border-gray-200 rounded-r-xl pr-4 py-4">
-                                            <div className="flex justify-end gap-2">
-                                                <div className="h-8 w-8 bg-gray-200 animate-pulse rounded"></div>
-                                                <div className="h-8 w-8 bg-gray-200 animate-pulse rounded"></div>
-                                                <div className="h-8 w-24 bg-blue-200 animate-pulse rounded"></div>
+                                            <div>
+                                                <div className="h-4 w-12 bg-gray-200 animate-pulse rounded mb-1"></div>
+                                                <div className="h-3 w-16 bg-gray-100 animate-pulse rounded"></div>
                                             </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            ) : filteredPages.length === 0 ? (
-                                <TableRow className="bg-white border-none shadow-sm rounded-xl">
-                                    <TableCell colSpan={5} className="h-48 text-center border border-gray-200 rounded-xl">
-                                        <div className="p-8 text-center text-gray-500">
-                                            No pages found in this category.
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right border-y border-r border-gray-200 rounded-r-xl pr-4 py-4">
+                                        <div className="flex justify-end gap-2">
+                                            <div className="h-8 w-8 bg-gray-200 animate-pulse rounded"></div>
+                                            <div className="h-8 w-8 bg-gray-200 animate-pulse rounded"></div>
+                                            <div className="h-8 w-24 bg-blue-200 animate-pulse rounded"></div>
                                         </div>
                                     </TableCell>
                                 </TableRow>
-                            ) : (
-                                filteredPages.map((page) => (
-                                    <TableRow key={page.id} className="bg-white hover:bg-gray-50/80 transition-shadow shadow-sm hover:shadow border-none rounded-xl group align-top [&>td]:align-top">
-                                        <TableCell className="border-y border-l border-gray-200 rounded-l-xl pl-6 py-4">
-                                            <div className="flex flex-col gap-1.5">
-                                                <span className="font-semibold text-gray-900">{page.title}</span>
-                                                <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono">
-                                                    <span>ID: {page.id}</span>
+                            ))
+                        ) : filteredPages.length === 0 ? (
+                            <TableRow className="bg-white border-none shadow-sm rounded-xl">
+                                <TableCell colSpan={5} className="h-48 text-center border border-gray-200 rounded-xl">
+                                    <div className="p-8 text-center text-gray-500">
+                                        No pages found in this category.
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            filteredPages.map((page) => (
+                                <TableRow key={page.id} className="bg-white hover:bg-gray-50/80 transition-shadow shadow-sm hover:shadow border-none rounded-xl group align-top [&>td]:align-top">
+                                    <TableCell className="border-y border-l border-gray-200 rounded-l-xl pl-6 py-4">
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="font-semibold text-gray-900">{page.title}</span>
+                                            <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono">
+                                                <span>ID: {page.id}</span>
+                                            </div>
+                                            {page.submission_id && page.form_submissions?.full_name && (
+                                                <div className="text-xs text-gray-500 font-medium mt-1">
+                                                    {page.form_submissions.full_name}
+                                                    {page.form_submissions.university ? ` - ${page.form_submissions.university}` : ''}
                                                 </div>
-                                                {page.submission_id && page.form_submissions?.full_name && (
-                                                    <div className="text-xs text-gray-500 font-medium mt-1">
-                                                        {page.form_submissions.full_name}
-                                                        {page.form_submissions.university ? ` - ${page.form_submissions.university}` : ''}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="border-y border-gray-200">
-                                            <div className="flex flex-col text-sm">
-                                                {page.is_extra_ad ? (
-                                                    <span className="font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-amber-100">Extra Ad</span>
-                                                ) : !page.submission_id ? (
-                                                    <span className="font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-purple-100">Announcement</span>
-                                                ) : (
-                                                    <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-blue-100">Survey Ad</span>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="border-y border-gray-200">
-                                            <div className="flex flex-col gap-1.5 text-xs">
-                                                {(() => {
-                                                    const now = new Date();
-                                                    const startDate = page.publish_start_date ? new Date(page.publish_start_date) : null;
-                                                    const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="border-y border-gray-200">
+                                        <div className="flex flex-col text-sm">
+                                            {page.is_extra_ad ? (
+                                                <span className="font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-amber-100">Extra Ad</span>
+                                            ) : !page.submission_id ? (
+                                                <span className="font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-purple-100">Announcement</span>
+                                            ) : (
+                                                <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full w-fit text-[11px] border border-blue-100">Survey Ad</span>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="border-y border-gray-200">
+                                        <div className="flex flex-col gap-1.5 text-xs">
+                                            {(() => {
+                                                const now = new Date();
+                                                const startDate = page.publish_start_date ? new Date(page.publish_start_date) : null;
+                                                const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
 
-                                                    if (!page.is_published) {
-                                                        return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full w-fit">Drafted</span>;
-                                                    }
-                                                    if (endDate && endDate < now) {
-                                                        return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full w-fit">Completed</span>;
-                                                    }
-                                                    if (startDate && startDate > now) {
-                                                        return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-full w-fit">Scheduled</span>;
-                                                    }
-                                                    return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-green-50 text-green-700 border border-green-100 rounded-full w-fit">Live</span>;
-                                                })()}
+                                                if (!page.is_published) {
+                                                    return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full w-fit">Drafted</span>;
+                                                }
+                                                if (endDate && endDate < now) {
+                                                    return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full w-fit">Completed</span>;
+                                                }
+                                                if (startDate && startDate > now) {
+                                                    return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-full w-fit">Scheduled</span>;
+                                                }
+                                                return <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-green-50 text-green-700 border border-green-100 rounded-full w-fit">Live</span>;
+                                            })()}
 
-                                                {page.submission_id && (
-                                                    <div className="flex flex-col mt-1 gap-1">
-                                                        {page.publish_start_date ? (
-                                                            <span className="text-gray-500 text-[11px]">
-                                                                Start: {new Date(page.publish_start_date).toLocaleDateString()}, {new Date(page.publish_start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                            </span>
-                                                        ) : null}
-                                                        {page.publish_end_date ? (
-                                                            <span className="text-gray-500 text-[11px]">
-                                                                End: {new Date(page.publish_end_date).toLocaleDateString()}, {new Date(page.publish_end_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                            </span>
-                                                        ) : null}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="border-y border-gray-200">
-                                            <div className="flex flex-col gap-2">
-                                                <div className="flex flex-col">
-                                                    {page.submission_id ? (
-                                                        <button
-                                                            onClick={() => setActiveSubmissionPage(page)}
-                                                            className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer hover:underline text-left"
-                                                        >
+                                            {page.submission_id && (
+                                                <div className="flex flex-col mt-1 gap-1">
+                                                    {page.publish_start_date ? (
+                                                        <span className="text-gray-500 text-[11px]">
+                                                            Start: {new Date(page.publish_start_date).toLocaleDateString()}, {new Date(page.publish_start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    ) : null}
+                                                    {page.publish_end_date ? (
+                                                        <span className="text-gray-500 text-[11px]">
+                                                            End: {new Date(page.publish_end_date).toLocaleDateString()}, {new Date(page.publish_end_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="border-y border-gray-200">
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex flex-col">
+                                                {page.submission_id ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-bold text-gray-900">
                                                             {page.page_respondents?.[0]?.count || 0}
-                                                        </button>
-                                                    ) : (
-                                                        <span className="text-sm font-bold text-gray-400">-</span>
-                                                    )}
-                                                    <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Respondents</span>
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-bold text-gray-900">{page.views_count || 0}</span>
-                                                    <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Views</span>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right border-y border-r border-gray-200 rounded-r-xl pr-4">
-                                            <div className="flex justify-end gap-1.5 items-start pt-0.5">
-                                                {page.is_published && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => window.open(`/pages/${page.slug}`, '_blank')}
-                                                        title="View Live Page"
-                                                        className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
-                                                    >
-                                                        <ExternalLink className="w-4 h-4" />
-                                                    </Button>
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-sm font-bold text-gray-400">-</span>
                                                 )}
+                                                <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Respondents</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-gray-900">{page.views_count || 0}</span>
+                                                <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Views</span>
+                                            </div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right border-y border-r border-gray-200 rounded-r-xl pr-4">
+                                        <div className="flex justify-end gap-1.5 items-center pt-0.5">
+                                            {page.submission_id && (
+                                                <>
+                                                    {(() => {
+                                                        const s = page.form_submissions;
+                                                        const hasRewards = !!s?.prize_per_winner && s.prize_per_winner > 0;
+                                                        const expectedWinners = hasRewards ? (s?.winner_count || 0) : 0;
+                                                        const currentWinners = page.current_winners_count || 0;
 
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleEditPage(page)}
-                                                    title="Edit Page"
-                                                    className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 border-gray-200"
-                                                >
-                                                    <PenLine className="w-4 h-4" />
-                                                </Button>
+                                                        // Provide visual cue if it needs winners
+                                                        const needsWinners = expectedWinners > 0 && currentWinners < expectedWinners;
+                                                        const isCompleted = expectedWinners > 0 && !needsWinners && !page.has_pending_proofs;
 
-                                                {page.submission_id && (
-                                                    <>
-                                                        {(() => {
-                                                            const s = page.form_submissions;
-                                                            const hasRewards = !!s?.prize_per_winner && s.prize_per_winner > 0;
-                                                            const expectedWinners = hasRewards ? (s?.winner_count || 0) : 0;
-                                                            const currentWinners = page.current_winners_count || 0;
-
-                                                            // Provide visual cue if it needs winners
-                                                            const needsWinners = expectedWinners > 0 && currentWinners < expectedWinners;
-
-                                                            return (
+                                                        return (
+                                                            <>
+                                                                {isCompleted && !needsWinners && (
+                                                                    <div title="Semua file bukti telah dibersihkan" className="flex items-center justify-center bg-green-50 text-green-600 rounded-full h-6 w-6 border border-green-200/60 shadow-sm shrink-0">
+                                                                        <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
+                                                                    </div>
+                                                                )}
                                                                 <Button
                                                                     size="sm"
                                                                     onClick={() => setActiveSubmissionPage(page)}
                                                                     title={needsWinners ? "Select Winners" : "View Submissions & Winners"}
-                                                                    className={`h-8 px-4 text-white shadow-sm transition-all duration-300 ${needsWinners
+                                                                    className={`h-8 px-4 text-white shadow-sm transition-all duration-300 flex items-center ${needsWinners
                                                                         ? "bg-amber-500 hover:bg-amber-600 relative pr-7"
                                                                         : "bg-blue-600 hover:bg-blue-700"
                                                                         }`}
@@ -508,16 +526,39 @@ export function PublishPageManagement() {
                                                                         </span>
                                                                     )}
                                                                 </Button>
-                                                            );
-                                                        })()}
-                                                    </>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </>
+                                            )}
+
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleEditPage(page)}
+                                                title="Edit Page"
+                                                className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 border-gray-200 shrink-0"
+                                            >
+                                                <PenLine className="w-4 h-4" />
+                                            </Button>
+
+                                            {page.is_published && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => window.open(`/pages/${page.slug}`, '_blank')}
+                                                    title="View Live Page"
+                                                    className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 border-gray-200 shrink-0"
+                                                >
+                                                    <ExternalLink className="w-4 h-4" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
                 </Table>
             </div>
 

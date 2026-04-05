@@ -196,7 +196,7 @@ export function TransactionsPage() {
       {/* Unified Toolbar */}
       <div className="bg-white p-4 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0 relative z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)]">
 
-        {/* Top Row: Date | Export & Revenue */}
+        {/* Top Row: Date | Export, Revenue & Refresh */}
         <div className="flex flex-row items-center justify-between gap-4 w-full">
           {/* Left: Date Selectors */}
           <div className="flex items-center gap-3">
@@ -240,11 +240,8 @@ export function TransactionsPage() {
             </div>
           </div>
 
-          {/* Right: Export & Prominent Revenue */}
+          {/* Right: Export, Prominent Revenue & Refresh */}
           <div className="flex items-center gap-3">
-            {/* Bulk Actions */}
-
-
             {/* Export CSV */}
             <Button
               onClick={() => {
@@ -328,15 +325,36 @@ export function TransactionsPage() {
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Refresh Button */}
+            <Button
+              onClick={fetchTransactions}
+              variant="outline"
+              disabled={loading}
+              className="h-10 w-10 p-0 rounded-xl text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200 shrink-0 shadow-sm transition-all"
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
         </div>
 
         <div className="h-px bg-gray-100 w-full" />
 
-        {/* Bottom Row: Filters | Search & Refresh */}
-        <div className="flex flex-row items-center justify-between gap-4 w-full">
+        {/* Bottom Row: Search & Filters */}
+        <div className="flex flex-row items-center justify-start gap-4 w-full">
+          {/* Left: Search */}
+          <div className="relative w-[400px]">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Cari ID transaksi, nama, atau email..."
+              className="pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm w-full shadow-sm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-          {/* Left: Status Filters */}
+          {/* Right: Status Filters */}
           <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 scrollbar-hide">
             {[
               { id: 'all', label: 'Semua', count: statusCounts.all },
@@ -362,30 +380,6 @@ export function TransactionsPage() {
                 )}
               </button>
             ))}
-          </div>
-
-          {/* Right: Search & Refresh */}
-          <div className="flex items-center gap-3">
-            <div className="relative w-[400px]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                placeholder="Cari ID transaksi, nama, atau email..."
-                className="pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm w-full shadow-sm"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-
-            <Button
-              onClick={fetchTransactions}
-              variant="outline"
-              size="sm"
-              disabled={loading}
-              className="h-8 w-8 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200 shrink-0"
-              title="Refresh data"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
           </div>
         </div>
       </div>
