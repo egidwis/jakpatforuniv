@@ -95,6 +95,8 @@ export function SubmissionsManagerView({
     onBack,
 }: SubmissionsManagerViewProps) {
     const [loading, setLoading] = useState(true);
+    const [loadProgress, setLoadProgress] = useState(0);
+    const [loadText, setLoadText] = useState('Memuat data submissions...');
     const [saving, setSaving] = useState(false);
     const [respondents, setRespondents] = useState<MergedRespondent[]>([]);
     const [existingWinners, setExistingWinners] = useState<ExistingWinner[]>([]);
@@ -123,6 +125,8 @@ export function SubmissionsManagerView({
 
     const fetchData = async () => {
         setLoading(true);
+        setLoadProgress(10);
+        setLoadText('Mengambil data dari server...');
         try {
             // 1. Fetch respondents
             const { data: prData, error: prError } = await supabase
@@ -148,6 +152,8 @@ export function SubmissionsManagerView({
             };
 
             if (jakpatIds.length > 0) {
+                setLoadProgress(30);
+                setLoadText('Mengumpulkan profil responden...');
                 const uniqueSanitized = new Set<string>();
                 jakpatIds.forEach((rawId: string) => {
                     if (!rawId) return;
@@ -157,7 +163,13 @@ export function SubmissionsManagerView({
 
                 const BATCH_SIZE = 50;
                 const allMdData: any[] = [];
+                const uniqueOriginalsForCount = [...new Set(jakpatIds.filter(Boolean).map((id: string) => id.trim()))];
+                const totalBatches = Math.ceil(sanitizedList.length / BATCH_SIZE) + Math.ceil(uniqueOriginalsForCount.length / BATCH_SIZE);
+                let currentBatch = 0;
+
                 for (let i = 0; i < sanitizedList.length; i += BATCH_SIZE) {
+                    currentBatch++;
+                    setLoadProgress(30 + Math.floor((currentBatch / (totalBatches || 1)) * 40));
                     const batch = sanitizedList.slice(i, i + BATCH_SIZE);
                     const { data: mdBatch } = await supabase
                         .from('respondents-masterdata')
@@ -168,6 +180,8 @@ export function SubmissionsManagerView({
 
                 const uniqueOriginals = [...new Set(jakpatIds.filter(Boolean).map((id: string) => id.trim()))];
                 for (let i = 0; i < uniqueOriginals.length; i += BATCH_SIZE) {
+                    currentBatch++;
+                    setLoadProgress(30 + Math.floor((currentBatch / (totalBatches || 1)) * 40));
                     const batch = uniqueOriginals.slice(i, i + BATCH_SIZE);
                     const { data: mdBatch } = await supabase
                         .from('respondents-masterdata')
@@ -184,6 +198,8 @@ export function SubmissionsManagerView({
                 });
             }
 
+            setLoadProgress(75);
+            setLoadText('Mendapatkan riwayat pemenang...');
             // 3. Fetch recent winners (last 6 months) across ALL surveys
             const sixMonthsAgo = new Date();
             sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -231,6 +247,8 @@ export function SubmissionsManagerView({
                 setCriteria((pageData.form_submissions as any).criteria_responden || '');
             }
 
+            setLoadProgress(90);
+            setLoadText('Menggabungkan dan menganalisis data...');
             // 6. Merge and categorize
             const merged: MergedRespondent[] = (prData || []).map((pr: any) => {
                 const lookupKey = sanitizeJakpatId(pr.jakpat_id);
@@ -278,11 +296,13 @@ export function SubmissionsManagerView({
             });
 
             setRespondents(merged);
+            setLoadProgress(100);
+            setLoadText('Selesai!');
         } catch (error: any) {
             console.error('Error fetching data:', error);
             toast.error('Gagal memuat data responden');
         } finally {
-            setLoading(false);
+            setTimeout(() => setLoading(false), 300);
         }
     };
 
@@ -596,10 +616,20 @@ export function SubmissionsManagerView({
             <div className="flex-1 overflow-auto bg-gray-50/30">
                 <div className="p-6 h-full flex flex-col">
                     {loading ? (
-                        <div className="flex flex-1 items-center justify-center min-h-[300px]">
-                            <div className="flex flex-col items-center gap-3">
-                                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                                <span className="text-sm text-gray-500">Memuat data submissions...</span>
+                        <div className="flex flex-1 flex-col items-center justify-center min-h-[300px] w-full max-w-sm mx-auto">
+                            <div className="flex flex-col items-center gap-5 w-full bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                                <div className="p-3 bg-blue-50 rounded-full">
+                                    <Loader2 className="h-7 w-7 animate-spin text-blue-600" />
+                                </div>
+                                <div className="w-full space-y-2">
+                                    <div className="flex justify-between w-full text-xs font-semibold text-gray-700">
+                                        <span>{loadText}</span>
+                                        <span className="text-blue-600">{loadProgress}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100/80 rounded-full h-2 overflow-hidden ring-1 ring-inset ring-gray-200/50">
+                                        <div className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all duration-300 ease-out" style={{ width: `${loadProgress}%` }}></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     ) : hasExistingWinners && !isSelectionMode ? (
@@ -726,6 +756,7 @@ export function SubmissionsManagerView({
                                         <TableHeader className="sticky top-0 bg-white z-10 shadow-sm border-b border-gray-200">
                                             <TableRow className="hover:bg-transparent">
                                                 {isSelectionMode && <TableHead className="w-12 text-center"></TableHead>}
+                                                <TableHead className="text-xs font-semibold text-gray-600">Waktu Submit</TableHead>
                                                 <TableHead className="text-xs font-semibold text-gray-600">Jakpat ID</TableHead>
                                                 <TableHead className="text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setSortByEligible(!sortByEligible)}>
                                                     <div className="flex items-center justify-between gap-2">
@@ -742,7 +773,7 @@ export function SubmissionsManagerView({
                                         <TableBody>
                                             {filteredRespondents.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={isSelectionMode ? 7 : 6} className="h-48 text-center text-gray-400">
+                                                    <TableCell colSpan={isSelectionMode ? 8 : 7} className="h-48 text-center text-gray-400">
                                                         <div className="flex flex-col items-center justify-center gap-2">
                                                             <Filter className="w-6 h-6 text-gray-300 mb-1" />
                                                             <span className="font-medium text-sm text-gray-500">Tidak ada responden yang cocok</span>
@@ -765,6 +796,16 @@ export function SubmissionsManagerView({
                                                                 />
                                                             </TableCell>
                                                         )}
+                                                        <TableCell className="py-3">
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <span className="text-xs text-gray-700 font-medium whitespace-nowrap">
+                                                                    {new Date(r.submitted_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                                </span>
+                                                                <span className="text-[10px] text-gray-500 font-mono whitespace-nowrap">
+                                                                    {new Date(r.submitted_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')} WIB
+                                                                </span>
+                                                            </div>
+                                                        </TableCell>
                                                         <TableCell className="py-3">
                                                             <div className="flex flex-col gap-1">
                                                                 <span className="font-mono text-xs font-semibold text-gray-700">{r.jakpat_id}</span>
