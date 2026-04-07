@@ -284,7 +284,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent
-                className="max-w-5xl h-[90vh] flex flex-col p-0 overflow-hidden"
+                className="max-w-full w-screen h-[100dvh] flex flex-col p-0 overflow-hidden rounded-none border-0 !m-0 data-[state=closed]:!slide-out-to-bottom-full data-[state=open]:!slide-in-from-bottom-full"
                 onInteractOutside={(e) => e.preventDefault()}
             >
                 {/* Header */}

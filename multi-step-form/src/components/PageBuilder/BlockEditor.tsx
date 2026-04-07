@@ -1,4 +1,5 @@
 import { useEditor, EditorContent } from '@tiptap/react';
+import { useEffect, useRef } from 'react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -16,6 +17,8 @@ interface BlockEditorProps {
 }
 
 export function BlockEditor({ content, onChange, editable = true }: BlockEditorProps) {
+    const isInternalUpdate = useRef(false);
+
     const editor = useEditor({
         extensions: [
             StarterKit,
@@ -38,6 +41,7 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
         content: content,
         editable: editable,
         onUpdate: ({ editor }) => {
+            isInternalUpdate.current = true;
             onChange(editor.getJSON());
         },
         editorProps: {
@@ -46,6 +50,24 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
             },
         },
     });
+
+    // Sync content from parent when it changes externally (e.g. initialData loaded async)
+    useEffect(() => {
+        if (!editor) return;
+        if (isInternalUpdate.current) {
+            isInternalUpdate.current = false;
+            return;
+        }
+        // Only update if content actually has meaningful data
+        const hasContent = content && typeof content === 'object' && (content.type || (content.content && content.content.length > 0));
+        if (hasContent) {
+            const currentJSON = JSON.stringify(editor.getJSON());
+            const newJSON = JSON.stringify(content);
+            if (currentJSON !== newJSON) {
+                editor.commands.setContent(content, { emitUpdate: false });
+            }
+        }
+    }, [content, editor]);
 
     if (!editor) {
         return null;
