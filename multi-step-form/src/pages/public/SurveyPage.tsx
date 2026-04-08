@@ -347,10 +347,11 @@ export function SurveyPage() {
                 const options = {
                     maxSizeMB: 0.1, // < 100KB
                     maxWidthOrHeight: 1024,
-                    useWebWorker: true,
+                    useWebWorker: false, // Turn off WebWorker to prevent crashes on Android WebView
                 };
                 const compressedFile = await imageCompression(proofFile, options);
-                const fileName = `proof-${Date.now()}-${proofFile.name}`;
+                const sanitizedName = proofFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_');
+                const fileName = `proof-${Date.now()}-${sanitizedName}`;
 
                 const { error: uploadError } = await supabase.storage
                     .from('page-uploads')
@@ -395,7 +396,8 @@ export function SurveyPage() {
 
         } catch (error: any) {
             console.error('Submission error:', error);
-            toast.error(error.message || 'Failed to submit');
+            const errorMsg = error?.message || error?.error || error?.error_description || (typeof error === 'string' ? error : 'Failed to submit');
+            toast.error(errorMsg);
             setSubmitting(false);
         }
     };
