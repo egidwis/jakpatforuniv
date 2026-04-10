@@ -17,7 +17,7 @@ const getStatusSteps = (t: any) => [
     { key: 'in_review', label: t('statusInReview'), icon: Search, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
     { key: 'scheduling', label: t('statusScheduling'), icon: Calendar, helper: t('statusSchedulingHelper'), completedHelper: t('statusSchedulingCompletedHelper') },
     { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper'), completedHelper: t('statusPaymentSuccessHelper') },
-    { key: 'publishing', label: t('statusPublishing'), icon: PlayCircle, helper: t('statusPublishingHelper'), completedHelper: t('statusPublishingCompletedHelper') },
+    { key: 'publishing', label: t('statusPublishing'), icon: PlayCircle, helper: t('statusPublishingHelper'), liveHelper: t('statusPublishingLiveHelper'), completedHelper: t('statusPublishingCompletedHelper') },
     { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper'), completedHelper: t('statusCompletedHelper') },
 ];
 
@@ -56,19 +56,43 @@ function ProgressTracker({
     submission,
     scheduledAd,
     currentStep, 
-    paymentLink, 
+    paymentLink,
+    invoiceId,
     steps 
 }: { 
     submission: FormSubmission;
     scheduledAd?: ScheduledAd | null;
     currentStep: number; 
     paymentLink?: string | null; 
+    invoiceId?: string | null;
     steps: any[] 
 }) {
     const { t } = useLanguage();
     
     // Dynamic subtitle override logic
     const getDynamicHelper = (step: any, isCompleted: boolean) => {
+        // Special 3-state logic for the publishing step
+        if (step.key === 'publishing') {
+            if (isCompleted) {
+                // Step 4 (completed) is active — publishing is done
+                return step.completedHelper;
+            }
+            const now = new Date();
+            const submissionStatus = (submission.submission_status || '').toLowerCase();
+            // Condition 3: ad explicitly completed by admin
+            if (submissionStatus === 'completed') {
+                return step.completedHelper;
+            }
+            // Condition 2: ad is live (between start and end date, or status is 'publishing')
+            if (
+                submissionStatus === 'publishing' ||
+                (scheduledAd && now >= new Date(scheduledAd.start_date) && now <= new Date(scheduledAd.end_date))
+            ) {
+                return step.liveHelper;
+            }
+            // Condition 1: payment done & slot reserved, waiting for start date
+            return step.helper;
+        }
         if (isCompleted && step.completedHelper) {
             return step.completedHelper;
         }
@@ -166,12 +190,31 @@ function ProgressTracker({
                                                 </span>
                                             )}
 
-                                            {/* Publishing Link */}
-                                            {step.key === 'publishing' && scheduledAd?.ad_link && isCompleted && (
-                                                <a href={scheduledAd.ad_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-[10px] text-blue-500 hover:text-blue-700 hover:underline">
-                                                    <ExternalLink className="w-3 h-3 mr-0.5"/> View Page
-                                                </a>
-                                            )}
+                                            {/* Publishing: waiting (paid + scheduled, not yet live) */}
+                                            {step.key === 'publishing' && isCurrent && scheduledAd && (() => {
+                                                const now = new Date();
+                                                const isLive = now >= new Date(scheduledAd.start_date) && now <= new Date(scheduledAd.end_date);
+                                                const submissionStatus = (submission.submission_status || '').toLowerCase();
+                                                const isLiveStatus = submissionStatus === 'publishing' || isLive;
+                                                if (!isLiveStatus) {
+                                                    return (
+                                                        <span className="inline-flex items-center text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5 mt-0.5">
+                                                            Scheduled: {new Date(scheduledAd.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {new Date(scheduledAd.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                                        </span>
+                                                    );
+                                                }
+                                                if (isLiveStatus && scheduledAd.ad_link) {
+                                                    return (
+                                                        <a href={scheduledAd.ad_link} target="_blank" rel="noopener noreferrer"
+                                                            className="inline-flex items-center text-[10px] font-semibold text-white px-2 py-1 rounded-md shadow-sm hover:opacity-90 transition-opacity mt-0.5"
+                                                            style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
+                                                        >
+                                                            <ExternalLink className="w-3 h-3 mr-1" /> Lihat Postingan
+                                                        </a>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
 
                                             {/* Pay Now Button (Desktop) */}
                                             {isCurrent && step.key === 'payment' && paymentLink && (
@@ -186,9 +229,9 @@ function ProgressTracker({
                                                     </a>
                                             )}
                                             {/* Paid/Invoice Button (Desktop) */}
-                                            {isCompleted && step.key === 'payment' && submission.id && (
+                                            {isCompleted && step.key === 'payment' && invoiceId && (
                                                     <Link
-                                                        to={`/invoices/${submission.id}`}
+                                                        to={`/invoices/${invoiceId}`}
                                                         target="_blank"
                                                         className="inline-flex items-center justify-center rounded-md px-2.5 py-1 text-[10px] font-semibold text-gray-700 bg-gray-100 dark:text-gray-300 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 shadow-sm transition-all mt-1"
                                                     >
@@ -272,11 +315,29 @@ function ProgressTracker({
                                             </span>
                                             
                                             {/* Publishing Link (Mobile) */}
-                                            {step.key === 'publishing' && scheduledAd?.ad_link && isCompleted && (
-                                                <a href={scheduledAd.ad_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-[10px] text-blue-500 hover:text-blue-700 hover:underline">
-                                                    View Page
-                                                </a>
-                                            )}
+                                            {step.key === 'publishing' && isCurrent && scheduledAd && (() => {
+                                                const now = new Date();
+                                                const isLive = now >= new Date(scheduledAd.start_date) && now <= new Date(scheduledAd.end_date);
+                                                const submissionStatus = (submission.submission_status || '').toLowerCase();
+                                                const isLiveStatus = submissionStatus === 'publishing' || isLive;
+                                                if (!isLiveStatus) {
+                                                    return (
+                                                        <span className="inline-flex items-center text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5 mt-1">
+                                                            Scheduled: {new Date(scheduledAd.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {new Date(scheduledAd.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                                        </span>
+                                                    );
+                                                }
+                                                if (isLiveStatus && scheduledAd.ad_link) {
+                                                    return (
+                                                        <a href={scheduledAd.ad_link} target="_blank" rel="noopener noreferrer"
+                                                            className="inline-flex items-center text-[10px] font-semibold text-blue-500 hover:text-blue-700 hover:underline"
+                                                        >
+                                                            <ExternalLink className="w-3 h-3 mr-0.5" /> Lihat Postingan
+                                                        </a>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </div>
 
                                         {/* Mobile Subtitle Info */}
@@ -313,10 +374,10 @@ function ProgressTracker({
                                             </div>
                                         )}
                                         {/* Paid/Invoice Button (Mobile) */}
-                                        {isCompleted && step.key === 'payment' && submission.id && (
+                                        {isCompleted && step.key === 'payment' && invoiceId && (
                                             <div className="mt-2">
                                                 <Link
-                                                    to={`/invoices/${submission.id}`}
+                                                    to={`/invoices/${invoiceId}`}
                                                     target="_blank"
                                                     className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-[11px] font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 dark:text-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors w-fit shadow-sm"
                                                 >
@@ -345,6 +406,7 @@ export function StatusPage() {
     const [selectedStatus, setSelectedStatus] = useState<string>('all');
     // Store payment links for each submission: { submissionId: paymentUrl }
     const [paymentLinks, setPaymentLinks] = useState<Record<string, string | null>>({});
+    const [invoiceIds, setInvoiceIds] = useState<Record<string, string | null>>({});
     const [scheduledAdsData, setScheduledAdsData] = useState<Record<string, ScheduledAd | null>>({});
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -388,35 +450,47 @@ export function StatusPage() {
 
                     // Fetch payment links for each submission
                     const links: Record<string, string | null> = {};
+                    const invIds: Record<string, string | null> = {};
                     const schedData: Record<string, ScheduledAd | null> = {};
 
                     // Use Promise.all for parallel fetching to prevent blocking
                     await Promise.all(data.map(async (submission) => {
-                        if (submission.id && submission.payment_status !== 'paid') {
-                            // Try to get invoice first (manual invoice from admin)
-                            try {
-                                const invoices = await getInvoicesByFormSubmissionId(submission.id);
-                                if (invoices.length > 0 && invoices[0].invoice_url) {
-                                    links[submission.id] = invoices[0].invoice_url;
-                                    return;
-                                }
-                            } catch (e) {
-                                console.error(`Error fetching invoices for ${submission.id}:`, e);
-                            }
-
-                            // If no invoice, try transactions (auto Mayar link)
+                        if (submission.id) {
+                            let foundTransactionId: string | null = null;
                             try {
                                 const transactions = await getTransactionsByFormSubmissionId(submission.id);
-                                if (transactions.length > 0 && transactions[0].payment_url) {
-                                    links[submission.id] = transactions[0].payment_url;
-                                    return;
+                                if (transactions.length > 0) {
+                                    if (transactions[0].payment_id) {
+                                        foundTransactionId = transactions[0].payment_id;
+                                    }
+                                    if (submission.payment_status !== 'paid' && transactions[0].payment_url) {
+                                        links[submission.id] = transactions[0].payment_url;
+                                    }
                                 }
                             } catch (e) {
                                 console.error(`Error fetching transactions for ${submission.id}:`, e);
                             }
 
+                            if (foundTransactionId) {
+                                invIds[submission.id] = foundTransactionId;
+                            }
+
+                            // Try to get manual invoice if no transaction link is found and not yet paid
+                            if (submission.payment_status !== 'paid' && !links[submission.id]) {
+                                try {
+                                    const invoices = await getInvoicesByFormSubmissionId(submission.id);
+                                    if (invoices.length > 0 && invoices[0].invoice_url) {
+                                        links[submission.id] = invoices[0].invoice_url;
+                                    }
+                                } catch (e) {
+                                    console.error(`Error fetching invoices for ${submission.id}:`, e);
+                                }
+                            }
+
                             // No payment link found
-                            links[submission.id] = null;
+                            if (!links[submission.id]) {
+                                links[submission.id] = null;
+                            }
                         }
                         
                         // Fetch schedules
@@ -435,6 +509,7 @@ export function StatusPage() {
                     }));
 
                     setPaymentLinks(links);
+                    setInvoiceIds(invIds);
                     setScheduledAdsData(schedData);
                 } catch (error) {
                     console.error('Failed to fetch submissions', error);
@@ -738,7 +813,7 @@ export function StatusPage() {
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <ProgressTracker submission={submission} scheduledAd={scheduledAdsData[submission.id!]} currentStep={currentStep} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} steps={steps} />
+                                                        <ProgressTracker submission={submission} scheduledAd={scheduledAdsData[submission.id!]} currentStep={currentStep} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} invoiceId={invoiceIds[submission.id!]} steps={steps} />
                                                     )}
 
 

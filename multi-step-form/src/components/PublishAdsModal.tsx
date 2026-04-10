@@ -210,7 +210,7 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
             const endDateObj = new Date(startDateObj);
             endDateObj.setDate(endDateObj.getDate() + submissionDuration);
 
-            const adLink = pageSlug ? `https://jakpatforuniv.com/pages/${pageSlug}` : '';
+            const adLink = pageSlug ? `https://submit.jakpatforuniv.com/pages/${pageSlug}` : '';
 
             // 2. Prevent duplicates by deleting old schedule if exists (Upsert logic)
             if (existingAdId) {
