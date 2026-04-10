@@ -6,11 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 // import { Switch } from '@/components/ui/switch'; // Removed unused
 import { BlockEditor } from './BlockEditor';
-import { supabase } from '@/utils/supabase';
+import { supabase, updateFormStatus } from '@/utils/supabase';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Eye, Save, Trash2, Plus, Upload, Check, Trophy, Users, Calendar } from 'lucide-react';
+import { Loader2, Eye, Save, Trash2, Plus, Upload, Check, Trophy, Users, Calendar, StopCircle } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
 interface PageBuilderModalProps {
@@ -276,6 +276,53 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
         } catch (error: any) {
             console.error('Error deleting page:', error);
             toast.error(error.message || 'Failed to delete page');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEndCampaign = async () => {
+        const confirmed = window.confirm(
+            'Apakah kamu yakin ingin menghentikan campaign ini?\n\nIklan akan langsung berhenti tayang dan status akan diubah menjadi Completed.'
+        );
+        if (!confirmed) return;
+
+        setLoading(true);
+        try {
+            const now = new Date().toISOString();
+            const existingId = initialData?.id || savedPageId;
+
+            // 1. Update survey_pages: unpublish & set end date to now
+            if (existingId) {
+                const { error: pageError } = await supabase
+                    .from('survey_pages')
+                    .update({
+                        is_published: false,
+                        publish_end_date: now,
+                        updated_at: now,
+                    })
+                    .eq('id', existingId);
+                if (pageError) throw pageError;
+            }
+
+            // 2. Update scheduled_ads: set end_date to now
+            if (submissionId) {
+                const { error: adError } = await supabase
+                    .from('scheduled_ads')
+                    .update({ end_date: now })
+                    .eq('form_submission_id', submissionId);
+                if (adError) throw adError;
+
+                // 3. Mark submission as completed
+                await updateFormStatus(submissionId, 'completed');
+            }
+
+            toast.success('Campaign berhasil dihentikan.');
+            onSuccess();
+            onClose();
+        } catch (error: any) {
+            console.error('Error ending campaign:', error);
+            toast.error(error.message || 'Gagal menghentikan campaign');
         } finally {
             setLoading(false);
         }
@@ -675,16 +722,37 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
                         {formData.is_published ? (
                             <>
-                                {/* Published/Scheduled page: Change to Draft (secondary) + Update Page (primary) */}
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleSave(false)}
-                                    disabled={loading}
-                                    className="h-9 text-sm border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 shrink-0"
-                                >
-                                    {isStandalone ? 'Unpublish' : 'Change to Draft'}
-                                </Button>
+                                {/* Published/Scheduled page: End Campaign (live) or Change to Draft (not yet live) */}
+                                {(() => {
+                                    const startDate = formData.publish_start_date ? new Date(formData.publish_start_date) : null;
+                                    const isLive = formData.is_published && !isStandalone && startDate && startDate <= new Date();
+                                    
+                                    if (isLive) {
+                                        return (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleEndCampaign}
+                                                disabled={loading}
+                                                className="h-9 text-sm border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 shrink-0 flex items-center gap-1.5"
+                                            >
+                                                <StopCircle className="w-4 h-4" />
+                                                End Campaign
+                                            </Button>
+                                        );
+                                    }
+                                    return (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSave(false)}
+                                            disabled={loading}
+                                            className="h-9 text-sm border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 shrink-0"
+                                        >
+                                            {isStandalone ? 'Unpublish' : 'Change to Draft'}
+                                        </Button>
+                                    );
+                                })()}
 
                                 <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block"></div>
 

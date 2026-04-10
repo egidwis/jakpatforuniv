@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, getScheduledAdsBySubmission, type FormSubmission, type ScheduledAd } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle, AlertCircle, Trash2, Menu } from 'lucide-react';
+import { Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle, AlertCircle, Trash2, Menu, Info, ExternalLink, Gift, Users, Link as LinkIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link, useSearchParams, useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -14,50 +14,66 @@ import { toast } from 'sonner';
 // Define status steps dynamically inside component to access translation
 // Define status steps dynamically inside component to access translation
 const getStatusSteps = (t: any) => [
-    { key: 'in_review', label: t('statusInReview'), icon: Search, helper: t('statusInReviewHelper') },
-    { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper') },
-    { key: 'scheduling', label: t('statusScheduling'), icon: Calendar, helper: t('statusSchedulingHelper') },
-    { key: 'publishing', label: t('statusPublishing'), icon: PlayCircle, helper: t('statusPublishingHelper') },
-    { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper') },
+    { key: 'in_review', label: t('statusInReview'), icon: Search, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
+    { key: 'scheduling', label: t('statusScheduling'), icon: Calendar, helper: t('statusSchedulingHelper'), completedHelper: t('statusSchedulingCompletedHelper') },
+    { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper'), completedHelper: t('statusPaymentSuccessHelper') },
+    { key: 'publishing', label: t('statusPublishing'), icon: PlayCircle, helper: t('statusPublishingHelper'), completedHelper: t('statusPublishingCompletedHelper') },
+    { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper'), completedHelper: t('statusCompletedHelper') },
 ];
 
 // Get the current step index based on submission state
-function getCurrentStepIndex(submission: FormSubmission, hasPaymentLink: boolean): number {
+function getCurrentStepIndex(submission: FormSubmission, hasPaymentLink: boolean, scheduledAds: any[] = []): number {
     // Check for spam/rejected status first (Revision Needed)
     if (submission.submission_status === 'spam') {
         return -1;
     }
 
-    // If not paid yet
-    if (submission.payment_status !== 'paid') {
-        // If we have a payment link/invoice, we are in Waiting Payment (Step 1)
-        if (hasPaymentLink) {
-            return 1;
-        }
-        // Otherwise we are still In Review (Step 0)
-        return 0;
+    const status = (submission.submission_status || 'in_review').toLowerCase();
+
+    if (status === 'completed') return 4;
+    // If it's explicitly publishing status OR the scheduled time has arrived and paid
+    if (status === 'publishing' || (scheduledAds.length > 0 && new Date() >= new Date(scheduledAds[0].start_date) && submission.payment_status === 'paid')) {
+        return 3;
     }
 
-    // If paid, check submission status
-    const status = (submission.submission_status || 'scheduling').toLowerCase();
-
-    switch (status) {
-        case 'in_review':
-            return 2; // If paid but still in review, move to Scheduling (Step 2)
-        case 'scheduling':
-            return 2;
-        case 'publishing':
-            return 3;
-        case 'completed':
-            return 4;
-        default:
-            return 2; // Default to Scheduling if paid but status unknown
+    if (submission.payment_status === 'paid') {
+        return 3; // Publish Page step is waiting
     }
+
+    if (hasPaymentLink) {
+        return 2; // Payment
+    }
+
+    if (status === 'approved' || status === 'scheduling' || scheduledAds.length > 0) {
+        return 1; // Scheduling (triggered when admin approves)
+    }
+
+    return 0; // In Review
 }
 
 // Progress Bar Component
-function ProgressTracker({ currentStep, paymentLink, steps }: { currentStep: number; paymentLink?: string | null; steps: any[] }) {
+function ProgressTracker({ 
+    submission,
+    scheduledAd,
+    currentStep, 
+    paymentLink, 
+    steps 
+}: { 
+    submission: FormSubmission;
+    scheduledAd?: ScheduledAd | null;
+    currentStep: number; 
+    paymentLink?: string | null; 
+    steps: any[] 
+}) {
     const { t } = useLanguage();
+    
+    // Dynamic subtitle override logic
+    const getDynamicHelper = (step: any, isCompleted: boolean) => {
+        if (isCompleted && step.completedHelper) {
+            return step.completedHelper;
+        }
+        return step.helper;
+    };
     return (
         <div className="w-full py-4">
             {/* Desktop Progress Bar */}
@@ -102,10 +118,10 @@ function ProgressTracker({ currentStep, paymentLink, steps }: { currentStep: num
                                     </div>
 
                                     {/* Label */}
-                                    <div className="text-center mt-3">
+                                    <div className="text-center mt-3 relative">
                                         <span
                                             className={`
-                                                text-xs font-medium
+                                                text-xs font-medium flex items-center justify-center gap-1
                                                 ${isCompleted || isCurrent
                                                     ? 'dark:text-blue-400'
                                                     : 'text-gray-400 dark:text-gray-500'
@@ -114,26 +130,73 @@ function ProgressTracker({ currentStep, paymentLink, steps }: { currentStep: num
                                             style={isCompleted || isCurrent ? { color: '#0091ff' } : {}}
                                         >
                                             {step.label}
+                                            {step.key === 'payment' && (
+                                                <div className="group relative z-20">
+                                                    <Info className="w-3.5 h-3.5 text-gray-400 cursor-help" />
+                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-xs rounded shadow-lg text-left" style={{ zIndex: 100 }}>
+                                                        Kuota iklan harian terbatas. Penjadwalan mengikuti urutan pembayaran. Lakukan pembayaran lebih awal untuk mengamankan slot.
+                                                        <div className="absolute top-full left-1/2 -translate-x-1/2 justify-center border-4 border-transparent border-t-gray-900"></div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </span>
-                                        {step.helper && isCurrent && !paymentLink && (
-                                            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 max-w-[80px] mx-auto">
-                                                {step.helper}
-                                            </p>
-                                        )}
-                                        {/* Pay Now Button (Desktop) */}
-                                        {isCurrent && step.key === 'payment' && paymentLink && (
-                                            <div className="mt-2">
-                                                <a
-                                                    href={paymentLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center justify-center rounded-md px-3 py-1 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
-                                                    style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
-                                                >
-                                                    {t('payNow')}
+                                        {/* Helper message */}
+                                        <div className="min-h-[20px]">
+                                            {((isCurrent && !paymentLink) || isCurrent || isCompleted) && (
+                                                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 max-w-[120px] mx-auto leading-tight">
+                                                    {getDynamicHelper(step, isCompleted)}
+                                                </p>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Step Specific Actions & Info (Desktop) */}
+                                        <div className="mt-2 min-h-[28px]">
+                                            
+                                            {/* In Review > 3 days -> wa button */}
+                                            {isCurrent && step.key === 'in_review' && submission.created_at && (Math.floor((Date.now() - new Date(submission.created_at).getTime()) / (1000 * 60 * 60 * 24)) >= 3) && (
+                                                <a href="https://wa.me/628123456789" target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-[10px] bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded-md hover:bg-green-100 transition-colors">
+                                                    <MessageCircle className="w-3 h-3 mr-1"/> Hubungi Admin
                                                 </a>
-                                            </div>
-                                        )}
+                                            )}
+
+                                            {/* Scheduling date info */}
+                                            {step.key === 'scheduling' && scheduledAd && (
+                                                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 inline-block mt-0.5">
+                                                    {new Date(scheduledAd.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {new Date(scheduledAd.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                                </span>
+                                            )}
+
+                                            {/* Publishing Link */}
+                                            {step.key === 'publishing' && scheduledAd?.ad_link && isCompleted && (
+                                                <a href={scheduledAd.ad_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-[10px] text-blue-500 hover:text-blue-700 hover:underline">
+                                                    <ExternalLink className="w-3 h-3 mr-0.5"/> View Page
+                                                </a>
+                                            )}
+
+                                            {/* Pay Now Button (Desktop) */}
+                                            {isCurrent && step.key === 'payment' && paymentLink && (
+                                                    <a
+                                                        href={paymentLink}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+                                                        style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
+                                                    >
+                                                        {t('payNow')}
+                                                    </a>
+                                            )}
+                                            {/* Paid/Invoice Button (Desktop) */}
+                                            {isCompleted && step.key === 'payment' && submission.id && (
+                                                    <Link
+                                                        to={`/invoices/${submission.id}`}
+                                                        target="_blank"
+                                                        className="inline-flex items-center justify-center rounded-md px-2.5 py-1 text-[10px] font-semibold text-gray-700 bg-gray-100 dark:text-gray-300 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 shadow-sm transition-all mt-1"
+                                                    >
+                                                        <FileText className="w-3 h-3 mr-1" />
+                                                        Lihat Invoice
+                                                    </Link>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             );
@@ -185,31 +248,81 @@ function ProgressTracker({ currentStep, paymentLink, steps }: { currentStep: num
                                     </div>
 
                                     {/* Label & Action */}
-                                    <div className="flex flex-col ml-8">
-                                        <span
-                                            className={`
-                                                text-sm font-medium
-                                                ${isCompleted || isCurrent
-                                                    ? 'text-gray-900 dark:text-white'
-                                                    : 'text-gray-400 dark:text-gray-500'
+                                    <div className="flex flex-col ml-8 w-full">
+                                        <div className="flex items-center justify-between">
+                                            <span
+                                                className={`
+                                                    text-sm font-medium flex items-center gap-1.5
+                                                    ${isCompleted || isCurrent
+                                                        ? 'text-gray-900 dark:text-white'
+                                                        : 'text-gray-400 dark:text-gray-500'
+                                                    }
+                                                `}
+                                            >
+                                                {step.label}
+                                                {step.key === 'payment' && (
+                                                    <div className="group relative z-20">
+                                                        <Info className="w-3.5 h-3.5 text-gray-400 cursor-help" />
+                                                        <div className="absolute left-6 top-1/2 -translate-y-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-xs rounded shadow-lg text-left" style={{ zIndex: 100 }}>
+                                                            Kuota iklan harian terbatas. Penjadwalan mengikuti urutan pembayaran. Lakukan pembayaran lebih awal untuk mengamankan slot.
+                                                            <div className="absolute top-1/2 right-full -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </span>
+                                            
+                                            {/* Publishing Link (Mobile) */}
+                                            {step.key === 'publishing' && scheduledAd?.ad_link && isCompleted && (
+                                                <a href={scheduledAd.ad_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-[10px] text-blue-500 hover:text-blue-700 hover:underline">
+                                                    View Page
+                                                </a>
+                                            )}
+                                        </div>
+
+                                        {/* Mobile Subtitle Info */}
+                                        {((isCurrent && !paymentLink) || isCurrent || isCompleted) && (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-tight max-w-[200px]">
+                                                {step.key === 'scheduling' && scheduledAd && isCurrent
+                                                    ? `Dijadwalkan: ${new Date(scheduledAd.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${new Date(scheduledAd.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}`
+                                                    : getDynamicHelper(step, isCompleted)
                                                 }
-                                            `}
-                                        >
-                                            {step.label}
-                                        </span>
+                                            </p>
+                                        )}
+
+                                        {/* Contact Admin (Mobile) */}
+                                        {isCurrent && step.key === 'in_review' && submission.created_at && (Math.floor((Date.now() - new Date(submission.created_at).getTime()) / (1000 * 60 * 60 * 24)) >= 3) && (
+                                            <div className="mt-2">
+                                                <a href="https://wa.me/628123456789" target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-[11px] bg-green-50 text-green-600 border border-green-200 px-2.5 py-1 rounded-md hover:bg-green-100 transition-colors w-fit">
+                                                    <MessageCircle className="w-3.5 h-3.5 mr-1.5"/> Hubungi Admin
+                                                </a>
+                                            </div>
+                                        )}
 
                                         {/* Pay Now Button (Mobile) */}
                                         {isCurrent && step.key === 'payment' && paymentLink && (
-                                            <div className="mt-1">
+                                            <div className="mt-2">
                                                 <a
                                                     href={paymentLink}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="inline-flex items-center justify-center rounded-md px-3 py-1 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md"
+                                                    className="inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md"
                                                     style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
                                                 >
                                                     {t('payNow')}
                                                 </a>
+                                            </div>
+                                        )}
+                                        {/* Paid/Invoice Button (Mobile) */}
+                                        {isCompleted && step.key === 'payment' && submission.id && (
+                                            <div className="mt-2">
+                                                <Link
+                                                    to={`/invoices/${submission.id}`}
+                                                    target="_blank"
+                                                    className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-[11px] font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 dark:text-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors w-fit shadow-sm"
+                                                >
+                                                    <FileText className="w-3 h-3 mr-1.5" />
+                                                    Lihat Invoice
+                                                </Link>
                                             </div>
                                         )}
                                     </div>
@@ -232,6 +345,7 @@ export function StatusPage() {
     const [selectedStatus, setSelectedStatus] = useState<string>('all');
     // Store payment links for each submission: { submissionId: paymentUrl }
     const [paymentLinks, setPaymentLinks] = useState<Record<string, string | null>>({});
+    const [scheduledAdsData, setScheduledAdsData] = useState<Record<string, ScheduledAd | null>>({});
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Handle query params for notifications
@@ -274,6 +388,7 @@ export function StatusPage() {
 
                     // Fetch payment links for each submission
                     const links: Record<string, string | null> = {};
+                    const schedData: Record<string, ScheduledAd | null> = {};
 
                     // Use Promise.all for parallel fetching to prevent blocking
                     await Promise.all(data.map(async (submission) => {
@@ -303,9 +418,24 @@ export function StatusPage() {
                             // No payment link found
                             links[submission.id] = null;
                         }
+                        
+                        // Fetch schedules
+                        if (submission.id) {
+                            try {
+                                const schedAds = await getScheduledAdsBySubmission(submission.id);
+                                if (schedAds && schedAds.length > 0) {
+                                    schedData[submission.id] = schedAds[0];
+                                } else {
+                                    schedData[submission.id] = null;
+                                }
+                            } catch (e) {
+                                console.error(`Error fetching schedule for ${submission.id}:`, e);
+                            }
+                        }
                     }));
 
                     setPaymentLinks(links);
+                    setScheduledAdsData(schedData);
                 } catch (error) {
                     console.error('Failed to fetch submissions', error);
                 } finally {
@@ -493,7 +623,8 @@ export function StatusPage() {
                                         if (selectedStatus === 'all') return true;
 
                                         const hasLink = !!paymentLinks[submission.id!];
-                                        const currentStepIndex = getCurrentStepIndex(submission, hasLink);
+                                        const scheduleAdsList = scheduledAdsData[submission.id!] ? [scheduledAdsData[submission.id!]] : [];
+                                        const currentStepIndex = getCurrentStepIndex(submission, hasLink, scheduleAdsList);
                                         // Handle revision/spam status (index = -1)
                                         if (currentStepIndex === -1) {
                                             return selectedStatus === 'revision';
@@ -504,22 +635,64 @@ export function StatusPage() {
                                     })
                                     .map((submission) => {
                                         const hasLink = !!paymentLinks[submission.id!];
-                                        const currentStep = getCurrentStepIndex(submission, hasLink);
+                                        const scheduleAdsList = scheduledAdsData[submission.id!] ? [scheduledAdsData[submission.id!]] : [];
+                                        const currentStep = getCurrentStepIndex(submission, hasLink, scheduleAdsList);
                                         const badgeInfo = getStatusBadgeInfo(currentStep);
 
                                         return (
                                             <Card key={submission.id} className="overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all rounded-xl">
                                                 <CardHeader className="bg-gray-50/50 dark:bg-gray-800/50 border-b pb-4">
                                                     <div className="flex items-center justify-between flex-wrap gap-3">
-                                                        <div className="space-y-1">
-                                                            <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                        <div className="space-y-2 flex-grow overflow-hidden pr-4">
+                                                            <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white truncate" title={submission.title}>
                                                                 {submission.title}
                                                             </CardTitle>
-                                                            <CardDescription>
-                                                                {t('submittedOn')} {new Date(submission.created_at || new Date()).toLocaleDateString('id-ID', {
-                                                                    day: 'numeric', month: 'long', year: 'numeric'
-                                                                })}
-                                                            </CardDescription>
+                                                            
+                                                            <div className="flex flex-col gap-2.5 mt-1">
+                                                                {/* Additional Survey Info (Line 2) */}
+                                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-600 dark:text-gray-300">
+                                                                    <div className="flex items-center gap-1.5" title="Jumlah Pertanyaan">
+                                                                        <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                                                        <span className="truncate">{submission.question_count} Pertanyaan</span>
+                                                                    </div>
+                                                                    
+                                                                    {(submission.winner_count && submission.prize_per_winner) ? (
+                                                                        <div className="flex items-center gap-1.5" title="Total & Insentif Pemenang">
+                                                                            <Gift className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                                                            <span className="truncate">
+                                                                                {submission.winner_count} Pemenang ({new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(submission.prize_per_winner)}/org)
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : null}
+                                                                    
+                                                                    {submission.criteria_responden && (
+                                                                        <div className="flex items-center gap-1.5" title={`Kriteria Responden: ${submission.criteria_responden}`}>
+                                                                            <Users className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                                                            <span className="truncate max-w-[150px] sm:max-w-[200px] md:max-w-[250px]">
+                                                                                {submission.criteria_responden}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    
+                                                                    {submission.survey_url && (
+                                                                        <div className="flex items-center gap-1.5" title="Tautan Asli Survei">
+                                                                            <LinkIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                                                            <a href={submission.survey_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 hover:underline truncate max-w-[120px] sm:max-w-[180px] md:max-w-[220px]">
+                                                                                Lihat Survei
+                                                                            </a>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Submitted Date (Line 3) */}
+                                                                <CardDescription className="text-xs">
+                                                                    <span className="truncate">
+                                                                        {t('submittedOn')} {new Date(submission.created_at || new Date()).toLocaleDateString('id-ID', {
+                                                                            day: 'numeric', month: 'long', year: 'numeric'
+                                                                        })}
+                                                                    </span>
+                                                                </CardDescription>
+                                                            </div>
                                                         </div>
                                                         <Badge variant="outline" className={`${badgeInfo.color} px-3 py-1 flex items-center gap-1.5`} style={badgeInfo.style}>
                                                             {badgeInfo.icon}
@@ -565,7 +738,7 @@ export function StatusPage() {
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <ProgressTracker currentStep={currentStep} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} steps={steps} />
+                                                        <ProgressTracker submission={submission} scheduledAd={scheduledAdsData[submission.id!]} currentStep={currentStep} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} steps={steps} />
                                                     )}
 
 
