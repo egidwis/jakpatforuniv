@@ -158,7 +158,9 @@ export interface FormSubmission {
   university?: string;
   department?: string;
   status?: string;
-  submission_status?: string;
+  submission_status?: 'in_review' | 'approved' | 'rejected' | 'spam'
+    | 'slot_reserved' | 'waiting_payment' | 'paid'
+    | 'scheduled' | 'live' | 'completed';
   referral_source?: string;
   winner_count?: number;
   prize_per_winner?: number;
@@ -718,83 +720,143 @@ export const getAllChatSessions = async () => {
   }
 }
 // ============= SCHEDULING FUNCTIONS =============
+// NOTE: scheduled_ads table is ARCHIVED. All scheduling now uses
+// survey_pages (source of truth) + form_submissions (slot reservation & sync).
 
-export const createScheduledAd = async (adData: ScheduledAd) => {
+/**
+ * Update schedule dates in both form_submissions and survey_pages (if page exists).
+ * Replaces the old trigger `handle_scheduled_ad_sync`.
+ */
+export const updateScheduleDates = async (
+  submissionId: string,
+  startDate: string,
+  endDate: string
+) => {
   try {
-    const { data, error } = await supabase
-      .from('scheduled_ads')
-      .insert([adData])
-      .select();
+    // 1. Update form_submissions (slot reservation / sync)
+    const { error: subError } = await supabase
+      .from('form_submissions')
+      .update({ start_date: startDate, end_date: endDate, updated_at: new Date().toISOString() })
+      .eq('id', submissionId);
 
-    if (error) throw error;
-    return data[0];
+    if (subError) throw subError;
+
+    // 2. Sync to survey_pages if page already exists
+    const { error: pageError } = await supabase
+      .from('survey_pages')
+      .update({ publish_start_date: startDate, publish_end_date: endDate, updated_at: new Date().toISOString() })
+      .eq('submission_id', submissionId);
+
+    // pageError is non-fatal — page may not exist yet (slot_reserved stage)
+    if (pageError) {
+      console.warn('Could not sync dates to survey_pages (page may not exist yet):', pageError.message);
+    }
+
+    return true;
   } catch (error: any) {
-    console.error('Error creating scheduled ad:', error);
+    console.error('Error updating schedule dates:', error);
     throw error;
   }
 };
 
-export const getScheduledAds = async () => {
+/**
+ * Get all scheduled pages for the calendar view (SchedulingPage).
+ * Replaces: getScheduledAds()
+ */
+export const getScheduledPages = async () => {
   try {
-    // Join with form_submissions to get details
     const { data, error } = await supabase
-      .from('scheduled_ads')
+      .from('survey_pages')
       .select(`
         *,
-        form_submissions (
+        form_submissions!submission_id (
           title,
           full_name,
           winner_count,
-          prize_per_winner
+          prize_per_winner,
+          start_date,
+          end_date,
+          submission_status
         )
       `)
-      .order('start_date', { ascending: true });
+      .not('submission_id', 'is', null)
+      .order('publish_start_date', { ascending: true });
 
     if (error) throw error;
 
-    // Flatten logic if needed, but for now return as is or map
-    return data.map((item: any) => ({
+    return (data || []).map((item: any) => ({
       ...item,
       form_title: item.form_submissions?.title || 'Unknown Title',
       researcher_name: item.form_submissions?.full_name || 'Unknown Researcher',
       winner_count: item.form_submissions?.winner_count || 0,
-      prize_per_winner: item.form_submissions?.prize_per_winner || 0
+      prize_per_winner: item.form_submissions?.prize_per_winner || 0,
+      // Use survey_pages dates as source of truth, fallback to form_submissions
+      start_date: item.publish_start_date || item.form_submissions?.start_date,
+      end_date: item.publish_end_date || item.form_submissions?.end_date,
+      submission_status: item.form_submissions?.submission_status,
     }));
   } catch (error: any) {
-    console.error('Error fetching scheduled ads:', error);
+    console.error('Error fetching scheduled pages:', error);
     return [];
   }
 };
 
-// Get scheduled ads for a specific submission
-export const getScheduledAdsBySubmission = async (submissionId: string) => {
+/**
+ * Get slots that have been reserved but don't have a page yet.
+ * These are form_submissions with start_date set but no survey_pages record.
+ */
+export const getPendingSlotsWithoutPage = async () => {
+  try {
+    // Fetch submissions that have dates but are in pre-page statuses
+    const { data: submissions, error: subError } = await supabase
+      .from('form_submissions')
+      .select('id, title, full_name, start_date, end_date, winner_count, prize_per_winner, submission_status')
+      .not('start_date', 'is', null)
+      .in('submission_status', ['slot_reserved', 'waiting_payment', 'paid'])
+      .order('start_date', { ascending: true });
+
+    if (subError) throw subError;
+    if (!submissions || submissions.length === 0) return [];
+
+    // Filter out submissions that already have a survey_pages record
+    const submissionIds = submissions.map(s => s.id);
+    const { data: existingPages } = await supabase
+      .from('survey_pages')
+      .select('submission_id')
+      .in('submission_id', submissionIds);
+
+    const pageSubmissionIds = new Set((existingPages || []).map((p: any) => p.submission_id));
+
+    return submissions
+      .filter(s => !pageSubmissionIds.has(s.id))
+      .map((item: any) => ({
+        ...item,
+        form_title: item.title || 'Unknown Title',
+        researcher_name: item.full_name || 'Unknown Researcher',
+        form_submission_id: item.id,
+      }));
+  } catch (error: any) {
+    console.error('Error fetching pending slots without page:', error);
+    return [];
+  }
+};
+
+/**
+ * Get scheduled page for a specific submission.
+ * Replaces: getScheduledAdsBySubmission()
+ */
+export const getScheduledPageBySubmission = async (submissionId: string) => {
   try {
     const { data, error } = await supabase
-      .from('scheduled_ads')
+      .from('survey_pages')
       .select('*')
-      .eq('form_submission_id', submissionId)
-      .order('created_at', { ascending: false });
+      .eq('submission_id', submissionId)
+      .maybeSingle();
 
     if (error) throw error;
-    return data || [];
+    return data;
   } catch (error: any) {
-    console.error('Error fetching scheduled ads by submission:', error);
-    return [];
-  }
-};
-
-// Delete a scheduled ad
-export const deleteScheduledAd = async (id: string) => {
-  try {
-    const { error } = await supabase
-      .from('scheduled_ads')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
-    return true;
-  } catch (error: any) {
-    console.error('Error deleting scheduled ad:', error);
-    throw error;
+    console.error('Error fetching scheduled page by submission:', error);
+    return null;
   }
 };

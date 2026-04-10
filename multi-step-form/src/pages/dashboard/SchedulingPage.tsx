@@ -4,7 +4,7 @@ import type { View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './SchedulingPage.css'; // Add custom CSS overrides
-import { getScheduledAds, supabase } from '@/utils/supabase'; // Added supabase
+import { getScheduledPages, getPendingSlotsWithoutPage, supabase } from '@/utils/supabase'; // Added supabase
 import { PageBuilderModal } from '@/components/PageBuilder/PageBuilderModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -323,42 +323,30 @@ export function SchedulingPage() {
     const fetchEvents = async () => {
         setLoading(true);
         try {
-            // 1. Fetch Scheduled Ads
-            const ads = await getScheduledAds();
+            // 1. Fetch pages that have a submission (ads with pages created)
+            const pages = await getScheduledPages();
 
-            // 1b. Fetch Survey Pages for these ads to know if they have a page
-            const submissionIds = ads.map((ad: any) => ad.form_submission_id).filter(Boolean);
-            let surveyPages: any[] = [];
-            if (submissionIds.length > 0) {
-                const { data } = await supabase
-                    .from('survey_pages')
-                    .select('id, title, submission_id, is_published')
-                    .in('submission_id', submissionIds);
-                if (data) surveyPages = data;
-            }
+            // 2. Fetch slots that are booked but don't have a page yet
+            const pendingSlots = await getPendingSlotsWithoutPage();
 
-            const adEvents: CalendarEvent[] = ads.map((ad: any) => {
-                const startDate = new Date(ad.start_date);
+            // 3. Convert pages to calendar events
+            const pageEvents: CalendarEvent[] = (pages || []).map((page: any) => {
+                const startDate = new Date(page.start_date || page.publish_start_date);
                 startDate.setHours(15, 0, 0, 0);
 
-                const endDate = new Date(ad.end_date);
+                const endDate = new Date(page.end_date || page.publish_end_date);
                 endDate.setHours(15, 0, 0, 0);
 
-                const linkedPage = surveyPages.find(p => p.submission_id === ad.form_submission_id);
-                
                 // Determine Semantic Status Color
                 const now = new Date();
                 let eventStatus: keyof typeof STATUS_PALETTES = 'upcomingNoPage';
-                
+
                 if (now > endDate) {
                     eventStatus = 'completed';
                 } else if (now >= startDate && now <= endDate) {
                     eventStatus = 'live';
                 } else {
-                    // isUpcoming (now < startDate)
-                    if (!linkedPage) {
-                        eventStatus = 'upcomingNoPage';
-                    } else if (!linkedPage.is_published) {
+                    if (!page.is_published) {
                         eventStatus = 'upcomingDraft';
                     } else {
                         eventStatus = 'upcomingScheduled';
@@ -366,22 +354,48 @@ export function SchedulingPage() {
                 }
 
                 return {
-                    id: `ad-${ad.id}`,
-                    title: `Ad: ${ad.form_title}`,
+                    id: `page-${page.id}`,
+                    title: `Ad: ${page.form_title}`,
                     start: startDate,
                     end: endDate,
                     resource: {
-                        ...ad,
+                        ...page,
                         type: 'ad',
+                        form_submission_id: page.submission_id,
                         colorTheme: STATUS_PALETTES[eventStatus],
-                        page_id: linkedPage?.id,
-                        page_title: linkedPage?.title,
-                        page_is_published: linkedPage?.is_published
+                        page_id: page.id,
+                        page_title: page.title,
+                        page_is_published: page.is_published,
                     },
                 };
             });
 
-            const allEvents = [...adEvents];
+            // 4. Convert pending slots (no page yet) to calendar events
+            const slotEvents: CalendarEvent[] = (pendingSlots || []).map((slot: any) => {
+                const startDate = new Date(slot.start_date);
+                startDate.setHours(15, 0, 0, 0);
+
+                const endDate = new Date(slot.end_date);
+                endDate.setHours(15, 0, 0, 0);
+
+                return {
+                    id: `slot-${slot.id}`,
+                    title: `Ad: ${slot.form_title}`,
+                    start: startDate,
+                    end: endDate,
+                    resource: {
+                        ...slot,
+                        type: 'ad',
+                        form_submission_id: slot.id,
+                        colorTheme: STATUS_PALETTES.upcomingNoPage, // Amber-ish for no page
+                        page_id: null,
+                        page_title: null,
+                        page_is_published: false,
+                    },
+                };
+            });
+
+            const allEvents = [...pageEvents, ...slotEvents];
 
             // Calculate stats
             const now = new Date();

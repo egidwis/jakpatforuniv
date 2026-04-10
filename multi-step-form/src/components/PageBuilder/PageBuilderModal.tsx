@@ -239,6 +239,38 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 setSavedPageId(data.id);
                 toast.success('Page created successfully');
             }
+
+            // Sync schedule dates to form_submissions & update status
+            if (submissionId && formData.publish_start_date) {
+                // Sync dates
+                const { error: syncError } = await supabase
+                    .from('form_submissions')
+                    .update({
+                        start_date: formData.publish_start_date,
+                        end_date: formData.publish_end_date || null,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', submissionId);
+                if (syncError) console.warn('Failed to sync dates to form_submissions:', syncError.message);
+
+                // Update status based on current date vs start_date
+                if (isPublished) {
+                    const now = new Date();
+                    const start = new Date(formData.publish_start_date);
+                    const end = formData.publish_end_date ? new Date(formData.publish_end_date) : null;
+
+                    let newStatus: string;
+                    if (end && end < now) {
+                        newStatus = 'completed';
+                    } else if (start <= now) {
+                        newStatus = 'live';
+                    } else {
+                        newStatus = 'scheduled';
+                    }
+                    await updateFormStatus(submissionId, newStatus);
+                }
+            }
+
             onSuccess();
 
             // Publish/Unpublish → close modal & refresh
@@ -305,15 +337,13 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 if (pageError) throw pageError;
             }
 
-            // 2. Update scheduled_ads: set end_date to now
+            // 2. Sync end_date to form_submissions and mark as completed
             if (submissionId) {
-                const { error: adError } = await supabase
-                    .from('scheduled_ads')
-                    .update({ end_date: now })
-                    .eq('form_submission_id', submissionId);
-                if (adError) throw adError;
+                await supabase
+                    .from('form_submissions')
+                    .update({ end_date: now, updated_at: now })
+                    .eq('id', submissionId);
 
-                // 3. Mark submission as completed
                 await updateFormStatus(submissionId, 'completed');
             }
 

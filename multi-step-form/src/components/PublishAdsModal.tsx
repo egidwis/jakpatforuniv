@@ -18,7 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { supabase, createScheduledAd, getScheduledAds, deleteScheduledAd, getScheduledAdsBySubmission } from '../utils/supabase';
+import { supabase, updateScheduleDates, updateFormStatus } from '../utils/supabase';
 
 // Max 3 regular ads per day, 1 extra ad per day
 const MAX_ADS_PER_DAY = 3;
@@ -76,19 +76,25 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
     const fetchMySchedule = async () => {
         if (!submission?.id) return;
         try {
-            const myAds = await getScheduledAdsBySubmission(submission.id);
-            if (myAds && myAds.length > 0) {
-                const myAd = myAds[0];
-                setExistingAdId(myAd.id);
-                setExistingIsExtra(!!myAd.is_extra_ad);
-                setIsExtraMode(!!myAd.is_extra_ad);
-                if (myAd.start_date) {
-                    const dateObj = new Date(myAd.start_date);
-                    setStartDate(dateObj);
-                    const hours = String(dateObj.getHours()).padStart(2, '0');
-                    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-                    setStartTime(`${hours}:${minutes}`);
-                }
+            // Check if this submission already has dates set (slot reserved)
+            const existingStartDate = submission.start_date;
+            if (existingStartDate) {
+                setExistingAdId(submission.id); // Use submission ID as reference
+                // Check if there's a survey_pages record to determine extra ad status
+                const { data: page } = await supabase
+                    .from('survey_pages')
+                    .select('is_extra_ad')
+                    .eq('submission_id', submission.id)
+                    .maybeSingle();
+                const isExtra = !!page?.is_extra_ad;
+                setExistingIsExtra(isExtra);
+                setIsExtraMode(isExtra);
+
+                const dateObj = new Date(existingStartDate);
+                setStartDate(dateObj);
+                const hours = String(dateObj.getHours()).padStart(2, '0');
+                const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+                setStartTime(`${hours}:${minutes}`);
             }
         } catch (e) {
             console.error('Error fetching my schedule:', e);
@@ -98,19 +104,41 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
     const fetchExistingAds = async () => {
         setIsFetchingAds(true);
         try {
-            const ads = await getScheduledAds();
+            // Fetch all submissions that have dates set (active slots)
+            // Exclude rejected, spam, and in_review statuses
+            const { data: slotsFromSubmissions, error: subError } = await supabase
+                .from('form_submissions')
+                .select('id, start_date, end_date, submission_status')
+                .not('start_date', 'is', null)
+                .not('submission_status', 'in', '("rejected","spam","in_review")');
+
+            if (subError) throw subError;
+
+            // Also fetch is_extra_ad from survey_pages for these submissions
+            const subIds = (slotsFromSubmissions || []).map((s: any) => s.id);
+            let extraAdMap: Record<string, boolean> = {};
+            if (subIds.length > 0) {
+                const { data: pages } = await supabase
+                    .from('survey_pages')
+                    .select('submission_id, is_extra_ad')
+                    .in('submission_id', subIds);
+                if (pages) {
+                    pages.forEach((p: any) => { extraAdMap[p.submission_id] = !!p.is_extra_ad; });
+                }
+            }
+
             const regularCounts: Record<string, number> = {};
             const extraCounts: Record<string, number> = {};
 
-            ads.forEach((ad: any) => {
-                if (ad.start_date && ad.end_date && ad.form_submission_id !== submission.id) {
-                    // Count this ad for EVERY day it spans (start_date to end_date)
-                    const current = new Date(ad.start_date);
+            (slotsFromSubmissions || []).forEach((slot: any) => {
+                if (slot.start_date && slot.end_date && slot.id !== submission.id) {
+                    const current = new Date(slot.start_date);
                     current.setHours(0, 0, 0, 0);
-                    const endDay = new Date(ad.end_date);
+                    const endDay = new Date(slot.end_date);
                     endDay.setHours(0, 0, 0, 0);
 
-                    const targetCounts = ad.is_extra_ad ? extraCounts : regularCounts;
+                    const isExtra = extraAdMap[slot.id] || false;
+                    const targetCounts = isExtra ? extraCounts : regularCounts;
 
                     while (current < endDay) {
                         const dateStr = getDateString(current);
@@ -210,24 +238,17 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
             const endDateObj = new Date(startDateObj);
             endDateObj.setDate(endDateObj.getDate() + submissionDuration);
 
-            const adLink = pageSlug ? `https://submit.jakpatforuniv.com/pages/${pageSlug}` : '';
+            // 2. Save dates to form_submissions + sync to survey_pages (if page exists)
+            await updateScheduleDates(
+                submission.id!,
+                startDateObj.toISOString(),
+                endDateObj.toISOString()
+            );
 
-            // 2. Prevent duplicates by deleting old schedule if exists (Upsert logic)
-            if (existingAdId) {
-                await deleteScheduledAd(existingAdId);
-            }
+            // 3. Update submission status to 'slot_reserved'
+            await updateFormStatus(submission.id!, 'slot_reserved');
 
-            await createScheduledAd({
-                form_submission_id: submission.id!,
-                start_date: startDateObj.toISOString(),
-                end_date: endDateObj.toISOString(),
-                ad_link: adLink,
-                notes: '', // Notes removed from UI
-                google_calendar_event_id: '',
-                is_extra_ad: isExtraMode,
-            });
-
-            // 3. Sync is_extra_ad flag (and created_at for mobile app ordering) to survey_pages
+            // 4. Sync is_extra_ad flag to survey_pages (if page exists)
             // Mobile app sorts by created_at DESC, so shifting Extra Ad back by 1 hour
             // pushes it below regular ads in the listing.
             const syncData: Record<string, any> = { is_extra_ad: isExtraMode };
@@ -241,51 +262,49 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                     .update(syncData)
                     .eq('slug', pageSlug);
             } else if (submission.id) {
-                // Fallback: sync using submission_id when pageSlug is not available
                 await supabase
                     .from('survey_pages')
                     .update(syncData)
                     .eq('submission_id', submission.id);
             }
 
-            toast.success('Ad scheduled successfully!');
+            toast.success('Slot reserved successfully!');
             onSuccess();
             onClose();
 
         } catch (error: any) {
             console.error('Publish Error:', error);
-            toast.error(error.message || 'Failed to schedule ad');
+            toast.error(error.message || 'Failed to reserve slot');
         } finally {
             setIsLoading(false);
         }
     };
 
     const handleCancelSchedule = async () => {
-        if (!existingAdId) return;
+        if (!submission?.id) return;
         setIsLoading(true);
         try {
-            await deleteScheduledAd(existingAdId);
+            // Clear dates from form_submissions
+            await supabase
+                .from('form_submissions')
+                .update({ start_date: null, end_date: null, updated_at: new Date().toISOString() })
+                .eq('id', submission.id);
 
-            // Reset is_extra_ad on survey_pages when cancelling
-            if (pageSlug) {
-                await supabase
-                    .from('survey_pages')
-                    .update({ is_extra_ad: false })
-                    .eq('slug', pageSlug);
-            } else if (submission.id) {
-                // Fallback: reset using submission_id
-                await supabase
-                    .from('survey_pages')
-                    .update({ is_extra_ad: false })
-                    .eq('submission_id', submission.id);
-            }
+            // Clear dates from survey_pages + reset is_extra_ad
+            await supabase
+                .from('survey_pages')
+                .update({ publish_start_date: null, publish_end_date: null, is_extra_ad: false, updated_at: new Date().toISOString() })
+                .eq('submission_id', submission.id);
 
-            toast.success('Schedule removed successfully!');
+            // Reset status back to 'approved'
+            await updateFormStatus(submission.id, 'approved');
+
+            toast.success('Slot reservation cancelled.');
             onSuccess();
             onClose();
         } catch (error: any) {
             console.error('Cancel Error:', error);
-            toast.error('Failed to remove schedule');
+            toast.error('Failed to cancel reservation');
         } finally {
             setIsLoading(false);
         }

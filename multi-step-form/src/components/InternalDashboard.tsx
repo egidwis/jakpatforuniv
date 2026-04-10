@@ -77,7 +77,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Derived schedule state: Set of submission IDs that have a scheduled_ads record
+  // Derived schedule state: Set of submission IDs that have a slot reserved (start_date set)
   const [scheduledSubmissionIds, setScheduledSubmissionIds] = useState<Set<string>>(new Set());
 
   // Pagination State
@@ -267,28 +267,11 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             });
           }
 
-          // 3. Fetch Scheduled Ads dates to get precise timestamptz (since form_submissions.start_date is DATE and drops time)
-          const { data: ads, error: adsError } = await supabase
-            .from('scheduled_ads')
-            .select('form_submission_id, start_date, end_date')
-            .in('form_submission_id', submissionIds);
-
-          if (adsError) console.error('Error fetching scheduled ads:', adsError);
-
+          // 3. Derive scheduled submission IDs from form_submissions that have start_date set
           const scheduledIds = new Set<string>();
-          if (ads && ads.length > 0) {
-            const adMap: Record<string, any> = {};
-            ads.forEach((ad: any) => {
-              adMap[ad.form_submission_id] = ad;
-              scheduledIds.add(ad.form_submission_id);
-            });
-            transformed.forEach(sub => {
-              if (adMap[sub.id]) {
-                sub.start_date = adMap[sub.id].start_date;
-                sub.end_date = adMap[sub.id].end_date;
-              }
-            });
-          }
+          transformed.forEach(sub => {
+            if (sub.start_date) scheduledIds.add(sub.id);
+          });
           setScheduledSubmissionIds(scheduledIds);
 
         } else {
@@ -982,7 +965,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                   // Map post-approved & legacy schedule statuses to "approved" for display
                                   const getDisplayStatus = (status: string | undefined) => {
                                     const s = status || 'pending';
-                                    if (['approved', 'scheduling', 'scheduled', 'publishing', 'completed'].includes(s)) return 'approved';
+                                    if (['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'].includes(s)) return 'approved';
                                     return s;
                                   };
                                   const displayStatus = getDisplayStatus(submission.status);
@@ -1197,7 +1180,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
                               {/* Invoice button: disabled before approved, always active once approved or beyond */}
                               {(() => {
-                                const isEligibleForInvoice = ['approved', 'scheduling', 'scheduled', 'publishing', 'completed'].includes(submission.status || '');
+                                const isEligibleForInvoice = ['slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'].includes(submission.status || '');
 
                                 if (isEligibleForInvoice) {
                                   return (

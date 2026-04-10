@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, getScheduledAdsBySubmission, type FormSubmission, type ScheduledAd } from '@/utils/supabase';
+import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, type FormSubmission } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,53 +15,45 @@ import { toast } from 'sonner';
 // Define status steps dynamically inside component to access translation
 const getStatusSteps = (t: any) => [
     { key: 'in_review', label: t('statusInReview'), icon: Search, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
-    { key: 'scheduling', label: t('statusScheduling'), icon: Calendar, helper: t('statusSchedulingHelper'), completedHelper: t('statusSchedulingCompletedHelper') },
+    { key: 'slot', label: t('statusScheduling'), icon: Calendar, helper: t('statusSchedulingHelper'), completedHelper: t('statusSchedulingCompletedHelper') },
     { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper'), completedHelper: t('statusPaymentSuccessHelper') },
     { key: 'publishing', label: t('statusPublishing'), icon: PlayCircle, helper: t('statusPublishingHelper'), liveHelper: t('statusPublishingLiveHelper'), completedHelper: t('statusPublishingCompletedHelper') },
     { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper'), completedHelper: t('statusCompletedHelper') },
 ];
 
-// Get the current step index based on submission state
-function getCurrentStepIndex(submission: FormSubmission, hasPaymentLink: boolean, scheduledAds: any[] = []): number {
-    // Check for spam/rejected status first (Revision Needed)
-    if (submission.submission_status === 'spam') {
-        return -1;
-    }
-
+// Get the current step index based on submission_status (single source of truth)
+function getCurrentStepIndex(submission: FormSubmission): number {
     const status = (submission.submission_status || 'in_review').toLowerCase();
 
-    if (status === 'completed') return 4;
-    // If it's explicitly publishing status OR the scheduled time has arrived and paid
-    if (status === 'publishing' || (scheduledAds.length > 0 && new Date() >= new Date(scheduledAds[0].start_date) && submission.payment_status === 'paid')) {
-        return 3;
-    }
+    // Direct mapping — no cross-referencing needed
+    const statusToStep: Record<string, number> = {
+        'in_review': 0,
+        'approved': 0,    // approved but not yet scheduled
+        'rejected': -1,   // special case → revision/rejected view
+        'spam': -1,       // special case → hidden/revision view
+        'slot_reserved': 1,
+        'waiting_payment': 2,
+        'paid': 2,           // step 2 completed, waiting for page creation
+        'scheduled': 3,      // page created, waiting for start_date
+        'live': 3,           // ad is currently live
+        'completed': 4,
+        // Legacy status support (in case migration not yet run)
+        'scheduling': 1,
+        'publishing': 3,
+    };
 
-    if (submission.payment_status === 'paid') {
-        return 3; // Publish Page step is waiting
-    }
-
-    if (hasPaymentLink) {
-        return 2; // Payment
-    }
-
-    if (status === 'approved' || status === 'scheduling' || scheduledAds.length > 0) {
-        return 1; // Scheduling (triggered when admin approves)
-    }
-
-    return 0; // In Review
+    return statusToStep[status] ?? 0;
 }
 
 // Progress Bar Component
 function ProgressTracker({ 
     submission,
-    scheduledAd,
     currentStep, 
     paymentLink,
     invoiceId,
     steps 
 }: { 
     submission: FormSubmission;
-    scheduledAd?: ScheduledAd | null;
     currentStep: number; 
     paymentLink?: string | null; 
     invoiceId?: string | null;
@@ -83,10 +75,11 @@ function ProgressTracker({
             if (submissionStatus === 'completed') {
                 return step.completedHelper;
             }
-            // Condition 2: ad is live (between start and end date, or status is 'publishing')
+            // Condition 2: ad is live (status is 'live', or between start and end date)
             if (
-                submissionStatus === 'publishing' ||
-                (scheduledAd && now >= new Date(scheduledAd.start_date) && now <= new Date(scheduledAd.end_date))
+                submissionStatus === 'live' ||
+                (submission.start_date && new Date(submission.start_date) <= now && 
+                 submission.end_date && new Date(submission.end_date) >= now)
             ) {
                 return step.liveHelper;
             }
@@ -184,33 +177,23 @@ function ProgressTracker({
                                             )}
 
                                             {/* Scheduling date info */}
-                                            {step.key === 'scheduling' && scheduledAd && (
+                                            {step.key === 'slot' && submission.start_date && (
                                                 <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 inline-block mt-0.5">
-                                                    {new Date(scheduledAd.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {new Date(scheduledAd.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                                    {new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {submission.end_date ? new Date(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}
                                                 </span>
                                             )}
 
                                             {/* Publishing: waiting (paid + scheduled, not yet live) */}
-                                            {step.key === 'publishing' && isCurrent && scheduledAd && (() => {
+                                            {step.key === 'publishing' && isCurrent && submission.start_date && (() => {
                                                 const now = new Date();
-                                                const isLive = now >= new Date(scheduledAd.start_date) && now <= new Date(scheduledAd.end_date);
                                                 const submissionStatus = (submission.submission_status || '').toLowerCase();
-                                                const isLiveStatus = submissionStatus === 'publishing' || isLive;
+                                                const isLiveStatus = submissionStatus === 'live' || 
+                                                    (new Date(submission.start_date) <= now && submission.end_date && new Date(submission.end_date) >= now);
                                                 if (!isLiveStatus) {
                                                     return (
                                                         <span className="inline-flex items-center text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5 mt-0.5">
-                                                            Scheduled: {new Date(scheduledAd.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {new Date(scheduledAd.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                                            Scheduled: {new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {new Date(submission.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                                         </span>
-                                                    );
-                                                }
-                                                if (isLiveStatus && scheduledAd.ad_link) {
-                                                    return (
-                                                        <a href={scheduledAd.ad_link} target="_blank" rel="noopener noreferrer"
-                                                            className="inline-flex items-center text-[10px] font-semibold text-white px-2 py-1 rounded-md shadow-sm hover:opacity-90 transition-opacity mt-0.5"
-                                                            style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
-                                                        >
-                                                            <ExternalLink className="w-3 h-3 mr-1" /> Lihat Postingan
-                                                        </a>
                                                     );
                                                 }
                                                 return null;
@@ -315,25 +298,16 @@ function ProgressTracker({
                                             </span>
                                             
                                             {/* Publishing Link (Mobile) */}
-                                            {step.key === 'publishing' && isCurrent && scheduledAd && (() => {
+                                            {step.key === 'publishing' && isCurrent && submission.start_date && (() => {
                                                 const now = new Date();
-                                                const isLive = now >= new Date(scheduledAd.start_date) && now <= new Date(scheduledAd.end_date);
                                                 const submissionStatus = (submission.submission_status || '').toLowerCase();
-                                                const isLiveStatus = submissionStatus === 'publishing' || isLive;
+                                                const isLiveStatus = submissionStatus === 'live' || 
+                                                    (new Date(submission.start_date) <= now && submission.end_date && new Date(submission.end_date) >= now);
                                                 if (!isLiveStatus) {
                                                     return (
                                                         <span className="inline-flex items-center text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5 mt-1">
-                                                            Scheduled: {new Date(scheduledAd.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {new Date(scheduledAd.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                                            Scheduled: {new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {new Date(submission.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                                         </span>
-                                                    );
-                                                }
-                                                if (isLiveStatus && scheduledAd.ad_link) {
-                                                    return (
-                                                        <a href={scheduledAd.ad_link} target="_blank" rel="noopener noreferrer"
-                                                            className="inline-flex items-center text-[10px] font-semibold text-blue-500 hover:text-blue-700 hover:underline"
-                                                        >
-                                                            <ExternalLink className="w-3 h-3 mr-0.5" /> Lihat Postingan
-                                                        </a>
                                                     );
                                                 }
                                                 return null;
@@ -343,8 +317,8 @@ function ProgressTracker({
                                         {/* Mobile Subtitle Info */}
                                         {((isCurrent && !paymentLink) || isCurrent || isCompleted) && (
                                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-tight max-w-[200px]">
-                                                {step.key === 'scheduling' && scheduledAd && isCurrent
-                                                    ? `Dijadwalkan: ${new Date(scheduledAd.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${new Date(scheduledAd.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}`
+                                                {step.key === 'slot' && submission.start_date && isCurrent
+                                                    ? `Dijadwalkan: ${new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${submission.end_date ? new Date(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}`
                                                     : getDynamicHelper(step, isCompleted)
                                                 }
                                             </p>
@@ -407,7 +381,6 @@ export function StatusPage() {
     // Store payment links for each submission: { submissionId: paymentUrl }
     const [paymentLinks, setPaymentLinks] = useState<Record<string, string | null>>({});
     const [invoiceIds, setInvoiceIds] = useState<Record<string, string | null>>({});
-    const [scheduledAdsData, setScheduledAdsData] = useState<Record<string, ScheduledAd | null>>({});
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Handle query params for notifications
@@ -451,7 +424,6 @@ export function StatusPage() {
                     // Fetch payment links for each submission
                     const links: Record<string, string | null> = {};
                     const invIds: Record<string, string | null> = {};
-                    const schedData: Record<string, ScheduledAd | null> = {};
 
                     // Use Promise.all for parallel fetching to prevent blocking
                     await Promise.all(data.map(async (submission) => {
@@ -492,25 +464,10 @@ export function StatusPage() {
                                 links[submission.id] = null;
                             }
                         }
-                        
-                        // Fetch schedules
-                        if (submission.id) {
-                            try {
-                                const schedAds = await getScheduledAdsBySubmission(submission.id);
-                                if (schedAds && schedAds.length > 0) {
-                                    schedData[submission.id] = schedAds[0];
-                                } else {
-                                    schedData[submission.id] = null;
-                                }
-                            } catch (e) {
-                                console.error(`Error fetching schedule for ${submission.id}:`, e);
-                            }
-                        }
                     }));
 
                     setPaymentLinks(links);
                     setInvoiceIds(invIds);
-                    setScheduledAdsData(schedData);
                 } catch (error) {
                     console.error('Failed to fetch submissions', error);
                 } finally {
@@ -698,8 +655,7 @@ export function StatusPage() {
                                         if (selectedStatus === 'all') return true;
 
                                         const hasLink = !!paymentLinks[submission.id!];
-                                        const scheduleAdsList = scheduledAdsData[submission.id!] ? [scheduledAdsData[submission.id!]] : [];
-                                        const currentStepIndex = getCurrentStepIndex(submission, hasLink, scheduleAdsList);
+                                        const currentStepIndex = getCurrentStepIndex(submission);
                                         // Handle revision/spam status (index = -1)
                                         if (currentStepIndex === -1) {
                                             return selectedStatus === 'revision';
@@ -710,8 +666,7 @@ export function StatusPage() {
                                     })
                                     .map((submission) => {
                                         const hasLink = !!paymentLinks[submission.id!];
-                                        const scheduleAdsList = scheduledAdsData[submission.id!] ? [scheduledAdsData[submission.id!]] : [];
-                                        const currentStep = getCurrentStepIndex(submission, hasLink, scheduleAdsList);
+                                        const currentStep = getCurrentStepIndex(submission);
                                         const badgeInfo = getStatusBadgeInfo(currentStep);
 
                                         return (
@@ -813,7 +768,7 @@ export function StatusPage() {
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <ProgressTracker submission={submission} scheduledAd={scheduledAdsData[submission.id!]} currentStep={currentStep} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} invoiceId={invoiceIds[submission.id!]} steps={steps} />
+                                                        <ProgressTracker submission={submission} currentStep={currentStep} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} invoiceId={invoiceIds[submission.id!]} steps={steps} />
                                                     )}
 
 

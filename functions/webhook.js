@@ -137,9 +137,18 @@ export async function onRequest(context) {
         if (transaction && transaction.length > 0) {
           const formSubmissionId = transaction[0].form_submission_id;
           
+          // Build update payload: always update payment_status,
+          // and also advance submission_status to 'paid' when payment succeeds
+          const mappedStatus = mapMayarStatus(status);
+          const updatePayload = { payment_status: mappedStatus };
+          if (mappedStatus === 'completed') {
+            // Payment successful → advance submission flow to 'paid'
+            updatePayload.submission_status = 'paid';
+          }
+
           const { data: formSubmission, error: formError } = await supabase
             .from('form_submissions')
-            .update({ payment_status: mapMayarStatus(status) })
+            .update(updatePayload)
             .eq('id', formSubmissionId)
             .select();
 
