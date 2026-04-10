@@ -292,12 +292,12 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             const now = new Date().toISOString();
             const existingId = initialData?.id || savedPageId;
 
-            // 1. Update survey_pages: unpublish & set end date to now
+            // 1. Update survey_pages: keep published but set end date to now (completed, not drafted)
             if (existingId) {
                 const { error: pageError } = await supabase
                     .from('survey_pages')
                     .update({
-                        is_published: false,
+                        is_published: true,
                         publish_end_date: now,
                         updated_at: now,
                     })
