@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/utils/supabase';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check, Download, Loader2, Users } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsManagerView } from './SubmissionsManagerView';
 import { toast } from 'sonner';
@@ -77,6 +78,152 @@ export function PublishPageManagement() {
 
     // Submissions Manager View State
     const [activeSubmissionPage, setActiveSubmissionPage] = useState<PageData | null>(null);
+
+    // Period Winners Modal State
+    const [showPeriodWinners, setShowPeriodWinners] = useState(false);
+    const [periodWinnersLoading, setPeriodWinnersLoading] = useState(false);
+    const [periodWinners, setPeriodWinners] = useState<{
+        pageTitle: string;
+        pageId: string;
+        rewardAmount: number;
+        winners: {
+            jakpat_id: string;
+            user_id: number | null;
+            email: string | null;
+            respondent_name: string | null;
+            ewallet_provider: string | null;
+            e_wallet_number: string | null;
+            ktp_number: string | null;
+            city: string | null;
+            province: string | null;
+            reward_amount: number | null;
+        }[];
+    }[]>([]);
+
+    const pagesWithWinnersInMonth = useMemo(() => {
+        return currentMonthPages.filter(p => (p.current_winners_count || 0) > 0);
+    }, [currentMonthPages]);
+
+    const fetchPeriodWinners = useCallback(async () => {
+        const pageIds = pagesWithWinnersInMonth.map(p => p.id);
+        if (pageIds.length === 0) return;
+
+        setPeriodWinnersLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('survey_winners')
+                .select('*')
+                .in('page_id', pageIds)
+                .order('selected_at', { ascending: true });
+
+            if (error) throw error;
+
+            // Sanitize jakpat_id to match masterdata key format
+            const sanitizeJakpatId = (rawId: string | null): string => {
+                if (!rawId) return '';
+                let id = String(rawId);
+                const match = id.match(/\/s\/(.+)/);
+                if (match && match[1]) {
+                    id = match[1];
+                }
+                return id.replace(/\s+/g, '').toLowerCase();
+            };
+
+            // Fetch masterdata for enrichment from correct table
+            const rawJakpatIds = [...new Set((data || []).map((w: any) => w.jakpat_id).filter(Boolean))];
+            let masterdataMap: Record<string, any> = {};
+            if (rawJakpatIds.length > 0) {
+                // Query with both sanitized and original IDs to maximize matches
+                const sanitizedIds = [...new Set(rawJakpatIds.map(sanitizeJakpatId).filter(Boolean))];
+                const allIds = [...new Set([...sanitizedIds, ...rawJakpatIds.map((id: string) => id.trim())])];
+
+                const BATCH_SIZE = 50;
+                const allMdData: any[] = [];
+                for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+                    const batch = allIds.slice(i, i + BATCH_SIZE);
+                    const { data: mdBatch } = await supabase
+                        .from('respondents-masterdata')
+                        .select('jakpat_id, user_id, email, ktp_number, city, province')
+                        .in('jakpat_id', batch);
+                    if (mdBatch) allMdData.push(...mdBatch);
+                }
+
+                allMdData.forEach((md: any) => {
+                    const key = sanitizeJakpatId(md.jakpat_id);
+                    if (key) {
+                        masterdataMap[key] = md;
+                    }
+                });
+            }
+
+            // Group by page
+            const grouped: Record<string, typeof periodWinners[0]> = {};
+            pagesWithWinnersInMonth.forEach(p => {
+                grouped[p.id] = {
+                    pageTitle: p.title,
+                    pageId: p.id,
+                    rewardAmount: p.form_submissions?.prize_per_winner || 0,
+                    winners: [],
+                };
+            });
+
+            (data || []).forEach((w: any) => {
+                if (!grouped[w.page_id]) return;
+                const md = masterdataMap[sanitizeJakpatId(w.jakpat_id)] || {};
+                grouped[w.page_id].winners.push({
+                    jakpat_id: w.jakpat_id,
+                    user_id: md.user_id ?? null,
+                    email: md.email ?? null,
+                    respondent_name: w.respondent_name,
+                    ewallet_provider: w.ewallet_provider,
+                    e_wallet_number: w.e_wallet_number,
+                    ktp_number: md.ktp_number ?? null,
+                    city: md.city ?? null,
+                    province: md.province ?? null,
+                    reward_amount: w.reward_amount,
+                });
+            });
+
+            setPeriodWinners(Object.values(grouped).filter(g => g.winners.length > 0));
+            setShowPeriodWinners(true);
+        } catch (error) {
+            console.error('Error fetching period winners:', error);
+            toast.error('Gagal memuat data pemenang');
+        } finally {
+            setPeriodWinnersLoading(false);
+        }
+    }, [pagesWithWinnersInMonth]);
+
+    const exportPeriodWinnersCSV = useCallback(() => {
+        if (periodWinners.length === 0) return;
+        const headers = ['Judul Page', 'Jakpat ID', 'User ID', 'Email', 'Nama', 'Provider E-Wallet', 'No. E-Wallet', 'NIK/NPWP', 'Lokasi', 'Nominal'];
+        const rows: string[][] = [];
+        periodWinners.forEach(group => {
+            group.winners.forEach(w => {
+                rows.push([
+                    group.pageTitle,
+                    w.jakpat_id,
+                    String(w.user_id ?? ''),
+                    w.email ?? '',
+                    w.respondent_name ?? '',
+                    w.ewallet_provider ?? '',
+                    w.e_wallet_number ?? '',
+                    w.ktp_number ?? '',
+                    [w.city, w.province].filter(Boolean).join(', '),
+                    String(w.reward_amount ?? ''),
+                ]);
+            });
+        });
+        const csvContent = [headers, ...rows].map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pemenang_${selectedMonth}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success('CSV berhasil di-download');
+    }, [periodWinners, selectedMonth]);
 
     const fetchPages = async () => {
         setLoading(true);
@@ -269,8 +416,24 @@ export function PublishPageManagement() {
                         </div>
                     </div>
 
-                    {/* Announcement & Refresh */}
+                    {/* Lihat Pemenang + Announcement & Refresh */}
                     <div className="flex items-center gap-3 ml-auto shrink-0">
+                        {pagesWithWinnersInMonth.length > 0 && (
+                            <Button
+                                onClick={fetchPeriodWinners}
+                                variant="outline"
+                                size="sm"
+                                disabled={periodWinnersLoading}
+                                className="h-9 text-xs font-semibold border-amber-200 text-amber-700 hover:bg-amber-50 bg-white shadow-sm"
+                            >
+                                {periodWinnersLoading ? (
+                                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                                ) : (
+                                    <Trophy className="w-4 h-4 mr-1.5" />
+                                )}
+                                Lihat Pemenang
+                            </Button>
+                        )}
                         <Button
                             onClick={() => {
                                 setSelectedPage(null);
@@ -513,12 +676,11 @@ export function PublishPageManagement() {
                                                                     size="sm"
                                                                     onClick={() => setActiveSubmissionPage(page)}
                                                                     title={needsWinners ? "Select Winners" : "View Submissions & Winners"}
-                                                                    className={`h-8 px-4 text-white shadow-sm transition-all duration-300 flex items-center ${needsWinners
-                                                                        ? "bg-amber-500 hover:bg-amber-600 relative pr-7"
-                                                                        : "bg-blue-600 hover:bg-blue-700"
-                                                                        }`}
+                                                                    className={`h-8 px-4 text-white shadow-sm transition-all duration-300 flex items-center bg-blue-600 hover:bg-blue-700 ${
+                                                                        needsWinners ? "relative pr-7" : ""
+                                                                    }`}
                                                                 >
-                                                                    {needsWinners ? "Select Winners" : "Submissions"}
+                                                                    Submissions
                                                                     {needsWinners && (
                                                                         <span className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-2 w-2">
                                                                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -574,6 +736,75 @@ export function PublishPageManagement() {
                 )
             }
 
+
+            {/* Period Winners Modal */}
+            <Dialog open={showPeriodWinners} onOpenChange={setShowPeriodWinners}>
+                <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
+                    <DialogHeader className="shrink-0">
+                        <DialogTitle className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Trophy className="w-5 h-5 text-amber-500" />
+                                <span>Daftar Pemenang — {formatMonth(selectedMonth)}</span>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs font-semibold border-green-200 text-green-700 hover:bg-green-50 bg-white shadow-sm"
+                                onClick={exportPeriodWinnersCSV}
+                                disabled={periodWinners.length === 0}
+                            >
+                                <Download className="w-3.5 h-3.5 mr-1.5" />
+                                Export CSV
+                            </Button>
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto space-y-5 pr-1">
+                        {periodWinners.length === 0 ? (
+                            <div className="text-center text-gray-400 py-12">Tidak ada pemenang ditemukan.</div>
+                        ) : (
+                            periodWinners.map((group) => (
+                                <div key={group.pageId} className="border border-gray-200 rounded-lg overflow-hidden">
+                                    <div className="bg-gray-50 px-4 py-3 flex items-center justify-between border-b border-gray-100">
+                                        <div className="flex items-center gap-2">
+                                            <Users className="w-4 h-4 text-blue-500" />
+                                            <span className="text-sm font-semibold text-gray-900">{group.pageTitle}</span>
+                                        </div>
+                                        <span className="text-xs font-medium text-gray-500 bg-white px-2 py-0.5 rounded border border-gray-200">{group.winners.length} pemenang</span>
+                                    </div>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="text-xs hover:bg-transparent">
+                                                <TableHead className="text-xs font-semibold">Jakpat ID</TableHead>
+                                                <TableHead className="text-xs font-semibold">User ID</TableHead>
+                                                <TableHead className="text-xs font-semibold">Email</TableHead>
+                                                <TableHead className="text-xs font-semibold">Nama</TableHead>
+                                                <TableHead className="text-xs font-semibold">E-Wallet</TableHead>
+                                                <TableHead className="text-xs font-semibold">NIK/NPWP</TableHead>
+                                                <TableHead className="text-xs font-semibold">Lokasi</TableHead>
+                                                <TableHead className="text-xs font-semibold text-right">Nominal</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {group.winners.map((w, i) => (
+                                                <TableRow key={`${group.pageId}-${w.jakpat_id}-${i}`} className="hover:bg-gray-50/50">
+                                                    <TableCell className="text-xs font-mono">{w.jakpat_id}</TableCell>
+                                                    <TableCell className="text-xs font-mono text-gray-600">{w.user_id ?? '—'}</TableCell>
+                                                    <TableCell className="text-xs text-gray-600 max-w-[160px] truncate" title={w.email || ''}>{w.email || '—'}</TableCell>
+                                                    <TableCell className="text-sm font-medium text-gray-900 whitespace-nowrap">{w.respondent_name || '—'}</TableCell>
+                                                    <TableCell className="text-xs font-mono text-gray-700">{w.ewallet_provider ? `${w.ewallet_provider} — ${w.e_wallet_number || ''}` : '—'}</TableCell>
+                                                    <TableCell className="text-xs font-mono text-gray-600">{w.ktp_number || '—'}</TableCell>
+                                                    <TableCell className="text-xs text-gray-600 whitespace-nowrap">{[w.city, w.province].filter(Boolean).join(', ') || '—'}</TableCell>
+                                                    <TableCell className="text-sm font-semibold text-gray-700 text-right whitespace-nowrap">Rp {(w.reward_amount || 0).toLocaleString('id-ID')}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div >
     );
 }

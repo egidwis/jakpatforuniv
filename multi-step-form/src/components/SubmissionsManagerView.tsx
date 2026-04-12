@@ -34,9 +34,13 @@ import {
     Plus,
     FileText,
     AlertTriangle,
-    ArrowDownUp
+    ArrowDownUp,
+    ArrowUp,
+    ArrowDown
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface MergedRespondent {
     respondent_id: string;
@@ -94,6 +98,7 @@ export function SubmissionsManagerView({
     rewardCount,
     onBack,
 }: SubmissionsManagerViewProps) {
+    const [animationParent] = useAutoAnimate<HTMLTableSectionElement>();
     const [loading, setLoading] = useState(true);
     const [loadProgress, setLoadProgress] = useState(0);
     const [loadText, setLoadText] = useState('Memuat data submissions...');
@@ -112,9 +117,15 @@ export function SubmissionsManagerView({
 
     // Filter and Sort states
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterWallet, setFilterWallet] = useState('all');
     const [filterProvince, setFilterProvince] = useState('all');
     const [sortByEligible, setSortByEligible] = useState(true);
+    const [sortByUid, setSortByUid] = useState<'asc' | 'desc' | null>(null);
+
+    const handleSortUid = () => {
+        if (sortByUid === null) setSortByUid('asc');
+        else if (sortByUid === 'asc') setSortByUid('desc');
+        else setSortByUid(null);
+    };
 
     // Fetch all data
     useEffect(() => {
@@ -255,6 +266,7 @@ export function SubmissionsManagerView({
                 const md = masterdataMap[lookupKey] || {};
                 const reasons: string[] = [];
 
+                if (!md.user_id) reasons.push('Not in masterdata');
                 if (!pr.proof_url) reasons.push('Tidak upload bukti (proof)');
 
                 const isRecentWinner = recentWinnerIds.has(pr.jakpat_id);
@@ -415,31 +427,40 @@ export function SubmissionsManagerView({
                 const matchId = r.jakpat_id.toLowerCase().includes(q);
                 if (!matchName && !matchId) return false;
             }
-            if (filterWallet !== 'all' && r.ewallet_provider !== filterWallet) return false;
             if (filterProvince !== 'all' && r.province !== filterProvince) return false;
             return true;
         });
 
         return filtered.sort((a, b) => {
-            if (sortByEligible) {
-                if (a.is_eligible !== b.is_eligible) {
-                    return a.is_eligible ? -1 : 1; // Eligible first
+            // In selection mode: selected items float to top
+            if (isSelectionMode) {
+                const aSelected = selectedIds.has(a.jakpat_id) ? 1 : 0;
+                const bSelected = selectedIds.has(b.jakpat_id) ? 1 : 0;
+                if (aSelected !== bSelected) {
+                    return bSelected - aSelected;
                 }
             }
 
-            const aHasMasterdata = !!a.user_id ? 1 : 0;
-            const bHasMasterdata = !!b.user_id ? 1 : 0;
-            if (aHasMasterdata !== bHasMasterdata) {
-                return bHasMasterdata - aHasMasterdata;
+            // UID sort (manual toggle)
+            if (sortByUid !== null) {
+                const aUid = a.user_id || 0;
+                const bUid = b.user_id || 0;
+                if (aUid !== bUid) {
+                    return sortByUid === 'asc' ? aUid - bUid : bUid - aUid;
+                }
             }
-            return new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime();
-        });
-    }, [respondents, existingWinners, searchQuery, filterWallet, filterProvince, sortByEligible, isSelectionMode]);
 
-    const walletProviders = useMemo(() => {
-        const providers = new Set(respondents.map(r => r.ewallet_provider).filter(Boolean) as string[]);
-        return Array.from(providers).sort();
-    }, [respondents]);
+            // In selection mode: sort by eligibility status (eligible first)
+            if (isSelectionMode && sortByEligible) {
+                if (a.is_eligible !== b.is_eligible) {
+                    return a.is_eligible ? -1 : 1;
+                }
+            }
+
+            // Default: newest submission first
+            return new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime();
+        });
+    }, [respondents, existingWinners, searchQuery, filterProvince, sortByEligible, sortByUid, isSelectionMode]);
 
     const provinces = useMemo(() => {
         const provs = new Set(respondents.map(r => r.province).filter(Boolean) as string[]);
@@ -450,12 +471,7 @@ export function SubmissionsManagerView({
     const eligibleCount = filteredRespondents.filter(r => r.is_eligible).length;
     const totalProofCount = respondents.filter(r => r.proof_url).length;
 
-    const toggleSelect = (jakpatId: string, isEligible: boolean) => {
-        if (!isEligible) {
-            toast.error('Responden ini tidak memenuhi syarat (Not Eligible)');
-            return;
-        }
-
+    const toggleSelect = (jakpatId: string) => {
         setSelectedIds(prev => {
             const next = new Set(prev);
             if (next.has(jakpatId)) {
@@ -550,65 +566,46 @@ export function SubmissionsManagerView({
 
     return (
         <div className="flex flex-col h-full w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            {/* Breadcrumb Header */}
-            <div className="flex items-center px-6 py-4 border-b border-gray-200 bg-gray-50/80 backdrop-blur-sm sticky top-0 z-10 w-full shrink-0">
-                <button 
-                    onClick={onBack} 
-                    className="mr-4 p-1.5 rounded-md hover:bg-gray-200 transition-colors text-gray-500 hover:text-gray-900 border border-transparent hover:border-gray-300 bg-white shadow-sm"
-                    title="Kembali ke Daftar Halaman"
-                >
-                    <ArrowLeft className="w-4 h-4" />
-                </button>
-                <nav className="flex items-center text-sm font-medium text-gray-500 overflow-hidden w-full">
-                    <span className="hover:text-blue-600 cursor-pointer hover:underline" onClick={onBack}>Pages</span>
-                    <ChevronRight className="w-4 h-4 mx-2 shrink-0 text-gray-400" />
-                    <span className="truncate max-w-[200px] md:max-w-md" title={pageTitle}>{pageTitle}</span>
-                    <ChevronRight className="w-4 h-4 mx-2 shrink-0 text-gray-400" />
-                    <span className="text-gray-900 font-semibold shrink-0">
-                        {hasExistingWinners && !isSelectionMode ? 'Submissions & Pemenang' : 'Submissions List'}
-                    </span>
-                </nav>
-            </div>
+            {/* Floating Header - Sticky */}
+            <div className="border-b border-gray-200 bg-white/95 backdrop-blur-md sticky top-0 z-20 shrink-0 shadow-sm px-6 py-4 flex flex-col gap-2.5">
+                {/* Row 1: Breadcrumb */}
+                <div className="flex items-center">
+                    <button 
+                        onClick={onBack} 
+                        className="mr-3 p-1 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-900"
+                        title="Kembali ke Daftar Halaman"
+                    >
+                        <ArrowLeft className="w-4 h-4" />
+                    </button>
+                    <nav className="flex items-center text-sm font-medium text-gray-500 overflow-hidden w-full">
+                        <span className="hover:text-blue-600 cursor-pointer hover:underline" onClick={onBack}>Pages</span>
+                        <ChevronRight className="w-4 h-4 mx-2 shrink-0 text-gray-400" />
+                        <span className={`${hasExistingWinners && !isSelectionMode ? 'hover:text-blue-600 cursor-pointer hover:underline' : 'text-gray-900 font-semibold'} shrink-0`} onClick={() => { if (hasExistingWinners && !isSelectionMode) setIsSelectionMode(true); }}>Submissions</span>
+                        {hasExistingWinners && !isSelectionMode && (
+                            <>
+                                <ChevronRight className="w-4 h-4 mx-2 shrink-0 text-gray-400" />
+                                <span className="text-gray-900 font-semibold shrink-0">Pemenang</span>
+                            </>
+                        )}
+                    </nav>
+                </div>
 
-            {/* Content Header & Proof Bulk Delete */}
-            <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-white">
-                <div className="flex items-center gap-4 flex-1">
-                    <div className="flex items-center gap-1.5">
-                        <User className="w-4 h-4 text-blue-500" />
-                        <h2 className="text-lg font-semibold text-gray-900">Submissions</h2>
-                    </div>
+                {/* Row 2: Page Title + Reward Info */}
+                <div className="flex items-center flex-wrap gap-x-3 gap-y-1">
+                    <h2 className="text-lg font-semibold text-gray-900">{pageTitle}</h2>
                     {rewardCount > 0 && (
                         <>
                             <span className="text-gray-300">|</span>
-                            <p className="text-sm text-gray-600 font-medium">Reward: Rp {(rewardAmount || 0).toLocaleString('id-ID')} × {rewardCount}</p>
+                            <span className="text-sm font-medium text-gray-600">Reward: Rp {(rewardAmount || 0).toLocaleString('id-ID')} × {rewardCount}</span>
                         </>
                     )}
                 </div>
 
-                {/* Bulk Proof Delete Action */}
-                {totalProofCount > 0 && !loading && (
-                    <div className="flex items-center bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm shrink-0">
-                        <div className="flex items-center gap-2 text-xs text-amber-800 mr-3">
-                            <FileText className="h-4 w-4" />
-                            <span><strong>{totalProofCount}</strong> file proof (~{((totalProofCount * 100) / 1024).toFixed(0)} KB)</span>
-                        </div>
-                        {!showBulkConfirm ? (
-                            <Button
-                                variant="outline" size="sm"
-                                className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 bg-white"
-                                onClick={() => setShowBulkConfirm(true)}
-                            >
-                                <Trash2 className="h-3 w-3 mr-1" /> Hapus File Proof
-                            </Button>
-                        ) : (
-                            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
-                                <span className="text-xs text-red-700 font-bold hidden md:inline ml-2">Yakin?</span>
-                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowBulkConfirm(false)} disabled={bulkDeleting}>Batal</Button>
-                                <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={handleBulkDeleteProofs} disabled={bulkDeleting}>
-                                    {bulkDeleting ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> ...</> : 'Ya, Hapus Semua'}
-                                </Button>
-                            </div>
-                        )}
+                {/* Row 3: Criteria */}
+                {criteria && (
+                    <div className="bg-blue-50 border border-blue-100 rounded px-4 py-2 text-xs text-blue-800">
+                        <strong className="font-semibold block mb-0.5">Syarat Responden Survey Ini:</strong>
+                        <span className="opacity-90">{criteria}</span>
                     </div>
                 )}
             </div>
@@ -640,11 +637,34 @@ export function SubmissionsManagerView({
                                     <div className="h-6 w-6 rounded-full bg-green-200 flex items-center justify-center"><Check className="w-4 h-4 text-green-700" /></div>
                                     <span><strong>{existingWinners.length}</strong> pemenang sudah dipilih</span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Button variant="outline" size="sm" className="h-8 text-xs border-green-300 text-green-800 hover:bg-green-100 bg-white font-semibold" onClick={exportToCSV}>
-                                        <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
-                                    </Button>
-                                    <Button variant="outline" size="sm" className="h-8 text-xs border-blue-200 text-blue-700 hover:bg-blue-50 bg-white font-semibold" onClick={() => setIsSelectionMode(true)}>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {/* Bulk Proof Delete Action */}
+                                    {totalProofCount > 0 && !loading && (
+                                        <div className="flex items-center bg-white border border-amber-200 rounded-md pl-3 pr-1 py-0.5 shadow-sm shrink-0 h-8">
+                                            <div className="flex items-center gap-2 text-xs text-amber-800 mr-2">
+                                                <FileText className="h-3.5 w-3.5" />
+                                                <span><strong>{totalProofCount}</strong> file proof (~{((totalProofCount * 100) / 1024).toFixed(0)} KB)</span>
+                                            </div>
+                                            {!showBulkConfirm ? (
+                                                <Button
+                                                    variant="outline" size="sm"
+                                                    className="h-6 text-[11px] border-amber-300 text-amber-800 hover:bg-amber-100 bg-amber-50"
+                                                    onClick={() => setShowBulkConfirm(true)}
+                                                >
+                                                    <Trash2 className="h-3 w-3 mr-1" /> Hapus File Proof
+                                                </Button>
+                                            ) : (
+                                                <div className="flex items-center gap-1.5 animate-in fade-in slide-in-from-right-2">
+                                                    <span className="text-[11px] text-red-700 font-bold hidden xl:inline ml-1">Yakin hapus?</span>
+                                                    <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={() => setShowBulkConfirm(false)} disabled={bulkDeleting}>Batal</Button>
+                                                    <Button variant="destructive" size="sm" className="h-6 text-[11px] px-2" onClick={handleBulkDeleteProofs} disabled={bulkDeleting}>
+                                                        {bulkDeleting ? <><Loader2 className="h-3 w-3 mr-0.5 animate-spin" /> ...</> : 'Ya, Hapus'}
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    <Button variant="outline" size="sm" className="h-8 text-xs border-blue-200 text-blue-700 hover:bg-blue-50 bg-white font-semibold shadow-sm" onClick={() => setIsSelectionMode(true)}>
                                         <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Lihat Semua Submissions / Tambah Pemenang
                                     </Button>
                                 </div>
@@ -692,12 +712,6 @@ export function SubmissionsManagerView({
                     ) : (
                         /* ===== SUBMISSIONS / SELECTION VIEW ===== */
                         <div className="flex-1 flex flex-col space-y-4">
-                            {criteria && (
-                                <div className="bg-blue-50/50 border border-blue-100 rounded-lg px-4 py-2.5 text-xs text-blue-800 shadow-sm mx-auto w-full">
-                                    <span className="font-semibold block mb-1">Syarat Responden Survey Ini:</span> 
-                                    {criteria}
-                                </div>
-                            )}
 
                             <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                                 {/* Table Toolbar */}
@@ -714,14 +728,6 @@ export function SubmissionsManagerView({
                                                 />
                                             </div>
                                             <select
-                                                value={filterWallet}
-                                                onChange={(e) => setFilterWallet(e.target.value)}
-                                                className="h-9 text-sm border border-gray-200 rounded-md px-3 bg-white text-gray-700 cursor-pointer shadow-sm focus:border-blue-500 outline-none"
-                                            >
-                                                <option value="all">Semua E-Wallet</option>
-                                                {walletProviders.map(p => <option key={p} value={p}>{p}</option>)}
-                                            </select>
-                                            <select
                                                 value={filterProvince}
                                                 onChange={(e) => setFilterProvince(e.target.value)}
                                                 className="h-9 text-sm border border-gray-200 rounded-md px-3 bg-white text-gray-700 cursor-pointer shadow-sm focus:border-blue-500 outline-none"
@@ -729,8 +735,8 @@ export function SubmissionsManagerView({
                                                 <option value="all">Semua Provinsi</option>
                                                 {provinces.map(p => <option key={p} value={p}>{p}</option>)}
                                             </select>
-                                            {(searchQuery || filterWallet !== 'all' || filterProvince !== 'all') && (
-                                                <button onClick={() => { setSearchQuery(''); setFilterWallet('all'); setFilterProvince('all'); }} className="text-xs text-blue-600 hover:text-blue-800 font-medium ml-1">Reset</button>
+                                            {(searchQuery || filterProvince !== 'all') && (
+                                                <button onClick={() => { setSearchQuery(''); setFilterProvince('all'); }} className="text-xs text-blue-600 hover:text-blue-800 font-medium ml-1">Reset</button>
                                             )}
                                         </div>
 
@@ -758,22 +764,34 @@ export function SubmissionsManagerView({
                                                 {isSelectionMode && <TableHead className="w-12 text-center"></TableHead>}
                                                 <TableHead className="text-xs font-semibold text-gray-600">Waktu Submit</TableHead>
                                                 <TableHead className="text-xs font-semibold text-gray-600">Jakpat ID</TableHead>
-                                                <TableHead className="text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setSortByEligible(!sortByEligible)}>
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        Status
-                                                        <ArrowDownUp className="w-3.5 h-3.5 text-gray-400" />
-                                                    </div>
-                                                </TableHead>
-                                                <TableHead className="text-xs font-semibold text-gray-600">Nama Lengkap</TableHead>
-                                                <TableHead className="text-xs font-semibold text-gray-600">Lokasi</TableHead>
-                                                <TableHead className="text-xs font-semibold text-gray-600">E-Wallet</TableHead>
+                                                {isSelectionMode ? (
+                                                    <>
+                                                        <TableHead className="text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-50 transition-colors" onClick={handleSortUid}>
+                                                            <div className="flex items-center gap-2">
+                                                                UID
+                                                                {sortByUid === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : sortByUid === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDownUp className="w-3.5 h-3.5 text-gray-400" />}
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead className="text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setSortByEligible(!sortByEligible)}>
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                Status
+                                                                <ArrowDownUp className="w-3.5 h-3.5 text-gray-400" />
+                                                            </div>
+                                                        </TableHead>
+                                                        <TableHead className="text-xs font-semibold text-gray-600">Nama Lengkap</TableHead>
+                                                        <TableHead className="text-xs font-semibold text-gray-600">Lokasi</TableHead>
+                                                        <TableHead className="text-xs font-semibold text-gray-600">E-Wallet</TableHead>
+                                                    </>
+                                                ) : (
+                                                    <TableHead className="text-xs font-semibold text-gray-600">Nickname</TableHead>
+                                                )}
                                                 <TableHead className="text-xs font-semibold text-gray-600 text-right">Proof</TableHead>
                                             </TableRow>
                                         </TableHeader>
-                                        <TableBody>
+                                        <TableBody ref={animationParent}>
                                             {filteredRespondents.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={isSelectionMode ? 8 : 7} className="h-48 text-center text-gray-400">
+                                                    <TableCell colSpan={isSelectionMode ? 10 : 4} className="h-48 text-center text-gray-400">
                                                         <div className="flex flex-col items-center justify-center gap-2">
                                                             <Filter className="w-6 h-6 text-gray-300 mb-1" />
                                                             <span className="font-medium text-sm text-gray-500">Tidak ada responden yang cocok</span>
@@ -784,15 +802,14 @@ export function SubmissionsManagerView({
                                                 filteredRespondents.map(r => (
                                                     <TableRow
                                                         key={r.respondent_id}
-                                                        className={`transition-colors border-b border-gray-100 ${isSelectionMode && selectedIds.has(r.jakpat_id) ? 'bg-blue-50/70' : 'hover:bg-gray-50'}`}
+                                                        onClick={() => { if (isSelectionMode) toggleSelect(r.jakpat_id); }}
+                                                        className={`transition-colors border-b border-gray-100 ${isSelectionMode ? 'cursor-pointer ' : ''}${isSelectionMode && selectedIds.has(r.jakpat_id) ? 'bg-blue-50/70' : 'hover:bg-gray-50'}`}
                                                     >
                                                         {isSelectionMode && (
                                                             <TableCell className="text-center py-3">
                                                                 <Checkbox
                                                                     checked={selectedIds.has(r.jakpat_id)}
-                                                                    onCheckedChange={() => toggleSelect(r.jakpat_id, r.is_eligible)}
-                                                                    disabled={!r.is_eligible}
-                                                                    className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                                                    className="pointer-events-none data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                                                 />
                                                             </TableCell>
                                                         )}
@@ -807,50 +824,67 @@ export function SubmissionsManagerView({
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="py-3">
-                                                            <div className="flex flex-col gap-1">
-                                                                <span className="font-mono text-xs font-semibold text-gray-700">{r.jakpat_id}</span>
-                                                                <span className="text-[10px] text-gray-400 font-mono">UID: {r.user_id || '—'}</span>
-                                                            </div>
+                                                            <span className="font-mono text-xs font-semibold text-gray-700">{r.jakpat_id}</span>
                                                         </TableCell>
-                                                        <TableCell className="py-3 max-w-[200px]">
-                                                            {r.is_eligible ? (
-                                                                <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] border border-emerald-200/60">
-                                                                    <Check className="w-3 h-3" /> Eligible
-                                                                </span>
-                                                            ) : (
-                                                                <div className="flex flex-col gap-1.5 items-start">
-                                                                    <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] border border-red-200/60">
-                                                                        <AlertCircle className="w-3 h-3" /> Not Eligible
-                                                                    </span>
-                                                                    <div className="flex flex-col gap-0.5">
-                                                                        {r.ineligible_reasons.map((reason, i) => (
-                                                                            <span key={i} className="text-[10px] text-red-500 font-medium leading-tight line-clamp-1" title={reason}>• {reason}</span>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-sm font-medium py-3">
-                                                            {r.ktp_name || r.display_name || <span className="text-gray-400 italic text-xs font-normal">Not in masterdata</span>}
-                                                        </TableCell>
-                                                        <TableCell className="text-xs text-gray-600 py-3">
-                                                            {r.city || r.province ? <span>{[r.city, r.province].filter(Boolean).join(', ')}</span> : <span className="text-gray-300">—</span>}
-                                                        </TableCell>
-                                                        <TableCell className="text-xs py-3">
-                                                            {r.e_wallet_number ? (
-                                                                <div className="flex flex-col gap-0.5">
-                                                                    <span className="font-semibold text-blue-700 uppercase tracking-wider text-[10px]">{r.ewallet_provider}</span>
-                                                                    <span className="font-mono text-gray-600">{r.e_wallet_number}</span>
-                                                                </div>
-                                                            ) : <span className="text-gray-300">—</span>}
-                                                        </TableCell>
+                                                        {isSelectionMode ? (
+                                                            <>
+                                                                <TableCell className="py-3">
+                                                                    {r.user_id ? <span className="font-mono text-xs text-gray-600">{r.user_id}</span> : <span className="font-mono text-xs text-gray-400">—</span>}
+                                                                </TableCell>
+                                                                <TableCell className="py-3 max-w-[200px]">
+                                                                    {r.is_eligible ? (
+                                                                        <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] border border-emerald-200/60">
+                                                                            <Check className="w-3 h-3" /> Eligible
+                                                                        </span>
+                                                                    ) : (
+                                                                        <div className="flex flex-col gap-1.5 items-start">
+                                                                            <TooltipProvider delayDuration={100}>
+                                                                                <Tooltip>
+                                                                                    <TooltipTrigger asChild>
+                                                                                        <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] border border-red-200/60 cursor-help">
+                                                                                            <AlertCircle className="w-3 h-3" /> Not Eligible
+                                                                                        </span>
+                                                                                    </TooltipTrigger>
+                                                                                    <TooltipContent side="top" className="bg-red-900 border-red-800 text-white shadow-xl max-w-[250px] p-3 rounded-lg z-50">
+                                                                                        <p className="font-semibold text-xs mb-1.5 opacity-90">Reason:</p>
+                                                                                        <ul className="list-disc pl-3 text-xs opacity-90 space-y-1">
+                                                                                            {r.ineligible_reasons.map((reason, i) => (
+                                                                                                <li key={i} className="leading-snug">{reason}</li>
+                                                                                            ))}
+                                                                                        </ul>
+                                                                                    </TooltipContent>
+                                                                                </Tooltip>
+                                                                            </TooltipProvider>
+                                                                        </div>
+                                                                    )}
+                                                                </TableCell>
+                                                                <TableCell className="text-sm font-medium py-3">
+                                                                    {r.ktp_name || r.display_name || <span className="text-gray-400 italic text-xs font-normal">Not in masterdata</span>}
+                                                                </TableCell>
+                                                                <TableCell className="text-xs text-gray-600 py-3">
+                                                                    {r.city || r.province ? <span>{[r.city, r.province].filter(Boolean).join(', ')}</span> : <span className="text-gray-300">—</span>}
+                                                                </TableCell>
+                                                                <TableCell className="text-xs py-3">
+                                                                    {r.e_wallet_number ? (
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <span className="font-semibold text-blue-700 uppercase tracking-wider text-[10px]">{r.ewallet_provider}</span>
+                                                                            <span className="font-mono text-gray-600">{r.e_wallet_number}</span>
+                                                                        </div>
+                                                                    ) : <span className="text-gray-300">—</span>}
+                                                                </TableCell>
+                                                            </>
+                                                        ) : (
+                                                            <TableCell className="text-sm font-medium py-3">
+                                                                {r.display_name || r.jakpat_id}
+                                                            </TableCell>
+                                                        )}
                                                         <TableCell className="text-right py-3">
                                                             {r.proof_url ? (
                                                                 <div className="flex items-center justify-end gap-1">
-                                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50" onClick={() => setPreviewProof(getCdnUrl(r.proof_url!))} title="Lihat Bukti">
+                                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50" onClick={(e) => { e.stopPropagation(); setPreviewProof(getCdnUrl(r.proof_url!)); }} title="Lihat Bukti">
                                                                         <ImageIcon className="h-4 w-4" />
                                                                     </Button>
-                                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-400 hover:text-red-500 hover:bg-red-50" onClick={() => handleDeleteProof(r)} disabled={deletingId === r.respondent_id} title="Hapus Bukti Permanent">
+                                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-400 hover:text-red-500 hover:bg-red-50" onClick={(e) => { e.stopPropagation(); handleDeleteProof(r); }} disabled={deletingId === r.respondent_id} title="Hapus Bukti Permanent">
                                                                         {deletingId === r.respondent_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                                                                     </Button>
                                                                 </div>
@@ -881,7 +915,7 @@ export function SubmissionsManagerView({
                     <div className="flex gap-3 items-center">
                         {hasExistingWinners && isSelectionMode && (
                             <Button variant="ghost" onClick={() => setIsSelectionMode(false)} className="font-semibold text-gray-600 hover:text-gray-900" disabled={saving}>
-                                Batal Pilih Pemenang
+                                Batal
                             </Button>
                         )}
                         {!isSelectionMode && rewardCount > 0 && rewardCount > existingWinners.length && (
@@ -895,7 +929,17 @@ export function SubmissionsManagerView({
                                 disabled={selectedIds.size === 0 || saving || selectedIds.size > (rewardCount - existingWinners.length)}
                                 className="bg-green-600 hover:bg-green-700 text-white font-semibold h-10 px-6 shadow-sm"
                             >
-                                {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Menyimpan...</> : <><Check className="w-4 h-4 mr-2" /> Confirm {selectedIds.size} Pemenang</>}
+                                {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Menyimpan...</> : (
+                                    <div className="flex items-center">
+                                        <Check className="w-4 h-4 mr-2" />
+                                        <span>Confirm {selectedIds.size} Pemenang</span>
+                                        {existingWinners.length > 0 && (
+                                            <span className="ml-1.5 opacity-90 text-[13px] font-normal tracking-wide">
+                                                ({existingWinners.length} sudah terpilih)
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                             </Button>
                         )}
                     </div>
