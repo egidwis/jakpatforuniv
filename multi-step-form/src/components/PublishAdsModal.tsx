@@ -22,7 +22,7 @@ import { supabase, updateScheduleDates, updateFormStatus } from '../utils/supaba
 
 // Max 3 regular ads per day, 1 extra ad per day
 const MAX_ADS_PER_DAY = 3;
-const MAX_EXTRA_ADS_PER_DAY = 1;
+const MAX_EXTRA_ADS_PER_DAY = 2;
 
 interface PublishAdsModalProps {
     isOpen: boolean;
@@ -110,7 +110,7 @@ export function PublishAdsModal({ isOpen, onClose, submission, pageSlug, onSucce
                 .from('form_submissions')
                 .select('id, start_date, end_date, submission_status')
                 .not('start_date', 'is', null)
-                .not('submission_status', 'in', '("rejected","spam","in_review")');
+                .not('submission_status', 'in', '("rejected","spam","in_review","completed")');
 
             if (subError) throw subError;
 

@@ -107,14 +107,15 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         question_count: formData.questionCount,
         criteria_responden: formData.criteriaResponden,
         duration: formData.duration,
-        start_date: formData.startDate || new Date().toISOString().split('T')[0],
-        end_date: formData.endDate || new Date(Date.now() + formData.duration * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        start_date: formData.startDate || null,
+        end_date: formData.endDate || null,
         full_name: formData.fullName,
         email: formData.email,
         phone_number: formData.phoneNumber,
         university: formData.university,
         department: formData.department,
         status: formData.status || 'pending',
+        submission_status: 'in_review',
         referral_source: formData.referralSource === 'Lainnya' && formData.referralSourceOther
           ? `Lainnya: ${formData.referralSourceOther}`
           : formData.referralSource,

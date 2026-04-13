@@ -150,8 +150,8 @@ export interface FormSubmission {
   question_count: number;
   criteria_responden?: string;
   duration: number;
-  start_date: string;
-  end_date: string;
+  start_date?: string | null;
+  end_date?: string | null;
   full_name?: string;
   email?: string;
   phone_number?: string;
