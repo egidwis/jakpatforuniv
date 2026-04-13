@@ -1,5 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
+/**
+ * Normalize a schedule date string for accurate time comparison.
+ * Date-only strings (e.g. "2026-04-13") are parsed as midnight UTC,
+ * which equals 07:00 WIB — before the intended 15:00 WIB go-live time.
+ * This detects date-only values and sets the time to 08:00 UTC (= 15:00 WIB).
+ */
+function normalizeScheduleDate(dateStr) {
+    const d = new Date(dateStr);
+    if (!dateStr.includes('T')) {
+        d.setUTCHours(8, 0, 0, 0);
+    }
+    return d;
+}
+
 export async function onRequestGet(context) {
     const corsHeaders = {
         'Content-Type': 'application/json',
@@ -61,8 +75,8 @@ export async function onRequestGet(context) {
         // Filter by date manually if RLS/Query is complex, or rely on query
         // Optimally, we filter in code to handle nulls easier
         const validSurveys = surveys.filter(s => {
-            const start = s.publish_start_date ? new Date(s.publish_start_date) : null;
-            const end = s.publish_end_date ? new Date(s.publish_end_date) : null;
+            const start = s.publish_start_date ? normalizeScheduleDate(s.publish_start_date) : null;
+            const end = s.publish_end_date ? normalizeScheduleDate(s.publish_end_date) : null;
             const nowTime = new Date();
 
             if (start && nowTime < start) return false;

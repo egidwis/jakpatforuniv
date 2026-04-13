@@ -13,6 +13,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Eye, Save, Trash2, Plus, Upload, Check, Trophy, Users, Calendar, StopCircle } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
+/**
+ * Normalize a schedule date string for accurate time comparison & display.
+ * Date-only strings (e.g. "2026-04-13") are parsed as midnight UTC by JS,
+ * which equals 07:00 WIB — before the intended 15:00 WIB go-live time.
+ * This detects date-only values and forces 08:00 UTC (= 15:00 WIB).
+ */
+function normalizeScheduleDate(dateStr: string): Date {
+    const d = new Date(dateStr);
+    if (!dateStr.includes('T')) {
+        d.setUTCHours(8, 0, 0, 0);
+    }
+    return d;
+}
+
 interface PageBuilderModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -37,6 +51,39 @@ const generateSlug = (title: string): string => {
         .replace(/\s+/g, '-')          // spaces to hyphens
         .replace(/-+/g, '-')           // collapse multiple hyphens
         .slice(0, 60);                 // max 60 chars
+};
+
+const defaultSurveiAdBlocks = {
+    type: 'doc',
+    content: [
+        {
+            type: 'paragraph',
+            content: [
+                {
+                    type: 'text',
+                    text: 'Hi Jakpaters! Yuk, isi survei berikut sesuai dengan kondisi kamu saat ini. Hanya responden yang sesuai kriteria, mengisi dengan serius, dan tidak menjawab asal-asalan yang akan masuk ke dalam undian 😉',
+                },
+            ],
+        },
+        {
+            type: 'paragraph',
+            content: [
+                {
+                    type: 'text',
+                    text: 'Jangan lupa untuk mengisi Jakpat ID kamu dengan benar (tanpa teks "https://jakpat.net/s/" di awal dan tanpa spasi di dalam Jakpat ID mu).',
+                },
+            ],
+        },
+        {
+            type: 'paragraph',
+            content: [
+                {
+                    type: 'text',
+                    text: 'Semua pemenang undian survei akan diumumkan setiap akhir bulan, jadi tunggu pengumuman dari kami ya. Semoga beruntung! ✨',
+                },
+            ],
+        },
+    ],
 };
 
 export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount, submissionCriteria, isExtraAd }: PageBuilderModalProps) {
@@ -158,7 +205,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         title: autoTitle,
                         banner_url: '',
                         is_published: false,
-                        blocks: {},
+                        blocks: !isStandalone ? defaultSurveiAdBlocks : {},
                         custom_fields: [],
                         publish_start_date: submissionStartDate ? submissionStartDate : '',
                         publish_end_date: submissionEndDate ? submissionEndDate : '',
@@ -187,13 +234,27 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 isPublished = true;
             }
 
+            // Ensure schedule dates always have a time component (15:00 WIB = 08:00 UTC).
+            // Date-only strings like "2026-04-13" would be parsed as midnight UTC (07:00 WIB)
+            // by downstream consumers, causing the ad to appear hours before its intended go-live.
+            const ensureTimestamp = (dateStr: string | null): string | null => {
+                if (!dateStr) return null;
+                if (!dateStr.includes('T')) {
+                    // Date-only → assume 15:00 WIB = 08:00 UTC
+                    const d = new Date(dateStr);
+                    d.setUTCHours(8, 0, 0, 0);
+                    return d.toISOString();
+                }
+                return dateStr;
+            };
+
             const payload: any = {
                 slug: formData.slug,
                 title: formData.title,
                 banner_url: formData.banner_url,
                 is_published: isPublished,
-                publish_start_date: formData.publish_start_date || null,
-                publish_end_date: formData.publish_end_date || null,
+                publish_start_date: ensureTimestamp(formData.publish_start_date) || null,
+                publish_end_date: ensureTimestamp(formData.publish_end_date) || null,
 
                 blocks: formData.blocks,
                 custom_fields: formData.custom_fields,
@@ -276,6 +337,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             // Publish/Unpublish → close modal & refresh
             if (overrideStatus !== undefined) {
                 onClose();
+                window.location.reload();
             } else {
                 // Save Draft → keep modal open, sync local state
                 setFormData(prev => ({ ...prev, is_published: isPublished }));
@@ -350,6 +412,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             toast.success('Campaign berhasil dihentikan.');
             onSuccess();
             onClose();
+            window.location.reload();
         } catch (error: any) {
             console.error('Error ending campaign:', error);
             toast.error(error.message || 'Gagal menghentikan campaign');
@@ -703,7 +766,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     <div className="flex items-center gap-2 flex-shrink min-w-0 mr-auto">
                         {/* Status Badge */}
                         {(() => {
-                            const startDate = formData.publish_start_date ? new Date(formData.publish_start_date) : null;
+                            const startDate = formData.publish_start_date ? normalizeScheduleDate(formData.publish_start_date) : null;
                             const isLive = formData.is_published && (isStandalone || !startDate || startDate <= new Date());
                             const isDraft = !formData.is_published;
                             if (isDraft) return (
@@ -723,18 +786,18 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         {!isStandalone && (
                             <div className="flex items-center p-1 bg-white border rounded-md shadow-sm overflow-hidden flex-shrink min-w-0 w-auto ml-2">
                                 <div className="px-2 py-1 bg-gray-50 rounded border border-gray-100 mr-2 flex-shrink-0 hidden sm:block">
-                                    <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Scheduled At</span>
+                                    <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">{formData.is_published ? 'Scheduled At' : 'Slot Reserved At'}</span>
                                 </div>
                                 <div className="flex items-center gap-2 px-1 text-[11px] font-medium text-gray-600 truncate min-w-0">
                                     <span className="truncate">
                                         {formData.publish_start_date
-                                            ? new Date(formData.publish_start_date).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                            ? normalizeScheduleDate(formData.publish_start_date).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                                             : 'Not Set'}
                                     </span>
                                     <span className="text-gray-300 mx-1 flex-shrink-0">to</span>
                                     <span className="truncate">
                                         {formData.publish_end_date
-                                            ? new Date(formData.publish_end_date).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                            ? normalizeScheduleDate(formData.publish_end_date).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                                             : 'Not Set'}
                                     </span>
                                 </div>
@@ -754,7 +817,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                             <>
                                 {/* Published/Scheduled page: End Campaign (live) or Change to Draft (not yet live) */}
                                 {(() => {
-                                    const startDate = formData.publish_start_date ? new Date(formData.publish_start_date) : null;
+                                    const startDate = formData.publish_start_date ? normalizeScheduleDate(formData.publish_start_date) : null;
                                     const isLive = formData.is_published && !isStandalone && startDate && startDate <= new Date();
                                     
                                     if (isLive) {
@@ -835,12 +898,12 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                     size="sm"
                                     onClick={() => handleSave(true)}
                                     disabled={loading}
-                                    className={`h-9 text-sm text-white shadow-sm font-medium px-6 shrink-0 ${!isStandalone && formData.publish_start_date && new Date(formData.publish_start_date) > new Date()
+                                    className={`h-9 text-sm text-white shadow-sm font-medium px-6 shrink-0 ${!isStandalone && formData.publish_start_date && normalizeScheduleDate(formData.publish_start_date) > new Date()
                                         ? 'bg-blue-600 hover:bg-blue-700'
                                         : 'bg-green-600 hover:bg-green-700'
                                         }`}
                                 >
-                                    {!isStandalone && formData.publish_start_date && new Date(formData.publish_start_date) > new Date() ? (
+                                    {!isStandalone && formData.publish_start_date && normalizeScheduleDate(formData.publish_start_date) > new Date() ? (
                                         <><Calendar className="w-4 h-4 mr-1.5" /> Schedule</>
                                     ) : (
                                         'Publish Now'

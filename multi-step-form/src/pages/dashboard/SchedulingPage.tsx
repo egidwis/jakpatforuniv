@@ -63,7 +63,12 @@ const CustomWeekHeader = ({ date }: { date: Date }) => {
 
 const CustomAgendaEvent = ({ event, onSelectEvent }: { event: CalendarEvent, onSelectEvent?: (e: CalendarEvent) => void }) => {
     const theme = event.resource.colorTheme || STATUS_PALETTES.upcomingNoPage;
-    const status = new Date() >= event.start && new Date() <= event.end ? 'Active' : new Date() < event.start ? 'Upcoming' : 'Completed';
+    let status = '';
+    if (!event.resource.page_id) {
+        status = new Date() < event.start ? 'Pending' : 'Overdue';
+    } else {
+        status = new Date() >= event.start && new Date() <= event.end ? 'Active' : new Date() < event.start ? 'Upcoming' : 'Completed';
+    }
     
     return (
         <div className="flex flex-col rounded-xl border bg-white border-slate-200 shadow-sm my-1 transition-all overflow-hidden">
@@ -95,6 +100,14 @@ const CustomAgendaEvent = ({ event, onSelectEvent }: { event: CalendarEvent, onS
                     ) : status === 'Upcoming' ? (
                         <div className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1.5 rounded-full flex items-center gap-1.5 uppercase tracking-widest shrink-0">
                             Upcoming
+                        </div>
+                    ) : status === 'Pending' ? (
+                        <div className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1.5 rounded-full flex items-center gap-1.5 uppercase tracking-widest shrink-0">
+                            Pending Page
+                        </div>
+                    ) : status === 'Overdue' ? (
+                        <div className="bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-1.5 rounded-full flex items-center gap-1.5 uppercase tracking-widest shrink-0">
+                            Overdue
                         </div>
                     ) : (
                         <div className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1.5 rounded-full flex items-center gap-1.5 uppercase tracking-widest shrink-0">

@@ -5,6 +5,28 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Users, Trophy, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+/**
+ * Normalize a schedule date string for accurate time comparison.
+ * 
+ * If the value is a date-only string (e.g. "2026-04-13") without a time
+ * component, `new Date()` parses it as **midnight UTC** which equals
+ * 07:00 WIB — way before the intended 15:00 WIB go-live time.
+ * 
+ * This function detects date-only values and sets the time to 08:00 UTC
+ * (= 15:00 WIB), matching the default ad go-live convention.
+ */
+function normalizeScheduleDate(dateStr: string): Date {
+    const d = new Date(dateStr);
+    // A date-only string ("2026-04-13") is parsed as midnight UTC.
+    // A full ISO string ("2026-04-13T08:00:00.000Z") keeps its real time.
+    // Detect date-only by checking if the original string lacks a "T" or time portion.
+    if (!dateStr.includes('T')) {
+        // Date-only → assume 15:00 WIB = 08:00 UTC
+        d.setUTCHours(8, 0, 0, 0);
+    }
+    return d;
+}
+
 export function SurveyListingPage() {
     const [pages, setPages] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -27,8 +49,8 @@ export function SurveyListingPage() {
             // Client-side filtering for schedule
             const now = new Date();
             const activePages = (data || []).filter(page => {
-                const startDate = page.publish_start_date ? new Date(page.publish_start_date) : null;
-                const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
+                const startDate = page.publish_start_date ? normalizeScheduleDate(page.publish_start_date) : null;
+                const endDate = page.publish_end_date ? normalizeScheduleDate(page.publish_end_date) : null;
 
                 // If scheduled in future, hide
                 if (startDate && startDate > now) return false;

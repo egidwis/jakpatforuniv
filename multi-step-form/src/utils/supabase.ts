@@ -732,11 +732,23 @@ export const updateScheduleDates = async (
   startDate: string,
   endDate: string
 ) => {
+  // Normalize dates: date-only strings → 08:00 UTC (= 15:00 WIB)
+  const normalize = (ds: string): string => {
+    if (!ds.includes('T')) {
+      const d = new Date(ds);
+      d.setUTCHours(8, 0, 0, 0);
+      return d.toISOString();
+    }
+    return ds;
+  };
+  const normalizedStart = normalize(startDate);
+  const normalizedEnd = normalize(endDate);
+
   try {
     // 1. Update form_submissions (slot reservation / sync)
     const { error: subError } = await supabase
       .from('form_submissions')
-      .update({ start_date: startDate, end_date: endDate, updated_at: new Date().toISOString() })
+      .update({ start_date: normalizedStart, end_date: normalizedEnd, updated_at: new Date().toISOString() })
       .eq('id', submissionId);
 
     if (subError) throw subError;
@@ -744,7 +756,7 @@ export const updateScheduleDates = async (
     // 2. Sync to survey_pages if page already exists
     const { error: pageError } = await supabase
       .from('survey_pages')
-      .update({ publish_start_date: startDate, publish_end_date: endDate, updated_at: new Date().toISOString() })
+      .update({ publish_start_date: normalizedStart, publish_end_date: normalizedEnd, updated_at: new Date().toISOString() })
       .eq('submission_id', submissionId);
 
     // pageError is non-fatal — page may not exist yet (slot_reserved stage)

@@ -11,6 +11,20 @@ import { Loader2, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartp
 import { toast } from 'sonner';
 import imageCompression from 'browser-image-compression';
 
+/**
+ * Normalize a schedule date string for accurate time comparison.
+ * Date-only strings (e.g. "2026-04-13") are parsed as midnight UTC by JS,
+ * which equals 07:00 WIB — before the intended 15:00 WIB go-live time.
+ * This detects date-only values and sets the time to 08:00 UTC (= 15:00 WIB).
+ */
+function normalizeScheduleDate(dateStr: string): Date {
+    const d = new Date(dateStr);
+    if (!dateStr.includes('T')) {
+        d.setUTCHours(8, 0, 0, 0);
+    }
+    return d;
+}
+
 export function SurveyPage() {
     const { slug } = useParams();
     const [loading, setLoading] = useState(true);
@@ -92,8 +106,8 @@ export function SurveyPage() {
 
             // Check Schedule from survey_pages table (publish_start_date / publish_end_date)
             const now = new Date();
-            const startDate = data.publish_start_date ? new Date(data.publish_start_date) : null;
-            const endDate = data.publish_end_date ? new Date(data.publish_end_date) : null;
+            const startDate = data.publish_start_date ? normalizeScheduleDate(data.publish_start_date) : null;
+            const endDate = data.publish_end_date ? normalizeScheduleDate(data.publish_end_date) : null;
 
             if (startDate && startDate > now) {
                 // Not started yet
