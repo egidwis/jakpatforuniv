@@ -339,47 +339,84 @@ export function SurveyPage() {
 
         setSubmitting(true);
         try {
-            // Re-check duplicate before inserting (safety net)
+            // Step 1: Re-check duplicate before inserting (safety net)
             const cleanJakpatId = formData.jakpat_id.trim();
+            console.log('[Submit] Step 1: Checking duplicate for Jakpat ID:', cleanJakpatId);
             const { count: dupCount, error: dupError } = await supabase
                 .from('page_respondents')
                 .select('id', { count: 'exact', head: true })
                 .eq('page_id', pageData.id)
                 .eq('jakpat_id', cleanJakpatId);
 
-            if (dupError) throw dupError;
+            if (dupError) {
+                console.error('[Submit] Step 1 FAILED - Duplicate check error:', JSON.stringify(dupError));
+                throw new Error(`Gagal memeriksa data: ${dupError.message || 'Unknown error'}`);
+            }
             if (dupCount && dupCount > 0) {
                 toast.error('Jakpat ID ini sudah pernah mengisi survei ini.');
                 setSubmitting(false);
                 return;
             }
+            console.log('[Submit] Step 1 OK - No duplicate found');
 
+            // Step 2: Upload Proof (with fallback — don't block submission if upload fails)
             let proofUrl = '';
-
-            // Upload Proof if exists
             if (proofFile) {
-                const options = {
-                    maxSizeMB: 0.1, // < 100KB
-                    maxWidthOrHeight: 1024,
-                    useWebWorker: false, // Turn off WebWorker to prevent crashes on Android WebView
-                };
-                const compressedFile = await imageCompression(proofFile, options);
-                const sanitizedName = proofFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_');
-                const fileName = `proof-${Date.now()}-${sanitizedName}`;
+                try {
+                    console.log('[Submit] Step 2: Compressing image...', {
+                        name: proofFile.name,
+                        size: proofFile.size,
+                        type: proofFile.type
+                    });
+                    const options = {
+                        maxSizeMB: 0.1, // < 100KB
+                        maxWidthOrHeight: 1024,
+                        useWebWorker: false, // Turn off WebWorker to prevent crashes on Android WebView
+                    };
+                    const compressedFile = await imageCompression(proofFile, options);
+                    console.log('[Submit] Step 2: Image compressed OK, size:', compressedFile.size);
 
-                const { error: uploadError } = await supabase.storage
-                    .from('page-uploads')
-                    .upload(fileName, compressedFile);
+                    const sanitizedName = proofFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_');
+                    const fileName = `proof-${Date.now()}-${sanitizedName}`;
 
-                if (uploadError) throw uploadError;
+                    console.log('[Submit] Step 2: Uploading to storage...');
+                    const { error: uploadError } = await supabase.storage
+                        .from('page-uploads')
+                        .upload(fileName, compressedFile);
 
-                const { data: { publicUrl } } = supabase.storage
-                    .from('page-uploads')
-                    .getPublicUrl(fileName);
-                proofUrl = publicUrl;
+                    if (uploadError) {
+                        console.error('[Submit] Step 2 FAILED - Storage upload error:', JSON.stringify(uploadError));
+                        console.error('[Submit] Storage error details:', {
+                            message: uploadError.message,
+                            name: (uploadError as any).name,
+                            status: (uploadError as any).statusCode || (uploadError as any).status,
+                            error: (uploadError as any).error,
+                        });
+                        // Don't throw — continue without proof URL so submission isn't blocked
+                        toast.error('Upload bukti gagal (storage penuh?), data tetap disimpan tanpa bukti.');
+                    } else {
+                        const { data: { publicUrl } } = supabase.storage
+                            .from('page-uploads')
+                            .getPublicUrl(fileName);
+                        proofUrl = publicUrl;
+                        console.log('[Submit] Step 2 OK - Proof uploaded:', proofUrl);
+                    }
+                } catch (uploadCatchError: any) {
+                    // Catch compression errors or unexpected storage errors
+                    console.error('[Submit] Step 2 FAILED - Image processing error:', uploadCatchError);
+                    console.error('[Submit] Error type:', typeof uploadCatchError, 'Keys:', Object.keys(uploadCatchError || {}));
+                    // Don't throw — continue without proof URL
+                    toast.error('Gagal memproses gambar bukti, data tetap disimpan tanpa bukti.');
+                }
             }
 
-            // Save Respondent Data
+            // Step 3: Save Respondent Data to database
+            console.log('[Submit] Step 3: Saving respondent data...', {
+                page_id: pageData.id,
+                jakpat_id: cleanJakpatId,
+                hasProofUrl: !!proofUrl,
+                ewallet_provider: formData.ewallet_provider,
+            });
             const { error: dbError } = await supabase
                 .from('page_respondents')
                 .insert([{
@@ -391,7 +428,17 @@ export function SurveyPage() {
                     proof_url: proofUrl
                 }]);
 
-            if (dbError) throw dbError;
+            if (dbError) {
+                console.error('[Submit] Step 3 FAILED - Database insert error:', JSON.stringify(dbError));
+                console.error('[Submit] DB error details:', {
+                    message: dbError.message,
+                    code: dbError.code,
+                    details: dbError.details,
+                    hint: dbError.hint,
+                });
+                throw new Error(`Gagal menyimpan data: ${dbError.message || dbError.code || 'Database error'}`);
+            }
+            console.log('[Submit] Step 3 OK - Data saved successfully');
 
             // Save to localStorage for next time
             localStorage.setItem('jakpat_respondent_data', JSON.stringify({
@@ -409,7 +456,12 @@ export function SurveyPage() {
             }, 2000);
 
         } catch (error: any) {
-            console.error('Submission error:', error);
+            console.error('[Submit] FINAL catch - Unhandled error:', error);
+            console.error('[Submit] Error type:', typeof error);
+            console.error('[Submit] Error stringify:', JSON.stringify(error, null, 2));
+            if (error && typeof error === 'object') {
+                console.error('[Submit] Error keys:', Object.keys(error));
+            }
             const errorMsg = error?.message || error?.error || error?.error_description || (typeof error === 'string' ? error : 'Failed to submit');
             toast.error(errorMsg);
             setSubmitting(false);

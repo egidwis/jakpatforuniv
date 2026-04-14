@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { InternalDashboard } from './InternalDashboard';
@@ -20,8 +20,8 @@ export function InternalDashboardWithLayout() {
   const [currentPage, setCurrentPage] = useState<Page>('submissions');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [unreadConversations, setUnreadConversations] = useState(0);
-  const [proofImageCount, setProofImageCount] = useState(0);
-  const STORAGE_LIMIT = 9000;
+  const [storageStats, setStorageStats] = useState({ proofCount: 0, bannerCount: 0, contentImageCount: 0 });
+  const STORAGE_LIMIT_MB = 1024; // 1 GB Supabase storage limit
 
   // Function to calculate unread conversations
   const checkUnreadConversations = async () => {
@@ -52,32 +52,52 @@ export function InternalDashboardWithLayout() {
     }
   };
 
-  const fetchProofCount = async () => {
+  const fetchStorageStats = async () => {
     try {
-      const { count, error } = await supabase
+      // 1. Count proof images (page_respondents with proof_url)
+      const { count: proofCount } = await supabase
         .from('page_respondents')
         .select('id', { count: 'exact', head: true })
         .not('proof_url', 'is', null);
 
-      if (!error && count !== null) {
-        setProofImageCount(count);
-      }
+      // 2. Count unique banner images (survey_pages with banner_url)
+      const { data: bannerData } = await supabase
+        .from('survey_pages')
+        .select('banner_url')
+        .not('banner_url', 'is', null)
+        .neq('banner_url', '');
+      const uniqueBanners = bannerData ? new Set(bannerData.map(d => d.banner_url).filter(Boolean)).size : 0;
+
+      // 3. Estimate content images from block editor (survey_pages with blocks containing images)
+      // We count pages that have blocks with image nodes — each page may have ~1-2 images on average
+      const { count: pagesWithBlocks } = await supabase
+        .from('survey_pages')
+        .select('id', { count: 'exact', head: true })
+        .not('blocks', 'is', null);
+      // Conservative estimate: ~30% of pages have embedded images, avg 1.5 images each
+      const estimatedContentImages = Math.round((pagesWithBlocks || 0) * 0.3 * 1.5);
+
+      setStorageStats({
+        proofCount: proofCount || 0,
+        bannerCount: uniqueBanners,
+        contentImageCount: estimatedContentImages,
+      });
     } catch (err) {
-      console.error('Failed to fetch proof count', err);
+      console.error('Failed to fetch storage stats', err);
     }
   };
 
   useEffect(() => {
     // Check initial count
     checkUnreadConversations();
-    fetchProofCount();
+    fetchStorageStats();
 
     // Listen for read events from ConversationsPage
     const handleReadEvent = () => checkUnreadConversations();
     window.addEventListener('chat-session-viewed', handleReadEvent);
 
     // Listen for storage change events (from proof deletion)
-    const handleStorageChange = () => fetchProofCount();
+    const handleStorageChange = () => fetchStorageStats();
     window.addEventListener('proof-storage-changed', handleStorageChange);
 
     // Optional: Polling every minute to check for new messages
@@ -256,16 +276,32 @@ export function InternalDashboardWithLayout() {
 
         {/* Storage Meter */}
         <div className="px-4 py-3 border-t border-gray-200">
-          <div className="flex items-center gap-2 mb-1.5">
-            <HardDrive className="h-3.5 w-3.5 text-gray-500" />
-            <span className="text-[11px] font-medium text-gray-600">Proof Storage</span>
-          </div>
           {(() => {
-            const pct = Math.min((proofImageCount / STORAGE_LIMIT) * 100, 100);
-            const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500';
-            const estMB = ((proofImageCount * 100) / 1024).toFixed(0);
+            // Calculate estimated MB from all sources with different avg sizes
+            const proofMB = (storageStats.proofCount * 70) / 1024;    // ~70KB avg (compressed proof screenshots)
+            const bannerMB = (storageStats.bannerCount * 300) / 1024;  // ~300KB avg (compressed banner, max 500KB)
+            const contentMB = (storageStats.contentImageCount * 70) / 1024; // ~70KB avg (block editor images)
+            const estMB = proofMB + bannerMB + contentMB;
+            const totalFiles = storageStats.proofCount + storageStats.bannerCount + storageStats.contentImageCount;
+            const pct = Math.min((estMB / STORAGE_LIMIT_MB) * 100, 100);
+            const isCritical = pct >= 80;
+            const isWarning = pct >= 60;
+            const barColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-emerald-500';
+            const estMBStr = estMB >= 1024 ? `${(estMB / 1024).toFixed(1)} GB` : `${estMB.toFixed(0)} MB`;
             return (
               <>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <HardDrive className={`h-3.5 w-3.5 ${isCritical ? 'text-red-500' : 'text-gray-400'}`} />
+                    <span className="text-[11px] font-medium text-gray-600">Supabase Storage</span>
+                  </div>
+                  {isCritical && (
+                    <span className="flex items-center gap-1 text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full">
+                      <AlertTriangle className="h-2.5 w-2.5" />
+                      Hampir penuh
+                    </span>
+                  )}
+                </div>
                 <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-500 ${barColor}`}
@@ -273,10 +309,12 @@ export function InternalDashboardWithLayout() {
                   />
                 </div>
                 <div className="flex justify-between mt-1">
-                  <span className="text-[10px] text-gray-500">
-                    {proofImageCount.toLocaleString()} / {STORAGE_LIMIT.toLocaleString()} gambar
+                  <span className="text-[10px] text-gray-500" title={`Proof: ${storageStats.proofCount.toLocaleString()} · Banner: ${storageStats.bannerCount} · Content: ~${storageStats.contentImageCount}`}>
+                    {totalFiles.toLocaleString()} file
                   </span>
-                  <span className="text-[10px] text-gray-400">~{estMB} MB</span>
+                  <span className={`text-[10px] ${isCritical ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
+                    ~{estMBStr} / 1 GB
+                  </span>
                 </div>
               </>
             );
