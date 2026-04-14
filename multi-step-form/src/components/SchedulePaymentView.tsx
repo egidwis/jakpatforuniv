@@ -336,12 +336,28 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
     // ==================== PAYMENT LOGIC ====================
 
     const initializeInvoiceItems = useCallback(() => {
-        const invoiceItems: InvoiceItem[] = [];
         const duration = submission.duration || 0;
         const questionCount = submission.questionCount || 0;
+        const winnerCount = submission.winnerCount || 0;
+        const prizePerWinner = submission.prize_per_winner || 0;
+
+        if (submission.voucher_code?.toUpperCase() === 'JFUTGRX') {
+            setItems([{
+                id: Date.now().toString(),
+                name: 'System Testing Fee (JFUTGRX)',
+                qty: 1,
+                price: 1000,
+                category: 'Lainnya'
+            }]);
+            setNote('Testing Voucher JFUTGRX Applied');
+            return;
+        }
+
+        const invoiceItems: InvoiceItem[] = [];
         const costPerDay = calculateAdCostPerDay(questionCount);
         const adCost = costPerDay * duration;
-        const discount = calculateDiscount(submission.voucher_code, adCost);
+        const incentiveCost = calculateIncentiveCost(winnerCount, prizePerWinner);
+        const discount = calculateDiscount(submission.voucher_code, adCost, incentiveCost, duration);
 
         if (costPerDay > 0 && duration > 0) {
             // If there's a discount, apply it to the per-day rate for cleaner display
@@ -354,9 +370,6 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                 category: 'Jakpat for University (ads)'
             });
         }
-
-        const winnerCount = submission.winnerCount || 0;
-        const prizePerWinner = submission.prize_per_winner || 0;
         if (prizePerWinner > 0 && winnerCount > 0) {
             invoiceItems.push({
                 id: Date.now().toString() + '1',

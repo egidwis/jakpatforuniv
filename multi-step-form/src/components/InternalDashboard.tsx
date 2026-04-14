@@ -22,15 +22,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { CreateInvoiceModal } from './CreateInvoiceModal';
-import { CopyInvoiceDropdown } from './CopyInvoiceDropdown';
-import { PublishAdsModal } from './PublishAdsModal';
+import { SchedulePaymentView } from './SchedulePaymentView';
 import { EditCriteriaModal } from './EditCriteriaModal';
 import { EditFormDetailsModal } from './EditFormDetailsModal';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
+import { CreditCard } from 'lucide-react';
 import './InternalDashboard.css';
 
 interface SurveySubmission {
@@ -90,14 +89,16 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
 
-  // Invoice modal state
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [selectedSubmission, setSelectedSubmission] = useState<SurveySubmission | null>(null);
-  const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
+  // Schedule & Payment View State
+  const [activeScheduleSubmission, setActiveScheduleSubmission] = useState<SurveySubmission | null>(null);
+  const [scheduleInitialStep, setScheduleInitialStep] = useState<'schedule' | 'payment'>('schedule');
 
-  // Publish Ads Modal State
-  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
-  const [selectedSubmissionForAds, setSelectedSubmissionForAds] = useState<SurveySubmission | null>(null);
+  const [paymentStates, setPaymentStates] = useState<Record<string, {
+    hasInvoices: boolean;
+    latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null;
+    invoiceCount: number;
+    latestPaymentUrl: string | null;
+  }>>({});
 
   // Edit Criteria Modal State
   const [isEditCriteriaModalOpen, setIsEditCriteriaModalOpen] = useState(false);
@@ -242,30 +243,45 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             setExistingPages(pageMap);
           }
 
-          // 2. Fetch Transactions (Invoices) to override Supabase defaults
+          // 2. Fetch Transactions (Invoices) to override Supabase defaults and get true state
           const { data: transactions, error: trxError } = await supabase
             .from('transactions')
-            .select('form_submission_id')
-            .in('form_submission_id', submissionIds);
+            .select('form_submission_id, status, created_at, payment_url')
+            .in('form_submission_id', submissionIds)
+            .order('created_at', { ascending: false });
 
           if (trxError) console.error('Error fetching transactions:', trxError);
 
+          const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null }> = {};
+
           if (transactions && transactions.length > 0) {
-            const trxSet = new Set(transactions.map(t => t.form_submission_id));
             transformed.forEach(sub => {
-              if (trxSet.has(sub.id)) {
+              const subTxs = transactions.filter(t => t.form_submission_id === sub.id);
+              if (subTxs.length > 0) {
                 sub.has_transactions = true;
-              } else if (sub.payment_status === 'pending') {
-                // If no transaction exists but status says pending (DB default), strip it
-                sub.payment_status = undefined;
+                const hasPaid = subTxs.some(t => ['paid', 'completed'].includes(t.status));
+                const latestStatus = hasPaid ? 'paid' : subTxs[0].status;
+                // Get the latest pending payment URL for quick copy
+                const latestPendingTx = subTxs.find(t => !['paid', 'completed'].includes(t.status));
+                paymentMap[sub.id] = {
+                  hasInvoices: true,
+                  latestStatus: latestStatus,
+                  invoiceCount: subTxs.length,
+                  latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null
+                };
+                sub.payment_status = latestStatus;
+              } else {
+                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
+                if (sub.payment_status === 'pending') sub.payment_status = undefined;
               }
             });
           } else {
-            // No transactions at all, strip all 'pending' defaults
             transformed.forEach(sub => {
+              paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
               if (sub.payment_status === 'pending') sub.payment_status = undefined;
             });
           }
+          setPaymentStates(paymentMap);
 
           // 3. Derive scheduled submission IDs from form_submissions that have start_date set
           const scheduledIds = new Set<string>();
@@ -349,25 +365,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     };
   };
 
-  const handleOpenInvoiceModal = (submission: SurveySubmission) => {
-    setSelectedSubmission(submission);
-    setIsInvoiceModalOpen(true);
-  };
-
-  const handleCloseInvoiceModal = () => {
-    setIsInvoiceModalOpen(false);
-    setSelectedSubmission(null);
-  };
-
-  const handleInvoiceCreated = () => {
-    setInvoiceRefreshTrigger(prev => prev + 1);
-    loadSubmissions();
-  };
-
-  const handleClosePublishModal = () => {
-    setIsPublishModalOpen(false);
-    setSelectedSubmissionForAds(null);
-  };
+  // Modals replaced by SchedulePaymentView
 
   const handleOpenEditCriteriaModal = (submission: SurveySubmission) => {
     setSelectedSubmissionForCriteria(submission);
@@ -515,6 +513,23 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             Log Out
           </Button>
         </Card>
+      </div>
+    );
+  }
+
+  // Fullscreen Schedule & Payment View
+  if (activeScheduleSubmission) {
+    return (
+      <div className={hideAuth ? 'h-full flex flex-col' : 'min-h-screen flex flex-col bg-background'}>
+        <SchedulePaymentView
+          submission={activeScheduleSubmission}
+          existingPageSlug={existingPages[activeScheduleSubmission.id]?.slug}
+          initialStep={scheduleInitialStep}
+          onBack={() => {
+            setActiveScheduleSubmission(null);
+            loadSubmissions(); // Refresh data
+          }}
+        />
       </div>
     );
   }
@@ -805,8 +820,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                     <col style={{ width: '290px' }} />
                     <col style={{ width: '200px' }} />
                     <col style={{ width: '190px' }} />
-                    <col style={{ width: '210px' }} />
-                    <col style={{ width: '200px' }} />
+                    <col style={{ width: '410px' }} />
                   </colgroup>
                   <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
                     <TableRow className="border-none hover:bg-transparent shadow-none">
@@ -814,8 +828,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       <TableHead className="w-[290px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Form Details</TableHead>
                       <TableHead className="w-[200px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Criteria & Incentive</TableHead>
                       <TableHead className="w-[190px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Researcher</TableHead>
-                      <TableHead className="w-[210px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Payment</TableHead>
-                      <TableHead className="w-[200px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-8 pr-6 border-y border-r border-transparent rounded-r-xl">Publish & Pages</TableHead>
+                      <TableHead className="w-[410px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-8 pr-6 border-y border-r border-transparent rounded-r-xl">Campaign Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -946,7 +959,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                           <p>Discount: <span className="font-bold text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(
                                             calculateDiscount(
                                               submission.voucher_code,
-                                              calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0)
+                                              calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0),
+                                              calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0),
+                                              submission.duration || 0
                                             )
                                           )}</span></p>
                                         </div>
@@ -1159,159 +1174,163 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           </div>
                         </TableCell>
 
-                        {/* Payment */}
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="flex flex-col gap-1.5">
-                            {/* Row 1: Amount & Button */}
-                            <div className="flex items-center justify-between mb-1.5 w-full">
-                              <div className="flex flex-col">
-                                {/* Grand Total - Prominent (Matching Form Title Style) */}
-                                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-0.5">Expected:</div>
-                                <span className={`text-[15px] font-bold whitespace-nowrap ${submission.payment_status === 'paid' ? 'text-green-700' : 'text-gray-900'}`}>
-                                  {(() => {
-                                    const adCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
-                                    const incentive = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
-                                    const discount = calculateDiscount(submission.voucher_code, adCost);
-                                    const total = adCost + incentive - discount;
-                                    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(total);
-                                  })()}
-                                </span>
-                              </div>
+                        {/* Campaign Actions */}
+                        <TableCell className="align-top py-4 space-y-2 pl-8 pr-6 border-y border-r border-gray-200 rounded-r-xl">
+                          {(() => {
+                            const hasSchedule = scheduledSubmissionIds.has(submission.id);
+                            const paymentData = paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0 };
+                            
+                            const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
+                            const isPending = !isPaid && paymentData.hasInvoices;
+                            const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
 
-                              {/* Invoice button: disabled before approved, always active once approved or beyond */}
-                              {(() => {
-                                const isEligibleForInvoice = ['slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'].includes(submission.status || '');
+                            // 1. Reserve Slot Button
+                            let reserveBtn;
+                            if (hasSchedule || isLegacyActive) {
+                              reserveBtn = (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md truncate">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                    <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                    <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !hasSchedule ? 'Scheduled (Legacy)' : 'Slot Reserved'}</span>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-blue-600 border-gray-200 hover:border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
+                                    onClick={() => {
+                                      setActiveScheduleSubmission(submission);
+                                      setScheduleInitialStep('schedule');
+                                    }}
+                                    title="Edit Schedule"
+                                  >
+                                    <PenLine className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              );
+                            } else {
+                              reserveBtn = (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full justify-start h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200 bg-white"
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('schedule');
+                                  }}
+                                >
+                                  <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-blue-500" />
+                                  Reserve Slot
+                                </Button>
+                              );
+                            }
 
-                                if (isEligibleForInvoice) {
-                                  return (
-                                    <div className="shrink-0">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 text-[10px] justify-center px-2.5 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium transition-colors"
-                                        onClick={() => handleOpenInvoiceModal(submission)}
-                                      >
-                                        <Plus className="w-3 h-3 mr-1" />
-                                        Invoice
-                                      </Button>
-                                    </div>
-                                  );
-                                }
+                            // 2. Payment Button
+                            let paymentBtn;
+                            if (isPaid) {
+                              paymentBtn = (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-green-50/80 border border-green-200/70 rounded-md truncate">
+                                    <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                                    <span className="text-xs font-medium text-green-700 tracking-wide truncate">Paid</span>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-green-600 border-gray-200 hover:border-green-200 hover:bg-green-50 transition-colors shadow-sm"
+                                    onClick={() => {
+                                      setActiveScheduleSubmission(submission);
+                                      setScheduleInitialStep('payment');
+                                    }}
+                                    title="Add Additional Payment"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              );
+                            } else if (isPending) {
+                              paymentBtn = (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <button
+                                    className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-amber-50/80 border border-amber-200/70 rounded-md truncate cursor-pointer hover:bg-amber-100/80 transition-colors"
+                                    onClick={() => {
+                                      const url = paymentData.latestPaymentUrl;
+                                      if (url) {
+                                        navigator.clipboard.writeText(url);
+                                        toast.success('Payment link copied!');
+                                      }
+                                    }}
+                                    title={paymentData.latestPaymentUrl ? 'Click to copy payment link' : 'No payment link'}
+                                  >
+                                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                                    <span className="text-xs font-medium text-amber-700 tracking-wide truncate">Waiting Payment</span>
+                                  </button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-amber-600 border-gray-200 hover:border-amber-200 hover:bg-amber-50 transition-colors shadow-sm"
+                                    onClick={() => {
+                                      setActiveScheduleSubmission(submission);
+                                      setScheduleInitialStep('payment');
+                                    }}
+                                    title="Add / View Payment"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              );
+                            } else {
+                              const canPay = hasSchedule || isLegacyActive;
+                              paymentBtn = (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!canPay}
+                                  className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canPay ? 'text-gray-600 hover:text-emerald-600 border-gray-200 hover:border-emerald-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('payment');
+                                  }}
+                                >
+                                  {canPay && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
+                                  Payment
+                                </Button>
+                              );
+                            }
 
-                                return (
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div className="shrink-0">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            disabled
-                                            className="h-7 text-[10px] justify-center px-2.5 border-gray-200 text-gray-400 font-medium cursor-not-allowed"
-                                          >
-                                            <Plus className="w-3 h-3 mr-1" />
-                                            Invoice
-                                          </Button>
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="top">
-                                        <p className="text-xs">Form must be approved first</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                );
-                              })()}
-                            </div>
-
-                            {/* Row 2: Invoices List */}
-                            <div className="flex flex-col w-full">
-                              <CopyInvoiceDropdown
-                                formSubmissionId={submission.id}
-                                refreshTrigger={invoiceRefreshTrigger}
-                                overrideStatus={submission.payment_status}
-                                inlineMode={true}
-                              />
-                            </div>
-                          </div>
-                        </TableCell>
-
-                        {/* Publish & Pages (New Column) */}
-                        <TableCell className="align-top py-4 space-y-1.5 pl-8 pr-6 border-y border-r border-gray-200 rounded-r-xl">
-                          {scheduledSubmissionIds.has(submission.id) ? (
-                            <div className="flex items-center gap-1.5">
-                              {/* Status badge (subtle) */}
-                              <div className="w-[120px] flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 animate-pulse" />
-                                <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                <span className="text-xs font-medium text-gray-700 tracking-wide">Scheduled</span>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-blue-600 border-gray-200 hover:border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
-                                onClick={() => {
-                                  setSelectedSubmissionForAds(submission);
-                                  setIsPublishModalOpen(true);
-                                }}
-                                title="Edit Schedule"
-                              >
-                                <PenLine className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-[120px] justify-start h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200"
-                                onClick={() => {
-                                  setSelectedSubmissionForAds(submission);
-                                  setIsPublishModalOpen(true);
-                                }}
-                              >
-                                <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-gray-400" />
-                                <span className="truncate">Schedule</span>
-                              </Button>
-                            </div>
-                          )}
-
-
-                          <div className="flex items-center gap-1.5 mt-2">
-                            {existingPages[submission.id] ? (() => {
+                            // 3. Page Button
+                            let pageBtn;
+                            const canBuildPage = isPaid || isLegacyActive;
+                            
+                            if (existingPages[submission.id]) {
                               const page = existingPages[submission.id];
                               const now = new Date();
                               const startDate = page.publish_start_date ? new Date(page.publish_start_date) : null;
                               const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
 
-                              // Determine page status
                               let statusLabel = 'Drafted';
                               let dotColor = 'bg-gray-400';
                               let pillStyle = 'bg-gray-50/80 border-gray-200/70 text-gray-600';
                               if (page.is_published) {
                                 if (endDate && endDate < now) {
                                   statusLabel = 'Completed';
-                                  dotColor = 'bg-gray-400';
-                                  pillStyle = 'bg-gray-50/80 border-gray-200/70 text-gray-600';
                                 } else if (startDate && startDate > now) {
                                   statusLabel = 'Scheduled';
                                   dotColor = 'bg-blue-500 animate-pulse';
-                                  pillStyle = 'bg-gray-50/80 border-gray-200/70 text-gray-700';
+                                  pillStyle = 'bg-blue-50/80 border-blue-200/70 text-blue-700';
                                 } else {
                                   statusLabel = 'Live';
                                   dotColor = 'bg-green-500 animate-pulse';
                                   pillStyle = 'bg-green-50/80 border-green-200/70 text-green-700';
                                 }
                               }
-
-                              return (
-                                <>
-                                  {/* Status Pill */}
-                                  <div className={`w-[120px] flex items-center justify-start gap-1.5 px-2.5 h-8 border rounded-md ${pillStyle}`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+                              pageBtn = (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <div className={`flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 border rounded-md truncate ${pillStyle}`}>
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
                                     <Globe className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                                    <span className="text-xs font-medium tracking-wide">{statusLabel}</span>
+                                    <span className="text-xs font-medium tracking-wide truncate">{statusLabel}</span>
                                   </div>
-                                  {/* Edit Button */}
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1321,34 +1340,45 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                   >
                                     <PenLine className="w-3.5 h-3.5" />
                                   </Button>
-                                </>
+                                </div>
                               );
-                            })() : (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={!scheduledSubmissionIds.has(submission.id)}
-                                        className="w-[120px] justify-start h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200"
-                                        onClick={() => handleOpenPageBuilder(submission)}
-                                      >
-                                        <Globe className="w-3.5 h-3.5 mr-2 shrink-0" />
-                                        <span className="truncate">Page</span>
-                                      </Button>
-                                    </div>
-                                  </TooltipTrigger>
-                                  {!scheduledSubmissionIds.has(submission.id) && (
-                                    <TooltipContent>
-                                      <p>Must schedule the ad before building a page</p>
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </div>
+                            } else {
+                              pageBtn = (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="w-full">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={!canBuildPage}
+                                          className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canBuildPage ? 'text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
+                                          onClick={() => handleOpenPageBuilder(submission)}
+                                        >
+                                          {canBuildPage && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
+                                          <Globe className={`w-3.5 h-3.5 mr-2 shrink-0 ${canBuildPage ? 'text-indigo-400' : ''}`} />
+                                          <span className="truncate">Page</span>
+                                        </Button>
+                                      </div>
+                                    </TooltipTrigger>
+                                    {!canBuildPage && (
+                                      <TooltipContent>
+                                        <p>Payment required first</p>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
+                              );
+                            }
+
+                            return (
+                              <div className="flex flex-col gap-2 w-full max-w-[180px]">
+                                {reserveBtn}
+                                {paymentBtn}
+                                {pageBtn}
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1462,62 +1492,99 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             <option value="rejected" className="bg-white text-gray-900">Rejected</option>
                           </select>
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-gray-500">Payment</label>
-                          <div className="flex items-center h-[30px]">
-                            {submission.payment_status === 'paid' ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                Paid
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                Pending
-                              </Badge>
-                            )}
-                          </div>
+                      </div>
 
-                          {/* Ad Cost Mobile */}
-                          {submission.duration && submission.duration > 0 && (
-                            <div className="flex flex-col gap-0.5 mt-2 pt-2 border-t border-dashed border-gray-200">
-                              <span className="text-[10px] text-gray-500 uppercase font-medium">Ad Cost</span>
-                              <div className="text-[10px] text-gray-600">
-                                {(() => {
-                                  const { dailyRate, totalAdCost } = calculateAdCost(submission.questionCount, submission.duration);
-                                  return (
-                                    <>
-                                      <span>{new Intl.NumberFormat('id-ID').format(dailyRate)}/day</span>
-                                      <span className="mx-1">x</span>
-                                      <span>{submission.duration}d</span>
-                                      <div className="font-semibold text-gray-900 mt-0.5">
-                                        = Rp {new Intl.NumberFormat('id-ID').format(totalAdCost)}
-                                      </div>
-                                    </>
-                                  );
-                                })()}
+                      {/* Campaign Actions Area */}
+                      <div className="space-y-3 mt-3 pt-3 border-t border-gray-100">
+                          {(() => {
+                            const hasSchedule = scheduledSubmissionIds.has(submission.id);
+                            const paymentData = paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0 };
+                            
+                            const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
+                            const isPending = !isPaid && paymentData.hasInvoices;
+                            const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
+
+                            // 1. Reserve Slot Button
+                            let reserveBtn;
+                            if (hasSchedule || isLegacyActive) {
+                              reserveBtn = (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                    <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                    <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !hasSchedule ? 'Scheduled' : 'Slot Reserved'}</span>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-blue-600 border-gray-200 bg-white"
+                                    onClick={() => {
+                                      setActiveScheduleSubmission(submission);
+                                      setScheduleInitialStep('schedule');
+                                    }}
+                                  >
+                                    <PenLine className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              );
+                            } else {
+                              reserveBtn = (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full justify-center h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 bg-white"
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('schedule');
+                                  }}
+                                >
+                                  <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-blue-500" />
+                                  Reserve Slot
+                                </Button>
+                              );
+                            }
+
+                            return (
+                              <div className="flex flex-col gap-2">
+                                {/* Actions Area */}
+                                {reserveBtn}
+                                
+                                <div className="grid grid-cols-2 gap-2 w-full">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={!hasSchedule && !isLegacyActive}
+                                    className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${
+                                      (hasSchedule || isLegacyActive) ? 'text-gray-600 hover:text-emerald-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
+                                    }`}
+                                    onClick={() => {
+                                      setActiveScheduleSubmission(submission);
+                                      setScheduleInitialStep('payment');
+                                    }}
+                                  >
+                                    <CreditCard className="w-3.5 h-3.5 mr-1" />
+                                    {isPaid ? 'Paid' : isPending ? 'Pending' : 'Payment'}
+                                    {!isPaid && !isPending && (hasSchedule || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                                  </Button>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={!isPaid && !isLegacyActive}
+                                    className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${
+                                      (isPaid || isLegacyActive) ? 'text-gray-600 hover:text-indigo-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
+                                    }`}
+                                    onClick={() => handleOpenPageBuilder(submission)}
+                                  >
+                                    <Globe className="w-3.5 h-3.5 mr-1" />
+                                    Pages
+                                    {!existingPages[submission.id] && (isPaid || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                                  </Button>
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
                         </div>
-                      </div>
-
-                      {/* Footer Actions */}
-                      <div className="flex flex-col gap-1.5 mb-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 shadow-sm transition-all"
-                          onClick={() => handleOpenInvoiceModal(submission)}
-                        >
-                          <Plus className="w-3.5 h-3.5 mr-1.5" />
-                          Invoice
-                        </Button>
-                        <CopyInvoiceDropdown
-                          formSubmissionId={submission.id}
-                          refreshTrigger={invoiceRefreshTrigger}
-                          overrideStatus={submission.payment_status}
-                          inlineMode={true}
-                        />
-                      </div>
                     </div>
                   </Card>
                 ))
@@ -1528,65 +1595,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         }
       </div >
 
-      {/* Invoice Creation Modal */}
-      {
-        selectedSubmission && (
-          <CreateInvoiceModal
-            isOpen={isInvoiceModalOpen}
-            onClose={handleCloseInvoiceModal}
-            formSubmissionId={selectedSubmission.id}
-            defaultAmount={selectedSubmission.total_cost || 0}
-            customerInfo={{
-              fullName: selectedSubmission.researcherName,
-              email: selectedSubmission.researcherEmail,
-              phoneNumber: selectedSubmission.phone_number || ''
-            }}
-            defaultItems={(() => {
-              const items = [];
-              const adCost = calculateTotalAdCost(selectedSubmission.questionCount || 0, selectedSubmission.duration || 0);
-              const discount = calculateDiscount(selectedSubmission.voucher_code, adCost);
-              const finalAdCost = adCost - discount;
-
-              if (finalAdCost > 0) {
-                items.push({
-                  name: 'Jakpat for University (ads)',
-                  qty: 1,
-                  price: finalAdCost,
-                  category: 'Jakpat for University (ads)'
-                });
-              }
-
-              const incentive = calculateIncentiveCost(selectedSubmission.winnerCount || 0, selectedSubmission.prize_per_winner || 0);
-              if (incentive > 0) {
-                items.push({
-                  name: 'Incentive for Respondents',
-                  qty: 1,
-                  price: incentive,
-                  category: 'Incentive'
-                });
-              }
-              return items;
-            })()}
-            onSuccess={handleInvoiceCreated}
-          />
-        )
-      }
-
-      {/* Publish Ads Modal */}
-      {
-        selectedSubmissionForAds && (
-          <PublishAdsModal
-            isOpen={isPublishModalOpen}
-            onClose={handleClosePublishModal}
-            submission={selectedSubmissionForAds as any} // Cast because wrapper types slightly differ but core fields match
-            pageSlug={selectedSubmissionForAds ? existingPages[selectedSubmissionForAds.id]?.slug : undefined}
-            onSuccess={() => {
-              loadSubmissions(); // Refresh table to show updated status
-              handleClosePublishModal();
-            }}
-          />
-        )
-      }
+      {/* Modals removed and replaced by SchedulePaymentView */}
 
       <EditCriteriaModal
         isOpen={isEditCriteriaModalOpen}

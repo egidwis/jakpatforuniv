@@ -50,7 +50,7 @@ export function calculateIncentiveCost(winnerCount: number, prizePerWinner: numb
  * @param adCost Biaya iklan
  * @returns Jumlah diskon
  */
-export function calculateDiscount(voucherCode: string | undefined, adCost: number): number {
+export function calculateDiscount(voucherCode: string | undefined, adCost: number, incentiveCost: number = 0, duration: number = 0): number {
   // Implementasi sederhana, bisa diganti dengan logika yang lebih kompleks
   if (!voucherCode) return 0;
 
@@ -60,9 +60,18 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
     return 0;
   }
 
-  // Contoh: kode "Rakhma" memberikan diskon 10%
-  if (voucherCode.toUpperCase() === 'RA2025') {
-    return adCost * 0.1;
+  // Voucher testing sistem
+  if (voucherCode.toUpperCase() === 'JFUTGRX') {
+    const totalBeforeDiscount = adCost + incentiveCost;
+    return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
+  }
+
+  // Voucher spesial JFUFEB
+  if (voucherCode.toUpperCase() === 'JFUFEB') {
+    if (duration === 7) {
+      return adCost > 1000000 ? adCost - 1000000 : 0;
+    }
+    return 0;
   }
 
   // Contoh: kode "Tiara" memberikan diskon 10%
@@ -137,8 +146,8 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
  * @param voucherCode Kode voucher
  * @returns Informasi voucher atau null jika tidak valid
  */
-export function getVoucherInfo(voucherCode: string | undefined): { isValid: boolean; message?: string; discount?: number } {
-  if (!voucherCode) return { isValid: false };
+export function getVoucherInfo(voucherCode: string | undefined, duration: number = 0): { isValid: boolean; message?: string; discount?: number; isError?: boolean } {
+  if (!voucherCode) return { isValid: false, isError: false };
 
   const upperCode = voucherCode.toUpperCase();
 
@@ -146,7 +155,23 @@ export function getVoucherInfo(voucherCode: string | undefined): { isValid: bool
     return {
       isValid: false,
       message: 'Kode voucher ini sudah berakhir (expired).',
-      discount: 0
+      discount: 0,
+      isError: true
+    };
+  }
+
+  if (upperCode === 'JFUFEB') {
+    if (duration > 0 && duration !== 7) {
+      return {
+        isValid: false,
+        message: 'Voucher hanya berlaku untuk durasi iklan 7 hari.',
+        discount: 0,
+        isError: true
+      };
+    }
+    return {
+      isValid: true,
+      message: 'Harga iklan flat Rp 1.000.000 (khusus 7 hari)'
     };
   }
 
@@ -158,9 +183,9 @@ export function getVoucherInfo(voucherCode: string | undefined): { isValid: bool
     };
   }
 
-  // Voucher lainnya tanpa pesan khusus
   const validCodes = [
-    'RA2025',
+    'JFUFEB',
+    'JFUTGRX',
     'JFUTYR',
     'SEKARJFU',
     'ADINDAJFU',
@@ -179,7 +204,7 @@ export function getVoucherInfo(voucherCode: string | undefined): { isValid: bool
     return { isValid: true };
   }
 
-  return { isValid: false };
+  return { isValid: false, message: 'Voucher code not recognized.', isError: false };
 }
 
 /**
@@ -190,7 +215,7 @@ export function getVoucherInfo(voucherCode: string | undefined): { isValid: bool
 export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
   const adCost = calculateTotalAdCost(formData.questionCount, formData.duration);
   const incentiveCost = calculateIncentiveCost(formData.winnerCount, formData.prizePerWinner);
-  const discount = calculateDiscount(formData.voucherCode, adCost);
+  const discount = calculateDiscount(formData.voucherCode, adCost, incentiveCost, formData.duration);
 
   return {
     adCost,
