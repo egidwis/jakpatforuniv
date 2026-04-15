@@ -69,15 +69,18 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
     const submissionDuration = submission.duration || 1;
     const calendarRef = useRef<HTMLDivElement>(null);
+    const navRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
-            if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+            const clickedOutsideCalendar = calendarRef.current && !calendarRef.current.contains(event.target as Node);
+            const clickedOutsideNav = navRef.current && !navRef.current.contains(event.target as Node);
+            if (clickedOutsideCalendar && clickedOutsideNav) {
                 setStartDate(null);
             }
         }
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
     }, []);
     const activeCountsByDate = isExtraMode ? extraCountsByDate : regularCountsByDate;
     const activeMaxPerDay = isExtraMode ? MAX_EXTRA_ADS_PER_DAY : MAX_ADS_PER_DAY;
@@ -762,7 +765,7 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex items-center justify-between pt-2">
+                        <div ref={navRef} className="flex items-center justify-between pt-2">
                             {existingAdId && (
                                 <Button variant="destructive" onClick={handleCancelSchedule} disabled={isLoading}>
                                     Remove Schedule
