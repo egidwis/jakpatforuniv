@@ -274,6 +274,27 @@ export const translations = {
     proceedPayment: "Proceed to Payment",
     submitForReview: "Submit for Admin Review",
 
+    // Payment Checkout Page
+    checkoutTitle: "Complete Your Payment",
+    checkoutSubtitle: "Your survey slot has been secured. Complete your payment before the time runs out.",
+    checkoutTimerLabel: "Payment time remaining",
+    checkoutSchedule: "Schedule",
+    checkoutTotalLabel: "Total Payment",
+    checkoutPaymentInfo: "Payment is processed securely via Mayar.id. Available methods: QRIS, Virtual Account, Credit Card.",
+    checkoutPayNow: "Pay Now",
+    checkoutProcessing: "Opening payment...",
+    checkoutAlreadyPaid: "Already paid? Check payment status",
+    checkoutCheckingStatus: "Checking status...",
+    checkoutExpiredTitle: "Ad Slot Expired",
+    checkoutExpiredDesc: "Your payment time has run out (1 hour). Your survey slot has been released.",
+    checkoutBackDashboard: "Back to Dashboard",
+    checkoutPickAgain: "Pick New Schedule",
+    checkoutPaidSuccess: "Payment confirmed! Redirecting to status page...",
+    checkoutNotPaidYet: "Payment not received yet. Please complete your payment first.",
+    checkoutCheckError: "Failed to check payment status. Please try again.",
+    checkoutPaymentError: "Failed to open payment link. Please try again.",
+    days: "Days",
+
     // Validation Error Messages - StepTwo
     errorRespondentCriteriaEmpty: "Respondent criteria cannot be empty",
     errorSurveyDurationZero: "Survey duration must be greater than 0 days",
@@ -594,6 +615,27 @@ export const translations = {
     // Buttons
     proceedPayment: "Lanjut ke Pembayaran",
     submitForReview: "Kirim untuk Review Admin",
+
+    // Payment Checkout Page
+    checkoutTitle: "Selesaikan Pembayaran",
+    checkoutSubtitle: "Slot survei Anda telah diamankan. Segera selesaikan pembayaran sebelum waktu habis.",
+    checkoutTimerLabel: "Sisa waktu pembayaran",
+    checkoutSchedule: "Jadwal",
+    checkoutTotalLabel: "Total Bayar",
+    checkoutPaymentInfo: "Pembayaran diproses dengan aman melalui Mayar.id. Metode yang tersedia: QRIS, Virtual Account, Credit Card.",
+    checkoutPayNow: "Bayar Sekarang",
+    checkoutProcessing: "Membuka pembayaran...",
+    checkoutAlreadyPaid: "Sudah bayar? Cek status pembayaran",
+    checkoutCheckingStatus: "Mengecek status...",
+    checkoutExpiredTitle: "Slot Iklan Kedaluwarsa",
+    checkoutExpiredDesc: "Waktu pembayaran Anda telah habis (1 jam). Slot jadwal survei Anda telah dilepaskan ke publik.",
+    checkoutBackDashboard: "Kembali ke Dashboard",
+    checkoutPickAgain: "Pilih Jadwal Ulang",
+    checkoutPaidSuccess: "Pembayaran berhasil! Mengarahkan ke halaman status...",
+    checkoutNotPaidYet: "Pembayaran belum diterima. Silakan selesaikan pembayaran terlebih dahulu.",
+    checkoutCheckError: "Gagal mengecek status pembayaran. Coba lagi.",
+    checkoutPaymentError: "Gagal membuka link pembayaran. Silahkan coba lagi.",
+    days: "Hari",
 
     // Validation Error Messages - StepTwo
     errorRespondentCriteriaEmpty: "Kriteria responden tidak boleh kosong",

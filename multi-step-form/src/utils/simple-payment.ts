@@ -16,6 +16,13 @@ interface PaymentData {
 
 // Check if we're in simulation mode (no API key or development environment)
 const isSimulationMode = () => {
+  // Allow forcing real payment in development via env variable
+  const forceReal = import.meta.env.VITE_FORCE_REAL_PAYMENT === 'true';
+  if (forceReal) {
+    console.log('VITE_FORCE_REAL_PAYMENT is set - using real Mayar API');
+    return false;
+  }
+
   // Check if we're in development mode
   const isDevelopment = import.meta.env.DEV === true;
 

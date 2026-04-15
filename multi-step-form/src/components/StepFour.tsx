@@ -17,7 +17,9 @@ import {
   Target,
   Info,
   CreditCard,
-  Send
+  Send,
+  ExternalLink,
+  CalendarCheck
 } from 'lucide-react';
 
 interface StepFourProps {
@@ -40,6 +42,10 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
+
+  // Derive auto approval status
+  const isManualForm = formData.isManualEntry || (formData.surveyUrl && !formData.surveyUrl.includes('docs.google.com/forms'));
+  const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions;
 
   // Hitung biaya saat form data berubah
   useEffect(() => {
@@ -88,8 +94,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
       }
 
       // Cek apakah form diisi secara manual
-      const isManualForm = formData.isManualEntry || !formData.surveyUrl.includes('docs.google.com/forms');
-      const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions;
+      // (isManualForm and isAutoApproval is calculated at component level)
 
       // Jika auto approval, pastikan sudah pilih jadwal
       if (isAutoApproval) {
@@ -322,50 +327,99 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
           </div>
         )}
 
-        {/* SECTION: SURVEY OVERVIEW (COMPACT) */}
+        {/* SECTION: SURVEY OVERVIEW (ORDER REQUEST) */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
           <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-            <h4 className="font-semibold text-gray-900 line-clamp-1">{formData.title}</h4>
+            <div className="flex items-center gap-2">
+              <FileText size={16} className="text-blue-600" />
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Order Overview</h3>
+            </div>
           </div>
 
-          <div className="p-5">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
-              {/* Metric 1 */}
+          <div className="p-6 space-y-5">
+            {/* Row 1: Title and Link */}
+            <div className="space-y-4">
               <div>
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">{t('questions')}</div>
+                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">Judul Survei</div>
+                <div className="font-semibold text-lg text-gray-900">{formData.title}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">Link Survei</div>
+                <a href={formData.surveyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sm text-blue-600 hover:text-blue-700 hover:underline break-all">
+                  <ExternalLink size={14} className="shrink-0" />
+                  {formData.surveyUrl}
+                </a>
+              </div>
+            </div>
+
+            <div className="w-full h-px bg-gray-100"></div>
+
+            {/* Row 2: Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              <div>
+                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">{t('questions')}</div>
                 <div className="flex items-center gap-2 font-medium text-sm text-gray-900">
-                  <FileText size={14} style={{ color: '#0091ff' }} />
-                  {formData.questionCount}
+                  <FileText size={14} className="text-blue-500" />
+                  {formData.questionCount} {t('questions')}
                 </div>
               </div>
 
-              {/* Metric 2 */}
               <div>
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">{t('duration')}</div>
+                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">{t('duration')}</div>
                 <div className="flex items-center gap-2 font-medium text-sm text-gray-900">
                   <Clock size={14} className="text-indigo-500" />
                   {formData.duration} {formData.duration === 1 ? 'day' : 'days'}
                 </div>
               </div>
 
-              {/* Metric 3 */}
               <div className="md:col-span-2">
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">{t('incentive')}</div>
+                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">{t('incentive')}</div>
                 <div className="flex items-center gap-2 font-medium text-sm text-gray-900">
-                  <Gift size={14} className="text-emerald-500" />
-                  {formData.winnerCount} winners × Rp {formatRupiah(formData.prizePerWinner)}
-                </div>
-              </div>
-
-              {/* Row 2: Target Criteria (Full Width in its row) */}
-              <div className="col-span-2 md:col-span-4 pt-3 border-t border-gray-100 mt-1">
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">{t('targetCriteria')}</div>
-                <div className="flex items-start gap-2 text-xs text-gray-700 leading-relaxed">
-                  <Target size={14} className="text-rose-500 mt-0.5 flex-shrink-0" />
-                  {formData.criteriaResponden}
+                  <Gift size={14} className="text-emerald-500 shrink-0" />
+                  <span>{formData.winnerCount} winners × Rp {formatRupiah(formData.prizePerWinner)}</span>
                 </div>
               </div>
             </div>
+
+            {/* Row 3: Slot Schedule (if reserved) */}
+            {isAutoApproval && formData.startDate && (
+              <>
+                <div className="w-full h-px bg-gray-100"></div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="bg-blue-50/50 p-3.5 rounded-lg border border-blue-100">
+                    <div className="text-[10px] text-blue-600 uppercase font-bold tracking-wider mb-1.5">Start Date (Mulai)</div>
+                    <div className="flex items-center gap-2 font-semibold text-sm text-blue-900">
+                      <CalendarCheck size={14} />
+                      {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} 15:00 WIB
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                    <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1.5">End Date (Selesai)</div>
+                    <div className="flex items-center gap-2 font-semibold text-sm text-slate-800">
+                      <CalendarCheck size={14} className="text-slate-400" />
+                      {(() => {
+                        const ed = new Date(formData.startDate);
+                        ed.setDate(ed.getDate() + (formData.duration || 1));
+                        return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+                      })()} 15:00 WIB
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="w-full h-px bg-gray-100"></div>
+
+            {/* Row 4: Target Criteria */}
+            <div>
+              <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">{t('targetCriteria')}</div>
+              <div className="flex items-start gap-2.5 text-sm text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <Target size={16} className="text-rose-500 mt-0.5 shrink-0" />
+                <p>{formData.criteriaResponden}</p>
+              </div>
+            </div>
+            
           </div>
         </div>
 

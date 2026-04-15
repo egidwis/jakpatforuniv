@@ -3,18 +3,21 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getFormSubmissionById, releaseExpiredSlot } from '../utils/supabase';
 import { createPayment } from '../utils/simple-payment';
 import { toast } from 'sonner';
-import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw } from 'lucide-react';
+import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw, CheckCircle } from 'lucide-react';
 import type { FormSubmission } from '../utils/supabase';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export function PaymentCheckoutPage() {
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [timeLeft, setTimeLeft] = useState<number>(3600); // in seconds
+  const [timeLeft, setTimeLeft] = useState<number>(3600);
   const [isExpired, setIsExpired] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
 
   useEffect(() => {
     loadSubmission();
@@ -33,13 +36,11 @@ export function PaymentCheckoutPage() {
 
       setSubmission(data);
 
-      // If already paid, redirect straight to status
       if (data.payment_status === 'paid') {
         navigate('/dashboard/status?payment_status=paid');
         return;
       }
 
-      // Check slot reservation
       if (data.slot_reserved_at) {
         const reservedAt = new Date(data.slot_reserved_at).getTime();
         const oneHourAfter = reservedAt + 60 * 60 * 1000;
@@ -52,7 +53,6 @@ export function PaymentCheckoutPage() {
           setIsExpired(false);
         }
       } else {
-        // No slot reservation? Maybe manual admin. Show expired/error
         handleExpired(data.id);
       }
     } catch (error) {
@@ -66,7 +66,6 @@ export function PaymentCheckoutPage() {
   const handleExpired = async (id: string) => {
     setIsExpired(true);
     setTimeLeft(0);
-    // Double check and release
     try {
       await releaseExpiredSlot(id);
     } catch (e) {
@@ -131,11 +130,31 @@ export function PaymentCheckoutPage() {
         expiredAt: expirationDate.toISOString()
       });
 
-      window.open(paymentUrl, '_self');
+      // Open in new tab so this page stays alive for status checking
+      window.open(paymentUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error(error);
-      toast.error('Gagal membuat URL pembayaran. Silahkan coba lagi.');
+      toast.error(t('checkoutPaymentError'));
+    } finally {
       setIsProcessingPayment(false);
+    }
+  };
+
+  const handleCheckPayment = async () => {
+    if (!submissionId) return;
+    setIsCheckingPayment(true);
+    try {
+      const data = await getFormSubmissionById(submissionId);
+      if (data && data.payment_status === 'paid') {
+        toast.success(t('checkoutPaidSuccess'));
+        setTimeout(() => navigate('/dashboard/status?payment_status=paid'), 1000);
+      } else {
+        toast.info(t('checkoutNotPaidYet'));
+      }
+    } catch (e) {
+      toast.error(t('checkoutCheckError'));
+    } finally {
+      setIsCheckingPayment(false);
     }
   };
 
@@ -165,33 +184,32 @@ export function PaymentCheckoutPage() {
             <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
               <AlertTriangle size={32} />
             </div>
-            <h2 className="text-xl font-bold text-red-900 mb-2">Slot Iklan Kedaluwarsa</h2>
+            <h2 className="text-xl font-bold text-red-900 mb-2">{t('checkoutExpiredTitle')}</h2>
             <p className="text-sm text-red-700 leading-relaxed max-w-md mx-auto mb-8">
-              Waktu Anda untuk menyelesaikan pembayaran telah habis (1 jam). Slot jadwal survei Anda (<strong>{submission.start_date?.split('T')[0]}</strong>) telah dilepaskan ke publik.
+              {t('checkoutExpiredDesc')} (<strong>{submission.start_date?.split('T')[0]}</strong>)
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
                 onClick={() => navigate('/dashboard')}
                 className="px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-50 transition-colors"
               >
-                Kembali ke Dashboard
+                {t('checkoutBackDashboard')}
               </button>
-              {/* Re-pick placeholder for later */}
               <button
                 onClick={() => navigate('/dashboard/status')}
                 className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors shadow-md flex justify-center items-center gap-2"
               >
                 <RefreshCcw size={18} />
-                Pilih Jadwal Ulang
+                {t('checkoutPickAgain')}
               </button>
             </div>
           </div>
         ) : (
           <>
             <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Selesaikan Pembayaran</h1>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('checkoutTitle')}</h1>
               <p className="text-gray-500 text-sm max-w-md mx-auto">
-                Slot survei Anda telah diamankan. Segera selesaikan pembayaran sebelum waktu habis.
+                {t('checkoutSubtitle')}
               </p>
             </div>
 
@@ -200,44 +218,69 @@ export function PaymentCheckoutPage() {
               <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Clock className="w-5 h-5 opacity-80" />
-                  <span className="font-medium text-sm">Sisa waktu pembayaran</span>
+                  <span className="font-medium text-sm">{t('checkoutTimerLabel')}</span>
                 </div>
                 <div className="text-2xl font-mono font-bold tracking-wider bg-black/20 px-3 py-1 rounded-lg shadow-inner">
                   {formatTime(timeLeft)}
                 </div>
               </div>
 
-              <div className="p-6 md:p-8 space-y-6">
+              <div className="p-6 md:p-8 space-y-4">
                 {/* Summary */}
                 <div className="space-y-4 bg-gray-50 p-5 rounded-xl border border-gray-100">
                   <div className="flex justify-between items-start pb-4 border-b border-gray-200 border-dashed">
                     <div>
                       <h4 className="text-sm font-semibold text-gray-900">{submission.title}</h4>
-                      <p className="text-xs text-gray-500 mt-1">Jadwal: {submission.start_date ? new Date(submission.start_date).toLocaleDateString('id-ID') : '-'}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {t('checkoutSchedule')}: {submission.start_date ? new Date(submission.start_date).toLocaleDateString('id-ID') : '-'}
+                      </p>
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block mb-0.5">Total Bayar</span>
+                      <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block mb-0.5">{t('checkoutTotalLabel')}</span>
                       <span className="text-lg font-bold text-blue-600">Rp {new Intl.NumberFormat('id-ID').format(submission.total_cost || 0)}</span>
                     </div>
                   </div>
 
-                  <p className="text-xs text-gray-500 leading-relaxed text-center mt-2">
-                    Pembayaran diproses dengan aman melalui <strong>Mayar.id</strong>. Metode yang tersedia: QRIS, Virtual Account, Credit Card.
+                  <p className="text-xs text-gray-500 leading-relaxed text-center">
+                    {t('checkoutPaymentInfo')}
                   </p>
                 </div>
 
+                {/* Pay Now — opens Mayar in new tab */}
                 <button
                   onClick={handleProceedPayment}
                   disabled={isProcessingPayment}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3"
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                 >
                   {isProcessingPayment ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      {t('checkoutProcessing')}
+                    </>
                   ) : (
                     <>
                       <CreditCard size={20} />
-                      Lanjut ke Pembayaran
-                      <ArrowRight size={20} className="ml-2 opacity-80" />
+                      {t('checkoutPayNow')}
+                      <ArrowRight size={20} className="ml-1 opacity-80" />
+                    </>
+                  )}
+                </button>
+
+                {/* Manual check payment status */}
+                <button
+                  onClick={handleCheckPayment}
+                  disabled={isCheckingPayment}
+                  className="w-full py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {isCheckingPayment ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
+                      {t('checkoutCheckingStatus')}
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={16} className="text-gray-400" />
+                      {t('checkoutAlreadyPaid')}
                     </>
                   )}
                 </button>
