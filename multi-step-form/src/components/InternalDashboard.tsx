@@ -29,7 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
-import { CreditCard } from 'lucide-react';
+import { CreditCard, Clock } from 'lucide-react';
 import './InternalDashboard.css';
 
 interface SurveySubmission {
@@ -60,6 +60,8 @@ interface SurveySubmission {
   duration?: number;
   start_date?: string;
   end_date?: string;
+  slot_booked_by?: string;
+  slot_reserved_at?: string;
   admin_notes?: string;
 }
 
@@ -219,6 +221,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           duration: sub.duration,
           start_date: sub.start_date,
           end_date: sub.end_date,
+          slot_booked_by: sub.slot_booked_by,
+          slot_reserved_at: sub.slot_reserved_at,
           admin_notes: sub.admin_notes,
           has_transactions: false, // Default, will verify below
         }));
@@ -284,9 +288,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           setPaymentStates(paymentMap);
 
           // 3. Derive scheduled submission IDs from form_submissions that have start_date set
+          // Exclude rejected/spam so their stale start_date doesn't activate buttons
           const scheduledIds = new Set<string>();
           transformed.forEach(sub => {
-            if (sub.start_date) scheduledIds.add(sub.id);
+            if (sub.start_date && !['rejected', 'spam'].includes(sub.submission_status || '')) scheduledIds.add(sub.id);
           });
           setScheduledSubmissionIds(scheduledIds);
 
@@ -331,7 +336,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       await updateFormStatus(submissionId, newStatus, notes);
 
       const updateState = (prev: SurveySubmission[]) =>
-        prev.map(s => s.id === submissionId ? { ...s, status: newStatus, admin_notes: notes !== undefined ? notes : s.admin_notes } : s);
+        prev.map(s => s.id === submissionId ? { ...s, status: newStatus, submission_status: newStatus, admin_notes: notes !== undefined ? notes : s.admin_notes } : s);
 
       setSubmissions(updateState);
       // filteredSubmissions will be updated by useEffect
@@ -1179,21 +1184,50 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           {(() => {
                             const hasSchedule = scheduledSubmissionIds.has(submission.id);
                             const paymentData = paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0 };
-                            
                             const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
-                            const isPending = !isPaid && paymentData.hasInvoices;
+                            const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
                             const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
+                            // If rejected, or if slot is cleared (expired), don't show active "Waiting Payment"
+                            const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && (hasSchedule || isLegacyActive);
 
                             // 1. Reserve Slot Button
                             let reserveBtn;
+                            const RESERVABLE_STATUSES = ['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'];
+                            const canReserveSlot = RESERVABLE_STATUSES.includes(submission.submission_status || '') || isLegacyActive;
+
                             if (hasSchedule || isLegacyActive) {
                               reserveBtn = (
                                 <div className="flex items-center gap-1.5 w-full">
-                                  <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md truncate">
-                                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                                    <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                    <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !hasSchedule ? 'Scheduled (Legacy)' : 'Slot Reserved'}</span>
-                                  </div>
+                                    <div className="flex-1 flex flex-col justify-center px-2.5 min-h-[32px] py-1 bg-gray-50/80 border border-gray-200/70 rounded-md">
+                                      <div className="flex items-center gap-1.5 w-full">
+                                        <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                        <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                        <span className="text-xs font-medium text-gray-700 tracking-wide truncate">
+                                          {isLegacyActive && !hasSchedule ? 'Scheduled (Legacy)' : 'Slot Reserved'}
+                                        </span>
+                                      </div>
+                                      
+                                      {/* Display if booked by User along with expiration status */}
+                                      {submission.slot_booked_by === 'user' && (
+                                        <div className="flex items-center gap-1 pl-3.5 mt-0.5">
+                                          <span className="text-[9px] text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100 font-bold tracking-wide shadow-sm">By User</span>
+                                          {submission.slot_reserved_at ? (() => {
+                                            const reservedAt = new Date(submission.slot_reserved_at).getTime();
+                                            const isExpired = Date.now() > (reservedAt + 60 * 60 * 1000);
+                                            return isExpired ? (
+                                              <span className="text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded flex items-center font-bold tracking-wide">
+                                                Expired
+                                              </span>
+                                            ) : (
+                                              <span className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 px-1 py-0.5 rounded flex items-center gap-0.5 font-bold tracking-wide">
+                                                <Clock className="w-2.5 h-2.5" />
+                                                &lt;1h left
+                                              </span>
+                                            );
+                                          })() : null}
+                                        </div>
+                                      )}
+                                    </div>
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1210,18 +1244,36 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               );
                             } else {
                               reserveBtn = (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="w-full justify-start h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200 bg-white"
-                                  onClick={() => {
-                                    setActiveScheduleSubmission(submission);
-                                    setScheduleInitialStep('schedule');
-                                  }}
-                                >
-                                  <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-blue-500" />
-                                  Reserve Slot
-                                </Button>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="w-full">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={!canReserveSlot}
+                                          className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${
+                                            canReserveSlot
+                                              ? 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200 bg-white'
+                                              : 'text-gray-400 border-gray-100 bg-gray-50 cursor-not-allowed'
+                                          }`}
+                                          onClick={() => {
+                                            setActiveScheduleSubmission(submission);
+                                            setScheduleInitialStep('schedule');
+                                          }}
+                                        >
+                                          <Calendar className={`w-3.5 h-3.5 mr-2 shrink-0 ${canReserveSlot ? 'text-blue-500' : 'text-gray-400'}`} />
+                                          Reserve Slot
+                                        </Button>
+                                      </div>
+                                    </TooltipTrigger>
+                                    {!canReserveSlot && (
+                                      <TooltipContent side="top">
+                                        <p className="text-xs">Submission was not approved yet.</p>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
                               );
                             }
 
@@ -1232,6 +1284,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 <div className="flex items-center gap-1.5 w-full">
                                   <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-green-50/80 border border-green-200/70 rounded-md truncate">
                                     <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                                    <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                                     <span className="text-xs font-medium text-green-700 tracking-wide truncate">Paid</span>
                                   </div>
                                   <Button
@@ -1263,6 +1316,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                     title={paymentData.latestPaymentUrl ? 'Click to copy payment link' : 'No payment link'}
                                   >
                                     <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                                    <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                                     <span className="text-xs font-medium text-amber-700 tracking-wide truncate">Waiting Payment</span>
                                   </button>
                                   <Button
@@ -1280,21 +1334,38 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 </div>
                               );
                             } else {
-                              const canPay = hasSchedule || isLegacyActive;
+                              const canPay = (hasSchedule || isLegacyActive) && !isRejectedEvent;
+                              const payTooltip = isRejectedEvent
+                                ? 'Submission was rejected.'
+                                : 'Reserve a slot first.';
                               paymentBtn = (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={!canPay}
-                                  className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canPay ? 'text-gray-600 hover:text-emerald-600 border-gray-200 hover:border-emerald-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
-                                  onClick={() => {
-                                    setActiveScheduleSubmission(submission);
-                                    setScheduleInitialStep('payment');
-                                  }}
-                                >
-                                  {canPay && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
-                                  Payment
-                                </Button>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="w-full">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={!canPay}
+                                          className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canPay ? 'text-gray-600 hover:text-emerald-600 border-gray-200 hover:border-emerald-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
+                                          onClick={() => {
+                                            setActiveScheduleSubmission(submission);
+                                            setScheduleInitialStep('payment');
+                                          }}
+                                        >
+                                          {canPay && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
+                                          <CreditCard className={`w-3.5 h-3.5 mr-2 shrink-0 ${canPay ? 'text-emerald-500' : 'text-gray-400'}`} />
+                                          Payment
+                                        </Button>
+                                      </div>
+                                    </TooltipTrigger>
+                                    {!canPay && (
+                                      <TooltipContent side="top">
+                                        <p className="text-xs">{payTooltip}</p>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
                               );
                             }
 
@@ -1501,8 +1572,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             const paymentData = paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0 };
                             
                             const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
-                            const isPending = !isPaid && paymentData.hasInvoices;
+                            const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
                             const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
+                            const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && (hasSchedule || isLegacyActive);
 
                             // 1. Reserve Slot Button
                             let reserveBtn;

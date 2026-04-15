@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Clock, Info, ArrowLeft, ChevronRight, Plus, Trash2, Copy, Check, CreditCard, Calendar, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { supabase, updateScheduleDates, updateFormStatus, createInvoice, createTransaction, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId } from '../utils/supabase';
+import { supabase, updateScheduleDates, updateFormStatus, createInvoice, createTransaction, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchSlotAvailability } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
 import { createManualInvoice } from '../utils/payment';
 import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
@@ -68,6 +68,17 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
     const [extraCountsByDate, setExtraCountsByDate] = useState<Record<string, number>>({});
 
     const submissionDuration = submission.duration || 1;
+    const calendarRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+                setStartDate(null);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
     const activeCountsByDate = isExtraMode ? extraCountsByDate : regularCountsByDate;
     const activeMaxPerDay = isExtraMode ? MAX_EXTRA_ADS_PER_DAY : MAX_ADS_PER_DAY;
 
@@ -121,9 +132,17 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
                 const dateObj = new Date(existingStartDate);
                 setStartDate(dateObj);
-                const hours = String(dateObj.getHours()).padStart(2, '0');
-                const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-                setStartTime(`${hours}:${minutes}`);
+                // Convert to WIB (UTC+7) for display
+                // If the stored date is a date-only string (no 'T'), default to 15:00 WIB
+                const storedStr = String(existingStartDate);
+                if (!storedStr.includes('T')) {
+                    setStartTime('15:00');
+                } else {
+                    const wibFormatter = new Intl.DateTimeFormat('en-GB', {
+                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta'
+                    });
+                    setStartTime(wibFormatter.format(dateObj));
+                }
             }
         } catch (e) {
             console.error('Error fetching my schedule:', e);
@@ -133,47 +152,7 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
     const fetchExistingAds = async () => {
         setIsFetchingAds(true);
         try {
-            const { data: slotsFromSubmissions, error: subError } = await supabase
-                .from('form_submissions')
-                .select('id, start_date, end_date, submission_status')
-                .not('start_date', 'is', null)
-                .not('submission_status', 'in', '("rejected","spam","in_review")');
-
-            if (subError) throw subError;
-
-            const subIds = (slotsFromSubmissions || []).map((s: any) => s.id);
-            let extraAdMap: Record<string, boolean> = {};
-            if (subIds.length > 0) {
-                const { data: pages } = await supabase
-                    .from('survey_pages')
-                    .select('submission_id, is_extra_ad')
-                    .in('submission_id', subIds);
-                if (pages) {
-                    pages.forEach((p: any) => { extraAdMap[p.submission_id] = !!p.is_extra_ad; });
-                }
-            }
-
-            const regularCounts: Record<string, number> = {};
-            const extraCounts: Record<string, number> = {};
-
-            (slotsFromSubmissions || []).forEach((slot: any) => {
-                if (slot.start_date && slot.end_date && slot.id !== submission.id) {
-                    const current = new Date(slot.start_date);
-                    current.setHours(0, 0, 0, 0);
-                    const endDay = new Date(slot.end_date);
-                    endDay.setHours(0, 0, 0, 0);
-
-                    const isExtra = extraAdMap[slot.id] || false;
-                    const targetCounts = isExtra ? extraCounts : regularCounts;
-
-                    while (current < endDay) {
-                        const dateStr = getDateString(current);
-                        targetCounts[dateStr] = (targetCounts[dateStr] || 0) + 1;
-                        current.setDate(current.getDate() + 1);
-                    }
-                }
-            });
-
+            const { regularCounts, extraCounts } = await fetchSlotAvailability(submission.id);
             setRegularCountsByDate(regularCounts);
             setExtraCountsByDate(extraCounts);
         } catch (error) {
@@ -226,6 +205,28 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
             return;
         }
 
+        // Guard: submission must be approved before slot reservation
+        try {
+            const { data: currentSub, error } = await supabase
+                .from('form_submissions')
+                .select('submission_status')
+                .eq('id', submission.id)
+                .single();
+            
+            if (error) throw error;
+            
+            const status = currentSub?.submission_status || 'in_review';
+            const validStatuses = ['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'];
+            if (!validStatuses.includes(status)) {
+                toast.error('Submission harus di-approve terlebih dahulu sebelum menjadwalkan slot.');
+                return;
+            }
+        } catch (err) {
+             console.error("Failed to check submission status", err);
+             toast.error("Gagal memvalidasi status submission.");
+             return;
+        }
+
         // Validate capacity
         const [valHours, valMinutes] = startTime.split(':').map(Number);
         const valStart = new Date(startDate);
@@ -266,6 +267,15 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
             await updateFormStatus(submission.id!, 'slot_reserved');
 
+            // Set slot_booked_by to 'admin'
+            await supabase
+                .from('form_submissions')
+                .update({ 
+                    slot_booked_by: 'admin', 
+                    slot_reserved_at: new Date().toISOString() 
+                })
+                .eq('id', submission.id);
+
             // Sync is_extra_ad flag to survey_pages
             const syncData: Record<string, any> = { is_extra_ad: isExtraMode };
             if (isExtraMode) {
@@ -303,7 +313,13 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
         try {
             await supabase
                 .from('form_submissions')
-                .update({ start_date: null, end_date: null, updated_at: new Date().toISOString() })
+                .update({ 
+                    start_date: null, 
+                    end_date: null, 
+                    slot_booked_by: null,
+                    slot_reserved_at: null,
+                    updated_at: new Date().toISOString() 
+                })
                 .eq('id', submission.id);
 
             await supabase
@@ -646,25 +662,35 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                                 <span>Select Date</span>
                                 {isFetchingAds && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                             </Label>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 py-1 px-1">
-                                {availableDates.map((date) => {
+                            <div ref={calendarRef} className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 py-1 px-1">
+                                {availableDates.map((date, i) => {
                                     const dateStr = getDateString(date);
-                                    const count = activeCountsByDate[dateStr] || 0;
-                                    const isFull = count >= activeMaxPerDay;
-                                    const isSelected = startDate && getDateString(startDate) === dateStr;
+                                    const baseCount = activeCountsByDate[dateStr] || 0;
+                                    const isFull = baseCount >= activeMaxPerDay;
+
+                                    const selectedIndex = startDate ? availableDates.findIndex(d => getDateString(d) === getDateString(startDate)) : -1;
+                                    const isSelectedInRange = selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + submissionDuration;
+
+                                    const displayCount = isSelectedInRange ? baseCount + 1 : baseCount;
 
                                     let statusColors = 'bg-white border-slate-200 hover:border-blue-400 shadow-sm';
-                                    if (isFull) {
+                                    let textColor = 'text-slate-800';
+
+                                    if (isSelectedInRange) {
+                                        if (displayCount > activeMaxPerDay) {
+                                            statusColors = 'bg-red-50 border-red-500 ring-1 ring-red-500 shadow-md';
+                                            textColor = 'text-red-900';
+                                        } else {
+                                            statusColors = isExtraMode
+                                                ? 'bg-amber-50 border-amber-600 ring-1 ring-amber-600 shadow-md'
+                                                : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
+                                            textColor = isExtraMode ? 'text-amber-900' : 'text-blue-900';
+                                        }
+                                    } else if (isFull) {
                                         statusColors = 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed';
-                                    } else if (isSelected) {
-                                        statusColors = isExtraMode
-                                            ? 'bg-amber-50 border-amber-600 ring-1 ring-amber-600 shadow-md'
-                                            : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
                                     }
 
-                                    let dotColor = 'bg-emerald-500';
-                                    if (isFull) dotColor = 'bg-red-500';
-                                    else if (count > 0) dotColor = 'bg-amber-500';
+                                    const dotColor = displayCount > activeMaxPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
 
                                     return (
                                         <button
@@ -677,13 +703,13 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                                             <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
                                                 {date.toLocaleDateString('id-ID', { weekday: 'short' })}
                                             </span>
-                                            <span className={`font-extrabold text-[15px] leading-tight mb-1 ${isSelected ? (isExtraMode ? 'text-amber-900' : 'text-blue-900') : 'text-slate-800'}`}>
+                                            <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
                                                 {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
                                             </span>
                                             <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
                                                 <div className={`w-1 h-1 rounded-full ${dotColor}`} />
-                                                <span className={`text-[9px] font-semibold ${isFull ? 'text-red-700' : 'text-slate-600'}`}>
-                                                    {count}/{activeMaxPerDay}
+                                                <span className={`text-[9px] font-semibold ${displayCount > activeMaxPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
+                                                    {displayCount}/{activeMaxPerDay}
                                                 </span>
                                             </div>
                                         </button>

@@ -26,11 +26,17 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
         return new Intl.NumberFormat('id-ID').format(amount);
     };
 
-    const steps = [
+    const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms');
+
+    const steps = isAutoApprovalPath ? [
         { number: 1, title: t('step1') },
         { number: 2, title: t('step2') },
-        { number: 3, title: t('step3') },
-        { number: 4, title: t('step4') }
+        { number: 3, title: 'Jadwal' },
+        { number: 4, title: 'Bayar' }
+    ] : [
+        { number: 1, title: t('step1') },
+        { number: 2, title: t('step2') },
+        { number: 4, title: 'Review' }
     ];
 
     return (
@@ -66,14 +72,15 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                                             {/* Circle */}
                                             <div
                                                 className={`
-                        w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center font-bold text-[10px] md:text-xs ring-2 md:ring-4 ring-white transition-all duration-300
+                        w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center font-bold text-[10px] ring-2 md:ring-4 ring-white transition-all duration-300
                         ${isActive ? 'text-white shadow-md scale-110' : ''}
                         ${isCompleted ? 'text-white' : ''}
-                        ${!isActive && !isCompleted ? 'bg-gray-100 text-gray-400 border border-gray-200' : ''}
+                        ${!isActive && !isCompleted ? 'bg-gray-100 border border-gray-200' : ''}
                       `}
                                                 style={isActive || isCompleted ? { backgroundColor: '#0091ff' } : {}}
                                             >
-                                                {isCompleted ? <Check className="w-3 h-3 md:w-4 md:h-4" /> : step.number}
+                                                {isCompleted && <Check className="w-2.5 h-2.5 md:w-3 md:h-3" />}
+                                                {isActive && <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-white rounded-full" />}
                                             </div>
                                         </div>
                                     );
@@ -84,7 +91,9 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                             <div className="h-8 w-px bg-gray-200 mx-2 md:mx-4 hidden sm:block" />
                             <div className="hidden sm:flex flex-col">
                                 <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Current Step</span>
-                                <span className="text-sm font-bold text-gray-900 line-clamp-1 max-w-[100px] md:max-w-none">{steps[currentStep - 1]?.title || 'Survey'}</span>
+                                <span className="text-sm font-bold text-gray-900 line-clamp-1 max-w-[100px] md:max-w-none">
+                                    {steps.find(s => s.number === currentStep)?.title || 'Survey'}
+                                </span>
                             </div>
                         </div>
 

@@ -3,8 +3,8 @@ import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
 import { saveFormSubmission, type FormSubmission } from '../utils/supabase';
-import { createPayment } from '../utils/simple-payment';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
+import { fetchSlotAvailability } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
   Ticket,
@@ -89,15 +89,71 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
 
       // Cek apakah form diisi secara manual
       const isManualForm = formData.isManualEntry || !formData.surveyUrl.includes('docs.google.com/forms');
-      console.log('Form submission type check:', {
-        isManualEntry: formData.isManualEntry,
-        surveyUrl: formData.surveyUrl,
-        containsGoogleForms: formData.surveyUrl.includes('docs.google.com/forms'),
-        isManualForm: isManualForm
-      });
+      const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions;
+
+      // Jika auto approval, pastikan sudah pilih jadwal
+      if (isAutoApproval) {
+        if (!formData.startDate || !formData.startTime) {
+          toast.error('Gagal melanjutkan: Tanggal dan waktu mulai iklan belum dipilih. Silahkan kembali ke step sebelumnya.');
+          isSubmittingRef.current = false;
+          setIsSubmitting(false);
+          return;
+        }
+      }
 
       // Tampilkan loading toast
-      const loadingToast = toast.loading('Menyimpan data dan mempersiapkan pembayaran...');
+      const loadingMessage = isAutoApproval ? 'Mengecek slot & menyimpan data...' : 'Menyimpan data...';
+      const loadingToast = toast.loading(loadingMessage);
+
+      let calculatedStartDate = null;
+      let calculatedEndDate = null;
+
+      // Double-check availability for auto-approval
+      if (isAutoApproval && formData.startDate && formData.startTime) {
+        try {
+          const { regularCounts } = await fetchSlotAvailability();
+          const startDay = new Date(formData.startDate);
+
+          // Validate capacity across duration
+          let isAvailable = true;
+          const current = new Date(startDay);
+          current.setHours(0, 0, 0, 0);
+
+          for (let i = 0; i < formData.duration; i++) {
+            const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+            const count = regularCounts[dateStr] || 0;
+            if (count >= 3) {
+              isAvailable = false;
+              break;
+            }
+            current.setDate(current.getDate() + 1);
+          }
+
+          if (!isAvailable) {
+            toast.dismiss(loadingToast);
+            toast.error('Ups! Slot pada rentang tanggal yang Anda pilih telah penuh. Silakan kembali mengatur ulang tanggal di Step 3.');
+            isSubmittingRef.current = false;
+            setIsSubmitting(false);
+            return;
+          }
+
+          // Calculate valid UTC dates if available
+          const [valHours, valMinutes] = formData.startTime.split(':').map(Number);
+          startDay.setHours(valHours, valMinutes, 0, 0);
+          calculatedStartDate = startDay.toISOString();
+
+          const endDay = new Date(startDay);
+          endDay.setDate(endDay.getDate() + formData.duration);
+          calculatedEndDate = endDay.toISOString();
+
+        } catch (error) {
+          toast.dismiss(loadingToast);
+          toast.error('Gagal mengecek ketersediaan slot. Coba lagi.');
+          isSubmittingRef.current = false;
+          setIsSubmitting(false);
+          return;
+        }
+      }
 
       // Siapkan data untuk disimpan ke Supabase
       const submissionData: FormSubmission = {
@@ -107,15 +163,15 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         question_count: formData.questionCount,
         criteria_responden: formData.criteriaResponden,
         duration: formData.duration,
-        start_date: formData.startDate || null,
-        end_date: formData.endDate || null,
+        start_date: calculatedStartDate,
+        end_date: calculatedEndDate,
         full_name: formData.fullName,
         email: formData.email,
         phone_number: formData.phoneNumber,
         university: formData.university,
         department: formData.department,
         status: formData.status || 'pending',
-        submission_status: 'in_review',
+        submission_status: isAutoApproval ? 'waiting_payment' : 'in_review', // waiting_payment for user payment, in_review for manual
         referral_source: formData.referralSource === 'Lainnya' && formData.referralSourceOther
           ? `Lainnya: ${formData.referralSourceOther}`
           : formData.referralSource,
@@ -125,7 +181,11 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         total_cost: costCalculation.totalCost,
         payment_status: 'pending',
         submission_method: isManualForm ? 'manual' : 'google_import',
-        detected_keywords: formData.detectedKeywords || []
+        detected_keywords: formData.detectedKeywords || [],
+        ...(isAutoApproval ? {
+          slot_booked_by: 'user',
+          slot_reserved_at: new Date().toISOString()
+        } : {})
       };
 
       // Simpan data ke Supabase dengan penanganan error yang lebih baik
@@ -159,89 +219,45 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
             email: formData.email
           })
         }).then(res => res.json())
-          .then(data => console.log('Email sent response:', data))
           .catch(err => console.error('Failed to send email:', err));
-      } catch (e) {
-        console.error('Error initiating email send:', e);
-      }
+      } catch (e) { }
 
-      // Jika form diisi secara manual, bukan Google Form, atau memiliki personal data questions, redirect ke halaman submit-success
-      if (isManualForm || formData.hasPersonalDataQuestions) {
+      if (!isAutoApproval) {
+        // MANUAL ATAU SENSITIVE DATA
         const reasonForReview = formData.hasPersonalDataQuestions
           ? 'contains personal data questions'
           : 'manual form entry';
         console.log(`Form needs admin review (${reasonForReview}), redirect ke halaman submit-success`);
 
-        // Kirim data ke Google Sheets untuk manual form juga
-        if (savedData && savedData.id) {
-          console.log('Mengirim data manual form ke Google Sheets untuk form ID:', savedData.id);
+        if (savedData && savedData.id && isManualForm) {
           sendToGoogleSheetsBackground(savedData.id, 'manual_form_submission');
         }
 
-        // Dismiss loading toast
         toast.dismiss(loadingToast);
 
-        // Tampilkan success toast dengan pesan khusus untuk form dengan personal data
         if (formData.hasPersonalDataQuestions) {
           toast.success('Form Anda telah dikirim untuk review admin. Kami akan menghubungi Anda segera.');
         } else {
           toast.success(t('successFormSubmitted'));
         }
 
-        // Tambahkan delay kecil agar toast terlihat
         setTimeout(() => {
-          // Redirect ke halaman submit-success
-          console.log('Melakukan redirect ke halaman submit-success');
-          // Clear draft before redirecting
           localStorage.removeItem('survey_form_draft');
           window.open(`${window.location.origin}/dashboard/status?status=survey_submitted`, '_self');
         }, 1500);
 
-      }
-      // Jika form adalah Google Form, lanjutkan dengan pembayaran
-      else {
-        // Simplified payment flow
-        try {
-          console.log('Memulai proses pembayaran untuk form ID:', savedData.id);
+      } else {
+        // AUTO APPROVAL (SLOT RESERVED)
+        console.log('Slot berhasil di-booking, redirect ke halaman Payment Verification');
 
-          // Create payment with simplified function
-          const paymentUrl = await createPayment({
-            formSubmissionId: savedData.id,
-            amount: costCalculation.totalCost,
-            customerInfo: {
-              title: formData.title,
-              fullName: formData.fullName || 'Pengguna',
-              email: formData.email || 'user@example.com',
-              phoneNumber: formData.phoneNumber || '-'
-            }
-          });
+        toast.dismiss(loadingToast);
+        toast.success('Slot berhasil diamankan. Silahkan selesaikan pembayaran.');
 
-          console.log('Payment URL diterima:', paymentUrl);
-
-          // Dismiss loading toast
-          toast.dismiss(loadingToast);
-
-          // Tampilkan success toast untuk pembayaran nyata
-          toast.success(t('successPaymentRedirect'));
-
-          // Tambahkan delay kecil agar toast terlihat
-          setTimeout(() => {
-            // Redirect ke halaman pembayaran
-            console.log('Melakukan redirect ke:', paymentUrl);
-            // Clear draft before redirecting
-            localStorage.removeItem('survey_form_draft');
-            // Use window.open instead of window.location.href to avoid issues
-            window.open(paymentUrl, '_self');
-          }, 1500);
-
-        } catch (paymentError: any) {
-          // Dismiss loading toast
-          toast.dismiss(loadingToast);
-          console.error('Error saat membuat pembayaran:', paymentError);
-          toast.error(t('errorPaymentFailed'));
-          isSubmittingRef.current = false;
-          setIsSubmitting(false);
-        }
+        setTimeout(() => {
+          localStorage.removeItem('survey_form_draft');
+          // Navigate to new local PaymentCheckoutPage
+          window.open(`${window.location.origin}/dashboard/payment/${savedData.id}`, '_self');
+        }, 1500);
       }
     } catch (error: any) {
       console.error('Error saat menyimpan data:', error);

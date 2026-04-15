@@ -223,6 +223,40 @@ export class GoogleFormsApiService {
       const formData = result.data;
       const formUrl = `https://docs.google.com/forms/d/${formId}/viewform`;
 
+      // VERIFIKASI PUBLIK (ANONIM)
+      // Mencegah form "Not Published" / "Restricted" lolos karena status kepemilikan
+      try {
+        console.log('Melakukan verifikasi akses publik via proxy...');
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(formUrl)}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 detik maksimal
+        
+        const res = await fetch(proxyUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (res.ok) {
+          const htmlText = await res.text();
+          
+          if (htmlText.includes('This document is not published') || htmlText.includes('document is not published')) {
+             throw new Error('Gagal Import! Sistem mendeteksi bahwa form Anda berstatus "Not Published". Tolong pastikan form sudah siap dan ter-publish.');
+          }
+          if (htmlText.includes('You need permission') || htmlText.includes('Request access') || htmlText.includes('Sign in to continue')) {
+             console.warn('Kemungkinan false positive karena proxy di-block Google. Melewati strict check untuk form ini.');
+             // throw new Error('Gagal Import! Akses ke form Anda tertutup. Silakan ubah izin form menjadi "Anyone with the link" (Siapa saja yang memiliki akses) terlebih dahulu.');
+          }
+        } else if (res.status === 403 || res.status === 401) {
+             console.warn('Proxy mendapat 403/401. Kemungkinan false positive proxy block. Melewati strict check.');
+             // throw new Error('Gagal Import! Akses ke form Anda tertutup. Silakan ubah izin form menjadi "Anyone with the link" (Siapa saja yang memiliki akses) terlebih dahulu.');
+        }
+      } catch (proxyError: any) {
+         // Jika error merupakan validasi kustom dari kita, forward errornya agar ditangkap oleh UI (Toast)
+         if (proxyError.name === 'Error' && proxyError.message.includes('Gagal Import!')) {
+             throw proxyError;
+         }
+         // Abaikan error murni jaringan CORS proxy, anggap aman jika API utama berhasil
+         console.warn('Proxy access check network failed, ignoring:', proxyError);
+      }
+
       // Detect personal data questions
       const personalDataKeywords: string[] = [];
       let hasPersonalDataQuestions = false;

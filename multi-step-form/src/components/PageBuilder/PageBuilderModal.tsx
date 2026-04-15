@@ -39,7 +39,7 @@ interface PageBuilderModalProps {
     submissionPrizePerWinner?: number;
     submissionWinnerCount?: number;
     submissionCriteria?: string;
-    isExtraAd?: boolean; // Whether this page is an Extra Ad (set via PublishAdsModal)
+    isExtraAd?: boolean; // Whether this page is an Extra Ad (set via SchedulePaymentView)
 }
 
 // Helper: generate slug from title

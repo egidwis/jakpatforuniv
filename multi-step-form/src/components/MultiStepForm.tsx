@@ -5,7 +5,7 @@ import { getFormSubmissionsByEmail } from '../utils/supabase';
 import type { SurveyFormData } from '../types';
 import { StepOne } from './StepOne';
 import { StepTwo } from './StepTwo';
-import { StepThree } from './StepThree';
+import { StepThreeSlotReservation as StepThree } from './StepThreeSlotReservation';
 import { StepFour } from './StepFour';
 import { UnifiedHeader } from './UnifiedHeader';
 import { Menu } from 'lucide-react';
@@ -36,8 +36,8 @@ const defaultFormData: SurveyFormData = {
   questionCount: 0,
   criteriaResponden: '',
   duration: 1, // Default 1 hari
-  startDate: getTodayDate(),
-  endDate: getEndDateFromDuration(1),
+  startDate: '',
+  endDate: '',
 
   // Step 2
   fullName: '',
@@ -83,7 +83,11 @@ export function MultiStepForm() {
       try {
         const parsed = JSON.parse(saved);
         // Merge with default to ensure all fields exist
-        return { ...defaultFormData, ...parsed.formData };
+        // Always reset startDate/endDate to prevent stale cached dates
+        const merged = { ...defaultFormData, ...parsed.formData };
+        merged.startDate = '';
+        merged.endDate = '';
+        return merged;
       } catch (e) {
         return defaultFormData;
       }
@@ -152,15 +156,30 @@ export function MultiStepForm() {
   }, [currentStep]);
 
 
+  // Determine if the current form qualifies for auto-approval path (shows slot booking)
+  const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms');
+
   // Fungsi untuk pindah ke step berikutnya
   const nextStep = () => {
-    setCurrentStep(prev => Math.min(prev + 1, 4));
+    setCurrentStep(prev => {
+      // If moving from step 2, and not auto-approval, skip to step 4
+      if (prev === 2 && !isAutoApprovalPath) {
+        return 4;
+      }
+      return Math.min(prev + 1, 4);
+    });
     window.scrollTo(0, 0);
   };
 
   // Fungsi untuk kembali ke step sebelumnya
   const prevStep = () => {
-    setCurrentStep(prev => Math.max(prev - 1, 1));
+    setCurrentStep(prev => {
+      // If moving back from step 4, and not auto-approval, skip to step 2
+      if (prev === 4 && !isAutoApprovalPath) {
+        return 2;
+      }
+      return Math.max(prev - 1, 1);
+    });
     window.scrollTo(0, 0);
   };
 

@@ -788,7 +788,10 @@ export const getScheduledPages = async () => {
           prize_per_winner,
           start_date,
           end_date,
-          submission_status
+          submission_status,
+          slot_booked_by,
+          slot_reserved_at,
+          payment_status
         )
       `)
       .not('submission_id', 'is', null)
@@ -796,17 +799,35 @@ export const getScheduledPages = async () => {
 
     if (error) throw error;
 
-    return (data || []).map((item: any) => ({
-      ...item,
-      form_title: item.form_submissions?.title || 'Unknown Title',
-      researcher_name: item.form_submissions?.full_name || 'Unknown Researcher',
-      winner_count: item.form_submissions?.winner_count || 0,
-      prize_per_winner: item.form_submissions?.prize_per_winner || 0,
-      // Use survey_pages dates as source of truth, fallback to form_submissions
-      start_date: item.publish_start_date || item.form_submissions?.start_date,
-      end_date: item.publish_end_date || item.form_submissions?.end_date,
-      submission_status: item.form_submissions?.submission_status,
-    }));
+    return (data || [])
+      .filter((item: any) => {
+        const sub = item.form_submissions;
+        if (!sub) return false;
+        
+        // Filter out expired user-booked slots
+        const paymentStatus = sub.payment_status || 'pending';
+        const isPaid = ['paid', 'completed'].includes(paymentStatus);
+        
+        if (sub.slot_booked_by === 'user' && !isPaid && sub.slot_reserved_at) {
+          const reservedAt = new Date(sub.slot_reserved_at).getTime();
+          if (Date.now() > reservedAt + 60 * 60 * 1000) {
+            return false; // exclude expired
+          }
+        }
+        return true;
+      })
+      .map((item: any) => ({
+        ...item,
+        form_title: item.form_submissions?.title || 'Unknown Title',
+        researcher_name: item.form_submissions?.full_name || 'Unknown Researcher',
+        winner_count: item.form_submissions?.winner_count || 0,
+        prize_per_winner: item.form_submissions?.prize_per_winner || 0,
+        // Use survey_pages dates as source of truth, fallback to form_submissions
+        start_date: item.publish_start_date || item.form_submissions?.start_date,
+        end_date: item.publish_end_date || item.form_submissions?.end_date,
+        submission_status: item.form_submissions?.submission_status,
+        slot_booked_by: item.form_submissions?.slot_booked_by,
+      }));
   } catch (error: any) {
     console.error('Error fetching scheduled pages:', error);
     return [];
@@ -822,7 +843,7 @@ export const getPendingSlotsWithoutPage = async () => {
     // Fetch submissions that have dates but are in pre-page statuses
     const { data: submissions, error: subError } = await supabase
       .from('form_submissions')
-      .select('id, title, full_name, start_date, end_date, winner_count, prize_per_winner, submission_status')
+      .select('id, title, full_name, start_date, end_date, winner_count, prize_per_winner, submission_status, slot_booked_by, slot_reserved_at, payment_status')
       .not('start_date', 'is', null)
       .in('submission_status', ['slot_reserved', 'waiting_payment', 'paid'])
       .order('start_date', { ascending: true });
@@ -840,7 +861,21 @@ export const getPendingSlotsWithoutPage = async () => {
     const pageSubmissionIds = new Set((existingPages || []).map((p: any) => p.submission_id));
 
     return submissions
-      .filter(s => !pageSubmissionIds.has(s.id))
+      .filter((s: any) => {
+        if (pageSubmissionIds.has(s.id)) return false;
+        
+        // Filter out expired user-booked slots
+        const paymentStatus = s.payment_status || 'pending';
+        const isPaid = ['paid', 'completed'].includes(paymentStatus);
+        
+        if (s.slot_booked_by === 'user' && !isPaid && s.slot_reserved_at) {
+          const reservedAt = new Date(s.slot_reserved_at).getTime();
+          if (Date.now() > reservedAt + 60 * 60 * 1000) {
+            return false; // exclude expired
+          }
+        }
+        return true;
+      })
       .map((item: any) => ({
         ...item,
         form_title: item.title || 'Unknown Title',
@@ -870,5 +905,128 @@ export const getScheduledPageBySubmission = async (submissionId: string) => {
   } catch (error: any) {
     console.error('Error fetching scheduled page by submission:', error);
     return null;
+  }
+};
+
+/**
+ * Helper to get a string date YYYY-MM-DD from a Date object
+ */
+const getDateString = (date: Date) => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * Fetch slot availability for calendar components.
+ * Consolidates slot-checking logic used by SchedulePaymentView (admin & user flows).
+ * Also handles user-booked slots timeout (1 hour), hiding expired slots.
+ */
+export const fetchSlotAvailability = async (
+  excludeSubmissionId?: string
+): Promise<{
+  regularCounts: Record<string, number>;
+  extraCounts: Record<string, number>;
+}> => {
+  try {
+    const { data: slotsFromSubmissions, error: subError } = await supabase
+      .from('form_submissions')
+      .select('id, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status')
+      .not('start_date', 'is', null)
+      .not('submission_status', 'in', '("rejected","spam","in_review","completed")');
+
+    if (subError) throw subError;
+
+    // Filter active slots: Check expiration for user-booked slots
+    const activeSlots = (slotsFromSubmissions || []).filter((slot: any) => {
+      // Treat null payment_status as 'pending'
+      const paymentStatus = slot.payment_status || 'pending';
+      const isPaid = ['paid', 'completed'].includes(paymentStatus);
+
+      // If user booked the slot, not paid, and 1 hour has passed, it's expired
+      if (slot.slot_booked_by === 'user' && !isPaid && slot.slot_reserved_at) {
+        const reservedAt = new Date(slot.slot_reserved_at).getTime();
+        const oneHourAgo = Date.now() - 60 * 60 * 1000;
+        if (reservedAt < oneHourAgo) {
+          return false; // exclude this slot as it has expired
+        }
+      }
+      return true; // admin slots or valid user slots are included
+    });
+
+    // Also fetch is_extra_ad from survey_pages for these submissions
+    const subIds = activeSlots.map((s: any) => s.id);
+    let extraAdMap: Record<string, boolean> = {};
+    if (subIds.length > 0) {
+      const { data: pages } = await supabase
+        .from('survey_pages')
+        .select('submission_id, is_extra_ad')
+        .in('submission_id', subIds);
+      if (pages) {
+        pages.forEach((p: any) => { extraAdMap[p.submission_id] = !!p.is_extra_ad; });
+      }
+    }
+
+    const regularCounts: Record<string, number> = {};
+    const extraCounts: Record<string, number> = {};
+
+    activeSlots.forEach((slot: any) => {
+      if (slot.start_date && slot.end_date && slot.id !== excludeSubmissionId) {
+        const current = new Date(slot.start_date);
+        current.setHours(0, 0, 0, 0);
+        const endDay = new Date(slot.end_date);
+        endDay.setHours(0, 0, 0, 0);
+
+        const isExtra = extraAdMap[slot.id] || false;
+        const targetCounts = isExtra ? extraCounts : regularCounts;
+
+        while (current < endDay) {
+          const dateStr = getDateString(current);
+          targetCounts[dateStr] = (targetCounts[dateStr] || 0) + 1;
+          current.setDate(current.getDate() + 1);
+        }
+      }
+    });
+
+    return { regularCounts, extraCounts };
+  } catch (error) {
+    console.error("Failed to fetch ads for capacity checking:", error);
+    throw error;
+  }
+};
+
+/**
+ * Release a user-booked slot that has expired due to 1-hour timeout.
+ */
+export const releaseExpiredSlot = async (submissionId: string) => {
+  try {
+    // 1. Clear start_date, end_date, slot_booked_by, slot_reserved_at in form_submissions
+    // 2. Reset submission_status to 'approved'
+    const { error: subError } = await supabase
+      .from('form_submissions')
+      .update({
+        start_date: null,
+        end_date: null,
+        slot_booked_by: null,
+        slot_reserved_at: null,
+        submission_status: 'approved',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', submissionId);
+
+    if (subError) throw subError;
+
+    // Try to clear publish_start_date, publish_end_date in survey_pages (non-fatal if missing)
+    await supabase
+      .from('survey_pages')
+      .update({
+        publish_start_date: null,
+        publish_end_date: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('submission_id', submissionId);
+
+    return true;
+  } catch (error) {
+    console.error("Failed to release expired slot:", error);
+    throw error;
   }
 };

@@ -669,6 +669,14 @@ export function StatusPage() {
                                         const currentStep = getCurrentStepIndex(submission);
                                         const badgeInfo = getStatusBadgeInfo(currentStep);
 
+                                        // Auto-approval logic
+                                        const isUserBooked = submission.slot_booked_by === 'user';
+                                        const isExpired = isUserBooked && submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 3600_000);
+                                        let finalPaymentLink = paymentLinks[submission.id!];
+                                        if (!finalPaymentLink && isUserBooked && !isExpired && currentStep === 2) {
+                                            finalPaymentLink = `/dashboard/payment/${submission.id}`;
+                                        }
+
                                         return (
                                             <Card key={submission.id} className="overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all rounded-xl">
                                                 <CardHeader className="bg-gray-50/50 dark:bg-gray-800/50 border-b pb-4">
@@ -731,6 +739,30 @@ export function StatusPage() {
                                                     </div>
                                                 </CardHeader>
                                                 <CardContent className="pt-6 pb-6">
+                                                    {/* Expired Slot Banner */}
+                                                    {isExpired && submission.payment_status !== 'paid' && (
+                                                        <div className="rounded-lg border border-red-100 bg-red-50/50 p-4 mb-6 shadow-sm overflow-hidden relative">
+                                                            <div className="absolute top-0 right-0 w-16 h-16 opacity-5 bg-red-600 rounded-bl-full pointer-events-none" />
+                                                            <div className="flex gap-3 position-relative z-10">
+                                                                <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                                                                <div className="space-y-3">
+                                                                    <div>
+                                                                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                                            Slot Jadwal Kedaluwarsa
+                                                                        </h4>
+                                                                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
+                                                                            Waktu Anda untuk menyelesaikan pembayaran telah habis (1 jam). Slot survei Anda pada <strong>{submission.start_date?.split('T')[0]}</strong> telah dilepaskan ke ruang publik.
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="flex gap-2">
+                                                                        {/* Hide progress tracker if expired and tell user to just reset or wait? No, the best we can do is let them reset or make a new one */}
+                                                                        <p className="text-xs text-red-600 font-medium">Silakan menginput survei ulang dari Beranda.</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     {/* Progress Tracker or Revision Alert */}
                                                     {currentStep === -1 ? (
                                                         <div className="rounded-lg border border-orange-100 bg-orange-50/50 p-4 dark:border-orange-900/30 dark:bg-orange-900/10">
@@ -768,7 +800,13 @@ export function StatusPage() {
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <ProgressTracker submission={submission} currentStep={currentStep} paymentLink={submission.payment_status !== 'paid' && hasLink ? paymentLinks[submission.id!] : null} invoiceId={invoiceIds[submission.id!]} steps={steps} />
+                                                        <ProgressTracker 
+                                                            submission={submission} 
+                                                            currentStep={currentStep} 
+                                                            paymentLink={submission.payment_status !== 'paid' && finalPaymentLink ? finalPaymentLink : null} 
+                                                            invoiceId={invoiceIds[submission.id!]} 
+                                                            steps={steps} 
+                                                        />
                                                     )}
 
 

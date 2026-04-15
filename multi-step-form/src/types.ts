@@ -8,6 +8,7 @@ export interface SurveyFormData {
   criteriaResponden: string;
   duration: number; // dalam hari
   startDate?: string; // format YYYY-MM-DD
+  startTime?: string; // format HH:MM
   endDate?: string; // format YYYY-MM-DD
   isManualEntry?: boolean; // Flag untuk menandai form diisi manual
   hasPersonalDataQuestions?: boolean; // Flag untuk deteksi keyword personal data

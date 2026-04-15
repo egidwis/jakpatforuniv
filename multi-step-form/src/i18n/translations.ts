@@ -203,6 +203,17 @@ export const translations = {
     importFromGoogleForm: "Import from Google Form",
     manualFill: "Fill Manually",
     backButton: "Back",
+
+    // Step Three - Slot Reservation
+    slotReservationTitle: "Ad Slot Reservation",
+    slotReservationInfo: "Choose the start date for your survey ad. Ads on the <strong>Auto-Approval</strong> track will be processed immediately without manual admin review.",
+    slotStartDateLabel: "Ad Start Date",
+    slotDurationLabel: "Ad Duration",
+    slotFixedTimeTitle: "Ad goes live at 15:00 WIB",
+    slotFixedTimeDesc: "Start time is set automatically for all ads.",
+    slotErrorNoDate: "Please select a start date for your ad.",
+    slotErrorFull: "Slots for the selected date range are full (max 3 per day). Please choose a different date.",
+    slotErrorLoad: "Failed to load slot availability. Please try again.",
     recommended: "RECOMMENDED",
     googleFormImportTitle: "Import from Google Form",
     googleFormImportDescription: "Fastest way. Data auto-filled, instant pricing, and start survey immediately.",
@@ -313,8 +324,10 @@ export const translations = {
     // Success Messages - StepOneFormFields
     successImportedFromGoogleDrive: "Data successfully imported from Google Drive",
 
-    // Section Titles - StepTwo
-    surveyConfiguration: "Survey Configuration",
+    // Section Titles - StepOne
+    surveyInformation: "Survey Information",
+    surveyConfiguration: "Ad Configuration",
+    incentiveSettings: "Incentive Settings",
     surveyConfigurationDescription: "Define respondent criteria and incentives for your survey",
 
     // Section Titles - StepThree
@@ -511,6 +524,17 @@ export const translations = {
     importFromGoogleForm: "Import dari Google Form",
     manualFill: "Isi Manual",
     backButton: "Kembali",
+
+    // Step Three - Slot Reservation
+    slotReservationTitle: "Reservasi Slot Iklan",
+    slotReservationInfo: "Pilih tanggal mulai iklan survei Anda. Iklan dengan jalur <strong>Auto-Approval</strong> akan langsung diproses tanpa review manual oleh admin.",
+    slotStartDateLabel: "Tanggal Mulai Iklan",
+    slotDurationLabel: "Durasi Iklan",
+    slotFixedTimeTitle: "Iklan mulai tayang pukul 15.00 WIB",
+    slotFixedTimeDesc: "Waktu tayang sudah ditetapkan secara otomatis untuk semua iklan.",
+    slotErrorNoDate: "Silakan pilih tanggal mulai iklan Anda.",
+    slotErrorFull: "Slot pada rentang tanggal yang dipilih sudah penuh (maksimal 3 antrean per hari). Silakan pilih tanggal lain.",
+    slotErrorLoad: "Gagal memuat ketersediaan slot. Silakan coba lagi.",
     recommended: "RECOMMENDED",
     googleFormImportTitle: "Import dari Google Form",
     googleFormImportDescription: "Cara tercepat. Data terisi otomatis, harga langsung muncul, dan bisa langsung memulai survey.",
@@ -621,8 +645,10 @@ export const translations = {
     // Success Messages - StepOneFormFields
     successImportedFromGoogleDrive: "Data berhasil diimport dari Google Drive",
 
-    // Section Titles - StepTwo
-    surveyConfiguration: "Konfigurasi Survey",
+    // Section Titles - StepOne
+    surveyInformation: "Informasi Survey",
+    surveyConfiguration: "Konfigurasi Iklan",
+    incentiveSettings: "Pengaturan Insentif",
     surveyConfigurationDescription: "Tentukan kriteria responden dan insentif untuk survey Anda",
 
     // Section Titles - StepThree

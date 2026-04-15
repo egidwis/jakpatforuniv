@@ -11,6 +11,7 @@ interface PaymentData {
     email: string;
     phoneNumber: string;
   };
+  expiredAt?: string; // Optional custom expiration ISO string
 }
 
 // Check if we're in simulation mode (no API key or development environment)
@@ -58,7 +59,7 @@ export const checkMayarApiStatus = async (): Promise<boolean> => {
 // Function to create payment with Mayar
 export const createPayment = async (paymentData: PaymentData): Promise<string> => {
   try {
-    const { formSubmissionId, amount, customerInfo } = paymentData;
+    const { formSubmissionId, amount, customerInfo, expiredAt } = paymentData;
     console.log('Creating payment for form submission:', formSubmissionId);
 
     // Check if we're in simulation mode
@@ -120,7 +121,7 @@ export const createPayment = async (paymentData: PaymentData): Promise<string> =
       redirectUrl: `${origin}/dashboard/status?payment_status=paid`,
       failureUrl: `${origin}/dashboard/status?payment_status=failed&form_id=${formSubmissionId}`,
       description: `Pembayaran Survey - ${customerInfo.title}`,
-      expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+      expiredAt: expiredAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Use provided or 24 hours
       webhookUrl: `${origin}/webhook` // Webhook URL for payment notifications
     };
 

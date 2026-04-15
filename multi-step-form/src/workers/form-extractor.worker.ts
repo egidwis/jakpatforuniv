@@ -350,6 +350,7 @@ async function extractFormInfo(url: string) {
           const hasPermissionError = html.includes('You need permission');
           const hasRequestAccess = html.includes('Request access');
           const hasPermissionDenied = html.includes('Permission denied');
+          const isNotPublished = html.includes('This document is not published') || html.includes('document is not published');
           const isTooShort = html.length < 1000;
 
           // More specific checks for sign-in requirements
@@ -375,15 +376,16 @@ async function extractFormInfo(url: string) {
           console.log('  hasSignInRequired:', hasSignInRequired);
           console.log('  hasAuthRedirect:', hasAuthRedirect);
           console.log('  hasPermissionDenied:', hasPermissionDenied);
+          console.log('  isNotPublished:', isNotPublished);
           console.log('  isTooShort:', isTooShort);
           console.log('  hasFormContent:', hasFormContent);
           console.log('  htmlLength:', html.length);
 
           // Only consider form private if we have clear indicators AND no form content
-          if ((hasPermissionError || hasRequestAccess || hasSignInRequired || hasPermissionDenied) ||
+          if ((hasPermissionError || hasRequestAccess || hasSignInRequired || hasPermissionDenied || isNotPublished) ||
               (hasAuthRedirect && !hasFormContent) ||
               isTooShort) {
-            console.log('[Worker] Form appears to be private or restricted');
+            console.log('[Worker] Form appears to be private, restricted, or not published');
             throw new Error('FORM_NOT_PUBLIC');
           }
 
@@ -639,6 +641,7 @@ async function extractFormInfo(url: string) {
       const hasPermissionError = html.includes('You need permission');
       const hasRequestAccess = html.includes('Request access');
       const hasPermissionDenied = html.includes('Permission denied');
+      const isNotPublished = html.includes('This document is not published') || html.includes('document is not published');
       const isTooShort = html.length < 1000;
 
       // More specific checks for sign-in requirements
@@ -659,10 +662,10 @@ async function extractFormInfo(url: string) {
                             html.includes('question');
 
       // Only consider form private if we have clear indicators AND no form content
-      if ((hasPermissionError || hasRequestAccess || hasSignInRequired || hasPermissionDenied) ||
+      if ((hasPermissionError || hasRequestAccess || hasSignInRequired || hasPermissionDenied || isNotPublished) ||
           (hasAuthRedirect && !hasFormContent) ||
           isTooShort) {
-        console.log('[Worker] Form appears to be private or restricted (direct method)');
+        console.log('[Worker] Form appears to be private, restricted, or not published (direct method)');
         throw new Error('FORM_NOT_PUBLIC');
       }
 

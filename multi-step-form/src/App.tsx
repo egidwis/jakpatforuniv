@@ -15,6 +15,7 @@ import PrivateRoute from './components/PrivateRoute';
 import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
 import { ChatPage } from './pages/dashboard/ChatPage';
+import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
 import { SurveyListingPage } from './pages/public/SurveyListingPage';
 import { SurveyPage } from './pages/public/SurveyPage';
 import { AuthProvider } from './context/AuthContext';
@@ -70,6 +71,7 @@ function AppContent() {
           <Route path="submit" element={<MultiStepForm />} />
           <Route path="status" element={<StatusPage />} />
           <Route path="chat" element={<ChatPage />} />
+          <Route path="payment/:submissionId" element={<PaymentCheckoutPage />} />
         </Route>
 
         {/* Public Routes - Wrapped in Container */}
