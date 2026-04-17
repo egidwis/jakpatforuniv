@@ -19,6 +19,7 @@ import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
 import { SurveyListingPage } from './pages/public/SurveyListingPage';
 import { SurveyPage } from './pages/public/SurveyPage';
 import { AuthProvider } from './context/AuthContext';
+import { CampaignTracker } from './components/CampaignTracker';
 import './styles.css';
 
 function AppContent() {
@@ -27,6 +28,15 @@ function AppContent() {
 
   // Hide header/footer for internal dashboard
   const isInternalDash = location.pathname === '/internal-dash';
+  const isCampaignTracker = location.pathname.startsWith('/c/');
+
+  if (isCampaignTracker) {
+    return (
+      <Routes>
+        <Route path="/c/:source" element={<CampaignTracker />} />
+      </Routes>
+    );
+  }
 
   if (isInternalDash) {
     return (

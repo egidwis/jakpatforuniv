@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
-import { saveFormSubmission, type FormSubmission } from '../utils/supabase';
+import { saveFormSubmission, deleteFormSubmission, type FormSubmission } from '../utils/supabase';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -204,6 +204,15 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         if (savedData && savedData.id && !isManualForm) {
           console.log('Mengirim data Google Form ke Google Sheets untuk form ID:', savedData.id);
           sendToGoogleSheetsBackground(savedData.id, 'google_form_submission');
+        }
+
+        // Jika ini adalah jadwal ulang yang menggantikan expired slot, hapus yang lama
+        if ((formData as any).submissionIdToReplace) {
+          try {
+            await deleteFormSubmission((formData as any).submissionIdToReplace);
+          } catch(e) {
+            console.error('Failed to delete old submission after successful reschedule', e);
+          }
         }
       } catch (saveError: any) {
         console.error('Error saat menyimpan data:', saveError);

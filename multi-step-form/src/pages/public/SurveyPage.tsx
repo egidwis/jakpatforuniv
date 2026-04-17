@@ -280,19 +280,10 @@ export function SurveyPage() {
 
             if (error) throw error;
 
-            toast.success('Terima kasih sudah mengisi survey ini ya 😊');
+            toast.success('Jawaban tersimpan.');
             setTimeout(() => {
-                // Close WebView with fallbacks instead of navigating to /pages
-                try {
-                    if ((window as any).ReactNativeWebView) {
-                        (window as any).ReactNativeWebView.postMessage(JSON.stringify({ action: 'close' }));
-                        return;
-                    }
-                } catch (e) { }
-                try { window.close(); } catch (e) { }
-                setTimeout(() => { window.location.href = 'jakpat://close'; }, 300);
-                setTimeout(() => { if (!document.hidden) window.history.back(); }, 800);
-            }, 2000);
+                window.location.href = '/survey-disqualified.html';
+            }, 1500);
 
         } catch (error) {
             console.error('Error saving disqualified submission:', error);

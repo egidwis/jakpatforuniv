@@ -63,6 +63,7 @@ interface SurveySubmission {
   slot_booked_by?: string;
   slot_reserved_at?: string;
   admin_notes?: string;
+  submission_status?: string;
 }
 
 interface InternalDashboardProps {
@@ -204,6 +205,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           questionCount: sub.question_count || 0,
           responseCount: 0, // Not tracked yet
           status: (sub.submission_status || sub.status || 'in_review') === 'pending' ? 'in_review' : (sub.submission_status || sub.status || 'in_review'),
+          submission_status: sub.submission_status,
           // We initially grab real payment_status, we will filter it if there are no transactions
           payment_status: sub.payment_status,
           total_cost: sub.total_cost || 0,
@@ -1213,7 +1215,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                           <span className="text-[9px] text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100 font-bold tracking-wide shadow-sm">By User</span>
                                           {submission.slot_reserved_at ? (() => {
                                             const reservedAt = new Date(submission.slot_reserved_at).getTime();
-                                            const isExpired = Date.now() > (reservedAt + 60 * 60 * 1000);
+                                            const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 60_000);
                                             return isExpired ? (
                                               <span className="text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded flex items-center font-bold tracking-wide">
                                                 Expired
@@ -1296,6 +1298,29 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                       setScheduleInitialStep('payment');
                                     }}
                                     title="Add Additional Payment"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              );
+                            } else if (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired') {
+                              // Payment Expired — user slot timed out
+                              paymentBtn = (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-red-50/80 border border-red-200/70 rounded-md truncate">
+                                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                    <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                    <span className="text-xs font-medium text-red-700 tracking-wide truncate">Payment Expired</span>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-red-600 border-gray-200 hover:border-red-200 hover:bg-red-50 transition-colors shadow-sm"
+                                    onClick={() => {
+                                      setActiveScheduleSubmission(submission);
+                                      setScheduleInitialStep('payment');
+                                    }}
+                                    title="View / Create New Payment"
                                   >
                                     <Plus className="w-4 h-4" />
                                   </Button>
@@ -1635,7 +1660,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                     }}
                                   >
                                     <CreditCard className="w-3.5 h-3.5 mr-1" />
-                                    {isPaid ? 'Paid' : isPending ? 'Pending' : 'Payment'}
+                                    {isPaid ? 'Paid' : (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired') ? 'Expired' : isPending ? 'Pending' : 'Payment'}
                                     {!isPaid && !isPending && (hasSchedule || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
                                   </Button>
 

@@ -170,6 +170,8 @@ export interface FormSubmission {
   submission_method?: string;
   detected_keywords?: string[];
   admin_notes?: string;
+  slot_booked_by?: string;
+  slot_reserved_at?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -994,12 +996,33 @@ export const fetchSlotAvailability = async (
 };
 
 /**
+ * Close/deactivate a Mayar payment link so it can no longer be paid.
+ * Calls our proxy at /api/close-mayar-payment which hits Mayar's close endpoint.
+ * This is fire-and-forget — failures are logged but don't break the flow.
+ */
+export const closeMayarPaymentLink = async (paymentId: string) => {
+  try {
+    const origin = window.location.origin;
+    const res = await fetch(`${origin}/api/close-mayar-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentId })
+    });
+    if (!res.ok) {
+      console.warn(`Close Mayar payment link failed with status ${res.status} for ${paymentId}`);
+    }
+  } catch (error) {
+    console.warn('Non-fatal: failed to close Mayar payment link', paymentId, error);
+  }
+};
+
+/**
  * Release a user-booked slot that has expired due to 1-hour timeout.
+ * Also marks payment as expired, expires pending transactions, and closes Mayar links.
  */
 export const releaseExpiredSlot = async (submissionId: string) => {
   try {
-    // 1. Clear start_date, end_date, slot_booked_by, slot_reserved_at in form_submissions
-    // 2. Reset submission_status to 'approved'
+    // 1. Clear slot data and mark payment as expired in form_submissions
     const { error: subError } = await supabase
       .from('form_submissions')
       .update({
@@ -1007,14 +1030,39 @@ export const releaseExpiredSlot = async (submissionId: string) => {
         end_date: null,
         slot_booked_by: null,
         slot_reserved_at: null,
-        submission_status: 'approved',
+        submission_status: 'slot_reserved',
+        payment_status: 'expired',
         updated_at: new Date().toISOString()
       })
       .eq('id', submissionId);
 
     if (subError) throw subError;
 
-    // Try to clear publish_start_date, publish_end_date in survey_pages (non-fatal if missing)
+    // 2. Mark all pending transactions as expired & close Mayar links
+    const { data: pendingTxs } = await supabase
+      .from('transactions')
+      .select('id, payment_id, payment_method')
+      .eq('form_submission_id', submissionId)
+      .eq('status', 'pending');
+
+    if (pendingTxs && pendingTxs.length > 0) {
+      // Mark as expired in DB
+      await supabase
+        .from('transactions')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .in('id', pendingTxs.map(t => t.id));
+
+      // Close Mayar links (fire-and-forget, non-fatal)
+      for (const tx of pendingTxs) {
+        if (tx.payment_method === 'mayar' && tx.payment_id) {
+          closeMayarPaymentLink(tx.payment_id).catch(e =>
+            console.warn('Non-fatal: failed to close Mayar link', tx.payment_id, e)
+          );
+        }
+      }
+    }
+
+    // 3. Try to clear publish_start_date, publish_end_date in survey_pages (non-fatal if missing)
     await supabase
       .from('survey_pages')
       .update({

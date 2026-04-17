@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, AlertTriangle } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, AlertTriangle, BarChart2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { InternalDashboard } from './InternalDashboard';
 import { TransactionsPage } from './TransactionsPage';
-import { DemographyPage } from './DemographyPage';
+import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { ConversationsPage } from './ConversationsPage';
 import { SchedulingPage } from '../pages/dashboard/SchedulingPage';
 import { PublishPageManagement } from './PublishPageManagement';
 import { useAuth } from '../context/AuthContext';
 import { getAllChatSessions, supabase } from '../utils/supabase';
 
-type Page = 'submissions' | 'transactions' | 'demography' | 'conversations' | 'scheduling' | 'publish-page';
+type Page = 'submissions' | 'transactions' | 'analytics' | 'conversations' | 'scheduling' | 'publish-page';
 
 export function InternalDashboardWithLayout() {
   // Supabase Auth
@@ -168,9 +168,9 @@ export function InternalDashboardWithLayout() {
       icon: CreditCard,
     },
     {
-      id: 'demography' as Page,
-      label: 'Demography',
-      icon: FileText, // Or Users if imported, standardizing on FileText or similar
+      id: 'analytics' as Page,
+      label: 'Analytics',
+      icon: BarChart2,
     },
     {
       id: 'conversations' as Page,
@@ -395,9 +395,9 @@ export function InternalDashboardWithLayout() {
             <InternalDashboard onLogout={handleLogout} hideAuth={true} />
           ) : currentPage === 'transactions' ? (
             <TransactionsPage />
-          ) : currentPage === 'demography' ? (
+          ) : currentPage === 'analytics' ? (
             <div className="container mx-auto p-4 md:p-8">
-              <DemographyPage />
+              <AnalyticsDashboard />
             </div>
           ) : currentPage === 'conversations' ? (
             <div className="container mx-auto p-4 md:p-8">

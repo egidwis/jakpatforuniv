@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle, AlertCircle, Trash2, Menu, Info, ExternalLink, Gift, Users, Link as LinkIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link, useSearchParams, useOutletContext } from 'react-router-dom';
+import { Link, useSearchParams, useOutletContext, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 // Define the status steps in order
@@ -51,13 +51,17 @@ function ProgressTracker({
     currentStep, 
     paymentLink,
     invoiceId,
-    steps 
+    steps,
+    isExpired,
+    onReschedule
 }: { 
     submission: FormSubmission;
     currentStep: number; 
     paymentLink?: string | null; 
     invoiceId?: string | null;
-    steps: any[] 
+    steps: any[];
+    isExpired?: boolean;
+    onReschedule?: () => void;
 }) {
     const { t } = useLanguage();
     
@@ -177,10 +181,22 @@ function ProgressTracker({
                                             )}
 
                                             {/* Scheduling date info */}
-                                            {step.key === 'slot' && submission.start_date && (
+                                            {step.key === 'slot' && submission.start_date && !isExpired && (
                                                 <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 inline-block mt-0.5">
                                                     {new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {submission.end_date ? new Date(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}
                                                 </span>
+                                            )}
+
+                                            {/* Expired Slot Reschedule Button */}
+                                            {step.key === 'slot' && isExpired && onReschedule && (
+                                                <Button
+                                                    size="sm"
+                                                    className="mt-1 text-white shadow-sm h-7 text-[10px] px-3 break-keep"
+                                                    style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
+                                                    onClick={onReschedule}
+                                                >
+                                                    Pilih Jadwal Ulang
+                                                </Button>
                                             )}
 
                                             {/* Publishing: waiting (paid + scheduled, not yet live) */}
@@ -333,6 +349,20 @@ function ProgressTracker({
                                             </div>
                                         )}
 
+                                        {/* Expired Slot Reschedule Button (Mobile) */}
+                                        {step.key === 'slot' && isExpired && onReschedule && (
+                                            <div className="mt-3">
+                                                <Button
+                                                    size="sm"
+                                                    className="text-white shadow-sm h-8"
+                                                    style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
+                                                    onClick={onReschedule}
+                                                >
+                                                    Pilih Jadwal Ulang
+                                                </Button>
+                                            </div>
+                                        )}
+
                                         {/* Pay Now Button (Mobile) */}
                                         {isCurrent && step.key === 'payment' && paymentLink && (
                                             <div className="mt-2">
@@ -375,6 +405,7 @@ export function StatusPage() {
     const { user } = useAuth();
     const { t } = useLanguage();
     const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
+    const navigate = useNavigate();
     const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -666,12 +697,25 @@ export function StatusPage() {
                                     })
                                     .map((submission) => {
                                         const hasLink = !!paymentLinks[submission.id!];
-                                        const currentStep = getCurrentStepIndex(submission);
-                                        const badgeInfo = getStatusBadgeInfo(currentStep);
-
+                                        const currentStepRaw = getCurrentStepIndex(submission);
                                         // Auto-approval logic
                                         const isUserBooked = submission.slot_booked_by === 'user';
-                                        const isExpired = isUserBooked && submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 3600_000);
+                                        const isPaymentExpired = submission.payment_status === 'expired';
+                                        const isExpired = isPaymentExpired || (isUserBooked && submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 60_000)); // Testing: 1 minute
+                                        
+                                        // Force UI to regress to 'slot_reserved' step if expired, regardless of what DB says
+                                        const currentStep = (isExpired && submission.payment_status !== 'paid') ? 1 : currentStepRaw;
+                                        
+                                        // Override badge for expired payment
+                                        const badgeInfo = isExpired && submission.payment_status !== 'paid'
+                                            ? {
+                                                label: 'Payment Expired',
+                                                color: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
+                                                icon: <AlertCircle className="w-4 h-4" />,
+                                                style: {}
+                                            }
+                                            : getStatusBadgeInfo(currentStep);
+
                                         let finalPaymentLink = paymentLinks[submission.id!];
                                         if (!finalPaymentLink && isUserBooked && !isExpired && currentStep === 2) {
                                             finalPaymentLink = `/dashboard/payment/${submission.id}`;
@@ -739,30 +783,6 @@ export function StatusPage() {
                                                     </div>
                                                 </CardHeader>
                                                 <CardContent className="pt-6 pb-6">
-                                                    {/* Expired Slot Banner */}
-                                                    {isExpired && submission.payment_status !== 'paid' && (
-                                                        <div className="rounded-lg border border-red-100 bg-red-50/50 p-4 mb-6 shadow-sm overflow-hidden relative">
-                                                            <div className="absolute top-0 right-0 w-16 h-16 opacity-5 bg-red-600 rounded-bl-full pointer-events-none" />
-                                                            <div className="flex gap-3 position-relative z-10">
-                                                                <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                                                                <div className="space-y-3">
-                                                                    <div>
-                                                                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                                                                            Slot Jadwal Kedaluwarsa
-                                                                        </h4>
-                                                                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
-                                                                            Waktu Anda untuk menyelesaikan pembayaran telah habis (1 jam). Slot survei Anda pada <strong>{submission.start_date?.split('T')[0]}</strong> telah dilepaskan ke ruang publik.
-                                                                        </p>
-                                                                    </div>
-                                                                    <div className="flex gap-2">
-                                                                        {/* Hide progress tracker if expired and tell user to just reset or wait? No, the best we can do is let them reset or make a new one */}
-                                                                        <p className="text-xs text-red-600 font-medium">Silakan menginput survei ulang dari Beranda.</p>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
                                                     {/* Progress Tracker or Revision Alert */}
                                                     {currentStep === -1 ? (
                                                         <div className="rounded-lg border border-orange-100 bg-orange-50/50 p-4 dark:border-orange-900/30 dark:bg-orange-900/10">
@@ -801,11 +821,43 @@ export function StatusPage() {
                                                         </div>
                                                     ) : (
                                                         <ProgressTracker 
-                                                            submission={submission} 
-                                                            currentStep={currentStep} 
-                                                            paymentLink={submission.payment_status !== 'paid' && finalPaymentLink ? finalPaymentLink : null} 
-                                                            invoiceId={invoiceIds[submission.id!]} 
-                                                            steps={steps} 
+                                                            submission={submission}
+                                                            currentStep={currentStep}
+                                                            paymentLink={paymentLinks[submission.id!] || null}
+                                                            invoiceId={invoiceIds[submission.id!] || null}
+                                                            steps={getStatusSteps(t)}
+                                                            isExpired={isExpired}
+                                                            onReschedule={() => {
+                                                                const recoveredData = {
+                                                                    surveyUrl: submission.survey_url || '',
+                                                                    title: submission.title || '',
+                                                                    description: submission.description || '',
+                                                                    questionCount: submission.question_count || 0,
+                                                                    criteriaResponden: submission.criteria_responden || '',
+                                                                    duration: submission.duration || 1,
+                                                                    startDate: '',
+                                                                    endDate: '',
+                                                                    fullName: submission.full_name || '',
+                                                                    email: submission.email || '',
+                                                                    phoneNumber: submission.phone_number || '',
+                                                                    university: submission.university || '',
+                                                                    department: submission.department || '',
+                                                                    status: submission.status || '',
+                                                                    referralSource: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? 'Lainnya' : (submission.referral_source || ''),
+                                                                    referralSourceOther: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? submission.referral_source.replace('Lainnya: ', '') : '',
+                                                                    winnerCount: submission.winner_count || 0,
+                                                                    prizePerWinner: submission.prize_per_winner || 0,
+                                                                    voucherCode: submission.voucher_code || '',
+                                                                    detectedKeywords: submission.detected_keywords || [],
+                                                                    isManualEntry: submission.submission_method === 'manual',
+                                                                    submissionIdToReplace: submission.id,
+                                                                };
+                                                                localStorage.setItem('survey_form_draft', JSON.stringify({
+                                                                    formData: recoveredData,
+                                                                    currentStep: 3
+                                                                }));
+                                                                navigate('/dashboard/submit');
+                                                            }}
                                                         />
                                                     )}
 

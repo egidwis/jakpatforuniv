@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getFormSubmissionsByEmail } from '../utils/supabase';
+import { getFormSubmissionsByEmail, deleteFormSubmission } from '../utils/supabase';
 import type { SurveyFormData } from '../types';
 import { StepOne } from './StepOne';
 import { StepTwo } from './StepTwo';
@@ -61,6 +61,7 @@ export function MultiStepForm() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
+  const navigate = useNavigate();
 
   // Initialize state from localStorage if available
   const [resetKey, setResetKey] = useState(0);
@@ -137,6 +138,19 @@ export function MultiStepForm() {
               }));
               // Optional: notification
               // toast.info('Data diri diisi otomatis dari submission sebelumnya');
+              
+              // Redirect to payment/expired page if they have a pending submission and haven't actively started typing
+              setFormData(currentData => {
+                // If they haven't started filling out a fresh form OR they are not actively recovering a draft
+                if (!currentData.surveyUrl && !currentData.title) {
+                  // Only bounce if the latest submission was sent to payment validation
+                  if (latest.submission_status === 'waiting_payment') {
+                    // Navigate asynchronously to avoid state render cycle collision
+                    setTimeout(() => navigate(`/dashboard/payment/${latest.id}`), 0);
+                  }
+                }
+                return currentData;
+              });
             }
           } catch (error) {
             console.error('Failed to auto-fill from previous submission', error);
@@ -183,8 +197,22 @@ export function MultiStepForm() {
     window.scrollTo(0, 0);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (confirm(t('confirmCancelSubmission'))) {
+      const draft = localStorage.getItem(STORAGE_KEY);
+      if (draft) {
+        try {
+          const parsed = JSON.parse(draft);
+          // If this form is replacing an expired submission and the user cancels it, delete the original
+          if (parsed.formData && (parsed.formData as any).submissionIdToReplace) {
+             const idToDelete = (parsed.formData as any).submissionIdToReplace;
+             await deleteFormSubmission(idToDelete);
+          }
+        } catch (error) {
+          console.error("Error reading draft for deletion:", error);
+        }
+      }
+
       localStorage.removeItem(STORAGE_KEY);
       setFormData(defaultFormData);
       setCurrentStep(1);
