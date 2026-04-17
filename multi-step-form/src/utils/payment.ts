@@ -2,7 +2,6 @@ import axios from 'axios';
 import { supabase } from './supabase';
 import type { FormSubmission, Transaction } from './supabase';
 
-// Interface untuk data pembayaran
 interface PaymentData {
   formSubmissionId: string;
   amount: number;
@@ -14,7 +13,6 @@ interface PaymentData {
   };
 }
 
-// Interface untuk data invoice (untuk admin manual invoice creation)
 export interface InvoiceData {
   formSubmissionId: string;
   amount: number;
@@ -26,45 +24,42 @@ export interface InvoiceData {
   };
 }
 
-// Cek apakah dalam mode simulasi (tidak ada API key Mayar)
-const isSimulationMode = () => {
-  const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
+// -------------------------------------------------------------------------------- //
+// FEATURE FLAG: MAYAR vs DOKU
+const getPaymentGatewayProvider = () => {
+  // HARDCODED Fallback sementara agar Vite tidak bingung saat build
+  return 'mayar'; 
+  
+  // Nanti kembalikan jadi begini jika test DOKU:
+  // return import.meta.env.VITE_PAYMENT_GATEWAY === 'doku' ? 'doku' : 'mayar';
+};
+// -------------------------------------------------------------------------------- //
 
-  console.log('Checking API key:', apiKey ? 'API key exists' : 'No API key');
-
-  // Jika API key ada dan bukan nilai default, gunakan mode produksi
-  const isSimulation = !apiKey || apiKey === 'your-mayar-api-key' || apiKey.trim() === '';
-
-  console.log('Is simulation mode:', isSimulation);
-
-  // Untuk debugging, uncomment baris di bawah ini untuk memaksa mode produksi
-  return false; // Paksa mode produksi untuk testing
+// Doku Simulation detection
+const isDokuSimulationMode = () => {
+  const clientId = import.meta.env.VITE_DOKU_CLIENT_ID;
+  return !clientId || clientId.trim() === '' || clientId.includes('your');
 };
 
-// Fungsi untuk memeriksa status API Mayar
+// Mayar Simulation detection
+const isMayarSimulationMode = () => {
+  const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
+  const isOfflineMode = localStorage.getItem('isOfflineMode') === 'true';
+  if (isOfflineMode) return true;
+  return !apiKey || apiKey === 'your-mayar-api-key' || apiKey.trim() === '';
+};
+
 export const checkMayarApiStatus = async (): Promise<boolean> => {
+  if (getPaymentGatewayProvider() === 'doku') return true;
+
   try {
     const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
-
-    // Jika tidak ada API key, anggap API tidak tersedia
-    if (!apiKey || apiKey.trim() === '') {
-      console.log('No Mayar API key available, skipping status check');
-      return false;
-    }
-
-    // Coba ping API Mayar melalui proxy untuk menghindari CORS
-    console.log('Checking Mayar API status via proxy');
-    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
-    const response = await axios.post(`${origin}/api/mayar-proxy`, {
+    if (!apiKey || apiKey.trim() === '') return false;
+    const response = await axios.post('/api/mayar-proxy', {
       endpoint: 'https://api.mayar.id/v1/ping',
-      apiKey: apiKey,
-      method: 'GET'
-    }, {
-      timeout: 5000 // 5 detik timeout
-    });
-
-    // Jika response OK, API tersedia
-    console.log('Mayar API status check response:', response.status);
+      method: 'GET',
+      apiKey: apiKey
+    }, { timeout: 5000 });
     return response.status === 200;
   } catch (error) {
     console.error('Error checking Mayar API status:', error);
@@ -72,73 +67,97 @@ export const checkMayarApiStatus = async (): Promise<boolean> => {
   }
 };
 
-// Fungsi untuk membuat invoice pembayaran di Mayar
+// ==============================================================================
+// CREATE PAYMENT (Form User)
+// ==============================================================================
 export const createPayment = async (paymentData: PaymentData) => {
+  const provider = getPaymentGatewayProvider();
+  
+  if (provider === 'doku') {
+     return await createDokuPayment(paymentData);
+  } else {
+     return await createMayarPayment(paymentData);
+  }
+};
+
+const createDokuPayment = async (paymentData: PaymentData) => {
   try {
     const { formSubmissionId, amount, customerInfo } = paymentData;
+    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
-    // Jika dalam mode simulasi, gunakan URL simulasi
-    if (isSimulationMode()) {
-      console.log('Running in simulation mode - no Mayar API key provided');
-
-      // Buat ID transaksi simulasi
-      const simulatedPaymentId = `sim_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-      // Simpan data transaksi ke Supabase
+    if (isDokuSimulationMode()) {
+      const simulatedPaymentId = `sim_doku_${Date.now()}`;
       const transactionData: Transaction = {
         form_submission_id: formSubmissionId,
         payment_id: simulatedPaymentId,
         payment_method: 'simulation',
         amount,
         status: 'pending',
-        payment_url: `/payment-success?id=${formSubmissionId}&simulation=true`
+        payment_url: `${origin}/payment-success?id=${formSubmissionId}&simulation=true`
       };
-
-      try {
-        const { error } = await supabase
-          .from('transactions')
-          .insert([transactionData])
-          .select();
-
-        if (error) {
-          console.error('Error saving simulation transaction to Supabase:', error);
-          // Tetap lanjutkan meskipun ada error dengan Supabase
-        }
-      } catch (dbError) {
-        console.error('Database error in simulation mode:', dbError);
-        // Tetap lanjutkan meskipun ada error dengan database
-      }
-
-      // Gunakan window.location.origin untuk mendapatkan URL dasar
-      const origin = window.location.origin || "https://submit.jakpatforuniv.com";
-
-      // Return URL simulasi
-      return `${origin}/payment-success?id=${formSubmissionId}&simulation=true`;
+      await supabase.from('transactions').insert([transactionData]);
+      return transactionData.payment_url;
     }
 
-    // Mode produksi - Buat invoice di Mayar
-    console.log('Using production mode with Mayar API');
+    const invoiceNumber = `JFU-${formSubmissionId.substring(0,8)}-${Date.now()}`;
+    const requestData = {
+      amount,
+      invoice_number: invoiceNumber,
+      customer: {
+        name: customerInfo.fullName || 'User',
+        email: customerInfo.email || 'user@example.com',
+        phone: customerInfo.phoneNumber || ''
+      },
+      callback_url: `${origin}/payment-success?id=${formSubmissionId}`
+    };
 
-    // Validasi API key
-    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
+    const response = await axios.post(`${origin}/api/doku/checkout`, requestData, { timeout: 15000 });
 
-    // Deteksi placeholder API key
-    const isPlaceholderApiKey = !apiKey || apiKey.trim() === '' || apiKey.includes('your-mayar-api-key');
-
-    if (isPlaceholderApiKey) {
-      console.warn('Mayar API key is missing, empty, or using placeholder - but continuing with production mode');
-      // Tetap lanjutkan dengan mode produksi meskipun API key tidak valid
-      // Ini akan menghasilkan error yang lebih jelas dari Mayar API
+    if (!response.data?.response?.payment) {
+      throw new Error('Invalid response from DOKU API proxy');
     }
 
-    // Ambil webhook token dari environment variables
-    const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
-    console.log('Webhook token available:', webhookToken ? 'Yes' : 'No');
+    const paymentUrl = response.data.response.payment.url;
+    const transactionId = response.data.response.order.invoice_number; 
 
-    // Gunakan window.location.origin untuk mendapatkan URL dasar
+    // Simpan ke db
+    const transactionData: Transaction = {
+      form_submission_id: formSubmissionId,
+      payment_id: transactionId,
+      payment_method: 'doku',
+      amount,
+      status: 'pending',
+      payment_url: paymentUrl
+    };
+    await supabase.from('transactions').insert([transactionData]);
+
+    return paymentUrl;
+  } catch (err) {
+    console.error('Error creating DOKU payment:', err);
+    throw new Error('Gagal membuat pembayaran DOKU.');
+  }
+};
+
+const createMayarPayment = async (paymentData: PaymentData) => {
+  try {
+    const { formSubmissionId, amount, customerInfo } = paymentData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
-    // Log request data untuk debugging - format sesuai dokumentasi Mayar
+    if (isMayarSimulationMode()) {
+      const simulatedPaymentId = `sim_mayar_${Date.now()}`;
+      const transactionData: Transaction = {
+        form_submission_id: formSubmissionId,
+        payment_id: simulatedPaymentId,
+        payment_method: 'simulation',
+        amount,
+        status: 'pending',
+        payment_url: `${origin}/payment-success?id=${formSubmissionId}&simulation=true`
+      };
+      await supabase.from('transactions').insert([transactionData]);
+      await updatePaymentStatus(simulatedPaymentId, 'completed');
+      return transactionData.payment_url;
+    }
+
     const requestData = {
       name: customerInfo.fullName || 'Pengguna',
       email: customerInfo.email || 'user@example.com',
@@ -147,216 +166,57 @@ export const createPayment = async (paymentData: PaymentData) => {
       redirectUrl: `${origin}/payment-success?id=${formSubmissionId}`,
       failureUrl: `${origin}/payment-failed?id=${formSubmissionId}`,
       description: `Pembayaran Survey - ${customerInfo.title}`,
-      expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 jam
-      webhookUrl: `${origin}/api/webhook` // URL webhook untuk notifikasi pembayaran
+      expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      webhookUrl: `${origin}/api/webhook`
     };
 
-    // Log the redirect URLs for debugging
-    console.log('Redirect URLs:', {
-      success: `${origin}/payment-success?id=${formSubmissionId}`,
-      failure: `${origin}/payment-failed?id=${formSubmissionId}`,
-      webhook: `${origin}/api/webhook`
-    });
+    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
+    const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
 
-    console.log('Mayar request data:', requestData);
+    const proxyRequestData = {
+      ...requestData,
+      endpoint: 'https://api.mayar.id/hl/v1/payment/create',
+      apiKey,
+      webhookToken
+    };
 
-    // Buat invoice di Mayar
-    console.log('Sending request to Mayar API with API key:', apiKey.substring(0, 10) + '...');
-
+    // Retry logic
+    let retryCount = 0;
+    const maxRetries = 2;
     let response;
 
-    // Coba dengan format header yang benar sesuai dokumentasi Mayar
-    try {
-      // Persiapkan header untuk request - format sesuai dokumentasi Mayar
-      const headers: Record<string, string> = {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      };
-
-      // Tambahkan webhook token ke header jika tersedia
-      const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
-      if (webhookToken) {
-        headers['X-Webhook-Token'] = webhookToken;
-      }
-
-      console.log('Using headers:', {
-        Authorization: 'Bearer ' + apiKey.substring(0, 10) + '...',
-        'Content-Type': 'application/json',
-        ...(webhookToken ? { 'X-Webhook-Token': 'configured' } : {})
-      });
-
-      // Gunakan Cloudflare Function sebagai proxy untuk mengatasi masalah CORS
+    while (retryCount <= maxRetries) {
       try {
-        console.log('Using Cloudflare Function proxy for Mayar API');
-
-        // Tambahkan endpoint, API key, dan webhook token ke request data
-        const proxyRequestData = {
-          ...requestData,
-          endpoint: 'https://api.mayar.id/hl/v1/payment/create',
-          apiKey: apiKey, // Kirim API key ke proxy
-          webhookToken: webhookToken // Kirim webhook token ke proxy
-        };
-
-        console.log('Sending request to proxy with API key and webhook token included');
-
-        // Panggil Cloudflare Function proxy dengan retry logic
-        let retryCount = 0;
-        const maxRetries = 2;
-
-        while (retryCount <= maxRetries) {
-          try {
-            response = await axios.post(
-              `${origin}/api/mayar-proxy`,
-              proxyRequestData,
-              {
-                timeout: 15000 // 15 detik timeout
-              }
-            );
-            console.log('Mayar API response received via proxy successfully');
-            break; // Keluar dari loop jika berhasil
-          } catch (retryError) {
-            retryCount++;
-            console.error(`Proxy attempt ${retryCount} failed:`, retryError);
-
-            if (retryCount > maxRetries) {
-              throw retryError; // Re-throw jika sudah mencapai batas retry
-            }
-
-            // Tunggu sebentar sebelum retry
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      } catch (error) {
-        const proxyError = error as Error;
-        console.error('Error with primary API endpoint:', proxyError.message);
-
-        // Jika proxy gagal, coba endpoint standar melalui proxy
-        console.log('Trying standard API endpoint via proxy');
-
-        // Tambahkan endpoint standar, API key, dan webhook token ke request data
-        const proxyRequestData = {
-          ...requestData,
-          endpoint: 'https://api.mayar.id/v1/invoices',
-          apiKey: apiKey, // Kirim API key ke proxy
-          webhookToken: webhookToken // Kirim webhook token ke proxy
-        };
-
-        console.log('Trying standard endpoint with API key and webhook token included');
-
-        response = await axios.post(
-          `${origin}/api/mayar-proxy`,
-          proxyRequestData,
-          {
-            timeout: 15000 // 15 detik timeout
-          }
-        );
-
-        console.log('Mayar standard API response received via proxy successfully');
+        response = await axios.post('/api/mayar-proxy', proxyRequestData, { timeout: 15000 });
+        break;
+      } catch (retryError) {
+        retryCount++;
+        if (retryCount > maxRetries) throw retryError;
+        await new Promise(r => setTimeout(r, 1000));
       }
-    } catch (error) {
-      const apiError = error as any;
-      console.error('All API endpoints failed:', apiError.message);
-
-      // Log error details untuk debugging
-      if (apiError.response) {
-        console.error('API error response:', {
-          status: apiError.response.status,
-          data: apiError.response.data,
-          headers: apiError.response.headers
-        });
-      }
-
-      throw apiError; // Re-throw untuk ditangkap oleh catch di luar
     }
 
-    // Validasi response
-    if (!response || !response.data) {
-      console.error('Invalid response from Mayar API:', response?.data);
-      throw new Error('Response dari Mayar API tidak valid');
-    }
+    if (!response || !response.data) throw new Error('Response dari Mayar API tidak valid');
 
-    // Log response untuk debugging
-    console.log('Mayar API response:', response.data);
-
-    // Log response untuk debugging
-    console.log('Raw Mayar API response:', response.data);
-
-    // Validasi response sesuai format Mayar
-    if (!response.data) {
-      console.error('Empty response from Mayar API');
-      throw new Error('Response dari gateway pembayaran kosong');
-    }
-
-    // Coba ekstrak payment URL dan ID dari berbagai format response yang mungkin
     let paymentUrl = '';
     let transactionId = '';
 
-    // Format 1: response.data.data.link (format dokumentasi)
     if (response.data.data && response.data.data.link) {
       paymentUrl = response.data.data.link;
-      // PRIORITASKAN transactionId karena itu yang dikirim di webhook!
-      transactionId = response.data.data.transactionId || response.data.data.transaction_id || response.data.data.id || '';
-      console.log('Extracted payment URL using format 1 (data.data.link)');
-      console.log('transactionId:', response.data.data.transactionId, 'id:', response.data.data.id);
-    }
-    // Format 2: response.data.payment_url (format lama)
-    else if (response.data.payment_url) {
+      transactionId = response.data.data.id || response.data.data.transaction_id || '';
+    } else if (response.data.payment_url) {
       paymentUrl = response.data.payment_url;
-      transactionId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
-      console.log('Extracted payment URL using format 2 (data.payment_url)');
-      console.log('transactionId:', response.data.transactionId, 'id:', response.data.id);
-    }
-    // Format 3: response.data.url (format alternatif)
-    else if (response.data.url) {
+      transactionId = response.data.id || response.data.transaction_id || '';
+    } else if (response.data.url) {
       paymentUrl = response.data.url;
-      transactionId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
-      console.log('Extracted payment URL using format 3 (data.url)');
-      console.log('transactionId:', response.data.transactionId, 'id:', response.data.id);
-    }
-    // Format 4: response.data.data.url (format alternatif)
-    else if (response.data.data && response.data.data.url) {
+      transactionId = response.data.id || response.data.transaction_id || '';
+    } else if (response.data.data && response.data.data.url) {
       paymentUrl = response.data.data.url;
-      transactionId = response.data.data.transactionId || response.data.data.transaction_id || response.data.data.id || '';
-      console.log('Extracted payment URL using format 4 (data.data.url)');
-      console.log('transactionId:', response.data.data.transactionId, 'id:', response.data.data.id);
-    }
-    // Format 5: response.data.redirect_url (format alternatif)
-    else if (response.data.redirect_url) {
-      paymentUrl = response.data.redirect_url;
-      transactionId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
-      console.log('Extracted payment URL using format 5 (data.redirect_url)');
-      console.log('transactionId:', response.data.transactionId, 'id:', response.data.id);
-    }
-    // Format 6: response.data langsung berisi URL (format paling sederhana)
-    else if (typeof response.data === 'string' && response.data.startsWith('http')) {
-      paymentUrl = response.data;
-      transactionId = `mayar_${Date.now()}`; // Buat ID jika tidak ada
-      console.log('Extracted payment URL using format 6 (data is URL string)');
+      transactionId = response.data.data.id || response.data.data.transaction_id || '';
     }
 
-    // Jika tidak ada URL yang ditemukan, throw error
-    if (!paymentUrl) {
-      console.error('Could not extract payment URL from response:', response.data);
-      throw new Error('Tidak dapat menemukan URL pembayaran dalam respons');
-    }
+    if (!paymentUrl) throw new Error('Could not extract payment URL');
 
-    if (!transactionId) {
-      console.warn('Could not extract transactionId from response, trying fallback to id or parsing link');
-
-      if (response.data.data && response.data.data.id) transactionId = response.data.data.id;
-      else if (response.data.id) transactionId = response.data.id;
-
-      // If still empty, use timestamp but warn heavily
-      if (!transactionId) {
-        console.error('CRITICAL: Failed to extract transaction ID. Webhooks will fail.');
-        transactionId = `unknown_${Date.now()}`;
-      }
-    }
-
-    console.log('Payment URL received:', paymentUrl);
-    console.log('Transaction ID (will be saved to database):', transactionId);
-
-    // Simpan data transaksi ke Supabase
     const transactionData: Transaction = {
       form_submission_id: formSubmissionId,
       payment_id: transactionId,
@@ -366,92 +226,156 @@ export const createPayment = async (paymentData: PaymentData) => {
       payment_url: paymentUrl
     };
 
-    try {
-      const { error } = await supabase
-        .from('transactions')
-        .insert([transactionData])
-        .select();
+    await supabase.from('transactions').insert([transactionData]);
 
-      if (error) {
-        console.error('Error saving transaction to Supabase:', error);
-        // Tetap lanjutkan meskipun ada error dengan Supabase
-      }
-    } catch (dbError) {
-      console.error('Database error:', dbError);
-      // Tetap lanjutkan meskipun ada error dengan database
-    }
-
-    // Return payment URL dari response Mayar
     return paymentUrl;
-  } catch (err) {
-    const error = err as any;
-    console.error('Error creating payment:', error);
+  } catch (err: any) {
+    console.error('Error creating Mayar payment:', err);
+    throw new Error('Gagal membuat pembayaran Mayar.');
+  }
+}
 
-    // Log error details untuk debugging
-    if (error.response) {
-      // Error dari server Mayar
-      console.error('Mayar API error response:', {
-        status: error.response.status,
-        data: error.response.data,
-        headers: error.response.headers
-      });
-    } else if (error.request) {
-      // Error karena tidak ada response (network issue)
-      console.error('No response received from Mayar API:', error.request);
-    } else {
-      // Error lainnya
-      console.error('Error setting up request:', error.message);
-    }
-
-    // Jika error, tampilkan error yang lebih jelas dan tidak menggunakan mode simulasi
-    console.error('Error creating payment with Mayar API. Please check your API key and try again.');
-
-    // Throw error untuk ditangani oleh catch di komponen yang memanggil
-    throw new Error('Gagal membuat pembayaran dengan Mayar. Silakan periksa API key dan coba lagi.');
+// ==============================================================================
+// CREATE MANUAL INVOICE (Admin Dashboard)
+// ==============================================================================
+export const createManualInvoice = async (invoiceData: InvoiceData) => {
+  const provider = getPaymentGatewayProvider();
+  
+  if (provider === 'doku') {
+     return await createDokuManualInvoice(invoiceData);
+  } else {
+     return await createMayarManualInvoice(invoiceData);
   }
 };
 
-// Fungsi untuk memverifikasi status pembayaran
-export const verifyPayment = async (paymentId: string) => {
+const createDokuManualInvoice = async (invoiceData: InvoiceData) => {
   try {
-    // Ambil API key
-    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
+    const { formSubmissionId, amount, description, customerInfo } = invoiceData;
+    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
-    // Gunakan Cloudflare Function proxy untuk verifikasi pembayaran
+    const invoiceNumber = `JFU-INV-${formSubmissionId.substring(0,6)}-${Date.now()}`;
+    
+    const requestData = {
+      amount: amount,
+      invoice_number: invoiceNumber,
+      description: description,
+      customer: {
+        name: customerInfo?.fullName || 'Client',
+        email: customerInfo?.email || 'client@example.com',
+        phone: customerInfo?.phoneNumber || ''
+      },
+      callback_url: `${origin}/payment-success?form_id=${formSubmissionId}`,
+      payment_due_date: 60 * 24 * 7 // 7 Hari
+    };
+
+    const fetchResponse = await fetch(`${origin}/api/doku/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestData),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (!fetchResponse.ok) {
+      const errTxt = await fetchResponse.text();
+      throw new Error(`Proxy error: ${errTxt}`);
+    }
+
+    const data = await fetchResponse.json();
+    if (!data.response || !data.response.payment) {
+      throw new Error('Invalid response from DOKU checkout');
+    }
+
+    return {
+      payment_id: data.response.order.invoice_number,
+      invoice_url: data.response.payment.url
+    };
+  } catch (err: any) {
+    console.error('Error creating DOKU manual invoice:', err);
+    throw new Error(err.message || 'Gagal membuat invoice manual DOKU');
+  }
+};
+
+const createMayarManualInvoice = async (invoiceData: InvoiceData) => {
+  try {
+    const { formSubmissionId, amount, description, customerInfo } = invoiceData;
+    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
+
+    const requestData = {
+       name: customerInfo?.fullName || 'Client Admin',
+       email: customerInfo?.email || 'client@example.com',
+       amount: amount,
+       mobile: customerInfo?.phoneNumber || '08123456789',
+       redirectUrl: `${origin}/payment-success?form_id=${formSubmissionId}`,
+       failureUrl: `${origin}/payment-failed?form_id=${formSubmissionId}`,
+       description: description || `Manual Invoice - ${formSubmissionId}`,
+       expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+       webhookUrl: `${origin}/api/webhook`
+    };
+
+    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
+    const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
+
+    const proxyRequestData = {
+      ...requestData,
+      endpoint: 'https://api.mayar.id/hl/v1/payment/create',
+      apiKey,
+      webhookToken
+    };
+
+    const response = await axios.post('/api/mayar-proxy', proxyRequestData, { timeout: 15000 });
+    
+    if (!response || !response.data) throw new Error('Response dari Mayar API tidak valid');
+
+    let paymentUrl = '';
+    let transactionId = '';
+
+    if (response.data.data && response.data.data.link) {
+      paymentUrl = response.data.data.link;
+      transactionId = response.data.data.id || response.data.data.transaction_id || '';
+    } else if (response.data.url) {
+      paymentUrl = response.data.url;
+      transactionId = response.data.id || response.data.transaction_id || '';
+    }
+
+    if (!paymentUrl) throw new Error('Could not extract payment URL');
+
+    return {
+      payment_id: transactionId,
+      invoice_url: paymentUrl
+    };
+  } catch (err: any) {
+    console.error('Error creating Mayar manual invoice:', err);
+    throw new Error(err.message || 'Gagal membuat invoice manual Mayar');
+  }
+};
+
+// ==============================================================================
+// VERIFY PAYMENT & STATUS
+// ==============================================================================
+export const verifyPayment = async (paymentId: string) => {
+  if (getPaymentGatewayProvider() === 'doku') {
+    // DOKU doesn't poll frontend yet
+    return { statusCode: 200, status: 'pending' };
+  }
+
+  try {
+    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
     const proxyRequestData = {
       endpoint: `https://api.mayar.id/hl/v1/payment/${paymentId}`,
       method: 'GET',
-      apiKey: apiKey // Kirim API key ke proxy
+      apiKey: apiKey
     };
 
-    console.log('Verifying payment with API key included');
-
-    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
-    // Panggil proxy dengan metode POST tapi minta proxy melakukan GET request
-    const response = await axios.post(
-      `${origin}/api/mayar-verify`,
-      proxyRequestData
-    );
-
-    console.log('Verify payment response:', response.data);
-
-    // Validasi response sesuai format Mayar
-    if (!response.data || response.data.statusCode !== 200) {
-      throw new Error('Invalid response from Mayar verification API');
-    }
-
+    const response = await axios.post('/api/mayar-verify', proxyRequestData, { timeout: 10000 });
     return response.data;
-  } catch (err) {
-    const error = err as Error;
-    console.error('Error verifying payment:', error);
+  } catch (error) {
+    console.error('Error verifying Mayar payment:', error);
     throw error;
   }
 };
 
-// Fungsi untuk update status pembayaran di database
 export const updatePaymentStatus = async (paymentId: string, status: string) => {
   try {
-    // Update status transaksi
     const { data: transaction, error: transactionError } = await supabase
       .from('transactions')
       .update({ status })
@@ -464,7 +388,6 @@ export const updatePaymentStatus = async (paymentId: string, status: string) => 
       throw new Error('Transaction not found');
     }
 
-    // Update status form submission
     const { data: formSubmission, error: formError } = await supabase
       .from('form_submissions')
       .update({ payment_status: status })
@@ -477,131 +400,5 @@ export const updatePaymentStatus = async (paymentId: string, status: string) => 
   } catch (error) {
     console.error('Error updating payment status:', error);
     throw error;
-  }
-};
-
-// ============= ADMIN INVOICE CREATION =============
-
-/**
- * Fungsi untuk membuat invoice manual (untuk admin)
- * Reusable function yang bisa dipanggil dari InternalDashboard
- *
- * @param invoiceData - Data invoice yang akan dibuat
- * @returns Object berisi invoice_id dan payment_url
- */
-export const createManualInvoice = async (invoiceData: InvoiceData) => {
-  try {
-    const { formSubmissionId, amount, description, customerInfo } = invoiceData;
-
-    // Validasi API key
-    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
-    const isPlaceholderApiKey = !apiKey || apiKey.trim() === '' || apiKey.includes('your-mayar-api-key');
-
-    if (isPlaceholderApiKey) {
-      throw new Error('Mayar API key tidak tersedia atau tidak valid');
-    }
-
-    // Ambil webhook token dari environment variables
-    const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
-
-    // Gunakan window.location.origin untuk mendapatkan URL dasar
-    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
-
-    // Buat request data untuk Mayar API
-    const requestData = {
-      name: customerInfo?.fullName || 'Pelanggan',
-      email: customerInfo?.email || 'customer@example.com',
-      amount: amount,
-      mobile: customerInfo?.phoneNumber || '08123456789',
-      redirectUrl: `${origin}/payment-success?form_id=${formSubmissionId}`,
-      failureUrl: `${origin}/payment-failed?form_id=${formSubmissionId}`,
-      description: description || 'Invoice Manual',
-      expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 hari
-      webhookUrl: `${origin}/api/webhook`
-    };
-
-    console.log('Creating manual invoice with data:', requestData);
-
-    // Panggil Mayar API melalui proxy
-    const proxyRequestData = {
-      ...requestData,
-      endpoint: 'https://api.mayar.id/hl/v1/payment/create',
-      apiKey: apiKey,
-      webhookToken: webhookToken
-    };
-
-    const fetchResponse = await fetch(`${origin}/api/mayar-proxy`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(proxyRequestData),
-      // Increase timeout for fetch using AbortController if needed
-      signal: AbortSignal.timeout(15000)
-    });
-
-    if (!fetchResponse.ok) {
-      const errorText = await fetchResponse.text();
-      throw new Error(`Proxy error: ${fetchResponse.status} ${fetchResponse.statusText} - ${errorText}`);
-    }
-
-    const responseData = await fetchResponse.json();
-    const response = { data: responseData }; // shim for legacy axios extraction below
-
-    console.log('Mayar API response:', response.data);
-    console.log('Full Mayar response for debugging:', JSON.stringify(response.data, null, 2));
-
-    // Ekstrak payment URL dan ID dari response
-    let paymentUrl = '';
-    let invoiceId = '';
-
-    // Coba berbagai format response
-    // PRIORITASKAN transactionId karena itu yang dikirim di webhook!
-    if (response.data.data && response.data.data.link) {
-      paymentUrl = response.data.data.link;
-      // Coba transactionId dulu, baru id, baru transaction_id
-      invoiceId = response.data.data.transactionId || response.data.data.transaction_id || response.data.data.id || '';
-      console.log('Extracted from data.data.link - transactionId:', response.data.data.transactionId, 'id:', response.data.data.id);
-    } else if (response.data.payment_url) {
-      paymentUrl = response.data.payment_url;
-      invoiceId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
-      console.log('Extracted from payment_url - transactionId:', response.data.transactionId, 'id:', response.data.id);
-    } else if (response.data.url) {
-      paymentUrl = response.data.url;
-      invoiceId = response.data.transactionId || response.data.transaction_id || response.data.id || '';
-      console.log('Extracted from url - transactionId:', response.data.transactionId, 'id:', response.data.id);
-    } else if (response.data.data && response.data.data.url) {
-      paymentUrl = response.data.data.url;
-      invoiceId = response.data.data.transactionId || response.data.data.transaction_id || response.data.data.id || '';
-      console.log('Extracted from data.data.url - transactionId:', response.data.data.transactionId, 'id:', response.data.data.id);
-    }
-
-    // Jika tidak ada URL yang ditemukan, throw error
-    if (!paymentUrl || !invoiceId) {
-      console.error('Could not extract payment URL or invoice ID from response:', response.data);
-      throw new Error('Tidak dapat menemukan URL pembayaran atau ID invoice dalam respons');
-    }
-
-    console.log('Manual invoice created successfully:', { invoiceId, paymentUrl });
-    console.log('IMPORTANT: Saving payment_id to database:', invoiceId);
-
-    // Return payment ID dan invoice URL
-    return {
-      payment_id: invoiceId,
-      invoice_url: paymentUrl
-    };
-  } catch (err) {
-    const error = err as any;
-    console.error('Error creating manual invoice:', error);
-
-    // Log error details untuk debugging
-    if (error.response) {
-      console.error('Mayar API error response:', {
-        status: error.response.status,
-        data: error.response.data
-      });
-    }
-
-    throw new Error(error.message || 'Gagal membuat invoice manual');
   }
 };
