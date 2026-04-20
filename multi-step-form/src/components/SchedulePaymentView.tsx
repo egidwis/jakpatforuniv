@@ -12,6 +12,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { supabase, updateScheduleDates, updateFormStatus, createInvoice, createTransaction, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchSlotAvailability } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
 import { createManualInvoice } from '../utils/payment';
@@ -66,6 +72,7 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
     const [regularCountsByDate, setRegularCountsByDate] = useState<Record<string, number>>({});
     const [extraCountsByDate, setExtraCountsByDate] = useState<Record<string, number>>({});
+    const [slotDetails, setSlotDetails] = useState<Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>>>({});
 
     const submissionDuration = submission.duration || 1;
     const calendarRef = useRef<HTMLDivElement>(null);
@@ -155,9 +162,12 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
     const fetchExistingAds = async () => {
         setIsFetchingAds(true);
         try {
-            const { regularCounts, extraCounts } = await fetchSlotAvailability(submission.id);
+            const { regularCounts, extraCounts, details } = await fetchSlotAvailability(submission.id);
             setRegularCountsByDate(regularCounts);
             setExtraCountsByDate(extraCounts);
+            if (details) {
+                setSlotDetails(details);
+            }
         } catch (error) {
             console.error("Failed to fetch ads for capacity checking:", error);
             toast.error("Failed to check schedule capacity.");
@@ -695,27 +705,58 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
                                     const dotColor = displayCount > activeMaxPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
 
+                                    const detailsForDate = slotDetails[dateStr] || [];
+
                                     return (
-                                        <button
-                                            key={dateStr}
-                                            type="button"
-                                            disabled={isFull}
-                                            onClick={() => setStartDate(date)}
-                                            className={`flex flex-col items-center justify-center p-1 h-[76px] rounded-xl border transition-all text-[13px] text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
-                                        >
-                                            <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                                                {date.toLocaleDateString('id-ID', { weekday: 'short' })}
-                                            </span>
-                                            <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
-                                                {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                                            </span>
-                                            <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
-                                                <div className={`w-1 h-1 rounded-full ${dotColor}`} />
-                                                <span className={`text-[9px] font-semibold ${displayCount > activeMaxPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
-                                                    {displayCount}/{activeMaxPerDay}
-                                                </span>
-                                            </div>
-                                        </button>
+                                        <TooltipProvider key={dateStr} delayDuration={100}>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isFull}
+                                                        onClick={() => setStartDate(date)}
+                                                        className={`flex flex-col items-center justify-center p-1 h-[76px] rounded-xl border transition-all text-[13px] text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
+                                                    >
+                                                        <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+                                                            {date.toLocaleDateString('id-ID', { weekday: 'short' })}
+                                                        </span>
+                                                        <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
+                                                            {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                                        </span>
+                                                        <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
+                                                            <div className={`w-1 h-1 rounded-full ${dotColor}`} />
+                                                            <span className={`text-[9px] font-semibold ${displayCount > activeMaxPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
+                                                                {displayCount}/{activeMaxPerDay}
+                                                            </span>
+                                                        </div>
+                                                    </button>
+                                                </TooltipTrigger>
+                                                {detailsForDate.length > 0 && (
+                                                    <TooltipContent side="top" className="max-w-[280px] p-0 overflow-hidden shadow-xl" align="center">
+                                                        <div className="bg-slate-50 px-3 py-2 border-b border-slate-100 font-semibold text-[11px] uppercase tracking-wider text-slate-500">
+                                                            Slots booked on {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                                        </div>
+                                                        <div className="flex flex-col max-h-[220px] overflow-y-auto">
+                                                            {detailsForDate.map((ad, idx) => (
+                                                                <div key={idx} className="p-3 text-sm border-b last:border-0 border-slate-100 bg-white hover:bg-slate-50 transition-colors">
+                                                                    <div className="font-semibold text-sm text-slate-800 leading-tight mb-1.5">{ad.title}</div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {ad.isExtra ? (
+                                                                            <span className="bg-amber-100 text-amber-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide">Extra Ad</span>
+                                                                        ) : (
+                                                                            <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide">Reg Ad</span>
+                                                                        )}
+                                                                        <span className="bg-slate-100 text-slate-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide">
+                                                                            {ad.status.replace('_', ' ')}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </TooltipContent>
+                                                )}
+                                            </Tooltip>
+                                        </TooltipProvider>
                                     );
                                 })}
                             </div>

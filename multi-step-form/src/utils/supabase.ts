@@ -927,11 +927,12 @@ export const fetchSlotAvailability = async (
 ): Promise<{
   regularCounts: Record<string, number>;
   extraCounts: Record<string, number>;
+  details: Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>>;
 }> => {
   try {
     const { data: slotsFromSubmissions, error: subError } = await supabase
       .from('form_submissions')
-      .select('id, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status')
+      .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status')
       .not('start_date', 'is', null)
       .not('submission_status', 'in', '("rejected","spam","in_review","completed")');
 
@@ -969,6 +970,7 @@ export const fetchSlotAvailability = async (
 
     const regularCounts: Record<string, number> = {};
     const extraCounts: Record<string, number> = {};
+    const details: Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>> = {};
 
     activeSlots.forEach((slot: any) => {
       if (slot.start_date && slot.end_date && slot.id !== excludeSubmissionId) {
@@ -983,12 +985,23 @@ export const fetchSlotAvailability = async (
         while (current < endDay) {
           const dateStr = getDateString(current);
           targetCounts[dateStr] = (targetCounts[dateStr] || 0) + 1;
+          
+          if (!details[dateStr]) {
+            details[dateStr] = [];
+          }
+          details[dateStr].push({
+            id: slot.id,
+            title: slot.title || 'Untitled Ad',
+            isExtra,
+            status: slot.submission_status
+          });
+
           current.setDate(current.getDate() + 1);
         }
       }
     });
 
-    return { regularCounts, extraCounts };
+    return { regularCounts, extraCounts, details };
   } catch (error) {
     console.error("Failed to fetch ads for capacity checking:", error);
     throw error;
