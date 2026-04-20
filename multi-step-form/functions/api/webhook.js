@@ -202,7 +202,7 @@ export async function onRequest(context) {
                     },
                     body: JSON.stringify({
                       payment_status: appStatus === 'completed' ? 'paid' : appStatus,
-                      submission_status: appStatus === 'completed' ? 'in_review' : undefined
+                      submission_status: appStatus === 'completed' ? 'paid' : undefined
                     })
                   }
                 );
@@ -260,7 +260,7 @@ export async function onRequest(context) {
               },
               body: JSON.stringify({
                 payment_status: appStatus === 'completed' ? 'paid' : appStatus,
-                submission_status: appStatus === 'completed' ? 'in_review' : undefined
+                submission_status: appStatus === 'completed' ? 'paid' : undefined
               })
             }
           );
