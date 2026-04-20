@@ -58,23 +58,16 @@ export async function onRequest(context) {
     // event already declared above
 
     // Format 1: Mayar standard format dengan event dan data
-    if (requestData.data && requestData.data.id) {
-      paymentId = requestData.data.id;
-      status = requestData.data.status || '';
-    }
-    // Format 1a: Mayar standard format dengan event dan data.transactionId (Paylater/Generic)
-    else if (requestData.data && requestData.data.transactionId) {
-      paymentId = requestData.data.transactionId;
+    if (requestData.data) {
+      // Mayar Webhook "payment.received" untuk payment_request (invoice) biasanya
+      // memberikan ID invoice aslinya di "productId", sedangkan "id" adalah transaction id baru.
+      // Kita cek productId dulu, lalu transactionId, lalu id.
+      paymentId = requestData.data.productId || requestData.data.transactionId || requestData.data.id || '';
       status = requestData.data.status || '';
     }
     // Format 2: id dan status langsung di root
     else if (requestData.id) {
-      paymentId = requestData.id;
-      status = requestData.status || '';
-    }
-    // Format 3: transaction_id dan status
-    else if (requestData.transaction_id) {
-      paymentId = requestData.transaction_id;
+      paymentId = requestData.productId || requestData.transaction_id || requestData.id;
       status = requestData.status || '';
     }
 
