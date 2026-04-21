@@ -27,11 +27,8 @@ export interface InvoiceData {
 // -------------------------------------------------------------------------------- //
 // FEATURE FLAG: MAYAR vs DOKU
 const getPaymentGatewayProvider = () => {
-  // HARDCODED Fallback sementara agar Vite tidak bingung saat build
-  return 'mayar'; 
-  
-  // Nanti kembalikan jadi begini jika test DOKU:
-  // return import.meta.env.VITE_PAYMENT_GATEWAY === 'doku' ? 'doku' : 'mayar';
+  // Toggle dinamis berdasarkan environment variable
+  return import.meta.env.VITE_PAYMENT_GATEWAY === 'doku' ? 'doku' : 'mayar';
 };
 // -------------------------------------------------------------------------------- //
 
@@ -108,7 +105,7 @@ const createDokuPayment = async (paymentData: PaymentData) => {
         email: customerInfo.email || 'user@example.com',
         phone: customerInfo.phoneNumber || ''
       },
-      callback_url: `${origin}/payment-success?id=${formSubmissionId}`
+      callback_url: `${origin}/dashboard/status`
     };
 
     const response = await axios.post(`${origin}/api/doku/checkout`, requestData, { timeout: 15000 });
@@ -264,7 +261,7 @@ const createDokuManualInvoice = async (invoiceData: InvoiceData) => {
         email: customerInfo?.email || 'client@example.com',
         phone: customerInfo?.phoneNumber || ''
       },
-      callback_url: `${origin}/payment-success?form_id=${formSubmissionId}`,
+      callback_url: `${origin}/dashboard/status`,
       payment_due_date: 60 * 24 * 7 // 7 Hari
     };
 
