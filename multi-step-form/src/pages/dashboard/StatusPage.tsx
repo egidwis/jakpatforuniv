@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, prepareForReschedule, type FormSubmission } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,11 +21,46 @@ const getStatusSteps = (t: any) => [
     { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper'), completedHelper: t('statusCompletedHelper') },
 ];
 
-// Get the current step index based on submission_status (single source of truth)
+// Get the current step index based on submission_status and related data
+// This ensures sync between admin dashboard and user track status
 function getCurrentStepIndex(submission: FormSubmission): number {
     const status = (submission.submission_status || 'in_review').toLowerCase();
+    const paymentStatus = (submission.payment_status || 'pending').toLowerCase();
+    
+    // Check if page is scheduled (has start_date and end_date)
+    // This happens when admin has created and scheduled the page
+    const isScheduled = submission.start_date && submission.end_date;
+    const now = new Date();
+    const startDate = submission.start_date ? new Date(submission.start_date) : null;
+    const endDate = submission.end_date ? new Date(submission.end_date) : null;
+    const isLive = isScheduled && startDate && endDate && startDate <= now && endDate >= now;
+    const isCompleted = isScheduled && endDate && endDate < now;
 
-    // Direct mapping — no cross-referencing needed
+    // Priority logic for status sync:
+    // 1. If completed (end date passed) → step 4
+    // 2. If live (currently running) → step 3
+    // 3. If scheduled (has dates) → step 3
+    // 4. If paid → step 2 (unless already scheduled)
+    // 5. Otherwise use submission_status mapping
+    
+    if (isCompleted || status === 'completed') {
+        return 4;
+    }
+    
+    if (isLive || status === 'live') {
+        return 3;
+    }
+    
+    if (isScheduled || status === 'scheduled') {
+        return 3;
+    }
+    
+    // If payment is paid but not yet scheduled → step 2 (payment done, waiting for page)
+    if (paymentStatus === 'paid' || status === 'paid') {
+        return 2;
+    }
+
+    // Direct mapping for other statuses
     const statusToStep: Record<string, number> = {
         'in_review': 0,
         'approved': 0,    // approved but not yet scheduled
@@ -33,10 +68,7 @@ function getCurrentStepIndex(submission: FormSubmission): number {
         'spam': -1,       // special case → hidden/revision view
         'slot_reserved': 1,
         'waiting_payment': 2,
-        'paid': 2,           // step 2 completed, waiting for page creation
-        'scheduled': 3,      // page created, waiting for start_date
-        'live': 3,           // ad is currently live
-        'completed': 4,
+        'expired': 1,        // payment expired → back to slot selection step
         // Legacy status support (in case migration not yet run)
         'scheduling': 1,
         'publishing': 3,
@@ -527,7 +559,7 @@ export function StatusPage() {
 
     const steps = getStatusSteps(t);
 
-    const getStatusBadgeInfo = (currentStep: number) => {
+    const getStatusBadgeInfo = (currentStep: number, submission?: FormSubmission) => {
         if (currentStep === -1) {
             return {
                 label: t('statusRevisionNeeded'),
@@ -539,6 +571,27 @@ export function StatusPage() {
 
         const step = steps[currentStep];
         let color = 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
+        let label = step.label;
+
+        // Override label for publishing step based on actual status
+        if (step.key === 'publishing' && submission) {
+            const now = new Date();
+            const startDate = submission.start_date ? new Date(submission.start_date) : null;
+            const endDate = submission.end_date ? new Date(submission.end_date) : null;
+            const isLive = startDate && endDate && startDate <= now && endDate >= now;
+            const isCompleted = endDate && endDate < now;
+            
+            if (isCompleted) {
+                label = 'Completed';
+                color = 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800';
+            } else if (isLive) {
+                label = 'Live';
+                color = 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800';
+            } else if (startDate && startDate > now) {
+                label = 'Ready to Launch';  // Scheduled but not yet live
+                color = 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800';
+            }
+        }
 
         switch (step.key) {
             case 'in_review':
@@ -552,7 +605,10 @@ export function StatusPage() {
                 color = 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800';
                 break;
             case 'publishing':
-                color = 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800';
+                // Color already set above based on actual status
+                if (!submission) {
+                    color = 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800';
+                }
                 break;
             case 'completed':
                 color = 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800';
@@ -560,7 +616,7 @@ export function StatusPage() {
         }
 
         return {
-            label: step.label,
+            label,
             color,
             icon: <step.icon className="w-4 h-4" />,
             style: step.key === 'in_review' ? { backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0077cc', borderColor: 'rgba(0, 145, 255, 0.2)' } : {}
@@ -701,7 +757,7 @@ export function StatusPage() {
                                         // Auto-approval logic
                                         const isUserBooked = submission.slot_booked_by === 'user';
                                         const isPaymentExpired = submission.payment_status === 'expired';
-                                        const isExpired = isPaymentExpired || (isUserBooked && submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 60_000)); // Testing: 1 minute
+                                        const isExpired = isPaymentExpired || (isUserBooked && submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 3600_000)); // 1 hour expiration
                                         
                                         // Force UI to regress to 'slot_reserved' step if expired, regardless of what DB says
                                         const currentStep = (isExpired && submission.payment_status !== 'paid') ? 1 : currentStepRaw;
@@ -714,7 +770,7 @@ export function StatusPage() {
                                                 icon: <AlertCircle className="w-4 h-4" />,
                                                 style: {}
                                             }
-                                            : getStatusBadgeInfo(currentStep);
+                                            : getStatusBadgeInfo(currentStep, submission);
 
                                         let finalPaymentLink = paymentLinks[submission.id!];
                                         if (!finalPaymentLink && isUserBooked && !isExpired && currentStep === 2) {
@@ -827,36 +883,57 @@ export function StatusPage() {
                                                             invoiceId={invoiceIds[submission.id!] || null}
                                                             steps={getStatusSteps(t)}
                                                             isExpired={isExpired}
-                                                            onReschedule={() => {
-                                                                const recoveredData = {
-                                                                    surveyUrl: submission.survey_url || '',
-                                                                    title: submission.title || '',
-                                                                    description: submission.description || '',
-                                                                    questionCount: submission.question_count || 0,
-                                                                    criteriaResponden: submission.criteria_responden || '',
-                                                                    duration: submission.duration || 1,
-                                                                    startDate: '',
-                                                                    endDate: '',
-                                                                    fullName: submission.full_name || '',
-                                                                    email: submission.email || '',
-                                                                    phoneNumber: submission.phone_number || '',
-                                                                    university: submission.university || '',
-                                                                    department: submission.department || '',
-                                                                    status: submission.status || '',
-                                                                    referralSource: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? 'Lainnya' : (submission.referral_source || ''),
-                                                                    referralSourceOther: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? submission.referral_source.replace('Lainnya: ', '') : '',
-                                                                    winnerCount: submission.winner_count || 0,
-                                                                    prizePerWinner: submission.prize_per_winner || 0,
-                                                                    voucherCode: submission.voucher_code || '',
-                                                                    detectedKeywords: submission.detected_keywords || [],
-                                                                    isManualEntry: submission.submission_method === 'manual',
-                                                                    submissionIdToReplace: submission.id,
-                                                                };
-                                                                localStorage.setItem('survey_form_draft', JSON.stringify({
-                                                                    formData: recoveredData,
-                                                                    currentStep: 3
-                                                                }));
-                                                                navigate('/dashboard/submit');
+                                                            onReschedule={async () => {
+                                                                // Show loading toast
+                                                                const loadingToast = toast.loading('Mempersiapkan jadwal ulang...');
+                                                                
+                                                                try {
+                                                                    // First, prepare the submission for reschedule (reset slot and payment state)
+                                                                    await prepareForReschedule(submission.id!);
+                                                                    
+                                                                    // Prepare recovered data for the form
+                                                                    const recoveredData = {
+                                                                        surveyUrl: submission.survey_url || '',
+                                                                        title: submission.title || '',
+                                                                        description: submission.description || '',
+                                                                        questionCount: submission.question_count || 0,
+                                                                        criteriaResponden: submission.criteria_responden || '',
+                                                                        duration: submission.duration || 1,
+                                                                        startDate: '',
+                                                                        endDate: '',
+                                                                        fullName: submission.full_name || '',
+                                                                        email: submission.email || '',
+                                                                        phoneNumber: submission.phone_number || '',
+                                                                        university: submission.university || '',
+                                                                        department: submission.department || '',
+                                                                        status: submission.status || '',
+                                                                        referralSource: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? 'Lainnya' : (submission.referral_source || ''),
+                                                                        referralSourceOther: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? submission.referral_source.replace('Lainnya: ', '') : '',
+                                                                        winnerCount: submission.winner_count || 0,
+                                                                        prizePerWinner: submission.prize_per_winner || 0,
+                                                                        voucherCode: submission.voucher_code || '',
+                                                                        detectedKeywords: submission.detected_keywords || [],
+                                                                        isManualEntry: submission.submission_method === 'manual',
+                                                                        isReschedule: true,
+                                                                        submissionIdToReplace: submission.id,
+                                                                    };
+                                                                    
+                                                                    // Save to localStorage
+                                                                    localStorage.setItem('survey_form_draft', JSON.stringify({
+                                                                        formData: recoveredData,
+                                                                        currentStep: 3
+                                                                    }));
+                                                                    
+                                                                    toast.dismiss(loadingToast);
+                                                                    toast.success('Silakan pilih slot baru untuk jadwal ulang');
+                                                                    
+                                                                    // Navigate to submit page
+                                                                    navigate('/dashboard/submit');
+                                                                } catch (error) {
+                                                                    console.error('Error preparing for reschedule:', error);
+                                                                    toast.dismiss(loadingToast);
+                                                                    toast.error('Gagal mempersiapkan jadwal ulang. Silakan coba lagi.');
+                                                                }
                                                             }}
                                                         />
                                                     )}

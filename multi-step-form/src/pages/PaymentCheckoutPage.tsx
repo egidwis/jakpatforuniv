@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getFormSubmissionById, releaseExpiredSlot } from '../utils/supabase';
+import { getFormSubmissionById, releaseExpiredSlot, prepareForReschedule } from '../utils/supabase';
 import { createPayment } from '../utils/simple-payment';
 import { toast } from 'sonner';
 import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw, CheckCircle } from 'lucide-react';
@@ -14,7 +14,7 @@ export function PaymentCheckoutPage() {
 
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [timeLeft, setTimeLeft] = useState<number>(60); // Testing: 1 minute default
+  const [timeLeft, setTimeLeft] = useState<number>(3600); // 1 hour default
   const [isExpired, setIsExpired] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
@@ -43,7 +43,7 @@ export function PaymentCheckoutPage() {
 
       if (data.slot_reserved_at) {
         const reservedAt = new Date(data.slot_reserved_at).getTime();
-        const oneHourAfter = reservedAt + 60 * 1000; // Testing: 1 minute (60_000 ms)
+        const oneHourAfter = reservedAt + 3600 * 1000; // 1 hour (3,600,000 ms)
         const now = Date.now();
 
         if (now > oneHourAfter) {
@@ -196,37 +196,54 @@ export function PaymentCheckoutPage() {
                 {t('checkoutBackDashboard')}
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!submission) return;
-                  const recoveredData = {
-                    surveyUrl: submission.survey_url || '',
-                    title: submission.title || '',
-                    description: submission.description || '',
-                    questionCount: submission.question_count || 0,
-                    criteriaResponden: submission.criteria_responden || '',
-                    duration: submission.duration || 1,
-                    startDate: '',
-                    endDate: '',
-                    fullName: submission.full_name || '',
-                    email: submission.email || '',
-                    phoneNumber: submission.phone_number || '',
-                    university: submission.university || '',
-                    department: submission.department || '',
-                    status: submission.status || '',
-                    referralSource: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? 'Lainnya' : (submission.referral_source || ''),
-                    referralSourceOther: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? submission.referral_source.replace('Lainnya: ', '') : '',
-                    winnerCount: submission.winner_count || 0,
-                    prizePerWinner: submission.prize_per_winner || 0,
-                    voucherCode: submission.voucher_code || '',
-                    detectedKeywords: submission.detected_keywords || [],
-                    isManualEntry: submission.submission_method === 'manual',
-                    submissionIdToReplace: submission.id,
-                  };
-                  localStorage.setItem('survey_form_draft', JSON.stringify({
-                    formData: recoveredData,
-                    currentStep: 3
-                  }));
-                  navigate('/dashboard/submit');
+                  
+                  // Show loading toast
+                  const loadingToast = toast.loading('Mempersiapkan jadwal ulang...');
+                  
+                  try {
+                    // Prepare submission for reschedule
+                    await prepareForReschedule(submission.id);
+                    
+                    const recoveredData = {
+                      surveyUrl: submission.survey_url || '',
+                      title: submission.title || '',
+                      description: submission.description || '',
+                      questionCount: submission.question_count || 0,
+                      criteriaResponden: submission.criteria_responden || '',
+                      duration: submission.duration || 1,
+                      startDate: '',
+                      endDate: '',
+                      fullName: submission.full_name || '',
+                      email: submission.email || '',
+                      phoneNumber: submission.phone_number || '',
+                      university: submission.university || '',
+                      department: submission.department || '',
+                      status: submission.status || '',
+                      referralSource: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? 'Lainnya' : (submission.referral_source || ''),
+                      referralSourceOther: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? submission.referral_source.replace('Lainnya: ', '') : '',
+                      winnerCount: submission.winner_count || 0,
+                      prizePerWinner: submission.prize_per_winner || 0,
+                      voucherCode: submission.voucher_code || '',
+                      detectedKeywords: submission.detected_keywords || [],
+                      isManualEntry: submission.submission_method === 'manual',
+                      isReschedule: true,
+                      submissionIdToReplace: submission.id,
+                    };
+                    localStorage.setItem('survey_form_draft', JSON.stringify({
+                      formData: recoveredData,
+                      currentStep: 3
+                    }));
+                    
+                    toast.dismiss(loadingToast);
+                    toast.success('Silakan pilih slot baru untuk jadwal ulang');
+                    navigate('/dashboard/submit');
+                  } catch (error) {
+                    console.error('Error preparing for reschedule:', error);
+                    toast.dismiss(loadingToast);
+                    toast.error('Gagal mempersiapkan jadwal ulang. Silakan coba lagi.');
+                  }
                 }}
                 className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors shadow-md flex justify-center items-center gap-2"
               >

@@ -28,6 +28,10 @@ export interface SurveyFormData {
 
   // Step 3: Review & Pembayaran
   voucherCode?: string;
+
+  // Reschedule metadata
+  isReschedule?: boolean; // Flag untuk menandai ini adalah jadwal ulang
+  submissionIdToReplace?: string; // ID submission yang akan di-update saat reschedule
 }
 
 // Tipe data untuk perhitungan biaya

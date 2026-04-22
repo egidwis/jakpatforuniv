@@ -254,6 +254,27 @@ export const saveFormSubmission = async (formData: FormSubmission) => {
   }
 };
 
+// Fungsi untuk update form submission by ID (used for reschedule)
+export const updateFormSubmissionById = async (id: string, formData: Partial<FormSubmission>) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .update({
+        ...formData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error('Submission not found');
+    return data[0];
+  } catch (error: any) {
+    console.error('Error updating form submission:', error);
+    throw error;
+  }
+};
+
 // Fungsi untuk membuat transaksi
 export const createTransaction = async (transaction: Transaction) => {
   try {
@@ -1088,6 +1109,66 @@ export const releaseExpiredSlot = async (submissionId: string) => {
     return true;
   } catch (error) {
     console.error("Failed to release expired slot:", error);
+    throw error;
+  }
+};
+
+/**
+ * Prepare a submission for reschedule by user.
+ * This resets the slot and payment state while preserving the survey data.
+ * Unlike releaseExpiredSlot, this keeps the submission active for editing.
+ * 
+ * Status is set to 'approved' because:
+ * - The form has already been approved (either auto or by admin)
+ * - The slot is now available for re-booking
+ * - This is semantically correct: approved but not yet scheduled
+ */
+export const prepareForReschedule = async (submissionId: string) => {
+  try {
+    // 1. Clear slot data and reset payment status to pending
+    // Status becomes 'approved' (form approved, slot cleared, ready for re-booking)
+    const { error: subError } = await supabase
+      .from('form_submissions')
+      .update({
+        start_date: null,
+        end_date: null,
+        slot_booked_by: null,
+        slot_reserved_at: null,
+        submission_status: 'approved',
+        payment_status: 'pending',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', submissionId);
+
+    if (subError) throw subError;
+
+    // 2. Mark all pending transactions as expired & close Mayar links
+    const { data: pendingTxs } = await supabase
+      .from('transactions')
+      .select('id, payment_id, payment_method')
+      .eq('form_submission_id', submissionId)
+      .eq('status', 'pending');
+
+    if (pendingTxs && pendingTxs.length > 0) {
+      // Mark as expired in DB
+      await supabase
+        .from('transactions')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .in('id', pendingTxs.map(t => t.id));
+
+      // Close Mayar links (fire-and-forget, non-fatal)
+      for (const tx of pendingTxs) {
+        if (tx.payment_method === 'mayar' && tx.payment_id) {
+          closeMayarPaymentLink(tx.payment_id).catch(e =>
+            console.warn('Non-fatal: failed to close Mayar link', tx.payment_id, e)
+          );
+        }
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Failed to prepare submission for reschedule:", error);
     throw error;
   }
 };

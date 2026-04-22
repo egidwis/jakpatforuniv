@@ -26,7 +26,7 @@ export interface InvoiceData {
 
 // -------------------------------------------------------------------------------- //
 // FEATURE FLAG: MAYAR vs DOKU
-const getPaymentGatewayProvider = () => {
+export const getPaymentGatewayProvider = () => {
   // Toggle dinamis berdasarkan environment variable
   return import.meta.env.VITE_PAYMENT_GATEWAY === 'doku' ? 'doku' : 'mayar';
 };

@@ -198,13 +198,29 @@ export function MultiStepForm() {
   };
 
   const handleReset = async () => {
-    if (confirm(t('confirmCancelSubmission'))) {
-      const draft = localStorage.getItem(STORAGE_KEY);
+    const draft = localStorage.getItem(STORAGE_KEY);
+    let isReschedule = false;
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        isReschedule = parsed.formData?.isReschedule || false;
+      } catch (error) {
+        console.error("Error reading draft:", error);
+      }
+    }
+
+    // Different confirmation message for reschedule vs new submission
+    const confirmMessage = isReschedule 
+      ? 'Batalkan jadwal ulang? Data survey Anda tetap tersimpan dan bisa dijadwalkan ulang nanti.'
+      : t('confirmCancelSubmission');
+
+    if (confirm(confirmMessage)) {
       if (draft) {
         try {
           const parsed = JSON.parse(draft);
-          // If this form is replacing an expired submission and the user cancels it, delete the original
-          if (parsed.formData && (parsed.formData as any).submissionIdToReplace) {
+          // Only delete submission if it's NOT a reschedule
+          // For reschedule, the submission is already prepared and should be kept
+          if (!isReschedule && parsed.formData && (parsed.formData as any).submissionIdToReplace) {
              const idToDelete = (parsed.formData as any).submissionIdToReplace;
              await deleteFormSubmission(idToDelete);
           }

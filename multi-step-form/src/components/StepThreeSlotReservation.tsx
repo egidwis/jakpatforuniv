@@ -3,6 +3,7 @@ import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
 import { Calendar, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { fetchSlotAvailability } from '../utils/supabase';
+import { useLanguage } from '../i18n/LanguageContext';
 import {
     Tooltip,
     TooltipContent,
@@ -28,6 +29,9 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
   const { t } = useLanguage();
   const [selectedDate, setSelectedDate] = useState<Date | null>(
     formData.startDate ? new Date(formData.startDate) : null
+  );
+  const [selectedTime, setSelectedTime] = useState<string>(
+    formData.startTime || "15:00"
   );
   const [isFetchingAds, setIsFetchingAds] = useState(false);
   const [regularCountsByDate, setRegularCountsByDate] = useState<Record<string, number>>({});
@@ -173,7 +177,10 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
                         <button
                           type="button"
                           disabled={isFull}
-                          onClick={() => setSelectedDate(date)}
+                          onClick={() => {
+                            setSelectedDate(date);
+                            setSelectedTime("15:00");
+                          }}
                           className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
                         >
                           <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">

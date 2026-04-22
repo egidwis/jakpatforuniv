@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/tooltip';
 import { supabase, updateScheduleDates, updateFormStatus, createInvoice, createTransaction, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchSlotAvailability } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
-import { createManualInvoice } from '../utils/payment';
+import { createManualInvoice, getPaymentGatewayProvider } from '../utils/payment';
 import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
 
 // Max 3 regular ads per day, 1 extra ad per day
@@ -526,10 +526,14 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
             await createInvoice(invoiceData);
 
+            // Determine payment method based on provider
+            const provider = getPaymentGatewayProvider();
+            const paymentMethod = provider === 'doku' ? 'doku' : 'mayar_manual_invoice';
+
             const transactionData: Transaction = {
                 form_submission_id: submission.id,
                 payment_id: mayarResponse.payment_id,
-                payment_method: 'mayar_manual_invoice',
+                payment_method: paymentMethod,
                 amount: totalAmount,
                 status: 'pending',
                 payment_url: mayarResponse.invoice_url,

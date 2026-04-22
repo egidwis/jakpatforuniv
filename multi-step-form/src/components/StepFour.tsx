@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
-import { saveFormSubmission, deleteFormSubmission, type FormSubmission } from '../utils/supabase';
+import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, type FormSubmission } from '../utils/supabase';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -160,6 +160,10 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         }
       }
 
+      // Check if this is a reschedule
+      const isReschedule = !!(formData as any).submissionIdToReplace;
+      const submissionIdToReplace = (formData as any).submissionIdToReplace;
+
       // Siapkan data untuk disimpan ke Supabase
       const submissionData: FormSubmission = {
         survey_url: formData.surveyUrl,
@@ -196,23 +200,22 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
       // Simpan data ke Supabase dengan penanganan error yang lebih baik
       let savedData;
       try {
-        savedData = await saveFormSubmission(submissionData);
-        console.log('Data berhasil disimpan:', savedData);
+        if (isReschedule && submissionIdToReplace) {
+          // For reschedule: update existing submission instead of creating new
+          console.log('Rescheduling submission:', submissionIdToReplace);
+          savedData = await updateFormSubmissionById(submissionIdToReplace, submissionData);
+          console.log('Submission updated successfully:', savedData);
+        } else {
+          // For new submission: create new record
+          savedData = await saveFormSubmission(submissionData);
+          console.log('New submission saved:', savedData);
+        }
 
         // Kirim data ke Google Sheets secara background hanya untuk Google Forms
         // Manual forms akan dikirim di bagian isManualForm
         if (savedData && savedData.id && !isManualForm) {
           console.log('Mengirim data Google Form ke Google Sheets untuk form ID:', savedData.id);
           sendToGoogleSheetsBackground(savedData.id, 'google_form_submission');
-        }
-
-        // Jika ini adalah jadwal ulang yang menggantikan expired slot, hapus yang lama
-        if ((formData as any).submissionIdToReplace) {
-          try {
-            await deleteFormSubmission((formData as any).submissionIdToReplace);
-          } catch(e) {
-            console.error('Failed to delete old submission after successful reschedule', e);
-          }
         }
       } catch (saveError: any) {
         console.error('Error saat menyimpan data:', saveError);
