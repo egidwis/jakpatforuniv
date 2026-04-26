@@ -25,7 +25,7 @@ import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, ca
 
 // Max 3 regular ads per day, 1 extra ad per day
 const MAX_ADS_PER_DAY = 3;
-const MAX_EXTRA_ADS_PER_DAY = 1;
+const MAX_EXTRA_ADS_PER_DAY = 3;
 
 interface SchedulePaymentViewProps {
     submission: {
@@ -136,7 +136,14 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                     .select('is_extra_ad')
                     .eq('submission_id', submission.id)
                     .maybeSingle();
-                const isExtra = !!page?.is_extra_ad;
+                
+                const { data: subData } = await supabase
+                    .from('form_submissions')
+                    .select('admin_notes')
+                    .eq('id', submission.id)
+                    .maybeSingle();
+
+                const isExtra = !!page?.is_extra_ad || (subData?.admin_notes || '').includes('[EXTRA_AD]');
                 setExistingIsExtra(isExtra);
                 setIsExtraMode(isExtra);
 
@@ -280,12 +287,26 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
             await updateFormStatus(submission.id!, 'slot_reserved');
 
-            // Set slot_booked_by to 'admin'
+            // Set slot_booked_by to 'admin' and append [EXTRA_AD] if needed
+            const { data: currentSubForNotes } = await supabase
+                .from('form_submissions')
+                .select('admin_notes')
+                .eq('id', submission.id)
+                .single();
+            
+            let newAdminNotes = currentSubForNotes?.admin_notes || '';
+            if (isExtraMode && !newAdminNotes.includes('[EXTRA_AD]')) {
+                newAdminNotes += (newAdminNotes ? '\n' : '') + '[EXTRA_AD]';
+            } else if (!isExtraMode && newAdminNotes.includes('[EXTRA_AD]')) {
+                newAdminNotes = newAdminNotes.replace('\n[EXTRA_AD]', '').replace('[EXTRA_AD]', '');
+            }
+
             await supabase
                 .from('form_submissions')
                 .update({ 
                     slot_booked_by: 'admin', 
-                    slot_reserved_at: new Date().toISOString() 
+                    slot_reserved_at: new Date().toISOString(),
+                    admin_notes: newAdminNotes
                 })
                 .eq('id', submission.id);
 

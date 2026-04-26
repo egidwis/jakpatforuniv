@@ -953,7 +953,7 @@ export const fetchSlotAvailability = async (
   try {
     const { data: slotsFromSubmissions, error: subError } = await supabase
       .from('form_submissions')
-      .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status')
+      .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status, admin_notes')
       .not('start_date', 'is', null)
       .not('submission_status', 'in', '("rejected","spam","in_review","completed")');
 
@@ -1000,7 +1000,7 @@ export const fetchSlotAvailability = async (
         const endDay = new Date(slot.end_date);
         endDay.setHours(0, 0, 0, 0);
 
-        const isExtra = extraAdMap[slot.id] || false;
+        const isExtra = extraAdMap[slot.id] || (slot.admin_notes || '').includes('[EXTRA_AD]');
         const targetCounts = isExtra ? extraCounts : regularCounts;
 
         while (current < endDay) {
