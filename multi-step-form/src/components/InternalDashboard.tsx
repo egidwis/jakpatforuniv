@@ -101,6 +101,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null;
     invoiceCount: number;
     latestPaymentUrl: string | null;
+    latestAmount?: number;
   }>>({});
 
   // Edit Criteria Modal State
@@ -122,7 +123,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [pageBuilderData, setPageBuilderData] = useState<any>(null);
 
   // Map submission_id -> page data (slug, is_published)
-  const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null }>>({});
+  const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }>>({});
 
   // Admin Access Check
   // STRICT: Only product@jakpat.net is allowed
@@ -236,15 +237,15 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           // 1. Fetch Pages
           const { data: pages, error: pagesError } = await supabase
             .from('survey_pages')
-            .select('submission_id, slug, is_published, publish_start_date, publish_end_date')
+            .select('submission_id, slug, is_published, publish_start_date, publish_end_date, title, is_extra_ad')
             .in('submission_id', submissionIds);
 
           if (pagesError) console.error('Error fetching survey pages:', pagesError);
 
           if (pages) {
-            const pageMap: Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null }> = {};
+            const pageMap: Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }> = {};
             pages.forEach(p => {
-              pageMap[p.submission_id] = { slug: p.slug, is_published: p.is_published, publish_start_date: p.publish_start_date, publish_end_date: p.publish_end_date };
+              pageMap[p.submission_id] = { slug: p.slug, is_published: p.is_published, publish_start_date: p.publish_start_date, publish_end_date: p.publish_end_date, title: p.title, is_extra_ad: p.is_extra_ad };
             });
             setExistingPages(pageMap);
           }
@@ -252,7 +253,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           // 2. Fetch Transactions (Invoices) to override Supabase defaults and get true state
           const { data: transactions, error: trxError } = await supabase
             .from('transactions')
-            .select('form_submission_id, status, created_at, payment_url')
+            .select('form_submission_id, status, created_at, payment_url, amount')
             .in('form_submission_id', submissionIds)
             .order('created_at', { ascending: false });
 
@@ -273,11 +274,12 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   hasInvoices: true,
                   latestStatus: latestStatus,
                   invoiceCount: subTxs.length,
-                  latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null
+                  latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null,
+                  latestAmount: subTxs[0].amount || 0
                 };
                 sub.payment_status = latestStatus;
               } else {
-                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
+                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0 };
                 if (sub.payment_status === 'pending') sub.payment_status = undefined;
               }
             });
@@ -1189,47 +1191,67 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
                           const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
                           const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
+                          // Calculate true expiration
+                          const reservedAtTime = submission.slot_reserved_at ? new Date(submission.slot_reserved_at).getTime() : 0;
+                          const isActuallyExpired = !isPaid && (
+                            paymentData.latestStatus === 'expired' || 
+                            submission.payment_status === 'expired' || 
+                            (submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
+                          );
+                          const hasValidSchedule = (hasSchedule || isLegacyActive) && !isActuallyExpired;
+
                           // If rejected, or if slot is cleared (expired), don't show active "Waiting Payment"
-                          const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && (hasSchedule || isLegacyActive);
+                          const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && hasValidSchedule;
 
                           // 1. Reserve Slot Button
                           let reserveBtn;
                           const RESERVABLE_STATUSES = ['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'];
                           const canReserveSlot = RESERVABLE_STATUSES.includes(submission.submission_status || '') || isLegacyActive;
 
-                          if (hasSchedule || isLegacyActive) {
-                            reserveBtn = (
-                              <div className="flex items-center gap-1.5 w-full">
-                                <div className="flex-1 flex flex-col justify-center px-2.5 min-h-[32px] py-1 bg-gray-50/80 border border-gray-200/70 rounded-md">
-                                  <div className="flex items-center gap-1.5 w-full">
-                                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                                    <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                    <span className="text-xs font-medium text-gray-700 tracking-wide truncate">
-                                      {isLegacyActive && !hasSchedule ? 'Scheduled (Legacy)' : 'Slot Reserved'}
-                                    </span>
-                                  </div>
-
-                                  {/* Display if booked by User along with expiration status */}
-                                  {submission.slot_booked_by === 'user' && (
-                                    <div className="flex items-center gap-1 pl-3.5 mt-0.5">
-                                      <span className="text-[9px] text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100 font-bold tracking-wide shadow-sm">By User</span>
-                                      {submission.slot_reserved_at ? (() => {
-                                        const reservedAt = new Date(submission.slot_reserved_at).getTime();
-                                        const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 60_000);
-                                        return isExpired ? (
-                                          <span className="text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded flex items-center font-bold tracking-wide">
-                                            Expired
-                                          </span>
-                                        ) : (
-                                          <span className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 px-1 py-0.5 rounded flex items-center gap-0.5 font-bold tracking-wide">
-                                            <Clock className="w-2.5 h-2.5" />
-                                            &lt;1h left
-                                          </span>
-                                        );
-                                      })() : null}
-                                    </div>
-                                  )}
-                                </div>
+                          if (hasValidSchedule) {
+                              reserveBtn = (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={300}>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex-1 flex flex-col justify-center px-2.5 min-h-[32px] py-1 bg-gray-50/80 border border-gray-200/70 rounded-md cursor-help">
+                                          <div className="flex items-center gap-1.5 w-full">
+                                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                            <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                            <span className="text-xs font-medium text-gray-700 tracking-wide truncate">
+                                              {isLegacyActive && !hasSchedule ? 'Scheduled (Legacy)' : 'Slot Reserved'}
+                                            </span>
+                                          </div>
+                                          
+                                          {/* Display if booked by User along with expiration status */}
+                                          {submission.slot_booked_by === 'user' && (
+                                            <div className="flex items-center gap-1 pl-3.5 mt-0.5">
+                                              <span className="text-[9px] text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100 font-bold tracking-wide shadow-sm">By User</span>
+                                              {submission.slot_reserved_at ? (() => {
+                                                const reservedAt = new Date(submission.slot_reserved_at).getTime();
+                                                const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 3600_000);
+                                                return isExpired ? (
+                                                  <span className="text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded flex items-center font-bold tracking-wide">
+                                                    Expired
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 px-1 py-0.5 rounded flex items-center gap-0.5 font-bold tracking-wide">
+                                                    <Clock className="w-2.5 h-2.5" />
+                                                    &lt;1h left
+                                                  </span>
+                                                );
+                                              })() : null}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
+                                        <p className="font-semibold text-xs text-blue-600 mb-1">Reservation Details</p>
+                                        <p className="text-sm">Date: <span className="font-medium text-gray-900">{submission.start_date ? new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'}</span></p>
+                                        <p className="text-sm">Type: <span className="font-medium text-gray-900">{(existingPages[submission.id]?.is_extra_ad || (submission.admin_notes || '').includes('[EXTRA_AD]')) ? 'Extra Ad' : 'Regular Ad'}</span></p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1246,35 +1268,46 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             );
                           } else {
                             reserveBtn = (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className="w-full">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={!canReserveSlot}
-                                        className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canReserveSlot
-                                            ? 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200 bg-white'
-                                            : 'text-gray-400 border-gray-100 bg-gray-50 cursor-not-allowed'
-                                          }`}
-                                        onClick={() => {
-                                          setActiveScheduleSubmission(submission);
-                                          setScheduleInitialStep('schedule');
-                                        }}
-                                      >
-                                        <Calendar className={`w-3.5 h-3.5 mr-2 shrink-0 ${canReserveSlot ? 'text-blue-500' : 'text-gray-400'}`} />
-                                        Reserve Slot
-                                      </Button>
-                                    </div>
-                                  </TooltipTrigger>
-                                  {!canReserveSlot && (
-                                    <TooltipContent side="top">
-                                      <p className="text-xs">Submission was not approved yet.</p>
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </TooltipProvider>
+                              <div className="flex w-full">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="w-full relative">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={!canReserveSlot}
+                                          className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canReserveSlot
+                                              ? 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200 bg-white'
+                                              : 'text-gray-400 border-gray-100 bg-gray-50 cursor-not-allowed'
+                                            }`}
+                                          onClick={() => {
+                                            setActiveScheduleSubmission(submission);
+                                            setScheduleInitialStep('schedule');
+                                          }}
+                                        >
+                                          <Calendar className={`w-3.5 h-3.5 mr-2 shrink-0 ${canReserveSlot ? 'text-blue-500' : 'text-gray-400'}`} />
+                                          Reserve Slot
+                                        </Button>
+                                        {isActuallyExpired && (
+                                          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">
+                                            Expired
+                                          </span>
+                                        )}
+                                      </div>
+                                    </TooltipTrigger>
+                                    {!canReserveSlot ? (
+                                      <TooltipContent side="top">
+                                        <p className="text-xs">Submission was not approved yet.</p>
+                                      </TooltipContent>
+                                    ) : isActuallyExpired ? (
+                                      <TooltipContent side="top">
+                                        <p className="text-xs">Previous reservation expired.</p>
+                                      </TooltipContent>
+                                    ) : null}
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </div>
                             );
                           }
 
@@ -1283,10 +1316,22 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           if (isPaid) {
                             paymentBtn = (
                               <div className="flex items-center gap-1.5 w-full">
-                                <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-green-50/80 border border-green-200/70 rounded-md truncate">
-                                  <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                                  <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                  <span className="text-xs font-medium text-green-700 tracking-wide truncate">Paid</span>
+                                <div className="flex-1">
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={300}>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center justify-start gap-1.5 px-2.5 h-8 bg-green-50/80 border border-green-200/70 rounded-md truncate cursor-help">
+                                          <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                                          <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                          <span className="text-xs font-medium text-green-700 tracking-wide truncate">Paid</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
+                                        <p className="font-semibold text-xs text-green-600 mb-1">Payment Details</p>
+                                        <p className="text-sm">Amount: <span className="font-medium text-gray-900">Rp {paymentData.latestAmount ? paymentData.latestAmount.toLocaleString('id-ID') : '0'}</span></p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 </div>
                                 <Button
                                   variant="outline"
@@ -1302,27 +1347,25 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                 </Button>
                               </div>
                             );
-                          } else if (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired') {
+                          } else if (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired' || isActuallyExpired) {
                             // Payment Expired — user slot timed out
                             paymentBtn = (
-                              <div className="flex items-center gap-1.5 w-full">
-                                <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-red-50/80 border border-red-200/70 rounded-md truncate">
-                                  <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                                  <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                  <span className="text-xs font-medium text-red-700 tracking-wide truncate">Payment Expired</span>
-                                </div>
+                              <div className="relative w-full">
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-red-600 border-gray-200 hover:border-red-200 hover:bg-red-50 transition-colors shadow-sm"
+                                  className="w-full justify-start h-8 text-xs font-medium shadow-sm text-gray-600 hover:text-emerald-600 border-gray-200 hover:border-emerald-200 bg-white transition-all"
                                   onClick={() => {
                                     setActiveScheduleSubmission(submission);
                                     setScheduleInitialStep('payment');
                                   }}
-                                  title="View / Create New Payment"
                                 >
-                                  <Plus className="w-4 h-4" />
+                                  <CreditCard className="w-3.5 h-3.5 mr-2 shrink-0 text-emerald-500" />
+                                  Payment
                                 </Button>
+                                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">
+                                  Expired
+                                </span>
                               </div>
                             );
                           } else if (isPending) {
@@ -1421,10 +1464,22 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             }
                             pageBtn = (
                               <div className="flex items-center gap-1.5 w-full">
-                                <div className={`flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 border rounded-md truncate ${pillStyle}`}>
-                                  <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                                  <Globe className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                                  <span className="text-xs font-medium tracking-wide truncate">{statusLabel}</span>
+                                <div className="flex-1">
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={300}>
+                                      <TooltipTrigger asChild>
+                                        <div className={`flex items-center justify-start gap-1.5 px-2.5 h-8 border rounded-md truncate cursor-help ${pillStyle}`}>
+                                          <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                                          <Globe className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                                          <span className="text-xs font-medium tracking-wide truncate">{statusLabel}</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
+                                        <p className="font-semibold text-xs text-indigo-600 mb-1">Page Details</p>
+                                        <p className="text-sm">Title: <span className="font-medium text-gray-900">{page.title || 'Not set'}</span></p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 </div>
                                 <Button
                                   variant="outline"
@@ -1598,18 +1653,39 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
                           const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
                           const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
-                          const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && (hasSchedule || isLegacyActive);
+                          
+                          // Calculate true expiration for Mobile
+                          const reservedAtTime = submission.slot_reserved_at ? new Date(submission.slot_reserved_at).getTime() : 0;
+                          const isActuallyExpired = !isPaid && (
+                            paymentData.latestStatus === 'expired' || 
+                            submission.payment_status === 'expired' || 
+                            (submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
+                          );
+                          const hasValidSchedule = (hasSchedule || isLegacyActive) && !isActuallyExpired;
+
+                          const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && hasValidSchedule;
 
                           // 1. Reserve Slot Button
                           let reserveBtn;
-                          if (hasSchedule || isLegacyActive) {
+                          if (hasValidSchedule) {
                             reserveBtn = (
                               <div className="flex items-center gap-1.5 w-full">
-                                <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md">
-                                  <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                                  <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                  <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !hasSchedule ? 'Scheduled' : 'Slot Reserved'}</span>
-                                </div>
+                                <TooltipProvider>
+                                  <Tooltip delayDuration={300}>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md cursor-help">
+                                        <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                        <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                        <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !hasSchedule ? 'Scheduled' : 'Slot Reserved'}</span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
+                                      <p className="font-semibold text-xs text-blue-600 mb-1">Reservation Details</p>
+                                      <p className="text-sm">Date: <span className="font-medium text-gray-900">{submission.start_date ? new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'}</span></p>
+                                      <p className="text-sm">Type: <span className="font-medium text-gray-900">{(existingPages[submission.id]?.is_extra_ad || (submission.admin_notes || '').includes('[EXTRA_AD]')) ? 'Extra Ad' : 'Regular Ad'}</span></p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1625,18 +1701,25 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             );
                           } else {
                             reserveBtn = (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full justify-center h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 bg-white"
-                                onClick={() => {
-                                  setActiveScheduleSubmission(submission);
-                                  setScheduleInitialStep('schedule');
-                                }}
-                              >
-                                <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-blue-500" />
-                                Reserve Slot
-                              </Button>
+                              <div className="w-full relative">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full justify-center h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 bg-white"
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('schedule');
+                                  }}
+                                >
+                                  <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-blue-500" />
+                                  Reserve Slot
+                                </Button>
+                                {isActuallyExpired && (
+                                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">
+                                    Expired
+                                  </span>
+                                )}
+                              </div>
                             );
                           }
 
@@ -1646,34 +1729,67 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                               {reserveBtn}
 
                               <div className="grid grid-cols-2 gap-2 w-full">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={!hasSchedule && !isLegacyActive}
-                                  className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${(hasSchedule || isLegacyActive) ? 'text-gray-600 hover:text-emerald-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
-                                    }`}
-                                  onClick={() => {
-                                    setActiveScheduleSubmission(submission);
-                                    setScheduleInitialStep('payment');
-                                  }}
-                                >
-                                  <CreditCard className="w-3.5 h-3.5 mr-1" />
-                                  {isPaid ? 'Paid' : (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired') ? 'Expired' : isPending ? 'Pending' : 'Payment'}
-                                  {!isPaid && !isPending && (hasSchedule || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
-                                </Button>
+                                <TooltipProvider>
+                                  <Tooltip delayDuration={300}>
+                                    <TooltipTrigger asChild>
+                                      <div className="w-full">
+                                        <div className="relative w-full">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={!hasSchedule && !isLegacyActive}
+                                            className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${(hasSchedule || isLegacyActive) ? 'text-gray-600 hover:text-emerald-600 border-gray-200 bg-white' : 'text-gray-400 border-gray-100 bg-gray-50'
+                                              }`}
+                                            onClick={() => {
+                                              setActiveScheduleSubmission(submission);
+                                              setScheduleInitialStep('payment');
+                                            }}
+                                          >
+                                            <CreditCard className="w-3.5 h-3.5 mr-1" />
+                                            Payment
+                                          </Button>
+                                          {isPaid && <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-green-600 bg-green-50 border border-green-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">Paid</span>}
+                                          {!isPaid && isActuallyExpired && <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">Expired</span>}
+                                          {!isPaid && isPending && <span className="absolute right-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-amber-500" />}
+                                          {!isPaid && !isPending && hasValidSchedule && !isActuallyExpired && <span className="absolute right-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                                        </div>
+                                      </div>
+                                    </TooltipTrigger>
+                                    {isPaid && (
+                                      <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
+                                        <p className="font-semibold text-xs text-green-600 mb-1">Payment Details</p>
+                                        <p className="text-sm">Amount: <span className="font-medium text-gray-900">Rp {paymentData.latestAmount ? paymentData.latestAmount.toLocaleString('id-ID') : '0'}</span></p>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
 
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={!isPaid && !isLegacyActive}
-                                  className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${(isPaid || isLegacyActive) ? 'text-gray-600 hover:text-indigo-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
-                                    }`}
-                                  onClick={() => handleOpenPageBuilder(submission)}
-                                >
-                                  <Globe className="w-3.5 h-3.5 mr-1" />
-                                  Pages
-                                  {!existingPages[submission.id] && (isPaid || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
-                                </Button>
+                                <TooltipProvider>
+                                  <Tooltip delayDuration={300}>
+                                    <TooltipTrigger asChild>
+                                      <div className="w-full">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={!isPaid && !isLegacyActive}
+                                          className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${(isPaid || isLegacyActive) ? 'text-gray-600 hover:text-indigo-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
+                                            }`}
+                                          onClick={() => handleOpenPageBuilder(submission)}
+                                        >
+                                          <Globe className="w-3.5 h-3.5 mr-1" />
+                                          Pages
+                                          {!existingPages[submission.id] && (isPaid || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                                        </Button>
+                                      </div>
+                                    </TooltipTrigger>
+                                    {existingPages[submission.id] && (
+                                      <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
+                                        <p className="font-semibold text-xs text-indigo-600 mb-1">Page Details</p>
+                                        <p className="text-sm">Title: <span className="font-medium text-gray-900">{existingPages[submission.id].title || 'Not set'}</span></p>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
                               </div>
                             </div>
                           );
