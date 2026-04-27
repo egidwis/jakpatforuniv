@@ -1220,7 +1220,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                                 <span className="text-[9px] text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100 font-bold tracking-wide shadow-sm">By User</span>
                                                 {submission.slot_reserved_at ? (() => {
                                                   const reservedAt = new Date(submission.slot_reserved_at).getTime();
-                                                  const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 60_000);
+                                                  const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 60 * 60 * 1000);
                                                   return isExpired ? (
                                                     <span className="text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded flex items-center font-bold tracking-wide">
                                                       Expired

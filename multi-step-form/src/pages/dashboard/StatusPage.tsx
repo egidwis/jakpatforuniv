@@ -43,6 +43,8 @@ function getCurrentStepIndex(submission: FormSubmission): number {
     // 4. If paid → step 2 (unless already scheduled)
     // 5. Otherwise use submission_status mapping
     
+    const isPaid = paymentStatus === 'paid' || status === 'paid';
+    
     if (isCompleted || status === 'completed') {
         return 4;
     }
@@ -51,19 +53,26 @@ function getCurrentStepIndex(submission: FormSubmission): number {
         return 3;
     }
     
-    if (isScheduled || status === 'scheduled') {
+    // Step 3 (Ready to Launch) requires payment to be completed, 
+    // OR an explicit 'scheduled' status from the admin
+    if ((isScheduled && isPaid) || status === 'scheduled') {
         return 3;
     }
     
+    // If they have dates but haven't paid, they are awaiting payment (step 2)
+    if (isScheduled && !isPaid) {
+        return 2;
+    }
+    
     // If payment is paid but not yet scheduled → step 2 (payment done, waiting for page)
-    if (paymentStatus === 'paid' || status === 'paid') {
+    if (isPaid) {
         return 2;
     }
 
     // Direct mapping for other statuses
     const statusToStep: Record<string, number> = {
         'in_review': 0,
-        'approved': 0,    // approved but not yet scheduled
+        'approved': 1,    // approved, needs to select schedule
         'rejected': -1,   // special case → revision/rejected view
         'spam': -1,       // special case → hidden/revision view
         'slot_reserved': 1,
@@ -231,6 +240,18 @@ function ProgressTracker({
                                                 </Button>
                                             )}
 
+                                            {/* New Slot Schedule Button (when status is approved) */}
+                                            {step.key === 'slot' && isCurrent && submission.submission_status === 'approved' && !submission.slot_reserved_at && !isExpired && onReschedule && (
+                                                <Button
+                                                    size="sm"
+                                                    className="mt-1 text-white shadow-sm h-7 text-[10px] px-3 break-keep"
+                                                    style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
+                                                    onClick={onReschedule}
+                                                >
+                                                    Pilih Jadwal
+                                                </Button>
+                                            )}
+
                                             {/* Publishing: waiting (paid + scheduled, not yet live) */}
                                             {step.key === 'publishing' && isCurrent && submission.start_date && (() => {
                                                 const now = new Date();
@@ -391,6 +412,20 @@ function ProgressTracker({
                                                     onClick={onReschedule}
                                                 >
                                                     Pilih Jadwal Ulang
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        {/* New Slot Schedule Button (Mobile) */}
+                                        {step.key === 'slot' && isCurrent && submission.submission_status === 'approved' && !submission.slot_reserved_at && !isExpired && onReschedule && (
+                                            <div className="mt-3">
+                                                <Button
+                                                    size="sm"
+                                                    className="text-white shadow-sm h-8"
+                                                    style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
+                                                    onClick={onReschedule}
+                                                >
+                                                    Pilih Jadwal
                                                 </Button>
                                             </div>
                                         )}
@@ -879,7 +914,7 @@ export function StatusPage() {
                                                         <ProgressTracker 
                                                             submission={submission}
                                                             currentStep={currentStep}
-                                                            paymentLink={paymentLinks[submission.id!] || null}
+                                                            paymentLink={finalPaymentLink || null}
                                                             invoiceId={invoiceIds[submission.id!] || null}
                                                             steps={getStatusSteps(t)}
                                                             isExpired={isExpired}

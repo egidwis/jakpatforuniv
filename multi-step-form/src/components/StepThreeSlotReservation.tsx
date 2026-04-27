@@ -4,12 +4,7 @@ import { toast } from 'sonner';
 import { Calendar, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { fetchSlotAvailability } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
+
 
 // Helper to format date
 const getDateString = (date: Date) => {
@@ -171,58 +166,29 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
                 const detailsForDate = slotDetails[dateStr] || [];
 
                 return (
-                  <TooltipProvider key={dateStr} delayDuration={100}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          disabled={isFull}
-                          onClick={() => {
-                            setSelectedDate(date);
-                            setSelectedTime("15:00");
-                          }}
-                          className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
-                        >
-                          <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                            {date.toLocaleDateString('id-ID', { weekday: 'short' })}
-                          </span>
-                          <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
-                            {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                          </span>
-                          <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
-                            <div className={`w-1 h-1 rounded-full ${dotColor}`} />
-                            <span className={`text-[10px] font-semibold ${displayCount > MAX_REGULAR_ADS_PER_DAY ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
-                              {displayCount}/{MAX_REGULAR_ADS_PER_DAY}
-                            </span>
-                          </div>
-                        </button>
-                      </TooltipTrigger>
-                      {detailsForDate.length > 0 && (
-                        <TooltipContent side="top" className="max-w-[280px] p-0 overflow-hidden shadow-xl" align="center">
-                          <div className="bg-slate-50 px-3 py-2 border-b border-slate-100 font-semibold text-[11px] uppercase tracking-wider text-slate-500">
-                            Slots booked on {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                          </div>
-                          <div className="flex flex-col max-h-[220px] overflow-y-auto">
-                            {detailsForDate.map((ad, idx) => (
-                              <div key={idx} className="p-3 text-sm border-b last:border-0 border-slate-100 bg-white hover:bg-slate-50 transition-colors text-left">
-                                <div className="font-semibold text-sm text-slate-800 leading-tight mb-1.5">{ad.title}</div>
-                                <div className="flex items-center gap-2">
-                                  {ad.isExtra ? (
-                                    <span className="bg-amber-100 text-amber-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide">Extra Ad</span>
-                                  ) : (
-                                    <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide">Reg Ad</span>
-                                  )}
-                                  <span className="bg-slate-100 text-slate-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide">
-                                    {ad.status.replace('_', ' ')}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TooltipProvider>
+                  <button
+                    key={dateStr}
+                    type="button"
+                    disabled={isFull}
+                    onClick={() => {
+                      setSelectedDate(date);
+                      setSelectedTime("15:00");
+                    }}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
+                  >
+                    <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+                      {date.toLocaleDateString('id-ID', { weekday: 'short' })}
+                    </span>
+                    <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
+                      {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                    </span>
+                    <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
+                      <div className={`w-1 h-1 rounded-full ${dotColor}`} />
+                      <span className={`text-[10px] font-semibold ${displayCount > MAX_REGULAR_ADS_PER_DAY ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
+                        {displayCount}/{MAX_REGULAR_ADS_PER_DAY}
+                      </span>
+                    </div>
+                  </button>
                 );
               })}
             </div>

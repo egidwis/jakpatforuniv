@@ -114,9 +114,13 @@ export function PaymentCheckoutPage() {
     if (!submission || isExpired) return;
     setIsProcessingPayment(true);
 
+    let paymentWindow: Window | null = null;
     try {
       const reservedAt = new Date(submission.slot_reserved_at!).getTime();
       const expirationDate = new Date(reservedAt + 60 * 60 * 1000);
+
+      // Buka tab baru di awal untuk menghindari popup blocker dari browser (karena ada async await)
+      paymentWindow = window.open('about:blank', '_blank', 'noopener,noreferrer');
 
       const paymentUrl = await createPayment({
         formSubmissionId: submission.id,
@@ -130,10 +134,17 @@ export function PaymentCheckoutPage() {
         expiredAt: expirationDate.toISOString()
       });
 
-      // Open in new tab so this page stays alive for status checking
-      window.open(paymentUrl, '_blank', 'noopener,noreferrer');
+      // Arahkan tab baru ke URL pembayaran, atau fallback ke tab saat ini jika terblokir
+      if (paymentWindow) {
+        paymentWindow.location.href = paymentUrl;
+      } else {
+        window.location.href = paymentUrl;
+      }
     } catch (error) {
       console.error(error);
+      if (paymentWindow) {
+        paymentWindow.close();
+      }
       toast.error(t('checkoutPaymentError'));
     } finally {
       setIsProcessingPayment(false);
