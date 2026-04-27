@@ -14,9 +14,11 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isFromGateway, setIsFromGateway] = useState(false);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
+    setIsFromGateway(urlParams.get('source') === 'gateway');
     console.log('PaymentStatus component - formId:', formId);
     
     if (formId) {
@@ -125,7 +127,9 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
           <p className="text-lg mb-2">Halo, {formData.full_name || 'Pengguna'}!</p>
           {isPaid ? (
              <p className="text-gray-600">
-               Survey "{formData.title}" Anda akan segera dipublikasikan ke responden Jakpat.
+               {isFromGateway 
+                 ? 'Pembayaran berhasil dikonfirmasi. Silakan tutup halaman ini dan kembali ke aplikasi.'
+                 : `Survey "${formData.title}" Anda akan segera dipublikasikan ke responden Jakpat.`}
              </p>
           ) : (
              <p className="text-gray-600">
@@ -164,9 +168,24 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
             </button>
           )}
 
-          <a href="/dashboard/status" className="button button-primary">
-            Lihat Dashboard
-          </a>
+          {isFromGateway ? (
+            <button 
+              onClick={() => {
+                // Try to close tab, fallback to dashboard if browser prevents it
+                window.close();
+                setTimeout(() => {
+                  window.location.href = "/dashboard/status";
+                }, 500);
+              }} 
+              className="button button-primary"
+            >
+              Tutup Halaman Ini
+            </button>
+          ) : (
+            <a href="/dashboard/status" className="button button-primary">
+              Lihat Dashboard
+            </a>
+          )}
 
           <button
             onClick={openWhatsApp}

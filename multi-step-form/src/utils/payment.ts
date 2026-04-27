@@ -107,7 +107,7 @@ const createDokuPayment = async (paymentData: PaymentData) => {
         email: customerInfo.email || 'user@example.com',
         phone: customerInfo.phoneNumber || ''
       },
-      callback_url: `${origin}/dashboard/status`,
+      callback_url: `${origin}/payment-success?id=${formSubmissionId}&source=gateway`,
       payment_due_date
     };
 
@@ -268,7 +268,7 @@ const createDokuManualInvoice = async (invoiceData: InvoiceData) => {
         email: customerInfo?.email || 'client@example.com',
         phone: customerInfo?.phoneNumber || ''
       },
-      callback_url: `${origin}/dashboard/status`,
+      callback_url: `${origin}/payment-success?id=${formSubmissionId}&source=gateway`,
       payment_due_date: 60 * 24 * 7 // 7 Hari
     };
 

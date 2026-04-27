@@ -133,18 +133,24 @@ export function MultiStepForm() {
                 status: latest.status || prev.status
               }));
               
-              // Redirect to payment/expired page if they have a pending submission and haven't actively started typing
-              setFormData(currentData => {
-                // If they haven't started filling out a fresh form OR they are not actively recovering a draft
-                if (!currentData.surveyUrl && !currentData.title) {
-                  // Only bounce if the latest submission was sent to payment validation
-                  if (latest.submission_status === 'waiting_payment') {
-                    // Navigate asynchronously to avoid state render cycle collision
-                    setTimeout(() => navigate(`/dashboard/payment/${latest.id}`), 0);
+              // Only bounce if they haven't started filling out a fresh form (no draft data)
+              const saved = localStorage.getItem(STORAGE_KEY);
+              let hasDraftData = false;
+              if (saved) {
+                try {
+                  const parsed = JSON.parse(saved);
+                  if (parsed.formData && (parsed.formData.surveyUrl || parsed.formData.title)) {
+                    hasDraftData = true;
                   }
+                } catch (e) {
+                  // ignore
                 }
-                return currentData;
-              });
+              }
+
+              if (!hasDraftData && latest.submission_status === 'waiting_payment') {
+                // Navigate asynchronously to ensure it happens after render cycle
+                setTimeout(() => navigate(`/dashboard/payment/${latest.id}`), 0);
+              }
             }
           } catch (error) {
             console.error('Failed to auto-fill from previous submission', error);

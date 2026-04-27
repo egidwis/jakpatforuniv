@@ -1214,41 +1214,39 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                   <TooltipProvider>
                                     <Tooltip delayDuration={300}>
                                       <TooltipTrigger asChild>
-                                        <div className="flex-1 flex flex-col justify-center px-2.5 min-h-[32px] py-1 bg-gray-50/80 border border-gray-200/70 rounded-md cursor-help">
-                                          <div className="flex items-center gap-1.5 w-full">
+                                        <div className="flex-1 flex items-center justify-between px-2.5 min-h-[32px] py-1 bg-gray-50/80 border border-gray-200/70 rounded-md cursor-help">
+                                          <div className="flex items-center gap-1.5 min-w-0">
                                             <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
                                             <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                                             <span className="text-xs font-medium text-gray-700 tracking-wide truncate">
-                                              {isLegacyActive && !hasSchedule ? 'Scheduled (Legacy)' : 'Slot Reserved'}
+                                              {isLegacyActive && !hasSchedule ? 'Scheduled' : 'Reserved'}
                                             </span>
                                           </div>
                                           
-                                          {/* Display if booked by User along with expiration status */}
-                                          {submission.slot_booked_by === 'user' && (
-                                            <div className="flex items-center gap-1 pl-3.5 mt-0.5">
-                                              <span className="text-[9px] text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100 font-bold tracking-wide shadow-sm">By User</span>
-                                              {submission.slot_reserved_at ? (() => {
-                                                const reservedAt = new Date(submission.slot_reserved_at).getTime();
-                                                const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 3600_000);
-                                                return isExpired ? (
-                                                  <span className="text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded flex items-center font-bold tracking-wide">
-                                                    Expired
-                                                  </span>
-                                                ) : (
-                                                  <span className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 px-1 py-0.5 rounded flex items-center gap-0.5 font-bold tracking-wide">
-                                                    <Clock className="w-2.5 h-2.5" />
-                                                    &lt;1h left
-                                                  </span>
-                                                );
-                                              })() : null}
-                                            </div>
-                                          )}
+                                          {/* Expiration status on the right (hidden if already paid) */}
+                                          {submission.slot_booked_by === 'user' && submission.slot_reserved_at && !isPaid && (() => {
+                                            const reservedAt = new Date(submission.slot_reserved_at).getTime();
+                                            const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 3600_000);
+                                            return isExpired ? (
+                                              <span className="text-[10px] text-red-600 font-bold tracking-wide shrink-0 ml-2">
+                                                Expired
+                                              </span>
+                                            ) : (
+                                              <div className="flex items-center gap-0.5 text-amber-600 shrink-0 ml-2">
+                                                <Clock className="w-3 h-3" />
+                                                <span className="text-[10px] font-bold tracking-wide">&lt;1h</span>
+                                              </div>
+                                            );
+                                          })()}
                                         </div>
                                       </TooltipTrigger>
                                       <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
                                         <p className="font-semibold text-xs text-blue-600 mb-1">Reservation Details</p>
                                         <p className="text-sm">Date: <span className="font-medium text-gray-900">{submission.start_date ? new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'}</span></p>
                                         <p className="text-sm">Type: <span className="font-medium text-gray-900">{(existingPages[submission.id]?.is_extra_ad || (submission.admin_notes || '').includes('[EXTRA_AD]')) ? 'Extra Ad' : 'Regular Ad'}</span></p>
+                                        {submission.slot_booked_by && (
+                                          <p className="text-sm mt-1 pt-1 border-t border-gray-100">Booked By: <span className="font-medium text-gray-900 capitalize">{submission.slot_booked_by}</span></p>
+                                        )}
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
