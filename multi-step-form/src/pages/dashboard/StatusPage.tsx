@@ -272,8 +272,8 @@ function ProgressTracker({
                                             {isCurrent && step.key === 'payment' && paymentLink && (
                                                     <a
                                                         href={paymentLink}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
+                                                        target={paymentLink.startsWith('http') ? "_blank" : undefined}
+                                                        rel={paymentLink.startsWith('http') ? "noopener noreferrer" : undefined}
                                                         className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
                                                         style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
                                                     >
@@ -435,8 +435,8 @@ function ProgressTracker({
                                             <div className="mt-2">
                                                 <a
                                                     href={paymentLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
+                                                    target={paymentLink.startsWith('http') ? "_blank" : undefined}
+                                                    rel={paymentLink.startsWith('http') ? "noopener noreferrer" : undefined}
                                                     className="inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md"
                                                     style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
                                                 >

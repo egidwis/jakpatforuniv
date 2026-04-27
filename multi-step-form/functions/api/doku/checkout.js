@@ -11,7 +11,7 @@ export async function onRequest(context) {
     const requestData = JSON.parse(rawBodyText);
     
     // Dari .env.local
-    const clientId = context.env.VITE_DOKU_CLIENT_ID;
+    const clientId = context.env.DOKU_CLIENT_ID || context.env.VITE_DOKU_CLIENT_ID;
     const secretKey = context.env.DOKU_SECRET_KEY;
     
     if (!clientId || !secretKey) {
@@ -88,7 +88,7 @@ export async function onRequest(context) {
     
     // Jika Client ID tidak mengandung "-0253-", mungkin produksi, dsb (sesuaikan)
     // Atau jika ada variabel ENV eksplisit
-    if (context.env.VITE_DOKU_ENV === 'production') {
+    if (context.env.DOKU_ENV === 'production' || context.env.VITE_DOKU_ENV === 'production') {
        apiUrl = "https://api.doku.com/checkout/v1/payment";
     }
 

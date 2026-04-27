@@ -240,28 +240,7 @@ export async function onRequest(context) {
         if (updatedTransactions && updatedTransactions.length > 0) {
           const formSubmissionId = updatedTransactions[0].form_submission_id;
 
-          // Update form submission payment status
-          const updateFormResponse = await fetch(
-            `${supabaseUrl}/rest/v1/form_submissions?id=eq.${formSubmissionId}`,
-            {
-              method: 'PATCH',
-              headers: {
-                'apikey': supabaseKey,
-                'Authorization': `Bearer ${supabaseKey}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=representation'
-              },
-              body: JSON.stringify({
-                payment_status: appStatus === 'completed' ? 'paid' : appStatus,
-                submission_status: appStatus === 'completed' ? 'paid' : undefined
-              })
-            }
-          );
-
-          const updatedForms = await updateFormResponse.json();
-          console.log('Updated form submissions:', updatedForms);
-
-          // Update invoice status if this is a manual invoice
+          // Step 1: Update invoice status by payment_id
           const updateInvoiceResponse = await fetch(
             `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${paymentId}`,
             {
@@ -281,6 +260,51 @@ export async function onRequest(context) {
 
           const updatedInvoices = await updateInvoiceResponse.json();
           console.log('Updated invoices:', updatedInvoices);
+
+          // Step 2: Get the LATEST invoice for this form_submission_id
+          const latestInvoiceRes = await fetch(
+            `${supabaseUrl}/rest/v1/invoices?form_submission_id=eq.${formSubmissionId}&order=created_at.desc&limit=1`,
+            {
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          const latestInvoices = await latestInvoiceRes.json();
+
+          // Step 3: Determine form payment_status from latest invoice
+          let formPaymentStatus = appStatus === 'completed' ? 'paid' : appStatus;
+          let formSubmissionStatus = appStatus === 'completed' ? 'paid' : undefined;
+
+          if (latestInvoices && latestInvoices.length > 0) {
+            const latestStatus = latestInvoices[0].status;
+            formPaymentStatus = latestStatus === 'paid' ? 'paid' : (latestStatus || 'pending');
+            formSubmissionStatus = latestStatus === 'paid' ? 'paid' : undefined;
+          }
+
+          // Step 4: Update form_submissions based on latest invoice status
+          console.log(`Updating form ${formSubmissionId} payment_status to ${formPaymentStatus} (based on latest invoice)`);
+          const updateFormResponse = await fetch(
+            `${supabaseUrl}/rest/v1/form_submissions?id=eq.${formSubmissionId}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify({
+                payment_status: formPaymentStatus,
+                ...(formSubmissionStatus ? { submission_status: formSubmissionStatus } : {})
+              })
+            }
+          );
+
+          const updatedForms = await updateFormResponse.json();
+          console.log('Updated form submissions:', updatedForms);
         }
       }
     } catch (dbError) {

@@ -1,6 +1,7 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import crypto from 'crypto';
 
 // Custom Vite plugin to proxy /api/mayar-proxy requests to Mayar API
 // This replaces the Cloudflare Pages Functions (functions/api/mayar-proxy.js)
@@ -120,9 +121,131 @@ function mayarProxyPlugin() {
   };
 }
 
+function dokuProxyPlugin() {
+  return {
+    name: 'doku-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url.includes('/api/doku/checkout')) {
+          console.log('✅ HIT ' + req.url + ' DETECTED! Method: ' + req.method);
+
+          if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          if (req.method !== 'POST') {
+            res.statusCode = 405;
+            res.end('Method Not Allowed');
+            return;
+          }
+
+          let body = '';
+          req.on('data', chunk => body += chunk.toString());
+
+          req.on('end', async () => {
+            try {
+              if (!body) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'Empty body' }));
+                return;
+              }
+
+              const requestData = JSON.parse(body);
+
+              // Ambil env variables via vite loadEnv
+              const env = loadEnv('', process.cwd(), '');
+              const clientId = env.VITE_DOKU_CLIENT_ID;
+              const secretKey = env.DOKU_SECRET_KEY;
+
+              if (!clientId || !secretKey) {
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: "DOKU credentials missing in .env.local" }));
+                return;
+              }
+
+              const dokuPayload = {
+                order: {
+                  amount: requestData.amount,
+                  invoice_number: requestData.invoice_number,
+                  currency: "IDR",
+                  callback_url: requestData.callback_url || undefined,
+                  auto_redirect: true
+                },
+                payment: {
+                  payment_due_date: requestData.payment_due_date || 60
+                },
+                customer: {
+                  id: requestData.customer.email.replace(/[^a-zA-Z0-9]/g, '').substring(0, 50),
+                  name: requestData.customer.name.substring(0, 255),
+                  email: requestData.customer.email.substring(0, 128)
+                }
+              };
+
+              if (requestData.customer.phone) {
+                dokuPayload.customer.phone = requestData.customer.phone.replace(/[^0-9]/g, '').substring(0, 16);
+              }
+
+              const bodyString = JSON.stringify(dokuPayload);
+              const requestId = crypto.randomUUID();
+              const requestTimestamp = new Date().toISOString().slice(0, 19) + "Z";
+              const requestTarget = "/checkout/v1/payment";
+
+              const digest = crypto.createHash('sha256').update(bodyString).digest('base64');
+              const componentStringToSign = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
+              
+              const signature = "HMACSHA256=" + crypto.createHmac('sha256', secretKey).update(componentStringToSign).digest('base64');
+
+              let apiUrl = "https://api-sandbox.doku.com/checkout/v1/payment";
+              if (env.VITE_DOKU_ENV === 'production') {
+                apiUrl = "https://api.doku.com/checkout/v1/payment";
+              }
+
+              console.log(`🚀 Forwarding to DOKU: ${apiUrl}`);
+
+              const dokuResponse = await fetch(apiUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Client-Id": clientId,
+                  "Request-Id": requestId,
+                  "Request-Timestamp": requestTimestamp,
+                  "Signature": signature
+                },
+                body: bodyString
+              });
+
+              const resultText = await dokuResponse.text();
+              res.statusCode = dokuResponse.status;
+              res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.end(resultText);
+
+            } catch (error) {
+              console.error('💥 DOKU Proxy Error:', error);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: error.message }));
+            }
+          });
+
+          return; // Stop chain
+        }
+
+        next();
+      });
+    }
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), mayarProxyPlugin()],
+  plugins: [react(), mayarProxyPlugin(), dokuProxyPlugin()],
   base: '/',
   resolve: {
     alias: {

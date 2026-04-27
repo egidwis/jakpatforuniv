@@ -11,6 +11,7 @@ interface PaymentData {
     email: string;
     phoneNumber: string;
   };
+  expiredAt?: string;
 }
 
 export interface InvoiceData {
@@ -40,22 +41,17 @@ const isDokuSimulationMode = () => {
 
 // Mayar Simulation detection
 const isMayarSimulationMode = () => {
-  const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
   const isOfflineMode = localStorage.getItem('isOfflineMode') === 'true';
-  if (isOfflineMode) return true;
-  return !apiKey || apiKey === 'your-mayar-api-key' || apiKey.trim() === '';
+  return isOfflineMode;
 };
 
 export const checkMayarApiStatus = async (): Promise<boolean> => {
   if (getPaymentGatewayProvider() === 'doku') return true;
 
   try {
-    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
-    if (!apiKey || apiKey.trim() === '') return false;
     const response = await axios.post('/api/mayar-proxy', {
       endpoint: 'https://api.mayar.id/v1/ping',
       method: 'GET',
-      apiKey: apiKey
     }, { timeout: 5000 });
     return response.status === 200;
   } catch (error) {
@@ -79,8 +75,14 @@ export const createPayment = async (paymentData: PaymentData) => {
 
 const createDokuPayment = async (paymentData: PaymentData) => {
   try {
-    const { formSubmissionId, amount, customerInfo } = paymentData;
+    const { formSubmissionId, amount, customerInfo, expiredAt } = paymentData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
+
+    let payment_due_date = 60; // default 60 minutes
+    if (expiredAt) {
+      const diffMs = new Date(expiredAt).getTime() - Date.now();
+      payment_due_date = Math.max(1, Math.round(diffMs / 60000));
+    }
 
     if (isDokuSimulationMode()) {
       const simulatedPaymentId = `sim_doku_${Date.now()}`;
@@ -105,7 +107,8 @@ const createDokuPayment = async (paymentData: PaymentData) => {
         email: customerInfo.email || 'user@example.com',
         phone: customerInfo.phoneNumber || ''
       },
-      callback_url: `${origin}/dashboard/status`
+      callback_url: `${origin}/dashboard/status`,
+      payment_due_date
     };
 
     const response = await axios.post(`${origin}/api/doku/checkout`, requestData, { timeout: 15000 });
@@ -128,6 +131,15 @@ const createDokuPayment = async (paymentData: PaymentData) => {
     };
     await supabase.from('transactions').insert([transactionData]);
 
+    const invoiceData: Invoice = {
+      form_submission_id: formSubmissionId,
+      payment_id: transactionId,
+      invoice_url: paymentUrl,
+      amount,
+      status: 'pending'
+    };
+    await supabase.from('invoices').insert([invoiceData]);
+
     return paymentUrl;
   } catch (err) {
     console.error('Error creating DOKU payment:', err);
@@ -137,7 +149,7 @@ const createDokuPayment = async (paymentData: PaymentData) => {
 
 const createMayarPayment = async (paymentData: PaymentData) => {
   try {
-    const { formSubmissionId, amount, customerInfo } = paymentData;
+    const { formSubmissionId, amount, customerInfo, expiredAt } = paymentData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
     if (isMayarSimulationMode()) {
@@ -163,18 +175,13 @@ const createMayarPayment = async (paymentData: PaymentData) => {
       redirectUrl: `${origin}/payment-success?id=${formSubmissionId}`,
       failureUrl: `${origin}/payment-failed?id=${formSubmissionId}`,
       description: `Pembayaran Survey - ${customerInfo.title}`,
-      expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      expiredAt: expiredAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       webhookUrl: `${origin}/api/webhook`
     };
-
-    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
-    const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
 
     const proxyRequestData = {
       ...requestData,
       endpoint: 'https://api.mayar.id/hl/v1/payment/create',
-      apiKey,
-      webhookToken
     };
 
     // Retry logic
@@ -309,14 +316,9 @@ const createMayarManualInvoice = async (invoiceData: InvoiceData) => {
        webhookUrl: `${origin}/api/webhook`
     };
 
-    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
-    const webhookToken = import.meta.env.VITE_MAYAR_WEBHOOK_TOKEN;
-
     const proxyRequestData = {
       ...requestData,
       endpoint: 'https://api.mayar.id/hl/v1/payment/create',
-      apiKey,
-      webhookToken
     };
 
     const response = await axios.post('/api/mayar-proxy', proxyRequestData, { timeout: 15000 });
@@ -356,11 +358,9 @@ export const verifyPayment = async (paymentId: string) => {
   }
 
   try {
-    const apiKey = import.meta.env.VITE_MAYAR_API_KEY;
     const proxyRequestData = {
       endpoint: `https://api.mayar.id/hl/v1/payment/${paymentId}`,
       method: 'GET',
-      apiKey: apiKey
     };
 
     const response = await axios.post('/api/mayar-verify', proxyRequestData, { timeout: 10000 });

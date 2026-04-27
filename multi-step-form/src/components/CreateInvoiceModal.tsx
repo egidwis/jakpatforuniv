@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { createManualInvoice } from '../utils/payment';
+import { createManualInvoice, getPaymentGatewayProvider } from '../utils/payment';
 import { createInvoice, createTransaction } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
 import { Trash2, Plus } from 'lucide-react';
@@ -173,7 +173,7 @@ export function CreateInvoiceModal({
       const transactionData: Transaction = {
         form_submission_id: formSubmissionId,
         payment_id: mayarResponse.payment_id,
-        payment_method: 'mayar_manual_invoice',
+        payment_method: getPaymentGatewayProvider() === 'doku' ? 'doku' : 'mayar_manual_invoice',
         amount: totalAmount,
         status: 'pending',
         payment_url: mayarResponse.invoice_url,

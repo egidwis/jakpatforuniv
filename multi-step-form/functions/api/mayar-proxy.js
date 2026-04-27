@@ -1,4 +1,4 @@
-export async function onRequestPost({ request }) {
+export async function onRequestPost({ request, env }) {
   try {
     const body = await request.text();
 
@@ -10,10 +10,14 @@ export async function onRequestPost({ request }) {
     }
 
     const data = JSON.parse(body);
-    const { endpoint, apiKey, webhookToken, ...payload } = data;
+    // Hapus apiKey & webhookToken dari payload — ambil dari server env
+    const { endpoint, apiKey: _ignoredKey, webhookToken: _ignoredToken, ...payload } = data;
+
+    // Baca key dari Cloudflare environment variable (tidak pernah ke browser)
+    const apiKey = env.MAYAR_API_KEY;
 
     if (!endpoint || !apiKey) {
-      return new Response(JSON.stringify({ message: 'Missing endpoint or apiKey' }), {
+      return new Response(JSON.stringify({ message: 'Missing endpoint or server API key config' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -41,7 +45,7 @@ export async function onRequestPost({ request }) {
       status: mayarResponse.status,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*', // Enable CORS
+        'Access-Control-Allow-Origin': '*',
       }
     });
   } catch (error) {
@@ -52,7 +56,7 @@ export async function onRequestPost({ request }) {
   }
 }
 
-export async function onRequestOptions({ request }) {
+export async function onRequestOptions() {
   return new Response(null, {
     status: 204,
     headers: {

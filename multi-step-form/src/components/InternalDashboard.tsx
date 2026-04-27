@@ -101,7 +101,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null;
     invoiceCount: number;
     latestPaymentUrl: string | null;
-    latestAmount?: number;
   }>>({});
 
   // Edit Criteria Modal State
@@ -123,7 +122,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [pageBuilderData, setPageBuilderData] = useState<any>(null);
 
   // Map submission_id -> page data (slug, is_published)
-  const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }>>({});
+  const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null }>>({});
 
   // Admin Access Check
   // STRICT: Only product@jakpat.net is allowed
@@ -237,15 +236,15 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           // 1. Fetch Pages
           const { data: pages, error: pagesError } = await supabase
             .from('survey_pages')
-            .select('submission_id, slug, is_published, publish_start_date, publish_end_date, title, is_extra_ad')
+            .select('submission_id, slug, is_published, publish_start_date, publish_end_date')
             .in('submission_id', submissionIds);
 
           if (pagesError) console.error('Error fetching survey pages:', pagesError);
 
           if (pages) {
-            const pageMap: Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }> = {};
+            const pageMap: Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null }> = {};
             pages.forEach(p => {
-              pageMap[p.submission_id] = { slug: p.slug, is_published: p.is_published, publish_start_date: p.publish_start_date, publish_end_date: p.publish_end_date, title: p.title, is_extra_ad: p.is_extra_ad };
+              pageMap[p.submission_id] = { slug: p.slug, is_published: p.is_published, publish_start_date: p.publish_start_date, publish_end_date: p.publish_end_date };
             });
             setExistingPages(pageMap);
           }
@@ -253,7 +252,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           // 2. Fetch Transactions (Invoices) to override Supabase defaults and get true state
           const { data: transactions, error: trxError } = await supabase
             .from('transactions')
-            .select('form_submission_id, status, created_at, payment_url, amount')
+            .select('form_submission_id, status, created_at, payment_url')
             .in('form_submission_id', submissionIds)
             .order('created_at', { ascending: false });
 
@@ -274,12 +273,11 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   hasInvoices: true,
                   latestStatus: latestStatus,
                   invoiceCount: subTxs.length,
-                  latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null,
-                  latestAmount: subTxs[0].amount || 0
+                  latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null
                 };
                 sub.payment_status = latestStatus;
               } else {
-                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0 };
+                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
                 if (sub.payment_status === 'pending') sub.payment_status = undefined;
               }
             });
@@ -711,57 +709,57 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           <>
             {/* Desktop Table View Skeleton - hidden on mobile */}
             <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2">
-                <Table className="min-w-[1200px] border-separate border-spacing-y-3">
-                  <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
-                    <TableRow className="border-none hover:bg-transparent">
-                      <TableHead className="w-[80px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-4">No</TableHead>
-                      <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Contact Info</TableHead>
-                      <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Survey Page</TableHead>
-                      <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">University</TableHead>
-                      <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Department</TableHead>
-                      <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Survey Topic</TableHead>
-                      <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 text-center">Status</TableHead>
-                      <TableHead className="w-[120px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 text-right rounded-r-xl pr-4">Actions</TableHead>
+              <Table className="min-w-[1200px] border-separate border-spacing-y-3">
+                <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
+                  <TableRow className="border-none hover:bg-transparent">
+                    <TableHead className="w-[80px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-4">No</TableHead>
+                    <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Contact Info</TableHead>
+                    <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Survey Page</TableHead>
+                    <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">University</TableHead>
+                    <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Department</TableHead>
+                    <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Survey Topic</TableHead>
+                    <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 text-center">Status</TableHead>
+                    <TableHead className="w-[120px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 text-right rounded-r-xl pr-4">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array(5).fill(0).map((_, i) => (
+                    <TableRow key={`skeleton-desktop-${i}`} className="bg-white border-none shadow-sm rounded-xl">
+                      <TableCell className="align-middle py-4 border-y border-l border-gray-200 rounded-l-xl pl-4 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-full bg-gray-100 animate-pulse"></div>
+                      </TableCell>
+                      <TableCell className="align-top py-4 border-y border-gray-200">
+                        <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded mb-2"></div>
+                        <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
+                      </TableCell>
+                      <TableCell className="align-top py-4 border-y border-gray-200">
+                        <div className="h-4 w-5/6 bg-gray-200 animate-pulse rounded mb-2"></div>
+                        <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
+                      </TableCell>
+                      <TableCell className="align-top py-4 border-y border-gray-200">
+                        <div className="h-4 w-full bg-gray-200 animate-pulse rounded"></div>
+                      </TableCell>
+                      <TableCell className="align-top py-4 border-y border-gray-200">
+                        <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded"></div>
+                      </TableCell>
+                      <TableCell className="align-top py-4 border-y border-gray-200">
+                        <div className="h-4 w-full bg-gray-200 animate-pulse rounded mb-2"></div>
+                        <div className="h-4 w-5/6 bg-gray-200 animate-pulse rounded"></div>
+                      </TableCell>
+                      <TableCell className="align-top py-4 border-y border-gray-200 text-center">
+                        <div className="h-6 w-24 bg-gray-200 rounded-full animate-pulse mx-auto mb-2"></div>
+                        <div className="h-3 w-16 bg-gray-100 rounded animate-pulse mx-auto"></div>
+                      </TableCell>
+                      <TableCell className="align-top py-4 border-y border-r border-gray-200 rounded-r-xl pr-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
+                          <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {Array(5).fill(0).map((_, i) => (
-                      <TableRow key={`skeleton-desktop-${i}`} className="bg-white border-none shadow-sm rounded-xl">
-                        <TableCell className="align-middle py-4 border-y border-l border-gray-200 rounded-l-xl pl-4 flex items-center justify-center">
-                          <div className="w-6 h-6 rounded-full bg-gray-100 animate-pulse"></div>
-                        </TableCell>
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded mb-2"></div>
-                          <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
-                        </TableCell>
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="h-4 w-5/6 bg-gray-200 animate-pulse rounded mb-2"></div>
-                          <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
-                        </TableCell>
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="h-4 w-full bg-gray-200 animate-pulse rounded"></div>
-                        </TableCell>
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded"></div>
-                        </TableCell>
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="h-4 w-full bg-gray-200 animate-pulse rounded mb-2"></div>
-                          <div className="h-4 w-5/6 bg-gray-200 animate-pulse rounded"></div>
-                        </TableCell>
-                        <TableCell className="align-top py-4 border-y border-gray-200 text-center">
-                          <div className="h-6 w-24 bg-gray-200 rounded-full animate-pulse mx-auto mb-2"></div>
-                          <div className="h-3 w-16 bg-gray-100 rounded animate-pulse mx-auto"></div>
-                        </TableCell>
-                        <TableCell className="align-top py-4 border-y border-r border-gray-200 rounded-r-xl pr-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
-                            <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
 
             {/* Mobile Card View Skeleton - hidden on desktop */}
@@ -823,728 +821,692 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           <>
             {/* Desktop Table View - hidden on mobile */}
             <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2">
-                <Table className="min-w-[1200px] border-separate border-spacing-y-3 table-fixed">
-                  <colgroup>
-                    <col style={{ width: '110px' }} />
-                    <col style={{ width: '290px' }} />
-                    <col style={{ width: '200px' }} />
-                    <col style={{ width: '190px' }} />
-                    <col style={{ width: '410px' }} />
-                  </colgroup>
-                  <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
-                    <TableRow className="border-none hover:bg-transparent shadow-none">
-                      <TableHead className="w-[110px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-6 border-y border-l border-transparent rounded-l-xl">Submitted</TableHead>
-                      <TableHead className="w-[290px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Form Details</TableHead>
-                      <TableHead className="w-[200px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Criteria & Incentive</TableHead>
-                      <TableHead className="w-[190px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Researcher</TableHead>
-                      <TableHead className="w-[410px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-8 pr-6 border-y border-r border-transparent rounded-r-xl">Campaign Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredSubmissions.map((submission) => (
-                      <TableRow key={submission.id} className="bg-white hover:bg-gray-50/80 transition-shadow shadow-sm hover:shadow border-none rounded-xl group group/row">
-                        {/* Submitted */}
-                        <TableCell className="align-top py-4 text-xs pl-6 border-y border-l border-gray-200 rounded-l-xl">
-                          <div className="flex flex-col text-gray-500">
-                            <span className="font-medium text-gray-900">
-                              {new Date(submission.submittedAt).toLocaleDateString('id-ID')}
-                            </span>
-                            <span>
-                              {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                        </TableCell>
+              <Table className="min-w-[1200px] border-separate border-spacing-y-3 table-fixed">
+                <colgroup>
+                  <col style={{ width: '110px' }} />
+                  <col style={{ width: '290px' }} />
+                  <col style={{ width: '200px' }} />
+                  <col style={{ width: '190px' }} />
+                  <col style={{ width: '410px' }} />
+                </colgroup>
+                <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
+                  <TableRow className="border-none hover:bg-transparent shadow-none">
+                    <TableHead className="w-[110px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-6 border-y border-l border-transparent rounded-l-xl">Submitted</TableHead>
+                    <TableHead className="w-[290px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Form Details</TableHead>
+                    <TableHead className="w-[200px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Criteria & Incentive</TableHead>
+                    <TableHead className="w-[190px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Researcher</TableHead>
+                    <TableHead className="w-[410px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-8 pr-6 border-y border-r border-transparent rounded-r-xl">Campaign Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredSubmissions.map((submission) => (
+                    <TableRow key={submission.id} className="bg-white hover:bg-gray-50/80 transition-shadow shadow-sm hover:shadow border-none rounded-xl group group/row">
+                      {/* Submitted */}
+                      <TableCell className="align-top py-4 text-xs pl-6 border-y border-l border-gray-200 rounded-l-xl">
+                        <div className="flex flex-col text-gray-500">
+                          <span className="font-medium text-gray-900">
+                            {new Date(submission.submittedAt).toLocaleDateString('id-ID')}
+                          </span>
+                          <span>
+                            {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </TableCell>
 
-                        {/* Form Details */}
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="flex flex-col gap-1.5">
-                            <div>
-                              <div className="flex items-start justify-between gap-2 group relative">
-                                <div className="flex-1 min-w-0 pr-6">
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="font-semibold text-gray-900 block mb-0.5 line-clamp-2 text-sm leading-tight cursor-help decoration-dotted decoration-gray-300 underline-offset-2 hover:underline">
-                                          {submission.formTitle}
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>ID: {submission.formId}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-
-                                  {submission.formUrl && (
-                                    <div className="flex items-center mt-0.5">
-                                      <a
-                                        href={submission.formUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline decoration-blue-300 underline-offset-2 transition-colors max-w-[200px]"
-                                        title="Open Survey Link"
-                                      >
-                                        <Globe className="h-3 w-3 shrink-0" />
-                                        <span className="truncate">
-                                          {submission.formUrl.replace(/^https?:\/\//, '')}
-                                        </span>
-                                      </a>
-                                    </div>
-                                  )}
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover/row:opacity-100 transition-opacity"
-                                  onClick={() => handleOpenEditFormDetailsModal(submission)}
-                                  title="Edit Form Details"
-                                >
-                                  <PenLine className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            {/* Chips Row: Method, Qs, Duration */}
-                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                              {/* Method Badge */}
-                              <Badge variant="secondary" className={`
-                                px-1.5 py-0 h-5 text-[10px] font-medium border rounded-full whitespace-nowrap
-                                ${submission.submission_method === 'google_import'
-                                  ? 'bg-orange-50 text-orange-700 border-orange-200'
-                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200'}
-                              `}>
-                                {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
-                              </Badge>
-
-                              {/* Question Count Chip */}
-                              <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
-                                {submission.questionCount} Qs
-                              </Badge>
-
-                              {/* Duration Chip */}
-                              {submission.duration ? (
-                                <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
-                                  {submission.duration} Days
-                                </Badge>
-                              ) : null}
-
-                              {/* Sensitive Badge Icon */}
-                              {(submission.detected_keywords && submission.detected_keywords.length > 0) && (
+                      {/* Form Details */}
+                      <TableCell className="align-top py-4 border-y border-gray-200">
+                        <div className="flex flex-col gap-1.5">
+                          <div>
+                            <div className="flex items-start justify-between gap-2 group relative">
+                              <div className="flex-1 min-w-0 pr-6">
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <ShieldAlert className="w-3.5 h-3.5 text-red-500 cursor-help" />
+                                      <span className="font-semibold text-gray-900 block mb-0.5 line-clamp-2 text-sm leading-tight cursor-help decoration-dotted decoration-gray-300 underline-offset-2 hover:underline">
+                                        {submission.formTitle}
+                                      </span>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>Detected: {submission.detected_keywords.join(', ')}</p>
+                                      <p>ID: {submission.formId}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+
+                                {submission.formUrl && (
+                                  <div className="flex items-center mt-0.5">
+                                    <a
+                                      href={submission.formUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline decoration-blue-300 underline-offset-2 transition-colors max-w-[200px]"
+                                      title="Open Survey Link"
+                                    >
+                                      <Globe className="h-3 w-3 shrink-0" />
+                                      <span className="truncate">
+                                        {submission.formUrl.replace(/^https?:\/\//, '')}
+                                      </span>
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover/row:opacity-100 transition-opacity"
+                                onClick={() => handleOpenEditFormDetailsModal(submission)}
+                                title="Edit Form Details"
+                              >
+                                <PenLine className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Chips Row: Method, Qs, Duration */}
+                          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                            {/* Method Badge */}
+                            <Badge variant="secondary" className={`
+                                px-1.5 py-0 h-5 text-[10px] font-medium border rounded-full whitespace-nowrap
+                                ${submission.submission_method === 'google_import'
+                                ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                : 'bg-indigo-50 text-indigo-700 border-indigo-200'}
+                              `}>
+                              {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
+                            </Badge>
+
+                            {/* Question Count Chip */}
+                            <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
+                              {submission.questionCount} Qs
+                            </Badge>
+
+                            {/* Duration Chip */}
+                            {submission.duration ? (
+                              <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
+                                {submission.duration} Days
+                              </Badge>
+                            ) : null}
+
+                            {/* Sensitive Badge Icon */}
+                            {(submission.detected_keywords && submission.detected_keywords.length > 0) && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <ShieldAlert className="w-3.5 h-3.5 text-red-500 cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Detected: {submission.detected_keywords.join(', ')}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+
+                          {/* Total Ad Cost & Voucher */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {submission.duration && submission.duration > 0 && (
+                              <div className="text-xs text-gray-900 font-medium whitespace-nowrap">
+                                <span className="text-gray-400 font-normal mr-1">Est:</span>
+                                Rp {new Intl.NumberFormat('id-ID').format(calculateAdCost(submission.questionCount, submission.duration).totalAdCost)}
+                              </div>
+                            )}
+
+                            {/* Voucher Info (Moved from Payment Column) */}
+                            {submission.voucher_code && (
+                              <div className="flex items-center gap-1.5 animate-in slide-in-from-left-2 fade-in duration-300">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-1 text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full border border-purple-100 cursor-help hover:bg-purple-100 transition-colors">
+                                        <Zap className="w-3 h-3 fill-purple-600" />
+                                        <span>{submission.voucher_code}</span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <div className="space-y-1 text-xs">
+                                        <p className="font-semibold text-purple-700">Voucher Applied</p>
+                                        <p>Discount: <span className="font-bold text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(
+                                          calculateDiscount(
+                                            submission.voucher_code,
+                                            calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0),
+                                            calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0),
+                                            submission.duration || 0
+                                          )
+                                        )}</span></p>
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Status Footer */}
+                          <div className="mt-1 pt-2 border-t border-gray-100/60">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">Review Status:</span>
+                              {(() => {
+                                // Map post-approved & legacy schedule statuses to "approved" for display
+                                const getDisplayStatus = (status: string | undefined) => {
+                                  const s = status || 'pending';
+                                  if (['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'].includes(s)) return 'approved';
+                                  return s;
+                                };
+                                const displayStatus = getDisplayStatus(submission.status);
+                                return (
+                                  <>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
+                                          <div
+                                            className={`
+                                                cursor-pointer px-3 py-1 rounded-md text-[10px] items-center justify-center uppercase tracking-wide font-bold border transition-all shadow-sm hover:shadow flex gap-1.5
+                                                ${displayStatus === 'approved' ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100' :
+                                                displayStatus === 'rejected' ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100' :
+                                                  displayStatus === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100' :
+                                                    'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'}
+                                              `}
+                                          >
+                                            {displayStatus === 'in_review' ? 'Need Review' : (displayStatus.replace('_', ' '))}
+                                            <ChevronDown className="w-3 h-3 opacity-70" />
+                                          </div>
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="start">
+                                        <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'in_review')}>
+                                          Need Review
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'approved')}>
+                                          Approved
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                          Rejected
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
+                                          Spam / Revision
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+
+                                    {/* Admin Notes Display */}
+                                    {displayStatus === 'rejected' && submission.admin_notes && (
+                                      <TooltipProvider>
+                                        <Tooltip delayDuration={300}>
+                                          <TooltipTrigger asChild>
+                                            <div className="flex items-center justify-center text-xs text-red-600 bg-red-50 p-1 rounded border border-red-100 cursor-help transition-colors hover:bg-red-100 ml-1">
+                                              <Info className="w-3.5 h-3.5 shrink-0" />
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-[400px] bg-white p-3 shadow-xl border-red-100 text-slate-700">
+                                            <p className="font-semibold text-xs text-red-600 mb-1">Rejection Reason:</p>
+                                            <p className="text-sm leading-relaxed">{submission.admin_notes}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+
+                      {/* Criteria & Incentive */}
+                      <TableCell className="align-top py-4 border-y border-gray-200">
+                        <div className="flex flex-col gap-2">
+                          {submission.criteria ? (
+                            <div className="relative group/criteria">
+                              <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">Criteria:</div>
+                              <p className="text-xs text-gray-600 line-clamp-3 mb-1 pr-6" title={submission.criteria}>
+                                {submission.criteria || '-'}
+                              </p>
+
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover/row:opacity-100 transition-opacity bg-white/80"
+                                onClick={() => handleOpenEditCriteriaModal(submission)}
+                                title="Edit Criteria"
+                              >
+                                <PenLine className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between text-xs text-gray-400 italic bg-gray-50 px-2 py-1.5 rounded border border-dashed border-gray-200">
+                              <span>Target not set</span>
+                              <button
+                                onClick={() => handleOpenEditCriteriaModal(submission)}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                <PenLine className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+
+                          {submission.prize_per_winner ? (
+                            <div className="mt-2 text-left">
+                              <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">Incentive:</div>
+                              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium rounded-full whitespace-nowrap">
+                                  Rp {submission.prize_per_winner.toLocaleString('id-ID')}
+                                </Badge>
+                                <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
+                                  {submission.winnerCount || 0} user
+                                </Badge>
+                              </div>
+
+                              <div className="text-xs text-gray-900 font-medium">
+                                <span className="text-gray-400 font-normal mr-1">Total:</span>
+                                Rp {((submission.prize_per_winner || 0) * (submission.winnerCount || 0)).toLocaleString('id-ID')}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-[10px] text-gray-400 italic">
+                              <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1 not-italic">Incentive:</div>
+                              No incentive
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* Researcher */}
+                      <TableCell className="align-top py-4 border-y border-gray-200">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-semibold text-gray-900 leading-tight">
+                            {submission.researcherName}
+                          </span>
+
+                          <div className="flex flex-col mt-1.5">
+                            <div className="flex items-center gap-2 mb-2">
+                              {submission.phone_number && (
+                                <TooltipProvider>
+                                  <Tooltip delayDuration={200}>
+                                    <TooltipTrigger asChild>
+                                      <a
+                                        href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center justify-center p-1.5 rounded text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 transition-colors border border-green-100"
+                                      >
+                                        <MessageCircle className="w-3.5 h-3.5" />
+                                      </a>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                      <p className="text-xs font-medium">{submission.phone_number}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+
+                              {submission.researcherEmail && (
+                                <TooltipProvider>
+                                  <Tooltip delayDuration={200}>
+                                    <TooltipTrigger asChild>
+                                      <a
+                                        href={`mailto:${submission.researcherEmail}`}
+                                        className="inline-flex items-center justify-center p-1.5 rounded text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors border border-blue-100"
+                                      >
+                                        <Mail className="w-3.5 h-3.5" />
+                                      </a>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                      <p className="text-xs font-medium">{submission.researcherEmail}</p>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
                               )}
                             </div>
 
-                            {/* Total Ad Cost & Voucher */}
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                              {submission.duration && submission.duration > 0 && (
-                                <div className="text-xs text-gray-900 font-medium whitespace-nowrap">
-                                  <span className="text-gray-400 font-normal mr-1">Est:</span>
-                                  Rp {new Intl.NumberFormat('id-ID').format(calculateAdCost(submission.questionCount, submission.duration).totalAdCost)}
-                                </div>
-                              )}
-
-                              {/* Voucher Info (Moved from Payment Column) */}
-                              {submission.voucher_code && (
-                                <div className="flex items-center gap-1.5 animate-in slide-in-from-left-2 fade-in duration-300">
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div className="flex items-center gap-1 text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full border border-purple-100 cursor-help hover:bg-purple-100 transition-colors">
-                                          <Zap className="w-3 h-3 fill-purple-600" />
-                                          <span>{submission.voucher_code}</span>
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <div className="space-y-1 text-xs">
-                                          <p className="font-semibold text-purple-700">Voucher Applied</p>
-                                          <p>Discount: <span className="font-bold text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(
-                                            calculateDiscount(
-                                              submission.voucher_code,
-                                              calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0),
-                                              calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0),
-                                              submission.duration || 0
-                                            )
-                                          )}</span></p>
-                                        </div>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Status Footer */}
-                            <div className="mt-1 pt-2 border-t border-gray-100/60">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">Review Status:</span>
-                                {(() => {
-                                  // Map post-approved & legacy schedule statuses to "approved" for display
-                                  const getDisplayStatus = (status: string | undefined) => {
-                                    const s = status || 'pending';
-                                    if (['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'].includes(s)) return 'approved';
-                                    return s;
-                                  };
-                                  const displayStatus = getDisplayStatus(submission.status);
-                                  return (
-                                    <>
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
-                                            <div
-                                              className={`
-                                                cursor-pointer px-3 py-1 rounded-md text-[10px] items-center justify-center uppercase tracking-wide font-bold border transition-all shadow-sm hover:shadow flex gap-1.5
-                                                ${displayStatus === 'approved' ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100' :
-                                                  displayStatus === 'rejected' ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100' :
-                                                    displayStatus === 'in_review' ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100' :
-                                                      'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'}
-                                              `}
-                                            >
-                                              {displayStatus === 'in_review' ? 'Need Review' : (displayStatus.replace('_', ' '))}
-                                              <ChevronDown className="w-3 h-3 opacity-70" />
-                                            </div>
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="start">
-                                          <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'in_review')}>
-                                            Need Review
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'approved')}>
-                                            Approved
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'rejected')} className="text-red-600 focus:text-red-600 focus:bg-red-50">
-                                            Rejected
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => handleStatusChange(submission.id, 'spam')} className="text-gray-600">
-                                            Spam / Revision
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-
-                                      {/* Admin Notes Display */}
-                                      {displayStatus === 'rejected' && submission.admin_notes && (
-                                        <TooltipProvider>
-                                          <Tooltip delayDuration={300}>
-                                            <TooltipTrigger asChild>
-                                              <div className="flex items-center justify-center text-xs text-red-600 bg-red-50 p-1 rounded border border-red-100 cursor-help transition-colors hover:bg-red-100 ml-1">
-                                                <Info className="w-3.5 h-3.5 shrink-0" />
-                                              </div>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="max-w-[400px] bg-white p-3 shadow-xl border-red-100 text-slate-700">
-                                              <p className="font-semibold text-xs text-red-600 mb-1">Rejection Reason:</p>
-                                              <p className="text-sm leading-relaxed">{submission.admin_notes}</p>
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </>
-                                  );
-                                })()}
+                            {(submission.education || submission.department || submission.university) && (
+                              <div className="mt-1.5 pt-1.5 border-t border-gray-100/80 flex flex-col gap-0.5">
+                                {submission.education && (
+                                  <span className="inline-flex w-fit items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-purple-50 text-purple-700 border border-purple-100 capitalize">
+                                    {submission.education.replace(/_/g, ' ')}
+                                  </span>
+                                )}
+                                {submission.department && (
+                                  <span className="text-[10px] text-gray-500">{submission.department}</span>
+                                )}
+                                {submission.university && (
+                                  <span className="text-[10px] text-gray-500">{submission.university}</span>
+                                )}
                               </div>
-                            </div>
+                            )}
+
+                            {submission.leads && (
+                              <div className="text-[10px] text-gray-400 mt-1.5 pt-1.5 border-t border-gray-100/80 leading-tight">
+                                Lead: <span className="capitalize">{submission.leads.replace(/_/g, ' ')}</span>
+                              </div>
+                            )}
                           </div>
-                        </TableCell>
+                        </div>
+                      </TableCell>
 
-                        {/* Criteria & Incentive */}
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="flex flex-col gap-2">
-                            {submission.criteria ? (
-                              <div className="relative group/criteria">
-                                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">Criteria:</div>
-                                <p className="text-xs text-gray-600 line-clamp-3 mb-1 pr-6" title={submission.criteria}>
-                                  {submission.criteria || '-'}
-                                </p>
+                      {/* Campaign Actions */}
+                      <TableCell className="align-top py-4 space-y-2 pl-8 pr-6 border-y border-r border-gray-200 rounded-r-xl">
+                        {(() => {
+                          const hasSchedule = scheduledSubmissionIds.has(submission.id);
+                          const paymentData = paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0 };
+                          const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
+                          const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
+                          const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
+                          // If rejected, or if slot is cleared (expired), don't show active "Waiting Payment"
+                          const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && (hasSchedule || isLegacyActive);
 
+                          // 1. Reserve Slot Button
+                          let reserveBtn;
+                          const RESERVABLE_STATUSES = ['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'];
+                          const canReserveSlot = RESERVABLE_STATUSES.includes(submission.submission_status || '') || isLegacyActive;
+
+                          if (hasSchedule || isLegacyActive) {
+                            reserveBtn = (
+                              <div className="flex items-center gap-1.5 w-full">
+                                <div className="flex-1 flex flex-col justify-center px-2.5 min-h-[32px] py-1 bg-gray-50/80 border border-gray-200/70 rounded-md">
+                                  <div className="flex items-center gap-1.5 w-full">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                    <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                    <span className="text-xs font-medium text-gray-700 tracking-wide truncate">
+                                      {isLegacyActive && !hasSchedule ? 'Scheduled (Legacy)' : 'Slot Reserved'}
+                                    </span>
+                                  </div>
+
+                                  {/* Display if booked by User along with expiration status */}
+                                  {submission.slot_booked_by === 'user' && (
+                                    <div className="flex items-center gap-1 pl-3.5 mt-0.5">
+                                      <span className="text-[9px] text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100 font-bold tracking-wide shadow-sm">By User</span>
+                                      {submission.slot_reserved_at ? (() => {
+                                        const reservedAt = new Date(submission.slot_reserved_at).getTime();
+                                        const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 60_000);
+                                        return isExpired ? (
+                                          <span className="text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded flex items-center font-bold tracking-wide">
+                                            Expired
+                                          </span>
+                                        ) : (
+                                          <span className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 px-1 py-0.5 rounded flex items-center gap-0.5 font-bold tracking-wide">
+                                            <Clock className="w-2.5 h-2.5" />
+                                            &lt;1h left
+                                          </span>
+                                        );
+                                      })() : null}
+                                    </div>
+                                  )}
+                                </div>
                                 <Button
-                                  variant="ghost"
+                                  variant="outline"
                                   size="sm"
-                                  className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 absolute top-0 right-0 opacity-0 group-hover/row:opacity-100 transition-opacity bg-white/80"
-                                  onClick={() => handleOpenEditCriteriaModal(submission)}
-                                  title="Edit Criteria"
+                                  className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-blue-600 border-gray-200 hover:border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('schedule');
+                                  }}
+                                  title="Edit Schedule"
                                 >
-                                  <PenLine className="h-3.5 w-3.5" />
+                                  <PenLine className="w-3.5 h-3.5" />
                                 </Button>
                               </div>
-                            ) : (
-                              <div className="flex items-center justify-between text-xs text-gray-400 italic bg-gray-50 px-2 py-1.5 rounded border border-dashed border-gray-200">
-                                <span>Target not set</span>
-                                <button
-                                  onClick={() => handleOpenEditCriteriaModal(submission)}
-                                  className="text-blue-600 hover:text-blue-700"
-                                >
-                                  <PenLine className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-
-                            {submission.prize_per_winner ? (
-                              <div className="mt-2 text-left">
-                                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">Incentive:</div>
-                                <div className="flex flex-wrap gap-1.5 mb-1.5">
-                                  <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium rounded-full whitespace-nowrap">
-                                    Rp {submission.prize_per_winner.toLocaleString('id-ID')}
-                                  </Badge>
-                                  <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] text-gray-500 bg-white border-gray-200 font-normal rounded-full whitespace-nowrap">
-                                    {submission.winnerCount || 0} user
-                                  </Badge>
-                                </div>
-
-                                <div className="text-xs text-gray-900 font-medium">
-                                  <span className="text-gray-400 font-normal mr-1">Total:</span>
-                                  Rp {((submission.prize_per_winner || 0) * (submission.winnerCount || 0)).toLocaleString('id-ID')}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="mt-2 text-[10px] text-gray-400 italic">
-                                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1 not-italic">Incentive:</div>
-                                No incentive
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-
-                        {/* Researcher */}
-                        <TableCell className="align-top py-4 border-y border-gray-200">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-semibold text-gray-900 leading-tight">
-                              {submission.researcherName}
-                            </span>
-
-                            <div className="flex flex-col mt-1.5">
-                              <div className="flex items-center gap-2 mb-2">
-                                {submission.phone_number && (
-                                  <TooltipProvider>
-                                    <Tooltip delayDuration={200}>
-                                      <TooltipTrigger asChild>
-                                        <a
-                                          href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="inline-flex items-center justify-center p-1.5 rounded text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 transition-colors border border-green-100"
-                                        >
-                                          <MessageCircle className="w-3.5 h-3.5" />
-                                        </a>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="top">
-                                        <p className="text-xs font-medium">{submission.phone_number}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                )}
-
-                                {submission.researcherEmail && (
-                                  <TooltipProvider>
-                                    <Tooltip delayDuration={200}>
-                                      <TooltipTrigger asChild>
-                                        <a
-                                          href={`mailto:${submission.researcherEmail}`}
-                                          className="inline-flex items-center justify-center p-1.5 rounded text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors border border-blue-100"
-                                        >
-                                          <Mail className="w-3.5 h-3.5" />
-                                        </a>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="top">
-                                        <p className="text-xs font-medium">{submission.researcherEmail}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                )}
-                              </div>
-
-                              {(submission.education || submission.department || submission.university) && (
-                                <div className="mt-1.5 pt-1.5 border-t border-gray-100/80 flex flex-col gap-0.5">
-                                  {submission.education && (
-                                    <span className="inline-flex w-fit items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-purple-50 text-purple-700 border border-purple-100 capitalize">
-                                      {submission.education.replace(/_/g, ' ')}
-                                    </span>
-                                  )}
-                                  {submission.department && (
-                                    <span className="text-[10px] text-gray-500">{submission.department}</span>
-                                  )}
-                                  {submission.university && (
-                                    <span className="text-[10px] text-gray-500">{submission.university}</span>
-                                  )}
-                                </div>
-                              )}
-
-                              {submission.leads && (
-                                <div className="text-[10px] text-gray-400 mt-1.5 pt-1.5 border-t border-gray-100/80 leading-tight">
-                                  Lead: <span className="capitalize">{submission.leads.replace(/_/g, ' ')}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-
-                        {/* Campaign Actions */}
-                        <TableCell className="align-top py-4 space-y-2 pl-8 pr-6 border-y border-r border-gray-200 rounded-r-xl">
-                          {(() => {
-                            const hasSchedule = scheduledSubmissionIds.has(submission.id);
-                            const paymentData = paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0 };
-                            const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
-                            const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
-                            const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
-                            // If rejected, or if slot is cleared (expired), don't show active "Waiting Payment"
-                            const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && (hasSchedule || isLegacyActive);
-
-                            // 1. Reserve Slot Button
-                            let reserveBtn;
-                            const RESERVABLE_STATUSES = ['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'];
-                            const canReserveSlot = RESERVABLE_STATUSES.includes(submission.submission_status || '') || isLegacyActive;
-
-                            if (hasSchedule || isLegacyActive) {
-                              reserveBtn = (
-                                  <div className="flex items-center gap-1.5 w-full">
-                                    <TooltipProvider>
-                                      <Tooltip delayDuration={300}>
-                                        <TooltipTrigger asChild>
-                                          <div className="flex-1 flex flex-col justify-center px-2.5 min-h-[32px] py-1 bg-gray-50/80 border border-gray-200/70 rounded-md cursor-help">
-                                            <div className="flex items-center gap-1.5 w-full">
-                                              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                                              <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                              <span className="text-xs font-medium text-gray-700 tracking-wide truncate">
-                                                {isLegacyActive && !hasSchedule ? 'Scheduled (Legacy)' : 'Slot Reserved'}
-                                              </span>
-                                            </div>
-                                            
-                                            {/* Display if booked by User along with expiration status */}
-                                            {submission.slot_booked_by === 'user' && (
-                                              <div className="flex items-center gap-1 pl-3.5 mt-0.5">
-                                                <span className="text-[9px] text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100 font-bold tracking-wide shadow-sm">By User</span>
-                                                {submission.slot_reserved_at ? (() => {
-                                                  const reservedAt = new Date(submission.slot_reserved_at).getTime();
-                                                  const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 60 * 60 * 1000);
-                                                  return isExpired ? (
-                                                    <span className="text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded flex items-center font-bold tracking-wide">
-                                                      Expired
-                                                    </span>
-                                                  ) : (
-                                                    <span className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 px-1 py-0.5 rounded flex items-center gap-0.5 font-bold tracking-wide">
-                                                      <Clock className="w-2.5 h-2.5" />
-                                                      &lt;1h left
-                                                    </span>
-                                                  );
-                                                })() : null}
-                                              </div>
-                                            )}
-                                          </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
-                                          <p className="font-semibold text-xs text-blue-600 mb-1">Reservation Details</p>
-                                          <p className="text-sm">Date: <span className="font-medium text-gray-900">{submission.start_date ? new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'}</span></p>
-                                          <p className="text-sm">Type: <span className="font-medium text-gray-900">{(existingPages[submission.id]?.is_extra_ad || (submission.admin_notes || '').includes('[EXTRA_AD]')) ? 'Extra Ad' : 'Regular Ad'}</span></p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-blue-600 border-gray-200 hover:border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
-                                    onClick={() => {
-                                      setActiveScheduleSubmission(submission);
-                                      setScheduleInitialStep('schedule');
-                                    }}
-                                    title="Edit Schedule"
-                                  >
-                                    <PenLine className="w-3.5 h-3.5" />
-                                  </Button>
-                                </div>
-                              );
-                            } else {
-                              reserveBtn = (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="w-full">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          disabled={!canReserveSlot}
-                                          className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${
-                                            canReserveSlot
-                                              ? 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200 bg-white'
-                                              : 'text-gray-400 border-gray-100 bg-gray-50 cursor-not-allowed'
+                            );
+                          } else {
+                            reserveBtn = (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="w-full">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={!canReserveSlot}
+                                        className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canReserveSlot
+                                            ? 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200 bg-white'
+                                            : 'text-gray-400 border-gray-100 bg-gray-50 cursor-not-allowed'
                                           }`}
-                                          onClick={() => {
-                                            setActiveScheduleSubmission(submission);
-                                            setScheduleInitialStep('schedule');
-                                          }}
-                                        >
-                                          <Calendar className={`w-3.5 h-3.5 mr-2 shrink-0 ${canReserveSlot ? 'text-blue-500' : 'text-gray-400'}`} />
-                                          Reserve Slot
-                                        </Button>
-                                      </div>
-                                    </TooltipTrigger>
-                                    {!canReserveSlot && (
-                                      <TooltipContent side="top">
-                                        <p className="text-xs">Submission was not approved yet.</p>
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
-                                </TooltipProvider>
-                              );
-                            }
+                                        onClick={() => {
+                                          setActiveScheduleSubmission(submission);
+                                          setScheduleInitialStep('schedule');
+                                        }}
+                                      >
+                                        <Calendar className={`w-3.5 h-3.5 mr-2 shrink-0 ${canReserveSlot ? 'text-blue-500' : 'text-gray-400'}`} />
+                                        Reserve Slot
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {!canReserveSlot && (
+                                    <TooltipContent side="top">
+                                      <p className="text-xs">Submission was not approved yet.</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          }
 
-                            // 2. Payment Button
-                            let paymentBtn;
-                            if (isPaid) {
-                              paymentBtn = (
-                                <div className="flex items-center gap-1.5 w-full">
-                                  <div className="flex-1">
-                                    <TooltipProvider>
-                                      <Tooltip delayDuration={300}>
-                                        <TooltipTrigger asChild>
-                                          <div className="flex items-center justify-start gap-1.5 px-2.5 h-8 bg-green-50/80 border border-green-200/70 rounded-md truncate cursor-help">
-                                            <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                                            <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                            <span className="text-xs font-medium text-green-700 tracking-wide truncate">Paid</span>
-                                          </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
-                                          <p className="font-semibold text-xs text-green-600 mb-1">Payment Details</p>
-                                          <p className="text-sm">Amount: <span className="font-medium text-gray-900">Rp {paymentData.latestAmount ? paymentData.latestAmount.toLocaleString('id-ID') : '0'}</span></p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  </div>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-green-600 border-gray-200 hover:border-green-200 hover:bg-green-50 transition-colors shadow-sm"
-                                    onClick={() => {
-                                      setActiveScheduleSubmission(submission);
-                                      setScheduleInitialStep('payment');
-                                    }}
-                                    title="Add Additional Payment"
-                                  >
-                                    <Plus className="w-4 h-4" />
-                                  </Button>
+                          // 2. Payment Button
+                          let paymentBtn;
+                          if (isPaid) {
+                            paymentBtn = (
+                              <div className="flex items-center gap-1.5 w-full">
+                                <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-green-50/80 border border-green-200/70 rounded-md truncate">
+                                  <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                                  <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                  <span className="text-xs font-medium text-green-700 tracking-wide truncate">Paid</span>
                                 </div>
-                              );
-                            } else if (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired') {
-                              // Payment Expired — user slot timed out
-                              paymentBtn = (
-                                <div className="flex items-center gap-1.5 w-full">
-                                  <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-red-50/80 border border-red-200/70 rounded-md truncate">
-                                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                                    <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                    <span className="text-xs font-medium text-red-700 tracking-wide truncate">Payment Expired</span>
-                                  </div>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-red-600 border-gray-200 hover:border-red-200 hover:bg-red-50 transition-colors shadow-sm"
-                                    onClick={() => {
-                                      setActiveScheduleSubmission(submission);
-                                      setScheduleInitialStep('payment');
-                                    }}
-                                    title="View / Create New Payment"
-                                  >
-                                    <Plus className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              );
-                            } else if (isPending) {
-                              paymentBtn = (
-                                <div className="flex items-center gap-1.5 w-full">
-                                  <button
-                                    className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-amber-50/80 border border-amber-200/70 rounded-md truncate cursor-pointer hover:bg-amber-100/80 transition-colors"
-                                    onClick={() => {
-                                      const url = paymentData.latestPaymentUrl;
-                                      if (url) {
-                                        navigator.clipboard.writeText(url);
-                                        toast.success('Payment link copied!');
-                                      }
-                                    }}
-                                    title={paymentData.latestPaymentUrl ? 'Click to copy payment link' : 'No payment link'}
-                                  >
-                                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
-                                    <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                    <span className="text-xs font-medium text-amber-700 tracking-wide truncate">Waiting Payment</span>
-                                  </button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-amber-600 border-gray-200 hover:border-amber-200 hover:bg-amber-50 transition-colors shadow-sm"
-                                    onClick={() => {
-                                      setActiveScheduleSubmission(submission);
-                                      setScheduleInitialStep('payment');
-                                    }}
-                                    title="Add / View Payment"
-                                  >
-                                    <Plus className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              );
-                            } else {
-                              const canPay = (hasSchedule || isLegacyActive) && !isRejectedEvent;
-                              const payTooltip = isRejectedEvent
-                                ? 'Submission was rejected.'
-                                : 'Reserve a slot first.';
-                              paymentBtn = (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="w-full">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          disabled={!canPay}
-                                          className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canPay ? 'text-gray-600 hover:text-emerald-600 border-gray-200 hover:border-emerald-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
-                                          onClick={() => {
-                                            setActiveScheduleSubmission(submission);
-                                            setScheduleInitialStep('payment');
-                                          }}
-                                        >
-                                          {canPay && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
-                                          <CreditCard className={`w-3.5 h-3.5 mr-2 shrink-0 ${canPay ? 'text-emerald-500' : 'text-gray-400'}`} />
-                                          Payment
-                                        </Button>
-                                      </div>
-                                    </TooltipTrigger>
-                                    {!canPay && (
-                                      <TooltipContent side="top">
-                                        <p className="text-xs">{payTooltip}</p>
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
-                                </TooltipProvider>
-                              );
-                            }
-
-                            // 3. Page Button
-                            let pageBtn;
-                            const canBuildPage = isPaid || isLegacyActive;
-                            
-                            if (existingPages[submission.id]) {
-                              const page = existingPages[submission.id];
-                              const now = new Date();
-                              const startDate = page.publish_start_date ? new Date(page.publish_start_date) : null;
-                              const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
-
-                              let statusLabel = 'Drafted';
-                              let dotColor = 'bg-gray-400';
-                              let pillStyle = 'bg-gray-50/80 border-gray-200/70 text-gray-600';
-                              if (page.is_published) {
-                                if (endDate && endDate < now) {
-                                  statusLabel = 'Completed';
-                                } else if (startDate && startDate > now) {
-                                  statusLabel = 'Scheduled';
-                                  dotColor = 'bg-blue-500 animate-pulse';
-                                  pillStyle = 'bg-blue-50/80 border-blue-200/70 text-blue-700';
-                                } else {
-                                  statusLabel = 'Live';
-                                  dotColor = 'bg-green-500 animate-pulse';
-                                  pillStyle = 'bg-green-50/80 border-green-200/70 text-green-700';
-                                }
-                              }
-                              pageBtn = (
-                                <div className="flex items-center gap-1.5 w-full">
-                                  <div className="flex-1">
-                                    <TooltipProvider>
-                                      <Tooltip delayDuration={300}>
-                                        <TooltipTrigger asChild>
-                                          <div className={`flex items-center justify-start gap-1.5 px-2.5 h-8 border rounded-md truncate cursor-help ${pillStyle}`}>
-                                            <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                                            <Globe className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                                            <span className="text-xs font-medium tracking-wide truncate">{statusLabel}</span>
-                                          </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
-                                          <p className="font-semibold text-xs text-indigo-600 mb-1">Page Details</p>
-                                          <p className="text-sm">Title: <span className="font-medium text-gray-900">{page.title || 'Not set'}</span></p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  </div>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-indigo-600 border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 transition-colors shadow-sm"
-                                    onClick={() => handleOpenPageBuilder(submission)}
-                                    title="Edit Page"
-                                  >
-                                    <PenLine className="w-3.5 h-3.5" />
-                                  </Button>
-                                </div>
-                              );
-                            } else {
-                              pageBtn = (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="w-full">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          disabled={!canBuildPage}
-                                          className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canBuildPage ? 'text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
-                                          onClick={() => handleOpenPageBuilder(submission)}
-                                        >
-                                          {canBuildPage && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
-                                          <Globe className={`w-3.5 h-3.5 mr-2 shrink-0 ${canBuildPage ? 'text-indigo-400' : ''}`} />
-                                          <span className="truncate">Page</span>
-                                        </Button>
-                                      </div>
-                                    </TooltipTrigger>
-                                    {!canBuildPage && (
-                                      <TooltipContent>
-                                        <p>Payment required first</p>
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
-                                </TooltipProvider>
-                              );
-                            }
-
-                            return (
-                              <div className="flex flex-col gap-2 w-full max-w-[180px]">
-                                {reserveBtn}
-                                {paymentBtn}
-                                {pageBtn}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-green-600 border-gray-200 hover:border-green-200 hover:bg-green-50 transition-colors shadow-sm"
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('payment');
+                                  }}
+                                  title="Add Additional Payment"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </Button>
                               </div>
                             );
-                          })()}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          } else if (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired') {
+                            // Payment Expired — user slot timed out
+                            paymentBtn = (
+                              <div className="flex items-center gap-1.5 w-full">
+                                <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-red-50/80 border border-red-200/70 rounded-md truncate">
+                                  <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                  <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                  <span className="text-xs font-medium text-red-700 tracking-wide truncate">Payment Expired</span>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-red-600 border-gray-200 hover:border-red-200 hover:bg-red-50 transition-colors shadow-sm"
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('payment');
+                                  }}
+                                  title="View / Create New Payment"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            );
+                          } else if (isPending) {
+                            paymentBtn = (
+                              <div className="flex items-center gap-1.5 w-full">
+                                <button
+                                  className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-amber-50/80 border border-amber-200/70 rounded-md truncate cursor-pointer hover:bg-amber-100/80 transition-colors"
+                                  onClick={() => {
+                                    const url = paymentData.latestPaymentUrl;
+                                    if (url) {
+                                      navigator.clipboard.writeText(url);
+                                      toast.success('Payment link copied!');
+                                    }
+                                  }}
+                                  title={paymentData.latestPaymentUrl ? 'Click to copy payment link' : 'No payment link'}
+                                >
+                                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                                  <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                  <span className="text-xs font-medium text-amber-700 tracking-wide truncate">Waiting Payment</span>
+                                </button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-amber-600 border-gray-200 hover:border-amber-200 hover:bg-amber-50 transition-colors shadow-sm"
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('payment');
+                                  }}
+                                  title="Add / View Payment"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            );
+                          } else {
+                            const canPay = (hasSchedule || isLegacyActive) && !isRejectedEvent;
+                            const payTooltip = isRejectedEvent
+                              ? 'Submission was rejected.'
+                              : 'Reserve a slot first.';
+                            paymentBtn = (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="w-full">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={!canPay}
+                                        className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canPay ? 'text-gray-600 hover:text-emerald-600 border-gray-200 hover:border-emerald-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
+                                        onClick={() => {
+                                          setActiveScheduleSubmission(submission);
+                                          setScheduleInitialStep('payment');
+                                        }}
+                                      >
+                                        {canPay && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
+                                        <CreditCard className={`w-3.5 h-3.5 mr-2 shrink-0 ${canPay ? 'text-emerald-500' : 'text-gray-400'}`} />
+                                        Payment
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {!canPay && (
+                                    <TooltipContent side="top">
+                                      <p className="text-xs">{payTooltip}</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          }
 
-                {/* Pagination Controls */}
-                < div className="flex items-center justify-between px-4 py-4 border-t mt-4" >
-                  <div className="text-sm text-gray-500">
-                    Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalSubmissions)} of {totalSubmissions} results
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1 || loading}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Previous
-                    </Button>
-                    <div className="text-sm font-medium">Page {currentPage}</div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => prev + 1)}
-                      disabled={currentPage * pageSize >= totalSubmissions || loading}
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div >
+                          // 3. Page Button
+                          let pageBtn;
+                          const canBuildPage = isPaid || isLegacyActive;
+
+                          if (existingPages[submission.id]) {
+                            const page = existingPages[submission.id];
+                            const now = new Date();
+                            const startDate = page.publish_start_date ? new Date(page.publish_start_date) : null;
+                            const endDate = page.publish_end_date ? new Date(page.publish_end_date) : null;
+
+                            let statusLabel = 'Drafted';
+                            let dotColor = 'bg-gray-400';
+                            let pillStyle = 'bg-gray-50/80 border-gray-200/70 text-gray-600';
+                            if (page.is_published) {
+                              if (endDate && endDate < now) {
+                                statusLabel = 'Completed';
+                              } else if (startDate && startDate > now) {
+                                statusLabel = 'Scheduled';
+                                dotColor = 'bg-blue-500 animate-pulse';
+                                pillStyle = 'bg-blue-50/80 border-blue-200/70 text-blue-700';
+                              } else {
+                                statusLabel = 'Live';
+                                dotColor = 'bg-green-500 animate-pulse';
+                                pillStyle = 'bg-green-50/80 border-green-200/70 text-green-700';
+                              }
+                            }
+                            pageBtn = (
+                              <div className="flex items-center gap-1.5 w-full">
+                                <div className={`flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 border rounded-md truncate ${pillStyle}`}>
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                                  <Globe className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                                  <span className="text-xs font-medium tracking-wide truncate">{statusLabel}</span>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-indigo-600 border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 transition-colors shadow-sm"
+                                  onClick={() => handleOpenPageBuilder(submission)}
+                                  title="Edit Page"
+                                >
+                                  <PenLine className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            );
+                          } else {
+                            pageBtn = (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="w-full">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={!canBuildPage}
+                                        className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${canBuildPage ? 'text-gray-600 hover:text-indigo-600 border-gray-200 hover:border-indigo-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
+                                        onClick={() => handleOpenPageBuilder(submission)}
+                                      >
+                                        {canBuildPage && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />}
+                                        <Globe className={`w-3.5 h-3.5 mr-2 shrink-0 ${canBuildPage ? 'text-indigo-400' : ''}`} />
+                                        <span className="truncate">Page</span>
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {!canBuildPage && (
+                                    <TooltipContent>
+                                      <p>Payment required first</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          }
+
+                          return (
+                            <div className="flex flex-col gap-2 w-full max-w-[180px]">
+                              {reserveBtn}
+                              {paymentBtn}
+                              {pageBtn}
+                            </div>
+                          );
+                        })()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination Controls */}
+              < div className="flex items-center justify-between px-4 py-4 border-t mt-4" >
+                <div className="text-sm text-gray-500">
+                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalSubmissions)} of {totalSubmissions} results
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1 || loading}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  <div className="text-sm font-medium">Page {currentPage}</div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => prev + 1)}
+                    disabled={currentPage * pageSize >= totalSubmissions || loading}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div >
             </div >
 
             {/* Mobile Card View - shown only on mobile */}
@@ -1629,96 +1591,94 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
                       {/* Campaign Actions Area */}
                       <div className="space-y-3 mt-3 pt-3 border-t border-gray-100">
-                          {(() => {
-                            const hasSchedule = scheduledSubmissionIds.has(submission.id);
-                            const paymentData = paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0 };
-                            
-                            const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
-                            const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
-                            const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
-                            const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && (hasSchedule || isLegacyActive);
+                        {(() => {
+                          const hasSchedule = scheduledSubmissionIds.has(submission.id);
+                          const paymentData = paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0 };
 
-                            // 1. Reserve Slot Button
-                            let reserveBtn;
-                            if (hasSchedule || isLegacyActive) {
-                              reserveBtn = (
-                                <div className="flex items-center gap-1.5 w-full">
-                                  <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md">
-                                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                                    <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                    <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !hasSchedule ? 'Scheduled' : 'Slot Reserved'}</span>
-                                  </div>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-blue-600 border-gray-200 bg-white"
-                                    onClick={() => {
-                                      setActiveScheduleSubmission(submission);
-                                      setScheduleInitialStep('schedule');
-                                    }}
-                                  >
-                                    <PenLine className="w-3.5 h-3.5" />
-                                  </Button>
+                          const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
+                          const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
+                          const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
+                          const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && (hasSchedule || isLegacyActive);
+
+                          // 1. Reserve Slot Button
+                          let reserveBtn;
+                          if (hasSchedule || isLegacyActive) {
+                            reserveBtn = (
+                              <div className="flex items-center gap-1.5 w-full">
+                                <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md">
+                                  <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                  <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                  <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !hasSchedule ? 'Scheduled' : 'Slot Reserved'}</span>
                                 </div>
-                              );
-                            } else {
-                              reserveBtn = (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="w-full justify-center h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 bg-white"
+                                  className="shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-blue-600 border-gray-200 bg-white"
                                   onClick={() => {
                                     setActiveScheduleSubmission(submission);
                                     setScheduleInitialStep('schedule');
                                   }}
                                 >
-                                  <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-blue-500" />
-                                  Reserve Slot
+                                  <PenLine className="w-3.5 h-3.5" />
                                 </Button>
-                              );
-                            }
-
-                            return (
-                              <div className="flex flex-col gap-2">
-                                {/* Actions Area */}
-                                {reserveBtn}
-                                
-                                <div className="grid grid-cols-2 gap-2 w-full">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={!hasSchedule && !isLegacyActive}
-                                    className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${
-                                      (hasSchedule || isLegacyActive) ? 'text-gray-600 hover:text-emerald-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
-                                    }`}
-                                    onClick={() => {
-                                      setActiveScheduleSubmission(submission);
-                                      setScheduleInitialStep('payment');
-                                    }}
-                                  >
-                                    <CreditCard className="w-3.5 h-3.5 mr-1" />
-                                    {isPaid ? 'Paid' : (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired') ? 'Expired' : isPending ? 'Pending' : 'Payment'}
-                                    {!isPaid && !isPending && (hasSchedule || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
-                                  </Button>
-
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={!isPaid && !isLegacyActive}
-                                    className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${
-                                      (isPaid || isLegacyActive) ? 'text-gray-600 hover:text-indigo-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
-                                    }`}
-                                    onClick={() => handleOpenPageBuilder(submission)}
-                                  >
-                                    <Globe className="w-3.5 h-3.5 mr-1" />
-                                    Pages
-                                    {!existingPages[submission.id] && (isPaid || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
-                                  </Button>
-                                </div>
                               </div>
                             );
-                          })()}
-                        </div>
+                          } else {
+                            reserveBtn = (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full justify-center h-8 text-xs font-medium shadow-sm transition-all text-gray-600 hover:text-blue-600 border-gray-200 bg-white"
+                                onClick={() => {
+                                  setActiveScheduleSubmission(submission);
+                                  setScheduleInitialStep('schedule');
+                                }}
+                              >
+                                <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-blue-500" />
+                                Reserve Slot
+                              </Button>
+                            );
+                          }
+
+                          return (
+                            <div className="flex flex-col gap-2">
+                              {/* Actions Area */}
+                              {reserveBtn}
+
+                              <div className="grid grid-cols-2 gap-2 w-full">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!hasSchedule && !isLegacyActive}
+                                  className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${(hasSchedule || isLegacyActive) ? 'text-gray-600 hover:text-emerald-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
+                                    }`}
+                                  onClick={() => {
+                                    setActiveScheduleSubmission(submission);
+                                    setScheduleInitialStep('payment');
+                                  }}
+                                >
+                                  <CreditCard className="w-3.5 h-3.5 mr-1" />
+                                  {isPaid ? 'Paid' : (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired') ? 'Expired' : isPending ? 'Pending' : 'Payment'}
+                                  {!isPaid && !isPending && (hasSchedule || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                                </Button>
+
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!isPaid && !isLegacyActive}
+                                  className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${(isPaid || isLegacyActive) ? 'text-gray-600 hover:text-indigo-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
+                                    }`}
+                                  onClick={() => handleOpenPageBuilder(submission)}
+                                >
+                                  <Globe className="w-3.5 h-3.5 mr-1" />
+                                  Pages
+                                  {!existingPages[submission.id] && (isPaid || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </Card>
                 ))

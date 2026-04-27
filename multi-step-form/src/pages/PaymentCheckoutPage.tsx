@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getFormSubmissionById, releaseExpiredSlot, prepareForReschedule } from '../utils/supabase';
-import { createPayment } from '../utils/simple-payment';
+import { createPayment } from '../utils/payment';
 import { toast } from 'sonner';
 import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw, CheckCircle } from 'lucide-react';
 import type { FormSubmission } from '../utils/supabase';

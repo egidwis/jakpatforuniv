@@ -2,12 +2,10 @@
 // Mengatasi masalah CORS dengan meneruskan permintaan ke Mayar API
 
 export async function onRequest(context) {
-  // Log untuk debugging
-  console.log("Mayar verify function called with method:", context.request.method);
+  const { request, env } = context;
 
   // Handle preflight request
-  if (context.request.method === 'OPTIONS') {
-    console.log("Handling OPTIONS preflight request for verify");
+  if (request.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
       headers: {
@@ -20,8 +18,8 @@ export async function onRequest(context) {
   }
 
   // Hanya terima metode POST
-  if (context.request.method !== 'POST') {
-    console.log("Method not allowed for verify:", context.request.method);
+  if (request.method !== 'POST') {
+    console.log("Method not allowed for verify:", request.method);
     return new Response(JSON.stringify({ message: 'Method Not Allowed' }), {
       status: 405,
       headers: {
@@ -36,22 +34,17 @@ export async function onRequest(context) {
 
   try {
     // Parse request body
-    const requestData = await context.request.json();
+    const requestData = await request.json();
 
-    // Ambil Mayar API key dari request
-    let apiKey = '';
-
-    // Coba ambil dari request body
-    if (requestData.apiKey) {
-      apiKey = requestData.apiKey;
-      // Hapus apiKey dari requestData agar tidak dikirim ke Mayar
-      delete requestData.apiKey;
-    }
+    // Ambil Mayar API key dari server environment (tidak dari client)
+    const apiKey = env.MAYAR_API_KEY;
+    // Hapus apiKey dari requestData agar tidak dikirim ke Mayar
+    delete requestData.apiKey;
 
     if (!apiKey) {
       return new Response(JSON.stringify({
         success: false,
-        message: 'Mayar API key not provided in request'
+        message: 'Mayar API key not configured on server'
       }), {
         status: 500,
         headers: {
