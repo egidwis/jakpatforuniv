@@ -120,7 +120,7 @@ export function PaymentCheckoutPage() {
       const expirationDate = new Date(reservedAt + 60 * 60 * 1000);
 
       // Buka tab baru di awal untuk menghindari popup blocker dari browser (karena ada async await)
-      paymentWindow = window.open('about:blank', '_blank', 'noopener,noreferrer');
+      paymentWindow = window.open('about:blank', '_blank');
 
       const paymentUrl = await createPayment({
         formSubmissionId: submission.id,
