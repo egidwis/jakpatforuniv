@@ -10,8 +10,21 @@ import { Button } from '@/components/ui/button';
 import { Link, useSearchParams, useOutletContext, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+/**
+ * Normalize a schedule date string for accurate time comparison.
+ * Date-only strings (e.g. "2026-04-13") are parsed as midnight UTC by JS,
+ * which equals 07:00 WIB — before the intended 15:00 WIB go-live time.
+ * This detects date-only values and sets the time to 08:00 UTC (= 15:00 WIB).
+ */
+function normalizeScheduleDate(dateStr: string): Date {
+    const d = new Date(dateStr);
+    if (!dateStr.includes('T')) {
+        d.setUTCHours(8, 0, 0, 0);
+    }
+    return d;
+}
+
 // Define the status steps in order
-// Define status steps dynamically inside component to access translation
 // Define status steps dynamically inside component to access translation
 const getStatusSteps = (t: any) => [
     { key: 'in_review', label: t('statusInReview'), icon: Search, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
@@ -31,8 +44,8 @@ function getCurrentStepIndex(submission: FormSubmission): number {
     // This happens when admin has created and scheduled the page
     const isScheduled = submission.start_date && submission.end_date;
     const now = new Date();
-    const startDate = submission.start_date ? new Date(submission.start_date) : null;
-    const endDate = submission.end_date ? new Date(submission.end_date) : null;
+    const startDate = submission.start_date ? normalizeScheduleDate(submission.start_date) : null;
+    const endDate = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
     const isLive = isScheduled && startDate && endDate && startDate <= now && endDate >= now;
     const isCompleted = isScheduled && endDate && endDate < now;
 
@@ -44,6 +57,13 @@ function getCurrentStepIndex(submission: FormSubmission): number {
     // 5. Otherwise use submission_status mapping
     
     const isPaid = paymentStatus === 'paid' || status === 'paid';
+    
+    // TRAP: If they have dates but haven't paid, they must stay at Awaiting Payment (step 2)
+    // We prioritize this over date checks (isLive/isCompleted) so unpaid slots don't jump ahead.
+    // Exception: If admin explicitly set status to 'live', 'completed', or 'scheduled'.
+    if (isScheduled && !isPaid && status !== 'live' && status !== 'completed' && status !== 'scheduled') {
+        return 2;
+    }
     
     if (isCompleted || status === 'completed') {
         return 4;
@@ -57,11 +77,6 @@ function getCurrentStepIndex(submission: FormSubmission): number {
     // OR an explicit 'scheduled' status from the admin
     if ((isScheduled && isPaid) || status === 'scheduled') {
         return 3;
-    }
-    
-    // If they have dates but haven't paid, they are awaiting payment (step 2)
-    if (isScheduled && !isPaid) {
-        return 2;
     }
     
     // If payment is paid but not yet scheduled → step 2 (payment done, waiting for page)
@@ -123,8 +138,8 @@ function ProgressTracker({
             // Condition 2: ad is live (status is 'live', or between start and end date)
             if (
                 submissionStatus === 'live' ||
-                (submission.start_date && new Date(submission.start_date) <= now && 
-                 submission.end_date && new Date(submission.end_date) >= now)
+                (submission.start_date && normalizeScheduleDate(submission.start_date) <= now && 
+                 submission.end_date && normalizeScheduleDate(submission.end_date) >= now)
             ) {
                 return step.liveHelper;
             }
@@ -224,7 +239,7 @@ function ProgressTracker({
                                             {/* Scheduling date info */}
                                             {step.key === 'slot' && submission.start_date && !isExpired && (
                                                 <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 inline-block mt-0.5">
-                                                    {new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {submission.end_date ? new Date(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}
+                                                    {normalizeScheduleDate(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {submission.end_date ? normalizeScheduleDate(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}
                                                 </span>
                                             )}
 
@@ -257,11 +272,11 @@ function ProgressTracker({
                                                 const now = new Date();
                                                 const submissionStatus = (submission.submission_status || '').toLowerCase();
                                                 const isLiveStatus = submissionStatus === 'live' || 
-                                                    (new Date(submission.start_date) <= now && submission.end_date && new Date(submission.end_date) >= now);
+                                                    (normalizeScheduleDate(submission.start_date) <= now && submission.end_date && normalizeScheduleDate(submission.end_date) >= now);
                                                 if (!isLiveStatus) {
                                                     return (
                                                         <span className="inline-flex items-center text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5 mt-0.5">
-                                                            Scheduled: {new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {new Date(submission.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                                            Scheduled: {normalizeScheduleDate(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {normalizeScheduleDate(submission.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                                         </span>
                                                     );
                                                 }
@@ -371,11 +386,11 @@ function ProgressTracker({
                                                 const now = new Date();
                                                 const submissionStatus = (submission.submission_status || '').toLowerCase();
                                                 const isLiveStatus = submissionStatus === 'live' || 
-                                                    (new Date(submission.start_date) <= now && submission.end_date && new Date(submission.end_date) >= now);
+                                                    (normalizeScheduleDate(submission.start_date) <= now && submission.end_date && normalizeScheduleDate(submission.end_date) >= now);
                                                 if (!isLiveStatus) {
                                                     return (
                                                         <span className="inline-flex items-center text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5 mt-1">
-                                                            Scheduled: {new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {new Date(submission.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                                            Scheduled: {normalizeScheduleDate(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {normalizeScheduleDate(submission.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                                         </span>
                                                     );
                                                 }
@@ -387,7 +402,7 @@ function ProgressTracker({
                                         {((isCurrent && !paymentLink) || isCurrent || isCompleted) && (
                                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-tight max-w-[200px]">
                                                 {step.key === 'slot' && submission.start_date && isCurrent
-                                                    ? `Dijadwalkan: ${new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${submission.end_date ? new Date(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}`
+                                                    ? `Dijadwalkan: ${normalizeScheduleDate(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${submission.end_date ? normalizeScheduleDate(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}`
                                                     : getDynamicHelper(step, isCompleted)
                                                 }
                                             </p>
@@ -611,8 +626,8 @@ export function StatusPage() {
         // Override label for publishing step based on actual status
         if (step.key === 'publishing' && submission) {
             const now = new Date();
-            const startDate = submission.start_date ? new Date(submission.start_date) : null;
-            const endDate = submission.end_date ? new Date(submission.end_date) : null;
+            const startDate = submission.start_date ? normalizeScheduleDate(submission.start_date) : null;
+            const endDate = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
             const isLive = startDate && endDate && startDate <= now && endDate >= now;
             const isCompleted = endDate && endDate < now;
             

@@ -13,6 +13,20 @@ import { RefreshCw, ExternalLink, Activity, CalendarClock, ListTodo, ChevronLeft
 // Setup the localizer for react-big-calendar
 const localizer = momentLocalizer(moment);
 
+/**
+ * Normalize a schedule date string for accurate time comparison.
+ * Date-only strings (e.g. "2026-04-13") are parsed as midnight UTC by JS,
+ * which equals 07:00 WIB — before the intended 15:00 WIB go-live time.
+ * This detects date-only values and sets the time to 08:00 UTC (= 15:00 WIB).
+ */
+function normalizeScheduleDate(dateStr: string): Date {
+    const d = new Date(dateStr);
+    if (!dateStr.includes('T')) {
+        d.setUTCHours(8, 0, 0, 0);
+    }
+    return d;
+}
+
 // Semantic Status Color Palettes
 const STATUS_PALETTES = {
     upcomingNoPage: { bg: '#f0f9ff', border: '#e0f2fe', leftBorder: '#7dd3fc', text: '#0369a1', badgeBg: '#bae6fd', badgeText: '#0284c7' }, // Soft Sky Blue
@@ -121,20 +135,28 @@ const CustomAgendaEvent = ({ event, onSelectEvent }: { event: CalendarEvent, onS
                         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Start Date</span>
                         <span className="text-xs font-medium text-slate-700">
                             {(() => {
-                                const d = new Date(event.resource.start_date);
-                                d.setHours(15, 0, 0, 0);
-                                return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-                            })()} <span className="text-slate-400 ml-1">15:00 WIB</span>
+                                const d = normalizeScheduleDate(event.resource.start_date);
+                                return (
+                                    <>
+                                        {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        <span className="text-slate-400 ml-1">{d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
+                                    </>
+                                );
+                            })()}
                         </span>
                     </div>
                     <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">End Date</span>
                         <span className="text-xs font-medium text-slate-700">
                             {(() => {
-                                const d = new Date(event.resource.end_date);
-                                d.setHours(15, 0, 0, 0);
-                                return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-                            })()} <span className="text-slate-400 ml-1">15:00 WIB</span>
+                                const d = normalizeScheduleDate(event.resource.end_date);
+                                return (
+                                    <>
+                                        {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        <span className="text-slate-400 ml-1">{d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
+                                    </>
+                                );
+                            })()}
                         </span>
                     </div>
                 </div>
@@ -344,11 +366,8 @@ export function SchedulingPage() {
 
             // 3. Convert pages to calendar events
             const pageEvents: CalendarEvent[] = (pages || []).map((page: any) => {
-                const startDate = new Date(page.start_date || page.publish_start_date);
-                startDate.setHours(15, 0, 0, 0);
-
-                const endDate = new Date(page.end_date || page.publish_end_date);
-                endDate.setHours(15, 0, 0, 0);
+                const startDate = normalizeScheduleDate(page.start_date || page.publish_start_date);
+                const endDate = normalizeScheduleDate(page.end_date || page.publish_end_date);
 
                 // Determine Semantic Status Color
                 const now = new Date();
@@ -385,11 +404,8 @@ export function SchedulingPage() {
 
             // 4. Convert pending slots (no page yet) to calendar events
             const slotEvents: CalendarEvent[] = (pendingSlots || []).map((slot: any) => {
-                const startDate = new Date(slot.start_date);
-                startDate.setHours(15, 0, 0, 0);
-
-                const endDate = new Date(slot.end_date);
-                endDate.setHours(15, 0, 0, 0);
+                const startDate = normalizeScheduleDate(slot.start_date);
+                const endDate = normalizeScheduleDate(slot.end_date);
 
                 return {
                     id: `slot-${slot.id}`,
