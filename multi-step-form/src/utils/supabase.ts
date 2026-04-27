@@ -172,6 +172,7 @@ export interface FormSubmission {
   admin_notes?: string;
   slot_booked_by?: string;
   slot_reserved_at?: string;
+  auth_user_id?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -617,27 +618,54 @@ export const updateInvoiceStatus = async (paymentId: string, status: string) => 
   }
 };
 
-// Fungsi untuk mendapatkan submissions berdasarkan email user
+// Fungsi untuk mendapatkan submissions berdasarkan auth user ID (with email fallback)
+export const getFormSubmissionsByUser = async (userId: string, emailFallback?: string) => {
+  try {
+    // Primary: query by auth_user_id
+    let { data, error } = await supabase
+      .from('form_submissions')
+      .select('*')
+      .eq('auth_user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Fallback: also include email-matched submissions (pre-migration data without auth_user_id)
+    if (emailFallback) {
+      const { data: emailData } = await supabase
+        .from('form_submissions')
+        .select('*')
+        .eq('email', emailFallback)
+        .is('auth_user_id', null)
+        .order('created_at', { ascending: false });
+
+      if (emailData?.length) {
+        const existingIds = new Set((data || []).map(d => d.id));
+        data = [...(data || []), ...emailData.filter(d => !existingIds.has(d.id))];
+      }
+    }
+
+    return data || [];
+  } catch (error: any) {
+    console.error('Error getting user submissions:', error);
+    // Return empty array instead of throwing to prevent page crash
+    return [];
+  }
+};
+
+// Legacy alias — kept for backward compatibility with any external callers
 export const getFormSubmissionsByEmail = async (email: string) => {
   try {
     const { data, error } = await supabase
       .from('form_submissions')
       .select('*')
-      .eq('email', email) // Match by email only (user_id column doesn't exist)
+      .eq('email', email)
       .order('created_at', { ascending: false });
-
-    // Fallback simple query if OR fails or for simplicity (User asked for email match)
-    // const { data, error } = await supabase
-    //   .from('form_submissions')
-    //   .select('*')
-    //   .eq('email', email)
-    //   .order('created_at', { ascending: false });
 
     if (error) throw error;
     return data || [];
   } catch (error: any) {
-    console.error('Error getting user submissions:', error);
-    // Return empty array instead of throwing to prevent page crash
+    console.error('Error getting user submissions by email:', error);
     return [];
   }
 };

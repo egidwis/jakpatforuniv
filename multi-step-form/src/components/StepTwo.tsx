@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { CheckCircle, User, Mail, Phone, GraduationCap, AlertCircle, Building, BookOpen, UserCircle, Megaphone } from 'lucide-react';
+import { CheckCircle, User, Mail, Phone, GraduationCap, AlertCircle, Building, BookOpen, UserCircle, Megaphone, Info } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 interface StepTwoProps {
   formData: SurveyFormData;
@@ -23,8 +24,12 @@ interface FormErrors {
 
 export function StepTwo({ formData, updateFormData, nextStep, prevStep }: StepTwoProps) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [errors, setErrors] = useState<FormErrors>({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+
+  // Check if email differs from login
+  const isEmailMismatch = user?.email && formData.email && formData.email.trim().toLowerCase() !== user.email.toLowerCase();
 
   // Fungsi untuk validasi form
   const validateForm = (): boolean => {
@@ -210,6 +215,14 @@ export function StepTwo({ formData, updateFormData, nextStep, prevStep }: StepTw
                 </p>
               ) : (
                 <p className="text-xs text-gray-400 mt-1">{t('emailHelp')}</p>
+              )}
+              {isEmailMismatch && (
+                <div className="flex items-start gap-2 mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                  <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-700">
+                    Email ini berbeda dari akun login Anda (<strong>{user?.email}</strong>). Invoice pembayaran akan dikirim ke email yang Anda isi di atas.
+                  </p>
+                </div>
               )}
             </div>
 

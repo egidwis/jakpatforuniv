@@ -5,6 +5,7 @@ import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
 import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, type FormSubmission } from '../utils/supabase';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
+import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
   Ticket,
@@ -30,6 +31,7 @@ interface StepFourProps {
 
 export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) {
   const { t } = useLanguage();
+  const { user } = useAuth();
 
   const [costCalculation, setCostCalculation] = useState<CostCalculation>({
     adCost: 0,
@@ -191,6 +193,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         payment_status: 'pending',
         submission_method: isManualForm ? 'manual' : 'google_import',
         detected_keywords: formData.detectedKeywords || [],
+        auth_user_id: user?.id,
         ...(isAutoApproval ? {
           slot_booked_by: 'user',
           slot_reserved_at: new Date().toISOString()

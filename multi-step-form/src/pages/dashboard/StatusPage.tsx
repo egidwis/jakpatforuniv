@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByEmail, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, prepareForReschedule, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, prepareForReschedule, type FormSubmission } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -529,9 +529,9 @@ export function StatusPage() {
 
     useEffect(() => {
         async function fetchSubmissions() {
-            if (user?.email) {
+            if (user?.id) {
                 try {
-                    const data = await getFormSubmissionsByEmail(user.email);
+                    const data = await getFormSubmissionsByUser(user.id, user.email);
                     setSubmissions(data);
 
                     // Fetch payment links for each submission

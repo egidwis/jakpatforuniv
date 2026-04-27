@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getFormSubmissionsByEmail, deleteFormSubmission } from '../utils/supabase';
+import { getFormSubmissionsByUser, deleteFormSubmission } from '../utils/supabase';
 import type { SurveyFormData } from '../types';
 import { StepOne } from './StepOne';
 import { StepTwo } from './StepTwo';
@@ -106,27 +106,23 @@ export function MultiStepForm() {
     }));
   }, [formData, currentStep]);
 
-  // Auto-fill form data from logged-in user
+   // Auto-fill form data from logged-in user
   useEffect(() => {
     const loadUserData = async () => {
       if (user) {
-        // 1. Basic auth data - Only if not already set or if empty (don't overwrite draft)
+        // 1. Basic auth data - Always set from auth (this is the identity fix)
         setFormData(prev => {
-          // Only update if email is empty (fresh form) or matches the user
-          if (!prev.email || prev.email === user.email) {
-            return {
-              ...prev,
-              email: user.email || prev.email,
-              fullName: user.user_metadata?.full_name || prev.fullName
-            };
-          }
-          return prev;
+          return {
+            ...prev,
+            email: prev.email || user.email || '',
+            fullName: user.user_metadata?.full_name || prev.fullName
+          };
         });
 
-        // 2. Fetch previous submission for extra details
-        if (user.email) {
+        // 2. Fetch previous submission for extra details (using user ID, not email)
+        if (user.id) {
           try {
-            const previousSubmissions = await getFormSubmissionsByEmail(user.email);
+            const previousSubmissions = await getFormSubmissionsByUser(user.id, user.email);
             if (previousSubmissions && previousSubmissions.length > 0) {
               const latest = previousSubmissions[0];
               setFormData(prev => ({
@@ -136,8 +132,6 @@ export function MultiStepForm() {
                 department: latest.department || prev.department,
                 status: latest.status || prev.status
               }));
-              // Optional: notification
-              // toast.info('Data diri diisi otomatis dari submission sebelumnya');
               
               // Redirect to payment/expired page if they have a pending submission and haven't actively started typing
               setFormData(currentData => {
