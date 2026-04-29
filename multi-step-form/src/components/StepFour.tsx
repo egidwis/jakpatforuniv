@@ -47,7 +47,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
 
   // Derive auto approval status
   const isManualForm = formData.isManualEntry || (formData.surveyUrl && !formData.surveyUrl.includes('docs.google.com/forms'));
-  const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions;
+  const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
 
   // Hitung biaya saat form data berubah
   useEffect(() => {
@@ -246,6 +246,8 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         // MANUAL ATAU SENSITIVE DATA
         const reasonForReview = formData.hasPersonalDataQuestions
           ? 'contains personal data questions'
+          : formData.voucherCode?.toUpperCase() === 'JFUFEB'
+          ? 'voucher JFUFEB used'
           : 'manual form entry';
         console.log(`Form needs admin review (${reasonForReview}), redirect ke halaman submit-success`);
 
@@ -337,6 +339,25 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                     </li>
                   </ul>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Warning Banner for JFUFEB Voucher */}
+        {formData.voucherCode?.toUpperCase() === 'JFUFEB' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
+            <div className="flex gap-4">
+              <div className="flex-shrink-0 mt-0.5">
+                <Info className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
+                  Verifikasi Voucher Promo
+                </h4>
+                <p className="text-sm text-blue-800 leading-relaxed">
+                  Penggunaan voucher <strong>JFUFEB</strong> memerlukan verifikasi manual oleh admin. Form Anda akan dikirimkan untuk direview dan Anda belum perlu melakukan pembayaran sekarang. Admin akan segera memproses pesanan Anda.
+                </p>
               </div>
             </div>
           </div>
@@ -618,12 +639,12 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 ? 'opacity-60 cursor-not-allowed pointer-events-none'
                 : 'hover:shadow-xl hover:-translate-y-0.5'
               }
-            ${formData.hasPersonalDataQuestions
+            ${(formData.hasPersonalDataQuestions || formData.voucherCode?.toUpperCase() === 'JFUFEB')
                 ? 'bg-amber-500 hover:bg-amber-600'
                 : 'shadow-lg hover:shadow-xl'
               }
           `}
-            style={!formData.hasPersonalDataQuestions ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
+            style={!(formData.hasPersonalDataQuestions || formData.voucherCode?.toUpperCase() === 'JFUFEB') ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
           >
             {isSubmitting ? (
               <>
@@ -633,7 +654,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 </svg>
                 Memproses...
               </>
-            ) : formData.hasPersonalDataQuestions ? (
+            ) : (formData.hasPersonalDataQuestions || formData.voucherCode?.toUpperCase() === 'JFUFEB') ? (
               <>
                 <Send size={18} />
                 {t('submitForReview')}

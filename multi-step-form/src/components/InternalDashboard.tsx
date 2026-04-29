@@ -943,42 +943,54 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           </div>
 
                           {/* Total Ad Cost & Voucher */}
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            {submission.duration && submission.duration > 0 && (
-                              <div className="text-xs text-gray-900 font-medium whitespace-nowrap">
-                                <span className="text-gray-400 font-normal mr-1">Est:</span>
-                                Rp {new Intl.NumberFormat('id-ID').format(calculateAdCost(submission.questionCount, submission.duration).totalAdCost)}
-                              </div>
-                            )}
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            {submission.duration && submission.duration > 0 && (() => {
+                              const adCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
+                              const incentiveCost = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
+                              const discount = calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
+                              const finalAdCost = adCost - discount;
+                              
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <div className="text-xs text-gray-900 font-medium whitespace-nowrap">
+                                    {discount > 0 ? (
+                                      <>
+                                        <span className="line-through text-gray-400 font-normal mr-1.5 text-[10px]">
+                                          Rp {new Intl.NumberFormat('id-ID').format(adCost)}
+                                        </span>
+                                        <span className="text-emerald-600 font-bold">
+                                          Rp {new Intl.NumberFormat('id-ID').format(finalAdCost)}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span>Rp {new Intl.NumberFormat('id-ID').format(adCost)}</span>
+                                    )}
+                                  </div>
 
-                            {/* Voucher Info (Moved from Payment Column) */}
-                            {submission.voucher_code && (
-                              <div className="flex items-center gap-1.5 animate-in slide-in-from-left-2 fade-in duration-300">
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center gap-1 text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full border border-purple-100 cursor-help hover:bg-purple-100 transition-colors">
-                                        <Zap className="w-3 h-3 fill-purple-600" />
-                                        <span>{submission.voucher_code}</span>
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <div className="space-y-1 text-xs">
-                                        <p className="font-semibold text-purple-700">Voucher Applied</p>
-                                        <p>Discount: <span className="font-bold text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(
-                                          calculateDiscount(
-                                            submission.voucher_code,
-                                            calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0),
-                                            calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0),
-                                            submission.duration || 0
-                                          )
-                                        )}</span></p>
-                                      </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              </div>
-                            )}
+                                  {/* Voucher Info Badge next to the price */}
+                                  {submission.voucher_code && (
+                                    <div className="flex items-center animate-in slide-in-from-left-2 fade-in duration-300">
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div className="flex items-center gap-1 text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full border border-purple-100 cursor-help hover:bg-purple-100 transition-colors">
+                                              <Zap className="w-3 h-3 fill-purple-600" />
+                                              <span>{submission.voucher_code}</span>
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <div className="space-y-1 text-xs">
+                                              <p className="font-semibold text-purple-700">Voucher Applied</p>
+                                              <p>Discount: <span className="font-bold text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(discount)}</span></p>
+                                            </div>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {/* Status Footer */}

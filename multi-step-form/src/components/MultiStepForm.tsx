@@ -170,8 +170,7 @@ export function MultiStepForm() {
   }, [currentStep]);
 
 
-  // Determine if the current form qualifies for auto-approval path (shows slot booking)
-  const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms');
+  const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
 
   // Fungsi untuk pindah ke step berikutnya
   const nextStep = () => {

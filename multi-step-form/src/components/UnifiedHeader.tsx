@@ -26,7 +26,7 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
         return new Intl.NumberFormat('id-ID').format(amount);
     };
 
-    const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms');
+    const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
 
     const steps = isAutoApprovalPath ? [
         { number: 1, title: t('step1') },
