@@ -93,7 +93,7 @@ function AppContent() {
               <Route path="/payment-success" element={<PaymentSuccessPage />} />
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
               <Route path="/payment-retry" element={<PaymentRetryPage />} />
-              <Route path="/invoices/:paymentId" element={<InvoicePage />} />
+              <Route path="/invoices/:paymentId" element={<PrivateRoute><InvoicePage /></PrivateRoute>} />
               <Route path="/pages" element={<SurveyListingPage />} />
               <Route path="/pages/:slug" element={<SurveyPage />} />
             </Routes>

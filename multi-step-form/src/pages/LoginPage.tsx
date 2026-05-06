@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { signInWithGoogle, signInWithPassword, signUp } from '../utils/supabase';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -17,9 +17,12 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
 
-    // If user is already logged in, redirect to dashboard
+    const location = useLocation();
+    const from = location.state?.from?.pathname || '/dashboard';
+
+    // If user is already logged in, redirect to dashboard or original destination
     if (!loading && session) {
-        return <Navigate to="/dashboard" replace />;
+        return <Navigate to={from} replace />;
     }
 
     const handleGoogleLogin = async () => {
