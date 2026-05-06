@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { supabase } from '../utils/supabase';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Loader2, Users, School, Share2, TrendingUp, DollarSign, Wallet, Clock, ShieldAlert, Target, Award, BookOpen, Link, Mail, Filter, Megaphone, Copy, ExternalLink, Calendar, RefreshCw, Activity, AlertCircle, BarChart3 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, AreaChart, Area, Line, LineChart } from 'recharts';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 const DATE_RANGE_OPTIONS = [
@@ -25,6 +25,24 @@ function getStartDate(range: DateRange): string | null {
 }
 function toWIBHourLabel(iso: string): string {
   return new Date(iso).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', hour12: false });
+}
+
+/** Paginated fetch: Supabase defaults to 1000 rows max. This loops until all rows are fetched. */
+async function fetchAllRows(
+  buildQuery: () => any,
+  batchSize = 1000
+): Promise<any[]> {
+  let allData: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + batchSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < batchSize) break;
+    from += batchSize;
+  }
+  return allData;
 }
 
 function EmptyState({ icon: Icon, message }: { icon: any; message: string }) {
@@ -85,21 +103,25 @@ export function AnalyticsDashboard() {
       setLoading(true); setError(null);
       const start = getStartDate(dateRange);
       const now = new Date().toISOString();
-      const txQuery = supabase.from('transactions').select('*');
-      const subQuery = supabase.from('form_submissions').select('id, university, department, status, submission_status, payment_status, referral_source, email, winner_count, prize_per_winner, criteria_responden, created_at');
-      const respQuery = supabase.from('page_respondents').select('id, page_id, proof_url, ewallet_provider, created_at, jakpat_id');
-      const pageQuery = supabase.from('survey_pages').select('id, views_count, submission_id');
-      const clicksQuery = supabase.from('campaign_clicks').select('*');
-      if (start) {
-        txQuery.gte('created_at', start).lte('created_at', now);
-        subQuery.gte('created_at', start).lte('created_at', now);
-        respQuery.gte('created_at', start).lte('created_at', now);
-        clicksQuery.gte('created_at', start).lte('created_at', now);
-      }
-      const [{ data: txData, error: txErr }, { data: subData, error: subErr }, { data: respData, error: respErr }, { data: pageData, error: pageErr }, { data: clicksData, error: clicksErr }] = await Promise.all([txQuery, subQuery, respQuery, pageQuery, clicksQuery]);
-      const firstError = txErr || subErr || respErr || pageErr || clicksErr;
-      if (firstError) throw firstError;
-      setTransactions(txData || []); setSubmissions(subData || []); setRespondents(respData || []); setSurveyPages(pageData || []); setCampaignClicks(clicksData || []);
+
+      // Paginated fetch for all tables that can exceed 1000 rows
+      const buildTxQuery = () => { let q = supabase.from('transactions').select('*'); if (start) q = q.gte('created_at', start).lte('created_at', now); return q; };
+      const buildSubQuery = () => { let q = supabase.from('form_submissions').select('id, auth_user_id, university, department, status, submission_status, payment_status, referral_source, email, winner_count, prize_per_winner, criteria_responden, created_at'); if (start) q = q.gte('created_at', start).lte('created_at', now); return q; };
+      const buildRespQuery = () => { let q = supabase.from('page_respondents').select('id, page_id, proof_url, ewallet_provider, created_at, jakpat_id'); if (start) q = q.gte('created_at', start).lte('created_at', now); return q; };
+      const buildClicksQuery = () => { let q = supabase.from('campaign_clicks').select('*'); if (start) q = q.gte('created_at', start).lte('created_at', now); return q; };
+
+      // survey_pages is small, no pagination needed
+      const { data: pageData, error: pageErr } = await supabase.from('survey_pages').select('id, views_count, submission_id');
+      if (pageErr) throw pageErr;
+
+      const [txData, subData, respData, clicksData] = await Promise.all([
+        fetchAllRows(buildTxQuery),
+        fetchAllRows(buildSubQuery),
+        fetchAllRows(buildRespQuery),
+        fetchAllRows(buildClicksQuery),
+      ]);
+
+      setTransactions(txData); setSubmissions(subData); setRespondents(respData); setSurveyPages(pageData || []); setCampaignClicks(clicksData);
     } catch (err: any) { console.error('Error fetching analytics data:', err); setError(err?.message || 'Terjadi kesalahan saat mengambil data.'); }
     finally { setLoading(false); }
   };
@@ -110,7 +132,10 @@ export function AnalyticsDashboard() {
     if (!submissions.length) return null;
     const completedTx = transactions.filter((t: any) => t.status === 'completed');
     const totalRevenue = completedTx.reduce((sum: number, t: any) => sum + t.amount, 0);
-    const aov = completedTx.length > 0 ? Math.round(totalRevenue / completedTx.length) : 0;
+    // AOV = Total Revenue / Paid Submissions (not transaction count, since 1 tx can cover multiple submissions)
+    const paidSubmissionIds = new Set(completedTx.map((t: any) => t.form_submission_id));
+    const paidSubmissionCount = paidSubmissionIds.size;
+    const aov = paidSubmissionCount > 0 ? Math.round(totalRevenue / paidSubmissionCount) : 0;
 
     const revenueByUnivMap: Record<string, number> = {};
     completedTx.forEach((tx: any) => {
@@ -119,18 +144,22 @@ export function AnalyticsDashboard() {
     });
     const topSpendersData = Object.entries(revenueByUnivMap).map(([name, Total]) => ({ name, Total })).sort((a: any, b: any) => b.Total - a.Total).slice(0, 5);
 
-    const revenueByEmailMap: Record<string, { email: string; university: string; total: number; txCount: number }> = {};
+    const revenueByCustomerMap: Record<string, { email: string; university: string; total: number; txCount: number }> = {};
     completedTx.forEach((tx: any) => {
       const sub = submissions.find((s: any) => s.id === tx.form_submission_id);
-      if (sub && sub.email) { const email = sub.email.trim().toLowerCase(); if (!revenueByEmailMap[email]) revenueByEmailMap[email] = { email, university: sub.university?.trim() || '-', total: 0, txCount: 0 }; revenueByEmailMap[email].total += tx.amount; revenueByEmailMap[email].txCount += 1; }
+      if (sub) {
+        // Use auth_user_id as primary grouping key; fall back to email for pre-Phase 1 data
+        const key = sub.auth_user_id || sub.email?.trim().toLowerCase();
+        if (!key) return;
+        const displayEmail = sub.email?.trim().toLowerCase() || '-';
+        if (!revenueByCustomerMap[key]) revenueByCustomerMap[key] = { email: displayEmail, university: sub.university?.trim() || '-', total: 0, txCount: 0 };
+        revenueByCustomerMap[key].total += tx.amount;
+        revenueByCustomerMap[key].txCount += 1;
+      }
     });
-    const topSpendersByEmail = Object.values(revenueByEmailMap).sort((a: any, b: any) => b.total - a.total).slice(0, 5);
+    const topSpendersByEmail = Object.values(revenueByCustomerMap).sort((a: any, b: any) => b.total - a.total).slice(0, 5);
 
-    const catMap: Record<string, number> = {};
-    completedTx.forEach((t: any) => {
-      try { if (t.note?.startsWith('{')) { const parsed = JSON.parse(t.note); if (parsed.items && Array.isArray(parsed.items)) { parsed.items.forEach((item: any) => { const cat = item.category || 'Lainnya'; const price = (item.price || 0) * (item.qty || 1); catMap[cat] = (catMap[cat] || 0) + price; }); return; } } catMap['Lainnya'] = (catMap['Lainnya'] || 0) + t.amount; } catch (e) { catMap['Lainnya'] = (catMap['Lainnya'] || 0) + t.amount; }
-    });
-    const revenueCategories = Object.entries(catMap).map(([name, value]) => ({ name, value }));
+
 
     const ewalletMap: Record<string, number> = {};
     respondents.forEach((r: any) => { if (r.proof_url) { const p = r.ewallet_provider?.toLowerCase().trim() || 'Lainnya'; ewalletMap[p] = (ewalletMap[p] || 0) + 1; } });
@@ -205,11 +234,11 @@ export function AnalyticsDashboard() {
     const topCriteriaKeywords = Object.entries(criteriaMap).map(([name, count]) => ({ name, count })).sort((a: any, b: any) => b.count - a.count).slice(0, 8);
 
     const daysToInit = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : 30;
-    const dailyRevenueMap: Record<string, number> = {}; const dailyRespondentMap: Record<string, number> = {};
-    for (let i = daysToInit - 1; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); const key = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); dailyRevenueMap[key] = 0; dailyRespondentMap[key] = 0; }
+    const dailyRevenueMap: Record<string, number> = {}; const dailySubmissionMap: Record<string, number> = {};
+    for (let i = daysToInit - 1; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); const key = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); dailyRevenueMap[key] = 0; dailySubmissionMap[key] = 0; }
     completedTx.forEach((tx: any) => { if (tx.created_at) { const key = new Date(tx.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); if (dailyRevenueMap[key] !== undefined) dailyRevenueMap[key] += tx.amount; } });
-    respondents.forEach((r: any) => { if (r.created_at) { const key = new Date(r.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); if (dailyRespondentMap[key] !== undefined) dailyRespondentMap[key] += 1; } });
-    const dailyTrendData = Object.keys(dailyRevenueMap).map((date) => ({ date, Revenue: dailyRevenueMap[date], Respondents: dailyRespondentMap[date] || 0 }));
+    submissions.forEach((s: any) => { if (s.created_at) { const key = new Date(s.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); if (dailySubmissionMap[key] !== undefined) dailySubmissionMap[key] += 1; } });
+    const dailyTrendData = Object.keys(dailyRevenueMap).map((date) => ({ date, Revenue: dailyRevenueMap[date], Submissions: dailySubmissionMap[date] || 0 }));
 
     const topBarchartUniv = topSpendersData[0]?.name || '-';
     const topWallet = ewalletData[0]?.name || '-';
@@ -220,7 +249,7 @@ export function AnalyticsDashboard() {
     const campaignStats = Object.entries(campaignSourcesMap).map(([name, clicks]) => ({ name, clicks })).sort((a: any, b: any) => b.clicks - a.clicks);
     const totalCampaignClicks = campaignClicks.length;
 
-    return { totalRevenue, aov, topSpendersData, revenueCategories, ewalletData, hourlyData, uniqueRespondents, loyalRespondentsCount, retentionRate: retentionRate.toFixed(1), totalRespondents, completedRespondents, disqualifiedRespondents, totalSubs, spamSubs, genuineSubs, rawApprovalsCount: rawApprovals.length, paidApprovals, unpaidApprovals, totalViews, globalConversionRate, topDepartments, topReferrals, topStudentStatuses, topSpendersByEmail, topCriteriaKeywords, campaignStats, totalCampaignClicks, dailyTrendData, funFacts: { topBarchartUniv, topWallet, peakHour } };
+    return { totalRevenue, aov, paidSubmissionCount, topSpendersData, ewalletData, hourlyData, uniqueRespondents, loyalRespondentsCount, retentionRate: retentionRate.toFixed(1), totalRespondents, completedRespondents, disqualifiedRespondents, totalSubs, spamSubs, genuineSubs, rawApprovalsCount: rawApprovals.length, paidApprovals, unpaidApprovals, totalViews, globalConversionRate, topDepartments, topReferrals, topStudentStatuses, topSpendersByEmail, topCriteriaKeywords, campaignStats, totalCampaignClicks, dailyTrendData, funFacts: { topBarchartUniv, topWallet, peakHour } };
   }, [transactions, submissions, respondents, surveyPages, campaignClicks, dateRange]);
 
   const handleGenerateLink = () => { const source = linkSource.trim() || 'organic'; setGeneratedLink(`${window.location.origin}/c/${source}`); };
@@ -311,7 +340,7 @@ export function AnalyticsDashboard() {
                   <div className="space-y-1">
                     <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">AOV (Average Order)</p>
                     <p className="text-2xl font-bold text-gray-900">{formatIDR(analytics.aov)}</p>
-                    <p className="text-[10px] text-gray-400">Rata-rata transaksi</p>
+                    <p className="text-[10px] text-gray-400">Rata-rata per {analytics.paidSubmissionCount} paid submission</p>
                   </div>
                   <div className="p-2 bg-blue-50 rounded-lg"><Wallet className="w-5 h-5 text-blue-600" /></div>
                 </div>
@@ -323,10 +352,10 @@ export function AnalyticsDashboard() {
           <Card className="shadow-sm border-gray-200">
             <CardHeader className="pb-0 p-4">
               <CardTitle className="text-sm flex items-center gap-1.5"><Activity className="w-4 h-4 text-blue-500" /> Tren Harian</CardTitle>
-              <CardDescription className="text-[10px] mt-0.5">Revenue &amp; Partisipasi harian</CardDescription>
+              <CardDescription className="text-[10px] mt-0.5">Revenue &amp; Submissions harian</CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-2">
-              {analytics.dailyTrendData.some((d: any) => d.Revenue > 0 || d.Respondents > 0) ? (
+              {analytics.dailyTrendData.some((d: any) => d.Revenue > 0 || d.Submissions > 0) ? (
                 <div className="h-[280px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={analytics.dailyTrendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
@@ -335,9 +364,9 @@ export function AnalyticsDashboard() {
                       <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickMargin={5} />
                       <YAxis yAxisId="left" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
                       <YAxis yAxisId="right" orientation="right" stroke="#9ca3af" fontSize={10} allowDecimals={false} />
-                      <RechartsTooltip formatter={(value: number, name: string) => name === 'Revenue' ? formatIDR(value) : `${value} responden`} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
+                      <RechartsTooltip formatter={(value: number, name: string) => name === 'Revenue' ? formatIDR(value) : `${value} submissions`} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
                       <Area yAxisId="left" type="monotone" dataKey="Revenue" stroke="#10b981" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={2} />
-                      <Line yAxisId="right" type="monotone" dataKey="Respondents" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                      <Line yAxisId="right" type="monotone" dataKey="Submissions" stroke="#3b82f6" strokeWidth={2} dot={false} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -369,20 +398,23 @@ export function AnalyticsDashboard() {
 
             <Card className="shadow-sm border-gray-200">
               <CardHeader className="pb-0 p-4">
-                <CardTitle className="text-sm flex items-center gap-1.5"><Share2 className="w-4 h-4 text-purple-500" /> Revenue Flow</CardTitle>
+                <CardTitle className="text-sm flex items-center gap-1.5"><Award className="w-4 h-4 text-amber-500" /> Top Individual Spenders</CardTitle>
+                <CardDescription className="text-[10px] mt-0.5">Total pembelanjaan tertinggi per Customer</CardDescription>
               </CardHeader>
-              <CardContent className="p-4 pt-2 flex justify-center items-center">
-                {analytics.revenueCategories.length > 0 ? (
+              <CardContent className="p-4 pt-2">
+                {analytics.topSpendersByEmail.length > 0 ? (
                   <div className="h-[260px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={analytics.revenueCategories} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value">{analytics.revenueCategories.map((_: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}</Pie>
-                        <RechartsTooltip formatter={(v: number) => formatIDR(v)} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                        <Legend verticalAlign="bottom" height={24} iconSize={8} wrapperStyle={{ fontSize: '10px' }} />
-                      </PieChart>
+                      <BarChart data={analytics.topSpendersByEmail.slice(0,5).map((d: any) => ({ name: d.email.split('@')[0].length > 12 ? d.email.split('@')[0].slice(0,12) + '…' : d.email.split('@')[0], Total: d.total, fullEmail: d.email, orders: d.txCount }))} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f3f4f6" />
+                        <XAxis type="number" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
+                        <YAxis dataKey="name" type="category" width={90} stroke="#9ca3af" fontSize={10} tick={{ fill: '#4b5563' }} />
+                        <RechartsTooltip formatter={(v: number) => formatIDR(v)} labelFormatter={(_, payload: any) => { const p = payload?.[0]?.payload; return p ? `${p.fullEmail} - ${p.orders}x order` : ''; }} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
+                        <Bar dataKey="Total" fill="#f59e0b" radius={[0, 3, 3, 0]} barSize={18}>{analytics.topSpendersByEmail.slice(0,5).map((_: any, index: number) => <Cell key={`ind-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />)}</Bar>
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
-                ) : <EmptyState icon={Share2} message="Belum ada data kategori revenue." />}
+                ) : <EmptyState icon={Award} message="Belum ada data individual spender." />}
               </CardContent>
             </Card>
           </div>
@@ -409,7 +441,6 @@ export function AnalyticsDashboard() {
                         <YAxis yAxisId="left" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
                         <YAxis yAxisId="right" orientation="right" stroke="#9ca3af" fontSize={10} allowDecimals={false} />
                         <RechartsTooltip formatter={(value: number, name: string) => name === 'Revenue' ? formatIDR(value) : `${value} users`} labelFormatter={(_, payload: any) => payload?.[0]?.payload?.fullName || ''} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                        <Legend wrapperStyle={{ fontSize: '10px' }} iconSize={8} />
                         <Bar yAxisId="left" dataKey="Revenue" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={20} />
                         <Bar yAxisId="right" dataKey="PaidUsers" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
                       </BarChart>
@@ -462,28 +493,6 @@ export function AnalyticsDashboard() {
                 ) : <EmptyState icon={Link} message="Belum ada data kanal akuisisi." />}
               </CardContent>
             </Card>
-
-            <Card className="shadow-sm border-gray-200">
-              <CardHeader className="pb-0 p-4">
-                <CardTitle className="text-sm flex items-center gap-1.5"><Mail className="w-4 h-4 text-amber-500" /> Top Individual Spenders</CardTitle>
-                <CardDescription className="text-[10px] mt-0.5">Total pembelanjaan tertinggi per Email</CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-2">
-                {analytics.topSpendersByEmail.length > 0 ? (
-                  <div className="h-[260px] w-full mt-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={analytics.topSpendersByEmail.slice(0,5).map((d: any) => ({ name: d.email.split('@')[0].length > 12 ? d.email.split('@')[0].slice(0,12) + '…' : d.email.split('@')[0], Total: d.total, fullEmail: d.email, orders: d.txCount }))} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f3f4f6" />
-                        <XAxis type="number" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
-                        <YAxis dataKey="name" type="category" width={90} stroke="#9ca3af" fontSize={10} tick={{ fill: '#4b5563' }} />
-                        <RechartsTooltip formatter={(v: number) => formatIDR(v)} labelFormatter={(_, payload: any) => { const p = payload?.[0]?.payload; return p ? `${p.fullEmail} - ${p.orders}x order` : ''; }} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                        <Bar dataKey="Total" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={20} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : <EmptyState icon={Mail} message="Belum ada data individual spender." />}
-              </CardContent>
-            </Card>
           </div>
 
           <Card className="shadow-sm border-gray-200">
@@ -493,14 +502,14 @@ export function AnalyticsDashboard() {
             </CardHeader>
             <CardContent className="p-4 pt-2">
               {analytics.topCriteriaKeywords.length > 0 ? (
-                <div className="h-[280px] w-full mt-2">
+                <div className="h-[300px] w-full mt-2">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analytics.topCriteriaKeywords} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f3f4f6" />
-                      <XAxis type="number" stroke="#9ca3af" fontSize={10} allowDecimals={false} />
-                      <YAxis dataKey="name" type="category" width={150} stroke="#9ca3af" fontSize={10} tick={{ fill: '#4b5563' }} />
+                    <BarChart data={analytics.topCriteriaKeywords} margin={{ top: 5, right: 10, left: -10, bottom: 60 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey="name" stroke="#9ca3af" fontSize={9} tickMargin={5} angle={-35} textAnchor="end" height={80} />
+                      <YAxis stroke="#9ca3af" fontSize={10} allowDecimals={false} />
                       <RechartsTooltip formatter={(v: number) => `${v} submissions`} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                      <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={18}>{analytics.topCriteriaKeywords.map((_: any, index: number) => <Cell key={`crit-${index}`} fill={COLORS[(index + 4) % COLORS.length]} />)}</Bar>
+                      <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={28}>{analytics.topCriteriaKeywords.map((_: any, index: number) => <Cell key={`crit-${index}`} fill={COLORS[(index + 4) % COLORS.length]} />)}</Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -513,10 +522,9 @@ export function AnalyticsDashboard() {
       {/* TAB: RESPONDENT */}
       {activeTab === 'respondent' && (
         <div className="space-y-4 animate-in slide-in-from-bottom-2 fade-in duration-300">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="shadow-sm bg-blue-50/50"><CardContent className="p-4"><p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Unique Respondents</p><p className="text-2xl font-bold text-blue-950">{analytics.uniqueRespondents}</p></CardContent></Card>
             <Card className="shadow-sm bg-purple-50/50 border-purple-100"><CardContent className="p-4"><p className="text-[10px] font-semibold text-purple-700 uppercase tracking-widest">Loyal Respondents</p><p className="text-2xl font-bold text-purple-950">{analytics.loyalRespondentsCount} <span className="text-sm font-medium text-purple-700">users</span></p><p className="text-[10px] text-purple-600 mt-0.5">Mengikuti {'>'} 1 survei berbeda ({analytics.retentionRate}%)</p></CardContent></Card>
-            <Card className="shadow-sm bg-emerald-50/50"><CardContent className="p-4"><p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Total Partisipasi</p><p className="text-2xl font-bold text-emerald-950">{analytics.totalRespondents}</p><p className="text-[10px] text-gray-500 mt-0.5">{analytics.completedRespondents} berhasil lolos screening</p></CardContent></Card>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="shadow-sm border-gray-200">
@@ -525,13 +533,13 @@ export function AnalyticsDashboard() {
                 {analytics.hourlyData.some((d: any) => d.Responden > 0) ? (
                   <div className="h-[260px] w-full mt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={analytics.hourlyData} margin={{ top: 0, right: 10, left: -10, bottom: 0 }}>
+                      <LineChart data={analytics.hourlyData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                         <XAxis dataKey="hour" stroke="#9ca3af" fontSize={9} tickMargin={5} interval={2} />
                         <YAxis stroke="#9ca3af" fontSize={9} allowDecimals={false} />
-                        <RechartsTooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                        <Bar dataKey="Responden" fill="#6366f1" radius={[3, 3, 0, 0]} />
-                      </BarChart>
+                        <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
+                        <Line type="monotone" dataKey="Responden" stroke="#6366f1" strokeWidth={2} dot={{ r: 2, fill: '#6366f1' }} activeDot={{ r: 4 }} />
+                      </LineChart>
                     </ResponsiveContainer>
                   </div>
                 ) : <EmptyState icon={Clock} message="Belum ada data trafik per jam." />}

@@ -350,55 +350,47 @@ export function SurveyPage() {
             }
             console.log('[Submit] Step 1 OK - No duplicate found');
 
-            // Step 2: Upload Proof (with fallback — don't block submission if upload fails)
+            // Step 2: Upload Proof (MANDATORY — block submission if upload fails)
             let proofUrl = '';
             if (proofFile) {
+                console.log('[Submit] Step 2: Compressing image...', {
+                    name: proofFile.name,
+                    size: proofFile.size,
+                    type: proofFile.type
+                });
+                const options = {
+                    maxSizeMB: 0.1, // < 100KB
+                    maxWidthOrHeight: 1024,
+                    useWebWorker: false, // Turn off WebWorker to prevent crashes on Android WebView
+                };
+
+                let compressedFile: File;
                 try {
-                    console.log('[Submit] Step 2: Compressing image...', {
-                        name: proofFile.name,
-                        size: proofFile.size,
-                        type: proofFile.type
-                    });
-                    const options = {
-                        maxSizeMB: 0.1, // < 100KB
-                        maxWidthOrHeight: 1024,
-                        useWebWorker: false, // Turn off WebWorker to prevent crashes on Android WebView
-                    };
-                    const compressedFile = await imageCompression(proofFile, options);
+                    compressedFile = await imageCompression(proofFile, options);
                     console.log('[Submit] Step 2: Image compressed OK, size:', compressedFile.size);
-
-                    const sanitizedName = proofFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_');
-                    const fileName = `proof-${Date.now()}-${sanitizedName}`;
-
-                    console.log('[Submit] Step 2: Uploading to storage...');
-                    const { error: uploadError } = await supabase.storage
-                        .from('page-uploads')
-                        .upload(fileName, compressedFile);
-
-                    if (uploadError) {
-                        console.error('[Submit] Step 2 FAILED - Storage upload error:', JSON.stringify(uploadError));
-                        console.error('[Submit] Storage error details:', {
-                            message: uploadError.message,
-                            name: (uploadError as any).name,
-                            status: (uploadError as any).statusCode || (uploadError as any).status,
-                            error: (uploadError as any).error,
-                        });
-                        // Don't throw — continue without proof URL so submission isn't blocked
-                        toast.error('Upload bukti gagal (storage penuh?), data tetap disimpan tanpa bukti.');
-                    } else {
-                        const { data: { publicUrl } } = supabase.storage
-                            .from('page-uploads')
-                            .getPublicUrl(fileName);
-                        proofUrl = publicUrl;
-                        console.log('[Submit] Step 2 OK - Proof uploaded:', proofUrl);
-                    }
-                } catch (uploadCatchError: any) {
-                    // Catch compression errors or unexpected storage errors
-                    console.error('[Submit] Step 2 FAILED - Image processing error:', uploadCatchError);
-                    console.error('[Submit] Error type:', typeof uploadCatchError, 'Keys:', Object.keys(uploadCatchError || {}));
-                    // Don't throw — continue without proof URL
-                    toast.error('Gagal memproses gambar bukti, data tetap disimpan tanpa bukti.');
+                } catch (compressError: any) {
+                    console.error('[Submit] Step 2 FAILED - Compression error:', compressError);
+                    throw new Error('Gagal memproses gambar bukti. Coba upload ulang dengan gambar lain. Jika masih bermasalah, hubungi support@jakpat.net');
                 }
+
+                const sanitizedName = proofFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_');
+                const fileName = `proof-${Date.now()}-${sanitizedName}`;
+
+                console.log('[Submit] Step 2: Uploading to storage...');
+                const { error: uploadError } = await supabase.storage
+                    .from('page-uploads')
+                    .upload(fileName, compressedFile);
+
+                if (uploadError) {
+                    console.error('[Submit] Step 2 FAILED - Storage upload error:', JSON.stringify(uploadError));
+                    throw new Error('Upload bukti gagal. Coba upload ulang. Jika masih bermasalah, hubungi support@jakpat.net');
+                }
+
+                const { data: { publicUrl } } = supabase.storage
+                    .from('page-uploads')
+                    .getPublicUrl(fileName);
+                proofUrl = publicUrl;
+                console.log('[Submit] Step 2 OK - Proof uploaded:', proofUrl);
             }
 
             // Step 3: Save Respondent Data to database
