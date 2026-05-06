@@ -17,6 +17,7 @@ interface RawSubmission {
   phone_number: string | null;
   university: string | null;
   department: string | null;
+  status: string | null; // Education level (e.g. Mahasiswa S1)
   total_cost: number;
   payment_status: string | null;
   submission_status: string | null;
@@ -33,6 +34,7 @@ interface Customer {
   phone: string;
   university: string;
   department: string;
+  education: string;
   totalOrders: number;
   totalSpent: number;
   firstOrder: string;
@@ -70,7 +72,7 @@ function aggregateCustomers(submissions: RawSubmission[]): Customer[] {
     const key = `auth:${sub.auth_user_id}`;
     if (!customerMap.has(key)) {
       customerMap.set(key, {
-        key, authUserId: sub.auth_user_id, name: '', email: '', phone: '', university: '', department: '',
+        key, authUserId: sub.auth_user_id, name: '', email: '', phone: '', university: '', department: '', education: '',
         totalOrders: 0, totalSpent: 0, firstOrder: sub.created_at, lastOrder: sub.created_at, submissions: [], isLinked: true,
       });
     }
@@ -117,7 +119,7 @@ function aggregateCustomers(submissions: RawSubmission[]): Customer[] {
 
       if (!customerMap.has(orphanKey)) {
         customerMap.set(orphanKey, {
-          key: orphanKey, authUserId: null, name: '', email: '', phone: '', university: '', department: '',
+          key: orphanKey, authUserId: null, name: '', email: '', phone: '', university: '', department: '', education: '',
           totalOrders: 0, totalSpent: 0, firstOrder: sub.created_at, lastOrder: sub.created_at, submissions: [], isLinked: false,
         });
       }
@@ -134,6 +136,7 @@ function aggregateCustomers(submissions: RawSubmission[]): Customer[] {
     c.phone = latest.phone_number || '-';
     c.university = latest.university || '-';
     c.department = latest.department || '-';
+    c.education = latest.status || '-';
     c.totalOrders = c.submissions.length;
     c.totalSpent = c.submissions
       .filter(s => (s.payment_status || '').toLowerCase() === 'paid')
@@ -216,7 +219,7 @@ export function CustomersPage() {
       // 1. Fetch form submissions
       const { data: formData, error: formError } = await supabase
         .from('form_submissions')
-        .select('id, auth_user_id, full_name, email, phone_number, university, department, total_cost, payment_status, submission_status, title, created_at')
+        .select('id, auth_user_id, full_name, email, phone_number, university, department, status, total_cost, payment_status, submission_status, title, created_at')
         .order('created_at', { ascending: false });
       if (formError) throw formError;
 
@@ -392,6 +395,7 @@ export function CustomersPage() {
                       <div className="flex flex-col gap-0.5">
                         <span className="text-sm text-gray-700">{customer.university}</span>
                         <span className="text-xs text-gray-400">{customer.department}</span>
+                        {customer.education !== '-' && <span className="text-[11px] text-gray-500 font-medium mt-0.5">{customer.education}</span>}
                       </div>
                     </TableCell>
                     <TableCell className="py-4 border-y border-gray-200 text-center">
@@ -449,7 +453,7 @@ export function CustomersPage() {
                 </div>
                 <CustomerBadge customer={customer} />
               </div>
-              <p className="text-xs text-gray-500 mb-3">{customer.university} · {customer.department}</p>
+              <p className="text-xs text-gray-500 mb-3">{customer.university} · {customer.department}{customer.education !== '-' ? ` · ${customer.education}` : ''}</p>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-500">{customer.totalOrders} order{customer.totalOrders > 1 ? 's' : ''}</span>
                 <span className="font-semibold text-gray-900">{formatCurrency(customer.totalSpent)}</span>
