@@ -293,7 +293,6 @@ export const translations = {
     checkoutNotPaidYet: "Payment not received yet. Please complete your payment first.",
     checkoutCheckError: "Failed to check payment status. Please try again.",
     checkoutPaymentError: "Failed to open payment link. Please try again.",
-    days: "Days",
 
     // Validation Error Messages - StepTwo
     errorRespondentCriteriaEmpty: "Respondent criteria cannot be empty",
@@ -756,7 +755,6 @@ export const translations = {
     createFirstSurvey: "Buat Survey Baru",
     noSubmissionsDesc: "Anda belum mengajukan survey apapun. Buat survey pertama Anda untuk memulai.",
     submittedOn: "Diajukan pada",
-    days: "Hari",
     adDuration: "Durasi Iklan",
 
     winner: "pemenang",
