@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, AlertTriangle, BarChart2 } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, AlertTriangle, BarChart2, Users } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { InternalDashboard } from './InternalDashboard';
@@ -8,10 +8,11 @@ import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { ConversationsPage } from './ConversationsPage';
 import { SchedulingPage } from '../pages/dashboard/SchedulingPage';
 import { PublishPageManagement } from './PublishPageManagement';
+import { CustomersPage } from './CustomersPage';
 import { useAuth } from '../context/AuthContext';
 import { getAllChatSessions, supabase } from '../utils/supabase';
 
-type Page = 'submissions' | 'transactions' | 'analytics' | 'conversations' | 'scheduling' | 'publish-page';
+type Page = 'submissions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'scheduling' | 'publish-page';
 
 export function InternalDashboardWithLayout() {
   // Supabase Auth
@@ -171,6 +172,11 @@ export function InternalDashboardWithLayout() {
       id: 'analytics' as Page,
       label: 'Analytics',
       icon: BarChart2,
+    },
+    {
+      id: 'customers' as Page,
+      label: 'Customers',
+      icon: Users,
     },
     {
       id: 'conversations' as Page,
@@ -399,6 +405,8 @@ export function InternalDashboardWithLayout() {
             <div className="container mx-auto p-4 md:p-8">
               <AnalyticsDashboard />
             </div>
+          ) : currentPage === 'customers' ? (
+            <CustomersPage />
           ) : currentPage === 'conversations' ? (
             <div className="container mx-auto p-4 md:p-8">
               <ConversationsPage />
