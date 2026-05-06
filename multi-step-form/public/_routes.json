@@ -5,7 +5,8 @@
     "/_headers",
     "/_redirects",
     "/_routes.json",
-    "/assets/*"
+    "/assets/*",
+    "/homepage/assets/*"
   ],
   "routes": [
     {
