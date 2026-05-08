@@ -24,8 +24,7 @@ import { createManualInvoice } from '../utils/payment';
 import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
 
 // Max 4 regular ads per day, 4 extra ads per day
-const MAX_ADS_PER_DAY = 4;
-const MAX_EXTRA_ADS_PER_DAY = 4;
+import { MAX_REGULAR_ADS_PER_DAY as MAX_ADS_PER_DAY, MAX_EXTRA_ADS_PER_DAY } from '../utils/constants';
 
 interface SchedulePaymentViewProps {
     submission: {

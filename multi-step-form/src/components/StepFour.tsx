@@ -5,6 +5,7 @@ import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
 import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, type FormSubmission } from '../utils/supabase';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
+import { MAX_REGULAR_ADS_PER_DAY } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
@@ -132,7 +133,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
           for (let i = 0; i < formData.duration; i++) {
             const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
             const count = regularCounts[dateStr] || 0;
-            if (count >= 4) {
+            if (count >= MAX_REGULAR_ADS_PER_DAY) {
               isAvailable = false;
               break;
             }
