@@ -102,7 +102,11 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Ensure UTC timezone is applied if the string lacks a timezone indicator (e.g. from Postgres timestamp without tz)
+    const normalizedDate = dateString.endsWith('Z') || dateString.match(/[+-]\d{2}:?\d{2}$/) 
+        ? dateString 
+        : `${dateString}Z`;
+    const date = new Date(normalizedDate);
     return new Intl.DateTimeFormat('id-ID', {
       day: '2-digit',
       month: 'short',

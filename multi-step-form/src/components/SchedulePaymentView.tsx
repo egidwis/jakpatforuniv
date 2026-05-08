@@ -597,10 +597,14 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
     };
 
     const formatDate = (dateString: string) => {
+        // Ensure UTC timezone is applied if the string lacks a timezone indicator (e.g. from Postgres timestamp without tz)
+        const normalizedDate = dateString.endsWith('Z') || dateString.match(/[+-]\d{2}:?\d{2}$/) 
+            ? dateString 
+            : `${dateString}Z`;
         return new Intl.DateTimeFormat('id-ID', {
             day: '2-digit', month: 'short', year: 'numeric',
             hour: '2-digit', minute: '2-digit'
-        }).format(new Date(dateString));
+        }).format(new Date(normalizedDate));
     };
 
     const getStatusBadge = (status: string) => {
