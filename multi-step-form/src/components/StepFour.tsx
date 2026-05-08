@@ -132,7 +132,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
           for (let i = 0; i < formData.duration; i++) {
             const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
             const count = regularCounts[dateStr] || 0;
-            if (count >= 3) {
+            if (count >= 4) {
               isAvailable = false;
               break;
             }
