@@ -256,17 +256,6 @@ export const translations = {
     incentive: "Incentive",
     targetCriteria: "Target Criteria",
     contactInfo: "Contact Info",
-    
-    // Order Overview UI
-    orderOverviewTitle: "Order Overview",
-    surveyAndTarget: "Survey & Target",
-    specification: "Specification",
-    questionsAndDuration: "Questions & Duration",
-    respondentIncentiveLabel: "Respondent Incentive",
-    ordererData: "Customer Data",
-    nameAndContact: "Name & Contact",
-    institutionAndProfile: "Institution & Profile",
-    releaseSchedule: "Release Schedule",
 
     // Promo Code
     voucherCodeLabel: "Voucher/Referral Code",
@@ -608,17 +597,6 @@ export const translations = {
     incentive: "Insentif",
     targetCriteria: "Kriteria Target",
     contactInfo: "Info Kontak",
-
-    // Order Overview UI
-    orderOverviewTitle: "Order Overview",
-    surveyAndTarget: "Survei & Target",
-    specification: "Spesifikasi",
-    questionsAndDuration: "Pertanyaan & Durasi",
-    respondentIncentiveLabel: "Insentif Responden",
-    ordererData: "Data Pemesan",
-    nameAndContact: "Nama & Kontak",
-    institutionAndProfile: "Institusi & Profil",
-    releaseSchedule: "Jadwal Rilis",
 
     // Promo Code
     voucherCodeLabel: "Kode Voucher/Referral",

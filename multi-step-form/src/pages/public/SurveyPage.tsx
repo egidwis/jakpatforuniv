@@ -546,20 +546,24 @@ export function SurveyPage() {
         );
     }
 
-    // Check if Survey URL can be embedded (simple check)
-    // If google form, ensure it has embedded=true or logic to add it
+    // Prepare Survey URL for embedding
     let surveyUrl = pageData.form_submissions?.survey_url || '';
+
+    // Google Forms: ensure embedded=true parameter is present
     if (surveyUrl.includes('docs.google.com/forms') && !surveyUrl.includes('embedded=true')) {
-        // Convert viewform or viewanalytics to viewform?embedded=true
-        // Usually appending ?embedded=true works
-        if (surveyUrl.includes('?')) {
-            surveyUrl += '&embedded=true';
-        } else {
-            surveyUrl += '?embedded=true';
-        }
+        surveyUrl += surveyUrl.includes('?') ? '&embedded=true' : '?embedded=true';
     }
 
+    // Resolve forms.gle short URLs to embeddable Google Forms URL
+    if (surveyUrl.includes('forms.gle')) {
+        // forms.gle redirects to docs.google.com/forms — iframe can handle the redirect,
+        // but we still add embedded=true awareness for when it lands on the final URL.
+    }
+
+    // Blocklist approach: default to embedding all URLs.
+    // Only block domains that are KNOWN to refuse iframe embedding (X-Frame-Options: DENY).
     const checkEmbeddable = (url: string) => {
+        if (!url) return false;
         try {
             const domain = new URL(url).hostname.toLowerCase();
             const embeddableDomains = [

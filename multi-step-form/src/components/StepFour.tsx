@@ -376,11 +376,11 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                   <div className="w-full md:w-3/4 grid grid-cols-2 gap-4">
                     <div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><FileText size={12} /> {t('questionsAndDuration')}</div>
-                      <div className="text-sm font-medium text-gray-900">{formData.questionCount} Qs • {formData.duration} Hari</div>
+                      <div className="text-sm font-medium text-gray-900">{formData.questionCount} Qs • {formData.duration} {t('days')}</div>
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Gift size={12} /> {t('respondentIncentiveLabel')}</div>
-                      <div className="text-sm font-medium text-gray-900">{formData.winnerCount} Pemenang</div>
+                      <div className="text-sm font-medium text-gray-900">{formData.winnerCount} {t('winner')}</div>
                       <div className="text-[11px] text-gray-500">@ Rp {formatRupiah(formData.prizePerWinner)}</div>
                     </div>
                   </div>
