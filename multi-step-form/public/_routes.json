@@ -6,12 +6,13 @@
     "/_redirects",
     "/_routes.json",
     "/assets/*",
-    "/homepage/assets/*"
-  ],
-  "routes": [
-    {
-      "src": "/*",
-      "dest": "/index.html"
-    }
+    "/homepage/*",
+    "/homepage",
+    "/favicon.webp",
+    "/payment-failed.html",
+    "/payment-success.html",
+    "/submit-success.html",
+    "/survey-disqualified.html",
+    "/survey-success.html"
   ]
 }

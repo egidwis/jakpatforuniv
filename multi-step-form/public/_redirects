@@ -1,1 +1,8 @@
+# Root domain → homepage
+/ /homepage/ 301
+
+# Trailing slash normalization for homepage
+/homepage /homepage/ 301
+
+# SPA fallback for submit-survey
 /submit-survey/* /submit-survey/index.html 200
