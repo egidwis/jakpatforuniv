@@ -1,6 +1,3 @@
-# Root domain → homepage
-/ /homepage/ 301
-
 # Trailing slash normalization for homepage
 /homepage /homepage/ 301
 
