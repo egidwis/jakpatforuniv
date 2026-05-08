@@ -28,33 +28,40 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
   const fetchInvoices = async () => {
     try {
       setIsLoading(true);
-      // Try fetching invoices first
-      let data = await getInvoicesByFormSubmissionId(formSubmissionId);
+      // Fetch from both tables and merge (deduplicate by payment_id)
+      const [invoiceData, txData] = await Promise.all([
+        getInvoicesByFormSubmissionId(formSubmissionId),
+        getTransactionsByFormSubmissionId(formSubmissionId),
+      ]);
 
-      // If invoices table is empty, fall back to transactions to cover older automated flows
-      if (!data || data.length === 0) {
-        const txData = await getTransactionsByFormSubmissionId(formSubmissionId);
-        if (txData && txData.length > 0) {
-          // Map transaction data to look like an invoice for the dropdown
-          data = txData.map(tx => ({
-            id: tx.id,
-            payment_id: tx.payment_id,
-            status: overrideStatus && ['paid', 'completed'].includes(overrideStatus) ? 'completed' : tx.status,
-            amount: tx.amount,
-            invoice_url: tx.payment_url,
-            created_at: tx.created_at,
-            form_submission_id: tx.form_submission_id
-          }));
-        }
-      } else {
-        // If data exists natively in invoices, still apply override
-        data = data.map(inv => ({
-          ...inv,
-          status: overrideStatus && ['paid', 'completed'].includes(overrideStatus) ? 'completed' : inv.status
-        }));
-      }
+      // Normalize invoices with optional status override
+      const normalizedInvoices = (invoiceData || []).map((inv: any) => ({
+        ...inv,
+        status: overrideStatus && ['paid', 'completed'].includes(overrideStatus) ? 'completed' : inv.status
+      }));
 
-      setInvoices(data);
+      // Normalize transactions to invoice-like shape
+      const txAsInvoices = (txData || []).map((tx: any) => ({
+        id: tx.id,
+        payment_id: tx.payment_id,
+        status: overrideStatus && ['paid', 'completed'].includes(overrideStatus) ? 'completed' : tx.status,
+        amount: tx.amount,
+        invoice_url: tx.payment_url,
+        created_at: tx.created_at,
+        form_submission_id: tx.form_submission_id
+      }));
+
+      // Merge: start with invoices, then add transactions not already represented
+      const seenPaymentIds = new Set(normalizedInvoices.map((inv: any) => inv.payment_id));
+      const merged = [
+        ...normalizedInvoices,
+        ...txAsInvoices.filter((tx: any) => !seenPaymentIds.has(tx.payment_id)),
+      ];
+
+      // Sort by created_at descending
+      merged.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setInvoices(merged);
     } catch (error) {
       console.error('Error fetching invoices:', error);
       toast.error('Gagal memuat daftar invoice');

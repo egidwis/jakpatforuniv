@@ -447,22 +447,34 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
         if (!submission?.id) return;
         setIsLoadingInvoices(true);
         try {
-            let data = await getInvoicesByFormSubmissionId(submission.id);
-            if (!data || data.length === 0) {
-                const txData = await getTransactionsByFormSubmissionId(submission.id);
-                if (txData && txData.length > 0) {
-                    data = txData.map((tx: any) => ({
-                        id: tx.id,
-                        payment_id: tx.payment_id,
-                        status: tx.status,
-                        amount: tx.amount,
-                        invoice_url: tx.payment_url,
-                        created_at: tx.created_at,
-                    }));
-                }
-            }
-            setExistingInvoices(data || []);
-            if (!data || data.length === 0) {
+            // Fetch from both tables and merge (deduplicate by payment_id)
+            const [invoiceData, txData] = await Promise.all([
+                getInvoicesByFormSubmissionId(submission.id),
+                getTransactionsByFormSubmissionId(submission.id),
+            ]);
+
+            // Normalize transactions to invoice-like shape
+            const txAsInvoices = (txData || []).map((tx: any) => ({
+                id: tx.id,
+                payment_id: tx.payment_id,
+                status: tx.status,
+                amount: tx.amount,
+                invoice_url: tx.payment_url,
+                created_at: tx.created_at,
+            }));
+
+            // Merge: start with invoices, then add transactions that aren't already represented
+            const seenPaymentIds = new Set((invoiceData || []).map((inv: any) => inv.payment_id));
+            const merged = [
+                ...(invoiceData || []),
+                ...txAsInvoices.filter((tx: any) => !seenPaymentIds.has(tx.payment_id)),
+            ];
+
+            // Sort by created_at descending
+            merged.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+            setExistingInvoices(merged);
+            if (merged.length === 0) {
                 setShowNewInvoiceForm(true);
             }
         } catch (error) {
