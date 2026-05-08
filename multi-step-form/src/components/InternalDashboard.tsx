@@ -251,23 +251,66 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           }
 
           // 2. Fetch Transactions (Invoices) to override Supabase defaults and get true state
-          const { data: transactions, error: trxError } = await supabase
-            .from('transactions')
-            .select('form_submission_id, status, created_at, payment_url, amount')
-            .in('form_submission_id', submissionIds)
-            .order('created_at', { ascending: false });
+          // Fetch from BOTH transactions and invoices tables
+          const [ { data: transactions, error: trxError }, { data: invoices, error: invError } ] = await Promise.all([
+            supabase
+              .from('transactions')
+              .select('payment_id, form_submission_id, status, created_at, payment_url, amount')
+              .in('form_submission_id', submissionIds),
+            supabase
+              .from('invoices')
+              .select('payment_id, form_submission_id, status, created_at, invoice_url, amount')
+              .in('form_submission_id', submissionIds)
+          ]);
 
           if (trxError) console.error('Error fetching transactions:', trxError);
+          if (invError) console.error('Error fetching invoices:', invError);
+
+          // Merge and deduplicate by payment_id
+          const mergedTx: any[] = [];
+          const seenPaymentIds = new Set<string>();
+
+          (invoices || []).forEach(inv => {
+            if (!seenPaymentIds.has(inv.payment_id)) {
+              seenPaymentIds.add(inv.payment_id);
+              mergedTx.push({
+                payment_id: inv.payment_id,
+                form_submission_id: inv.form_submission_id,
+                status: inv.status,
+                created_at: inv.created_at,
+                payment_url: inv.invoice_url,
+                amount: inv.amount
+              });
+            }
+          });
+
+          (transactions || []).forEach(tx => {
+            if (!seenPaymentIds.has(tx.payment_id)) {
+              seenPaymentIds.add(tx.payment_id);
+              mergedTx.push({
+                payment_id: tx.payment_id,
+                form_submission_id: tx.form_submission_id,
+                status: tx.status,
+                created_at: tx.created_at,
+                payment_url: tx.payment_url,
+                amount: tx.amount
+              });
+            }
+          });
+
+          // Sort descending by created_at
+          mergedTx.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
           const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null }> = {};
 
-          if (transactions && transactions.length > 0) {
+          if (mergedTx.length > 0) {
             transformed.forEach(sub => {
-              const subTxs = transactions.filter(t => t.form_submission_id === sub.id);
+              const subTxs = mergedTx.filter(t => t.form_submission_id === sub.id);
               if (subTxs.length > 0) {
                 sub.has_transactions = true;
-                const hasPaid = subTxs.some(t => ['paid', 'completed'].includes(t.status));
-                const latestStatus = hasPaid ? 'paid' : subTxs[0].status;
+                // Make the status follow the latest invoice strictly
+                const latestStatus = subTxs[0].status;
+                
                 // Get the latest pending payment URL for quick copy
                 const latestPendingTx = subTxs.find(t => !['paid', 'completed'].includes(t.status));
                 paymentMap[sub.id] = {
