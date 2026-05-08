@@ -2917,15 +2917,26 @@ select.form-input.border-red-500:focus {
 }
 
 .google-connect-button {
-  background: linear-gradient(135deg, #0091ff 0%, #0077cc 100%);
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 145, 255, 0.3);
+  background: #ffffff;
+  color: #3c4043;
+  border: 1px solid #dadce0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .google-connect-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #0077cc 0%, #0060a8 100%);
-  box-shadow: 0 6px 16px rgba(0, 145, 255, 0.4);
+  background: #f8f9fa;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   transform: translateY(-2px);
+}
+
+[data-theme="dark"] .google-connect-button {
+  background: #202124;
+  color: #e8eaed;
+  border-color: #3c4043;
+}
+
+[data-theme="dark"] .google-connect-button:hover:not(:disabled) {
+  background: #303134;
 }
 
 .google-connect-button:active:not(:disabled) {

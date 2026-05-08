@@ -177,7 +177,7 @@ export class SimpleGoogleAuth {
           }
         }, 300000); // 5 minutes timeout (extended for 2FA/Slow login)
 
-        this.tokenClient.callback = (response: any) => {
+        this.tokenClient.callback = async (response: any) => {
           if (isResolved) return;
           clearTimeout(timeoutId);
           isResolved = true;
@@ -209,9 +209,25 @@ export class SimpleGoogleAuth {
 
           console.log('✅ Access token received successfully with all scopes');
 
+          let user = undefined;
+          try {
+            const aboutResponse = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`
+              }
+            });
+            if (aboutResponse.ok) {
+              const aboutData = await aboutResponse.json();
+              user = aboutData.user;
+            }
+          } catch (e) {
+            console.error('Failed to fetch user info from Drive API', e);
+          }
+
           resolve({
             success: true,
-            accessToken: this.accessToken || undefined
+            accessToken: this.accessToken || undefined,
+            user: user
           });
         };
 

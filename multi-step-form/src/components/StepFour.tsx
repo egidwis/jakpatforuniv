@@ -20,7 +20,10 @@ import {
   CreditCard,
   Send,
   ExternalLink,
-  CalendarCheck
+  CalendarCheck,
+  User,
+  GraduationCap,
+  Mail
 } from 'lucide-react';
 
 interface StepFourProps {
@@ -247,8 +250,8 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         const reasonForReview = formData.hasPersonalDataQuestions
           ? 'contains personal data questions'
           : formData.voucherCode?.toUpperCase() === 'JFUFEB'
-          ? 'voucher JFUFEB used'
-          : 'manual form entry';
+            ? 'voucher JFUFEB used'
+            : 'manual form entry';
         console.log(`Form needs admin review (${reasonForReview}), redirect ke halaman submit-success`);
 
         if (savedData && savedData.id && isManualForm) {
@@ -296,49 +299,21 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
       <div className="space-y-8">
         {/* Warning Banner for Personal Data Detection */}
         {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-6">
-            <div className="flex gap-4">
-              <div className="flex-shrink-0 mt-0.5">
-                <AlertTriangle className="w-5 h-5 text-amber-600" />
+          <div className="p-4 rounded-xl bg-amber-100/50 border border-amber-200/60 flex flex-col gap-2 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="p-1.5 bg-amber-200 text-amber-700 rounded-lg shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                  <path d="M12 9v4" />
+                  <path d="M12 17h.01" />
+                </svg>
               </div>
-              <div className="flex-1">
-                <h4 className="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2">
-                  {t('personalDataWarningTitle')}
-                </h4>
-
-                {/* Detected Keywords Tags */}
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {formData.detectedKeywords.map((keyword, i) => (
-                    <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 capitalize">
-                      {keyword}
-                    </span>
-                  ))}
-                </div>
-
-                <p className="text-sm text-amber-800 leading-relaxed mb-4">
-                  {t('personalDataWhatHappensDetail')}
+              <div>
+                <h4 className="font-bold text-amber-900 text-sm">Terdeteksi Pertanyaan Data Pribadi</h4>
+                <p className="text-sm text-amber-700 mt-1 leading-relaxed">
+                  Sistem mendeteksi form ini menanyakan: <strong className="bg-amber-200/60 px-1.5 py-0.5 rounded capitalize">{formData.detectedKeywords.join(', ')}</strong>.
+                  Sesuai <a href="https://jakpatforuniv.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin sebelum dilanjutkan ke tahap pembayaran.
                 </p>
-
-                {/* Styled Tips Box */}
-                <div className="bg-white/60 border border-amber-100 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2 text-amber-900 font-semibold text-xs uppercase tracking-wide">
-                    <span className="text-base">💡</span> {t('personalDataPolicyExplanation')}
-                  </div>
-                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-amber-800/90 ml-1">
-                    <li className="flex items-start gap-2">
-                      <span className="text-amber-500 mt-0.5">•</span> {t('personalDataExample1')}
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-amber-500 mt-0.5">•</span> {t('personalDataExample2')}
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-amber-500 mt-0.5">•</span> {t('personalDataExample3')}
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-amber-500 mt-0.5">•</span> {t('personalDataExample4')}
-                    </li>
-                  </ul>
-                </div>
               </div>
             </div>
           </div>
@@ -364,98 +339,90 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
         )}
 
         {/* SECTION: SURVEY OVERVIEW (ORDER REQUEST) */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+        <div className="bg-gradient-to-br from-blue-50 via-white to-indigo-50/40 rounded-xl border border-blue-100 shadow-sm overflow-hidden transition-all duration-200 mb-4">
+          <div className="px-6 py-4 border-b border-blue-100/60 bg-blue-50/30 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FileText size={16} className="text-blue-600" />
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Order Overview</h3>
+              <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider">{t('orderOverviewTitle')}</h3>
             </div>
           </div>
 
-          <div className="p-6 space-y-5">
-            {/* Row 1: Title and Link */}
-            <div className="space-y-4">
-              <div>
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">Judul Survei</div>
-                <div className="font-semibold text-lg text-gray-900">{formData.title}</div>
-              </div>
-              <div>
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">Link Survei</div>
-                <a href={formData.surveyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sm text-blue-600 hover:text-blue-700 hover:underline break-all">
-                  <ExternalLink size={14} className="shrink-0" />
-                  {formData.surveyUrl}
-                </a>
-              </div>
-            </div>
+          <div className="p-0">
+            <div className="divide-y divide-blue-100/50">
+              {/* Grup Pertama: Survei & Spesifikasi (Tanpa Pembatas) */}
+              <div className="hover:bg-blue-50/30 transition-colors">
+                {/* Info Survei */}
+                <div className="px-6 pt-5 pb-2 flex flex-col md:flex-row gap-2 md:gap-6">
+                  <div className="w-full md:w-1/4 text-[10px] font-bold text-gray-500 uppercase tracking-wider pt-1">{t('surveyAndTarget')}</div>
+                  <div className="w-full md:w-3/4 flex flex-col gap-2">
+                    <div>
+                      <div className="text-sm font-bold text-gray-900">{formData.title}</div>
+                      <a href={formData.surveyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:underline text-xs break-all mt-0.5">
+                        <ExternalLink size={10} className="shrink-0" />
+                        {formData.surveyUrl}
+                      </a>
+                    </div>
+                    <div className="flex items-start gap-1.5 text-xs text-gray-700 bg-white/80 px-2.5 py-1.5 rounded border border-blue-100/50 inline-flex w-fit max-w-full shadow-sm">
+                      <Target size={12} className="text-rose-500 shrink-0 mt-0.5" />
+                      <span className="line-clamp-2">{formData.criteriaResponden}</span>
+                    </div>
+                  </div>
+                </div>
 
-            <div className="w-full h-px bg-gray-100"></div>
-
-            {/* Row 2: Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-              <div>
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">{t('questions')}</div>
-                <div className="flex items-center gap-2 font-medium text-sm text-gray-900">
-                  <FileText size={14} className="text-blue-500" />
-                  {formData.questionCount} {t('questions')}
+                {/* Spesifikasi & Insentif */}
+                <div className="px-6 pt-2 pb-5 flex flex-col md:flex-row gap-2 md:gap-6">
+                  {/* Spacer untuk mensejajarkan konten dengan kolom di atasnya pada tampilan desktop */}
+                  <div className="hidden md:block md:w-1/4"></div>
+                  <div className="w-full md:w-3/4 grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><FileText size={12} /> {t('questionsAndDuration')}</div>
+                      <div className="text-sm font-medium text-gray-900">{formData.questionCount} Qs • {formData.duration} Hari</div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Gift size={12} /> {t('respondentIncentiveLabel')}</div>
+                      <div className="text-sm font-medium text-gray-900">{formData.winnerCount} Pemenang</div>
+                      <div className="text-[11px] text-gray-500">@ Rp {formatRupiah(formData.prizePerWinner)}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">{t('duration')}</div>
-                <div className="flex items-center gap-2 font-medium text-sm text-gray-900">
-                  <Clock size={14} className="text-indigo-500" />
-                  {formData.duration} {formData.duration === 1 ? 'day' : 'days'}
-                </div>
-              </div>
-
-              <div className="md:col-span-2">
-                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">{t('incentive')}</div>
-                <div className="flex items-center gap-2 font-medium text-sm text-gray-900">
-                  <Gift size={14} className="text-emerald-500 shrink-0" />
-                  <span>{formData.winnerCount} winners × Rp {formatRupiah(formData.prizePerWinner)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Row 3: Slot Schedule (if reserved) */}
-            {isAutoApproval && formData.startDate && (
-              <>
-                <div className="w-full h-px bg-gray-100"></div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="bg-blue-50/50 p-3.5 rounded-lg border border-blue-100">
-                    <div className="text-[10px] text-blue-600 uppercase font-bold tracking-wider mb-1.5">Start Date (Mulai)</div>
-                    <div className="flex items-center gap-2 font-semibold text-sm text-blue-900">
+              {/* Jadwal (If Reserved) */}
+              {isAutoApproval && formData.startDate && (
+                <div className="px-6 py-5 flex flex-col md:flex-row gap-2 md:gap-6 hover:bg-blue-100/50 transition-colors bg-blue-50/50">
+                  <div className="w-full md:w-1/4 text-[10px] font-bold text-blue-600 uppercase tracking-wider pt-1">{t('releaseSchedule')}</div>
+                  <div className="w-full md:w-3/4">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-blue-900">
                       <CalendarCheck size={14} />
-                      {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} 15:00 WIB
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
-                    <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1.5">End Date (Selesai)</div>
-                    <div className="flex items-center gap-2 font-semibold text-sm text-slate-800">
-                      <CalendarCheck size={14} className="text-slate-400" />
-                      {(() => {
-                        const ed = new Date(formData.startDate);
-                        ed.setDate(ed.getDate() + (formData.duration || 1));
-                        return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-                      })()} 15:00 WIB
+                      {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {
+                        (() => {
+                          const ed = new Date(formData.startDate);
+                          ed.setDate(ed.getDate() + (formData.duration || 1));
+                          return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+                        })()
+                      } (15:00 WIB)
                     </div>
                   </div>
                 </div>
-              </>
-            )}
+              )}
 
-            <div className="w-full h-px bg-gray-100"></div>
-
-            {/* Row 4: Target Criteria */}
-            <div>
-              <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">{t('targetCriteria')}</div>
-              <div className="flex items-start gap-2.5 text-sm text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-100">
-                <Target size={16} className="text-rose-500 mt-0.5 shrink-0" />
-                <p>{formData.criteriaResponden}</p>
+              {/* Customer Info */}
+              <div className="px-6 pt-5 pb-6 flex flex-col md:flex-row gap-2 md:gap-6 hover:bg-blue-50/30 transition-colors">
+                <div className="w-full md:w-1/4 text-[10px] font-bold text-gray-500 uppercase tracking-wider pt-1">{t('ordererData')}</div>
+                <div className="w-full md:w-3/4 grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><User size={12} /> {t('nameAndContact')}</div>
+                    <div className="text-sm font-medium text-gray-900">{formData.fullName}</div>
+                    <div className="text-[11px] text-gray-500 break-all">{formData.email}</div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><GraduationCap size={12} /> {t('institutionAndProfile')}</div>
+                    <div className="text-sm font-medium text-gray-900 line-clamp-1" title={formData.university}>{formData.university}</div>
+                    <div className="text-[11px] text-gray-500">{formData.status} • {formData.department}</div>
+                  </div>
+                </div>
               </div>
             </div>
-            
           </div>
         </div>
 
@@ -471,7 +438,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
             {voucherInfo.isValid && (
               <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
                 <CheckCircle size={12} />
-                <span>Applied</span>
+                <span>Digunakan</span>
               </div>
             )}
           </div>
@@ -546,7 +513,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
               <div className="flex justify-between items-start pb-4 border-b border-dashed border-gray-200">
                 <div>
                   <div className="text-sm font-medium text-gray-900">{t('adCampaignCost')}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{formData.questionCount} {t('questions').toLowerCase()} × {formData.duration} {formData.duration === 1 ? 'day' : 'days'}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{formData.questionCount} {t('questions').toLowerCase()} × {formData.duration} hari</div>
                 </div>
                 <div className="text-sm font-medium text-gray-900">Rp {formatRupiah(costCalculation.adCost)}</div>
               </div>

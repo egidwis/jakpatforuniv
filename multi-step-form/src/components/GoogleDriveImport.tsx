@@ -378,30 +378,81 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
                   </label>
                 </div>
 
-                {/* Safety Note */}
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg shrink-0">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e40af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      </svg>
+                {/* Safety Note Redesigned */}
+                <div className="mb-6 relative overflow-hidden rounded-xl border bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm" style={{ borderColor: '#a7f3d0' }}>
+                  {/* Decorative background element */}
+                  <div className="absolute -right-6 -top-6 opacity-[0.07]">
+                    <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  </div>
+                  
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-3 mb-4 border-b border-emerald-100 pb-3">
+                      <div className="p-2 bg-emerald-100 rounded-lg shrink-0 text-emerald-600 shadow-sm">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                          <path d="m9 12 2 2 4-4" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-emerald-900 text-base">Jaminan Keamanan 100%</h4>
+                        <p className="text-xs text-emerald-700 font-medium">Privasi data Anda adalah prioritas kami</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-blue-900 mb-2 text-sm">Jaminan Keamanan Data Anda</p>
-                      <ul className="space-y-2 text-sm text-blue-800">
-                        <li className="flex gap-2">
-                          <span className="shrink-0">•</span>
-                          <span>Kami <strong>TIDAK BISA</strong> melihat seluruh file Google Drive Anda.</span>
-                        </li>
-                        <li className="flex gap-2">
-                          <span className="shrink-0">•</span>
-                          <span>Akses <strong>hanya diberikan ke file yang Anda pilih secara manual</strong> di langkah selanjutnya.</span>
-                        </li>
-                        <li className="flex gap-2">
-                          <span className="shrink-0">•</span>
-                          <span>Permission "View Responses" hanya untuk fitur <strong>menghitung jumlah responden</strong> (kami tidak menyimpan data responden Anda).</span>
-                        </li>
-                      </ul>
+                    
+                    <div className="flex flex-col gap-1.5 mt-1">
+                      {/* Item 1 */}
+                      <div className="flex items-start gap-3 p-2.5 rounded-lg bg-emerald-50/50 hover:bg-emerald-100/50 transition-colors border border-transparent hover:border-emerald-100">
+                        <div className="bg-emerald-100/80 p-1.5 rounded-md text-emerald-600 shrink-0 mt-0.5">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                            <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                            <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                            <line x1="2" x2="22" y1="2" y2="22" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h5 className="font-semibold text-emerald-900 text-[11px] uppercase tracking-wide mb-0.5">Tanpa Akses Penuh</h5>
+                          <p className="text-[11px] text-emerald-700 leading-relaxed">
+                            Kami <strong className="font-bold text-emerald-800">TIDAK BISA</strong> melihat atau mengakses seluruh file di Google Drive Anda.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Item 2 */}
+                      <div className="flex items-start gap-3 p-2.5 rounded-lg bg-emerald-50/50 hover:bg-emerald-100/50 transition-colors border border-transparent hover:border-emerald-100">
+                        <div className="bg-emerald-100/80 p-1.5 rounded-md text-emerald-600 shrink-0 mt-0.5">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M15.08 9.59 12 4.5 8.92 9.59a1 1 0 0 0 .16 1.21l1.52 1.52a2 2 0 0 1 .59 1.41V21h1.62v-7.27a2 2 0 0 1 .59-1.41l1.52-1.52a1 1 0 0 0 .16-1.21Z" />
+                            <path d="M12 4.5V2" />
+                            <path d="m8.92 9.59-1.92-1.92" />
+                            <path d="m15.08 9.59 1.92-1.92" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h5 className="font-semibold text-emerald-900 text-[11px] uppercase tracking-wide mb-0.5">Akses Terpilih</h5>
+                          <p className="text-[11px] text-emerald-700 leading-relaxed">
+                            Sistem hanya membaca <strong className="font-bold text-emerald-800">satu file spesifik</strong> yang Anda klik secara manual.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Item 3 */}
+                      <div className="flex items-start gap-3 p-2.5 rounded-lg bg-emerald-50/50 hover:bg-emerald-100/50 transition-colors border border-transparent hover:border-emerald-100">
+                        <div className="bg-emerald-100/80 p-1.5 rounded-md text-emerald-600 shrink-0 mt-0.5">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h5 className="font-semibold text-emerald-900 text-[11px] uppercase tracking-wide mb-0.5">Hanya Metadata</h5>
+                          <p className="text-[11px] text-emerald-700 leading-relaxed">
+                            Izin hanya untuk <strong className="font-bold text-emerald-800">menghitung respon</strong>, bukan merekam isinya.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

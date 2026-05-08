@@ -23,9 +23,9 @@ import type { Invoice, Transaction } from '../utils/supabase';
 import { createManualInvoice, getPaymentGatewayProvider } from '../utils/payment';
 import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
 
-// Max 3 regular ads per day, 1 extra ad per day
-const MAX_ADS_PER_DAY = 3;
-const MAX_EXTRA_ADS_PER_DAY = 3;
+// Max 4 regular ads per day, 4 extra ads per day
+const MAX_ADS_PER_DAY = 4;
+const MAX_EXTRA_ADS_PER_DAY = 4;
 
 interface SchedulePaymentViewProps {
     submission: {

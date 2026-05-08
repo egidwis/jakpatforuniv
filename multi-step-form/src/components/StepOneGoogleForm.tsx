@@ -44,6 +44,7 @@ export function StepOneGoogleForm({
             formData={formData}
             updateFormData={updateFormData}
             onFormDataLoaded={handleFormDataLoaded}
+            onCancel={onBack}
           />
         </div>
 

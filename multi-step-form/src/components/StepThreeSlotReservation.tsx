@@ -11,7 +11,7 @@ const getDateString = (date: Date) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-const MAX_REGULAR_ADS_PER_DAY = 3;
+const MAX_REGULAR_ADS_PER_DAY = 4;
 
 interface StepThreeSlotReservationProps {
   formData: SurveyFormData;

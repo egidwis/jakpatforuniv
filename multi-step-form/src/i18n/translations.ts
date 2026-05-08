@@ -256,6 +256,17 @@ export const translations = {
     incentive: "Incentive",
     targetCriteria: "Target Criteria",
     contactInfo: "Contact Info",
+    
+    // Order Overview UI
+    orderOverviewTitle: "Order Overview",
+    surveyAndTarget: "Survey & Target",
+    specification: "Specification",
+    questionsAndDuration: "Questions & Duration",
+    respondentIncentiveLabel: "Respondent Incentive",
+    ordererData: "Customer Data",
+    nameAndContact: "Name & Contact",
+    institutionAndProfile: "Institution & Profile",
+    releaseSchedule: "Release Schedule",
 
     // Promo Code
     voucherCodeLabel: "Voucher/Referral Code",
@@ -407,7 +418,7 @@ export const translations = {
     googleDriveAccess: "Akses ke Google Drive",
 
     // Other Source Option
-    otherSourceOption: "From other source",
+    otherSourceOption: "Dari sumber lain",
     otherSourceDescription: "Masukkan URL Google Form atau isi data survey secara manual.",
     manualInputRequired: "Input manual diperlukan",
 
@@ -429,7 +440,7 @@ export const translations = {
     connect: "Hubungkan",
     connecting: "Menghubungkan...",
     connectedSuccessMessage: "Berhasil terhubung ke Google Drive",
-    authenticationSuccessful: "Authentication successful",
+    authenticationSuccessful: "Autentikasi berhasil",
     failedToConnect: "Gagal terhubung ke Google Drive",
     pleaseAcceptPrivacy: "Harap setujui kebijakan privasi terlebih dahulu",
     disconnectedSuccess: "Berhasil terputus dari Google Drive",
@@ -597,6 +608,17 @@ export const translations = {
     incentive: "Insentif",
     targetCriteria: "Kriteria Target",
     contactInfo: "Info Kontak",
+
+    // Order Overview UI
+    orderOverviewTitle: "Order Overview",
+    surveyAndTarget: "Survei & Target",
+    specification: "Spesifikasi",
+    questionsAndDuration: "Pertanyaan & Durasi",
+    respondentIncentiveLabel: "Insentif Responden",
+    ordererData: "Data Pemesan",
+    nameAndContact: "Nama & Kontak",
+    institutionAndProfile: "Institusi & Profil",
+    releaseSchedule: "Jadwal Rilis",
 
     // Promo Code
     voucherCodeLabel: "Kode Voucher/Referral",

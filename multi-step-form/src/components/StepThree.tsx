@@ -109,7 +109,7 @@ export function StepThree({ formData, updateFormData, nextStep, prevStep }: Step
             {formData.fullName && formData.email && formData.phoneNumber && (
               <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
                 <CheckCircle size={12} />
-                <span>Complete</span>
+                <span>Lengkap</span>
               </div>
             )}
           </div>

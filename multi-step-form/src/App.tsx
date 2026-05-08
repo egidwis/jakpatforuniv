@@ -44,7 +44,7 @@ function AppContent() {
         <Routes>
           <Route path="/internal-dash" element={<InternalDashboardWithLayout />} />
         </Routes>
-        <Toaster position="top-center" />
+        <Toaster position="top-right" />
       </>
     );
   }
@@ -100,7 +100,7 @@ function AppContent() {
           </PublicLayout>
         } />
       </Routes>
-      <Toaster position="top-center" />
+      <Toaster position="top-right" />
     </div>
   );
 }
