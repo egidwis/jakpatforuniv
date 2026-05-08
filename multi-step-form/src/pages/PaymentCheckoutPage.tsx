@@ -305,7 +305,7 @@ export function PaymentCheckoutPage() {
                   </p>
                 </div>
 
-                {/* Pay Now — opens Mayar in new tab */}
+                {/* Pay Now — opens DOKU in new tab */}
                 <button
                   onClick={handleProceedPayment}
                   disabled={isProcessingPayment}

@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/tooltip';
 import { supabase, updateScheduleDates, updateFormStatus, createInvoice, createTransaction, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchSlotAvailability } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
-import { createManualInvoice, getPaymentGatewayProvider } from '../utils/payment';
+import { createManualInvoice } from '../utils/payment';
 import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
 
 // Max 4 regular ads per day, 4 extra ads per day
@@ -526,7 +526,7 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
             };
             const noteJson = JSON.stringify(noteData);
 
-            const mayarResponse = await createManualInvoice({
+            const paymentResponse = await createManualInvoice({
                 formSubmissionId: submission.id,
                 amount: totalAmount,
                 description,
@@ -539,25 +539,24 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
             const invoiceData: Invoice = {
                 form_submission_id: submission.id,
-                payment_id: mayarResponse.payment_id,
-                invoice_url: mayarResponse.invoice_url,
+                payment_id: paymentResponse.payment_id,
+                invoice_url: paymentResponse.invoice_url,
                 amount: totalAmount,
                 status: 'pending'
             };
 
             await createInvoice(invoiceData);
 
-            // Determine payment method based on provider
-            const provider = getPaymentGatewayProvider();
-            const paymentMethod = provider === 'doku' ? 'doku' : 'mayar_manual_invoice';
+            // Payment method is always 'doku'
+            const paymentMethod = 'doku';
 
             const transactionData: Transaction = {
                 form_submission_id: submission.id,
-                payment_id: mayarResponse.payment_id,
+                payment_id: paymentResponse.payment_id,
                 payment_method: paymentMethod,
                 amount: totalAmount,
                 status: 'pending',
-                payment_url: mayarResponse.invoice_url,
+                payment_url: paymentResponse.invoice_url,
                 note: noteJson
             };
 

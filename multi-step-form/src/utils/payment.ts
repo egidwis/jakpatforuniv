@@ -26,11 +26,8 @@ export interface InvoiceData {
 }
 
 // -------------------------------------------------------------------------------- //
-// FEATURE FLAG: MAYAR vs DOKU
-export const getPaymentGatewayProvider = () => {
-  // Toggle dinamis berdasarkan environment variable
-  return import.meta.env.VITE_PAYMENT_GATEWAY === 'doku' ? 'doku' : 'mayar';
-};
+// Payment Gateway Provider — DOKU only
+export const getPaymentGatewayProvider = () => 'doku';
 // -------------------------------------------------------------------------------- //
 
 // Doku Simulation detection
@@ -39,41 +36,15 @@ const isDokuSimulationMode = () => {
   return !clientId || clientId.trim() === '' || clientId.includes('your');
 };
 
-// Mayar Simulation detection
-const isMayarSimulationMode = () => {
-  const isOfflineMode = localStorage.getItem('isOfflineMode') === 'true';
-  return isOfflineMode;
-};
-
-export const checkMayarApiStatus = async (): Promise<boolean> => {
-  if (getPaymentGatewayProvider() === 'doku') return true;
-
-  try {
-    const response = await axios.post('/api/mayar-proxy', {
-      endpoint: 'https://api.mayar.id/v1/ping',
-      method: 'GET',
-    }, { timeout: 5000 });
-    return response.status === 200;
-  } catch (error) {
-    console.error('Error checking Mayar API status:', error);
-    return false;
-  }
+export const checkPaymentGatewayStatus = async (): Promise<boolean> => {
+  // DOKU doesn't need a frontend status check — webhook handles everything
+  return true;
 };
 
 // ==============================================================================
-// CREATE PAYMENT (Form User)
+// CREATE PAYMENT (Form User / Self-Service Checkout)
 // ==============================================================================
 export const createPayment = async (paymentData: PaymentData) => {
-  const provider = getPaymentGatewayProvider();
-  
-  if (provider === 'doku') {
-     return await createDokuPayment(paymentData);
-  } else {
-     return await createMayarPayment(paymentData);
-  }
-};
-
-const createDokuPayment = async (paymentData: PaymentData) => {
   try {
     const { formSubmissionId, amount, customerInfo, expiredAt } = paymentData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
@@ -147,112 +118,10 @@ const createDokuPayment = async (paymentData: PaymentData) => {
   }
 };
 
-const createMayarPayment = async (paymentData: PaymentData) => {
-  try {
-    const { formSubmissionId, amount, customerInfo, expiredAt } = paymentData;
-    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
-
-    if (isMayarSimulationMode()) {
-      const simulatedPaymentId = `sim_mayar_${Date.now()}`;
-      const transactionData: Transaction = {
-        form_submission_id: formSubmissionId,
-        payment_id: simulatedPaymentId,
-        payment_method: 'simulation',
-        amount,
-        status: 'pending',
-        payment_url: `${origin}/payment-success?id=${formSubmissionId}&simulation=true`
-      };
-      await supabase.from('transactions').insert([transactionData]);
-      await updatePaymentStatus(simulatedPaymentId, 'completed');
-      return transactionData.payment_url;
-    }
-
-    const requestData = {
-      name: customerInfo.fullName || 'Pengguna',
-      email: customerInfo.email || 'user@example.com',
-      amount: amount,
-      mobile: customerInfo.phoneNumber || '08123456789',
-      redirectUrl: `${origin}/payment-success?id=${formSubmissionId}`,
-      failureUrl: `${origin}/payment-failed?id=${formSubmissionId}`,
-      description: `Pembayaran Survey - ${customerInfo.title}`,
-      expiredAt: expiredAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      webhookUrl: `${origin}/api/webhook`
-    };
-
-    const proxyRequestData = {
-      ...requestData,
-      endpoint: 'https://api.mayar.id/hl/v1/payment/create',
-    };
-
-    // Retry logic
-    let retryCount = 0;
-    const maxRetries = 2;
-    let response;
-
-    while (retryCount <= maxRetries) {
-      try {
-        response = await axios.post('/api/mayar-proxy', proxyRequestData, { timeout: 15000 });
-        break;
-      } catch (retryError) {
-        retryCount++;
-        if (retryCount > maxRetries) throw retryError;
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
-
-    if (!response || !response.data) throw new Error('Response dari Mayar API tidak valid');
-
-    let paymentUrl = '';
-    let transactionId = '';
-
-    if (response.data.data && response.data.data.link) {
-      paymentUrl = response.data.data.link;
-      transactionId = response.data.data.id || response.data.data.transaction_id || '';
-    } else if (response.data.payment_url) {
-      paymentUrl = response.data.payment_url;
-      transactionId = response.data.id || response.data.transaction_id || '';
-    } else if (response.data.url) {
-      paymentUrl = response.data.url;
-      transactionId = response.data.id || response.data.transaction_id || '';
-    } else if (response.data.data && response.data.data.url) {
-      paymentUrl = response.data.data.url;
-      transactionId = response.data.data.id || response.data.data.transaction_id || '';
-    }
-
-    if (!paymentUrl) throw new Error('Could not extract payment URL');
-
-    const transactionData: Transaction = {
-      form_submission_id: formSubmissionId,
-      payment_id: transactionId,
-      payment_method: 'mayar',
-      amount,
-      status: 'pending',
-      payment_url: paymentUrl
-    };
-
-    await supabase.from('transactions').insert([transactionData]);
-
-    return paymentUrl;
-  } catch (err: any) {
-    console.error('Error creating Mayar payment:', err);
-    throw new Error('Gagal membuat pembayaran Mayar.');
-  }
-}
-
 // ==============================================================================
 // CREATE MANUAL INVOICE (Admin Dashboard)
 // ==============================================================================
 export const createManualInvoice = async (invoiceData: InvoiceData) => {
-  const provider = getPaymentGatewayProvider();
-  
-  if (provider === 'doku') {
-     return await createDokuManualInvoice(invoiceData);
-  } else {
-     return await createMayarManualInvoice(invoiceData);
-  }
-};
-
-const createDokuManualInvoice = async (invoiceData: InvoiceData) => {
   try {
     const { formSubmissionId, amount, description, customerInfo } = invoiceData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
@@ -299,76 +168,12 @@ const createDokuManualInvoice = async (invoiceData: InvoiceData) => {
   }
 };
 
-const createMayarManualInvoice = async (invoiceData: InvoiceData) => {
-  try {
-    const { formSubmissionId, amount, description, customerInfo } = invoiceData;
-    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
-
-    const requestData = {
-       name: customerInfo?.fullName || 'Client Admin',
-       email: customerInfo?.email || 'client@example.com',
-       amount: amount,
-       mobile: customerInfo?.phoneNumber || '08123456789',
-       redirectUrl: `${origin}/payment-success?form_id=${formSubmissionId}`,
-       failureUrl: `${origin}/payment-failed?form_id=${formSubmissionId}`,
-       description: description || `Manual Invoice - ${formSubmissionId}`,
-       expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-       webhookUrl: `${origin}/api/webhook`
-    };
-
-    const proxyRequestData = {
-      ...requestData,
-      endpoint: 'https://api.mayar.id/hl/v1/payment/create',
-    };
-
-    const response = await axios.post('/api/mayar-proxy', proxyRequestData, { timeout: 15000 });
-    
-    if (!response || !response.data) throw new Error('Response dari Mayar API tidak valid');
-
-    let paymentUrl = '';
-    let transactionId = '';
-
-    if (response.data.data && response.data.data.link) {
-      paymentUrl = response.data.data.link;
-      transactionId = response.data.data.id || response.data.data.transaction_id || '';
-    } else if (response.data.url) {
-      paymentUrl = response.data.url;
-      transactionId = response.data.id || response.data.transaction_id || '';
-    }
-
-    if (!paymentUrl) throw new Error('Could not extract payment URL');
-
-    return {
-      payment_id: transactionId,
-      invoice_url: paymentUrl
-    };
-  } catch (err: any) {
-    console.error('Error creating Mayar manual invoice:', err);
-    throw new Error(err.message || 'Gagal membuat invoice manual Mayar');
-  }
-};
-
 // ==============================================================================
 // VERIFY PAYMENT & STATUS
 // ==============================================================================
 export const verifyPayment = async (paymentId: string) => {
-  if (getPaymentGatewayProvider() === 'doku') {
-    // DOKU doesn't poll frontend yet
-    return { statusCode: 200, status: 'pending' };
-  }
-
-  try {
-    const proxyRequestData = {
-      endpoint: `https://api.mayar.id/hl/v1/payment/${paymentId}`,
-      method: 'GET',
-    };
-
-    const response = await axios.post('/api/mayar-verify', proxyRequestData, { timeout: 10000 });
-    return response.data;
-  } catch (error) {
-    console.error('Error verifying Mayar payment:', error);
-    throw error;
-  }
+  // DOKU uses webhook-based verification — no frontend polling needed
+  return { statusCode: 200, status: 'pending' };
 };
 
 export const updatePaymentStatus = async (paymentId: string, status: string) => {

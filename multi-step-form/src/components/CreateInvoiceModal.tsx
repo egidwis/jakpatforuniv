@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { createManualInvoice, getPaymentGatewayProvider } from '../utils/payment';
+import { createManualInvoice } from '../utils/payment';
 import { createInvoice, createTransaction } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
 import { Trash2, Plus } from 'lucide-react';
@@ -138,7 +138,7 @@ export function CreateInvoiceModal({
         return;
       }
 
-      // Create description from items for Mayar
+      // Create description from items for payment gateway
       const itemSummary = items.map(item => `${item.name} (${item.qty}x)`).join(', ');
       const description = note.trim()
         ? `${itemSummary} - ${note.trim()}`
@@ -151,18 +151,18 @@ export function CreateInvoiceModal({
       };
       const noteJson = JSON.stringify(noteData);
 
-      const mayarResponse = await createManualInvoice({
+      const paymentResponse = await createManualInvoice({
         formSubmissionId,
         amount: totalAmount,
-        description, // Simplified description for Mayar
+        description,
         customerInfo
       });
 
       // Save invoice to database
       const invoiceData: Invoice = {
         form_submission_id: formSubmissionId,
-        payment_id: mayarResponse.payment_id,
-        invoice_url: mayarResponse.invoice_url,
+        payment_id: paymentResponse.payment_id,
+        invoice_url: paymentResponse.invoice_url,
         amount: totalAmount,
         status: 'pending'
       };
@@ -172,11 +172,11 @@ export function CreateInvoiceModal({
       // Create transaction with JSON note
       const transactionData: Transaction = {
         form_submission_id: formSubmissionId,
-        payment_id: mayarResponse.payment_id,
-        payment_method: getPaymentGatewayProvider() === 'doku' ? 'doku' : 'mayar_manual_invoice',
+        payment_id: paymentResponse.payment_id,
+        payment_method: 'doku',
         amount: totalAmount,
         status: 'pending',
-        payment_url: mayarResponse.invoice_url,
+        payment_url: paymentResponse.invoice_url,
         note: noteJson // Store JSON here
       };
 

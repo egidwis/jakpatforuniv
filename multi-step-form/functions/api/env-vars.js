@@ -12,14 +12,14 @@ export function onRequest(context) {
     VITE_SUPABASE_URL: context.env.VITE_SUPABASE_URL || '',
     VITE_SUPABASE_ANON_KEY: maskValue(context.env.VITE_SUPABASE_ANON_KEY),
 
-    // Mayar credentials (payment gateway)
-    VITE_MAYAR_API_KEY: maskValue(context.env.VITE_MAYAR_API_KEY),
-    VITE_MAYAR_WEBHOOK_TOKEN: maskValue(context.env.VITE_MAYAR_WEBHOOK_TOKEN),
+    // DOKU credentials (payment gateway)
+    VITE_DOKU_CLIENT_ID: maskValue(context.env.VITE_DOKU_CLIENT_ID || context.env.DOKU_CLIENT_ID),
+    DOKU_SECRET_KEY: maskValue(context.env.DOKU_SECRET_KEY),
 
     // Configuration status
     config: {
-      MAYAR_API_KEY_CONFIGURED: context.env.VITE_MAYAR_API_KEY && context.env.VITE_MAYAR_API_KEY.length > 20,
-      MAYAR_WEBHOOK_TOKEN_CONFIGURED: context.env.VITE_MAYAR_WEBHOOK_TOKEN && context.env.VITE_MAYAR_WEBHOOK_TOKEN.length > 20,
+      DOKU_CLIENT_ID_CONFIGURED: !!(context.env.VITE_DOKU_CLIENT_ID || context.env.DOKU_CLIENT_ID),
+      DOKU_SECRET_KEY_CONFIGURED: !!context.env.DOKU_SECRET_KEY,
       SUPABASE_URL_CONFIGURED: !!context.env.VITE_SUPABASE_URL,
       SUPABASE_ANON_KEY_CONFIGURED: context.env.VITE_SUPABASE_ANON_KEY && context.env.VITE_SUPABASE_ANON_KEY.length > 20
     },
@@ -27,8 +27,8 @@ export function onRequest(context) {
     // Debug info
     debug: {
       envKeys: Object.keys(context.env || {}).filter(key => !key.startsWith('_')),
-      hasMayarApiKey: !!context.env.VITE_MAYAR_API_KEY,
-      hasMayarWebhookToken: !!context.env.VITE_MAYAR_WEBHOOK_TOKEN,
+      hasDokuClientId: !!(context.env.VITE_DOKU_CLIENT_ID || context.env.DOKU_CLIENT_ID),
+      hasDokuSecretKey: !!context.env.DOKU_SECRET_KEY,
       hasSupabaseUrl: !!context.env.VITE_SUPABASE_URL,
       hasSupabaseAnonKey: !!context.env.VITE_SUPABASE_ANON_KEY
     }

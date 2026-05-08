@@ -99,11 +99,11 @@ export function TransactionsPage() {
   };
 
   const getMethodBadge = (method: string) => {
+    if (method === 'doku' || method === 'mayar') {
+      return <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100 border rounded-md font-normal">DOKU</Badge>;
+    }
     if (method === 'mayar_manual_invoice') {
       return <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-100 hover:bg-purple-100 border rounded-md font-normal">Invoice Manual</Badge>;
-    }
-    if (method === 'mayar') {
-      return <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100 border rounded-md font-normal">Mayar</Badge>;
     }
     return <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200 rounded-md font-normal">{method}</Badge>;
   };

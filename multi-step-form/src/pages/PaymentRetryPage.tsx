@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { getFormSubmissionById } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
-import { createPayment } from '../utils/simple-payment';
+import { createPayment } from '../utils/payment';
 import { ErrorPage } from '../components/ErrorPage';
 
 export default function PaymentRetryPage() {
@@ -92,7 +92,7 @@ export default function PaymentRetryPage() {
       } else {
         // Tampilkan success toast untuk pembayaran nyata
         toast.success('Berhasil! Anda akan diarahkan ke halaman pembayaran.');
-        console.log('Mode produksi terdeteksi, akan redirect ke Mayar payment gateway');
+        console.log('Mode produksi terdeteksi, akan redirect ke DOKU payment gateway');
       }
 
       // Tambahkan delay kecil agar toast terlihat

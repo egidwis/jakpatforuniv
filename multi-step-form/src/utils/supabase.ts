@@ -1057,30 +1057,12 @@ export const fetchSlotAvailability = async (
   }
 };
 
-/**
- * Close/deactivate a Mayar payment link so it can no longer be paid.
- * Calls our proxy at /api/close-mayar-payment which hits Mayar's close endpoint.
- * This is fire-and-forget — failures are logged but don't break the flow.
- */
-export const closeMayarPaymentLink = async (paymentId: string) => {
-  try {
-    const origin = window.location.origin;
-    const res = await fetch(`${origin}/api/close-mayar-payment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentId })
-    });
-    if (!res.ok) {
-      console.warn(`Close Mayar payment link failed with status ${res.status} for ${paymentId}`);
-    }
-  } catch (error) {
-    console.warn('Non-fatal: failed to close Mayar payment link', paymentId, error);
-  }
-};
+
 
 /**
  * Release a user-booked slot that has expired due to 1-hour timeout.
- * Also marks payment as expired, expires pending transactions, and closes Mayar links.
+ * Also marks payment as expired and expires pending transactions.
+ * DOKU payments auto-expire via payment_due_date — no manual link closure needed.
  */
 export const releaseExpiredSlot = async (submissionId: string) => {
   try {
@@ -1100,28 +1082,18 @@ export const releaseExpiredSlot = async (submissionId: string) => {
 
     if (subError) throw subError;
 
-    // 2. Mark all pending transactions as expired & close Mayar links
+    // 2. Mark all pending transactions as expired
     const { data: pendingTxs } = await supabase
       .from('transactions')
-      .select('id, payment_id, payment_method')
+      .select('id')
       .eq('form_submission_id', submissionId)
       .eq('status', 'pending');
 
     if (pendingTxs && pendingTxs.length > 0) {
-      // Mark as expired in DB
       await supabase
         .from('transactions')
         .update({ status: 'expired', updated_at: new Date().toISOString() })
         .in('id', pendingTxs.map(t => t.id));
-
-      // Close Mayar links (fire-and-forget, non-fatal)
-      for (const tx of pendingTxs) {
-        if (tx.payment_method === 'mayar' && tx.payment_id) {
-          closeMayarPaymentLink(tx.payment_id).catch(e =>
-            console.warn('Non-fatal: failed to close Mayar link', tx.payment_id, e)
-          );
-        }
-      }
     }
 
     // 3. Try to clear publish_start_date, publish_end_date in survey_pages (non-fatal if missing)
@@ -1170,28 +1142,19 @@ export const prepareForReschedule = async (submissionId: string) => {
 
     if (subError) throw subError;
 
-    // 2. Mark all pending transactions as expired & close Mayar links
+    // 2. Mark all pending transactions as expired
+    // DOKU payments auto-expire via payment_due_date — no manual link closure needed.
     const { data: pendingTxs } = await supabase
       .from('transactions')
-      .select('id, payment_id, payment_method')
+      .select('id')
       .eq('form_submission_id', submissionId)
       .eq('status', 'pending');
 
     if (pendingTxs && pendingTxs.length > 0) {
-      // Mark as expired in DB
       await supabase
         .from('transactions')
         .update({ status: 'expired', updated_at: new Date().toISOString() })
         .in('id', pendingTxs.map(t => t.id));
-
-      // Close Mayar links (fire-and-forget, non-fatal)
-      for (const tx of pendingTxs) {
-        if (tx.payment_method === 'mayar' && tx.payment_id) {
-          closeMayarPaymentLink(tx.payment_id).catch(e =>
-            console.warn('Non-fatal: failed to close Mayar link', tx.payment_id, e)
-          );
-        }
-      }
     }
 
     return true;
