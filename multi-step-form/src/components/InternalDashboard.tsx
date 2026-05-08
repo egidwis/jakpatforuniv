@@ -298,8 +298,17 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             }
           });
 
-          // Sort descending by created_at
-          mergedTx.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          // Sort descending by created_at, ensuring UTC interpretation for timezone-less strings
+          mergedTx.sort((a, b) => {
+            const normalizeDate = (dateString: string) => {
+              if (!dateString) return new Date(0).getTime();
+              const normalized = dateString.endsWith('Z') || dateString.match(/[+-]\d{2}:?\d{2}$/) 
+                ? dateString 
+                : `${dateString}Z`;
+              return new Date(normalized).getTime();
+            };
+            return normalizeDate(b.created_at) - normalizeDate(a.created_at);
+          });
 
           const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null }> = {};
 
