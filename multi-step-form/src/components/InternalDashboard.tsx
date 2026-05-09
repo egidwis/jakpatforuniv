@@ -310,7 +310,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             return normalizeDate(b.created_at) - normalizeDate(a.created_at);
           });
 
-          const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null }> = {};
+          const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean }> = {};
 
           if (mergedTx.length > 0) {
             transformed.forEach(sub => {
@@ -319,6 +319,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 sub.has_transactions = true;
                 // Make the status follow the latest invoice strictly
                 const latestStatus = subTxs[0].status;
+                const hasEverPaid = subTxs.some(t => ['paid', 'completed'].includes(t.status));
                 
                 // Get the latest pending payment URL for quick copy
                 const latestPendingTx = subTxs.find(t => !['paid', 'completed'].includes(t.status));
@@ -327,17 +328,18 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   latestStatus: latestStatus,
                   invoiceCount: subTxs.length,
                   latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null,
-                  latestAmount: subTxs[0].amount || 0
+                  latestAmount: subTxs[0].amount || 0,
+                  hasEverPaid: hasEverPaid
                 };
                 sub.payment_status = latestStatus;
               } else {
-                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0 };
+                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false };
                 if (sub.payment_status === 'pending') sub.payment_status = undefined;
               }
             });
           } else {
             transformed.forEach(sub => {
-              paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
+              paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false };
               if (sub.payment_status === 'pending') sub.payment_status = undefined;
             });
           }
@@ -1260,7 +1262,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           const isActuallyExpired = !isPaid && (
                             paymentData.latestStatus === 'expired' || 
                             submission.payment_status === 'expired' || 
-                            (submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
+                            (!paymentData.hasEverPaid && submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
                           );
                           const hasValidSchedule = (hasSchedule || isLegacyActive) && !isActuallyExpired;
 
@@ -1290,7 +1292,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                           {/* Expiration status on the right (hidden if already paid) */}
                                           {submission.slot_booked_by === 'user' && submission.slot_reserved_at && !isPaid && (() => {
                                             const reservedAt = new Date(submission.slot_reserved_at).getTime();
-                                            const isExpired = submission.payment_status === 'expired' || Date.now() > (reservedAt + 3600_000);
+                                            const isExpired = paymentData.latestStatus === 'expired' || submission.payment_status === 'expired' || (!paymentData.hasEverPaid && Date.now() > (reservedAt + 3600_000));
                                             return isExpired ? (
                                               <span className="text-[10px] text-red-600 font-bold tracking-wide shrink-0 ml-2">
                                                 Expired
@@ -1721,7 +1723,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           const isActuallyExpired = !isPaid && (
                             paymentData.latestStatus === 'expired' || 
                             submission.payment_status === 'expired' || 
-                            (submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
+                            (!paymentData.hasEverPaid && submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
                           );
                           const hasValidSchedule = (hasSchedule || isLegacyActive) && !isActuallyExpired;
 
