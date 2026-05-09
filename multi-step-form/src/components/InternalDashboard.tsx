@@ -1259,10 +1259,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
                           // Calculate true expiration
                           const reservedAtTime = submission.slot_reserved_at ? new Date(submission.slot_reserved_at).getTime() : 0;
-                          const isActuallyExpired = !isPaid && (
+                          const isActuallyExpired = !isPaid && !paymentData.hasEverPaid && (
                             paymentData.latestStatus === 'expired' || 
                             submission.payment_status === 'expired' || 
-                            (!paymentData.hasEverPaid && submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
+                            (submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
                           );
                           const hasValidSchedule = (hasSchedule || isLegacyActive) && !isActuallyExpired;
 
@@ -1290,7 +1290,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                                           </div>
                                           
                                           {/* Expiration status on the right (hidden if already paid) */}
-                                          {submission.slot_booked_by === 'user' && submission.slot_reserved_at && !isPaid && (() => {
+                                          {submission.slot_booked_by === 'user' && submission.slot_reserved_at && !isPaid && !paymentData.hasEverPaid && (() => {
                                             const reservedAt = new Date(submission.slot_reserved_at).getTime();
                                             const isExpired = paymentData.latestStatus === 'expired' || submission.payment_status === 'expired' || (!paymentData.hasEverPaid && Date.now() > (reservedAt + 3600_000));
                                             return isExpired ? (
@@ -1720,10 +1720,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                           
                           // Calculate true expiration for Mobile
                           const reservedAtTime = submission.slot_reserved_at ? new Date(submission.slot_reserved_at).getTime() : 0;
-                          const isActuallyExpired = !isPaid && (
+                          const isActuallyExpired = !isPaid && !paymentData.hasEverPaid && (
                             paymentData.latestStatus === 'expired' || 
                             submission.payment_status === 'expired' || 
-                            (!paymentData.hasEverPaid && submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
+                            (submission.slot_booked_by === 'user' && reservedAtTime > 0 && Date.now() > (reservedAtTime + 3600_000))
                           );
                           const hasValidSchedule = (hasSchedule || isLegacyActive) && !isActuallyExpired;
 
