@@ -162,16 +162,15 @@ export function SurveyPage() {
         setDuplicateError(null);
 
         try {
-            // Check if Jakpat ID exists in page_respondents
-            const { count, error } = await supabase
-                .from('page_respondents')
-                .select('id', { count: 'exact', head: true })
-                .eq('page_id', pageData.id)
-                .eq('jakpat_id', cleanId);
+            // Gunakan RPC untuk bypass RLS karena anonymous user tidak bisa read tabel ini
+            const { data: isDuplicate, error } = await supabase.rpc('check_duplicate_respondent', {
+                p_page_id: pageData.id,
+                p_jakpat_id: cleanId
+            });
 
             if (error) throw error;
 
-            if (count && count > 0) {
+            if (isDuplicate) {
                 setDuplicateError('Jakpat ID ini sudah pernah mengisi survei ini.');
                 setHasCheckedDuplicate(true);
             } else {
@@ -419,6 +418,12 @@ export function SurveyPage() {
                     details: dbError.details,
                     hint: dbError.hint,
                 });
+                
+                // Cek error duplicate constraint
+                if (dbError.message?.includes('uq_page_respondent') || dbError.code === '23505') {
+                    throw new Error('Jakpat ID ini sudah pernah mengisi survei ini.');
+                }
+                
                 throw new Error(`Gagal menyimpan data: ${dbError.message || dbError.code || 'Database error'}`);
             }
             console.log('[Submit] Step 3 OK - Data saved successfully');
