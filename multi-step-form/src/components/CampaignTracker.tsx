@@ -9,17 +9,16 @@ export function CampaignTracker() {
         const trackAndRedirect = async () => {
             try {
                 if (source) {
-                    // Coba catat data klik ke Supabase
-                    await supabase.from('campaign_clicks').insert({
-                        source: source,
-                        campaign_name: 'jakpatforuniv_landing'
+                    // Increment click counter di campaign_links via RPC
+                    await supabase.rpc('increment_campaign_click', {
+                        p_source: source
                     });
                 }
             } catch (err) {
                 console.error('Failed to log campaign click:', err);
             } finally {
                 // Selalu redirect ke landing page terlepas dari hasil tracking
-                window.location.replace('https://jakpatforuniv.com/');
+                window.location.replace('https://submit.jakpatforuniv.com/homepage/');
             }
         };
 
