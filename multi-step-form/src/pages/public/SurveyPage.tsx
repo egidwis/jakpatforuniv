@@ -7,9 +7,32 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Loader2, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartphone, HelpCircle, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartphone, HelpCircle, ExternalLink, RefreshCw, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import imageCompression from 'browser-image-compression';
+
+import heic2any from 'heic2any';
+
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const MAX_RAW_FILE_SIZE = 10 * 1024 * 1024; // 10MB max raw input
+const COMPRESSION_STRATEGIES = [
+    { maxSizeMB: 0.3, maxWidthOrHeight: 1024 },
+    { maxSizeMB: 0.5, maxWidthOrHeight: 1280 },
+    { maxSizeMB: 1.0, maxWidthOrHeight: 1600 },
+];
+const MAX_FALLBACK_SIZE = 2 * 1024 * 1024; // 2MB max if all compression fails
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isHeicFile(file: File): boolean {
+    return file.type === 'image/heic' || file.type === 'image/heif'
+        || file.name.toLowerCase().endsWith('.heic')
+        || file.name.toLowerCase().endsWith('.heif');
+}
 
 /**
  * Normalize a schedule date string for accurate time comparison.
@@ -49,6 +72,12 @@ export function SurveyPage() {
     });
 
     const [proofFile, setProofFile] = useState<File | null>(null);
+    const [processedProofFile, setProcessedProofFile] = useState<File | null>(null);
+    const [proofPreview, setProofPreview] = useState<string | null>(null);
+    const [proofProcessing, setProofProcessing] = useState(false);
+    const [proofError, setProofError] = useState<string | null>(null);
+    const [proofOriginalSize, setProofOriginalSize] = useState<number>(0);
+    const [proofCompressedSize, setProofCompressedSize] = useState<number>(0);
 
     // Duplicate Check State
     const [checkingDuplicate, setCheckingDuplicate] = useState(false);
@@ -213,9 +242,113 @@ export function SurveyPage() {
         }));
     };
 
+    const processImageFile = async (file: File) => {
+        setProofProcessing(true);
+        setProofError(null);
+        setProcessedProofFile(null);
+        setProofPreview(null);
+        setProofOriginalSize(file.size);
+        setProofCompressedSize(0);
+
+        try {
+            let imageFile = file;
+
+            // Step 1: HEIC/HEIF auto-conversion
+            if (isHeicFile(file)) {
+                try {
+                    const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 });
+                    imageFile = new File(
+                        [Array.isArray(blob) ? blob[0] : blob],
+                        file.name.replace(/\.(heic|heif)$/i, '.jpg'),
+                        { type: 'image/jpeg' }
+                    );
+                    console.log('[Proof] HEIC converted to JPEG:', formatFileSize(imageFile.size));
+                } catch (heicErr) {
+                    console.error('[Proof] HEIC conversion failed:', heicErr);
+                    throw new Error('HEIC_UNSUPPORTED');
+                }
+            }
+
+            // Step 2: Progressive compression with fallback
+            let compressedFile: File | null = null;
+            for (const strategy of COMPRESSION_STRATEGIES) {
+                try {
+                    console.log(`[Proof] Trying compression: ${strategy.maxSizeMB}MB, ${strategy.maxWidthOrHeight}px`);
+                    compressedFile = await imageCompression(imageFile, {
+                        ...strategy,
+                        useWebWorker: false,
+                    });
+                    console.log(`[Proof] Compression OK: ${formatFileSize(imageFile.size)} → ${formatFileSize(compressedFile.size)}`);
+                    break;
+                } catch (err) {
+                    console.warn(`[Proof] Compression failed at ${strategy.maxSizeMB}MB:`, err);
+                }
+            }
+
+            if (!compressedFile) {
+                // All compression strategies failed → use original if small enough
+                if (imageFile.size <= MAX_FALLBACK_SIZE) {
+                    console.warn('[Proof] All compression failed, using original file:', formatFileSize(imageFile.size));
+                    compressedFile = imageFile;
+                } else {
+                    throw new Error('COMPRESSION_FAILED');
+                }
+            }
+
+            // Step 3: Generate preview
+            const previewUrl = URL.createObjectURL(compressedFile);
+
+            setProcessedProofFile(compressedFile);
+            setProofCompressedSize(compressedFile.size);
+            setProofPreview(previewUrl);
+            console.log('[Proof] Processing complete:', {
+                original: formatFileSize(file.size),
+                compressed: formatFileSize(compressedFile.size),
+            });
+        } catch (error: any) {
+            console.error('[Proof] Processing error:', error);
+            if (error?.message === 'HEIC_UNSUPPORTED') {
+                setProofError('Format HEIC/HEIF belum didukung. Silakan screenshot dari Galeri dan upload ulang dalam format JPG/PNG.');
+            } else if (error?.message === 'COMPRESSION_FAILED') {
+                setProofError('Gambar terlalu besar dan gagal diproses. Coba upload gambar yang lebih kecil (max 2MB) atau screenshot dari galeri.');
+            } else {
+                setProofError('Gagal memproses gambar. Coba upload ulang dengan gambar lain.');
+            }
+        } finally {
+            setProofProcessing(false);
+        }
+    };
+
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files?.[0]) {
-            setProofFile(e.target.files[0]);
+        if (!e.target.files?.[0]) return;
+        const file = e.target.files[0];
+
+        // Reset input so same file can be re-selected after error
+        e.target.value = '';
+
+        // Validate file type
+        const isValidType = ACCEPTED_IMAGE_TYPES.includes(file.type)
+            || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name);
+        if (!isValidType) {
+            setProofError('Format file tidak didukung. Gunakan JPG, PNG, atau WebP.');
+            toast.error('Format file tidak didukung');
+            return;
+        }
+
+        // Validate file size
+        if (file.size > MAX_RAW_FILE_SIZE) {
+            setProofError(`Ukuran file terlalu besar (${formatFileSize(file.size)}). Maksimal 10MB.`);
+            toast.error('File terlalu besar, maksimal 10MB');
+            return;
+        }
+
+        setProofFile(file);
+        await processImageFile(file);
+    };
+
+    const retryProofProcessing = async () => {
+        if (proofFile) {
+            await processImageFile(proofFile);
         }
     };
 
@@ -250,8 +383,16 @@ export function SurveyPage() {
 
         // Validation for Step 3 (Embed & Proof)
         if (currentStep === 3) {
-            if (!proofFile) {
-                toast.error('Please upload proof of survey completion');
+            if (!processedProofFile) {
+                toast.error('Silakan upload screenshot bukti pengisian survey');
+                return;
+            }
+            if (proofProcessing) {
+                toast.error('Gambar masih diproses, harap tunggu sebentar');
+                return;
+            }
+            if (proofError) {
+                toast.error('Gambar bukti belum berhasil diproses. Silakan upload ulang.');
                 return;
             }
         }
@@ -349,36 +490,22 @@ export function SurveyPage() {
             }
             console.log('[Submit] Step 1 OK - No duplicate found');
 
-            // Step 2: Upload Proof (MANDATORY — block submission if upload fails)
+            // Step 2: Upload Proof (MANDATORY — uses pre-processed file from handleFileChange)
             let proofUrl = '';
-            if (proofFile) {
-                console.log('[Submit] Step 2: Compressing image...', {
-                    name: proofFile.name,
-                    size: proofFile.size,
-                    type: proofFile.type
+            if (processedProofFile) {
+                console.log('[Submit] Step 2: Uploading pre-processed image...', {
+                    name: processedProofFile.name,
+                    size: processedProofFile.size,
+                    type: processedProofFile.type
                 });
-                const options = {
-                    maxSizeMB: 0.1, // < 100KB
-                    maxWidthOrHeight: 1024,
-                    useWebWorker: false, // Turn off WebWorker to prevent crashes on Android WebView
-                };
 
-                let compressedFile: File;
-                try {
-                    compressedFile = await imageCompression(proofFile, options);
-                    console.log('[Submit] Step 2: Image compressed OK, size:', compressedFile.size);
-                } catch (compressError: any) {
-                    console.error('[Submit] Step 2 FAILED - Compression error:', compressError);
-                    throw new Error('Gagal memproses gambar bukti. Coba upload ulang dengan gambar lain. Jika masih bermasalah, hubungi support@jakpat.net');
-                }
-
-                const sanitizedName = proofFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_');
+                const sanitizedName = (proofFile?.name || 'proof.jpg').replace(/[^a-zA-Z0-9.\-]/g, '_');
                 const fileName = `proof-${Date.now()}-${sanitizedName}`;
 
                 console.log('[Submit] Step 2: Uploading to storage...');
                 const { error: uploadError } = await supabase.storage
                     .from('page-uploads')
-                    .upload(fileName, compressedFile);
+                    .upload(fileName, processedProofFile);
 
                 if (uploadError) {
                     console.error('[Submit] Step 2 FAILED - Storage upload error:', JSON.stringify(uploadError));
@@ -923,39 +1050,121 @@ export function SurveyPage() {
                                 {/* Proof Upload */}
                                 <div className="space-y-2 pt-4 border-t">
                                     <Label className="text-base font-semibold">Upload Screenshot Bukti Pengisian (Halaman Akhir/Terima Kasih)</Label>
-                                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition cursor-pointer relative group">
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={handleFileChange}
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                        />
-                                        {proofFile ? (
-                                            <div className="flex flex-col items-center text-green-600">
-                                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
-                                                    <CheckCircle className="w-6 h-6 text-green-600" />
+                                    
+                                    {/* Processing State */}
+                                    {proofProcessing && (
+                                        <div className="border-2 border-blue-300 bg-blue-50/50 rounded-lg p-8 text-center animate-pulse">
+                                            <div className="flex flex-col items-center text-blue-600">
+                                                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-3">
+                                                    <Loader2 className="w-6 h-6 animate-spin" />
                                                 </div>
-                                                <span className="font-medium text-lg">{proofFile.name}</span>
-                                                <span className="text-sm text-gray-500">Siap diupload</span>
+                                                <span className="font-medium text-base">Memproses gambar...</span>
+                                                <span className="text-xs text-blue-500 mt-1">Mengoptimalkan ukuran untuk upload</span>
                                             </div>
-                                        ) : (
+                                        </div>
+                                    )}
+
+                                    {/* Error State */}
+                                    {!proofProcessing && proofError && (
+                                        <div className="border-2 border-red-300 bg-red-50 rounded-lg p-6 text-center">
+                                            <div className="flex flex-col items-center">
+                                                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-3">
+                                                    <AlertCircle className="w-6 h-6 text-red-500" />
+                                                </div>
+                                                <span className="font-medium text-red-800 text-sm leading-relaxed max-w-xs">{proofError}</span>
+                                                <div className="flex gap-2 mt-4">
+                                                    {proofFile && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={retryProofProcessing}
+                                                            className="text-red-700 border-red-300 hover:bg-red-100"
+                                                        >
+                                                            <RefreshCw className="w-3 h-3 mr-1.5" /> Coba Lagi
+                                                        </Button>
+                                                    )}
+                                                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50 cursor-pointer transition-colors">
+                                                        <ImageIcon className="w-3 h-3" /> Pilih Gambar Lain
+                                                        <input
+                                                            type="file"
+                                                            accept="image/jpeg,image/png,image/webp"
+                                                            onChange={handleFileChange}
+                                                            className="hidden"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Success State — Preview */}
+                                    {!proofProcessing && !proofError && processedProofFile && proofPreview && (
+                                        <div className="border-2 border-green-300 bg-green-50/50 rounded-lg p-4">
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-20 h-20 rounded-lg overflow-hidden border border-green-200 bg-white flex-shrink-0">
+                                                    <img src={proofPreview} alt="Preview bukti" className="w-full h-full object-cover" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                                        <span className="font-medium text-green-800 text-sm">Gambar siap diupload</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 truncate">{proofFile?.name}</p>
+                                                    <p className="text-xs text-gray-400 mt-0.5">
+                                                        {formatFileSize(proofOriginalSize)} → {formatFileSize(proofCompressedSize)}
+                                                    </p>
+                                                    <label className="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-800 cursor-pointer underline">
+                                                        Ganti gambar
+                                                        <input
+                                                            type="file"
+                                                            accept="image/jpeg,image/png,image/webp"
+                                                            onChange={handleFileChange}
+                                                            className="hidden"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Default Upload State */}
+                                    {!proofProcessing && !proofError && !processedProofFile && (
+                                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition cursor-pointer relative group">
+                                            <input
+                                                type="file"
+                                                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                                                onChange={handleFileChange}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                            />
                                             <div className="flex flex-col items-center text-gray-500 group-hover:text-blue-600 transition-colors">
                                                 <div className="w-12 h-12 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-2 transition-colors">
                                                     <Smartphone className="w-6 h-6" />
                                                 </div>
                                                 <span className="font-medium text-lg">Tap untuk upload screenshot</span>
-                                                <span className="text-xs mt-1">Format: JPG/PNG, Max 5MB</span>
+                                                <span className="text-xs mt-1">Format: JPG, PNG, WebP — Max 10MB</span>
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
                             </CardContent>
                             <div className="p-6 border-t bg-gray-50 flex justify-between">
                                 <Button onClick={prevStep} variant="outline">
                                     <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
                                 </Button>
-                                <Button onClick={nextStep} className="bg-blue-600 hover:bg-blue-700 text-white">
-                                    Lanjut <ArrowRight className="w-4 h-4 ml-2" />
+                                <Button 
+                                    onClick={nextStep} 
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                    disabled={proofProcessing || !!proofError || !processedProofFile}
+                                >
+                                    {proofProcessing ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Memproses...
+                                        </>
+                                    ) : (
+                                        <>Lanjut <ArrowRight className="w-4 h-4 ml-2" /></>
+                                    )}
                                 </Button>
                             </div>
                         </Card>

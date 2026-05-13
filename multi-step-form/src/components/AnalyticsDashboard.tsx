@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '../utils/supabase';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Button } from "./ui/button";
 import { Loader2, Users, School, Share2, TrendingUp, DollarSign, Wallet, Clock, ShieldAlert, Target, Award, BookOpen, Link, Mail, Filter, Megaphone, Copy, ExternalLink, Calendar, RefreshCw, Activity, AlertCircle, BarChart3 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, AreaChart, Area, Line, LineChart } from 'recharts';
 
@@ -11,6 +13,7 @@ const DATE_RANGE_OPTIONS = [
   { label: '7 Hari', value: '7d' },
   { label: '30 Hari', value: '30d' },
   { label: '90 Hari', value: '90d' },
+  { label: '1 Tahun', value: '365d' },
   { label: 'Semua', value: 'all' },
 ] as const;
 type DateRange = typeof DATE_RANGE_OPTIONS[number]['value'];
@@ -20,7 +23,7 @@ const REVIEW_STATUSES = new Set(['spam','approved','in_review','rejected','publi
 const formatIDR = (value: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
 function getStartDate(range: DateRange): string | null {
   if (range === 'all') return null;
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+  const days = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 365;
   const d = new Date(); d.setDate(d.getDate() - days); d.setHours(0,0,0,0); return d.toISOString();
 }
 function toWIBHourLabel(iso: string): string {
@@ -78,7 +81,7 @@ export function AnalyticsDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as TabKey | null;
   const [activeTab, setActiveTab] = useState<TabKey>(tabFromUrl && ['revenue','respondent','platform','campaign'].includes(tabFromUrl) ? tabFromUrl : 'revenue');
-  const [dateRange, setDateRange] = useState<DateRange>('30d');
+  const [dateRange, setDateRange] = useState<DateRange>('7d');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -256,32 +259,40 @@ export function AnalyticsDashboard() {
   const handleCopyLink = () => { if (!generatedLink) return; navigator.clipboard.writeText(generatedLink); toast.success('Link berhasil disalin!'); };
   const handleTabChange = (tab: TabKey) => { setActiveTab(tab); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
-  if (loading) {
-    return (
-      <div className="space-y-4 pb-10 animate-in fade-in duration-300">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-lg p-3 shadow mb-2 h-20 animate-pulse" />
-        <div className="flex items-center justify-between">
-          <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
-          <div className="h-8 w-64 bg-gray-200 rounded animate-pulse" />
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[60vh] space-y-6 animate-in fade-in duration-300">
+          <div className="p-4 bg-blue-50 rounded-full">
+            <RefreshCw className="h-8 w-8 text-blue-500 animate-spin" />
+          </div>
+          <div className="text-center space-y-2">
+            <h3 className="text-sm font-semibold text-gray-900">
+              Mengambil Data {DATE_RANGE_OPTIONS.find(d => d.value === dateRange)?.label}
+            </h3>
+            <p className="text-xs text-gray-500 max-w-xs">
+              Proses ini mungkin memakan waktu beberapa detik karena mengambil jumlah data yang besar.
+            </p>
+          </div>
+          <div className="w-64 h-2 bg-gray-100 rounded-full overflow-hidden relative">
+            <div className="absolute top-0 bottom-0 left-0 bg-blue-500 rounded-full animate-[progress_1.5s_ease-in-out_infinite] w-full" style={{ animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}></div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><SkeletonCard /><SkeletonCard /></div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4"><SkeletonChart /><SkeletonChart /></div>
-        <SkeletonChart />
+      );
+    }
+    if (error) return <ErrorState message={error} onRetry={fetchAllData} />;
+    if (!analytics) return (
+      <div className="flex flex-col items-center justify-center h-96 text-gray-500">
+        <BarChart3 className="h-10 w-10 text-gray-300 mb-3" />
+        <p className="text-sm font-medium">Belum ada data untuk ditampilkan.</p>
+        <p className="text-xs text-gray-400 mt-1">Coba ubah rentang tanggal atau tunggu hingga data masuk.</p>
       </div>
     );
-  }
-  if (error) return <ErrorState message={error} onRetry={fetchAllData} />;
-  if (!analytics) return (
-    <div className="flex flex-col items-center justify-center h-96 text-gray-500">
-      <BarChart3 className="h-10 w-10 text-gray-300 mb-3" />
-      <p className="text-sm font-medium">Belum ada data untuk ditampilkan.</p>
-      <p className="text-xs text-gray-400 mt-1">Coba ubah rentang tanggal atau tunggu hingga data masuk.</p>
-    </div>
-  );
 
-  return (
-    <div className="space-y-4 animate-in fade-in duration-500 pb-10">
-      {/* Hero */}
+    return (
+      <div className="space-y-4 animate-in fade-in duration-500">
+
+        {/* Hero */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-lg p-3 shadow text-white mb-2 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex items-center gap-2 shrink-0">
           <Award className="w-5 h-5 text-yellow-300" />
@@ -300,22 +311,6 @@ export function AnalyticsDashboard() {
             <span className="text-[9px] text-blue-200 uppercase tracking-widest truncate">Peak Hour</span>
             <span className="font-semibold text-xs md:text-sm truncate">Pukul {analytics.funFacts.peakHour} WIB</span>
           </div>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-md w-fit shadow-inner border border-gray-200">
-          {DATE_RANGE_OPTIONS.map((opt) => (
-            <button key={opt.value} onClick={() => setDateRange(opt.value)} className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${dateRange === opt.value ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'}`}>{opt.label}</button>
-          ))}
-        </div>
-        <div className="flex space-x-1 bg-gray-100 p-1 rounded-md w-fit shadow-inner border border-gray-200">
-          {([{ key: 'revenue' as TabKey, label: 'Revenue', icon: DollarSign }, { key: 'respondent' as TabKey, label: 'Respondents', icon: Users }, { key: 'platform' as TabKey, label: 'Platform', icon: TrendingUp }, { key: 'campaign' as TabKey, label: 'Campaign', icon: Megaphone }]).map((t) => (
-            <button key={t.key} onClick={() => handleTabChange(t.key)} className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${activeTab === t.key ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'}`}>
-              <div className="flex items-center gap-1.5"><t.icon className="w-3.5 h-3.5" />{t.label}</div>
-            </button>
-          ))}
         </div>
       </div>
 
@@ -676,6 +671,55 @@ export function AnalyticsDashboard() {
           </Card>
         </div>
       )}
+    </div>
+  );
+  };
+
+  return (
+    <div className="pb-10 relative">
+      {/* Fixed Header Bar */}
+      <div className="bg-white p-4 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0 sticky top-0 z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)] mb-4 -mx-4 sm:mx-0">
+        {/* Top Row */}
+        <div className="flex flex-row items-center justify-between w-full">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-gray-600">Periode</span>
+            <Select value={dateRange} onValueChange={(value) => setDateRange(value as DateRange)}>
+              <SelectTrigger className="w-[140px] h-9 bg-gray-50/80 border-gray-200/50 text-sm font-medium focus:ring-0 focus:ring-offset-0">
+                <SelectValue placeholder="Pilih Periode" />
+              </SelectTrigger>
+              <SelectContent>
+                {DATE_RANGE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <Button
+            onClick={fetchAllData}
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            className="h-9 w-9 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
+            title="Refresh data"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+
+        <div className="h-px bg-gray-100 w-full" />
+
+        {/* Bottom Row */}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-100/80 p-1 w-fit rounded-lg border border-slate-200/50">
+          {([{ key: 'revenue' as TabKey, label: 'Revenue', icon: DollarSign }, { key: 'respondent' as TabKey, label: 'Respondents', icon: Users }, { key: 'platform' as TabKey, label: 'Platform', icon: TrendingUp }, { key: 'campaign' as TabKey, label: 'Campaign', icon: Megaphone }]).map((t) => (
+            <button key={t.key} onClick={() => handleTabChange(t.key)} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === t.key ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-900/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}>
+              <t.icon className="w-4 h-4" />{t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      {renderContent()}
     </div>
   );
 }

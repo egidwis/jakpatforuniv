@@ -807,10 +807,11 @@ export function StatusPage() {
                                         // Auto-approval logic
                                         const isUserBooked = submission.slot_booked_by === 'user';
                                         const isPaymentExpired = submission.payment_status === 'expired';
-                                        const isExpired = isPaymentExpired || (isUserBooked && submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 3600_000)); // 1 hour expiration
+                                        const isPaidOrBeyond = submission.payment_status === 'paid' || ['paid', 'scheduled', 'live', 'completed'].includes((submission.submission_status || '').toLowerCase());
+                                        const isExpired = !isPaidOrBeyond && (isPaymentExpired || (isUserBooked && submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 3600_000))); // 1 hour expiration
                                         
                                         // Force UI to regress to 'slot_reserved' step if expired, regardless of what DB says
-                                        const currentStep = (isExpired && submission.payment_status !== 'paid') ? 1 : currentStepRaw;
+                                        const currentStep = isExpired ? 1 : currentStepRaw;
                                         
                                         // Override badge for expired payment
                                         const badgeInfo = isExpired && submission.payment_status !== 'paid'
