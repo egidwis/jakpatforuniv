@@ -73,6 +73,7 @@ export const createPayment = async (paymentData: PaymentData) => {
     const requestData = {
       amount,
       invoice_number: invoiceNumber,
+      sac_id: import.meta.env.VITE_DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595',
       customer: {
         name: customerInfo.fullName || 'User',
         email: customerInfo.email || 'user@example.com',
@@ -132,6 +133,7 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
       amount: amount,
       invoice_number: invoiceNumber,
       description: description,
+      sac_id: import.meta.env.VITE_DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595',
       customer: {
         name: customerInfo?.fullName || 'Client',
         email: customerInfo?.email || 'client@example.com',

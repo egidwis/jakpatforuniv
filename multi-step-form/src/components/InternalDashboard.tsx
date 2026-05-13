@@ -29,7 +29,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
-import { CreditCard, Clock } from 'lucide-react';
+import { CreditCard, Clock, Wallet } from 'lucide-react';
+import { DokuWalletModal } from './DokuWalletModal';
 import './InternalDashboard.css';
 
 interface SurveySubmission {
@@ -121,6 +122,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [isPageBuilderOpen, setIsPageBuilderOpen] = useState(false);
   const [selectedSubmissionForPage, setSelectedSubmissionForPage] = useState<SurveySubmission | null>(null);
   const [pageBuilderData, setPageBuilderData] = useState<any>(null);
+
+  // DOKU Sub Account Wallet State
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
 
   // Map submission_id -> page data (slug, is_published)
   const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }>>({});
@@ -685,6 +689,18 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             {/* Right: Actions */}
             <div className="flex items-center gap-2 shrink-0 ml-auto">
               {/* ... other code ... */}
+              <Button
+                type="button"
+                onClick={() => setIsWalletModalOpen(true)}
+                variant="outline"
+                size="sm"
+                className="h-8 px-2.5 rounded-lg text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 font-medium text-xs flex items-center gap-1.5 shadow-sm"
+                title="DOKU Sub Account Wallet"
+              >
+                <Wallet className="w-3.5 h-3.5 text-blue-600" />
+                <span>DOKU Wallet</span>
+              </Button>
+
               <Button
                 onClick={loadSubmissions}
                 variant="outline"
@@ -1927,6 +1943,14 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         submissionPrizePerWinner={selectedSubmissionForPage?.prize_per_winner}
         submissionWinnerCount={selectedSubmissionForPage?.winnerCount}
         submissionCriteria={selectedSubmissionForPage?.criteria}
+      />
+
+      {/* DOKU Sub Account Wallet Modal */}
+      <DokuWalletModal
+        isOpen={isWalletModalOpen}
+        onClose={() => setIsWalletModalOpen(false)}
+        sacId={import.meta.env.VITE_DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595'}
+        productName="Jakpat for Universities"
       />
     </div>
   );

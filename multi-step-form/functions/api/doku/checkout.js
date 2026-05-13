@@ -21,6 +21,9 @@ export async function onRequest(context) {
       });
     }
 
+    // Routing ke Sub Account (SAC)
+    const sacId = requestData.sac_id || context.env.VITE_DOKU_SAC_JFU_ID || context.env.DOKU_SAC_JFU_ID;
+
     // Build the payload for DOKU
     const dokuPayload = {
       order: {
@@ -40,6 +43,14 @@ export async function onRequest(context) {
         email: requestData.customer.email.substring(0, 128)
       }
     };
+
+    if (sacId) {
+      dokuPayload.additional_info = {
+        account: {
+          id: sacId
+        }
+      };
+    }
     
     if (requestData.customer.phone) {
       dokuPayload.customer.phone = requestData.customer.phone.replace(/[^0-9]/g, '').substring(0, 16);
