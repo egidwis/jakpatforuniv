@@ -118,44 +118,6 @@ export function PublishPageManagement() {
 
             if (error) throw error;
 
-            // Sanitize jakpat_id to match masterdata key format
-            const sanitizeJakpatId = (rawId: string | null): string => {
-                if (!rawId) return '';
-                let id = String(rawId);
-                const match = id.match(/\/s\/(.+)/);
-                if (match && match[1]) {
-                    id = match[1];
-                }
-                return id.replace(/\s+/g, '').toLowerCase();
-            };
-
-            // Fetch masterdata for enrichment from correct table
-            const rawJakpatIds = [...new Set((data || []).map((w: any) => w.jakpat_id).filter(Boolean))];
-            let masterdataMap: Record<string, any> = {};
-            if (rawJakpatIds.length > 0) {
-                // Query with both sanitized and original IDs to maximize matches
-                const sanitizedIds = [...new Set(rawJakpatIds.map(sanitizeJakpatId).filter(Boolean))];
-                const allIds = [...new Set([...sanitizedIds, ...rawJakpatIds.map((id: string) => id.trim())])];
-
-                const BATCH_SIZE = 50;
-                const allMdData: any[] = [];
-                for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
-                    const batch = allIds.slice(i, i + BATCH_SIZE);
-                    const { data: mdBatch } = await supabase
-                        .from('respondents-masterdata')
-                        .select('jakpat_id, user_id, email, ktp_number, city, province')
-                        .in('jakpat_id', batch);
-                    if (mdBatch) allMdData.push(...mdBatch);
-                }
-
-                allMdData.forEach((md: any) => {
-                    const key = sanitizeJakpatId(md.jakpat_id);
-                    if (key) {
-                        masterdataMap[key] = md;
-                    }
-                });
-            }
-
             // Group by page
             const grouped: Record<string, typeof periodWinners[0]> = {};
             pagesWithWinnersInMonth.forEach(p => {
@@ -169,17 +131,16 @@ export function PublishPageManagement() {
 
             (data || []).forEach((w: any) => {
                 if (!grouped[w.page_id]) return;
-                const md = masterdataMap[sanitizeJakpatId(w.jakpat_id)] || {};
                 grouped[w.page_id].winners.push({
                     jakpat_id: w.jakpat_id,
-                    user_id: md.user_id ?? null,
-                    email: md.email ?? null,
+                    user_id: null,
+                    email: null,
                     respondent_name: w.respondent_name,
                     ewallet_provider: w.ewallet_provider,
                     e_wallet_number: w.e_wallet_number,
-                    ktp_number: md.ktp_number ?? null,
-                    city: md.city ?? null,
-                    province: md.province ?? null,
+                    ktp_number: null,
+                    city: null,
+                    province: null,
                     reward_amount: w.reward_amount,
                 });
             });
