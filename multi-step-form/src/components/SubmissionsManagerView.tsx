@@ -25,6 +25,7 @@ import {
     ChevronRight,
     Trash2,
     FileText,
+    AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
@@ -52,23 +53,6 @@ interface MergedRespondent {
     ineligible_reasons: string[];
 }
 
-interface ExistingWinner {
-    id: string;
-    jakpat_id: string;
-    respondent_name: string | null;
-    reward_amount: number | null;
-    reward_status: string;
-    ewallet_provider: string | null;
-    e_wallet_number: string | null;
-    selected_at: string;
-    notes: string | null;
-    // Masterdata (enriched)
-    user_id: number | null;
-    email: string | null;
-    ktp_number: string | null;
-    city: string | null;
-    province: string | null;
-}
 
 interface SubmissionsManagerViewProps {
     pageId: string;
@@ -90,7 +74,6 @@ export function SubmissionsManagerView({
     const [loadProgress, setLoadProgress] = useState(0);
     const [loadText, setLoadText] = useState('Memuat data submissions...');
     const [respondents, setRespondents] = useState<MergedRespondent[]>([]);
-    const [existingWinners, setExistingWinners] = useState<ExistingWinner[]>([]);
     const [criteria, setCriteria] = useState<string>('');
     const [previewProof, setPreviewProof] = useState<string | null>(null);
 
@@ -125,38 +108,7 @@ export function SubmissionsManagerView({
             if (prError) throw prError;
 
             setLoadProgress(40);
-            setLoadText('Mendapatkan riwayat pemenang...');
-            // 2. Fetch recent winners (last 6 months) across ALL surveys
-            const sixMonthsAgo = new Date();
-            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-            const { data: recentWinners } = await supabase
-                .from('survey_winners')
-                .select('jakpat_id, selected_at, page_id')
-                .gte('selected_at', sixMonthsAgo.toISOString());
-
-            const recentWinnerIds = new Set(
-                (recentWinners || [])
-                    .filter((w: any) => w.page_id !== pageId)
-                    .map((w: any) => w.jakpat_id)
-            );
-
-            // 3. Fetch existing winners for THIS survey
-            const { data: existingData } = await supabase
-                .from('survey_winners')
-                .select('*')
-                .eq('page_id', pageId)
-                .order('selected_at', { ascending: true });
-
-            const enrichedWinners: ExistingWinner[] = (existingData || []).map((w: any) => ({
-                ...w,
-                user_id: null,
-                email: null,
-                ktp_number: null,
-                city: null,
-                province: null,
-            }));
-            setExistingWinners(enrichedWinners);
+            setLoadText('Mengambil kriteria survei...');
 
             // 4. Fetch criteria from form_submissions
             const { data: pageData } = await supabase
@@ -176,9 +128,7 @@ export function SubmissionsManagerView({
                 const reasons: string[] = [];
 
                 if (!pr.proof_url) reasons.push('Tidak upload bukti (proof)');
-
-                const isRecentWinner = recentWinnerIds.has(pr.jakpat_id);
-                if (isRecentWinner) reasons.push('Sudah menang dalam 6 bulan terakhir');
+                if (!pr.proof_url) reasons.push('Tidak upload bukti (proof)');
 
                 return {
                     respondent_id: pr.id,
@@ -330,41 +280,7 @@ export function SubmissionsManagerView({
         return Array.from(provs).sort();
     }, [respondents]);
 
-    const hasExistingWinners = existingWinners.length > 0;
     const totalProofCount = respondents.filter(r => r.proof_url).length;
-
-
-
-    const exportToCSV = () => {
-        if (existingWinners.length === 0) return;
-        const headers = ['Jakpat ID', 'User ID', 'Email', 'Nama', 'No. E-Wallet', 'NIK/NPWP', 'Kota/Kab Provinsi', 'Judul Survey', 'Kirim Ke', 'NOMINAL'];
-        const rows = existingWinners.map(w => [
-            w.jakpat_id, w.user_id ?? '', w.email ?? '', w.respondent_name ?? '',
-            w.e_wallet_number ?? '', w.ktp_number ?? '', [w.city, w.province].filter(Boolean).join(', '),
-            pageTitle, w.ewallet_provider ?? '', w.reward_amount || rewardAmount || 0,
-        ]);
-        const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n');
-        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `pemenang_${pageTitle.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
-    };
-
-    const handleDeleteWinner = async (winnerId: string, respondentName: string) => {
-        if (!confirm(`Hapus ${respondentName || 'pemenang ini'} dari daftar pemenang?`)) return;
-        try {
-            const { error } = await supabase.from('survey_winners').delete().eq('id', winnerId);
-            if (error) throw error;
-            toast.success('Pemenang berhasil dihapus');
-            fetchData();
-        } catch (error) {
-            console.error(error);
-            toast.error('Gagal menghapus pemenang');
-        }
-    };
 
     return (
         <div className="flex flex-col h-full w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -425,84 +341,6 @@ export function SubmissionsManagerView({
                                 </div>
                             </div>
                         </div>
-                    ) : hasExistingWinners ? (
-                        /* ===== WINNER LIST VIEW ===== */
-                        <div className="flex-1 space-y-4">
-                            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-green-800 text-sm">
-                                    <div className="h-6 w-6 rounded-full bg-green-200 flex items-center justify-center"><Check className="w-4 h-4 text-green-700" /></div>
-                                    <span><strong>{existingWinners.length}</strong> pemenang sudah dipilih</span>
-                                </div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    {/* Bulk Proof Delete Action */}
-                                    {totalProofCount > 0 && !loading && (
-                                        <div className="flex items-center bg-white border border-amber-200 rounded-md pl-3 pr-1 py-0.5 shadow-sm shrink-0 h-8">
-                                            <div className="flex items-center gap-2 text-xs text-amber-800 mr-2">
-                                                <FileText className="h-3.5 w-3.5" />
-                                                <span><strong>{totalProofCount}</strong> file proof (~{((totalProofCount * 100) / 1024).toFixed(0)} KB)</span>
-                                            </div>
-                                            {!showBulkConfirm ? (
-                                                <Button
-                                                    variant="outline" size="sm"
-                                                    className="h-6 text-[11px] border-amber-300 text-amber-800 hover:bg-amber-100 bg-amber-50"
-                                                    onClick={() => setShowBulkConfirm(true)}
-                                                >
-                                                    <Trash2 className="h-3 w-3 mr-1" /> Hapus File Proof
-                                                </Button>
-                                            ) : (
-                                                <div className="flex items-center gap-1.5 animate-in fade-in slide-in-from-right-2">
-                                                    <span className="text-[11px] text-red-700 font-bold hidden xl:inline ml-1">Yakin hapus?</span>
-                                                    <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={() => setShowBulkConfirm(false)} disabled={bulkDeleting}>Batal</Button>
-                                                    <Button variant="destructive" size="sm" className="h-6 text-[11px] px-2" onClick={handleBulkDeleteProofs} disabled={bulkDeleting}>
-                                                        {bulkDeleting ? <><Loader2 className="h-3 w-3 mr-0.5 animate-spin" /> ...</> : 'Ya, Hapus'}
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                </div>
-                            </div>
-
-                            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader className="bg-gray-50/80">
-                                            <TableRow>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap">Jakpat ID</TableHead>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap">User ID</TableHead>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap">Email</TableHead>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap">Nama</TableHead>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap">No. E-Wallet</TableHead>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap">NIK/NPWP</TableHead>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap">Lokasi</TableHead>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap text-right">Nominal</TableHead>
-                                                <TableHead className="text-xs font-semibold whitespace-nowrap w-10"></TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {existingWinners.map(w => (
-                                                <TableRow key={w.id} className="hover:bg-gray-50/50">
-                                                    <TableCell><span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded inline-block">{w.jakpat_id}</span></TableCell>
-                                                    <TableCell className="text-xs text-gray-600 font-mono">{w.user_id ?? '—'}</TableCell>
-                                                    <TableCell className="text-xs text-gray-600 max-w-[180px] truncate" title={w.email || ''}>{w.email || '—'}</TableCell>
-                                                    <TableCell className="text-sm font-medium text-gray-900 whitespace-nowrap">{w.respondent_name || '—'}</TableCell>
-                                                    <TableCell className="text-xs font-mono text-gray-700">{w.e_wallet_number ? `${w.ewallet_provider} - ${w.e_wallet_number}` : '—'}</TableCell>
-                                                    <TableCell className="text-xs font-mono text-gray-600">{w.ktp_number || '—'}</TableCell>
-                                                    <TableCell className="text-xs text-gray-600 whitespace-nowrap">{[w.city, w.province].filter(Boolean).join(', ') || '—'}</TableCell>
-                                                    <TableCell className="text-sm font-semibold text-gray-700 text-right whitespace-nowrap">Rp {(w.reward_amount || rewardAmount || 0).toLocaleString('id-ID')}</TableCell>
-                                                    <TableCell className="text-center">
-                                                        <Button variant="ghost" size="sm" onClick={() => handleDeleteWinner(w.id, w.respondent_name || '')} className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:text-red-700">
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            </div>
-                        </div>
                     ) : (
                         /* ===== SUBMISSIONS VIEW ===== */
                         <div className="flex-1 flex flex-col space-y-4">
@@ -525,6 +363,43 @@ export function SubmissionsManagerView({
                                                 <button onClick={() => setSearchQuery('')} className="text-xs text-blue-600 hover:text-blue-800 font-medium ml-1">Reset</button>
                                             )}
                                         </div>
+                                        {totalProofCount > 0 && (
+                                            <div className="flex items-center gap-2">
+                                                {!showBulkConfirm ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 text-xs border-red-200 text-red-600 hover:bg-red-50 bg-white font-semibold shadow-sm"
+                                                        onClick={() => setShowBulkConfirm(true)}
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Hapus Semua Proof ({totalProofCount})
+                                                    </Button>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5 animate-in fade-in zoom-in-95">
+                                                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                                                        <span className="text-xs text-red-700 font-medium">Hapus {totalProofCount} proof? Tidak bisa dikembalikan.</span>
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-7 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold px-3"
+                                                            onClick={handleBulkDeleteProofs}
+                                                            disabled={bulkDeleting}
+                                                        >
+                                                            {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                                                            {bulkDeleting ? 'Menghapus...' : 'Ya, Hapus'}
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 text-xs text-gray-600 hover:text-gray-900 font-medium px-2"
+                                                            onClick={() => setShowBulkConfirm(false)}
+                                                            disabled={bulkDeleting}
+                                                        >
+                                                            Batal
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

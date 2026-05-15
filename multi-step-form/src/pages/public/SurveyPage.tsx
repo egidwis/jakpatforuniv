@@ -503,20 +503,42 @@ export function SurveyPage() {
                 const fileName = `proof-${Date.now()}-${sanitizedName}`;
 
                 console.log('[Submit] Step 2: Uploading to storage...');
-                const { error: uploadError } = await supabase.storage
+                let uploadResult = await supabase.storage
                     .from('page-uploads')
                     .upload(fileName, processedProofFile);
 
-                if (uploadError) {
-                    console.error('[Submit] Step 2 FAILED - Storage upload error:', JSON.stringify(uploadError));
-                    throw new Error('Upload bukti gagal. Coba upload ulang. Jika masih bermasalah, hubungi support@jakpat.net');
-                }
+                // If upload fails (possibly storage full), try auto-cleanup and retry
+                if (uploadResult.error) {
+                    console.warn('[Submit] Step 2: First upload attempt failed, triggering auto-cleanup...', uploadResult.error.message);
+                    try {
+                        await fetch('/api/storage-cleanup', { method: 'POST' });
+                        console.log('[Submit] Step 2: Auto-cleanup done, retrying upload...');
+                    } catch (cleanupErr) {
+                        console.warn('[Submit] Step 2: Auto-cleanup request failed:', cleanupErr);
+                    }
+                    // Retry with a fresh filename
+                    const retryFileName = `proof-${Date.now()}-${sanitizedName}`;
+                    uploadResult = await supabase.storage
+                        .from('page-uploads')
+                        .upload(retryFileName, processedProofFile);
 
-                const { data: { publicUrl } } = supabase.storage
-                    .from('page-uploads')
-                    .getPublicUrl(fileName);
-                proofUrl = publicUrl;
-                console.log('[Submit] Step 2 OK - Proof uploaded:', proofUrl);
+                    if (uploadResult.error) {
+                        // Still failing — save respondent without proof (graceful degradation)
+                        console.warn('[Submit] Step 2: Retry also failed. Proceeding without proof to avoid blocking respondent.');
+                    } else {
+                        const { data: { publicUrl } } = supabase.storage
+                            .from('page-uploads')
+                            .getPublicUrl(retryFileName);
+                        proofUrl = publicUrl;
+                        console.log('[Submit] Step 2 OK - Proof uploaded on retry:', proofUrl);
+                    }
+                } else {
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('page-uploads')
+                        .getPublicUrl(fileName);
+                    proofUrl = publicUrl;
+                    console.log('[Submit] Step 2 OK - Proof uploaded:', proofUrl);
+                }
             }
 
             // Step 3: Save Respondent Data to database
