@@ -14,13 +14,13 @@ interface DokuWalletModalProps {
 }
 
 const COMMON_BANKS = [
-  { code: '014', name: 'Bank BCA' },
-  { code: '009', name: 'Bank BNI' },
-  { code: '002', name: 'Bank BRI' },
-  { code: '008', name: 'Bank Mandiri' },
-  { code: '022', name: 'Bank CIMB Niaga' },
-  { code: '013', name: 'Bank Permata' },
-  { code: '451', name: 'Bank Syariah Indonesia (BSI)' },
+  { code: 'CENAIDJA', name: 'Bank BCA' },
+  { code: 'BNINIDJA', name: 'Bank BNI' },
+  { code: 'BRINIDJA', name: 'Bank BRI' },
+  { code: 'BMRIIDJA', name: 'Bank Mandiri' },
+  { code: 'BNIAIDJA', name: 'Bank CIMB Niaga' },
+  { code: 'BBBAIDJA', name: 'Bank Permata' },
+  { code: 'BSMDIDJA', name: 'Bank Syariah Indonesia (BSI)' },
 ];
 
 export function DokuWalletModal({ 
