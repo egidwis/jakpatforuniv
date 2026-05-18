@@ -23,7 +23,7 @@ export function ChatPage() {
     const faqs = [
         {
             q: "Apa bedanya Jakpat for Universities dengan Jakpat biasa?",
-            a: "JFU fokus pada kebutuhan akademik dengan harga lebih ramah mahasiswa/dosen, alur yang lebih simpel, dan fleksibel untuk tugas kuliah, skripsi, thesis, atau riset akademik."
+            a: "Jakpat for Univ fokus pada kebutuhan akademik dengan harga lebih ramah mahasiswa/dosen, alur yang lebih simpel, dan fleksibel untuk tugas kuliah, skripsi, thesis, atau riset akademik."
         },
         {
             q: "Untuk mendapatkan 200 responden, butuh berapa lama?",
@@ -39,7 +39,7 @@ export function ChatPage() {
         },
         {
             q: "Berapa rekomendasi insentif untuk responden?",
-            a: "Jumlah pemenang undian kami batasi maksimal 5 orang agar distribusi hadiah bisa lebih merata dengan postingan iklan lainnya. Namun, jika membutuhkan lebih dari 5 pemenang, bisa dibantu dengan metode distribusi custom (ada biaya tambahan). Silakan request ke admin JFU melalui chat ini. Untuk nominal hadiah, tidak ada batasan dan dapat disesuaikan dengan kebutuhanmu. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
+            a: "Jumlah pemenang undian kami batasi maksimal 5 orang agar distribusi hadiah bisa lebih merata dengan postingan iklan lainnya. Namun, jika membutuhkan lebih dari 5 pemenang, bisa dibantu dengan metode distribusi custom (ada biaya tambahan). Silakan request ke admin Jakpat for Univ melalui chat ini. Untuk nominal hadiah, tidak ada batasan dan dapat disesuaikan dengan kebutuhanmu. Rekomendasinya adalah memberikan minimal Rp25.000 untuk 2 pemenang. Umumnya, semakin besar insentif yang ditawarkan, semakin tinggi minat responden untuk berpartisipasi dalam survei kamu."
         },
         {
             q: "Bagaimana cara distribusi insentif?",
@@ -146,7 +146,7 @@ ${faqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
 2. **Invoicing**:
    - Once the survey is reviewed and approved, the Admin will send the invoice via WhatsApp.
 
-3. **How JFU Works (Step by Step)**:
+3. **How Jakpat for Univ Works (Step by Step)**:
    - Step 1: Klik menu "Submissions" lalu isi order form. Lengkapi detail surveymu di form pemesanan.
    - Step 2: Track status surveimu. Admin akan cek & beri feedback. Tim Jakpat akan memverifikasi dan memberikan masukan jika perlu.
    - Step 3: Surveimu diiklankan. Kami publikasikan surveymu di website Jakpat agar responden bisa mengisinya.
@@ -177,9 +177,9 @@ ${faqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
 
 8. **Tentang Hasil Survei (PENTING)**:
    - Hasil survei LANGSUNG masuk ke platform survei yang kamu gunakan (Google Form, Qualtrics, SurveyMonkey, dll).
-   - JFU TIDAK menyediakan dashboard khusus untuk melihat hasil survei.
-   - JFU TIDAK menyediakan export data dalam format Excel/CSV.
-   - JFU TIDAK menambahkan data demografi otomatis ke hasil surveimu.
+   - Jakpat for Univ TIDAK menyediakan dashboard khusus untuk melihat hasil survei.
+   - Jakpat for Univ TIDAK menyediakan export data dalam format Excel/CSV.
+   - Jakpat for Univ TIDAK menambahkan data demografi otomatis ke hasil surveimu.
    - Jika kamu ingin data demografi, kamu perlu menambahkan pertanyaan demografi sendiri di dalam kuesionermu.
 
 === BEHAVIORAL RULES ===
