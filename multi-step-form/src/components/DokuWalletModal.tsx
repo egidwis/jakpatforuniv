@@ -14,13 +14,13 @@ interface DokuWalletModalProps {
 }
 
 const COMMON_BANKS = [
-  { code: 'CENAIDJA', name: 'Bank BCA' },
-  { code: 'BNINIDJA', name: 'Bank BNI' },
-  { code: 'BRINIDJA', name: 'Bank BRI' },
-  { code: 'BDMNIDJA', name: 'Bank Mandiri' },
-  { code: 'BNGAIDJA', name: 'Bank CIMB Niaga' },
-  { code: 'BBBAIDJA', name: 'Bank Permata' },
-  { code: 'BSMDIDJA', name: 'Bank Syariah Indonesia (BSI)' },
+  { code: '014', name: 'Bank BCA' },
+  { code: '009', name: 'Bank BNI' },
+  { code: '002', name: 'Bank BRI' },
+  { code: '008', name: 'Bank Mandiri' },
+  { code: '022', name: 'Bank CIMB Niaga' },
+  { code: '013', name: 'Bank Permata' },
+  { code: '451', name: 'Bank Syariah Indonesia (BSI)' },
 ];
 
 export function DokuWalletModal({ 
@@ -109,7 +109,19 @@ export function DokuWalletModal({
         // Refresh balance after a short delay
         setTimeout(fetchBalance, 1500);
       } else {
-        toast.error(data.error || data.payout?.status || 'Gagal mengirim payout');
+        let errorMessage = 'Gagal mengirim payout';
+        if (typeof data.error === 'string') {
+          errorMessage = data.error;
+        } else if (data.error?.message) {
+          errorMessage = data.error.message;
+        } else if (data.message) {
+          errorMessage = typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
+        } else if (data.payout?.status) {
+          errorMessage = data.payout.status;
+        } else if (data.error) {
+          errorMessage = JSON.stringify(data.error);
+        }
+        toast.error(errorMessage);
       }
     } catch (error) {
       console.error('Payout error:', error);
