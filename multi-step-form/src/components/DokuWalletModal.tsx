@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
-import { Loader2, RefreshCw, Wallet, Send, Building2, User, FileText, CheckCircle2 } from 'lucide-react';
+import { Loader2, RefreshCw, Wallet, Send, Building2, User, FileText, CheckCircle2, History } from 'lucide-react';
 
 interface DokuWalletModalProps {
   isOpen: boolean;
@@ -31,7 +31,7 @@ export function DokuWalletModal({
 }: DokuWalletModalProps) {
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [balance, setBalance] = useState<{ available: string; pending: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'payout'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'payout' | 'history'>('overview');
 
   // Payout Form State
   const [amount, setAmount] = useState('');
@@ -39,7 +39,12 @@ export function DokuWalletModal({
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [description, setDescription] = useState('');
   const [submittingPayout, setSubmittingPayout] = useState(false);
+
+  // History State
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const fetchBalance = async () => {
     if (!sacId) return;
@@ -60,9 +65,26 @@ export function DokuWalletModal({
     }
   };
 
+  const fetchHistory = async () => {
+    if (!sacId) return;
+    setLoadingHistory(true);
+    try {
+      const response = await fetch(`/api/doku/sac/history?account_id=${sacId}`);
+      const data = await response.json();
+      if (response.ok && data.data) {
+        setHistoryData(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       fetchBalance();
+      fetchHistory();
       // Auto-generate invoice number prefix
       setInvoiceNumber(`WDR/JFU/${Date.now()}`);
     }
@@ -92,7 +114,8 @@ export function DokuWalletModal({
           invoice_number: invoiceNumber || `WDR/JFU/${Date.now()}`,
           bank_code: bankCode,
           bank_account_number: accountNumber,
-          bank_account_name: accountName
+          bank_account_name: accountName,
+          description: description
         })
       });
 
@@ -104,10 +127,14 @@ export function DokuWalletModal({
         setAmount('');
         setAccountNumber('');
         setAccountName('');
+        setDescription('');
         setInvoiceNumber(`WDR/JFU/${Date.now()}`);
-        setActiveTab('overview');
+        setActiveTab('history');
         // Refresh balance after a short delay
-        setTimeout(fetchBalance, 1500);
+        setTimeout(() => {
+          fetchBalance();
+          fetchHistory();
+        }, 1500);
       } else {
         let errorMessage = 'Gagal mengirim payout';
         if (typeof data.error === 'string') {
@@ -179,7 +206,18 @@ export function DokuWalletModal({
                   : 'text-white/80 hover:text-white'
               }`}
             >
-              Kirim Payout / Tarik Dana
+              Kirim Payout
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab('history'); fetchHistory(); }}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                activeTab === 'history' 
+                  ? 'bg-white text-slate-900 shadow-sm' 
+                  : 'text-white/80 hover:text-white'
+              }`}
+            >
+              Riwayat
             </button>
           </div>
         </div>
@@ -241,7 +279,7 @@ export function DokuWalletModal({
                 Buat Payout Baru
               </Button>
             </div>
-          ) : (
+          ) : activeTab === 'payout' ? (
             /* Payout Form Tab */
             <form onSubmit={handlePayout} className="space-y-4 animate-in fade-in duration-200">
               <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-[11px] text-amber-800 flex items-start gap-2">
@@ -328,6 +366,20 @@ export function DokuWalletModal({
                 </div>
               </div>
 
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Deskripsi / Keterangan</Label>
+                <div className="relative">
+                  <FileText className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
+                  <Input
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Contoh: Pencairan dana campaign BNI"
+                    className="h-9 pl-8 text-xs"
+                  />
+                </div>
+              </div>
+
               <div className="pt-2 flex gap-2">
                 <Button
                   type="button"
@@ -357,6 +409,48 @@ export function DokuWalletModal({
                 </Button>
               </div>
             </form>
+          ) : (
+            /* History Tab */
+            <div className="space-y-3 h-[400px] overflow-y-auto pr-1 custom-scrollbar">
+              {loadingHistory ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span className="text-xs">Memuat riwayat...</span>
+                </div>
+              ) : historyData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+                  <History className="w-10 h-10 text-slate-200" />
+                  <span className="text-sm font-medium text-slate-500">Belum ada riwayat penarikan</span>
+                </div>
+              ) : (
+                historyData.map((item, idx) => (
+                  <div key={item.id || idx} className="p-3.5 bg-white border border-slate-100 shadow-sm rounded-xl hover:border-blue-100 transition-colors">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="font-bold text-slate-800">{formatIDR(item.amount)}</div>
+                        <div className="text-xs font-medium text-slate-500 mt-0.5">{item.bank_code} • {item.bank_account_number}</div>
+                      </div>
+                      <div className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        item.status === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600' : 
+                        item.status === 'FAILED' ? 'bg-rose-50 text-rose-600' : 
+                        'bg-amber-50 text-amber-600'
+                      }`}>
+                        {item.status}
+                      </div>
+                    </div>
+                    {item.description && (
+                      <div className="text-xs text-slate-600 mb-2 bg-slate-50 p-2 rounded-lg italic">
+                        "{item.description}"
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center text-[10px] text-slate-400 border-t border-slate-100 pt-2">
+                      <span className="font-mono">{item.invoice_number}</span>
+                      <span>{new Date(item.created_at).toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
       </DialogContent>
