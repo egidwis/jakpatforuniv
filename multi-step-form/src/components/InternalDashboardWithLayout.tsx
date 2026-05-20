@@ -22,7 +22,7 @@ export function InternalDashboardWithLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [unreadConversations, setUnreadConversations] = useState(0);
   const [storageStats, setStorageStats] = useState({ proofCount: 0, bannerCount: 0, contentImageCount: 0 });
-  const STORAGE_LIMIT_MB = 1024; // 1 GB Supabase storage limit
+  const STORAGE_LIMIT_MB = 102400; // 100 GB Supabase Pro Plan storage limit
 
   // Function to calculate unread conversations
   const checkUnreadConversations = async () => {
@@ -319,7 +319,7 @@ export function InternalDashboardWithLayout() {
                     {totalFiles.toLocaleString()} file
                   </span>
                   <span className={`text-[10px] ${isCritical ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
-                    ~{estMBStr} / 1 GB
+                    ~{estMBStr} / {STORAGE_LIMIT_MB >= 1024 ? `${(STORAGE_LIMIT_MB / 1024).toFixed(0)} GB` : `${STORAGE_LIMIT_MB} MB`}
                   </span>
                 </div>
               </>

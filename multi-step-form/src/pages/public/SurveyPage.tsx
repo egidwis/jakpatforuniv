@@ -490,54 +490,71 @@ export function SurveyPage() {
             }
             console.log('[Submit] Step 1 OK - No duplicate found');
 
-            // Step 2: Upload Proof (MANDATORY — uses pre-processed file from handleFileChange)
+            // Step 2: Upload Proof to Supabase Storage
+            // Upload happens here (not in Step 3) so that abandon surveys never create
+            // orphan files. If upload fails, we redirect back to Step 3 so the respondent
+            // sees the error in the correct context and can retry.
             let proofUrl = '';
             if (processedProofFile) {
-                console.log('[Submit] Step 2: Uploading pre-processed image...', {
-                    name: processedProofFile.name,
-                    size: processedProofFile.size,
-                    type: processedProofFile.type
-                });
+                try {
+                    const sanitizedName = (proofFile?.name || 'proof.jpg').replace(/[^a-zA-Z0-9.\-]/g, '_');
+                    const fileName = `proof-${Date.now()}-${sanitizedName}`;
 
-                const sanitizedName = (proofFile?.name || 'proof.jpg').replace(/[^a-zA-Z0-9.\-]/g, '_');
-                const fileName = `proof-${Date.now()}-${sanitizedName}`;
-
-                console.log('[Submit] Step 2: Uploading to storage...');
-                let uploadResult = await supabase.storage
-                    .from('page-uploads')
-                    .upload(fileName, processedProofFile);
-
-                // If upload fails (possibly storage full), try auto-cleanup and retry
-                if (uploadResult.error) {
-                    console.warn('[Submit] Step 2: First upload attempt failed, triggering auto-cleanup...', uploadResult.error.message);
-                    try {
-                        await fetch('/api/storage-cleanup', { method: 'POST' });
-                        console.log('[Submit] Step 2: Auto-cleanup done, retrying upload...');
-                    } catch (cleanupErr) {
-                        console.warn('[Submit] Step 2: Auto-cleanup request failed:', cleanupErr);
-                    }
-                    // Retry with a fresh filename
-                    const retryFileName = `proof-${Date.now()}-${sanitizedName}`;
-                    uploadResult = await supabase.storage
+                    console.log('[Submit] Step 2: Uploading proof to storage...');
+                    let uploadResult = await supabase.storage
                         .from('page-uploads')
-                        .upload(retryFileName, processedProofFile);
+                        .upload(fileName, processedProofFile);
 
+                    // If upload fails (possibly storage full), try auto-cleanup and retry
                     if (uploadResult.error) {
-                        // Still failing — save respondent without proof (graceful degradation)
-                        console.warn('[Submit] Step 2: Retry also failed. Proceeding without proof to avoid blocking respondent.');
+                        console.warn('[Submit] Step 2: First upload failed, triggering cleanup...', uploadResult.error.message);
+                        try {
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 8000);
+                            await fetch('/api/storage-cleanup', {
+                                method: 'POST',
+                                signal: controller.signal,
+                            });
+                            clearTimeout(timeoutId);
+                        } catch (cleanupErr) {
+                            console.warn('[Submit] Step 2: Auto-cleanup request failed:', cleanupErr);
+                        }
+
+                        const retryFileName = `proof-${Date.now()}-${sanitizedName}`;
+                        uploadResult = await supabase.storage
+                            .from('page-uploads')
+                            .upload(retryFileName, processedProofFile);
+
+                        if (uploadResult.error) {
+                            // Upload failed — redirect back to Step 3 so user sees the error in context
+                            console.error('[Submit] Step 2: Retry upload also failed:', uploadResult.error.message);
+                            setProofError('Gagal mengupload bukti. Silakan coba lagi atau ganti gambar.');
+                            toast.error('Gagal mengupload bukti. Silakan coba lagi.');
+                            setCurrentStep(3);
+                            setSubmitting(false);
+                            return;
+                        } else {
+                            const { data: { publicUrl } } = supabase.storage
+                                .from('page-uploads')
+                                .getPublicUrl(retryFileName);
+                            proofUrl = publicUrl;
+                            console.log('[Submit] Step 2 OK - Proof uploaded on retry:', proofUrl);
+                        }
                     } else {
                         const { data: { publicUrl } } = supabase.storage
                             .from('page-uploads')
-                            .getPublicUrl(retryFileName);
+                            .getPublicUrl(fileName);
                         proofUrl = publicUrl;
-                        console.log('[Submit] Step 2 OK - Proof uploaded on retry:', proofUrl);
+                        console.log('[Submit] Step 2 OK - Proof uploaded:', proofUrl);
                     }
-                } else {
-                    const { data: { publicUrl } } = supabase.storage
-                        .from('page-uploads')
-                        .getPublicUrl(fileName);
-                    proofUrl = publicUrl;
-                    console.log('[Submit] Step 2 OK - Proof uploaded:', proofUrl);
+                } catch (uploadErr) {
+                    // Unexpected error (network, CORS, etc.) — redirect back to Step 3
+                    console.error('[Submit] Step 2: Upload threw an unexpected error:', uploadErr);
+                    setProofError('Gagal mengupload bukti karena koneksi bermasalah. Silakan coba lagi.');
+                    toast.error('Gagal mengupload bukti. Silakan coba lagi.');
+                    setCurrentStep(3);
+                    setSubmitting(false);
+                    return;
                 }
             }
 
@@ -1094,6 +1111,9 @@ export function SurveyPage() {
                                                     <AlertCircle className="w-6 h-6 text-red-500" />
                                                 </div>
                                                 <span className="font-medium text-red-800 text-sm leading-relaxed max-w-xs">{proofError}</span>
+                                                <p className="text-xs text-red-600/80 mt-2 max-w-xs">
+                                                    Tips: Pastikan koneksi internet stabil. Jika terus gagal, coba screenshot ulang dengan format JPG/PNG yang lebih kecil.
+                                                </p>
                                                 <div className="flex gap-2 mt-4">
                                                     {proofFile && (
                                                         <Button
@@ -1116,6 +1136,12 @@ export function SurveyPage() {
                                                         />
                                                     </label>
                                                 </div>
+                                                <p className="text-[11px] text-gray-500 mt-3">
+                                                    Masih bermasalah? Hubungi{' '}
+                                                    <a href="mailto:support@jakpat.net" className="text-blue-600 hover:underline font-medium">
+                                                        support@jakpat.net
+                                                    </a>
+                                                </p>
                                             </div>
                                         </div>
                                     )}
@@ -1152,21 +1178,29 @@ export function SurveyPage() {
 
                                     {/* Default Upload State */}
                                     {!proofProcessing && !proofError && !processedProofFile && (
-                                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition cursor-pointer relative group">
-                                            <input
-                                                type="file"
-                                                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-                                                onChange={handleFileChange}
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                            />
-                                            <div className="flex flex-col items-center text-gray-500 group-hover:text-blue-600 transition-colors">
-                                                <div className="w-12 h-12 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-2 transition-colors">
-                                                    <Smartphone className="w-6 h-6" />
+                                        <>
+                                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition cursor-pointer relative group">
+                                                <input
+                                                    type="file"
+                                                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                                                    onChange={handleFileChange}
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                />
+                                                <div className="flex flex-col items-center text-gray-500 group-hover:text-blue-600 transition-colors">
+                                                    <div className="w-12 h-12 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-2 transition-colors">
+                                                        <Smartphone className="w-6 h-6" />
+                                                    </div>
+                                                    <span className="font-medium text-lg">Tap untuk upload screenshot</span>
+                                                    <span className="text-xs mt-1">Format: JPG, PNG, WebP — Max 10MB</span>
                                                 </div>
-                                                <span className="font-medium text-lg">Tap untuk upload screenshot</span>
-                                                <span className="text-xs mt-1">Format: JPG, PNG, WebP — Max 10MB</span>
                                             </div>
-                                        </div>
+                                            <p className="text-[11px] text-gray-400 text-center mt-2">
+                                                Kendala upload? Hubungi{' '}
+                                                <a href="mailto:support@jakpat.net" className="text-blue-600 hover:underline font-medium">
+                                                    support@jakpat.net
+                                                </a>
+                                            </p>
+                                        </>
                                     )}
                                 </div>
                             </CardContent>
