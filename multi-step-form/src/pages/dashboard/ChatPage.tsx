@@ -20,7 +20,7 @@ export function ChatPage() {
     const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
 
 
-    const faqs = [
+    const defaultFaqs = [
         {
             q: "Apa bedanya Jakpat for Universities dengan Jakpat biasa?",
             a: "Jakpat for Univ fokus pada kebutuhan akademik dengan harga lebih ramah mahasiswa/dosen, alur yang lebih simpel, dan fleksibel untuk tugas kuliah, skripsi, thesis, atau riset akademik."
@@ -86,9 +86,33 @@ export function ChatPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const autoSentRef = useRef(false);
 
+    // AI Knowledge Base State
+    const [systemPrompt, setSystemPrompt] = useState<string>('');
+    const [faqs, setFaqs] = useState<Array<{q: string, a: string}>>([]);
+
     // Initial load for persistence
     useEffect(() => {
-        const initSession = async () => {
+        const initData = async () => {
+            // 1. Fetch AI Knowledge Base
+            try {
+                const [{ data: promptData }, { data: faqsData }] = await Promise.all([
+                    supabase.from('ai_settings').select('value').eq('key', 'system_prompt').single(),
+                    supabase.from('ai_knowledge_base').select('question, answer').eq('is_active', true).order('sort_order', { ascending: true })
+                ]);
+
+                if (promptData) setSystemPrompt(promptData.value);
+                
+                if (faqsData && faqsData.length > 0) {
+                    setFaqs(faqsData.map(f => ({ q: f.question, a: f.answer })));
+                } else {
+                    setFaqs(defaultFaqs);
+                }
+            } catch (err) {
+                console.error("Error fetching AI knowledge:", err);
+                setFaqs(defaultFaqs);
+            }
+
+            // 2. Fetch Chat Session
             if (user?.email) {
                 const session = await getOrCreateChatSession(user.email);
                 if (session) {
@@ -100,7 +124,7 @@ export function ChatPage() {
                 }
             }
         };
-        initSession();
+        initData();
     }, [user?.email]);
 
     // Auto-scroll to bottom
@@ -112,7 +136,7 @@ export function ChatPage() {
 
     // Build system prompt (shared by handleSendMessage and sendMessageDirect)
     const buildSystemPrompt = useCallback(() => {
-        return `You are Mimin AI, a helpful virtual assistant EXCLUSIVELY for Jakpat for Univ.
+        const basePrompt = systemPrompt || `You are Mimin AI, a helpful virtual assistant EXCLUSIVELY for Jakpat for Universities (JFU).
 You are politely professional and helpful.
 
 === IDENTITY & SCOPE ===
@@ -132,10 +156,14 @@ You are politely professional and helpful.
 4. **What Jakpat for Univ actually does**: Jakpat for Univ distributes/advertises your survey link (Google Form, Qualtrics, etc.) to Jakpat's respondent panel. The survey results go directly into YOUR survey platform (e.g., your Google Form responses), NOT through Jakpat for Univ.
 5. If a user asks something outside your knowledge, respond with EXACTLY this pattern:
    "Mohon maaf, saya belum memiliki informasi mengenai hal tersebut. Untuk pertanyaan lebih lanjut, tim Jakpat akan menghubungi kamu melalui email atau WhatsApp yang terdaftar. Kamu juga bisa menghubungi kami di product@jakpat.net 😊"
-6. **NEVER fabricate sample data, tables, or examples** that are not in the Knowledge Base.
+6. **NEVER fabricate sample data, tables, or examples** that are not in the Knowledge Base.`;
+
+        const currentFaqs = faqs.length > 0 ? faqs : defaultFaqs;
+
+        return `${basePrompt}
 
 === KNOWLEDGE BASE (FAQ) ===
-${faqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
+${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
 
 === ADDITIONAL VERIFIED INFORMATION ===
 
@@ -198,7 +226,7 @@ ${faqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
    - Jaminkan bahwa saat pembayaran/penjadwalan, admin akan menghubungi untuk diskusi detail custom distribution.
 6. REPEAT: If the question is outside your knowledge, ALWAYS use the fallback response. NEVER guess or improvise.
 `;
-    }, [faqs]);
+    }, [systemPrompt, faqs]);
 
     // Auto-send message from query param
     const sendMessageDirect = useCallback(async (messageText: string) => {

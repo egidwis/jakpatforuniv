@@ -9,10 +9,11 @@ import { ConversationsPage } from './ConversationsPage';
 import { SchedulingPage } from '../pages/dashboard/SchedulingPage';
 import { PublishPageManagement } from './PublishPageManagement';
 import { CustomersPage } from './CustomersPage';
+import MiminAISetup from '../pages/internal-dash/MiminAISetup';
 import { useAuth } from '../context/AuthContext';
 import { getAllChatSessions, supabase } from '../utils/supabase';
 
-type Page = 'submissions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'scheduling' | 'publish-page';
+type Page = 'submissions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'scheduling' | 'publish-page' | 'mimin-setup';
 
 export function InternalDashboardWithLayout() {
   // Supabase Auth
@@ -192,6 +193,11 @@ export function InternalDashboardWithLayout() {
       id: 'publish-page' as Page,
       label: 'Pages',
       icon: Globe,
+    },
+    {
+      id: 'mimin-setup' as Page,
+      label: 'Mimin AI',
+      icon: MessageSquare,
     },
   ];
 
@@ -413,6 +419,10 @@ export function InternalDashboardWithLayout() {
             </div>
           ) : currentPage === 'publish-page' ? (
             <PublishPageManagement />
+          ) : currentPage === 'mimin-setup' ? (
+            <div className="container mx-auto p-4 md:p-8 h-full">
+              <MiminAISetup />
+            </div>
           ) : (
             <div className="container mx-auto p-4 md:p-8 h-full">
               <SchedulingPage />
