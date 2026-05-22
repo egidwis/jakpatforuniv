@@ -3,3 +3,4 @@
 
 # SPA fallback for submit-survey
 /submit-survey/* /submit-survey/index.html 200
+/* /index.html 200
