@@ -21,12 +21,18 @@ export async function onRequest(context) {
     const ourClientId = context.env.DOKU_CLIENT_ID || context.env.VITE_DOKU_CLIENT_ID;
 
     // ====================================================================
-    // DETECT FORMAT: SNAP (Sub Account/SAC) vs Jokul (legacy)
+    // DETECT FORMAT: SNAP (Sub Account/SAC) vs SNAP B2B (Payouts) vs Jokul (legacy)
     // SNAP notifications use CHANNEL-ID: H2H and X-PARTNER-ID headers
+    // SNAP B2B notifications use X-Client-Key, X-Signature, X-Timestamp headers
     // Jokul notifications use Client-Id and Signature headers
     // ====================================================================
     const channelId = headers.get('CHANNEL-ID') || headers.get('Channel-Id');
     const isSnapFormat = channelId === 'H2H' || headers.get('X-PARTNER-ID') || headers.get('X-Partner-Id');
+
+    const xClientKey = headers.get('x-client-key') || headers.get('X-Client-Key');
+    const xSignature = headers.get('x-signature') || headers.get('X-Signature');
+    const xTimestamp = headers.get('x-timestamp') || headers.get('X-Timestamp');
+    const isSnapB2BFormat = !!xClientKey && !!xSignature && !!xTimestamp;
 
     if (isSnapFormat) {
       // ================================================================
@@ -61,6 +67,22 @@ export async function onRequest(context) {
       }
 
       console.log("[SNAP Webhook] Validated OK via X-PARTNER-ID match");
+    } else if (isSnapB2BFormat) {
+      // ================================================================
+      // SNAP B2B FORMAT VALIDATION (Payouts / Disbursements / etc.)
+      // ================================================================
+      console.log(`[SNAP B2B Webhook] X-CLIENT-KEY: ${xClientKey}, X-TIMESTAMP: ${xTimestamp}`);
+
+      // Validate that X-CLIENT-KEY matches our configured DOKU Client ID
+      if (ourClientId && xClientKey !== ourClientId) {
+        console.error(`[SNAP B2B Webhook] X-CLIENT-KEY mismatch: got ${xClientKey}, expected ${ourClientId}`);
+        return new Response(JSON.stringify({ error: "Client Key mismatch" }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log("[SNAP B2B Webhook] Validated OK via X-CLIENT-KEY match");
     } else {
       // ================================================================
       // JOKUL FORMAT VALIDATION (legacy HMAC-SHA256 signature)
@@ -139,6 +161,52 @@ export async function onRequest(context) {
     // Parse request body sekarang (karena aman)
     const requestData = JSON.parse(rawBodyText);
     console.log('Valid DOKU Webhook received:', JSON.stringify(requestData));
+
+    // ─── Payout Webhook Handler ──────────────────────────────────────
+    // If the request contains a payout object, update doku_payouts and return 200
+    if (requestData.payout) {
+      const payoutInvoice = requestData.payout.invoice_number;
+      const payoutStatus = requestData.payout.status;
+      console.log(`[Webhook Payout] Payout callback received. Invoice: ${payoutInvoice}, Status: ${payoutStatus}`);
+      
+      if (payoutInvoice) {
+        try {
+          const env = context.env;
+          const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
+          const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY;
+          
+          if (supabaseUrl && supabaseKey) {
+            console.log(`[Webhook Payout] Updating doku_payouts status for invoice ${payoutInvoice} to ${payoutStatus}`);
+            const payoutUpdateRes = await fetch(
+              `${supabaseUrl}/rest/v1/doku_payouts?invoice_number=eq.${encodeURIComponent(payoutInvoice)}`,
+              {
+                method: 'PATCH',
+                headers: {
+                  'apikey': supabaseKey,
+                  'Authorization': `Bearer ${supabaseKey}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ status: payoutStatus })
+              }
+            );
+            console.log(`[Webhook Payout] Update response status: ${payoutUpdateRes.status}`);
+          }
+        } catch (dbError) {
+          console.error('[Webhook Payout] Error updating doku_payouts table:', dbError);
+        }
+      }
+      
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Payout webhook processed successfully',
+        invoiceNumber: payoutInvoice,
+        status: payoutStatus
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    // ─── End Payout Webhook Handler ──────────────────────────────────
 
     // ─── Jakpat Mission Router ───────────────────────────────────────
     // Forward JM-* invoices to jakpatmission worker, then return 200.
