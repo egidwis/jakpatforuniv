@@ -40,6 +40,7 @@ export async function onRequestGet(context) {
     // 1. Initialize Supabase
     const supabaseUrl = context.env.VITE_SUPABASE_URL;
     const supabaseAnonKey = context.env.VITE_SUPABASE_ANON_KEY;
+    const serviceRoleKey = context.env.SUPABASE_SERVICE_ROLE_KEY || context.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
         return new Response(JSON.stringify({
@@ -51,7 +52,9 @@ export async function onRequestGet(context) {
         });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // Prefer service role key to bypass RLS policies on page_respondents
+    const keyToUse = serviceRoleKey || supabaseAnonKey;
+    const supabase = createClient(supabaseUrl, keyToUse);
 
     // 2. Parse query parameters
     const pageId = url.searchParams.get('page_id');
