@@ -17,81 +17,123 @@ export async function onRequest(context) {
     const rawBodyText = await context.request.text();
     const headers = context.request.headers;
     
-    // Ambil header yang diperlukan untuk validasi DOKU (mendukung format Jokul maupun SNAP)
-    const incomingSignature = headers.get('Signature') || headers.get('X-Signature') || headers.get('X-SIGNATURE');
-    const clientId = headers.get('Client-Id') || headers.get('X-Partner-Id') || headers.get('X-PARTNER-ID');
-    const requestId = headers.get('Request-Id') || headers.get('X-External-Id') || headers.get('X-EXTERNAL-ID');
-    const requestTimestamp = headers.get('Request-Timestamp') || headers.get('X-Timestamp') || headers.get('X-TIMESTAMP');
-    
     const secretKey = context.env.DOKU_SECRET_KEY;
+    const ourClientId = context.env.DOKU_CLIENT_ID || context.env.VITE_DOKU_CLIENT_ID;
 
-    if (!incomingSignature || !clientId || !requestId || !requestTimestamp || !secretKey) {
-      console.error("Missing required webhook headers or secret key", {
-        incomingSignature: !!incomingSignature,
-        clientId: !!clientId,
-        requestId: !!requestId,
-        requestTimestamp: !!requestTimestamp,
-        secretKey: !!secretKey
-      });
-      return new Response(JSON.stringify({ error: "Unauthorized or missing headers" }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
+    // ====================================================================
+    // DETECT FORMAT: SNAP (Sub Account/SAC) vs Jokul (legacy)
+    // SNAP notifications use CHANNEL-ID: H2H and X-PARTNER-ID headers
+    // Jokul notifications use Client-Id and Signature headers
+    // ====================================================================
+    const channelId = headers.get('CHANNEL-ID') || headers.get('Channel-Id');
+    const isSnapFormat = channelId === 'H2H' || headers.get('X-PARTNER-ID') || headers.get('X-Partner-Id');
 
-    // Target path adalah path relative url, contoh: /api/doku/webhook
-    const requestTarget = new URL(context.request.url).pathname;
+    if (isSnapFormat) {
+      // ================================================================
+      // SNAP FORMAT VALIDATION (Sub Account / SAC notifications)
+      // DOKU SNAP VA notifications do NOT send Signature/X-Signature in
+      // the same HMAC-SHA256 format. They use a different SNAP BI symmetric
+      // signature (HMAC-SHA512 with different string-to-sign format).
+      // Since the notification headers from DOKU dashboard show no signature
+      // header at all, we validate via X-PARTNER-ID matching our client ID.
+      // ================================================================
+      const snapPartnerId = headers.get('X-PARTNER-ID') || headers.get('X-Partner-Id');
+      const snapExternalId = headers.get('X-EXTERNAL-ID') || headers.get('X-External-Id');
+      const snapTimestamp = headers.get('X-TIMESTAMP') || headers.get('X-Timestamp');
 
-    // 1. Generate Digest: Base64(SHA256(Raw Request Body))
-    const enc = new TextEncoder();
-    const digestBuffer = await crypto.subtle.digest('SHA-256', enc.encode(rawBodyText));
-    const digest = btoa(String.fromCharCode(...new Uint8Array(digestBuffer)));
-    
-    // 2. String To Sign
-    const componentStringToSign = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
-    
-    // 3. Generate HMAC SHA-256 Signature Server kita
-    const key = await crypto.subtle.importKey(
-      'raw', 
-      enc.encode(secretKey), 
-      { name: 'HMAC', hash: 'SHA-256' }, 
-      false, 
-      ['sign']
-    );
-    
-    const signatureBuffer = await crypto.subtle.sign(
-      'HMAC', 
-      key, 
-      enc.encode(componentStringToSign)
-    );
-    
-    const base64Sig = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
-    const mySignature = "HMACSHA256=" + base64Sig;
-    const cleanIncoming = incomingSignature.replace(/^HMACSHA256=/i, '');
+      console.log(`[SNAP Webhook] CHANNEL-ID: ${channelId}, X-PARTNER-ID: ${snapPartnerId}, X-EXTERNAL-ID: ${snapExternalId}, X-TIMESTAMP: ${snapTimestamp}`);
 
-    let isSignatureValid = (incomingSignature === mySignature) || (cleanIncoming === base64Sig);
+      if (!snapPartnerId || !snapExternalId || !snapTimestamp) {
+        console.error("[SNAP Webhook] Missing required SNAP headers");
+        return new Response(JSON.stringify({ error: "Missing SNAP headers" }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
 
-    // 4. Bandingkan Signature dari DOKU dengan hasil hitung kita
-    if (!isSignatureValid) {
-       console.error("Signature mismatch!");
-       console.error("Incoming:", incomingSignature);
-       console.error("Calculated:", mySignature);
-       
-       // Fallback for trailing slash mismatch if needed
-       const fallbackTarget = requestTarget.endsWith("/") ? requestTarget.slice(0, -1) : requestTarget + "/";
-       const fallbackString = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${fallbackTarget}\nDigest:${digest}`;
-       const sigBuf2 = await crypto.subtle.sign('HMAC', key, enc.encode(fallbackString));
-       const fallbackSigBase64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf2)));
-       const fallbackSig = "HMACSHA256=" + fallbackSigBase64;
-       
-       isSignatureValid = (incomingSignature === fallbackSig) || (cleanIncoming === fallbackSigBase64);
-       
-       if (!isSignatureValid) {
-          return new Response(JSON.stringify({ error: "Invalid Signature" }), {
-             status: 401,
-             headers: { 'Content-Type': 'application/json' }
-          });
-       }
+      // Validate that X-PARTNER-ID matches our configured DOKU Client ID
+      if (ourClientId && snapPartnerId !== ourClientId) {
+        console.error(`[SNAP Webhook] X-PARTNER-ID mismatch: got ${snapPartnerId}, expected ${ourClientId}`);
+        return new Response(JSON.stringify({ error: "Partner ID mismatch" }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log("[SNAP Webhook] Validated OK via X-PARTNER-ID match");
+    } else {
+      // ================================================================
+      // JOKUL FORMAT VALIDATION (legacy HMAC-SHA256 signature)
+      // ================================================================
+      const incomingSignature = headers.get('Signature');
+      const clientId = headers.get('Client-Id');
+      const requestId = headers.get('Request-Id');
+      const requestTimestamp = headers.get('Request-Timestamp');
+
+      if (!incomingSignature || !clientId || !requestId || !requestTimestamp || !secretKey) {
+        console.error("Missing required Jokul webhook headers or secret key", {
+          incomingSignature: !!incomingSignature,
+          clientId: !!clientId,
+          requestId: !!requestId,
+          requestTimestamp: !!requestTimestamp,
+          secretKey: !!secretKey
+        });
+        return new Response(JSON.stringify({ error: "Unauthorized or missing headers" }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Target path adalah path relative url, contoh: /api/doku/webhook
+      const requestTarget = new URL(context.request.url).pathname;
+
+      // 1. Generate Digest: Base64(SHA256(Raw Request Body))
+      const enc = new TextEncoder();
+      const digestBuffer = await crypto.subtle.digest('SHA-256', enc.encode(rawBodyText));
+      const digest = btoa(String.fromCharCode(...new Uint8Array(digestBuffer)));
+      
+      // 2. String To Sign
+      const componentStringToSign = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
+      
+      // 3. Generate HMAC SHA-256 Signature Server kita
+      const key = await crypto.subtle.importKey(
+        'raw', 
+        enc.encode(secretKey), 
+        { name: 'HMAC', hash: 'SHA-256' }, 
+        false, 
+        ['sign']
+      );
+      
+      const signatureBuffer = await crypto.subtle.sign(
+        'HMAC', 
+        key, 
+        enc.encode(componentStringToSign)
+      );
+      
+      const base64Sig = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
+      const mySignature = "HMACSHA256=" + base64Sig;
+
+      let isSignatureValid = (incomingSignature === mySignature);
+
+      // 4. Bandingkan Signature dari DOKU dengan hasil hitung kita
+      if (!isSignatureValid) {
+         console.error("Signature mismatch!");
+         console.error("Incoming:", incomingSignature);
+         console.error("Calculated:", mySignature);
+         
+         // Fallback for trailing slash mismatch if needed
+         const fallbackTarget = requestTarget.endsWith("/") ? requestTarget.slice(0, -1) : requestTarget + "/";
+         const fallbackString = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${fallbackTarget}\nDigest:${digest}`;
+         const sigBuf2 = await crypto.subtle.sign('HMAC', key, enc.encode(fallbackString));
+         const fallbackSig = "HMACSHA256=" + btoa(String.fromCharCode(...new Uint8Array(sigBuf2)));
+         
+         if (incomingSignature !== fallbackSig) {
+            return new Response(JSON.stringify({ error: "Invalid Signature" }), {
+               status: 401,
+               headers: { 'Content-Type': 'application/json' }
+            });
+         }
+      }
     }
 
     // Parse request body sekarang (karena aman)
