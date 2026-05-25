@@ -17,16 +17,22 @@ export async function onRequest(context) {
     const rawBodyText = await context.request.text();
     const headers = context.request.headers;
     
-    // Ambil header yang diperlukan untuk validasi DOKU
-    const incomingSignature = headers.get('Signature');
-    const clientId = headers.get('Client-Id');
-    const requestId = headers.get('Request-Id');
-    const requestTimestamp = headers.get('Request-Timestamp');
+    // Ambil header yang diperlukan untuk validasi DOKU (mendukung format Jokul maupun SNAP)
+    const incomingSignature = headers.get('Signature') || headers.get('X-Signature') || headers.get('X-SIGNATURE');
+    const clientId = headers.get('Client-Id') || headers.get('X-Partner-Id') || headers.get('X-PARTNER-ID');
+    const requestId = headers.get('Request-Id') || headers.get('X-External-Id') || headers.get('X-EXTERNAL-ID');
+    const requestTimestamp = headers.get('Request-Timestamp') || headers.get('X-Timestamp') || headers.get('X-TIMESTAMP');
     
     const secretKey = context.env.DOKU_SECRET_KEY;
 
     if (!incomingSignature || !clientId || !requestId || !requestTimestamp || !secretKey) {
-      console.error("Missing required webhook headers or secret key");
+      console.error("Missing required webhook headers or secret key", {
+        incomingSignature: !!incomingSignature,
+        clientId: !!clientId,
+        requestId: !!requestId,
+        requestTimestamp: !!requestTimestamp,
+        secretKey: !!secretKey
+      });
       return new Response(JSON.stringify({ error: "Unauthorized or missing headers" }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
@@ -59,10 +65,14 @@ export async function onRequest(context) {
       enc.encode(componentStringToSign)
     );
     
-    const mySignature = "HMACSHA256=" + btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
+    const base64Sig = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
+    const mySignature = "HMACSHA256=" + base64Sig;
+    const cleanIncoming = incomingSignature.replace(/^HMACSHA256=/i, '');
+
+    let isSignatureValid = (incomingSignature === mySignature) || (cleanIncoming === base64Sig);
 
     // 4. Bandingkan Signature dari DOKU dengan hasil hitung kita
-    if (incomingSignature !== mySignature) {
+    if (!isSignatureValid) {
        console.error("Signature mismatch!");
        console.error("Incoming:", incomingSignature);
        console.error("Calculated:", mySignature);
@@ -71,9 +81,12 @@ export async function onRequest(context) {
        const fallbackTarget = requestTarget.endsWith("/") ? requestTarget.slice(0, -1) : requestTarget + "/";
        const fallbackString = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${fallbackTarget}\nDigest:${digest}`;
        const sigBuf2 = await crypto.subtle.sign('HMAC', key, enc.encode(fallbackString));
-       const fallbackSig = "HMACSHA256=" + btoa(String.fromCharCode(...new Uint8Array(sigBuf2)));
+       const fallbackSigBase64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf2)));
+       const fallbackSig = "HMACSHA256=" + fallbackSigBase64;
        
-       if (incomingSignature !== fallbackSig) {
+       isSignatureValid = (incomingSignature === fallbackSig) || (cleanIncoming === fallbackSigBase64);
+       
+       if (!isSignatureValid) {
           return new Response(JSON.stringify({ error: "Invalid Signature" }), {
              status: 401,
              headers: { 'Content-Type': 'application/json' }
@@ -85,10 +98,36 @@ export async function onRequest(context) {
     const requestData = JSON.parse(rawBodyText);
     console.log('Valid DOKU Webhook received:', JSON.stringify(requestData));
 
-    // Ekstrak data pembayaran dari webhook DOKU
-    const invoiceNumber = requestData.order?.invoice_number;
-    const amount = requestData.order?.amount;
-    const status = requestData.transaction?.status || requestData.order?.status || '';
+    // ─── Jakpat Mission Router ───────────────────────────────────────
+    // Forward JM-* invoices to jakpatmission worker, then return 200.
+    // All existing jakpatforuniv logic below is untouched.
+    const jmInvoice = requestData.order?.invoice_number || requestData.trxId || '';
+    if (jmInvoice.startsWith('JM-')) {
+      console.log(`[Webhook Router] Forwarding JM invoice to jakpatmission: ${jmInvoice}`);
+      try {
+        const forwardRes = await fetch(
+          'https://jakpatmission.product-d79.workers.dev/api/doku/webhook',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: rawBodyText,
+          }
+        );
+        console.log(`[Webhook Router] Forward response: ${forwardRes.status}`);
+      } catch (fwdError) {
+        console.error('[Webhook Router] Forward failed:', fwdError);
+      }
+      // Always return 200 to DOKU regardless of forward result
+      return new Response(JSON.stringify({
+        success: true, forwarded: true, to: 'jakpatmission', invoiceNumber: jmInvoice
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    // ─── End Jakpat Mission Router ───────────────────────────────────
+
+    // Ekstrak data pembayaran dari webhook DOKU (mendukung format Jokul maupun SNAP)
+    const invoiceNumber = requestData.order?.invoice_number || requestData.trxId;
+    const amount = requestData.order?.amount || requestData.paidAmount?.value;
+    const status = requestData.transaction?.status || requestData.order?.status || (requestData.trxId ? 'SUCCESS' : '');
 
     if (!invoiceNumber) {
       console.error('Invoice Number / Payment ID not found in webhook data');
