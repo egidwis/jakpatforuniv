@@ -56,6 +56,21 @@ export async function onRequestGet(context) {
     const keyToUse = serviceRoleKey || supabaseAnonKey;
     const supabase = createClient(supabaseUrl, keyToUse);
 
+    // Helper: fetch all rows with pagination (Supabase default limit is 1000)
+    async function fetchAllRows(buildQuery, batchSize = 1000) {
+        let allData = [];
+        let from = 0;
+        while (true) {
+            const { data, error } = await buildQuery().range(from, from + batchSize - 1);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            allData = allData.concat(data);
+            if (data.length < batchSize) break;
+            from += batchSize;
+        }
+        return allData;
+    }
+
     // 2. Parse query parameters
     const pageId = url.searchParams.get('page_id');
     const slug = url.searchParams.get('slug');
@@ -79,15 +94,15 @@ export async function onRequestGet(context) {
             let countMap = {};
 
             if (pageIds.length > 0) {
-                const { data: countData, error: countError } = await supabase
-                    .from('page_respondents')
-                    .select('page_id')
-                    .in('page_id', pageIds);
-
-                if (countError) throw countError;
+                const allCountData = await fetchAllRows(() =>
+                    supabase
+                        .from('page_respondents')
+                        .select('page_id')
+                        .in('page_id', pageIds)
+                );
 
                 // Count per page_id
-                (countData || []).forEach(r => {
+                allCountData.forEach(r => {
                     countMap[r.page_id] = (countMap[r.page_id] || 0) + 1;
                 });
             }
@@ -145,13 +160,13 @@ export async function onRequestGet(context) {
         }
 
         // Fetch all respondents for this page
-        const { data: respondents, error: respError } = await supabase
-            .from('page_respondents')
-            .select('jakpat_id, ewallet_provider, e_wallet_number, proof_url, created_at')
-            .eq('page_id', pageData.id)
-            .order('created_at', { ascending: true });
-
-        if (respError) throw respError;
+        const allRespondents = await fetchAllRows(() =>
+            supabase
+                .from('page_respondents')
+                .select('jakpat_id, ewallet_provider, e_wallet_number, proof_url, created_at')
+                .eq('page_id', pageData.id)
+                .order('created_at', { ascending: true })
+        );
 
         const sub = Array.isArray(pageData.form_submissions)
             ? pageData.form_submissions[0]
@@ -163,7 +178,7 @@ export async function onRequestGet(context) {
                 page_id: pageData.id,
                 title: pageData.title,
                 slug: pageData.slug || pageData.id,
-                total_respondents: (respondents || []).length,
+                total_respondents: allRespondents.length,
                 reward_per_winner: sub?.prize_per_winner || 0,
                 winner_count: sub?.winner_count || 0,
                 criteria: sub?.criteria_responden || null,
@@ -172,7 +187,7 @@ export async function onRequestGet(context) {
                     end: pageData.publish_end_date || null,
                 },
             },
-            respondents: (respondents || []).map(r => ({
+            respondents: allRespondents.map(r => ({
                 jakpat_id: r.jakpat_id,
                 ewallet_provider: r.ewallet_provider || null,
                 e_wallet_number: r.e_wallet_number || null,
