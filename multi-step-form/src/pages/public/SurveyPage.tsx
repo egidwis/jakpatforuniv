@@ -79,6 +79,15 @@ export function SurveyPage() {
     const [proofOriginalSize, setProofOriginalSize] = useState<number>(0);
     const [proofCompressedSize, setProofCompressedSize] = useState<number>(0);
 
+    // LOI (Length of Interview) Tracking
+    const [surveyStartedAt, setSurveyStartedAt] = useState<number | null>(null);
+
+    // Restore LOI timer on mount (survive page refresh)
+    useEffect(() => {
+        const saved = sessionStorage.getItem(`survey_started_at_${slug}`);
+        if (saved) setSurveyStartedAt(Number(saved));
+    }, [slug]);
+
     // Duplicate Check State
     const [checkingDuplicate, setCheckingDuplicate] = useState(false);
     const [duplicateError, setDuplicateError] = useState<string | null>(null);
@@ -397,6 +406,13 @@ export function SurveyPage() {
             }
         }
 
+        // Start LOI timer when moving from Step 1 → Step 2
+        if (currentStep === 1 && !surveyStartedAt) {
+            const now = Date.now();
+            setSurveyStartedAt(now);
+            sessionStorage.setItem(`survey_started_at_${slug}`, String(now));
+        }
+
         setCurrentStep(prev => prev + 1);
         window.scrollTo(0, 0);
     };
@@ -565,6 +581,11 @@ export function SurveyPage() {
                 hasProofUrl: !!proofUrl,
                 ewallet_provider: formData.ewallet_provider,
             });
+            // Calculate LOI (Length of Interview)
+            const loiSeconds = surveyStartedAt
+                ? Math.round((Date.now() - surveyStartedAt) / 1000)
+                : null;
+
             const { error: dbError } = await supabase
                 .from('page_respondents')
                 .insert([{
@@ -573,7 +594,11 @@ export function SurveyPage() {
                     e_wallet_number: formData.e_wallet_number,
                     ewallet_provider: formData.ewallet_provider,
                     custom_answers: formData.custom_answers,
-                    proof_url: proofUrl
+                    proof_url: proofUrl,
+                    loi_seconds: loiSeconds,
+                    survey_started_at: surveyStartedAt
+                        ? new Date(surveyStartedAt).toISOString()
+                        : null,
                 }]);
 
             if (dbError) {
@@ -593,6 +618,9 @@ export function SurveyPage() {
                 throw new Error(`Gagal menyimpan data: ${dbError.message || dbError.code || 'Database error'}`);
             }
             console.log('[Submit] Step 3 OK - Data saved successfully');
+
+            // Cleanup LOI sessionStorage after successful submit
+            sessionStorage.removeItem(`survey_started_at_${slug}`);
 
             // Save to localStorage for next time
             localStorage.setItem('jakpat_respondent_data', JSON.stringify({

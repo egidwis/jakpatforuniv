@@ -187,6 +187,8 @@ export interface Transaction {
   status: string;
   payment_url?: string;
   note?: string;
+  entity_type?: 'submission' | 'extend';
+  extend_id?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -199,9 +201,34 @@ export interface Invoice {
   invoice_url: string;
   amount: number;
   status: string;
+  entity_type?: 'submission' | 'extend';
+  extend_id?: string;
   created_at?: string;
   expires_at?: string;
   paid_at?: string;
+}
+
+// Tipe data untuk extend ad duration
+export interface FormSubmissionExtend {
+  id?: string;
+  submission_id: string;
+  duration: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  slot_booked_by?: string;
+  slot_reserved_at?: string;
+  submission_status?: 'waiting_payment' | 'paid' | 'scheduled' | 'live' | 'completed' | 'cancelled';
+  payment_status?: 'pending' | 'paid' | 'expired' | 'failed';
+  prize_per_winner?: number;
+  winner_count?: number;
+  additional_prize_per_winner?: number;
+  is_new_month?: boolean;
+  period_batch?: string;
+  total_cost: number;
+  voucher_code?: string;
+  admin_notes?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ScheduledAd {

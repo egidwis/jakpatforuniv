@@ -74,6 +74,7 @@ export async function onRequestGet(context) {
     // 2. Parse query parameters
     const pageId = url.searchParams.get('page_id');
     const slug = url.searchParams.get('slug');
+    const format = url.searchParams.get('format'); // 'batched' for batch-based response
 
     try {
         // ─────────────────────────────────────────────
@@ -138,7 +139,7 @@ export async function onRequestGet(context) {
         // Resolve page by page_id or slug
         let pageQuery = supabase
             .from('survey_pages')
-            .select('id, slug, title, publish_start_date, publish_end_date, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden)')
+            .select('id, slug, title, publish_start_date, publish_end_date, submission_id, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden)')
             .eq('is_published', true);
 
         if (pageId) {
@@ -159,11 +160,11 @@ export async function onRequestGet(context) {
             });
         }
 
-        // Fetch all respondents for this page
+        // Fetch all respondents for this page (include loi_seconds)
         const allRespondents = await fetchAllRows(() =>
             supabase
                 .from('page_respondents')
-                .select('jakpat_id, ewallet_provider, e_wallet_number, proof_url, created_at')
+                .select('jakpat_id, ewallet_provider, e_wallet_number, proof_url, loi_seconds, created_at')
                 .eq('page_id', pageData.id)
                 .order('created_at', { ascending: true })
         );
@@ -172,6 +173,52 @@ export async function onRequestGet(context) {
             ? pageData.form_submissions[0]
             : pageData.form_submissions;
 
+        const mappedRespondents = allRespondents.map(r => ({
+            jakpat_id: r.jakpat_id,
+            ewallet_provider: r.ewallet_provider || null,
+            e_wallet_number: r.e_wallet_number || null,
+            proof_url: r.proof_url || null,
+            has_proof: !!r.proof_url,
+            loi_seconds: r.loi_seconds || null,
+            submitted_at: r.created_at,
+        }));
+
+        // ── BATCHED FORMAT ──
+        if (format === 'batched' && pageData.submission_id) {
+            // Fetch batch rewards via RPC
+            let batches = [];
+            try {
+                const { data: batchData, error: batchError } = await supabase
+                    .rpc('get_batch_rewards', { p_submission_id: pageData.submission_id });
+                if (!batchError && batchData) {
+                    batches = batchData.map(b => ({
+                        period_batch: b.period_batch,
+                        prize_per_winner: b.final_prize_per_winner,
+                        winner_count: b.winner_count,
+                        batch_status: b.batch_status,
+                        can_select_winners: b.can_select_winners,
+                    }));
+                }
+            } catch (rpcErr) {
+                console.error('get_batch_rewards RPC error:', rpcErr);
+            }
+
+            return new Response(JSON.stringify({
+                status: 'success',
+                survey: {
+                    page_id: pageData.id,
+                    title: pageData.title,
+                    slug: pageData.slug || pageData.id,
+                },
+                batches,
+                total_respondents: allRespondents.length,
+                respondents: mappedRespondents,
+            }), {
+                headers: corsHeaders,
+            });
+        }
+
+        // ── DEFAULT FLAT FORMAT (backward compatible) ──
         const responseData = {
             status: 'success',
             survey: {
@@ -187,14 +234,7 @@ export async function onRequestGet(context) {
                     end: pageData.publish_end_date || null,
                 },
             },
-            respondents: allRespondents.map(r => ({
-                jakpat_id: r.jakpat_id,
-                ewallet_provider: r.ewallet_provider || null,
-                e_wallet_number: r.e_wallet_number || null,
-                proof_url: r.proof_url || null,
-                has_proof: !!r.proof_url,
-                submitted_at: r.created_at,
-            })),
+            respondents: mappedRespondents,
         };
 
         return new Response(JSON.stringify(responseData), {

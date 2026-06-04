@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { CreditCard, Clock, Wallet } from 'lucide-react';
 import { DokuWalletModal } from './DokuWalletModal';
+import { ExtendSection } from './ExtendSection';
 import './InternalDashboard.css';
 
 interface SurveySubmission {
@@ -1601,11 +1602,27 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                             );
                           }
 
+                          // 4. Extend Button (only for paid/active submissions with a page)
+                          let extendBtn = null;
+                          if (canBuildPage && existingPages[submission.id]) {
+                            extendBtn = (
+                              <ExtendSection
+                                submissionId={submission.id}
+                                submissionTitle={submission.formTitle}
+                                currentEndDate={submission.end_date || existingPages[submission.id]?.publish_end_date}
+                                currentPrizePerWinner={submission.prize_per_winner || 0}
+                                currentWinnerCount={submission.winnerCount || 0}
+                                onExtendCreated={loadSubmissions}
+                              />
+                            );
+                          }
+
                           return (
                             <div className="flex flex-col gap-2 w-full max-w-[180px]">
                               {reserveBtn}
                               {paymentBtn}
                               {pageBtn}
+                              {extendBtn}
                             </div>
                           );
                         })()}

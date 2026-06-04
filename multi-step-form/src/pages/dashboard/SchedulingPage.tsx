@@ -33,7 +33,9 @@ const STATUS_PALETTES = {
     upcomingDraft: { bg: '#fffbeb', border: '#fde68a', leftBorder: '#f59e0b', text: '#92400e', badgeBg: '#fef3c7', badgeText: '#b45309' }, // Amber
     upcomingScheduled: { bg: '#faf5ff', border: '#e9d5ff', leftBorder: '#a855f7', text: '#6b21a8', badgeBg: '#f3e8ff', badgeText: '#7e22ce' }, // Purple
     live: { bg: '#f0fdf4', border: '#bbf7d0', leftBorder: '#22c55e', text: '#166534', badgeBg: '#dcfce7', badgeText: '#15803d' }, // Green
-    completed: { bg: '#f8fafc', border: '#e2e8f0', leftBorder: '#475569', text: '#1e293b', badgeBg: '#cbd5e1', badgeText: '#334155' } // Dark Gray
+    completed: { bg: '#f8fafc', border: '#e2e8f0', leftBorder: '#475569', text: '#1e293b', badgeBg: '#cbd5e1', badgeText: '#334155' }, // Dark Gray
+    extend: { bg: '#f5f3ff', border: '#ddd6fe', leftBorder: '#8b5cf6', text: '#5b21b6', badgeBg: '#ede9fe', badgeText: '#6d28d9' }, // Violet (Extend)
+    extendLive: { bg: '#ecfdf5', border: '#a7f3d0', leftBorder: '#10b981', text: '#065f46', badgeBg: '#d1fae5', badgeText: '#047857' }, // Emerald-Green (Extend Live)
 };
 
 interface CalendarEvent {
@@ -94,7 +96,7 @@ const CustomAgendaEvent = ({ event, onSelectEvent }: { event: CalendarEvent, onS
                                 className="text-[10px] px-1.5 py-0.5 rounded-[4px] font-bold tracking-wider uppercase leading-none mt-[0.2rem] shrink-0"
                                 style={{ backgroundColor: theme.badgeBg, color: theme.badgeText }}
                             >
-                                AD
+                                {event.resource.is_extend ? 'EXT' : 'AD'}
                             </span>
                             <span className="line-clamp-2 leading-snug break-words" title={event.resource.form_title}>
                                 {event.resource.form_title}
@@ -424,7 +426,62 @@ export function SchedulingPage() {
                 };
             });
 
-            const allEvents = [...pageEvents, ...slotEvents];
+            // 5. Fetch extends (form_submissions_extend) and convert to calendar events
+            let extendEvents: CalendarEvent[] = [];
+            try {
+                const { data: extends_, error: extError } = await supabase
+                    .from('form_submissions_extend')
+                    .select(`
+                        id, submission_id, duration, start_date, end_date,
+                        submission_status, payment_status, period_batch,
+                        prize_per_winner, winner_count, additional_prize_per_winner,
+                        form_submissions!submission_id ( title, full_name )
+                    `)
+                    .in('submission_status', ['scheduled', 'live', 'completed'])
+                    .eq('payment_status', 'paid')
+                    .not('start_date', 'is', null)
+                    .order('start_date', { ascending: true });
+
+                if (!extError && extends_) {
+                    extendEvents = extends_.map((ext: any) => {
+                        const startDate = normalizeScheduleDate(ext.start_date);
+                        const endDate = normalizeScheduleDate(ext.end_date);
+                        const now = new Date();
+                        const sub = Array.isArray(ext.form_submissions) ? ext.form_submissions[0] : ext.form_submissions;
+
+                        let extTheme = STATUS_PALETTES.extend;
+                        if (ext.submission_status === 'live') extTheme = STATUS_PALETTES.extendLive;
+                        else if (ext.submission_status === 'completed') extTheme = STATUS_PALETTES.completed;
+
+                        return {
+                            id: `ext-${ext.id}`,
+                            title: `Ext: ${sub?.title || 'Unknown'}`,
+                            start: startDate,
+                            end: endDate,
+                            resource: {
+                                type: 'extend',
+                                form_title: sub?.title || 'Unknown',
+                                researcher_name: sub?.full_name || '',
+                                form_submission_id: ext.submission_id,
+                                start_date: ext.start_date,
+                                end_date: ext.end_date,
+                                colorTheme: extTheme,
+                                page_id: ext.submission_id, // link to parent
+                                page_title: `Extend (${ext.period_batch})`,
+                                page_is_published: true,
+                                prize_per_winner: ext.prize_per_winner,
+                                winner_count: ext.winner_count,
+                                is_extend: true,
+                                period_batch: ext.period_batch,
+                            },
+                        };
+                    });
+                }
+            } catch (extFetchErr) {
+                console.error('Error fetching extends for calendar:', extFetchErr);
+            }
+
+            const allEvents = [...pageEvents, ...slotEvents, ...extendEvents];
 
             // Calculate stats
             const now = new Date();
@@ -510,6 +567,7 @@ export function SchedulingPage() {
     const CustomEvent = useCallback(({ event }: { event: CalendarEvent }) => {
         const theme = event.resource.colorTheme || STATUS_PALETTES.upcomingNoPage;
         const isFocused = focusedEventIds.includes(event.id);
+        const badgeLabel = event.resource.is_extend ? 'EXT' : 'AD';
 
         if (view === Views.MONTH) {
             const startTimeStr = new Date(event.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -519,7 +577,7 @@ export function SchedulingPage() {
                         className="text-[7px] px-1 rounded-[2px] font-bold tracking-wider uppercase flex-shrink-0 leading-none mr-1 py-[1.5px]"
                         style={isFocused ? { backgroundColor: 'rgba(255,255,255,0.25)', color: '#ffffff' } : { backgroundColor: theme.badgeBg, color: theme.badgeText }}
                     >
-                        AD
+                        {badgeLabel}
                     </span>
                     <span className={`text-[8px] font-bold mr-1 flex-shrink-0 tracking-wide ${isFocused ? 'text-blue-100 opacity-90' : 'opacity-70'}`}>
                         {startTimeStr}
@@ -538,7 +596,7 @@ export function SchedulingPage() {
                         className="text-[9px] px-1 py-0.5 rounded-[4px] font-bold tracking-wider uppercase flex-shrink-0 leading-none"
                         style={{ backgroundColor: theme.badgeBg, color: theme.badgeText }}
                     >
-                        AD
+                        {badgeLabel}
                     </span>
                     <span className="truncate w-full xl:w-auto leading-tight">{event.resource.form_title}</span>
                 </div>

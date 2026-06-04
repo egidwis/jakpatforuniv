@@ -302,7 +302,7 @@ export async function onRequest(context) {
       if (!formSubmissionId) {
         console.log(`No transaction found for payment_id ${invoiceNumber}, checking invoices table...`);
         const invoiceLookupRes = await fetch(
-          `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${invoiceNumber}&select=form_submission_id&limit=1`,
+          `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${invoiceNumber}&select=form_submission_id,entity_type,extend_id&limit=1`,
           {
             headers: {
               'apikey': supabaseKey,
@@ -367,24 +367,83 @@ export async function onRequest(context) {
         }
 
         // ====================================================================
-        // STEP 5: Update form_submissions based on latest invoice status
+        // STEP 5: Route update based on entity_type (extend vs submission)
         // ====================================================================
-        console.log(`Updating form ${formSubmissionId} payment_status to ${formPaymentStatus} (based on latest invoice)`);
-        await fetch(
-          `${supabaseUrl}/rest/v1/form_submissions?id=eq.${formSubmissionId}`,
-          {
-            method: 'PATCH',
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              payment_status: formPaymentStatus,
-              ...(formSubmissionStatus ? { submission_status: formSubmissionStatus } : {})
-            })
+        const txn = updatedTransactions && updatedTransactions.length > 0 ? updatedTransactions[0] : null;
+        const isExtendPayment = txn && txn.entity_type === 'extend' && txn.extend_id;
+
+        if (isExtendPayment) {
+          // ───── EXTEND PAYMENT ─────
+          console.log(`[Extend] Updating extend ${txn.extend_id} payment_status to ${formPaymentStatus}`);
+          await fetch(
+            `${supabaseUrl}/rest/v1/form_submissions_extend?id=eq.${txn.extend_id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                payment_status: formPaymentStatus,
+                ...(formSubmissionStatus === 'paid' ? { submission_status: 'scheduled' } : {})
+              })
+            }
+          );
+
+          // Check if banner update is needed (new rewards = new banner)
+          if (formPaymentStatus === 'paid') {
+            try {
+              const extRes = await fetch(
+                `${supabaseUrl}/rest/v1/form_submissions_extend?id=eq.${txn.extend_id}&select=is_new_month,additional_prize_per_winner`,
+                {
+                  headers: {
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${supabaseKey}`,
+                    'Content-Type': 'application/json'
+                  }
+                }
+              );
+              const extData = await extRes.json();
+              const ext = extData && extData.length > 0 ? extData[0] : null;
+              if (ext && (ext.is_new_month || (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0))) {
+                console.log(`[Extend] Setting requires_banner_update=true for submission ${formSubmissionId}`);
+                await fetch(
+                  `${supabaseUrl}/rest/v1/survey_pages?submission_id=eq.${formSubmissionId}`,
+                  {
+                    method: 'PATCH',
+                    headers: {
+                      'apikey': supabaseKey,
+                      'Authorization': `Bearer ${supabaseKey}`,
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ requires_banner_update: true })
+                  }
+                );
+              }
+            } catch (extErr) {
+              console.error('[Extend] Error checking banner update:', extErr);
+            }
           }
-        );
+        } else {
+          // ───── REGULAR SUBMISSION PAYMENT ─────
+          console.log(`Updating form ${formSubmissionId} payment_status to ${formPaymentStatus} (based on latest invoice)`);
+          await fetch(
+            `${supabaseUrl}/rest/v1/form_submissions?id=eq.${formSubmissionId}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                payment_status: formPaymentStatus,
+                ...(formSubmissionStatus ? { submission_status: formSubmissionStatus } : {})
+              })
+            }
+          );
+        }
       } else {
         console.error(`Could not find form_submission_id for payment_id ${invoiceNumber} in either transactions or invoices!`);
       }

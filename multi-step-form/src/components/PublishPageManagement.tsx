@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check, Download, Loader2, Users } from 'lucide-react';
+import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check, Download, Loader2, Users, AlertTriangle } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsManagerView } from './SubmissionsManagerView';
 import { toast } from 'sonner';
@@ -30,6 +30,7 @@ interface PageData {
     current_winners_count?: number;
     has_pending_proofs?: boolean;
     page_respondents?: { count: number }[];
+    requires_banner_update?: boolean;
 }
 
 export function PublishPageManagement() {
@@ -590,6 +591,14 @@ export function PublishPageManagement() {
                                                     ) : null}
                                                 </div>
                                             )}
+
+                                            {/* Banner Update Warning */}
+                                            {page.requires_banner_update && (
+                                                <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded-md">
+                                                    <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                                    <span className="text-[10px] font-semibold text-amber-700">Banner perlu diupdate</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </TableCell>
                                     <TableCell className="border-y border-gray-200">
@@ -674,6 +683,32 @@ export function PublishPageManagement() {
                                                     className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 border-gray-200 shrink-0"
                                                 >
                                                     <ExternalLink className="w-4 h-4" />
+                                                </Button>
+                                            )}
+
+                                            {/* Clear Banner Flag Button */}
+                                            {page.requires_banner_update && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                        try {
+                                                            const { error } = await supabase
+                                                                .from('survey_pages')
+                                                                .update({ requires_banner_update: false })
+                                                                .eq('id', page.id);
+                                                            if (error) throw error;
+                                                            toast.success('Banner flag cleared');
+                                                            fetchPages();
+                                                        } catch (err) {
+                                                            toast.error('Failed to clear banner flag');
+                                                        }
+                                                    }}
+                                                    title="Banner sudah diupdate, clear flag"
+                                                    className="h-8 px-2.5 text-amber-600 hover:text-amber-700 border-amber-200 hover:bg-amber-50 shrink-0 text-[10px] font-semibold"
+                                                >
+                                                    <Check className="w-3.5 h-3.5 mr-1" />
+                                                    Banner OK
                                                 </Button>
                                             )}
                                         </div>
