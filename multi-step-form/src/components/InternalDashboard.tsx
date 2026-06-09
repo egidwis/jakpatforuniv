@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { LogOut, Eye, RefreshCw, Lock, Search } from 'lucide-react';
-import { getFormSubmissionsPaginated, updateFormStatus, supabase } from '../utils/supabase';
+import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, supabase } from '../utils/supabase';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
@@ -342,6 +342,22 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
 
     await executeStatusUpdate(submissionId, newStatus);
+  };
+
+  const handlePaymentStatusChange = async (submissionId: string, newStatus: string) => {
+    try {
+      await updatePaymentStatus(submissionId, newStatus);
+      
+      const updateState = (prev: SurveySubmission[]) =>
+        prev.map(s => s.id === submissionId ? { ...s, payment_status: newStatus } : s);
+
+      setSubmissions(updateState);
+      setFilteredSubmissions(updateState);
+      
+      toast.success(`Payment status marked as ${newStatus}`);
+    } catch (error) {
+      toast.error('Failed to update payment status');
+    }
   };
 
   const executeStatusUpdate = async (submissionId: string, newStatus: string, notes?: string) => {
@@ -870,6 +886,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       existingPage={existingPages[submission.id]}
                       isScheduled={scheduledSubmissionIds.has(submission.id)}
                       onStatusChange={handleStatusChange}
+                      onPaymentStatusChange={handlePaymentStatusChange}
                       onEditFormDetails={handleOpenEditFormDetailsModal}
                       onEditCriteria={handleOpenEditCriteriaModal}
                       onOpenPageBuilder={handleOpenPageBuilder}
@@ -928,6 +945,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   existingPage={existingPages[submission.id]}
                   isScheduled={scheduledSubmissionIds.has(submission.id)}
                   onStatusChange={handleStatusChange}
+                  onPaymentStatusChange={handlePaymentStatusChange}
                   onEditFormDetails={handleOpenEditFormDetailsModal}
                   onEditCriteria={handleOpenEditCriteriaModal}
                   onOpenPageBuilder={handleOpenPageBuilder}

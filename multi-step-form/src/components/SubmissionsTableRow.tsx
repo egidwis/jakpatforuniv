@@ -85,6 +85,7 @@ interface SubmissionsTableRowProps {
   existingPage?: ExistingPage;
   isScheduled: boolean;
   onStatusChange: (submissionId: string, newStatus: string) => void;
+  onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onEditCriteria: (submission: SurveySubmission) => void;
   onOpenPageBuilder: (submission: SurveySubmission) => void;
@@ -103,6 +104,7 @@ export function SubmissionsDesktopRow({
   existingPage,
   isScheduled,
   onStatusChange,
+  onPaymentStatusChange,
   onEditFormDetails,
   onEditCriteria,
   onOpenPageBuilder,
@@ -624,6 +626,10 @@ export function SubmissionsDesktopRow({
                   <DropdownMenuItem onClick={() => onStatusChange(submission.id, 'spam')} className="text-gray-600">
                     Spam / Revision
                   </DropdownMenuItem>
+                  <div className="h-px bg-gray-200 my-1 mx-2" />
+                  <DropdownMenuItem onClick={() => onPaymentStatusChange(submission.id, 'paid')} className="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-medium">
+                    Mark as Paid
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -937,12 +943,21 @@ export function SubmissionsMobileCard({
                       'bg-gray-100 text-gray-800'
                 }`}
               value={submission.status || 'in_review'}
-              onChange={(e) => onStatusChange(submission.id, e.target.value)}
+              onChange={(e) => {
+                if (e.target.value === 'mark_paid') {
+                  onPaymentStatusChange(submission.id, 'paid');
+                  // Revert select back to current status visually
+                  e.target.value = submission.status || 'in_review';
+                } else {
+                  onStatusChange(submission.id, e.target.value);
+                }
+              }}
             >
               <option value="spam" className="bg-white text-gray-900">Spam</option>
               <option value="in_review" className="bg-white text-gray-900">In Review</option>
               <option value="approved" className="bg-white text-gray-900">Approved</option>
               <option value="rejected" className="bg-white text-gray-900">Rejected</option>
+              <option value="mark_paid" className="bg-emerald-50 text-emerald-700 font-bold border-t">-- Mark as Paid --</option>
             </select>
           </div>
         </div>
