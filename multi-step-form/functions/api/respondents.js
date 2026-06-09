@@ -81,40 +81,28 @@ export async function onRequestGet(context) {
         // MODE 1: List surveys (no page_id or slug)
         // ─────────────────────────────────────────────
         if (!pageId && !slug) {
-            // Fetch all published survey pages with form_submissions metadata
+            // Fetch all published survey pages with form_submissions metadata and exact respondent counts
             const { data: pages, error: pagesError } = await supabase
                 .from('survey_pages')
-                .select('id, slug, title, publish_start_date, publish_end_date, created_at, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden)')
+                .select('id, slug, title, publish_start_date, publish_end_date, created_at, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden), page_respondents(count)')
                 .eq('is_published', true)
                 .order('created_at', { ascending: false });
 
             if (pagesError) throw pagesError;
 
-            // Fetch respondent counts per page
-            const pageIds = (pages || []).map(p => p.id);
-            let countMap = {};
-
-            if (pageIds.length > 0) {
-                const allCountData = await fetchAllRows(() =>
-                    supabase
-                        .from('page_respondents')
-                        .select('page_id')
-                        .in('page_id', pageIds)
-                );
-
-                // Count per page_id
-                allCountData.forEach(r => {
-                    countMap[r.page_id] = (countMap[r.page_id] || 0) + 1;
-                });
-            }
-
             const surveys = (pages || []).map(p => {
                 const sub = Array.isArray(p.form_submissions) ? p.form_submissions[0] : p.form_submissions;
+                // Extract count from joined table result
+                let respondentCount = 0;
+                if (p.page_respondents && Array.isArray(p.page_respondents) && p.page_respondents.length > 0) {
+                    respondentCount = p.page_respondents[0].count || 0;
+                }
+
                 return {
                     page_id: p.id,
                     title: p.title,
                     slug: p.slug || p.id,
-                    total_respondents: countMap[p.id] || 0,
+                    total_respondents: respondentCount,
                     reward_per_winner: sub?.prize_per_winner || 0,
                     winner_count: sub?.winner_count || 0,
                     criteria: sub?.criteria_responden || null,
