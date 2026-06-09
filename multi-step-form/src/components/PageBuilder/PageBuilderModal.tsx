@@ -40,6 +40,7 @@ interface PageBuilderModalProps {
     submissionWinnerCount?: number;
     submissionCriteria?: string;
     isExtraAd?: boolean; // Whether this page is an Extra Ad (set via SchedulePaymentView)
+    paymentStatus?: string; // e.g. 'pending', 'paid', 'expired'
 }
 
 // Helper: generate slug from title
@@ -86,8 +87,9 @@ const defaultSurveiAdBlocks = {
     ],
 };
 
-export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount, submissionCriteria, isExtraAd }: PageBuilderModalProps) {
+export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount, submissionCriteria, isExtraAd, paymentStatus }: PageBuilderModalProps) {
     const isStandalone = !submissionId;
+    const isUnpaid = paymentStatus !== undefined && paymentStatus !== 'paid';
 
     const [savedPageId, setSavedPageId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -229,9 +231,11 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
         try {
             let isPublished = overrideStatus !== undefined ? overrideStatus : formData.is_published;
 
-            // Auto-publish: If schedule is set and we're just saving (not explicitly unpublishing), set to Live
+            // Auto-publish: If schedule is set and we're just saving (not explicitly unpublishing), set to Live (unless unpaid)
             if (overrideStatus === undefined && formData.publish_start_date && !isStandalone) {
-                isPublished = true;
+                if (!isUnpaid) {
+                    isPublished = true;
+                }
             }
 
             // Ensure schedule dates always have a time component (15:00 WIB = 08:00 UTC).
@@ -435,6 +439,13 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 <div className="flex-1 overflow-hidden flex flex-row w-full">
                     {/* Main Content (Left Pane) */}
                     <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 bg-white">
+                        {isUnpaid && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm flex items-start">
+                                <div className="font-medium">
+                                    Iklan ini belum lunas (Waiting Payment). Anda dapat menyimpan draf halaman, tetapi tidak dapat mem-publish-nya sampai pembayaran diselesaikan.
+                                </div>
+                            </div>
+                        )}
                         <Input
                             value={formData.title}
                             onChange={(e) => {
@@ -897,16 +908,20 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                     variant="default"
                                     size="sm"
                                     onClick={() => handleSave(true)}
-                                    disabled={loading}
+                                    disabled={loading || isUnpaid}
                                     className={`h-9 text-sm text-white shadow-sm font-medium px-6 shrink-0 ${!isStandalone && formData.publish_start_date && normalizeScheduleDate(formData.publish_start_date) > new Date()
                                         ? 'bg-blue-600 hover:bg-blue-700'
                                         : 'bg-green-600 hover:bg-green-700'
-                                        }`}
+                                        } disabled:opacity-50 disabled:cursor-not-allowed`}
                                 >
-                                    {!isStandalone && formData.publish_start_date && normalizeScheduleDate(formData.publish_start_date) > new Date() ? (
-                                        <><Calendar className="w-4 h-4 mr-1.5" /> Schedule</>
-                                    ) : (
-                                        'Publish Now'
+                                    {loading ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : (
+                                        <>
+                                            {!isStandalone && formData.publish_start_date && normalizeScheduleDate(formData.publish_start_date) > new Date() ? (
+                                                <><Calendar className="w-4 h-4 mr-1.5" /> Schedule</>
+                                            ) : (
+                                                'Publish Now'
+                                            )}
+                                        </>
                                     )}
                                 </Button>
                             </>

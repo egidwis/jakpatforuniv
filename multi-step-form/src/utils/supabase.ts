@@ -904,6 +904,7 @@ export const getScheduledPages = async () => {
         start_date: item.publish_start_date || item.form_submissions?.start_date,
         end_date: item.publish_end_date || item.form_submissions?.end_date,
         submission_status: item.form_submissions?.submission_status,
+        payment_status: item.form_submissions?.payment_status,
         slot_booked_by: item.form_submissions?.slot_booked_by,
       }));
   } catch (error: any) {

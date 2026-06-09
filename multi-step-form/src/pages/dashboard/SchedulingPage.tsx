@@ -80,7 +80,9 @@ const CustomWeekHeader = ({ date }: { date: Date }) => {
 const CustomAgendaEvent = ({ event, onSelectEvent }: { event: CalendarEvent, onSelectEvent?: (e: CalendarEvent) => void }) => {
     const theme = event.resource.colorTheme || STATUS_PALETTES.upcomingNoPage;
     let status = '';
-    if (!event.resource.page_id) {
+    if (event.resource.submission_status === 'waiting_payment') {
+        status = 'Waiting Payment';
+    } else if (!event.resource.page_id) {
         status = new Date() < event.start ? 'Pending' : 'Overdue';
     } else {
         status = new Date() >= event.start && new Date() <= event.end ? 'Active' : new Date() < event.start ? 'Upcoming' : 'Completed';
@@ -120,6 +122,11 @@ const CustomAgendaEvent = ({ event, onSelectEvent }: { event: CalendarEvent, onS
                     ) : status === 'Pending' ? (
                         <div className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1.5 rounded-full flex items-center gap-1.5 uppercase tracking-widest shrink-0">
                             Pending Page
+                        </div>
+                    ) : status === 'Waiting Payment' ? (
+                        <div className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-1.5 rounded-full flex items-center gap-1.5 uppercase tracking-widest shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                            Waiting Payment
                         </div>
                     ) : status === 'Overdue' ? (
                         <div className="bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-1.5 rounded-full flex items-center gap-1.5 uppercase tracking-widest shrink-0">
@@ -437,8 +444,7 @@ export function SchedulingPage() {
                         prize_per_winner, winner_count, additional_prize_per_winner,
                         form_submissions!submission_id ( title, full_name )
                     `)
-                    .in('submission_status', ['scheduled', 'live', 'completed'])
-                    .eq('payment_status', 'paid')
+                    .in('submission_status', ['waiting_payment', 'scheduled', 'live', 'completed'])
                     .not('start_date', 'is', null)
                     .order('start_date', { ascending: true });
 
@@ -452,6 +458,7 @@ export function SchedulingPage() {
                         let extTheme = STATUS_PALETTES.extend;
                         if (ext.submission_status === 'live') extTheme = STATUS_PALETTES.extendLive;
                         else if (ext.submission_status === 'completed') extTheme = STATUS_PALETTES.completed;
+                        else if (ext.submission_status === 'waiting_payment') extTheme = STATUS_PALETTES.upcomingDraft; // Amber for pending
 
                         return {
                             id: `ext-${ext.id}`,
@@ -473,6 +480,7 @@ export function SchedulingPage() {
                                 winner_count: ext.winner_count,
                                 is_extend: true,
                                 period_batch: ext.period_batch,
+                                submission_status: ext.submission_status,
                             },
                         };
                     });
@@ -583,6 +591,7 @@ export function SchedulingPage() {
                         {startTimeStr}
                     </span>
                     <span className={`truncate text-[9px] leading-tight flex-1 ${isFocused ? 'font-bold drop-shadow-[0_1px_1px_rgba(0,0,0,0.1)]' : 'font-semibold'}`}>
+                        {event.resource.submission_status === 'waiting_payment' && <span className="mr-0.5 opacity-80" title="Waiting Payment">⏳</span>}
                         {event.resource.form_title}
                     </span>
                 </div>
@@ -842,7 +851,10 @@ export function SchedulingPage() {
                     submissionEndDate={selectedEvent.resource.end_date}
                     submissionPrizePerWinner={selectedEvent.resource.prize_per_winner}
                     submissionWinnerCount={selectedEvent.resource.winner_count}
+                    submissionCriteria={selectedEvent.resource.criteria_responden}
                     initialData={existingPublishPage || undefined}
+                    isExtraAd={selectedEvent.resource.is_extend}
+                    paymentStatus={selectedEvent.resource.payment_status}
                 />
             )}
         </div>

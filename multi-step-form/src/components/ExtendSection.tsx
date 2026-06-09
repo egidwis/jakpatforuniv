@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, fetchSlotAvailability } from '@/utils/supabase';
-import type { FormSubmissionExtend } from '@/utils/supabase';
+import { supabase, fetchSlotAvailability, createInvoice, createTransaction } from '@/utils/supabase';
+import type { FormSubmissionExtend, Transaction, Invoice } from '@/utils/supabase';
+import { createManualInvoice } from '@/utils/payment';
 import { MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
+import { calculateAdCostPerDay, calculateIncentiveCost } from '@/utils/cost-calculator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +17,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   CalendarPlus,
   RefreshCw,
   Clock,
@@ -23,6 +31,13 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
+  CreditCard,
+  ExternalLink,
+  Copy,
+  Check,
+  Trash2,
+  Plus,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,7 +47,26 @@ interface ExtendSectionProps {
   currentEndDate?: string | null;
   currentPrizePerWinner?: number;
   currentWinnerCount?: number;
+  questionCount?: number;
+  researcherName?: string;
+  researcherEmail?: string;
+  phoneNumber?: string;
   onExtendCreated?: () => void;
+}
+
+interface InvoiceItem {
+  id: string;
+  name: string;
+  qty: number;
+  price: number;
+}
+
+interface ExtendPaymentInfo {
+  extendId: string;
+  paymentUrl: string | null;
+  paymentId: string | null;
+  paymentStatus: string | null;
+  amount: number;
 }
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
@@ -50,6 +84,10 @@ export function ExtendSection({
   currentEndDate,
   currentPrizePerWinner = 0,
   currentWinnerCount = 0,
+  questionCount = 0,
+  researcherName = '',
+  researcherEmail = '',
+  phoneNumber = '',
   onExtendCreated,
 }: ExtendSectionProps) {
   const [extends_, setExtends] = useState<FormSubmissionExtend[]>([]);
@@ -67,6 +105,16 @@ export function ExtendSection({
 
   const [isFetchingAds, setIsFetchingAds] = useState(false);
   const [regularCountsByDate, setRegularCountsByDate] = useState<Record<string, number>>({});
+
+  // Payment state
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [paymentExtend, setPaymentExtend] = useState<FormSubmissionExtend | null>(null);
+  const [paymentItems, setPaymentItems] = useState<InvoiceItem[]>([]);
+  const [paymentNote, setPaymentNote] = useState('');
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+  const [extendPayments, setExtendPayments] = useState<Record<string, ExtendPaymentInfo>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const loadAvailability = async () => {
     setIsFetchingAds(true);
@@ -110,6 +158,31 @@ export function ExtendSection({
 
       if (error) throw error;
       setExtends(data || []);
+
+      // Fetch payment info for all extends
+      if (data && data.length > 0) {
+        const extendIds = data.filter(e => e.id).map(e => e.id!);
+        const { data: txData } = await supabase
+          .from('transactions')
+          .select('payment_id, status, payment_url, amount, extend_id')
+          .eq('entity_type', 'extend')
+          .in('extend_id', extendIds)
+          .order('created_at', { ascending: false });
+
+        const paymentMap: Record<string, ExtendPaymentInfo> = {};
+        (txData || []).forEach(tx => {
+          if (tx.extend_id && !paymentMap[tx.extend_id]) {
+            paymentMap[tx.extend_id] = {
+              extendId: tx.extend_id,
+              paymentUrl: tx.payment_url || null,
+              paymentId: tx.payment_id || null,
+              paymentStatus: tx.status || null,
+              amount: tx.amount || 0,
+            };
+          }
+        });
+        setExtendPayments(paymentMap);
+      }
     } catch (err) {
       console.error('Error fetching extends:', err);
     } finally {
@@ -181,7 +254,7 @@ export function ExtendSection({
         winner_count: isNewMonth ? winnerCount : 0,
         additional_prize_per_winner: !isNewMonth ? additionalPrize : 0,
         is_new_month: isNewMonth,
-        total_cost: 0, // Admin can set via payment flow
+        total_cost: 0, // Will be set via payment flow
         slot_booked_by: 'admin',
       };
 
@@ -202,6 +275,196 @@ export function ExtendSection({
       setCreating(false);
     }
   };
+
+  // ==================== PAYMENT LOGIC ====================
+
+  const initializePaymentItems = (ext: FormSubmissionExtend) => {
+    const items: InvoiceItem[] = [];
+    const costPerDay = calculateAdCostPerDay(questionCount);
+
+    if (costPerDay > 0 && ext.duration > 0) {
+      items.push({
+        id: Date.now().toString() + '0',
+        name: 'Extend Iklan (ads)',
+        qty: ext.duration,
+        price: costPerDay,
+      });
+    }
+
+    // Incentive for new month
+    if (ext.is_new_month && ext.prize_per_winner && ext.prize_per_winner > 0 && ext.winner_count && ext.winner_count > 0) {
+      items.push({
+        id: Date.now().toString() + '1',
+        name: "Respondent's Incentive (New Batch)",
+        qty: ext.winner_count,
+        price: ext.prize_per_winner,
+      });
+    }
+
+    // Additional prize for same month
+    if (!ext.is_new_month && ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0) {
+      items.push({
+        id: Date.now().toString() + '2',
+        name: 'Additional Prize per Winner',
+        qty: currentWinnerCount || 1,
+        price: ext.additional_prize_per_winner,
+      });
+    }
+
+    // Fallback if no items
+    if (items.length === 0) {
+      items.push({
+        id: Date.now().toString(),
+        name: 'Extend Iklan',
+        qty: 1,
+        price: 0,
+      });
+    }
+
+    return items;
+  };
+
+  const handleOpenPayment = (ext: FormSubmissionExtend) => {
+    setPaymentExtend(ext);
+    setPaymentItems(initializePaymentItems(ext));
+    setPaymentNote('');
+    setIsPaymentDialogOpen(true);
+  };
+
+  const handleAddPaymentItem = () => {
+    setPaymentItems([...paymentItems, { id: Date.now().toString(), name: '', qty: 1, price: 0 }]);
+  };
+
+  const handleRemovePaymentItem = (id: string) => {
+    if (paymentItems.length === 1) {
+      toast.error('Minimal satu item diperlukan');
+      return;
+    }
+    setPaymentItems(paymentItems.filter(item => item.id !== id));
+  };
+
+  const handlePaymentItemChange = (id: string, field: keyof InvoiceItem, value: string | number) => {
+    setPaymentItems(paymentItems.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
+
+  const paymentTotal = paymentItems.reduce((sum, item) => sum + (item.qty * item.price), 0);
+
+  const handleCreatePaymentLink = async () => {
+    if (!paymentExtend?.id) return;
+
+    const invalidItems = paymentItems.filter(item => !item.name.trim() || item.price < 0 || item.qty < 1);
+    if (invalidItems.length > 0) {
+      toast.error('Mohon lengkapi semua item dengan benar');
+      return;
+    }
+
+    if (paymentTotal <= 0) {
+      toast.error('Total invoice harus lebih dari 0');
+      return;
+    }
+
+    setIsCreatingPayment(true);
+    try {
+      const itemSummary = paymentItems.map(item => `${item.name} (${item.qty}x)`).join(', ');
+      const description = paymentNote.trim()
+        ? `[EXTEND] ${itemSummary} - ${paymentNote.trim()}`
+        : `[EXTEND] ${itemSummary}`;
+
+      const noteData = {
+        memo: paymentNote.trim(),
+        extend_id: paymentExtend.id,
+        items: paymentItems.map(({ name, qty, price }) => ({ name, qty, price })),
+      };
+      const noteJson = JSON.stringify(noteData);
+
+      // Create DOKU invoice
+      const paymentResponse = await createManualInvoice({
+        formSubmissionId: submissionId,
+        amount: paymentTotal,
+        description,
+        customerInfo: {
+          fullName: researcherName || 'Client',
+          email: researcherEmail || 'client@example.com',
+          phoneNumber: phoneNumber || '',
+        },
+      });
+
+      // Save invoice record with entity_type='extend'
+      const invoiceData: Invoice = {
+        form_submission_id: submissionId,
+        payment_id: paymentResponse.payment_id,
+        invoice_url: paymentResponse.invoice_url,
+        amount: paymentTotal,
+        status: 'pending',
+        entity_type: 'extend',
+        extend_id: paymentExtend.id,
+      };
+      await createInvoice(invoiceData);
+
+      // Save transaction record with entity_type='extend'
+      const transactionData: Transaction = {
+        form_submission_id: submissionId,
+        payment_id: paymentResponse.payment_id,
+        payment_method: 'doku',
+        amount: paymentTotal,
+        status: 'pending',
+        payment_url: paymentResponse.invoice_url,
+        note: noteJson,
+        entity_type: 'extend',
+        extend_id: paymentExtend.id,
+      };
+      await createTransaction(transactionData);
+
+      // Update extend total_cost and status
+      await supabase
+        .from('form_submissions_extend')
+        .update({
+          total_cost: paymentTotal,
+          submission_status: 'waiting_payment',
+          payment_status: 'pending',
+        })
+        .eq('id', paymentExtend.id);
+
+      toast.success('Payment link berhasil dibuat!');
+      setIsPaymentDialogOpen(false);
+      fetchExtends(); // Refresh to show new payment info
+    } catch (err: any) {
+      console.error('Error creating payment link:', err);
+      toast.error(err.message || 'Gagal membuat payment link');
+    } finally {
+      setIsCreatingPayment(false);
+    }
+  };
+
+  const handleCopyPaymentLink = async (url: string, extId: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(extId);
+      toast.success('Payment link berhasil disalin!');
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      toast.error('Gagal menyalin link');
+    }
+  };
+
+  const handleCancelExtend = async (extId: string) => {
+    if (!confirm('Yakin ingin membatalkan extend ini?')) return;
+    setCancellingId(extId);
+    try {
+      await supabase
+        .from('form_submissions_extend')
+        .update({ submission_status: 'cancelled', payment_status: 'failed' })
+        .eq('id', extId);
+      toast.success('Extend dibatalkan');
+      fetchExtends();
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal membatalkan extend');
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  // ==================== COMPUTED ====================
 
   const extEndDate = (() => {
     if (!startDate || duration < 1) return null;
@@ -266,21 +529,29 @@ export function ExtendSection({
                 const style = STATUS_STYLES[ext.submission_status || 'waiting_payment'];
                 const startD = ext.start_date ? new Date(ext.start_date) : null;
                 const endD = ext.end_date ? new Date(ext.end_date) : null;
+                const payment = ext.id ? extendPayments[ext.id] : null;
+                const isWaitingPayment = ext.submission_status === 'waiting_payment';
+                const isCancelled = ext.submission_status === 'cancelled';
+                const hasPaymentLink = !!payment?.paymentUrl;
+                const isPaymentPending = payment?.paymentStatus === 'pending';
+
                 return (
                   <div
                     key={ext.id}
-                    className={`flex flex-col gap-1 px-2.5 py-2 rounded-md border text-[10px] ${style.bg}`}
+                    className={`flex flex-col gap-1.5 px-2.5 py-2 rounded-md border text-[10px] ${style.bg}`}
                   >
+                    {/* Row 1: Status + period badge */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
                         <span className={`font-semibold uppercase tracking-wider ${style.text}`}>
-                          {ext.submission_status}
+                          {ext.submission_status?.replace('_', ' ')}
                         </span>
                       </div>
                       <span className="text-gray-400 font-mono">{ext.period_batch}</span>
                     </div>
 
+                    {/* Row 2: Date range + duration */}
                     <div className="flex items-center gap-3 text-gray-600">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-gray-400" />
@@ -296,7 +567,7 @@ export function ExtendSection({
                       </div>
                     </div>
 
-                    {/* Reward info */}
+                    {/* Row 3: Reward info */}
                     {(ext.is_new_month && ext.prize_per_winner && ext.prize_per_winner > 0) ? (
                       <div className="flex items-center gap-1 text-emerald-600">
                         <DollarSign className="w-3 h-3" />
@@ -311,6 +582,124 @@ export function ExtendSection({
                         <span>+Rp {ext.additional_prize_per_winner.toLocaleString('id-ID')}/winner</span>
                       </div>
                     ) : null}
+
+                    {/* Row 4: Payment info / actions */}
+                    {!isCancelled && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {/* Case A: Has payment link */}
+                        {hasPaymentLink ? (
+                          <>
+                            <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                              <CreditCard className="w-3 h-3 text-gray-400 shrink-0" />
+                              <span className={`text-[9px] font-medium truncate ${
+                                payment?.paymentStatus === 'paid' ? 'text-green-600' :
+                                payment?.paymentStatus === 'expired' ? 'text-red-500' :
+                                'text-amber-600'
+                              }`}>
+                                {payment?.paymentStatus === 'paid' ? 'Lunas' :
+                                 payment?.paymentStatus === 'expired' ? 'Expired' :
+                                 `Rp ${payment?.amount?.toLocaleString('id-ID') || '0'}`}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <TooltipProvider>
+                                <Tooltip delayDuration={100}>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-5 w-5 p-0 text-gray-400 hover:text-violet-600"
+                                      onClick={() => handleCopyPaymentLink(payment!.paymentUrl!, ext.id!)}
+                                    >
+                                      {copiedId === ext.id ? (
+                                        <Check className="w-3 h-3 text-green-500" />
+                                      ) : (
+                                        <Copy className="w-3 h-3" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="text-xs">
+                                    {copiedId === ext.id ? 'Copied!' : 'Copy payment link'}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip delayDuration={100}>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-5 w-5 p-0 text-gray-400 hover:text-blue-600"
+                                      onClick={() => window.open(payment!.paymentUrl!, '_blank')}
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="text-xs">
+                                    Buka halaman pembayaran
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              {/* Allow creating additional payment if current one expired */}
+                              {payment?.paymentStatus === 'expired' && (
+                                <TooltipProvider>
+                                  <Tooltip delayDuration={100}>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-5 w-5 p-0 text-gray-400 hover:text-emerald-600"
+                                        onClick={() => handleOpenPayment(ext)}
+                                      >
+                                        <Plus className="w-3 h-3" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="text-xs">
+                                      Buat payment link baru
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                          </>
+                        ) : isWaitingPayment ? (
+                          /* Case B: No payment link yet — show create button */
+                          <div className="flex items-center gap-1.5 w-full">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 h-6 text-[10px] font-medium text-emerald-600 hover:text-emerald-700 border-emerald-200 hover:border-emerald-300 bg-white hover:bg-emerald-50 transition-all"
+                              onClick={() => handleOpenPayment(ext)}
+                            >
+                              <CreditCard className="w-3 h-3 mr-1" />
+                              Buat Payment Link
+                            </Button>
+                            <TooltipProvider>
+                              <Tooltip delayDuration={100}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 text-gray-300 hover:text-red-500"
+                                    onClick={() => ext.id && handleCancelExtend(ext.id)}
+                                    disabled={cancellingId === ext.id}
+                                  >
+                                    {cancellingId === ext.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-3 h-3" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                  Batalkan extend
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -319,7 +708,7 @@ export function ExtendSection({
         </div>
       )}
 
-      {/* Create Extend Dialog */}
+      {/* ==================== Create Extend Dialog ==================== */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
@@ -505,6 +894,127 @@ export function ExtendSection({
             >
               {creating && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
               Buat Extend
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== Payment Dialog ==================== */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle className="text-lg flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-emerald-600" />
+              Buat Payment Link
+            </DialogTitle>
+            <DialogDescription className="text-sm text-gray-500">
+              Extend "{submissionTitle}" •{' '}
+              {paymentExtend?.start_date && new Date(paymentExtend.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+              {' → '}
+              {paymentExtend?.end_date && new Date(paymentExtend.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {' '}({paymentExtend?.duration}d)
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Invoice Items */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Item Invoice</label>
+              {paymentItems.map((item, idx) => (
+                <div key={item.id} className="flex items-center gap-2">
+                  <Input
+                    placeholder="Nama item"
+                    value={item.name}
+                    onChange={(e) => handlePaymentItemChange(item.id, 'name', e.target.value)}
+                    className="flex-1 h-9 text-sm"
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    value={item.qty}
+                    onChange={(e) => handlePaymentItemChange(item.id, 'qty', Number(e.target.value))}
+                    className="w-16 h-9 text-sm text-center"
+                    title="Qty"
+                  />
+                  <div className="relative flex-1 max-w-[140px]">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">Rp</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={item.price}
+                      onChange={(e) => handlePaymentItemChange(item.id, 'price', Number(e.target.value))}
+                      className="h-9 text-sm pl-8"
+                    />
+                  </div>
+                  {paymentItems.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 w-9 p-0 text-gray-400 hover:text-red-500"
+                      onClick={() => handleRemovePaymentItem(item.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-[11px] text-gray-500 hover:text-gray-700"
+                onClick={handleAddPaymentItem}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Tambah Item
+              </Button>
+            </div>
+
+            {/* Note */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-700">Catatan (opsional)</label>
+              <Input
+                placeholder="Keterangan tambahan..."
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            {/* Total */}
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <span className="text-sm font-semibold text-gray-700">Total Invoice</span>
+              <span className="text-lg font-bold text-gray-900">
+                Rp {paymentTotal.toLocaleString('id-ID')}
+              </span>
+            </div>
+
+            {/* Customer info preview */}
+            <div className="text-[10px] text-gray-400 space-y-0.5">
+              <p>Customer: {researcherName || 'N/A'} ({researcherEmail || 'N/A'})</p>
+              <p>Payment Gateway: DOKU • Due: 7 hari</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={handleCreatePaymentLink}
+              disabled={isCreatingPayment || paymentTotal <= 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {isCreatingPayment ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Membuat...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Create Payment Link
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

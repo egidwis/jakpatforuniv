@@ -38,6 +38,7 @@ interface MergedRespondent {
     e_wallet_number: string | null;
     custom_answers: any;
     submitted_at: string;
+    loi_seconds: number | null;
     // Masterdata
     user_id: number | null;
     ktp_name: string | null;
@@ -138,6 +139,7 @@ export function SubmissionsManagerView({
                     e_wallet_number: pr.e_wallet_number,
                     custom_answers: pr.custom_answers,
                     submitted_at: pr.created_at,
+                    loi_seconds: pr.loi_seconds,
                     user_id: null,
                     ktp_name: null,
                     display_name: null,
@@ -410,6 +412,7 @@ export function SubmissionsManagerView({
                                             <TableRow className="hover:bg-transparent">
                                                 <TableHead className="text-xs font-semibold text-gray-600">Waktu Submit</TableHead>
                                                 <TableHead className="text-xs font-semibold text-gray-600">Jakpat ID</TableHead>
+                                                <TableHead className="text-xs font-semibold text-gray-600">LOI</TableHead>
                                                 <TableHead className="text-xs font-semibold text-gray-600">E-Wallet Provider</TableHead>
                                                 <TableHead className="text-xs font-semibold text-gray-600">E-Wallet Number</TableHead>
                                                 <TableHead className="text-xs font-semibold text-gray-600 text-right">Proof</TableHead>
@@ -418,7 +421,7 @@ export function SubmissionsManagerView({
                                         <TableBody ref={animationParent}>
                                             {filteredRespondents.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={5} className="h-48 text-center text-gray-400">
+                                                    <TableCell colSpan={6} className="h-48 text-center text-gray-400">
                                                         <div className="flex flex-col items-center justify-center gap-2">
                                                             <Filter className="w-6 h-6 text-gray-300 mb-1" />
                                                             <span className="font-medium text-sm text-gray-500">Tidak ada responden yang cocok</span>
@@ -443,6 +446,15 @@ export function SubmissionsManagerView({
                                                         </TableCell>
                                                         <TableCell className="py-3">
                                                             <span className="font-mono text-xs font-semibold text-gray-700">{r.jakpat_id}</span>
+                                                        </TableCell>
+                                                        <TableCell className="py-3">
+                                                            {r.loi_seconds !== null && r.loi_seconds !== undefined ? (
+                                                                <span className="text-xs text-gray-600 font-mono">
+                                                                    {Math.floor(r.loi_seconds / 60)}m {r.loi_seconds % 60}s
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-300 text-xs">—</span>
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="py-3">
                                                             {r.ewallet_provider ? (
