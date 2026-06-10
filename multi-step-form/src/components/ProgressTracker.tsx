@@ -1,6 +1,6 @@
 import { useLanguage } from '@/i18n/LanguageContext';
 import { type FormSubmission } from '@/utils/supabase';
-import { CheckCircle2, FileText, ExternalLink, AlertCircle, Calendar } from 'lucide-react';
+import { CheckCircle2, FileText, ExternalLink, AlertCircle, Calendar, CreditCard, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -21,10 +21,10 @@ export function normalizeScheduleDate(dateStr: string): Date {
 // Define the status steps in order
 // Define status steps dynamically inside component to access translation
 export const getStatusSteps = (t: any) => [
-    { key: 'in_review', label: t('statusInReview'), icon: undefined as any, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
+    { key: 'in_review', label: t('statusInReview'), icon: FileText, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
     { key: 'slot', label: t('statusScheduling'), icon: Calendar, helper: t('statusSchedulingHelper'), completedHelper: t('statusSchedulingCompletedHelper') },
-    { key: 'payment', label: t('statusWaitingPayment'), icon: undefined as any, helper: t('statusPaymentHelper'), completedHelper: t('statusPaymentSuccessHelper') },
-    { key: 'publishing', label: t('statusPublishing'), icon: undefined as any, helper: t('statusPublishingHelper'), liveHelper: t('statusPublishingLiveHelper'), completedHelper: t('statusPublishingCompletedHelper') },
+    { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper'), completedHelper: t('statusPaymentSuccessHelper') },
+    { key: 'publishing', label: t('statusPublishing'), icon: PlayCircle, helper: t('statusPublishingHelper'), liveHelper: t('statusPublishingLiveHelper'), completedHelper: t('statusPublishingCompletedHelper') },
     { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper'), completedHelper: t('statusCompletedHelper') },
 ];
 
