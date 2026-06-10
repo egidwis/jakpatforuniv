@@ -5,7 +5,7 @@ import { HelpCircle, Send, Bot, Menu } from 'lucide-react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
-import { getOrCreateChatSession, getChatMessages, saveChatMessage } from '@/utils/supabase';
+import { supabase, getOrCreateChatSession, getChatMessages, saveChatMessage } from '@/utils/supabase';
 import {
     Accordion,
     AccordionContent,
@@ -250,7 +250,7 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    "model": "google/gemini-2.0-flash-lite-001",
+                    "model": "google/gemini-2.5-flash-lite",
                     "messages": [
                         { "role": "system", "content": systemPrompt },
                         ...newMessages.map(m => ({ role: m.role, content: m.content }))
@@ -259,6 +259,11 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
             });
 
             const data = await response.json();
+
+            if (!response.ok || data.error) {
+                console.error('[Mimin AI] OpenRouter error:', { status: response.status, error: data.error, data });
+            }
+
             const aiContent = data.choices?.[0]?.message?.content || "Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.";
 
             setMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
@@ -311,7 +316,7 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    "model": "google/gemini-2.0-flash-lite-001",
+                    "model": "google/gemini-2.5-flash-lite",
                     "messages": [
                         { "role": "system", "content": systemPrompt },
                         ...newMessages.map(m => ({ role: m.role, content: m.content }))
@@ -320,6 +325,11 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
             });
 
             const data = await response.json();
+
+            if (!response.ok || data.error) {
+                console.error('[Mimin AI] OpenRouter error:', { status: response.status, error: data.error, data });
+            }
+
             const aiContent = data.choices?.[0]?.message?.content || "Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.";
 
             setMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
