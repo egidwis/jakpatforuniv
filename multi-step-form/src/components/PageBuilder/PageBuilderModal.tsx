@@ -10,7 +10,7 @@ import { supabase, updateFormStatus } from '@/utils/supabase';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Eye, Save, Trash2, Plus, Upload, Check, Trophy, Users, Calendar, StopCircle } from 'lucide-react';
+import { Loader2, Eye, Save, Trash2, Plus, Upload, Check, Trophy, Users, Calendar, StopCircle, ExternalLink } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
 /**
@@ -104,6 +104,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
         publish_start_date: '',
         publish_end_date: '',
         criteria_responden: '',
+        redirect_url: '',
     });
 
     const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -196,6 +197,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         publish_start_date: submissionStartDate ? submissionStartDate : (initialData.publish_start_date ? initialData.publish_start_date : ''),
                         publish_end_date: submissionEndDate ? submissionEndDate : (initialData.publish_end_date ? initialData.publish_end_date : ''),
                         criteria_responden: resolvedCriteria || initialData.criteria_responden || '',
+                        redirect_url: initialData.redirect_url || '',
                     });
                 } else {
                     // Reset for new page, auto-fill from submission title if available
@@ -212,6 +214,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         publish_start_date: submissionStartDate ? submissionStartDate : '',
                         publish_end_date: submissionEndDate ? submissionEndDate : '',
                         criteria_responden: resolvedCriteria,
+                        redirect_url: '',
                     });
                 }
             };
@@ -265,6 +268,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 updated_at: new Date().toISOString(),
                 // Preserve is_extra_ad: use prop if provided, else keep existing value
                 is_extra_ad: isExtraAd ?? initialData?.is_extra_ad ?? false,
+                redirect_url: formData.redirect_url?.trim() || null,
             };
 
             // Only attach submission_id if it exists
@@ -632,6 +636,27 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                 />
                             </div>
                         </div>
+
+                        {/* Redirect URL (only for standalone/announcement pages) */}
+                        {isStandalone && (
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                    <ExternalLink className="w-3 h-3" />
+                                    Redirect URL
+                                </Label>
+                                <Input
+                                    value={formData.redirect_url}
+                                    onChange={(e) => setFormData({ ...formData, redirect_url: e.target.value })}
+                                    placeholder="https://instagram.com/p/... (opsional)"
+                                    className="h-8 text-xs bg-white border-gray-200 focus:border-blue-500 shadow-sm"
+                                />
+                                {formData.redirect_url && (
+                                    <p className="text-[10px] text-amber-600 font-medium">
+                                        ⚡ Klik "Lihat Selengkapnya" akan langsung redirect ke URL ini
+                                    </p>
+                                )}
+                            </div>
+                        )}
 
                         {/* Banner Image */}
                         <div className="space-y-2">

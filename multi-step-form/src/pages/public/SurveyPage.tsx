@@ -164,6 +164,12 @@ export function SurveyPage() {
 
             setPageData(data);
 
+            // If this page has a redirect URL, immediately redirect
+            if (data.redirect_url) {
+                window.location.href = data.redirect_url;
+                return;
+            }
+
             if (data?.id) {
                 // Check local storage for unique view tracking
                 const viewKey = `viewed_page_${data.id}`;

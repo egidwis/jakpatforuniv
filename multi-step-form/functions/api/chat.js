@@ -4,6 +4,7 @@ export async function onRequestPost({ request, env }) {
   try {
     const apiKey = env.OPENROUTER_API_KEY;
     if (!apiKey) {
+      console.error("[chat] OPENROUTER_API_KEY is not configured");
       return new Response(JSON.stringify({ error: "API key not configured" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
@@ -11,6 +12,11 @@ export async function onRequestPost({ request, env }) {
     }
 
     const body = await request.json();
+
+    console.log("[chat] Sending request to OpenRouter", {
+      model: body.model,
+      messageCount: body.messages?.length,
+    });
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
@@ -23,6 +29,15 @@ export async function onRequestPost({ request, env }) {
 
     const data = await response.json();
 
+    // Log errors from OpenRouter for debugging
+    if (!response.ok || data.error) {
+      console.error("[chat] OpenRouter error", {
+        status: response.status,
+        error: data.error,
+        model: body.model,
+      });
+    }
+
     return new Response(JSON.stringify(data), {
       status: response.status,
       headers: {
@@ -31,6 +46,7 @@ export async function onRequestPost({ request, env }) {
       },
     });
   } catch (error) {
+    console.error("[chat] Unexpected error:", error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

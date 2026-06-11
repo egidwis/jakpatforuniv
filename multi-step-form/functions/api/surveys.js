@@ -88,6 +88,7 @@ export async function onRequestGet(context) {
         const baseUrl = new URL(context.request.url).origin;
 
         const cleanData = validSurveys.map(s => {
+            const internalUrl = `${baseUrl}/pages/${s.slug || s.id}`;
             return {
                 id: s.id,
                 slug: s.slug || s.id,
@@ -108,7 +109,7 @@ export async function onRequestGet(context) {
                 publish_date: new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
                 _sort_date: s.created_at,
                 viewed: s.views_count || 0,
-                url: `${baseUrl}/pages/${s.slug || s.id}`,
+                url: s.redirect_url || internalUrl,
             };
         });
 

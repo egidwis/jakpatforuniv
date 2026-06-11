@@ -174,12 +174,22 @@ export function SurveyListingPage() {
                             </CardContent>
 
                             <CardFooter className="p-6 pt-0 mt-auto">
-                                <Button asChild className="w-full h-11 text-base font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-600/40 transition-all rounded-xl bg-blue-600 hover:bg-blue-700">
-                                    <Link to={`/pages/${page.slug}`}>
-                                        {page.submission_id ? 'Ikuti Survei Sekarang' : 'Lihat Selengkapnya'}
+                                {page.redirect_url ? (
+                                    <Button
+                                        className="w-full h-11 text-base font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-600/40 transition-all rounded-xl bg-blue-600 hover:bg-blue-700"
+                                        onClick={() => window.open(page.redirect_url, '_blank', 'noopener,noreferrer')}
+                                    >
+                                        Lihat Selengkapnya
                                         <ExternalLink className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                                    </Link>
-                                </Button>
+                                    </Button>
+                                ) : (
+                                    <Button asChild className="w-full h-11 text-base font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-600/40 transition-all rounded-xl bg-blue-600 hover:bg-blue-700">
+                                        <Link to={`/pages/${page.slug}`}>
+                                            {page.submission_id ? 'Ikuti Survei Sekarang' : 'Lihat Selengkapnya'}
+                                            <ExternalLink className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                                        </Link>
+                                    </Button>
+                                )}
                             </CardFooter>
                         </Card>
                         );
