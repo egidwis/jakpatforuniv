@@ -75,6 +75,61 @@ export async function onRequestGet(context) {
     const pageId = url.searchParams.get('page_id');
     const slug = url.searchParams.get('slug');
 
+    // Helper to calculate batch rewards for a survey submission and its extends
+    function calculateBatches(fs, extendsList) {
+        if (!fs) return [];
+        
+        const periods = {};
+        
+        // 1. Process parent submission
+        const parentPeriod = fs.end_date ? fs.end_date.substring(0, 7) : null; // YYYY-MM
+        if (parentPeriod) {
+            periods[parentPeriod] = {
+                pb: parentPeriod,
+                base_p: fs.prize_per_winner || 0,
+                add_p: 0,
+                wc: fs.winner_count || 0,
+                statuses: [fs.submission_status]
+            };
+        }
+        
+        // 2. Process paid extends
+        if (Array.isArray(extendsList)) {
+            extendsList.forEach(e => {
+                const pb = e.period_batch;
+                if (!pb) return;
+                
+                if (!periods[pb]) {
+                    periods[pb] = {
+                        pb,
+                        base_p: 0,
+                        add_p: 0,
+                        wc: 0,
+                        statuses: []
+                    };
+                }
+                
+                periods[pb].base_p = Math.max(periods[pb].base_p, e.prize_per_winner || 0);
+                periods[pb].add_p += e.additional_prize_per_winner || 0;
+                periods[pb].wc = Math.max(periods[pb].wc, e.winner_count || 0);
+                periods[pb].statuses.push(e.submission_status);
+            });
+        }
+        
+        // 3. Aggregate
+        const activeStatuses = ['live', 'scheduled', 'paid', 'waiting_payment'];
+        return Object.values(periods).map(p => {
+            const hasActive = p.statuses.some(s => activeStatuses.includes(s));
+            return {
+                period_batch: p.pb,
+                prize_per_winner: p.base_p + p.add_p,
+                winner_count: p.wc,
+                batch_status: hasActive ? 'active' : 'closed',
+                can_select_winners: !hasActive
+            };
+        }).sort((a, b) => a.period_batch.localeCompare(b.period_batch));
+    }
+
     try {
         // ─────────────────────────────────────────────
         // MODE 1: List surveys (no page_id or slug)
@@ -83,11 +138,32 @@ export async function onRequestGet(context) {
             // Fetch all published survey pages with form_submissions metadata and exact respondent counts
             const { data: pages, error: pagesError } = await supabase
                 .from('survey_pages')
-                .select('id, slug, title, publish_start_date, publish_end_date, created_at, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden), page_respondents(count)')
+                .select('id, slug, title, publish_start_date, publish_end_date, created_at, submission_id, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden, end_date, submission_status), page_respondents(count)')
                 .eq('is_published', true)
                 .order('created_at', { ascending: false });
 
             if (pagesError) throw pagesError;
+
+            // Fetch all extends in bulk for all the submission_ids in these pages
+            const submissionIds = (pages || []).map(p => p.submission_id).filter(Boolean);
+            const extendsMap = {};
+
+            if (submissionIds.length > 0) {
+                const { data: extData, error: extError } = await supabase
+                    .from('form_submissions_extend')
+                    .select('submission_id, period_batch, prize_per_winner, additional_prize_per_winner, winner_count, submission_status, payment_status')
+                    .in('submission_id', submissionIds)
+                    .eq('payment_status', 'paid');
+                
+                if (!extError && extData) {
+                    extData.forEach(e => {
+                        if (!extendsMap[e.submission_id]) {
+                            extendsMap[e.submission_id] = [];
+                        }
+                        extendsMap[e.submission_id].push(e);
+                    });
+                }
+            }
 
             const surveys = (pages || []).map(p => {
                 const sub = Array.isArray(p.form_submissions) ? p.form_submissions[0] : p.form_submissions;
@@ -109,6 +185,7 @@ export async function onRequestGet(context) {
                         start: p.publish_start_date || null,
                         end: p.publish_end_date || null,
                     },
+                    batches: calculateBatches(sub, extendsMap[p.submission_id] || []),
                 };
             });
 
