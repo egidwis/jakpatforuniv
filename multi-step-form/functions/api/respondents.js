@@ -74,7 +74,6 @@ export async function onRequestGet(context) {
     // 2. Parse query parameters
     const pageId = url.searchParams.get('page_id');
     const slug = url.searchParams.get('slug');
-    const format = url.searchParams.get('format'); // 'batched' for batch-based response
 
     try {
         // ─────────────────────────────────────────────
@@ -121,7 +120,7 @@ export async function onRequestGet(context) {
         }
 
         // ─────────────────────────────────────────────
-        // MODE 2: Get respondents for a specific survey
+        // MODE 2: Get respondents for a specific survey (batch-based format)
         // ─────────────────────────────────────────────
 
         // Resolve page by page_id or slug
@@ -157,10 +156,6 @@ export async function onRequestGet(context) {
                 .order('created_at', { ascending: true })
         );
 
-        const sub = Array.isArray(pageData.form_submissions)
-            ? pageData.form_submissions[0]
-            : pageData.form_submissions;
-
         const mappedRespondents = allRespondents.map(r => ({
             jakpat_id: r.jakpat_id,
             ewallet_provider: r.ewallet_provider || null,
@@ -171,10 +166,9 @@ export async function onRequestGet(context) {
             submitted_at: r.created_at,
         }));
 
-        // ── BATCHED FORMAT ──
-        if (format === 'batched' && pageData.submission_id) {
-            // Fetch batch rewards via RPC
-            let batches = [];
+        // Fetch batch rewards via RPC
+        let batches = [];
+        if (pageData.submission_id) {
             try {
                 const { data: batchData, error: batchError } = await supabase
                     .rpc('get_batch_rewards', { p_submission_id: pageData.submission_id });
@@ -190,42 +184,19 @@ export async function onRequestGet(context) {
             } catch (rpcErr) {
                 console.error('get_batch_rewards RPC error:', rpcErr);
             }
-
-            return new Response(JSON.stringify({
-                status: 'success',
-                survey: {
-                    page_id: pageData.id,
-                    title: pageData.title,
-                    slug: pageData.slug || pageData.id,
-                },
-                batches,
-                total_respondents: allRespondents.length,
-                respondents: mappedRespondents,
-            }), {
-                headers: corsHeaders,
-            });
         }
 
-        // ── DEFAULT FLAT FORMAT (backward compatible) ──
-        const responseData = {
+        return new Response(JSON.stringify({
             status: 'success',
             survey: {
                 page_id: pageData.id,
                 title: pageData.title,
                 slug: pageData.slug || pageData.id,
-                total_respondents: allRespondents.length,
-                reward_per_winner: sub?.prize_per_winner || 0,
-                winner_count: sub?.winner_count || 0,
-                criteria: sub?.criteria_responden || null,
-                period: {
-                    start: pageData.publish_start_date || null,
-                    end: pageData.publish_end_date || null,
-                },
             },
+            batches,
+            total_respondents: allRespondents.length,
             respondents: mappedRespondents,
-        };
-
-        return new Response(JSON.stringify(responseData), {
+        }), {
             headers: corsHeaders,
         });
 
