@@ -181,7 +181,7 @@ export async function onRequestGet(context) {
                 if (!batchError && batchData) {
                     batches = batchData.map(b => ({
                         period_batch: b.period_batch,
-                        prize_per_winner: b.final_prize_per_winner,
+                        prize_per_winner: b.prize_per_winner,
                         winner_count: b.winner_count,
                         batch_status: b.batch_status,
                         can_select_winners: b.can_select_winners,
