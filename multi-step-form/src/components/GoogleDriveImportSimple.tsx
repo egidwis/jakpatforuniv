@@ -350,7 +350,7 @@ export function GoogleDriveImportSimple({
                         <h4 className="font-bold text-amber-900 text-sm">Terdeteksi Pertanyaan Data Pribadi</h4>
                         <p className="text-xs text-amber-700 mt-1 leading-relaxed">
                           Sistem mendeteksi form ini menanyakan: <strong className="bg-amber-200/60 px-1 py-0.5 rounded">{importedForm.detectedKeywords.join(', ')}</strong>.
-                          Sesuai <a href="https://jakpatforuniv.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin.
+                          Sesuai <a href="/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin.
                         </p>
                       </div>
                     </div>

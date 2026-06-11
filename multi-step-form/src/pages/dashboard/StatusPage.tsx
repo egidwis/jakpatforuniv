@@ -429,7 +429,7 @@ export function StatusPage() {
                                                                             {t('revisionNeededTitle')}
                                                                         </h4>
                                                                         <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
-                                                                            {t('revisionNeededDescPart1')} <a href="https://jakpatforuniv.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline hover:text-orange-700">{t('termsConditions')}</a>{t('revisionNeededDescPart2')}
+                                                                            {t('revisionNeededDescPart1')} <a href="/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline hover:text-orange-700">{t('termsConditions')}</a>{t('revisionNeededDescPart2')}
                                                                         </p>
                                                                     </div>
                                                                     <div className="flex gap-2">

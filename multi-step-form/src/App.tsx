@@ -22,6 +22,13 @@ import { AuthProvider } from './context/AuthContext';
 import { CampaignTracker } from './components/CampaignTracker';
 import './styles.css';
 
+function ExternalRedirect({ to }: { to: string }) {
+  useEffect(() => {
+    window.location.href = to;
+  }, [to]);
+  return null;
+}
+
 function AppContent() {
   const { t } = useLanguage();
   const location = useLocation();
@@ -96,6 +103,10 @@ function AppContent() {
               <Route path="/invoices/:paymentId" element={<PrivateRoute><InvoicePage /></PrivateRoute>} />
               <Route path="/pages" element={<SurveyListingPage />} />
               <Route path="/pages/:slug" element={<SurveyPage />} />
+              <Route path="/privacy-policy" element={<ExternalRedirect to="/homepage/privacy-policy.html" />} />
+              <Route path="/privacy-policy.html" element={<ExternalRedirect to="/homepage/privacy-policy.html" />} />
+              <Route path="/terms-conditions" element={<ExternalRedirect to="/homepage/terms-conditions.html" />} />
+              <Route path="/terms-conditions.html" element={<ExternalRedirect to="/homepage/terms-conditions.html" />} />
             </Routes>
           </PublicLayout>
         } />
