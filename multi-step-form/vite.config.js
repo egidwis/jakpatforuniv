@@ -127,9 +127,76 @@ function dokuProxyPlugin() {
   };
 }
 
+function googleFormsProxyPlugin() {
+  return {
+    name: 'google-forms-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url.includes('/api/google-forms-proxy')) {
+          console.log('✅ HIT google-forms-proxy DETECTED! URL: ' + req.url);
+
+          if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.statusCode = 200;
+            res.end();
+            return;
+          }
+
+          const urlObj = new URL(req.url, 'http://localhost');
+          const targetUrl = urlObj.searchParams.get('url');
+
+          if (!targetUrl) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({ error: 'Missing url parameter' }));
+            return;
+          }
+
+          if (!targetUrl.includes('docs.google.com/forms')) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({ error: 'Only Google Forms URLs are allowed' }));
+            return;
+          }
+
+          fetch(targetUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+          })
+            .then(async (fetchRes) => {
+              const html = await fetchRes.text();
+              res.statusCode = fetchRes.status;
+              res.setHeader('Content-Type', 'text/html');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+              res.end(html);
+            })
+            .catch((err) => {
+              console.error('💥 local proxy error:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.end(JSON.stringify({ error: err.message }));
+            });
+
+          return;
+        }
+
+        next();
+      });
+    }
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), dokuProxyPlugin()],
+  plugins: [react(), dokuProxyPlugin(), googleFormsProxyPlugin()],
   base: '/',
   resolve: {
     alias: {

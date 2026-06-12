@@ -51,13 +51,17 @@ export async function extractGoogleFormsInfo(url: string): Promise<SurveyInfo> {
 
           console.log('Successfully fetched HTML content, length:', html.length);
 
-          // Cek apakah form memerlukan login atau belum dipublikasikan
+          // Cek apakah form memerlukan login atau belum dipublikasikan / ditutup
           if (html.includes('You need permission') ||
             html.includes('You need to login') ||
             html.includes('need to sign in') ||
             html.includes('This document is not published') ||
-            html.includes('document is not published')) {
-            console.log('Form requires permission, login, or is not published');
+            html.includes('document is not published') ||
+            html.includes('no longer accepting responses') ||
+            html.includes('tidak lagi menerima tanggapan') ||
+            html.includes('tidak menerima tanggapan') ||
+            html.includes('no longer accepting')) {
+            console.log('Form requires permission, login, is not published, or closed');
             throw new Error('FORM_NOT_PUBLIC');
           }
 

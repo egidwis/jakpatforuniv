@@ -394,19 +394,40 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
 
                   const isNikField = /\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(questionText);
 
-                  if (isNameField || isEmailField || isPhoneField) {
+                  const isEwalletField = 
+                    // Verbs asking for e-wallet accounts/numbers
+                    /(?:masukkan|isikan|isi|tuliskan|tulis|input|enter|cantumkan|sertakan|bagikan)\s+(?:akun\s+|nomor\s+|no\.?\s+|id\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i.test(questionText) ||
+                    // Direct requests: "nomor/no/id/hp/rek DANA/OVO/etc."
+                    /(?:nomor|no\.?|number|id|rek(?:ening)?)\s*(?:[-(:/]?\s*(?:hp|telp|handphone|telepon)\s*)?[-\/(\[]?\s*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i.test(questionText) ||
+                    // E-wallet name followed by number/id/hp/rekening
+                    /(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)\s*[-((:/]?\s*(?:nomor|no\.?|number|id|rek(?:ening)?|hp|telp|handphone|akun|account)/i.test(questionText) ||
+                    // Pronoun pattern (e.g. "DANA Anda")
+                    /(?:nomor\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja)\s+(?:anda|kamu)/i.test(questionText) ||
+                    // Transfer or gift destination patterns
+                    /(?:transfer|kirim|pengiriman)\s+(?:hadiah|uang|dana|insentif|reward)\s+(?:ke|melalui|via)/i.test(questionText) ||
+                    /(?:melalui|via)\s+(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-wallet)\s+(?:nomor|ke|akun)/i.test(questionText) ||
+                    /(?:dikirim|diterima)\s+(?:hadiah|reward|prize|insentif)\s+(?:melalui|via|ke)/i.test(questionText) ||
+                    /(?:hadiah|reward|prize|insentif)\s+akan\s+(?:dikirim|diterima|transfer)/i.test(questionText);
+
+                  if (isNameField || isEmailField || isPhoneField || isNikField || isEwalletField) {
                     console.log(`[FALLBACK DEBUG] *** PERSONAL DATA FOUND in FB item ${index}: "${q[1]}" ***`);
                     hasPersonalDataQuestions = true;
 
                     // Determine keyword type
                     if (isNameField) {
                       if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
-                    } else if (isEmailField) {
+                    }
+                    if (isEmailField) {
                       if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
-                    } else if (isPhoneField) {
+                    }
+                    if (isPhoneField) {
                       if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
-                    } else if (isNikField) {
+                    }
+                    if (isNikField) {
                       if (!detectedKeywords.includes('nik/id')) detectedKeywords.push('nik/id');
+                    }
+                    if (isEwalletField) {
+                      if (!detectedKeywords.includes('e-wallet/hadiah')) detectedKeywords.push('e-wallet/hadiah');
                     }
                   }
                 }
@@ -498,21 +519,43 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
             const questionText = String(q[1]).toLowerCase();
             console.log(`[FALLBACK DEBUG] Checking item ${index}: "${q[1]}" (type: ${q[3]})`);
 
-            if (/\b(nama|name|email|e-mail|phone|telepon|handphone|hanphone|whatsapp|wa|alamat|nik|ktp|nomor induk kependudukan|henpon|hanpon|hape|telp|hp)\b/i.test(questionText)) {
+            const isEwalletField = 
+              // Verbs asking for e-wallet accounts/numbers
+              /(?:masukkan|isikan|isi|tuliskan|tulis|input|enter|cantumkan|sertakan|bagikan)\s+(?:akun\s+|nomor\s+|no\.?\s+|id\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i.test(questionText) ||
+              // Direct requests: "nomor/no/id/hp/rek DANA/OVO/etc."
+              /(?:nomor|no\.?|number|id|rek(?:ening)?)\s*(?:[-(:/]?\s*(?:hp|telp|handphone|telepon)\s*)?[-\/(\[]?\s*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i.test(questionText) ||
+              // E-wallet name followed by number/id/hp/rekening
+              /(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)\s*[-((:/]?\s*(?:nomor|no\.?|number|id|rek(?:ening)?|hp|telp|handphone|akun|account)/i.test(questionText) ||
+              // Pronoun pattern (e.g. "DANA Anda")
+              /(?:nomor\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja)\s+(?:anda|kamu)/i.test(questionText) ||
+              // Transfer or gift destination patterns
+              /(?:transfer|kirim|pengiriman)\s+(?:hadiah|uang|dana|insentif|reward)\s+(?:ke|melalui|via)/i.test(questionText) ||
+              /(?:melalui|via)\s+(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-wallet)\s+(?:nomor|ke|akun)/i.test(questionText) ||
+              /(?:dikirim|diterima)\s+(?:hadiah|reward|prize|insentif)\s+(?:melalui|via|ke)/i.test(questionText) ||
+              /(?:hadiah|reward|prize|insentif)\s+akan\s+(?:dikirim|diterima|transfer)/i.test(questionText);
+
+            if (/\b(nama|name|email|e-mail|phone|telepon|handphone|hanphone|whatsapp|wa|alamat|nik|ktp|nomor induk kependudukan|henpon|hanpon|hape|telp|hp)\b/i.test(questionText) || isEwalletField) {
               console.log(`[FALLBACK DEBUG] *** PERSONAL DATA FOUND in FB item ${index}: "${q[1]}" ***`);
               personalDataFound = true;
 
               // Determine keyword type
               if (/\b(nama|name)\b/i.test(questionText)) {
                 if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
-              } else if (/\b(email|e-mail)\b/i.test(questionText)) {
+              }
+              if (/\b(email|e-mail)\b/i.test(questionText)) {
                 if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
-              } else if (/\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp|mobile|cell)\b/i.test(questionText)) {
+              }
+              if (/\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp|mobile|cell)\b/i.test(questionText)) {
                 if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
-              } else if (/\b(alamat|address)\b/i.test(questionText)) {
+              }
+              if (/\b(alamat|address)\b/i.test(questionText)) {
                 if (!detectedKeywords.includes('address')) detectedKeywords.push('address');
-              } else if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(questionText)) {
+              }
+              if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(questionText)) {
                 if (!detectedKeywords.includes('nik/id')) detectedKeywords.push('nik/id');
+              }
+              if (isEwalletField) {
+                if (!detectedKeywords.includes('e-wallet/hadiah')) detectedKeywords.push('e-wallet/hadiah');
               }
             }
           }
@@ -556,6 +599,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:phone number|nomor telepon|nomor hp|nomor handphone|nomor hanphone|whatsapp number)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
         /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:full name|first name|last name|nama lengkap|nama depan|nama belakang)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
         /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:home address|mailing address|alamat rumah|alamat tempat tinggal)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
+        /(?:<div[^>]*>|<span[^>]*>)\s*([^<]*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)[^<]*)\s*(?:<\/div>|<\/span>)/gi,
       ];
 
       // Google Forms uses aria-label and data-params for form structure
@@ -565,9 +609,11 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         /<input[^>]*aria-label=['"]*([^'"]*(?:phone|nomor|telepon|handphone|hanphone|hp|whatsapp)[^'"]*)/gi,
         /<input[^>]*aria-label=['"]*([^'"]*(?:name|nama)[^'"]*)/gi,
         /<input[^>]*aria-label=['"]*([^'"]*(?:address|alamat)[^'"]*)/gi,
+        /<input[^>]*aria-label=['"]*([^'"]*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)[^'"]*)/gi,
 
         // Look for textarea elements
         /<textarea[^>]*aria-label=['"]*([^'"]*(?:email|phone|nomor|name|nama|address|alamat)[^'"]*)/gi,
+        /<textarea[^>]*aria-label=['"]*([^'"]*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)[^'"]*)/gi,
       ];
 
       // Look for question titles in Google Forms structure - more comprehensive patterns
@@ -577,6 +623,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:phone|telephone|mobile|cell)[^<]*)</gi,
         /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:full name|first name|last name|name)[^<]*)</gi,
         /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:address|location|residence)[^<]*)</gi,
+        /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)[^<]*)</gi,
 
         // Indonesian patterns
         /class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:alamat email|surel)[^<]*)</gi,
@@ -588,6 +635,7 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
         /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:email|e-?mail|alamat email)[^<]*)</gi,
         /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:phone|nomor|telepon|handphone|hanphone|hp|whatsapp)[^<]*)</gi,
         /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:name|nama)[^<]*)</gi,
+        /<span[^>]*class="[^"]*freebirdFormviewerComponentsQuestionBaseTitle[^"]*"[^>]*>([^<]*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)[^<]*)</gi,
       ];
 
       // Check Google Forms patterns (question content)
@@ -600,16 +648,39 @@ export async function extractFormInfoFallback(url: string): Promise<SurveyInfo> 
 
           // Determine keyword type from the match - be more specific
           const match = matches[0].toLowerCase();
+          
+          const isEwalletSensitive = 
+            // Verbs asking for e-wallet accounts/numbers
+            /(?:masukkan|isikan|isi|tuliskan|tulis|input|enter|cantumkan|sertakan|bagikan)\s+(?:akun\s+|nomor\s+|no\.?\s+|id\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i.test(match) ||
+            // Direct requests: "nomor/no/id/hp/rek DANA/OVO/etc."
+            /(?:nomor|no\.?|number|id|rek(?:ening)?)\s*(?:[-(:/]?\s*(?:hp|telp|handphone|telepon)\s*)?[-\/(\[]?\s*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i.test(match) ||
+            // E-wallet name followed by number/id/hp/rekening
+            /(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)\s*[-((:/]?\s*(?:nomor|no\.?|number|id|rek(?:ening)?|hp|telp|handphone|akun|account)/i.test(match) ||
+            // Pronoun pattern (e.g. "DANA Anda")
+            /(?:nomor\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja)\s+(?:anda|kamu)/i.test(match) ||
+            // Transfer or gift destination patterns
+            /(?:transfer|kirim|pengiriman)\s+(?:hadiah|uang|dana|insentif|reward)\s+(?:ke|melalui|via)/i.test(match) ||
+            /(?:melalui|via)\s+(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-wallet)\s+(?:nomor|ke|akun)/i.test(match) ||
+            /(?:dikirim|diterima)\s+(?:hadiah|reward|prize|insentif)\s+(?:melalui|via|ke)/i.test(match) ||
+            /(?:hadiah|reward|prize|insentif)\s+akan\s+(?:dikirim|diterima|transfer)/i.test(match);
+
           if (/\b(email|e-mail|surel)\b/i.test(match)) {
             if (!detectedKeywords.includes('email')) detectedKeywords.push('email');
-          } else if (/\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp|mobile|cell)\b/i.test(match)) {
+          }
+          if (/\b(phone|whatsapp|wa|telepon|no(?:mor)?\s*hp|no(?:mor)?\s*wa|no(?:mor)?\s*telepon|hp|handphone|hanphone|henpon|hanpon|hape|telp|no(?:\.)?\s*hp|no(?:mor)?\s*telp|mobile|cell)\b/i.test(match)) {
             if (!detectedKeywords.includes('phone')) detectedKeywords.push('phone');
-          } else if (/\b(name|nama)\b/i.test(match)) {
+          }
+          if (/\b(name|nama)\b/i.test(match)) {
             if (!detectedKeywords.includes('name')) detectedKeywords.push('name');
-          } else if (/\b(address|alamat|alamat rumah|alamat lengkap)\b/i.test(match)) {
+          }
+          if (/\b(address|alamat|alamat rumah|alamat lengkap)\b/i.test(match)) {
             if (!detectedKeywords.includes('address')) detectedKeywords.push('address');
-          } else if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(match)) {
+          }
+          if (/\b(nik|ktp|id card|nomor induk kependudukan)\b/i.test(match)) {
             if (!detectedKeywords.includes('nik/id')) detectedKeywords.push('nik/id');
+          }
+          if (isEwalletSensitive) {
+            if (!detectedKeywords.includes('e-wallet/hadiah')) detectedKeywords.push('e-wallet/hadiah');
           }
         }
       }

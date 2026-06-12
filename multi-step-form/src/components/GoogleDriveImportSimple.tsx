@@ -27,10 +27,13 @@ export function GoogleDriveImportSimple({
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [importedForm, setImportedForm] = useState<any>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   // Connect to Google
   const handleConnect = async () => {
     setIsConnecting(true);
+    setConnectError(null);
     try {
       const authResult: AuthResult = await simpleGoogleAuth.requestAccessToken();
 
@@ -53,19 +56,15 @@ export function GoogleDriveImportSimple({
         return;
       }
 
-      // Handle insufficient_permissions
-      if (error.message === 'insufficient_permissions') {
-        toast.error(
-          <div className="flex flex-col gap-1">
-            <span className="font-bold">Izin Tidak Lengkap</span>
-            <span className="text-sm">Mohon centang SEMUA kotak izin agar kami dapat membaca form Anda. Jangan khawatir, kami hanya membaca file yang Anda pilih.</span>
-          </div>,
-          { duration: 6000 }
-        );
-        return;
-      }
+      // Show simple toast error
+      toast.error(t('errorConnectGoogleDrive'));
 
-      toast.error(error.message || t('errorConnectGoogleDrive'));
+      // Save detailed error inline
+      if (error.message === 'insufficient_permissions') {
+        setConnectError('insufficient_permissions');
+      } else {
+        setConnectError(error.message || t('errorConnectGoogleDrive'));
+      }
     } finally {
       setIsConnecting(false);
     }
@@ -77,11 +76,14 @@ export function GoogleDriveImportSimple({
     setIsAuthenticated(false);
     setGoogleEmail('');
     setImportedForm(null);
+    setConnectError(null);
+    setImportError(null);
   };
 
   // Change Form
   const handleChangeForm = () => {
     setImportedForm(null);
+    setImportError(null);
   };
 
   // Proceed to Next Step
@@ -89,6 +91,7 @@ export function GoogleDriveImportSimple({
     if (importedForm) {
       updateFormData(importedForm);
       onFormDataLoaded();
+      toast.success(t('successFormImported').replace('{title}', importedForm.title));
     }
   };
 
@@ -100,6 +103,7 @@ export function GoogleDriveImportSimple({
     }
 
     setIsSelecting(true);
+    setImportError(null);
     try {
       const selectedFile = await googlePicker.showFormsPicker();
 
@@ -108,8 +112,17 @@ export function GoogleDriveImportSimple({
         return;
       }
 
+      const startTime = Date.now();
+
       // Extract form data
       const result = await googleFormsApi.extractToSurveyInfo(selectedFile.id);
+
+      // Ensure review loading state is at least 6 seconds (6000ms)
+      const elapsedTime = Date.now() - startTime;
+      const minDuration = 6000;
+      if (elapsedTime < minDuration) {
+        await new Promise((resolve) => setTimeout(resolve, minDuration - elapsedTime));
+      }
 
       if (result) {
         const extractedData = {
@@ -123,13 +136,23 @@ export function GoogleDriveImportSimple({
         };
 
         setImportedForm(extractedData);
-        toast.success(t('successFormImported').replace('{title}', result.title));
+        toast.success(t('reviewSuccess'));
       } else {
         throw new Error(t('errorExtractFormData'));
       }
     } catch (error: any) {
       console.error('Error selecting form:', error);
-      toast.error(error.message || t('errorSelectForm'));
+      
+      // Toast notification sederhana
+      toast.error(t('errorSelectForm'));
+      
+      // Detail error persisten di card
+      const errMsg = error.message;
+      if (errMsg === 'errorFormNotPublished' || errMsg === 'errorFormRestricted') {
+        setImportError(t(errMsg));
+      } else {
+        setImportError(errMsg || t('errorExtractFormData'));
+      }
     } finally {
       setIsSelecting(false);
     }
@@ -254,6 +277,28 @@ export function GoogleDriveImportSimple({
                 </>
               )}
             </button>
+
+            {connectError && (
+              <div className="mt-4 p-3.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm flex gap-3 items-start animate-fade-in shadow-sm w-full">
+                <div className="p-1 bg-red-100 text-red-600 rounded-lg shrink-0 mt-0.5">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-bold text-red-900 mb-0.5">
+                    {connectError === 'insufficient_permissions' ? t('errorInsufficientPermissionsTitle') : t('errorConnectGoogleDrive')}
+                  </h4>
+                  <p className="text-xs text-red-700 leading-relaxed font-medium">
+                    {connectError === 'insufficient_permissions' 
+                      ? t('errorInsufficientPermissionsDesc') 
+                      : connectError}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Step 2 Preview (Disabled) */}
@@ -369,7 +414,7 @@ export function GoogleDriveImportSimple({
                   </p>
                 </div>
               </div>
-
+ 
               <button
                 onClick={handleSelectForm}
                 disabled={isSelecting}
@@ -382,7 +427,7 @@ export function GoogleDriveImportSimple({
                 {isSelecting ? (
                   <>
                     <Loader2 className="button-spinner" size={20} />
-                    {t('loading')}
+                    {t('reviewingSystem')}
                   </>
                 ) : (
                   <>
@@ -395,6 +440,26 @@ export function GoogleDriveImportSimple({
                   </>
                 )}
               </button>
+
+              {importError && (
+                <div className="mt-4 p-3.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm flex gap-3 items-start animate-fade-in shadow-sm w-full">
+                  <div className="p-1 bg-red-100 text-red-600 rounded-lg shrink-0 mt-0.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-red-900 mb-0.5">
+                      {t('errorSelectForm')}
+                    </h4>
+                    <p className="text-xs text-red-700 leading-relaxed font-medium">
+                      {importError}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

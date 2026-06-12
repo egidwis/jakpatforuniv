@@ -227,33 +227,88 @@ export class GoogleFormsApiService {
       // Mencegah form "Not Published" / "Restricted" lolos karena status kepemilikan
       try {
         console.log('Melakukan verifikasi akses publik via proxy...');
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(formUrl)}`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 detik maksimal
         
-        const res = await fetch(proxyUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
+        let htmlText = '';
+        let fetchSuccess = false;
         
-        if (res.ok) {
-          const htmlText = await res.text();
+        // 1. Coba via internal proxy terlebih dahulu
+        try {
+          const proxyUrl = `/api/google-forms-proxy?url=${encodeURIComponent(formUrl)}`;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 6000);
+          const res = await fetch(proxyUrl, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            htmlText = await res.text();
+            fetchSuccess = true;
+            console.log('Verifikasi akses publik via internal proxy berhasil.');
+          } else {
+            console.warn(`Internal proxy status: ${res.status}, falling back to corsproxy.io`);
+          }
+        } catch (e) {
+          console.warn('Internal proxy failed, falling back to corsproxy.io:', e);
+        }
+        
+        // 2. Fallback ke corsproxy.io jika internal proxy gagal
+        if (!fetchSuccess) {
+          try {
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(formUrl)}`;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            const res = await fetch(proxyUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+              htmlText = await res.text();
+              fetchSuccess = true;
+              console.log('Verifikasi akses publik via corsproxy.io berhasil.');
+            } else {
+              console.warn(`corsproxy.io status: ${res.status}`);
+            }
+          } catch (e) {
+            console.warn('corsproxy.io failed:', e);
+          }
+        }
+        
+        if (fetchSuccess && htmlText) {
+          const lowerHtml = htmlText.toLowerCase();
           
-          if (htmlText.includes('This document is not published') || htmlText.includes('document is not published')) {
-             throw new Error('Gagal Import! Sistem mendeteksi bahwa form Anda berstatus "Not Published". Tolong pastikan form sudah siap dan ter-publish.');
+          // Check for unpublished or closed status
+          if (
+            lowerHtml.includes('document is not published') || 
+            htmlText.includes('This document is not published') ||
+            lowerHtml.includes('no longer accepting responses') ||
+            lowerHtml.includes('tidak lagi menerima tanggapan') ||
+            lowerHtml.includes('tidak menerima tanggapan') ||
+            lowerHtml.includes('no longer accepting')
+          ) {
+            throw new Error('errorFormNotPublished');
           }
-          if (htmlText.includes('You need permission') || htmlText.includes('Request access') || htmlText.includes('Sign in to continue')) {
-             console.warn('Kemungkinan false positive karena proxy di-block Google. Melewati strict check untuk form ini.');
-             // throw new Error('Gagal Import! Akses ke form Anda tertutup. Silakan ubah izin form menjadi "Anyone with the link" (Siapa saja yang memiliki akses) terlebih dahulu.');
+          
+          // Check for captcha/block first
+          const isGoogleCaptchaOrBlock = lowerHtml.includes('recaptcha') || lowerHtml.includes('unusual traffic') || lowerHtml.includes('captcha');
+          
+          if (!isGoogleCaptchaOrBlock) {
+            // Check for restricted access
+            if (
+              lowerHtml.includes('you need permission') || 
+              lowerHtml.includes('request access') || 
+              lowerHtml.includes('sign in to continue') ||
+              htmlText.includes('You need permission') ||
+              htmlText.includes('Request access') ||
+              htmlText.includes('Sign in to continue')
+            ) {
+              throw new Error('errorFormRestricted');
+            }
+          } else {
+            console.warn('Google CAPTCHA or traffic block detected, skipping restricted check to avoid false positive.');
           }
-        } else if (res.status === 403 || res.status === 401) {
-             console.warn('Proxy mendapat 403/401. Kemungkinan false positive proxy block. Melewati strict check.');
-             // throw new Error('Gagal Import! Akses ke form Anda tertutup. Silakan ubah izin form menjadi "Anyone with the link" (Siapa saja yang memiliki akses) terlebih dahulu.');
         }
       } catch (proxyError: any) {
-         // Jika error merupakan validasi kustom dari kita, forward errornya agar ditangkap oleh UI (Toast)
-         if (proxyError.name === 'Error' && proxyError.message.includes('Gagal Import!')) {
+         // Jika error merupakan key terjemahan yang kita lempar, teruskan ke luar
+         if (proxyError.message === 'errorFormNotPublished' || proxyError.message === 'errorFormRestricted') {
              throw proxyError;
          }
-         // Abaikan error murni jaringan CORS proxy, anggap aman jika API utama berhasil
+         // Abaikan error murni jaringan, anggap aman jika API utama berhasil
          console.warn('Proxy access check network failed, ignoring:', proxyError);
       }
 
@@ -297,6 +352,27 @@ export class GoogleFormsApiService {
         // 6. File Upload
         if (question.type === 'file_upload') {
           if (!personalDataKeywords.includes('file upload')) personalDataKeywords.push('file upload');
+          hasPersonalDataQuestions = true;
+        }
+
+        // 7. E-wallet / Reward (Dana, Gopay, Ovo, Shopeepay, Linkaja, etc. as personal data)
+        const isEwalletSensitive = 
+          // Verbs asking for e-wallet accounts/numbers
+          /(?:masukkan|isikan|isi|tuliskan|tulis|input|enter|cantumkan|sertakan|bagikan)\s+(?:akun\s+|nomor\s+|no\.?\s+|id\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i.test(titleLower) ||
+          // Direct requests: "nomor/no/id/hp/rek DANA/OVO/etc."
+          /(?:nomor|no\.?|number|id|rek(?:ening)?)\s*(?:[-(:/]?\s*(?:hp|telp|handphone|telepon)\s*)?[-\/(\[]?\s*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i.test(titleLower) ||
+          // E-wallet name followed by number/id/hp/rekening
+          /(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)\s*[-((:/]?\s*(?:nomor|no\.?|number|id|rek(?:ening)?|hp|telp|handphone|akun|account)/i.test(titleLower) ||
+          // Pronoun pattern (e.g. "DANA Anda")
+          /(?:nomor\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja)\s+(?:anda|kamu)/i.test(titleLower) ||
+          // Transfer or gift destination patterns
+          /(?:transfer|kirim|pengiriman)\s+(?:hadiah|uang|dana|insentif|reward)\s+(?:ke|melalui|via)/i.test(titleLower) ||
+          /(?:melalui|via)\s+(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-wallet)\s+(?:nomor|ke|akun)/i.test(titleLower) ||
+          /(?:dikirim|diterima)\s+(?:hadiah|reward|prize|insentif)\s+(?:melalui|via|ke)/i.test(titleLower) ||
+          /(?:hadiah|reward|prize|insentif)\s+akan\s+(?:dikirim|diterima|transfer)/i.test(titleLower);
+
+        if (isEwalletSensitive) {
+          if (!personalDataKeywords.includes('e-wallet/hadiah')) personalDataKeywords.push('e-wallet/hadiah');
           hasPersonalDataQuestions = true;
         }
       });

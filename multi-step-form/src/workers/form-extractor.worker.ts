@@ -129,12 +129,19 @@ function detectPersonalDataKeywords(html: string): { hasPersonalData: boolean; k
   // Financial/reward-related patterns that often require personal data
   // Only detect when there's clear indication of reward/payment collection
   const financialQuestionPatterns = [
-    /(?:masukkan|isi|tulis|input|enter)\s+(?:nomor\s+)?(?:dana|gopay|ovo|shopeepay|linkaja|e-?wallet)/i,
-    /(?:nomor\s+)?(?:dana|gopay|ovo|shopeepay|linkaja)\s+(?:anda|kamu)/i,
-    /(?:transfer|kirim|pengiriman)\s+(?:hadiah|uang|dana)\s+(?:ke|melalui|via)/i,
-    /(?:melalui|via)\s+(?:dana|gopay|ovo|shopeepay|linkaja|e-?wallet)\s+(?:nomor|ke)/i,
-    /(?:dikirim|diterima)\s+(?:hadiah|reward|prize)\s+(?:melalui|via|ke)/i,
-    /(?:hadiah|reward|prize)\s+akan\s+(?:dikirim|diterima|transfer)/i
+    // Verbs asking for e-wallet accounts/numbers
+    /(?:masukkan|isikan|isi|tuliskan|tulis|input|enter|cantumkan|sertakan|bagikan)\s+(?:akun\s+|nomor\s+|no\.?\s+|id\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i,
+    // Direct requests: "nomor/no/id/hp/rek DANA/OVO/etc."
+    /(?:nomor|no\.?|number|id|rek(?:ening)?)\s*(?:[-(:/]?\s*(?:hp|telp|handphone|telepon)\s*)?[-\/(\[]?\s*(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)/i,
+    // E-wallet name followed by number/id/hp/rekening
+    /(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-?wallet)\s*[-((:/]?\s*(?:nomor|no\.?|number|id|rek(?:ening)?|hp|telp|handphone|akun|account)/i,
+    // Pronoun pattern (e.g. "DANA Anda")
+    /(?:nomor\s+)?(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja)\s+(?:anda|kamu)/i,
+    // Transfer or gift destination patterns
+    /(?:transfer|kirim|pengiriman)\s+(?:hadiah|uang|dana|insentif|reward)\s+(?:ke|melalui|via)/i,
+    /(?:melalui|via)\s+(?:dana|gopay|go-pay|ovo|shopeepay|shopee\s*pay|linkaja|link\s*aja|e-wallet)\s+(?:nomor|ke|akun)/i,
+    /(?:dikirim|diterima)\s+(?:hadiah|reward|prize|insentif)\s+(?:melalui|via|ke)/i,
+    /(?:hadiah|reward|prize|insentif)\s+akan\s+(?:dikirim|diterima|transfer)/i
   ];
 
   console.log('[DEBUG] Starting personal data detection...');
@@ -350,7 +357,12 @@ async function extractFormInfo(url: string) {
           const hasPermissionError = html.includes('You need permission');
           const hasRequestAccess = html.includes('Request access');
           const hasPermissionDenied = html.includes('Permission denied');
-          const isNotPublished = html.includes('This document is not published') || html.includes('document is not published');
+          const isNotPublished = html.includes('This document is not published') || 
+                                 html.includes('document is not published') ||
+                                 html.includes('no longer accepting responses') ||
+                                 html.includes('tidak lagi menerima tanggapan') ||
+                                 html.includes('tidak menerima tanggapan') ||
+                                 html.includes('no longer accepting');
           const isTooShort = html.length < 1000;
 
           // More specific checks for sign-in requirements
@@ -641,7 +653,12 @@ async function extractFormInfo(url: string) {
       const hasPermissionError = html.includes('You need permission');
       const hasRequestAccess = html.includes('Request access');
       const hasPermissionDenied = html.includes('Permission denied');
-      const isNotPublished = html.includes('This document is not published') || html.includes('document is not published');
+      const isNotPublished = html.includes('This document is not published') || 
+                             html.includes('document is not published') ||
+                             html.includes('no longer accepting responses') ||
+                             html.includes('tidak lagi menerima tanggapan') ||
+                             html.includes('tidak menerima tanggapan') ||
+                             html.includes('no longer accepting');
       const isTooShort = html.length < 1000;
 
       // More specific checks for sign-in requirements

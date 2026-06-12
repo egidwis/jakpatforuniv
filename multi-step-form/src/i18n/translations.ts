@@ -334,12 +334,18 @@ export const translations = {
     // Success Messages - GoogleDriveImportSimple
     successConnectedGoogleDrive: "Successfully connected to Google Drive",
     successFormImported: "Form \"{title}\" successfully imported",
+    reviewSuccess: "Review success",
 
     // Error Messages - GoogleDriveImportSimple
     errorConnectGoogleDrive: "Failed to connect to Google Drive",
     errorConnectFirst: "Please connect to Google Drive first",
     errorExtractFormData: "Failed to extract form data",
     errorSelectForm: "Failed to select form",
+    reviewingSystem: "Survey is being reviewed by the system...",
+    errorFormNotPublished: "Import Failed! System detected that your Google Form is not published (Status: Not Published). Please click \"Send\" in your Google Form and make it publicly accessible.",
+    errorFormRestricted: "Import Failed! Your Google Form is restricted. Please change the form access settings to \"Anyone with the link\" and ensure Google/organizational login is not required.",
+    errorInsufficientPermissionsTitle: "Insufficient Permissions",
+    errorInsufficientPermissionsDesc: "Please check ALL permission checkboxes so we can read your form. Don't worry, we only read the specific file you select.",
 
     // Success Messages - StepOneFormFields
     successImportedFromGoogleDrive: "Data successfully imported from Google Drive",
@@ -676,12 +682,18 @@ export const translations = {
     // Success Messages - GoogleDriveImportSimple
     successConnectedGoogleDrive: "Berhasil terhubung ke Google Drive",
     successFormImported: "Form \"{title}\" berhasil diimport",
+    reviewSuccess: "Review berhasil",
 
     // Error Messages - GoogleDriveImportSimple
     errorConnectGoogleDrive: "Gagal terhubung ke Google Drive",
     errorConnectFirst: "Harap hubungkan ke Google Drive terlebih dahulu",
     errorExtractFormData: "Gagal mengekstrak data form",
     errorSelectForm: "Gagal memilih form",
+    reviewingSystem: "Kuesioner sedang direview oleh sistem...",
+    errorFormNotPublished: "Gagal Import! Sistem mendeteksi bahwa Google Form Anda belum di-publish (Status: Not Published). Silakan klik \"Kirim/Send\" di Google Form lalu buat link yang dapat diakses publik.",
+    errorFormRestricted: "Gagal Import! Google Form Anda tertutup (Restricted). Silakan ubah izin akses form Anda menjadi \"Siapa saja yang memiliki link\" (Anyone with the link) dan pastikan tidak memerlukan login Google/organisasi.",
+    errorInsufficientPermissionsTitle: "Izin Tidak Lengkap",
+    errorInsufficientPermissionsDesc: "Mohon centang SEMUA kotak izin agar kami dapat membaca form Anda. Jangan khawatir, kami hanya membaca file yang Anda pilih.",
 
     // Success Messages - StepOneFormFields
     successImportedFromGoogleDrive: "Data berhasil diimport dari Google Drive",
