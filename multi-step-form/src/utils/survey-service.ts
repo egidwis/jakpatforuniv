@@ -165,7 +165,8 @@ export async function extractGoogleFormsInfo(url: string): Promise<SurveyInfo> {
       };
     } else if (axios.isAxiosError(error)) {
       // Handle Axios errors
-      if (error.code === 'ECONNABORTED' || error.code === 'ECONNREFUSED' || error.response?.status === 403) {
+      if (error.code === 'ECONNABORTED' || error.code === 'ECONNREFUSED' || 
+          error.response?.status === 401 || error.response?.status === 403 || error.response?.status === 404) {
         throw new Error('FORM_NOT_PUBLIC');
       }
     }

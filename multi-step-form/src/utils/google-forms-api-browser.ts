@@ -244,8 +244,16 @@ export class GoogleFormsApiService {
             console.log('Verifikasi akses publik via internal proxy berhasil.');
           } else {
             console.warn(`Internal proxy status: ${res.status}, falling back to corsproxy.io`);
+            if (res.status === 401 || res.status === 403) {
+              throw new Error('errorFormRestricted');
+            } else if (res.status === 404) {
+              throw new Error('errorFormNotPublished');
+            }
           }
-        } catch (e) {
+        } catch (e: any) {
+          if (e.message === 'errorFormRestricted' || e.message === 'errorFormNotPublished') {
+            throw e;
+          }
           console.warn('Internal proxy failed, falling back to corsproxy.io:', e);
         }
         
