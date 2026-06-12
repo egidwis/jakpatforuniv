@@ -160,8 +160,6 @@ export async function onRequestGet(context) {
                     title: p.title,
                     slug: p.slug || p.id,
                     total_respondents: respondentCount,
-                    reward_per_winner: sub?.prize_per_winner || 0,
-                    winner_count: sub?.winner_count || 0,
                     criteria: sub?.criteria_responden || null,
                     period: {
                         start: p.publish_start_date || null,
