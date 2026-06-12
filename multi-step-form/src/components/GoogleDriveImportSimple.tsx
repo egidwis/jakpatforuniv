@@ -104,8 +104,9 @@ export function GoogleDriveImportSimple({
 
     setIsSelecting(true);
     setImportError(null);
+    let selectedFile: any = null;
     try {
-      const selectedFile = await googlePicker.showFormsPicker();
+      selectedFile = await googlePicker.showFormsPicker();
 
       if (!selectedFile) {
         setIsSelecting(false);
@@ -149,7 +150,8 @@ export function GoogleDriveImportSimple({
       // Detail error persisten di card
       const errMsg = error.message;
       if (errMsg === 'errorFormNotPublished' || errMsg === 'errorFormRestricted') {
-        setImportError(t(errMsg));
+        const formTitle = selectedFile?.name || 'Google Form';
+        setImportError(t(errMsg).replace('{title}', formTitle));
       } else {
         setImportError(errMsg || t('errorExtractFormData'));
       }

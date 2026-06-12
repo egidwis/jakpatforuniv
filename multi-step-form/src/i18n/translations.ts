@@ -342,8 +342,8 @@ export const translations = {
     errorExtractFormData: "Failed to extract form data",
     errorSelectForm: "Failed to select form",
     reviewingSystem: "Survey is being reviewed by the system...",
-    errorFormNotPublished: "Import Failed! System detected that your Google Form is not published (Status: Not Published). Please click \"Send\" in your Google Form and make it publicly accessible.",
-    errorFormRestricted: "Import Failed! Your Google Form is restricted. Please change the form access settings to \"Anyone with the link\" and ensure Google/organizational login is not required.",
+    errorFormNotPublished: "Import Failed for \"{title}\"! The form is restricted, unpublished, or not accepting responses. Please click \"Send\" in your Google Form, set link access to \"Anyone with the link\", and verify that Google or organizational login is not required.",
+    errorFormRestricted: "Import Failed for \"{title}\"! The form is restricted, unpublished, or not accepting responses. Please click \"Send\" in your Google Form, set link access to \"Anyone with the link\", and verify that Google or organizational login is not required.",
     errorInsufficientPermissionsTitle: "Insufficient Permissions",
     errorInsufficientPermissionsDesc: "Please check ALL permission checkboxes so we can read your form. Don't worry, we only read the specific file you select.",
 
@@ -690,8 +690,8 @@ export const translations = {
     errorExtractFormData: "Gagal mengekstrak data form",
     errorSelectForm: "Gagal memilih form",
     reviewingSystem: "Kuesioner sedang direview oleh sistem...",
-    errorFormNotPublished: "Gagal Import! Sistem mendeteksi bahwa Google Form Anda belum di-publish (Status: Not Published). Silakan klik \"Kirim/Send\" di Google Form lalu buat link yang dapat diakses publik.",
-    errorFormRestricted: "Gagal Import! Google Form Anda tertutup (Restricted). Silakan ubah izin akses form Anda menjadi \"Siapa saja yang memiliki link\" (Anyone with the link) dan pastikan tidak memerlukan login Google/organisasi.",
+    errorFormNotPublished: "Gagal Import untuk \"{title}\"! Google Form Anda tertutup (restricted), belum di-publish, atau tidak menerima tanggapan. Silakan klik \"Kirim/Send\", ubah izin akses menjadi \"Siapa saja yang memiliki link\" (Anyone with the link), dan pastikan syarat login Google/organisasi dinonaktifkan.",
+    errorFormRestricted: "Gagal Import untuk \"{title}\"! Google Form Anda tertutup (restricted), belum di-publish, atau tidak menerima tanggapan. Silakan klik \"Kirim/Send\", ubah izin akses menjadi \"Siapa saja yang memiliki link\" (Anyone with the link), dan pastikan syarat login Google/organisasi dinonaktifkan.",
     errorInsufficientPermissionsTitle: "Izin Tidak Lengkap",
     errorInsufficientPermissionsDesc: "Mohon centang SEMUA kotak izin agar kami dapat membaca form Anda. Jangan khawatir, kami hanya membaca file yang Anda pilih.",
 
