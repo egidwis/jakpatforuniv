@@ -82,7 +82,7 @@ export async function onRequestGet(context) {
         if (!pageId && !slug) {
             const { data: pages, error: pagesError } = await supabase
                 .from('survey_pages')
-                .select('id, slug, title, publish_start_date, publish_end_date, created_at, submission_id, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden), page_respondents(count)')
+                .select('id, slug, title, publish_start_date, publish_end_date, created_at, submission_id, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden, end_date, submission_status), page_respondents(count)')
                 .eq('is_published', true)
                 .order('created_at', { ascending: false });
 
@@ -108,13 +108,13 @@ export async function onRequestGet(context) {
             }
 
             // Helper: build batches array from parent submission + extends
-            function buildBatches(sub, extends_list) {
+            function buildBatches(sub, extends_list, defaultEndDate) {
                 if (!sub) return [];
                 const periods = {};
                 const activeStatuses = ['live', 'scheduled', 'paid', 'waiting_payment'];
 
                 // Parent period
-                const parentEnd = sub.end_date || sub.publish_end_date;
+                const parentEnd = sub.end_date || defaultEndDate;
                 const pp = parentEnd ? parentEnd.substring(0, 7) : null;
                 if (pp) {
                     periods[pp] = {
@@ -167,7 +167,7 @@ export async function onRequestGet(context) {
                         start: p.publish_start_date || null,
                         end: p.publish_end_date || null,
                     },
-                    batches: buildBatches(sub, extendsMap[p.submission_id] || []),
+                    batches: buildBatches(sub, extendsMap[p.submission_id] || [], p.publish_end_date),
                 };
             });
 
