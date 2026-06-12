@@ -230,6 +230,7 @@ export class GoogleFormsApiService {
         
         let htmlText = '';
         let fetchSuccess = false;
+        let responseStatus = 200;
         
         // 1. Coba via internal proxy terlebih dahulu
         try {
@@ -238,17 +239,15 @@ export class GoogleFormsApiService {
           const timeoutId = setTimeout(() => controller.abort(), 6000);
           const res = await fetch(proxyUrl, { signal: controller.signal });
           clearTimeout(timeoutId);
-          if (res.ok) {
+          
+          responseStatus = res.status;
+          
+          if (res.status === 200 || res.status === 401 || res.status === 403 || res.status === 404) {
             htmlText = await res.text();
             fetchSuccess = true;
-            console.log('Verifikasi akses publik via internal proxy berhasil.');
+            console.log(`Verifikasi akses publik via internal proxy berhasil, status: ${res.status}`);
           } else {
             console.warn(`Internal proxy status: ${res.status}, falling back to corsproxy.io`);
-            if (res.status === 401 || res.status === 403) {
-              throw new Error('errorFormRestricted');
-            } else if (res.status === 404) {
-              throw new Error('errorFormNotPublished');
-            }
           }
         } catch (e: any) {
           if (e.message === 'errorFormRestricted' || e.message === 'errorFormNotPublished') {
@@ -268,6 +267,7 @@ export class GoogleFormsApiService {
             if (res.ok) {
               htmlText = await res.text();
               fetchSuccess = true;
+              responseStatus = res.status;
               console.log('Verifikasi akses publik via corsproxy.io berhasil.');
             } else {
               console.warn(`corsproxy.io status: ${res.status}`);
@@ -309,6 +309,13 @@ export class GoogleFormsApiService {
             }
           } else {
             console.warn('Google CAPTCHA or traffic block detected, skipping restricted check to avoid false positive.');
+          }
+          
+          // Fallback based on HTTP status code if text pattern checks didn't trigger
+          if (responseStatus === 401 || responseStatus === 403) {
+            throw new Error('errorFormRestricted');
+          } else if (responseStatus === 404) {
+            throw new Error('errorFormNotPublished');
           }
         }
       } catch (proxyError: any) {
