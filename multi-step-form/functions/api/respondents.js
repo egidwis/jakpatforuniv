@@ -76,7 +76,111 @@ export async function onRequestGet(context) {
     const slug = url.searchParams.get('slug');
 
     try {
-        // Resolve page by page_id, slug, or default to the latest published survey
+        // ─────────────────────────────────────────────
+        // MODE 1: List all surveys (no page_id or slug)
+        // ─────────────────────────────────────────────
+        if (!pageId && !slug) {
+            const { data: pages, error: pagesError } = await supabase
+                .from('survey_pages')
+                .select('id, slug, title, publish_start_date, publish_end_date, created_at, submission_id, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden), page_respondents(count)')
+                .eq('is_published', true)
+                .order('created_at', { ascending: false });
+
+            if (pagesError) throw pagesError;
+
+            // Bulk-fetch all paid extends for batch info
+            const submissionIds = (pages || []).map(p => p.submission_id).filter(Boolean);
+            const extendsMap = {};
+
+            if (submissionIds.length > 0) {
+                const { data: extData, error: extError } = await supabase
+                    .from('form_submissions_extend')
+                    .select('submission_id, period_batch, prize_per_winner, additional_prize_per_winner, winner_count, submission_status')
+                    .in('submission_id', submissionIds)
+                    .eq('payment_status', 'paid');
+
+                if (!extError && extData) {
+                    extData.forEach(e => {
+                        if (!extendsMap[e.submission_id]) extendsMap[e.submission_id] = [];
+                        extendsMap[e.submission_id].push(e);
+                    });
+                }
+            }
+
+            // Helper: build batches array from parent submission + extends
+            function buildBatches(sub, extends_list) {
+                if (!sub) return [];
+                const periods = {};
+                const activeStatuses = ['live', 'scheduled', 'paid', 'waiting_payment'];
+
+                // Parent period
+                const parentEnd = sub.end_date || sub.publish_end_date;
+                const pp = parentEnd ? parentEnd.substring(0, 7) : null;
+                if (pp) {
+                    periods[pp] = {
+                        base_p: sub.prize_per_winner || 0,
+                        add_p: 0,
+                        wc: sub.winner_count || 0,
+                        statuses: [sub.submission_status || 'live']
+                    };
+                }
+
+                // Extends
+                (extends_list || []).forEach(e => {
+                    const pb = e.period_batch;
+                    if (!pb) return;
+                    if (!periods[pb]) periods[pb] = { base_p: 0, add_p: 0, wc: 0, statuses: [] };
+                    periods[pb].base_p = Math.max(periods[pb].base_p, e.prize_per_winner || 0);
+                    periods[pb].add_p += e.additional_prize_per_winner || 0;
+                    periods[pb].wc = Math.max(periods[pb].wc, e.winner_count || 0);
+                    periods[pb].statuses.push(e.submission_status);
+                });
+
+                return Object.entries(periods).map(([pb, p]) => {
+                    const hasActive = p.statuses.some(s => activeStatuses.includes(s));
+                    return {
+                        period_batch: pb,
+                        prize_per_winner: p.base_p + p.add_p,
+                        winner_count: p.wc,
+                        batch_status: hasActive ? 'active' : 'closed',
+                        can_select_winners: !hasActive
+                    };
+                }).sort((a, b) => a.period_batch.localeCompare(b.period_batch));
+            }
+
+            const surveys = (pages || []).map(p => {
+                const sub = Array.isArray(p.form_submissions) ? p.form_submissions[0] : p.form_submissions;
+                let respondentCount = 0;
+                if (p.page_respondents && Array.isArray(p.page_respondents) && p.page_respondents.length > 0) {
+                    respondentCount = p.page_respondents[0].count || 0;
+                }
+
+                return {
+                    page_id: p.id,
+                    title: p.title,
+                    slug: p.slug || p.id,
+                    total_respondents: respondentCount,
+                    reward_per_winner: sub?.prize_per_winner || 0,
+                    winner_count: sub?.winner_count || 0,
+                    criteria: sub?.criteria_responden || null,
+                    period: {
+                        start: p.publish_start_date || null,
+                        end: p.publish_end_date || null,
+                    },
+                    batches: buildBatches(sub, extendsMap[p.submission_id] || []),
+                };
+            });
+
+            return new Response(JSON.stringify({
+                status: 'success',
+                count: surveys.length,
+                surveys,
+            }), { headers: corsHeaders });
+        }
+
+        // ─────────────────────────────────────────────
+        // MODE 2: Get respondents for a specific survey
+        // ─────────────────────────────────────────────
         let pageQuery = supabase
             .from('survey_pages')
             .select('id, slug, title, publish_start_date, publish_end_date, submission_id, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden)')
@@ -84,28 +188,23 @@ export async function onRequestGet(context) {
 
         if (pageId) {
             pageQuery = pageQuery.eq('id', pageId);
-        } else if (slug) {
-            pageQuery = pageQuery.eq('slug', slug);
         } else {
-            // Default to the latest published survey page
-            pageQuery = pageQuery.order('created_at', { ascending: false }).limit(1);
+            pageQuery = pageQuery.eq('slug', slug);
         }
 
-        const { data: pageDataArray, error: pageError } = await pageQuery;
+        const { data: pageData, error: pageError } = await pageQuery.single();
 
-        if (pageError || !pageDataArray || pageDataArray.length === 0) {
+        if (pageError || !pageData) {
             return new Response(JSON.stringify({
                 status: 'error',
-                message: 'No published surveys found.',
+                message: `Survey not found for the given ${pageId ? 'page_id' : 'slug'}.`,
             }), {
                 status: 400,
                 headers: corsHeaders,
             });
         }
 
-        const pageData = pageDataArray[0];
-
-        // Fetch all respondents for this page (include loi_seconds)
+        // Fetch all respondents for this page
         const allRespondents = await fetchAllRows(() =>
             supabase
                 .from('page_respondents')
