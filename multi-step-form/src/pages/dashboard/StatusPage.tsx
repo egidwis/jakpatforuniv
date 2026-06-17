@@ -5,11 +5,11 @@ import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransaction
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, FileText, CheckCircle2, Search, PlayCircle, CreditCard, MessageCircle, AlertCircle, Trash2, Menu, Info, ExternalLink, Gift, Users, Link as LinkIcon } from 'lucide-react';
+import { FileText, MessageCircle, AlertCircle, Trash2, Menu, Gift, Users, Link as LinkIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link, useSearchParams, useOutletContext, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ProgressTracker, getStatusSteps, getCurrentStepIndex } from '@/components/ProgressTracker';
+import { ProgressTracker, getStatusSteps, getCurrentStepIndex, normalizeScheduleDate } from '@/components/ProgressTracker';
 
 export function StatusPage() {
     const { user } = useAuth();
@@ -319,7 +319,6 @@ export function StatusPage() {
                                     .filter(submission => {
                                         if (selectedStatus === 'all') return true;
 
-                                        const hasLink = !!paymentLinks[submission.id!];
                                         const currentStepIndex = getCurrentStepIndex(submission);
                                         // Handle revision/spam status (index = -1)
                                         if (currentStepIndex === -1) {
@@ -330,13 +329,12 @@ export function StatusPage() {
                                         return currentStepKey === selectedStatus;
                                     })
                                     .map((submission) => {
-                                        const hasLink = !!paymentLinks[submission.id!];
                                         const currentStepRaw = getCurrentStepIndex(submission);
                                         // Auto-approval logic
                                         const isUserBooked = submission.slot_booked_by === 'user';
                                         const isPaymentExpired = submission.payment_status === 'expired';
                                         const isPaidOrBeyond = submission.payment_status === 'paid' || ['paid', 'scheduled', 'live', 'completed'].includes((submission.submission_status || '').toLowerCase());
-                                        const isExpired = !isPaidOrBeyond && (isPaymentExpired || (isUserBooked && submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 3600_000))); // 1 hour expiration
+                                        const isExpired = !isPaidOrBeyond && (isPaymentExpired || (isUserBooked && !!submission.slot_reserved_at && Date.now() > (new Date(submission.slot_reserved_at).getTime() + 3600_000))); // 1 hour expiration
                                         
                                         // Force UI to regress to 'slot_reserved' step if expired, regardless of what DB says
                                         const currentStep = isExpired ? 1 : currentStepRaw;
