@@ -5,11 +5,6 @@
   },
   "exclude": [
     "multi-step-form/**",
-    "survey-extractor-shadcn/**",
-    "survey-extractor-vite/**",
-    "google-form-extractor/**",
-    "simple_form_info/**",
-    "universal-survey-extractor/**",
     "api/**",
     "api-deploy/**",
     "functions/**",

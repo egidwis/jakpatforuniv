@@ -313,7 +313,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 <h4 className="font-bold text-amber-900 text-sm">Terdeteksi Pertanyaan Data Pribadi</h4>
                 <p className="text-sm text-amber-700 mt-1 leading-relaxed">
                   Sistem mendeteksi form ini menanyakan: <strong className="bg-amber-200/60 px-1.5 py-0.5 rounded capitalize">{formData.detectedKeywords.join(', ')}</strong>.
-                  Sesuai <a href="/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin sebelum dilanjutkan ke tahap pembayaran.
+                  Sesuai <a href="/homepage/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin sebelum dilanjutkan ke tahap pembayaran.
                 </p>
               </div>
             </div>
@@ -563,7 +563,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
             <label htmlFor="terms-checkbox" className="text-sm text-gray-700 leading-relaxed cursor-pointer select-none font-medium">
               {t('byContinuingAgree')}{' '}
               <a
-                href="/privacy-policy.html"
+                href="/homepage/privacy-policy.html"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline transition-colors"
@@ -574,7 +574,7 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
               </a>
               {' '}{t('andText')}{' '}
               <a
-                href="/terms-conditions.html"
+                href="/homepage/terms-conditions.html"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline transition-colors"

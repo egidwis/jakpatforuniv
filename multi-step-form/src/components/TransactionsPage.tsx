@@ -99,8 +99,14 @@ export function TransactionsPage() {
   };
 
   const getMethodBadge = (method: string) => {
-    if (method === 'doku' || method === 'mayar') {
+    if (method === 'doku') {
       return <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100 border rounded-md font-normal">DOKU</Badge>;
+    }
+    // LEGACY: transaksi lama dibuat lewat Mayar (gateway lama, sudah diganti DOKU).
+    // Handler ini DIPERTAHANKAN agar data historis tetap tampil — TIDAK ada
+    // pembuatan transaksi Mayar baru. Jangan ditambah, jangan dipakai untuk flow aktif.
+    if (method === 'mayar') {
+      return <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100 border rounded-md font-normal">Mayar (legacy)</Badge>;
     }
     if (method === 'mayar_manual_invoice') {
       return <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-100 hover:bg-purple-100 border rounded-md font-normal">Invoice Manual</Badge>;
