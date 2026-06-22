@@ -43,3 +43,6 @@ build
 # Backup files
 *.backup
 package.json.backup
+
+# graphify generated output (knowledge graph, cache, machine-specific paths)
+graphify-out/
