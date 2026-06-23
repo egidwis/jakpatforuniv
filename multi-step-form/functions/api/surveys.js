@@ -14,6 +14,43 @@ function normalizeScheduleDate(dateStr) {
     return d;
 }
 
+/**
+ * Listing order. MUST stay in sync with src/utils/adOrdering.ts
+ * (adTypePriority / orderBand / compareDisplayOrder).
+ *
+ * 3-band sort:
+ *   band 0 (TOP)    — unplaced (display_order NULL) regular or announcement
+ *   band 1 (MIDDLE) — placed (display_order set), ordered by display_order ASC
+ *   band 2 (BOTTOM) — unplaced (display_order NULL) extra ad
+ * In-band tiebreak: type priority (regular -> extra -> announcement), then
+ * created_at DESC. So a new regular/announcement surfaces at top, a new extra
+ * defaults to bottom, and a saved display_order always wins (manual -> MIDDLE).
+ */
+function adTypePriority(p) {
+    if (p.submission_id && !p.is_extra_ad) return 0;
+    if (p.submission_id && p.is_extra_ad) return 1;
+    return 2;
+}
+function orderBand(p) {
+    const placed = p.display_order !== null && p.display_order !== undefined;
+    if (placed) return 1;
+    return adTypePriority(p) === 1 ? 2 : 0; // unplaced extra -> bottom, else top
+}
+function compareDisplayOrder(a, b) {
+    const ba = orderBand(a);
+    const bb = orderBand(b);
+    if (ba !== bb) return ba - bb;
+    const ao = a.display_order;
+    const bo = b.display_order;
+    if (ao !== null && ao !== undefined && bo !== null && bo !== undefined && ao !== bo) {
+        return ao - bo;
+    }
+    const ap = adTypePriority(a);
+    const bp = adTypePriority(b);
+    if (ap !== bp) return ap - bp;
+    return new Date(b.created_at) - new Date(a.created_at);
+}
+
 export async function onRequestGet(context) {
     const corsHeaders = {
         'Content-Type': 'application/json',
@@ -68,6 +105,8 @@ export async function onRequestGet(context) {
             .from('survey_pages')
             .select('*, form_submissions!submission_id(prize_per_winner, winner_count)')
             .eq('is_published', true)
+            // Base order; final ordering is applied in JS via compareDisplayOrder
+            // (manual display_order, then type priority, then recency).
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -83,6 +122,9 @@ export async function onRequestGet(context) {
             if (end && nowTime > end) return false;
             return true;
         });
+
+        // Apply listing order: manual display_order, then type priority, then recency.
+        validSurveys.sort(compareDisplayOrder);
 
         // 3. Transform Data for Mobile App
         const baseUrl = new URL(context.request.url).origin;
@@ -107,16 +149,13 @@ export async function onRequestGet(context) {
                     currency: 'IDR'
                 },
                 publish_date: new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
-                _sort_date: s.created_at,
                 viewed: s.views_count || 0,
                 url: s.redirect_url || internalUrl,
             };
         });
 
-        // Sort by date descending (newest first)
-        cleanData.sort((a, b) => new Date(b._sort_date) - new Date(a._sort_date));
-        // Remove internal sort key
-        cleanData.forEach(d => delete d._sort_date);
+        // Order was applied to validSurveys above (compareDisplayOrder); the transform
+        // preserves array order.
 
         // 4. Apply limit (default 20)
         const LIMIT = 20;

@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/utils/supabase';
+import { isLive, compareDisplayOrder } from '@/utils/adOrdering';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check, Download, Loader2, Users, AlertTriangle } from 'lucide-react';
+import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check, Download, Loader2, Users, AlertTriangle, GripVertical } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsManagerView } from './SubmissionsManagerView';
 import { toast } from 'sonner';
@@ -18,6 +19,7 @@ interface PageData {
     views_count: number;
     publish_start_date: string | null;
     publish_end_date: string | null;
+    display_order?: number | null;
     submission_id: string;
     created_at: string;
     form_submissions?: {
@@ -275,6 +277,63 @@ export function PublishPageManagement() {
         fetchPages();
     }, []);
 
+    // ==================== LIVE ORDER (drag-to-reorder) ====================
+    // Currently-live ads (not month-scoped — exactly the set the app/web display).
+    // Single flat list, ALL types draggable (compareDisplayOrder = 3-band sort).
+    // Default for not-yet-placed pages: new regular & announcement surface at the
+    // TOP, new extra ads sink to the BOTTOM. Admins can drag any item anywhere
+    // (incl. a regular/announcement below the extras for a pilot/test); saving pins
+    // the exact order.
+    const livePages = useMemo(() => {
+        const now = Date.now();
+        return pages.filter(p => isLive(p, now)).sort(compareDisplayOrder);
+    }, [pages]);
+
+    const [orderedLive, setOrderedLive] = useState<PageData[]>([]);
+    const [savingOrder, setSavingOrder] = useState(false);
+    const dragIndexRef = useRef<number | null>(null);
+
+    // Keep the working order in sync whenever the live set changes (e.g. after fetch).
+    useEffect(() => {
+        setOrderedLive(livePages);
+    }, [livePages]);
+
+    const orderDirty = useMemo(
+        () => orderedLive.map(p => p.id).join(',') !== livePages.map(p => p.id).join(','),
+        [orderedLive, livePages]
+    );
+
+    const handleDragStart = (index: number) => { dragIndexRef.current = index; };
+    const handleDragEnter = (index: number) => {
+        const from = dragIndexRef.current;
+        if (from === null || from === index) return;
+        setOrderedLive(prev => {
+            const next = [...prev];
+            const [moved] = next.splice(from, 1);
+            next.splice(index, 0, moved);
+            return next;
+        });
+        dragIndexRef.current = index;
+    };
+    const handleDragEnd = () => { dragIndexRef.current = null; };
+
+    const handleSaveOrder = async () => {
+        setSavingOrder(true);
+        try {
+            const orderedIds = orderedLive.map(p => p.id);
+            const { error } = await supabase.rpc('set_survey_pages_order', { ordered_ids: orderedIds });
+            if (error) throw error;
+            toast.success('Urutan iklan live berhasil disimpan');
+            await fetchPages();
+        } catch (e) {
+            console.error('Failed to save live order:', e);
+            const msg = e instanceof Error ? e.message : 'Unknown error';
+            toast.error('Gagal menyimpan urutan: ' + msg);
+        } finally {
+            setSavingOrder(false);
+        }
+    };
+
     const filterPages = (tab: string) => {
         return currentMonthPages.filter(page => {
             // Search Filter
@@ -442,6 +501,7 @@ export function PublishPageManagement() {
                         {[
                             { id: 'ad', label: 'Ad Page', count: currentMonthPages.filter(p => !!p.submission_id).length, color: 'bg-blue-50 text-blue-700' },
                             { id: 'announcement', label: 'Announcement', count: currentMonthPages.filter(p => !p.submission_id).length, color: 'bg-purple-50 text-purple-700' },
+                            { id: 'live', label: 'Live', count: livePages.length, color: 'bg-green-50 text-green-700' },
                         ].map((tab) => (
                             <button
                                 key={tab.id}
@@ -466,7 +526,79 @@ export function PublishPageManagement() {
                 </div>
             </div>
 
+            {/* Live ordering section — drag-to-reorder the currently-live ad listing */}
+            {activeTab === 'live' && (
+                <div className="flex-1 min-h-0 overflow-auto pb-4 pr-2">
+                    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                            <div className="flex items-start gap-2 text-xs text-gray-500 max-w-2xl">
+                                <GripVertical className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+                                <span>
+                                    Seret untuk mengatur urutan iklan yang sedang <span className="font-semibold text-green-700">live</span>.
+                                    Urutan dipakai di mobile app & web listing (mengabaikan filter periode).
+                                    Page baru: <span className="font-medium">regular & announcement</span> muncul di atas, <span className="font-medium">extra ads</span> di bawah — semua bebas diseret (termasuk menaruh regular/announcement paling bawah). Save untuk mengunci urutan.
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                {orderDirty && (
+                                    <Button variant="outline" size="sm" onClick={() => setOrderedLive(livePages)} disabled={savingOrder} className="h-9 text-xs">
+                                        Reset
+                                    </Button>
+                                )}
+                                <Button size="sm" onClick={handleSaveOrder} disabled={!orderDirty || savingOrder} className="h-9 text-xs bg-blue-600 hover:bg-blue-700">
+                                    {savingOrder ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Check className="w-4 h-4 mr-1.5" />}
+                                    Save Order
+                                </Button>
+                            </div>
+                        </div>
+
+                        {loading ? (
+                            <div className="py-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+                        ) : orderedLive.length === 0 ? (
+                            <div className="py-12 text-center text-gray-400 text-sm">Tidak ada iklan yang sedang live saat ini.</div>
+                        ) : (
+                            <ul className="flex flex-col gap-2">
+                                {orderedLive.map((page, index) => (
+                                    <li
+                                        key={page.id}
+                                        draggable
+                                        onDragStart={() => handleDragStart(index)}
+                                        onDragEnter={() => handleDragEnter(index)}
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDragEnd={handleDragEnd}
+                                        className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2.5 shadow-sm hover:shadow transition-shadow cursor-grab active:cursor-grabbing"
+                                    >
+                                        <GripVertical className="w-4 h-4 text-gray-300 shrink-0" />
+                                        <span className="w-6 text-center text-xs font-bold text-gray-400 shrink-0">{index + 1}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-semibold text-gray-900 text-sm truncate">{page.title}</div>
+                                            {page.submission_id && page.form_submissions?.full_name && (
+                                                <div className="text-[11px] text-gray-500 truncate">
+                                                    {page.form_submissions.full_name}{page.form_submissions.university ? ` - ${page.form_submissions.university}` : ''}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {page.is_extra_ad ? (
+                                            <span className="font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full text-[11px] border border-amber-100 shrink-0">Extra Ad</span>
+                                        ) : !page.submission_id ? (
+                                            <span className="font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full text-[11px] border border-purple-100 shrink-0">Announcement</span>
+                                        ) : (
+                                            <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full text-[11px] border border-blue-100 shrink-0">Survey Ad</span>
+                                        )}
+                                        <span className="text-[11px] text-gray-400 shrink-0 hidden md:inline">{page.views_count || 0} views</span>
+                                        <Button variant="outline" size="sm" onClick={() => handleEditPage(page)} title="Edit Page" className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 border-gray-200 shrink-0">
+                                            <PenLine className="w-4 h-4" />
+                                        </Button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Main Table Card */}
+            {activeTab !== 'live' && (
             <div className="flex-1 min-h-0 overflow-auto pb-4 pr-2">
                 <Table className="min-w-[1200px] border-separate border-spacing-y-3 table-fixed">
                     <colgroup>
@@ -719,6 +851,7 @@ export function PublishPageManagement() {
                     </TableBody>
                 </Table>
             </div>
+            )}
 
             {
                 isPageBuilderOpen && (

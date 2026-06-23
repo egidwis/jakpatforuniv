@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, getCdnUrl } from '@/utils/supabase';
+import { compareDisplayOrder } from '@/utils/adOrdering';
 import { Card, CardContent, CardFooter, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Users, Trophy, ExternalLink } from 'lucide-react';
@@ -41,6 +42,7 @@ export function SurveyListingPage() {
                 .from('survey_pages')
                 .select('*, form_submissions!submission_id(prize_per_winner, winner_count)')
                 .eq('is_published', true)
+                // Base order; final ordering applied in JS via compareDisplayOrder.
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -60,14 +62,8 @@ export function SurveyListingPage() {
                 return true;
             });
 
-            // Sort by page type: Regular Ad → Extra Ad → Announcement
-            const getPagePriority = (page: any) => {
-                if (page.submission_id && !page.is_extra_ad) return 0; // Regular Ad
-                if (page.submission_id && page.is_extra_ad) return 1;  // Extra Ad
-                return 2; // Announcement (no submission_id)
-            };
-            activePages.sort((a, b) => getPagePriority(a) - getPagePriority(b));
-
+            // Apply listing order: manual display_order, then type priority, then recency.
+            activePages.sort(compareDisplayOrder);
             setPages(activePages);
         } catch (error) {
             console.error('Error loading pages:', error);
