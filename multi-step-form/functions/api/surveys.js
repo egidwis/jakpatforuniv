@@ -151,6 +151,7 @@ export async function onRequestGet(context) {
                 publish_date: new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
                 viewed: s.views_count || 0,
                 url: s.redirect_url || internalUrl,
+                use_external_browser: !!s.redirect_url,
             };
         });
 
