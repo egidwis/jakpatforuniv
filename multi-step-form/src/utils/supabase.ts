@@ -186,6 +186,7 @@ export interface Transaction {
   amount: number;
   status: string;
   payment_url?: string;
+  payment_channel?: string;
   note?: string;
   entity_type?: 'submission' | 'extend';
   extend_id?: string;

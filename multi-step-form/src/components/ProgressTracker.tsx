@@ -1,8 +1,8 @@
 import { useLanguage } from '@/i18n/LanguageContext';
 import { type FormSubmission } from '@/utils/supabase';
-import { CheckCircle2, FileText, ExternalLink, AlertCircle, Calendar, CreditCard, PlayCircle } from 'lucide-react';
+import { CheckCircle2, FileText, ExternalLink, Calendar, CreditCard, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 /**
  * Normalize a schedule date string for accurate time comparison.
@@ -89,21 +89,28 @@ export function ProgressTracker({
     invoiceId,
     steps,
     isExpired,
+    awaitingInvoice,
     onReschedule
-}: { 
+}: {
     submission: FormSubmission;
-    currentStep: number; 
-    paymentLink?: string | null; 
+    currentStep: number;
+    paymentLink?: string | null;
     invoiceId?: string | null;
     steps: any[];
     isExpired?: boolean;
+    awaitingInvoice?: boolean;
     onReschedule?: () => void;
 }) {
     const { t } = useLanguage();
-    const navigate = useNavigate();
-    
+
     // Dynamic subtitle override logic
     const getDynamicHelper = (step: any, isCompleted: boolean) => {
+        // Admin-booked slot reserved but no payment link issued yet — the ball is
+        // in the admin's court, not the user's. Override the misleading
+        // "waiting for your payment" helper with an honest message.
+        if (step.key === 'payment' && awaitingInvoice && !isCompleted) {
+            return t('statusAwaitingInvoiceHelper');
+        }
         // Special 3-state logic for the publishing step
         if (step.key === 'publishing') {
             if (isCompleted) {
@@ -216,12 +223,12 @@ export function ProgressTracker({
                                             )}
 
                                             {/* New Slot Schedule Button (when status is approved) */}
-                                            {isCurrent && step.key === 'slot' && !submission.start_date && !isExpired && (
+                                            {isCurrent && step.key === 'slot' && !submission.start_date && !isExpired && onReschedule && (
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
                                                     className="h-6 mt-1 text-[10px] px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
-                                                    onClick={() => navigate('/dashboard/schedule')}
+                                                    onClick={onReschedule}
                                                 >
                                                     {t('chooseSchedule')}
                                                 </Button>
@@ -256,6 +263,17 @@ export function ProgressTracker({
                                                     {t('payNow')}
                                                     <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
                                                 </a>
+                                            )}
+
+                                            {/* Invoice Link (Desktop) */}
+                                            {isCurrent && step.key === 'payment' && paymentLink && invoiceId && (
+                                                <Link
+                                                    to={`/invoices/${invoiceId}`}
+                                                    className="text-[10px] text-gray-400 underline flex items-center gap-0.5 mt-1"
+                                                >
+                                                    <FileText className="w-3 h-3 mr-1.5" />
+                                                    Lihat Invoice
+                                                </Link>
                                             )}
                                         </div>
                                     </div>
@@ -344,12 +362,12 @@ export function ProgressTracker({
                                 )}
 
                                 {/* New Slot Schedule Button (Mobile) */}
-                                {isCurrent && step.key === 'slot' && !submission.start_date && !isExpired && (
+                                {isCurrent && step.key === 'slot' && !submission.start_date && !isExpired && onReschedule && (
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         className="h-6 mt-1 text-[10px] px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
-                                        onClick={() => navigate('/dashboard/schedule')}
+                                        onClick={onReschedule}
                                     >
                                         {t('chooseSchedule')}
                                     </Button>
@@ -372,7 +390,7 @@ export function ProgressTracker({
                                         {invoiceId && (
                                             <div className="flex items-center gap-2">
                                                 <Link
-                                                    to={`/dashboard/invoice/${invoiceId}`}
+                                                    to={`/invoices/${invoiceId}`}
                                                     className="text-[10px] text-gray-400 underline flex items-center gap-0.5"
                                                 >
                                                     <FileText className="w-3 h-3 mr-1.5" />

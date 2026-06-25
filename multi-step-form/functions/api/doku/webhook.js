@@ -239,6 +239,20 @@ export async function onRequest(context) {
     const amount = requestData.order?.amount || requestData.paidAmount?.value;
     const status = requestData.transaction?.status || requestData.order?.status || (requestData.trxId ? 'SUCCESS' : '');
 
+    // Actual payment channel the customer used (QRIS / Virtual Account / e-wallet
+    // / card / retail outlet). DOKU reports this in the success notification.
+    // We capture the most specific identifier available across Jokul and SNAP
+    // notification shapes and store the raw code; the frontend maps it to a
+    // friendly label. `channel.id` (e.g. "VIRTUAL_ACCOUNT_BCA", "QRIS") is the
+    // most descriptive; fall back to service/acquirer/SNAP fields.
+    const paymentChannel =
+      requestData.channel?.id ||
+      requestData.service?.id ||
+      requestData.acquirer?.id ||
+      requestData.additionalInfo?.channel ||
+      requestData.paymentType ||
+      null;
+
     if (!invoiceNumber) {
       console.error('Invoice Number / Payment ID not found in webhook data');
       return new Response(JSON.stringify({ error: 'Invoice Number not found' }), {
@@ -261,7 +275,7 @@ export async function onRequest(context) {
       appStatus = 'pending';
     }
 
-    console.log(`Payment ${invoiceNumber} status updated to ${appStatus}`);
+    console.log(`Payment ${invoiceNumber} status updated to ${appStatus}${paymentChannel ? `, channel: ${paymentChannel}` : ''}`);
 
     // Update status di database Supabase
     try {
@@ -281,6 +295,11 @@ export async function onRequest(context) {
 
       // 1a. Try transactions first (Scenario A: user pays directly after submit)
       const transactionUrl = `${supabaseUrl}/rest/v1/transactions?payment_id=eq.${invoiceNumber}`;
+      const transactionUpdate = { status: appStatus };
+      // Record the channel when DOKU provides it (kept separate from the gateway).
+      if (paymentChannel) {
+        transactionUpdate.payment_channel = paymentChannel;
+      }
       const updateTransactionResponse = await fetch(transactionUrl, {
         method: 'PATCH',
         headers: {
@@ -289,7 +308,7 @@ export async function onRequest(context) {
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         },
-        body: JSON.stringify({ status: appStatus })
+        body: JSON.stringify(transactionUpdate)
       });
       const updatedTransactions = await updateTransactionResponse.json();
 

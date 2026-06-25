@@ -546,7 +546,7 @@ export function TransactionsPage() {
                               variant="secondary"
                               size="icon"
                               className="h-8 w-8 text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 transition-colors shrink-0"
-                              title="Download Invoice"
+                              title={transaction.status === 'completed' ? 'Download Receipt' : 'Download Invoice'}
                               asChild
                             >
                               <a

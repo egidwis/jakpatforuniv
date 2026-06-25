@@ -354,6 +354,12 @@ export function StatusPage() {
                                             finalPaymentLink = `/dashboard/payment/${submission.id}`;
                                         }
 
+                                        // Dead-end guard: at the payment step but no payment link exists
+                                        // (e.g. admin booked the slot but hasn't issued an invoice yet).
+                                        // The user can't pay — surface an honest "awaiting invoice" message
+                                        // instead of a hanging "Awaiting Payment" with no action.
+                                        const awaitingInvoice = currentStep === 2 && !finalPaymentLink && !isExpired;
+
                                         return (
                                             <Card key={submission.id} className="overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all rounded-xl">
                                                 <CardHeader className="bg-gray-50/50 dark:bg-gray-800/50 border-b pb-4">
@@ -460,6 +466,7 @@ export function StatusPage() {
                                                             invoiceId={invoiceIds[submission.id!] || null}
                                                             steps={getStatusSteps(t)}
                                                             isExpired={isExpired}
+                                                            awaitingInvoice={awaitingInvoice}
                                                             onReschedule={async () => {
                                                                 // Show loading toast
                                                                 const loadingToast = toast.loading('Mempersiapkan jadwal ulang...');
