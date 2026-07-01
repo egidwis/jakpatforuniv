@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { getFormSubmissionById } from '../utils/supabase';
+import { getFormSubmissionById, releaseExpiredSlot } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
 import { createPayment } from '../utils/payment';
 import { ErrorPage } from '../components/ErrorPage';
@@ -34,6 +34,29 @@ export default function PaymentRetryPage() {
       if (!data) {
         console.error('No form data returned for ID:', id);
         setError('Data form tidak ditemukan');
+        setLoading(false);
+        return;
+      }
+
+      // Block if already paid
+      if (data.payment_status === 'paid') {
+        setError('Pembayaran untuk form ini sudah berhasil.');
+        setLoading(false);
+        return;
+      }
+
+      // Block if slot expired (either marked expired, or timer passed without PaymentCheckoutPage releasing it)
+      const isSlotExpired =
+        data.slot_booked_by === 'user' &&
+        data.slot_reserved_at &&
+        Date.now() > new Date(data.slot_reserved_at).getTime() + 3_600_000;
+
+      if (data.payment_status === 'expired' || isSlotExpired) {
+        // Release the slot if it hasn't been released yet (user came directly from email)
+        if (isSlotExpired && data.payment_status !== 'expired') {
+          try { await releaseExpiredSlot(id); } catch (_) { /* non-fatal */ }
+        }
+        setError('Slot waktu tayang sudah tidak tersedia karena melewati batas 1 jam pembayaran. Silakan lakukan booking ulang dari dashboard.');
         setLoading(false);
         return;
       }

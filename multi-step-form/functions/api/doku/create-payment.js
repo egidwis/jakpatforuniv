@@ -42,7 +42,7 @@ export async function onRequest(context) {
     // 1. Read the submission — source of truth for amount and customer details.
     const subRes = await fetch(
       `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}` +
-        `&select=id,total_cost,title,full_name,email,phone_number,payment_status&limit=1`,
+        `&select=id,total_cost,title,full_name,email,phone_number,payment_status,slot_booked_by,slot_reserved_at&limit=1`,
       { headers: sbHeaders }
     );
     const subs = await subRes.json();
@@ -53,6 +53,17 @@ export async function onRequest(context) {
 
     if (sub.payment_status === 'paid') {
       return json({ error: 'Submission is already paid' }, 409);
+    }
+    if (sub.payment_status === 'expired') {
+      return json({ error: 'Payment slot has expired. Please rebook from the dashboard.' }, 409);
+    }
+    // Defense-in-depth: block if slot timer passed even if payment_status wasn't updated yet
+    // (user went directly from email without opening PaymentCheckoutPage first).
+    if (sub.slot_booked_by === 'user' && sub.slot_reserved_at) {
+      const slotExpiredAt = new Date(sub.slot_reserved_at).getTime() + 3_600_000;
+      if (Date.now() > slotExpiredAt) {
+        return json({ error: 'Payment slot has expired. Please rebook from the dashboard.' }, 409);
+      }
     }
 
     const amount = Number(sub.total_cost);
