@@ -41,6 +41,11 @@ interface PageBuilderModalProps {
     submissionCriteria?: string;
     isExtraAd?: boolean; // Whether this page is an Extra Ad (set via SchedulePaymentView)
     paymentStatus?: string; // e.g. 'pending', 'paid', 'expired'
+    // When true, the page is being edited in an extend context (e.g. banner refresh for a new
+    // reward batch). Date editing is disabled and dates are NOT synced, so the original period
+    // (form_submissions) and the cron-managed publish_* window stay intact. Saving also clears
+    // requires_banner_update so the extend can be activated by cron.
+    preserveSubmissionDates?: boolean;
 }
 
 // Helper: generate slug from title
@@ -87,7 +92,7 @@ const defaultSurveiAdBlocks = {
     ],
 };
 
-export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount, submissionCriteria, isExtraAd, paymentStatus }: PageBuilderModalProps) {
+export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, onSuccess, submissionTitle, submissionStartDate, submissionEndDate, submissionPrizePerWinner, submissionWinnerCount, submissionCriteria, isExtraAd, paymentStatus, preserveSubmissionDates }: PageBuilderModalProps) {
     const isStandalone = !submissionId;
     const isUnpaid = paymentStatus !== undefined && paymentStatus !== 'paid';
 
@@ -194,8 +199,14 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         is_published: initialData.is_published,
                         blocks: initialData.blocks || {},
                         custom_fields: initialData.custom_fields || [],
-                        publish_start_date: submissionStartDate ? submissionStartDate : (initialData.publish_start_date ? initialData.publish_start_date : ''),
-                        publish_end_date: submissionEndDate ? submissionEndDate : (initialData.publish_end_date ? initialData.publish_end_date : ''),
+                        // In extend context, keep the page's own (cron-managed) publish dates —
+                        // do NOT pre-fill from the extend's window passed via submission*Date.
+                        publish_start_date: preserveSubmissionDates
+                            ? (initialData.publish_start_date || '')
+                            : (submissionStartDate ? submissionStartDate : (initialData.publish_start_date ? initialData.publish_start_date : '')),
+                        publish_end_date: preserveSubmissionDates
+                            ? (initialData.publish_end_date || '')
+                            : (submissionEndDate ? submissionEndDate : (initialData.publish_end_date ? initialData.publish_end_date : '')),
                         criteria_responden: resolvedCriteria || initialData.criteria_responden || '',
                         redirect_url: initialData.redirect_url || '',
                     });
@@ -222,7 +233,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             initFormData();
             fetchRecentBanners();
         }
-    }, [isOpen, initialData, submissionTitle, submissionStartDate, submissionEndDate, submissionCriteria, submissionId]);
+    }, [isOpen, initialData, submissionTitle, submissionStartDate, submissionEndDate, submissionCriteria, submissionId, preserveSubmissionDates]);
 
     const handleSave = async (overrideStatus?: boolean) => {
         if (!formData.slug || !formData.title) {
@@ -260,8 +271,6 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 title: formData.title,
                 banner_url: formData.banner_url,
                 is_published: isPublished,
-                publish_start_date: ensureTimestamp(formData.publish_start_date) || null,
-                publish_end_date: ensureTimestamp(formData.publish_end_date) || null,
 
                 blocks: formData.blocks,
                 custom_fields: formData.custom_fields,
@@ -270,6 +279,15 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 is_extra_ad: isExtraAd ?? initialData?.is_extra_ad ?? false,
                 redirect_url: formData.redirect_url?.trim() || null,
             };
+
+            if (preserveSubmissionDates) {
+                // Extend context: leave the cron-managed publish_* window untouched, and clear
+                // the banner-update gate so cron_activate_extends() can activate the extend.
+                payload.requires_banner_update = false;
+            } else {
+                payload.publish_start_date = ensureTimestamp(formData.publish_start_date) || null;
+                payload.publish_end_date = ensureTimestamp(formData.publish_end_date) || null;
+            }
 
             // Only attach submission_id if it exists
             if (submissionId) {
@@ -309,8 +327,10 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 toast.success('Page created successfully');
             }
 
-            // Sync schedule dates to form_submissions & update status
-            if (submissionId && formData.publish_start_date) {
+            // Sync schedule dates to form_submissions & update status.
+            // Skipped in extend context (preserveSubmissionDates) so a content/banner edit
+            // never overwrites the original period or the cron-managed publish_* window.
+            if (!preserveSubmissionDates && submissionId && formData.publish_start_date) {
                 // Sync dates
                 const { error: syncError } = await supabase
                     .from('form_submissions')

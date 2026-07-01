@@ -1,8 +1,7 @@
 import { useLanguage } from '@/i18n/LanguageContext';
-import { type FormSubmission } from '@/utils/supabase';
+import { type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
 import { CheckCircle2, FileText, ExternalLink, Calendar, CreditCard, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
 
 /**
  * Normalize a schedule date string for accurate time comparison.
@@ -81,16 +80,117 @@ export function getCurrentStepIndex(submission: FormSubmission): number {
     return statusToStep[status] ?? 0;
 }
 
+// Payment info for a single extend (derived from its `entity_type='extend'` transaction)
+export interface ExtendPaymentInfo {
+    paymentUrl: string | null;
+    paymentId: string | null;
+    status: string | null; // transaction status: pending | paid | expired | failed
+    amount: number;
+}
+
+export interface EffectiveExtendStatus {
+    effectiveStep: number;
+    activeStartDate: string | null;
+    activeEndDate: string | null;
+    isExtended: boolean;
+    waitingPaymentExtends: FormSubmissionExtend[];
+}
+
+// Extend statuses that mean the perpanjangan is confirmed/paid (will air or has aired)
+const CONFIRMED_EXTEND_STATUSES = ['paid', 'scheduled', 'live', 'completed'];
+
+/**
+ * Compute the effective publishing status of a survey taking confirmed (paid)
+ * duration extensions into account. Keeps the user's track-status coherent:
+ * an extended survey stays Live/Scheduled instead of flipping to Completed,
+ * and the displayed airing date follows the active extension.
+ */
+export function computeEffectiveExtendStatus(
+    submission: FormSubmission,
+    extendsList: FormSubmissionExtend[] = [],
+    payments: Record<string, ExtendPaymentInfo> = {}
+): EffectiveExtendStatus {
+    const baseStep = getCurrentStepIndex(submission);
+    const now = new Date();
+
+    const confirmed = extendsList.filter((e) =>
+        CONFIRMED_EXTEND_STATUSES.includes((e.submission_status || '').toLowerCase())
+    );
+
+    const isExtLive = (e: FormSubmissionExtend) => {
+        const status = (e.submission_status || '').toLowerCase();
+        if (status === 'live') return true;
+        if (status === 'completed' || status === 'cancelled' || status === 'waiting_payment') return false;
+        const s = e.start_date ? normalizeScheduleDate(e.start_date) : null;
+        const en = e.end_date ? normalizeScheduleDate(e.end_date) : null;
+        return !!(s && en && s <= now && en >= now);
+    };
+
+    const liveExtend = confirmed.find(isExtLive) || null;
+
+    const upcomingScheduled = confirmed
+        .filter((e) => {
+            const s = e.start_date ? normalizeScheduleDate(e.start_date) : null;
+            return s && s > now;
+        })
+        .sort(
+            (a, b) =>
+                normalizeScheduleDate(a.start_date!).getTime() - normalizeScheduleDate(b.start_date!).getTime()
+        )[0] || null;
+
+    let effectiveStep = baseStep;
+    let activeStartDate: string | null = submission.start_date || null;
+    let activeEndDate: string | null = submission.end_date || null;
+    let isExtended = false;
+
+    if (liveExtend) {
+        effectiveStep = 3;
+        activeStartDate = liveExtend.start_date || activeStartDate;
+        activeEndDate = liveExtend.end_date || activeEndDate;
+        isExtended = true;
+    } else if (upcomingScheduled) {
+        effectiveStep = 3;
+        activeStartDate = upcomingScheduled.start_date || activeStartDate;
+        activeEndDate = upcomingScheduled.end_date || activeEndDate;
+        isExtended = true;
+    } else if (confirmed.length > 0) {
+        // No live/upcoming extend, but a past confirmed one — surface the latest
+        // airing window so a "Completed" survey reflects the extended end date.
+        const latest = confirmed.reduce<FormSubmissionExtend | null>((acc, e) => {
+            if (!e.end_date) return acc;
+            if (!acc || normalizeScheduleDate(e.end_date) > normalizeScheduleDate(acc.end_date!)) return e;
+            return acc;
+        }, null);
+        const parentEnd = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
+        if (latest?.end_date && (!parentEnd || normalizeScheduleDate(latest.end_date) > parentEnd)) {
+            activeStartDate = latest.start_date || activeStartDate;
+            activeEndDate = latest.end_date;
+            isExtended = true;
+        }
+    }
+
+    const waitingPaymentExtends = extendsList.filter((e) => {
+        if ((e.submission_status || '').toLowerCase() !== 'waiting_payment') return false;
+        const pay = e.id ? payments[e.id] : null;
+        return !!(pay && pay.paymentUrl && pay.status === 'pending');
+    });
+
+    return { effectiveStep, activeStartDate, activeEndDate, isExtended, waitingPaymentExtends };
+}
+
 // Progress Bar Component
-export function ProgressTracker({ 
+export function ProgressTracker({
     submission,
-    currentStep, 
+    currentStep,
     paymentLink,
     invoiceId,
     steps,
     isExpired,
     awaitingInvoice,
-    onReschedule
+    onReschedule,
+    activeStartDate,
+    activeEndDate,
+    isExtended
 }: {
     submission: FormSubmission;
     currentStep: number;
@@ -100,8 +200,15 @@ export function ProgressTracker({
     isExpired?: boolean;
     awaitingInvoice?: boolean;
     onReschedule?: () => void;
+    activeStartDate?: string | null;
+    activeEndDate?: string | null;
+    isExtended?: boolean;
 }) {
     const { t } = useLanguage();
+
+    // Airing dates for the Publishing step — follow the active extension when present.
+    const pubStart = activeStartDate ?? submission.start_date;
+    const pubEnd = activeEndDate ?? submission.end_date;
 
     // Dynamic subtitle override logic
     const getDynamicHelper = (step: any, isCompleted: boolean) => {
@@ -235,17 +342,18 @@ export function ProgressTracker({
                                             )}
 
                                             {/* Live Date Badge (under publishing step) */}
-                                            {(isCurrent || isCompleted) && step.key === 'publishing' && submission.start_date && (() => {
+                                            {(isCurrent || isCompleted) && step.key === 'publishing' && pubStart && (() => {
                                                 const now = new Date();
-                                                const isLive = submission.start_date &&
-                                                    (normalizeScheduleDate(submission.start_date) <= now && submission.end_date && normalizeScheduleDate(submission.end_date) >= now);
+                                                const isLive = !!(pubStart && pubEnd &&
+                                                    normalizeScheduleDate(pubStart) <= now && normalizeScheduleDate(pubEnd) >= now);
+                                                const extLabel = isExtended ? ` (${t('extendedLabel')})` : '';
                                                 return isLive ? (
                                                     <span className="text-[11px] font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-0.5 inline-block leading-tight">
-                                                        {t('statusLiveUntil')} {submission.end_date ? normalizeScheduleDate(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : ''}
+                                                        {t('statusLiveUntil')} {pubEnd ? normalizeScheduleDate(pubEnd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : ''}{extLabel}
                                                     </span>
                                                 ) : (
                                                     <span className="text-[11px] text-gray-400 mt-0.5 inline-block leading-tight">
-                                                        Scheduled: {normalizeScheduleDate(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {normalizeScheduleDate(submission.start_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                                        Scheduled: {normalizeScheduleDate(pubStart).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {normalizeScheduleDate(pubStart).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB{extLabel}
                                                     </span>
                                                 );
                                             })()}
@@ -265,16 +373,39 @@ export function ProgressTracker({
                                                 </a>
                                             )}
 
-                                            {/* Invoice Link (Desktop) */}
-                                            {isCurrent && step.key === 'payment' && paymentLink && invoiceId && (
-                                                <Link
-                                                    to={`/invoices/${invoiceId}`}
-                                                    className="text-[10px] text-gray-400 underline flex items-center gap-0.5 mt-1"
-                                                >
-                                                    <FileText className="w-3 h-3 mr-1.5" />
-                                                    Lihat Invoice
-                                                </Link>
-                                            )}
+                                            {/* Invoice/Receipt Link (Desktop) */}
+                                            {step.key === 'payment' && invoiceId && (() => {
+                                                const isPaidVal = (submission.payment_status || '').toLowerCase() === 'paid' || 
+                                                                  (submission.submission_status || '').toLowerCase() === 'paid' ||
+                                                                  ['scheduled', 'live', 'completed'].includes((submission.submission_status || '').toLowerCase());
+                                                if (isPaidVal) {
+                                                    return (
+                                                        <a
+                                                            href={`/invoices/${invoiceId}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-[10px] text-blue-600 hover:text-blue-700 underline flex items-center gap-0.5 mt-1 font-medium"
+                                                        >
+                                                            <FileText className="w-3 h-3 mr-1.5" />
+                                                            {t('downloadReceipt')}
+                                                        </a>
+                                                    );
+                                                }
+                                                if (isCurrent && paymentLink) {
+                                                    return (
+                                                        <a
+                                                            href={`/invoices/${invoiceId}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-[10px] text-gray-400 underline flex items-center gap-0.5 mt-1"
+                                                        >
+                                                            <FileText className="w-3 h-3 mr-1.5" />
+                                                            {t('viewInvoice')}
+                                                        </a>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -349,6 +480,23 @@ export function ProgressTracker({
                                     </span>
                                 )}
 
+                                {/* Live/Schedule Date (Mobile, publishing) */}
+                                {(isCurrent || isCompleted) && step.key === 'publishing' && pubStart && (() => {
+                                    const now = new Date();
+                                    const isLive = !!(pubStart && pubEnd &&
+                                        normalizeScheduleDate(pubStart) <= now && normalizeScheduleDate(pubEnd) >= now);
+                                    const extLabel = isExtended ? ` (${t('extendedLabel')})` : '';
+                                    return isLive ? (
+                                        <span className="text-[11px] font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block leading-tight">
+                                            {t('statusLiveUntil')} {pubEnd ? normalizeScheduleDate(pubEnd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : ''}{extLabel}
+                                        </span>
+                                    ) : (
+                                        <span className="text-[11px] text-gray-400 mt-1 inline-block leading-tight">
+                                            Scheduled: {normalizeScheduleDate(pubStart).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {normalizeScheduleDate(pubStart).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB{extLabel}
+                                        </span>
+                                    );
+                                })()}
+
                                 {/* Expired Reschedule Button (Mobile) */}
                                 {isCurrent && step.key === 'slot' && isExpired && onReschedule && (
                                     <Button
@@ -387,19 +535,46 @@ export function ProgressTracker({
                                             {t('payNow')}
                                             <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
                                         </a>
-                                        {invoiceId && (
-                                            <div className="flex items-center gap-2">
-                                                <Link
-                                                    to={`/invoices/${invoiceId}`}
+                                    </div>
+                                )}
+
+                                {/* Receipt/Invoice Link (Mobile) */}
+                                {step.key === 'payment' && invoiceId && (() => {
+                                    const isPaidVal = (submission.payment_status || '').toLowerCase() === 'paid' || 
+                                                      (submission.submission_status || '').toLowerCase() === 'paid' ||
+                                                      ['scheduled', 'live', 'completed'].includes((submission.submission_status || '').toLowerCase());
+                                    if (isPaidVal) {
+                                        return (
+                                            <div className="mt-1">
+                                                <a
+                                                    href={`/invoices/${invoiceId}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-[10px] text-blue-600 hover:text-blue-700 underline flex items-center gap-0.5 font-medium"
+                                                >
+                                                    <FileText className="w-3.5 h-3.5 mr-1" />
+                                                    {t('downloadReceipt')}
+                                                </a>
+                                            </div>
+                                        );
+                                    }
+                                    if (isCurrent && paymentLink) {
+                                        return (
+                                            <div className="mt-1">
+                                                <a
+                                                    href={`/invoices/${invoiceId}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
                                                     className="text-[10px] text-gray-400 underline flex items-center gap-0.5"
                                                 >
                                                     <FileText className="w-3 h-3 mr-1.5" />
-                                                    Lihat Invoice
-                                                </Link>
+                                                    {t('viewInvoice')}
+                                                </a>
                                             </div>
-                                        )}
-                                    </div>
-                                )}
+                                        );
+                                    }
+                                    return null;
+                                })()}
                             </div>
                         </div>
                     );

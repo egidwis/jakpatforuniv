@@ -355,6 +355,9 @@ export function SchedulingPage() {
     // Publish Page State
     const [isPublishPageModalOpen, setIsPublishPageModalOpen] = useState(false);
     const [existingPublishPage, setExistingPublishPage] = useState<any>(null);
+    // submission_ids that currently have an active/pending extend (waiting_payment/scheduled/live).
+    // Used to protect the original dates when editing the page during an extend.
+    const [extendSubmissionIds, setExtendSubmissionIds] = useState<Set<string>>(new Set());
 
     // Stats & Filters State
     const [stats, setStats] = useState({
@@ -452,7 +455,6 @@ export function SchedulingPage() {
                     extendEvents = extends_.map((ext: any) => {
                         const startDate = normalizeScheduleDate(ext.start_date);
                         const endDate = normalizeScheduleDate(ext.end_date);
-                        const now = new Date();
                         const sub = Array.isArray(ext.form_submissions) ? ext.form_submissions[0] : ext.form_submissions;
 
                         let extTheme = STATUS_PALETTES.extend;
@@ -484,6 +486,14 @@ export function SchedulingPage() {
                             },
                         };
                     });
+
+                    // Track submissions with an active/pending extend so the page editor
+                    // can protect the original dates (and the cron-managed publish_*).
+                    setExtendSubmissionIds(new Set(
+                        extends_
+                            .filter((e: any) => e.submission_status !== 'completed' && e.submission_status !== 'cancelled')
+                            .map((e: any) => e.submission_id as string)
+                    ));
                 }
             } catch (extFetchErr) {
                 console.error('Error fetching extends for calendar:', extFetchErr);
@@ -853,7 +863,11 @@ export function SchedulingPage() {
                     submissionWinnerCount={selectedEvent.resource.winner_count}
                     submissionCriteria={selectedEvent.resource.criteria_responden}
                     initialData={existingPublishPage || undefined}
-                    isExtraAd={selectedEvent.resource.is_extend}
+                    isExtraAd={existingPublishPage?.is_extra_ad ?? false}
+                    preserveSubmissionDates={
+                        selectedEvent.resource.is_extend ||
+                        extendSubmissionIds.has(selectedEvent.resource.form_submission_id)
+                    }
                     paymentStatus={selectedEvent.resource.payment_status}
                 />
             )}

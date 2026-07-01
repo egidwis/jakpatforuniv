@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, deleteFormSubmission, prepareForReschedule, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, getExtendsBySubmissionIds, deleteFormSubmission, prepareForReschedule, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, MessageCircle, AlertCircle, Trash2, Menu, Gift, Users, Link as LinkIcon } from 'lucide-react';
+import { FileText, MessageCircle, AlertCircle, Trash2, Menu, Gift, Users, Link as LinkIcon, CreditCard, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link, useSearchParams, useOutletContext, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ProgressTracker, getStatusSteps, getCurrentStepIndex, normalizeScheduleDate } from '@/components/ProgressTracker';
+import { ProgressTracker, getStatusSteps, getCurrentStepIndex, normalizeScheduleDate, computeEffectiveExtendStatus, type ExtendPaymentInfo } from '@/components/ProgressTracker';
+import { AiringPeriodsBar } from '@/components/AiringPeriodsBar';
+import { UserExtendHistory } from '@/components/UserExtendHistory';
 
 export function StatusPage() {
     const { user } = useAuth();
@@ -22,6 +24,9 @@ export function StatusPage() {
     // Store payment links for each submission: { submissionId: paymentUrl }
     const [paymentLinks, setPaymentLinks] = useState<Record<string, string | null>>({});
     const [invoiceIds, setInvoiceIds] = useState<Record<string, string | null>>({});
+    // Duration extensions per submission + their payment info (keyed by extend id)
+    const [extendsBySubmission, setExtendsBySubmission] = useState<Record<string, FormSubmissionExtend[]>>({});
+    const [extendPayments, setExtendPayments] = useState<Record<string, Record<string, ExtendPaymentInfo>>>({});
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Handle query params for notifications
@@ -65,21 +70,46 @@ export function StatusPage() {
                     // Fetch payment links for each submission
                     const links: Record<string, string | null> = {};
                     const invIds: Record<string, string | null> = {};
+                    const extPayments: Record<string, Record<string, ExtendPaymentInfo>> = {};
 
-                    // Use Promise.all for parallel fetching to prevent blocking
-                    await Promise.all(data.map(async (submission) => {
+                    // Batch-load all duration extensions for the user's submissions (readonly)
+                    const allSubmissionIds = data.map((s) => s.id).filter((id): id is string => !!id);
+
+                    // Run the per-submission transaction loop and the batched extends fetch together
+                    const [, allExtends] = await Promise.all([
+                        // Use Promise.all for parallel fetching to prevent blocking
+                        Promise.all(data.map(async (submission) => {
                         if (submission.id) {
                             let foundTransactionId: string | null = null;
                             try {
                                 const transactions = await getTransactionsByFormSubmissionId(submission.id);
-                                if (transactions.length > 0) {
-                                    if (transactions[0].payment_id) {
-                                        foundTransactionId = transactions[0].payment_id;
+                                // Separate the survey's own transaction from extend transactions,
+                                // which share the same form_submission_id (entity_type='extend').
+                                const mainTx = transactions.filter((tx) => tx.entity_type !== 'extend');
+                                const extendTx = transactions.filter((tx) => tx.entity_type === 'extend');
+
+                                if (mainTx.length > 0) {
+                                    if (mainTx[0].payment_id) {
+                                        foundTransactionId = mainTx[0].payment_id;
                                     }
-                                    if (submission.payment_status !== 'paid' && transactions[0].payment_url) {
-                                        links[submission.id] = transactions[0].payment_url;
+                                    if (submission.payment_status !== 'paid' && mainTx[0].payment_url) {
+                                        links[submission.id] = mainTx[0].payment_url;
                                     }
                                 }
+
+                                // Build extend payment map (newest tx per extend wins — ordered desc)
+                                const exMap: Record<string, ExtendPaymentInfo> = {};
+                                extendTx.forEach((tx) => {
+                                    if (tx.extend_id && !exMap[tx.extend_id]) {
+                                        exMap[tx.extend_id] = {
+                                            paymentUrl: tx.payment_url || null,
+                                            paymentId: tx.payment_id || null,
+                                            status: tx.status || null,
+                                            amount: tx.amount || 0,
+                                        };
+                                    }
+                                });
+                                extPayments[submission.id] = exMap;
                             } catch (e) {
                                 console.error(`Error fetching transactions for ${submission.id}:`, e);
                             }
@@ -92,8 +122,10 @@ export function StatusPage() {
                             if (submission.payment_status !== 'paid' && !links[submission.id]) {
                                 try {
                                     const invoices = await getInvoicesByFormSubmissionId(submission.id);
-                                    if (invoices.length > 0 && invoices[0].invoice_url) {
-                                        links[submission.id] = invoices[0].invoice_url;
+                                    // Exclude extend invoices — only the survey's own invoice is the main link
+                                    const mainInvoices = invoices.filter((inv) => inv.entity_type !== 'extend');
+                                    if (mainInvoices.length > 0 && mainInvoices[0].invoice_url) {
+                                        links[submission.id] = mainInvoices[0].invoice_url;
                                     }
                                 } catch (e) {
                                     console.error(`Error fetching invoices for ${submission.id}:`, e);
@@ -105,8 +137,19 @@ export function StatusPage() {
                                 links[submission.id] = null;
                             }
                         }
-                    }));
+                    })),
+                        getExtendsBySubmissionIds(allSubmissionIds),
+                    ]);
 
+                    // Group extends by their parent submission
+                    const bySub: Record<string, FormSubmissionExtend[]> = {};
+                    allExtends.forEach((e) => {
+                        if (!bySub[e.submission_id]) bySub[e.submission_id] = [];
+                        bySub[e.submission_id].push(e);
+                    });
+
+                    setExtendsBySubmission(bySub);
+                    setExtendPayments(extPayments);
                     setPaymentLinks(links);
                     setInvoiceIds(invIds);
                 } catch (error) {
@@ -137,7 +180,7 @@ export function StatusPage() {
 
     const steps = getStatusSteps(t);
 
-    const getStatusBadgeInfo = (currentStep: number, submission?: FormSubmission) => {
+    const getStatusBadgeInfo = (currentStep: number, submission?: FormSubmission, activeStart?: string | null, activeEnd?: string | null) => {
         if (currentStep === -1) {
             return {
                 label: t('statusRevisionNeeded'),
@@ -151,11 +194,13 @@ export function StatusPage() {
         let color = 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
         let label = step.label;
 
-        // Override label for publishing step based on actual status
+        // Override label for publishing step based on actual status (extension-aware dates)
         if (step.key === 'publishing' && submission) {
             const now = new Date();
-            const startDate = submission.start_date ? normalizeScheduleDate(submission.start_date) : null;
-            const endDate = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
+            const startStr = activeStart ?? submission.start_date;
+            const endStr = activeEnd ?? submission.end_date;
+            const startDate = startStr ? normalizeScheduleDate(startStr) : null;
+            const endDate = endStr ? normalizeScheduleDate(endStr) : null;
             const isLive = startDate && endDate && startDate <= now && endDate >= now;
             const isCompleted = endDate && endDate < now;
             
@@ -319,17 +364,22 @@ export function StatusPage() {
                                     .filter(submission => {
                                         if (selectedStatus === 'all') return true;
 
-                                        const currentStepIndex = getCurrentStepIndex(submission);
                                         // Handle revision/spam status (index = -1)
-                                        if (currentStepIndex === -1) {
+                                        if (getCurrentStepIndex(submission) === -1) {
                                             return selectedStatus === 'revision';
                                         }
 
+                                        const exts = extendsBySubmission[submission.id!] || [];
+                                        const pays = extendPayments[submission.id!] || {};
+                                        const currentStepIndex = computeEffectiveExtendStatus(submission, exts, pays).effectiveStep;
                                         const currentStepKey = steps[currentStepIndex]?.key;
                                         return currentStepKey === selectedStatus;
                                     })
                                     .map((submission) => {
-                                        const currentStepRaw = getCurrentStepIndex(submission);
+                                        const submissionExtends = extendsBySubmission[submission.id!] || [];
+                                        const submissionExtendPayments = extendPayments[submission.id!] || {};
+                                        const eff = computeEffectiveExtendStatus(submission, submissionExtends, submissionExtendPayments);
+                                        const currentStepRaw = eff.effectiveStep;
                                         // Auto-approval logic
                                         const isUserBooked = submission.slot_booked_by === 'user';
                                         const isPaymentExpired = submission.payment_status === 'expired';
@@ -347,7 +397,7 @@ export function StatusPage() {
                                                 icon: <AlertCircle className="w-4 h-4" />,
                                                 style: {}
                                             }
-                                            : getStatusBadgeInfo(currentStep, submission);
+                                            : getStatusBadgeInfo(currentStep, submission, eff.activeStartDate, eff.activeEndDate);
 
                                         let finalPaymentLink = paymentLinks[submission.id!];
                                         if (!finalPaymentLink && isUserBooked && !isExpired && currentStep === 2) {
@@ -459,7 +509,7 @@ export function StatusPage() {
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <ProgressTracker 
+                                                        <ProgressTracker
                                                             submission={submission}
                                                             currentStep={currentStep}
                                                             paymentLink={finalPaymentLink || null}
@@ -467,6 +517,9 @@ export function StatusPage() {
                                                             steps={getStatusSteps(t)}
                                                             isExpired={isExpired}
                                                             awaitingInvoice={awaitingInvoice}
+                                                            activeStartDate={eff.activeStartDate}
+                                                            activeEndDate={eff.activeEndDate}
+                                                            isExtended={eff.isExtended}
                                                             onReschedule={async () => {
                                                                 // Show loading toast
                                                                 const loadingToast = toast.loading('Mempersiapkan jadwal ulang...');
@@ -522,8 +575,55 @@ export function StatusPage() {
                                                         />
                                                     )}
 
+                                                    {currentStep !== -1 && (
+                                                        <>
+                                                            {/* Airing periods (original + confirmed extensions) */}
+                                                            <AiringPeriodsBar submission={submission} extends_={submissionExtends} />
 
+                                                            {/* Prominent payment alert for extensions awaiting payment */}
+                                                            {eff.waitingPaymentExtends.length > 0 && (
+                                                                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/10">
+                                                                    <div className="flex gap-3">
+                                                                        <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                                                        <div className="space-y-3 flex-1">
+                                                                            <div>
+                                                                                <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                                                    ⚠️ {t('extendWaitingPaymentAlertTitle')}
+                                                                                </h4>
+                                                                                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
+                                                                                    {t('extendWaitingPaymentAlert')}
+                                                                                </p>
+                                                                            </div>
+                                                                            <div className="flex flex-col gap-2">
+                                                                                {eff.waitingPaymentExtends.map((ext) => {
+                                                                                    const pay = ext.id ? submissionExtendPayments[ext.id] : null;
+                                                                                    if (!pay?.paymentUrl) return null;
+                                                                                    return (
+                                                                                        <a
+                                                                                            key={ext.id}
+                                                                                            href={pay.paymentUrl}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            className="inline-flex items-center gap-1.5 w-fit px-4 py-2 text-xs font-semibold text-white rounded-full hover:opacity-90 transition-opacity shadow-sm"
+                                                                                            style={{ backgroundColor: '#0091ff' }}
+                                                                                        >
+                                                                                            <CreditCard className="w-3.5 h-3.5" />
+                                                                                            {t('payExtension')}
+                                                                                            {pay.amount > 0 && ` — ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(pay.amount)}`}
+                                                                                            <ExternalLink className="w-3.5 h-3.5 ml-0.5 opacity-70" />
+                                                                                        </a>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
 
+                                                            {/* Readonly extension history */}
+                                                            <UserExtendHistory extends_={submissionExtends} payments={submissionExtendPayments} />
+                                                        </>
+                                                    )}
 
                                                     {/* Contact Admin / Support Link */}
                                                     <div className="mt-8 pt-4 border-t flex justify-end">

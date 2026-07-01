@@ -376,6 +376,27 @@ export const getTransactionsByFormSubmissionId = async (formSubmissionId: string
   }
 };
 
+// Ambil semua extend durasi untuk sekumpulan submission sekaligus (batch).
+// Dipakai readonly di dashboard user (RLS mengizinkan user membaca extend miliknya).
+export const getExtendsBySubmissionIds = async (
+  submissionIds: string[]
+): Promise<FormSubmissionExtend[]> => {
+  if (!submissionIds.length) return [];
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions_extend')
+      .select('*')
+      .in('submission_id', submissionIds)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []) as FormSubmissionExtend[];
+  } catch (error) {
+    console.error('Error getting extends by submission ids:', error);
+    return [];
+  }
+};
+
 // Fungsi untuk mendapatkan form submission berdasarkan ID
 export const getFormSubmissionById = async (id: string) => {
   try {
@@ -901,9 +922,13 @@ export const getScheduledPages = async () => {
         researcher_name: item.form_submissions?.full_name || 'Unknown Researcher',
         winner_count: item.form_submissions?.winner_count || 0,
         prize_per_winner: item.form_submissions?.prize_per_winner || 0,
-        // Use survey_pages dates as source of truth, fallback to form_submissions
-        start_date: item.publish_start_date || item.form_submissions?.start_date,
-        end_date: item.publish_end_date || item.form_submissions?.end_date,
+        // Card AD displays the ORIGINAL ad period from form_submissions.
+        // publish_* is the cron-managed ACTIVE airing window (it gets set to the
+        // active extend's window by cron_activate_extends() — see sql/20_extend_rpcs.sql),
+        // so it cannot represent the original period. Fall back to publish_* only when
+        // the submission has no own dates.
+        start_date: item.form_submissions?.start_date || item.publish_start_date,
+        end_date: item.form_submissions?.end_date || item.publish_end_date,
         submission_status: item.form_submissions?.submission_status,
         payment_status: item.form_submissions?.payment_status,
         slot_booked_by: item.form_submissions?.slot_booked_by,

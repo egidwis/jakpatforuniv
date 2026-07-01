@@ -50,7 +50,7 @@ export async function onRequestPost(context) {
         // ── 1. Find expired surveys ──────────────────────────────────────
         const { data: expiredPages, error: pagesError } = await supabase
             .from('survey_pages')
-            .select('id, title, publish_end_date, banner_url, blocks')
+            .select('id, title, submission_id, publish_end_date, banner_url, blocks')
             .lt('publish_end_date', sevenDaysAgo.toISOString())
             .order('publish_end_date', { ascending: true });
 
@@ -63,7 +63,32 @@ export async function onRequestPost(context) {
             }), { headers: corsHeaders });
         }
 
-        const expiredPageIds = expiredPages.map(p => p.id);
+        // ── Guard: never clean a page whose submission still has a confirmed (paid) extend
+        // that is upcoming or only recently ended. With gapped extends, publish_end_date can
+        // sit at the original period while a future extend still needs the banner/blocks
+        // (the cron only moves publish_* once the extend goes live — see sql/20_extend_rpcs.sql).
+        const candidateSubmissionIds = [...new Set(expiredPages.map(p => p.submission_id).filter(Boolean))];
+        let protectedSubmissionIds = new Set();
+        if (candidateSubmissionIds.length > 0) {
+            const { data: activeExtends } = await supabase
+                .from('form_submissions_extend')
+                .select('submission_id, end_date, payment_status')
+                .in('submission_id', candidateSubmissionIds)
+                .eq('payment_status', 'paid')
+                .gte('end_date', sevenDaysAgo.toISOString());
+            protectedSubmissionIds = new Set((activeExtends || []).map(e => e.submission_id));
+        }
+
+        const cleanablePages = expiredPages.filter(p => !protectedSubmissionIds.has(p.submission_id));
+        if (cleanablePages.length === 0) {
+            return new Response(JSON.stringify({
+                status: 'success',
+                message: 'No expired surveys to clean up (all protected by active extends).',
+                deleted_files: 0,
+            }), { headers: corsHeaders });
+        }
+
+        const expiredPageIds = cleanablePages.map(p => p.id);
         let totalDeleted = 0;
         let totalProofsNullified = 0;
         let totalBannersNullified = 0;
@@ -131,7 +156,7 @@ export async function onRequestPost(context) {
         // ── 3. Cleanup: Banner files ─────────────────────────────────────
         const bannerDeletions = [];
         const pageIdsWithBanners = [];
-        for (const page of expiredPages) {
+        for (const page of cleanablePages) {
             if (page.banner_url) {
                 const match = page.banner_url.match(/\/page-uploads\/(.+)/);
                 if (match) {
@@ -178,7 +203,7 @@ export async function onRequestPost(context) {
         }
 
         // ── 4. Cleanup: Content images inside blocks ─────────────────────
-        for (const page of expiredPages) {
+        for (const page of cleanablePages) {
             if (!page.blocks || !page.blocks.content) continue;
 
             const blocksToUpdate = JSON.parse(JSON.stringify(page.blocks)); // deep clone
@@ -240,12 +265,12 @@ export async function onRequestPost(context) {
         // ── 5. Response ──────────────────────────────────────────────────
         return new Response(JSON.stringify({
             status: 'success',
-            message: `Cleaned up ${totalDeleted} file(s) from ${expiredPages.length} expired survey(s).`,
+            message: `Cleaned up ${totalDeleted} file(s) from ${cleanablePages.length} expired survey(s).`,
             deleted_files: totalDeleted,
             proofs_nullified: totalProofsNullified,
             banners_nullified: totalBannersNullified,
             content_images_deleted: totalContentImagesDeleted,
-            surveys_cleaned: expiredPages.map(p => p.title),
+            surveys_cleaned: cleanablePages.map(p => p.title),
             warnings: errors.length ? errors : undefined,
             using_service_role: !!serviceRoleKey,
         }), { headers: corsHeaders });
