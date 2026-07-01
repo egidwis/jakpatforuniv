@@ -46,14 +46,8 @@ export const checkPaymentGatewayStatus = async (): Promise<boolean> => {
 // ==============================================================================
 export const createPayment = async (paymentData: PaymentData) => {
   try {
-    const { formSubmissionId, amount, customerInfo, expiredAt } = paymentData;
+    const { formSubmissionId, amount, expiredAt } = paymentData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
-
-    let payment_due_date = 60; // default 60 minutes
-    if (expiredAt) {
-      const diffMs = new Date(expiredAt).getTime() - Date.now();
-      payment_due_date = Math.max(1, Math.round(diffMs / 60000));
-    }
 
     if (isDokuSimulationMode()) {
       const simulatedPaymentId = `sim_doku_${Date.now()}`;
@@ -69,48 +63,27 @@ export const createPayment = async (paymentData: PaymentData) => {
       return transactionData.payment_url;
     }
 
-    const invoiceNumber = `JFU-${formSubmissionId.substring(0,8)}-${Date.now()}`;
-    const requestData = {
-      amount,
-      invoice_number: invoiceNumber,
-      sac_id: import.meta.env.VITE_DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595',
-      customer: {
-        name: customerInfo.fullName || 'User',
-        email: customerInfo.email || 'user@example.com',
-        phone: customerInfo.phoneNumber || ''
-      },
-      callback_url: `${origin}/payment-success?id=${formSubmissionId}&source=gateway`,
-      payment_due_date
-    };
-
-    const response = await axios.post(`${origin}/api/doku/checkout`, requestData, { timeout: 15000 });
-
-    if (!response.data?.response?.payment) {
-      throw new Error('Invalid response from DOKU API proxy');
+    // Payment + invoice/transaction rows are created SERVER-SIDE via
+    // /api/doku/create-payment (service_role). The server derives the amount
+    // from the DB, so the browser no longer inserts into invoices/transactions
+    // and no longer needs write access to those tables. This is what makes RLS
+    // on `invoices` safe to enable (see sql/24_secure_invoices_rls.sql).
+    let payment_due_date = 60; // default 60 minutes
+    if (expiredAt) {
+      const diffMs = new Date(expiredAt).getTime() - Date.now();
+      payment_due_date = Math.max(1, Math.round(diffMs / 60000));
     }
 
-    const paymentUrl = response.data.response.payment.url;
-    const transactionId = response.data.response.order.invoice_number; 
+    const response = await axios.post(
+      `${origin}/api/doku/create-payment`,
+      { formSubmissionId, origin, paymentDueDate: payment_due_date },
+      { timeout: 15000 }
+    );
 
-    // Simpan ke db
-    const transactionData: Transaction = {
-      form_submission_id: formSubmissionId,
-      payment_id: transactionId,
-      payment_method: 'doku',
-      amount,
-      status: 'pending',
-      payment_url: paymentUrl
-    };
-    await supabase.from('transactions').insert([transactionData]);
-
-    const invoiceData: Invoice = {
-      form_submission_id: formSubmissionId,
-      payment_id: transactionId,
-      invoice_url: paymentUrl,
-      amount,
-      status: 'pending'
-    };
-    await supabase.from('invoices').insert([invoiceData]);
+    const paymentUrl = response.data?.payment_url;
+    if (!paymentUrl) {
+      throw new Error('Invalid response from create-payment endpoint');
+    }
 
     return paymentUrl;
   } catch (err) {
