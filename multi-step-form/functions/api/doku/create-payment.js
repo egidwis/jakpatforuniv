@@ -7,8 +7,9 @@
 // amount from the DB instead of trusting a client-supplied value (anti-tampering).
 //
 // Used by src/utils/payment.ts::createPayment (PaymentRetryPage + PaymentCheckoutPage).
-
-import { dokuRequest } from './_helpers.js';
+//
+// NOTE: Intentionally self-contained (no imports) — each Cloudflare Pages Function
+// is bundled as a standalone module. Cross-file ESM imports silently fail.
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -25,8 +26,6 @@ export async function onRequest(context) {
     }
 
     const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
-    // SERVICE_ROLE is required so the inserts bypass RLS. Fall back to anon only
-    // for local/dev where the service key may be absent.
     const supabaseKey =
       env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY;
 
@@ -40,8 +39,7 @@ export async function onRequest(context) {
       'Content-Type': 'application/json',
     };
 
-    // 1. Read the submission — this is the source of truth for the amount and
-    //    customer details. Never trust an amount sent by the client.
+    // 1. Read the submission — source of truth for amount and customer details.
     const subRes = await fetch(
       `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}` +
         `&select=id,total_cost,title,full_name,email,phone_number,payment_status&limit=1`,
@@ -53,7 +51,6 @@ export async function onRequest(context) {
     }
     const sub = subs[0];
 
-    // Guard: don't create a fresh payment for an already-paid submission.
     if (sub.payment_status === 'paid') {
       return json({ error: 'Submission is already paid' }, 409);
     }
@@ -63,14 +60,12 @@ export async function onRequest(context) {
       return json({ error: 'Invalid submission amount' }, 400);
     }
 
-    // 2. Invoice number — same self-service format as before (JFU-<8chars>-<ts>).
+    // 2. Invoice number — same self-service format (JFU-<8chars>-<ts>).
     const invoiceNumber = `JFU-${String(formSubmissionId).substring(0, 8)}-${Date.now()}`;
 
-    // 3. Create the DOKU checkout (reuse the shared, signed request helper).
+    // 3. Build DOKU checkout payload.
     const resolvedOrigin = origin || new URL(request.url).origin;
-    const sacId =
-      env.VITE_DOKU_SAC_JFU_ID || env.DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595';
-
+    const sacId = env.VITE_DOKU_SAC_JFU_ID || env.DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595';
     const dueDate = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
 
     const dokuPayload = {
@@ -95,17 +90,62 @@ export async function onRequest(context) {
       dokuPayload.additional_info = { account: { id: sacId } };
     }
 
-    const doku = await dokuRequest(env, 'POST', '/checkout/v1/payment', dokuPayload);
-    const paymentUrl = doku?.data?.response?.payment?.url;
-
-    if (!doku.ok || !paymentUrl) {
-      console.error('[create-payment] DOKU error:', doku.status, JSON.stringify(doku.data));
-      return json({ error: 'Failed to create DOKU payment', details: doku.data }, 502);
+    // 4. Sign and call DOKU (same signing logic as checkout.js — kept inline because
+    //    Cloudflare Pages Functions bundle each file standalone; cross-file imports fail).
+    const clientId = env.DOKU_CLIENT_ID || env.VITE_DOKU_CLIENT_ID;
+    const secretKey = env.DOKU_SECRET_KEY;
+    if (!clientId || !secretKey) {
+      return json({ error: 'DOKU credentials not configured' }, 500);
     }
 
-    // 4. Persist BOTH rows via service_role (bypasses RLS). Doing this here also
-    //    fixes the old bug where a logged-out retry silently failed the
-    //    transactions insert (anon RLS) and created only an invoice.
+    const bodyString = JSON.stringify(dokuPayload);
+    const enc = new TextEncoder();
+    const requestId = crypto.randomUUID();
+    const requestTimestamp = new Date().toISOString().slice(0, 19) + 'Z';
+    const requestTarget = '/checkout/v1/payment';
+
+    const digestBuffer = await crypto.subtle.digest('SHA-256', enc.encode(bodyString));
+    const digest = btoa(String.fromCharCode(...new Uint8Array(digestBuffer)));
+    const componentStringToSign =
+      `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}` +
+      `\nRequest-Target:${requestTarget}\nDigest:${digest}`;
+
+    const hmacKey = await crypto.subtle.importKey(
+      'raw', enc.encode(secretKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    );
+    const sigBuffer = await crypto.subtle.sign('HMAC', hmacKey, enc.encode(componentStringToSign));
+    const signature = 'HMACSHA256=' + btoa(String.fromCharCode(...new Uint8Array(sigBuffer)));
+
+    const apiBase =
+      env.DOKU_ENV === 'production' || env.VITE_DOKU_ENV === 'production'
+        ? 'https://api.doku.com'
+        : 'https://api-sandbox.doku.com';
+
+    console.log('[create-payment] POST', apiBase + requestTarget, 'Request-Id:', requestId);
+
+    const dokuRes = await fetch(`${apiBase}${requestTarget}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Client-Id': clientId,
+        'Request-Id': requestId,
+        'Request-Timestamp': requestTimestamp,
+        'Signature': signature,
+      },
+      body: bodyString,
+    });
+
+    const dokuText = await dokuRes.text();
+    let dokuData;
+    try { dokuData = JSON.parse(dokuText); } catch { dokuData = { raw: dokuText }; }
+
+    const paymentUrl = dokuData?.response?.payment?.url;
+    if (!dokuRes.ok || !paymentUrl) {
+      console.error('[create-payment] DOKU error:', dokuRes.status, dokuText);
+      return json({ error: 'Failed to create DOKU payment', details: dokuData }, 502);
+    }
+
+    // 5. Persist BOTH rows via service_role (bypasses RLS).
     const transactionRow = {
       form_submission_id: formSubmissionId,
       payment_id: invoiceNumber,
@@ -136,9 +176,6 @@ export async function onRequest(context) {
     ]);
 
     if (!txRes.ok || !invRes.ok) {
-      // The DOKU link exists and is valid; the webhook can still reconcile by
-      // payment_id later. Surface the DB failure but return the URL so the user
-      // can still pay.
       console.error(
         `[create-payment] DB insert issue — tx:${txRes.status} inv:${invRes.status} for ${invoiceNumber}`
       );
