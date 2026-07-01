@@ -18,12 +18,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Search, RefreshCw, Download, Filter } from 'lucide-react';
+import { formatPaymentChannel } from '../utils/paymentChannel';
 
 
 interface Transaction {
   id: string;
   payment_id: string;
   payment_method: string;
+  payment_channel?: string | null;
   amount: number;
   status: 'pending' | 'completed' | 'failed';
   payment_url: string;
@@ -98,8 +100,15 @@ export function TransactionsPage() {
     );
   };
 
-  const getMethodBadge = (method: string) => {
+  const getMethodBadge = (method: string, channel?: string | null) => {
     if (method === 'doku') {
+      if (channel) {
+        return (
+          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100 border rounded-md font-normal">
+            {formatPaymentChannel(channel)}
+          </Badge>
+        );
+      }
       return <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100 border rounded-md font-normal">DOKU</Badge>;
     }
     // LEGACY: transaksi lama dibuat lewat Mayar (gateway lama, sudah diganti DOKU).
@@ -251,7 +260,7 @@ export function TransactionsPage() {
             {/* Export CSV */}
             <Button
               onClick={() => {
-                const headers = ['Transaction ID', 'Survey Title', 'Researcher', 'Payment Method', 'Amount', 'Status', 'Created At', 'Payment ID'];
+                const headers = ['Transaction ID', 'Survey Title', 'Researcher', 'Payment Method', 'Payment Channel', 'Amount', 'Status', 'Created At', 'Payment ID'];
                 const csvContent = [
                   headers.join(','),
                   ...filteredTransactions.map(t => [
@@ -259,6 +268,7 @@ export function TransactionsPage() {
                     `"${(t.form_submissions?.title || '').replace(/"/g, '""')}"`,
                     `"${(t.form_submissions?.full_name || '').replace(/"/g, '""')}"`,
                     `"${t.payment_method}"`,
+                    `"${t.payment_channel ? formatPaymentChannel(t.payment_channel) : ''}"`,
                     `"${t.amount}"`,
                     `"${t.status}"`,
                     `"${new Date(t.created_at).toLocaleString()}"`,
@@ -530,7 +540,7 @@ export function TransactionsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="align-top py-4 border-y border-gray-200">
-                        {getMethodBadge(transaction.payment_method)}
+                        {getMethodBadge(transaction.payment_method, transaction.payment_channel)}
                       </TableCell>
                       <TableCell className="text-right align-top py-4 font-mono font-bold text-gray-900 text-sm tracking-tight border-y border-gray-200">
                         {formatCurrency(transaction.amount)}
