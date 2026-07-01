@@ -29,6 +29,13 @@ export interface SurveyFormData {
   // Step 3: Review & Pembayaran
   voucherCode?: string;
 
+  // JFU Kilat
+  isKilatUpgrade?: boolean;           // true jika user memilih upgrade Kilat
+  kilatStartDate?: string;            // jadwal distribusi Kilat (YYYY-MM-DD)
+  kilatStartTime?: string;            // jam mulai Kilat (HH:MM)
+  regularStartDateBackup?: string;    // backup jadwal regular untuk un-upgrade
+  regularStartTimeBackup?: string;    // backup jam regular untuk un-upgrade
+
   // Reschedule metadata
   isReschedule?: boolean; // Flag untuk menandai ini adalah jadwal ulang
   submissionIdToReplace?: string; // ID submission yang akan di-update saat reschedule
@@ -40,4 +47,5 @@ export interface CostCalculation {
   incentiveCost: number;
   totalCost: number;
   discount: number;
+  kilatAddonCost?: number; // JFU Kilat add-on
 }

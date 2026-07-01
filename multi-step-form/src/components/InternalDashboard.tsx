@@ -182,6 +182,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           slot_booked_by: sub.slot_booked_by,
           slot_reserved_at: sub.slot_reserved_at,
           admin_notes: sub.admin_notes,
+          distribution_type: sub.distribution_type,
           has_transactions: false, // Default, will verify below
         }));
 

@@ -11,16 +11,17 @@ const getDateString = (date: Date) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-import { MAX_REGULAR_ADS_PER_DAY } from '../utils/constants';
+import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from '../utils/constants';
 
 interface StepThreeSlotReservationProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   nextStep: () => void;
   prevStep: () => void;
+  mode?: 'regular' | 'kilat';
 }
 
-export function StepThreeSlotReservation({ formData, updateFormData, nextStep, prevStep }: StepThreeSlotReservationProps) {
+export function StepThreeSlotReservation({ formData, updateFormData, nextStep, prevStep, mode = 'regular' }: StepThreeSlotReservationProps) {
   const { t } = useLanguage();
   const [selectedDate, setSelectedDate] = useState<Date | null>(
     formData.startDate ? new Date(formData.startDate) : null
@@ -54,7 +55,7 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
   const loadAvailability = async () => {
     setIsFetchingAds(true);
     try {
-      const { regularCounts, details } = await fetchSlotAvailability();
+      const { regularCounts, details } = await fetchSlotAvailability(undefined, mode);
       setRegularCountsByDate(regularCounts);
       if (details) {
         setSlotDetails(details);
@@ -79,10 +80,11 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
   const validateCapacityForRange = (startDay: Date, duration: number): boolean => {
     const current = new Date(startDay);
     current.setHours(0, 0, 0, 0);
+    const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
     for (let i = 0; i < duration; i++) {
       const dateStr = getDateString(current);
       const count = regularCountsByDate[dateStr] || 0;
-      if (count >= MAX_REGULAR_ADS_PER_DAY) {
+      if (count >= maxAdsPerDay) {
         return false;
       }
       current.setDate(current.getDate() + 1);
@@ -97,7 +99,8 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
     }
 
     // Capacity Validation
-    if (!validateCapacityForRange(selectedDate, formData.duration || 1)) {
+    const effectiveDuration = mode === 'kilat' ? 1 : (formData.duration || 1);
+    if (!validateCapacityForRange(selectedDate, effectiveDuration)) {
       toast.error(t('slotErrorFull'));
       return;
     }
@@ -122,7 +125,7 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
             <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
               <Calendar size={18} />
             </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('slotReservationTitle')}</h3>
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{mode === 'kilat' ? t('kilatScheduleTitle') : t('slotReservationTitle')}</h3>
           </div>
           {isFetchingAds && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
         </div>
@@ -138,11 +141,12 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
             <div ref={calendarRef} className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 py-1">
               {availableDates.map((date, i) => {
                 const dateStr = getDateString(date);
-                const baseCount = regularCountsByDate[dateStr] || 0;
-                const isFull = baseCount >= MAX_REGULAR_ADS_PER_DAY;
+                const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
+                const isFull = baseCount >= maxAdsPerDay;
                 
                 const selectedIndex = selectedDate ? availableDates.findIndex(d => getDateString(d) === getDateString(selectedDate)) : -1;
-                const isSelectedInRange = selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + (formData.duration || 1);
+                const effectiveDuration = mode === 'kilat' ? 1 : (formData.duration || 1);
+                const isSelectedInRange = selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + effectiveDuration;
                 
                 const displayCount = isSelectedInRange ? baseCount + 1 : baseCount;
 
@@ -150,18 +154,18 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
                 let textColor = 'text-slate-800';
                 
                 if (isSelectedInRange) {
-                  if (displayCount > MAX_REGULAR_ADS_PER_DAY) {
+                  if (displayCount > maxAdsPerDay) {
                     statusColors = 'bg-red-50 border-red-500 ring-1 ring-red-500 shadow-md';
                     textColor = 'text-red-900';
                   } else {
-                    statusColors = 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
-                    textColor = 'text-blue-900';
+                    statusColors = mode === 'kilat' ? 'bg-amber-50 border-amber-500 ring-1 ring-amber-500 shadow-md' : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
+                    textColor = mode === 'kilat' ? 'text-amber-900' : 'text-blue-900';
                   }
                 } else if (isFull) {
                   statusColors = 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed';
                 }
 
-                const dotColor = displayCount > MAX_REGULAR_ADS_PER_DAY ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
+                const dotColor = displayCount > maxAdsPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
 
                 const detailsForDate = slotDetails[dateStr] || [];
 
@@ -184,8 +188,8 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
                     </span>
                     <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
                       <div className={`w-1 h-1 rounded-full ${dotColor}`} />
-                      <span className={`text-[10px] font-semibold ${displayCount > MAX_REGULAR_ADS_PER_DAY ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
-                        {displayCount}/{MAX_REGULAR_ADS_PER_DAY}
+                      <span className={`text-[10px] font-semibold ${displayCount > maxAdsPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
+                        {displayCount}/{maxAdsPerDay}
                       </span>
                     </div>
                   </button>
@@ -220,7 +224,7 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
                   </div>
                   <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
                     <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">{t('slotDurationLabel')}</span>
-                    <span className="font-bold text-gray-900 text-sm">{duration} {t('days')}</span>
+                    <span className="font-bold text-gray-900 text-sm">{mode === 'kilat' ? t('kilatDuration') : `${duration} ${t('days')}`}</span>
                   </div>
                   <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
                     <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">End Date</span>
@@ -240,7 +244,7 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
           className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
           onClick={prevStep}
         >
-          ← {t('backButton')}
+          ← {mode === 'kilat' ? t('kilatUndoButton') : t('backButton')}
         </button>
         <button
           onClick={handleNext}

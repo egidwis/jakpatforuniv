@@ -411,6 +411,21 @@ export const translations = {
     deleteSubmissionConfirm: "Are you sure you want to delete this submission? Deleted data cannot be recovered.",
     deleteSubmissionSuccess: "Submission successfully deleted",
     deleteSubmissionError: "Failed to delete submission",
+
+    // JFU Kilat
+    kilatUpgradeTitle: 'Upgrade to JFU Kilat!',
+    kilatUpgradeTagline: '2-day ads can be done in 2 hours!',
+    kilatUpgradeDesc: 'Super fast distribution via specialized platform.',
+    kilatBenefitNoPage: 'No ad page required',
+    kilatBenefitFast: 'Respondent collection ~2 hours',
+    kilatBenefitPrice: 'Price: Base rate + Rp 200,000',
+    kilatUpgradeButton: 'Upgrade to JFU Kilat ⚡',
+    kilatModeActive: 'JFU Kilat Mode Active',
+    kilatScheduleTitle: 'Select Kilat Distribution Schedule',
+    kilatDuration: '~2 hours (Kilat ⚡)',
+    kilatAddonLabel: 'JFU Kilat Add-on',
+    kilatUndoButton: 'Back to Regular Ad',
+    kilatBackToRegular: 'Back to Regular',
   },
 
   id: {
@@ -823,6 +838,21 @@ export const translations = {
     deleteSubmissionConfirm: "Apakah Anda yakin ingin menghapus submission ini? Data yang dihapus tidak dapat dikembalikan.",
     deleteSubmissionSuccess: "Submission berhasil dihapus",
     deleteSubmissionError: "Gagal menghapus submission",
+
+    // JFU Kilat
+    kilatUpgradeTitle: 'Upgrade ke JFU Kilat!',
+    kilatUpgradeTagline: 'Iklan 2 hari bisa selesai dalam 2 jam!',
+    kilatUpgradeDesc: 'Distribusi super cepat via platform khusus.',
+    kilatBenefitNoPage: 'Tanpa halaman iklan (page)',
+    kilatBenefitFast: 'Pengumpulan responden ~2 jam',
+    kilatBenefitPrice: 'Harga: Base rate + Rp 200.000',
+    kilatUpgradeButton: 'Upgrade ke JFU Kilat ⚡',
+    kilatModeActive: 'Mode JFU Kilat Aktif',
+    kilatScheduleTitle: 'Pilih Jadwal Distribusi Kilat',
+    kilatDuration: '~2 jam (Kilat ⚡)',
+    kilatAddonLabel: 'Add-on JFU Kilat',
+    kilatUndoButton: 'Kembali ke Iklan Regular',
+    kilatBackToRegular: 'Kembali ke Regular',
   }
 };
 

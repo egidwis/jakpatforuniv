@@ -175,6 +175,7 @@ export interface FormSubmission {
   auth_user_id?: string;
   created_at?: string;
   updated_at?: string;
+  distribution_type?: 'regular' | 'kilat';
 }
 
 // Tipe data untuk transactions
@@ -1026,7 +1027,8 @@ const getDateString = (date: Date) => {
  * Also handles user-booked slots timeout (1 hour), hiding expired slots.
  */
 export const fetchSlotAvailability = async (
-  excludeSubmissionId?: string
+  excludeSubmissionId?: string,
+  distributionType: 'regular' | 'kilat' = 'regular'
 ): Promise<{
   regularCounts: Record<string, number>;
   extraCounts: Record<string, number>;
@@ -1035,9 +1037,10 @@ export const fetchSlotAvailability = async (
   try {
     const { data: slotsFromSubmissions, error: subError } = await supabase
       .from('form_submissions')
-      .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status, admin_notes')
+      .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status, admin_notes, distribution_type')
       .not('start_date', 'is', null)
-      .not('submission_status', 'in', '("rejected","spam","in_review","completed")');
+      .not('submission_status', 'in', '("rejected","spam","in_review","completed")')
+      .eq('distribution_type', distributionType);
 
     if (subError) throw subError;
 

@@ -55,6 +55,7 @@ export interface SurveySubmission {
   slot_reserved_at?: string;
   admin_notes?: string;
   submission_status?: string;
+  distribution_type?: 'regular' | 'kilat';
 }
 
 export interface PaymentState {
@@ -346,7 +347,25 @@ export function SubmissionsDesktopRow({
 
   // ── Page Button ──
   let pageBtn;
-  if (existingPage) {
+  if (submission.distribution_type === 'kilat') {
+    pageBtn = (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="w-full">
+              <div className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-amber-50 border border-amber-200 text-amber-700 shadow-sm cursor-help">
+                <Zap className="w-3.5 h-3.5" />
+                <span className="text-xs font-semibold tracking-wide">KILAT</span>
+              </div>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p className="text-xs">Distribusi Kilat. Tidak menggunakan Page builder.</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  } else if (existingPage) {
     const now = new Date();
     const startDate = existingPage.publish_start_date ? new Date(existingPage.publish_start_date) : null;
     const endDate = existingPage.publish_end_date ? new Date(existingPage.publish_end_date) : null;
@@ -1004,26 +1023,37 @@ export function SubmissionsMobileCard({
                 <Tooltip delayDuration={300}>
                   <TooltipTrigger asChild>
                     <div className="w-full">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!isPaid && !isLegacyActive}
-                        className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${(isPaid || isLegacyActive) ? 'text-gray-600 hover:text-indigo-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
-                          }`}
-                        onClick={() => onOpenPageBuilder(submission)}
-                      >
-                        <Globe className="w-3.5 h-3.5 mr-1" />
-                        Pages
-                        {!existingPage && (isPaid || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
-                      </Button>
+                      {submission.distribution_type === 'kilat' ? (
+                        <div className="flex items-center justify-center gap-1.5 h-8 w-full rounded-md bg-amber-50 border border-amber-200 text-amber-700 shadow-sm cursor-help">
+                          <Zap className="w-3.5 h-3.5" />
+                          <span className="text-xs font-semibold tracking-wide">KILAT</span>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!isPaid && !isLegacyActive}
+                          className={`w-full justify-center h-8 text-xs font-medium shadow-sm transition-all ${(isPaid || isLegacyActive) ? 'text-gray-600 hover:text-indigo-600 border-gray-200 bg-white relative' : 'text-gray-400 border-gray-100 bg-gray-50'
+                            }`}
+                          onClick={() => onOpenPageBuilder(submission)}
+                        >
+                          <Globe className="w-3.5 h-3.5 mr-1" />
+                          Pages
+                          {!existingPage && (isPaid || isLegacyActive) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
+                        </Button>
+                      )}
                     </div>
                   </TooltipTrigger>
-                  {existingPage && (
+                  {submission.distribution_type === 'kilat' ? (
+                    <TooltipContent className="bg-white p-3 shadow-xl text-slate-700">
+                      <p className="text-xs">Distribusi Kilat. Tidak menggunakan Page builder.</p>
+                    </TooltipContent>
+                  ) : existingPage ? (
                     <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
                       <p className="font-semibold text-xs text-indigo-600 mb-1">Page Details</p>
                       <p className="text-sm">Title: <span className="font-medium text-gray-900">{existingPage.title || 'Not set'}</span></p>
                     </TooltipContent>
-                  )}
+                  ) : null}
                 </Tooltip>
               </TooltipProvider>
             </div>

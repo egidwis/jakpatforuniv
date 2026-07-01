@@ -53,6 +53,13 @@ const defaultFormData: SurveyFormData = {
 
   // Step 3
   voucherCode: '',
+
+  // JFU Kilat
+  isKilatUpgrade: false,
+  kilatStartDate: '',
+  kilatStartTime: '',
+  regularStartDateBackup: '',
+  regularStartTimeBackup: '',
 };
 
 import { useLanguage } from '../i18n/LanguageContext';
@@ -247,6 +254,29 @@ export function MultiStepForm() {
     }
   };
 
+  const goToKilatSchedule = () => {
+    updateFormData({
+      regularStartDateBackup: formData.startDate,
+      regularStartTimeBackup: formData.startTime,
+      startDate: '',
+      startTime: '',
+    });
+    setCurrentStep(5);
+    window.scrollTo(0, 0);
+  };
+
+  const undoKilatUpgrade = () => {
+    updateFormData({
+      isKilatUpgrade: false,
+      startDate: formData.regularStartDateBackup || '',
+      startTime: formData.regularStartTimeBackup || '',
+      kilatStartDate: '',
+      kilatStartTime: '',
+      regularStartDateBackup: '',
+      regularStartTimeBackup: '',
+    });
+  };
+
   return (
     <div className={`multi-step-form ${isHeaderVisible ? 'pt-24' : ''}`}>
       {isHeaderVisible ? (
@@ -330,6 +360,30 @@ export function MultiStepForm() {
             formData={formData}
             updateFormData={updateFormData}
             prevStep={prevStep}
+            onUpgradeKilat={goToKilatSchedule}
+            onUndoKilat={undoKilatUpgrade}
+          />
+        )}
+
+        {currentStep === 5 && (
+          <StepThree
+            formData={formData}
+            updateFormData={updateFormData}
+            nextStep={() => {
+              updateFormData({
+                isKilatUpgrade: true,
+                kilatStartDate: formData.startDate,
+                kilatStartTime: formData.startTime,
+              });
+              setCurrentStep(4);
+              window.scrollTo(0, 0);
+            }}
+            prevStep={() => {
+              undoKilatUpgrade();
+              setCurrentStep(4);
+              window.scrollTo(0, 0);
+            }}
+            mode="kilat"
           />
         )}
       </div>

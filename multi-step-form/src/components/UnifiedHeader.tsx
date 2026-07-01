@@ -39,6 +39,8 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
         { number: 4, title: 'Review' }
     ];
 
+    const displayStep = currentStep === 5 ? 4 : currentStep;
+
     return (
         <div className="fixed top-4 right-4 left-4 md:left-[17rem] md:right-8 z-40">
             <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl transition-all duration-200">
@@ -59,8 +61,8 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
 
                             <div className="flex items-center gap-0.5 md:gap-1">
                                 {steps.map((step, idx) => {
-                                    const isCompleted = currentStep > step.number;
-                                    const isActive = currentStep === step.number;
+                                    const isCompleted = displayStep > step.number;
+                                    const isActive = displayStep === step.number;
 
                                     return (
                                         <div key={step.number} className="flex items-center">
@@ -92,7 +94,7 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                             <div className="hidden sm:flex flex-col">
                                 <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Current Step</span>
                                 <span className="text-sm font-bold text-gray-900 line-clamp-1 max-w-[100px] md:max-w-none">
-                                    {steps.find(s => s.number === currentStep)?.title || 'Survey'}
+                                    {currentStep === 5 ? 'JFU Kilat' : (steps.find(s => s.number === currentStep)?.title || 'Survey')}
                                 </span>
                             </div>
                         </div>

@@ -1,4 +1,5 @@
 import type { SurveyFormData, CostCalculation } from '../types';
+import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER } from './constants';
 
 /**
  * Menghitung biaya iklan berdasarkan jumlah pertanyaan dan durasi
@@ -138,6 +139,11 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
     return adCost * 0.2;
   }
 
+  // Kode JFUSUHUD memberikan diskon 10% untuk iklan regular
+  if (voucherCode.toUpperCase() === 'JFUSUHUD') {
+    return adCost * 0.1;
+  }
+
   return 0;
 }
 
@@ -146,7 +152,7 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
  * @param voucherCode Kode voucher
  * @returns Informasi voucher atau null jika tidak valid
  */
-export function getVoucherInfo(voucherCode: string | undefined, duration: number = 0): { isValid: boolean; message?: string; discount?: number; isError?: boolean } {
+export function getVoucherInfo(voucherCode: string | undefined, duration: number = 0): { isValid: boolean; message?: string; discount?: number; isError?: boolean; isKilatEligible?: boolean } {
   if (!voucherCode) return { isValid: false, isError: false };
 
   const upperCode = voucherCode.toUpperCase();
@@ -183,6 +189,14 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
     };
   }
 
+  if (upperCode === 'JFUSUHUD') {
+    return {
+      isValid: true,
+      message: 'Diskon 10% untuk iklan regular! Atau upgrade ke ⚡ JFU Kilat',
+      isKilatEligible: true
+    };
+  }
+
   const validCodes = [
     'JFUFEB',
     'JFUTGRX',
@@ -198,7 +212,8 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
     'JFUANA',
     'JFUSALSA',
     'JFUNATALIA',
-    'TEGARGANTENG'
+    'TEGARGANTENG',
+    'JFUSUHUD'
   ];
   if (validCodes.includes(upperCode)) {
     return { isValid: true };
@@ -213,6 +228,23 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
  * @returns Perhitungan biaya
  */
 export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
+  if (formData.isKilatUpgrade) {
+    // Kilat: base rate (no duration multiplier) + add-on + incentive
+    const adCostBase = calculateAdCostPerDay(formData.questionCount); // 1x only
+    const incentiveCost = calculateIncentiveCost(formData.winnerCount, formData.prizePerWinner);
+    const isVoucherKilat = formData.voucherCode?.toUpperCase() === 'JFUSUHUD';
+    const kilatAddon = isVoucherKilat ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST;
+    // No discount applied on top of Kilat add-on
+    return {
+      adCost: adCostBase,
+      incentiveCost,
+      discount: 0,
+      kilatAddonCost: kilatAddon,
+      totalCost: adCostBase + kilatAddon + incentiveCost,
+    };
+  }
+
+  // Regular pricing
   const adCost = calculateTotalAdCost(formData.questionCount, formData.duration);
   const incentiveCost = calculateIncentiveCost(formData.winnerCount, formData.prizePerWinner);
   const discount = calculateDiscount(formData.voucherCode, adCost, incentiveCost, formData.duration);
@@ -221,6 +253,7 @@ export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
     adCost,
     incentiveCost,
     discount,
+    kilatAddonCost: 0,
     totalCost: adCost + incentiveCost - discount
   };
 }

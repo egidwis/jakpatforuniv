@@ -19,13 +19,16 @@ export function normalizeScheduleDate(dateStr: string): Date {
 
 // Define the status steps in order
 // Define status steps dynamically inside component to access translation
-export const getStatusSteps = (t: any) => [
-    { key: 'in_review', label: t('statusInReview'), icon: FileText, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
-    { key: 'slot', label: t('statusScheduling'), icon: Calendar, helper: t('statusSchedulingHelper'), completedHelper: t('statusSchedulingCompletedHelper') },
-    { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper'), completedHelper: t('statusPaymentSuccessHelper') },
-    { key: 'publishing', label: t('statusPublishing'), icon: PlayCircle, helper: t('statusPublishingHelper'), liveHelper: t('statusPublishingLiveHelper'), completedHelper: t('statusPublishingCompletedHelper') },
-    { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper'), completedHelper: t('statusCompletedHelper') },
-];
+export const getStatusSteps = (t: any, distributionType?: string) => {
+    const isKilat = distributionType === 'kilat';
+    return [
+        { key: 'in_review', label: t('statusInReview'), icon: FileText, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
+        { key: 'slot', label: isKilat ? 'Jadwal Kilat' : t('statusScheduling'), icon: Calendar, helper: isKilat ? 'Jadwal Mulai Distribusi' : t('statusSchedulingHelper'), completedHelper: isKilat ? 'Jadwal Terkonfirmasi' : t('statusSchedulingCompletedHelper') },
+        { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper'), completedHelper: t('statusPaymentSuccessHelper') },
+        { key: 'publishing', label: isKilat ? 'Distribusi Kilat' : t('statusPublishing'), icon: PlayCircle, helper: isKilat ? 'Proses distribusi' : t('statusPublishingHelper'), liveHelper: isKilat ? 'Sedang didistribusikan' : t('statusPublishingLiveHelper'), completedHelper: isKilat ? 'Distribusi selesai' : t('statusPublishingCompletedHelper') },
+        { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper'), completedHelper: t('statusCompletedHelper') },
+    ];
+};
 
 // Get the current step index based on submission_status and related data
 // This ensures sync between admin dashboard and user track status

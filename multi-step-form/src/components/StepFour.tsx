@@ -24,16 +24,19 @@ import {
   CalendarCheck,
   User,
   GraduationCap,
-  Mail
+  Mail,
+  Zap
 } from 'lucide-react';
 
 interface StepFourProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   prevStep: () => void;
+  onUpgradeKilat?: () => void;
+  onUndoKilat?: () => void;
 }
 
-export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) {
+export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, onUndoKilat }: StepFourProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
 
@@ -388,6 +391,29 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 </div>
               </div>
 
+              {/* JFU Kilat Mode Active Banner */}
+              {formData.isKilatUpgrade && (
+                <div className="px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-amber-50 to-amber-100 border-y border-amber-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <Zap size={20} className="fill-white" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-amber-900">{t('kilatModeActive')}</h4>
+                      <p className="text-xs text-amber-700 font-medium">{t('kilatBenefitFast')} • {t('kilatBenefitNoPage')}</p>
+                    </div>
+                  </div>
+                  {onUndoKilat && (
+                    <button
+                      onClick={onUndoKilat}
+                      className="px-4 py-2 text-xs font-semibold text-amber-700 bg-white border border-amber-300 rounded-lg shadow-sm hover:bg-amber-50 transition-colors whitespace-nowrap"
+                    >
+                      {t('kilatUndoButton')}
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Jadwal (If Reserved) */}
               {isAutoApproval && formData.startDate && (
                 <div className="px-6 py-5 flex flex-col md:flex-row gap-2 md:gap-6 hover:bg-blue-100/50 transition-colors bg-blue-50/50">
@@ -494,6 +520,32 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
                 {voucherInfo.isError ? <AlertTriangle className="w-3 h-3" /> : <Info className="w-3 h-3" />} {voucherInfo.message}
               </p>
             )}
+
+            {/* Upgrade CTA */}
+            {voucherInfo.isValid && voucherInfo.isKilatEligible && !formData.isKilatUpgrade && onUpgradeKilat && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+                    <Zap size={16} className="fill-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-bold text-amber-900">{t('kilatUpgradeTitle')}</h4>
+                    <p className="text-xs text-amber-800 mt-0.5">{t('kilatUpgradeTagline')}</p>
+                    <ul className="text-[11px] text-amber-700 mt-2 space-y-1 font-medium">
+                      <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitFast')}</li>
+                      <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitNoPage')}</li>
+                      <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitPrice')}</li>
+                    </ul>
+                    <button
+                      onClick={onUpgradeKilat}
+                      className="mt-3 w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      {t('kilatUpgradeButton')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -513,11 +565,22 @@ export function StepFour({ formData, updateFormData, prevStep }: StepFourProps) 
               {/* Ad Cost */}
               <div className="flex justify-between items-start pb-4 border-b border-dashed border-gray-200">
                 <div>
-                  <div className="text-sm font-medium text-gray-900">{t('adCampaignCost')}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{formData.questionCount} {t('questions').toLowerCase()} × {formData.duration} hari</div>
+                  <div className="text-sm font-medium text-gray-900">{formData.isKilatUpgrade ? 'Base Rate Iklan' : t('adCampaignCost')}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{formData.questionCount} {t('questions').toLowerCase()} {formData.isKilatUpgrade ? '' : `× ${formData.duration} hari`}</div>
                 </div>
                 <div className="text-sm font-medium text-gray-900">Rp {formatRupiah(costCalculation.adCost)}</div>
               </div>
+
+              {/* JFU Kilat Add-on */}
+              {formData.isKilatUpgrade && costCalculation.kilatAddonCost && (
+                <div className="flex justify-between items-start pb-4 border-b border-dashed border-gray-200">
+                  <div>
+                    <div className="text-sm font-bold text-amber-600 flex items-center gap-1.5"><Zap size={14} className="fill-amber-600" /> {t('kilatAddonLabel')}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Prioritas distribusi super cepat</div>
+                  </div>
+                  <div className="text-sm font-bold text-amber-600">Rp {formatRupiah(costCalculation.kilatAddonCost)}</div>
+                </div>
+              )}
 
               {/* Incentive Cost */}
               <div className="flex justify-between items-start pb-4 border-b border-dashed border-gray-200">

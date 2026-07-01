@@ -178,9 +178,9 @@ export function StatusPage() {
         }
     };
 
-    const steps = getStatusSteps(t);
-
     const getStatusBadgeInfo = (currentStep: number, submission?: FormSubmission, activeStart?: string | null, activeEnd?: string | null) => {
+        const steps = getStatusSteps(t, submission?.distribution_type);
+        
         if (currentStep === -1) {
             return {
                 label: t('statusRevisionNeeded'),
@@ -514,7 +514,7 @@ export function StatusPage() {
                                                             currentStep={currentStep}
                                                             paymentLink={finalPaymentLink || null}
                                                             invoiceId={invoiceIds[submission.id!] || null}
-                                                            steps={getStatusSteps(t)}
+                                                            steps={getStatusSteps(t, submission.distribution_type)}
                                                             isExpired={isExpired}
                                                             awaitingInvoice={awaitingInvoice}
                                                             activeStartDate={eff.activeStartDate}
