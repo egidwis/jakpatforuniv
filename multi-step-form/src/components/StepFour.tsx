@@ -5,7 +5,7 @@ import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
 import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, type FormSubmission } from '../utils/supabase';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
-import { MAX_REGULAR_ADS_PER_DAY } from '../utils/constants';
+import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
@@ -125,39 +125,52 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
       // Double-check availability for auto-approval
       if (isAutoApproval && formData.startDate && formData.startTime) {
         try {
-          const { regularCounts } = await fetchSlotAvailability();
           const startDay = new Date(formData.startDate);
 
-          // Validate capacity across duration
-          let isAvailable = true;
-          const current = new Date(startDay);
-          current.setHours(0, 0, 0, 0);
-
-          for (let i = 0; i < formData.duration; i++) {
-            const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
-            const count = regularCounts[dateStr] || 0;
-            if (count >= MAX_REGULAR_ADS_PER_DAY) {
-              isAvailable = false;
-              break;
+          if (formData.isKilatUpgrade) {
+            // Kilat: check single day against kilat slot pool
+            const { regularCounts: kilatCounts } = await fetchSlotAvailability(undefined, 'kilat');
+            const dateStr = `${startDay.getFullYear()}-${String(startDay.getMonth() + 1).padStart(2, '0')}-${String(startDay.getDate()).padStart(2, '0')}`;
+            if ((kilatCounts[dateStr] || 0) >= MAX_KILAT_ADS_PER_DAY) {
+              toast.dismiss(loadingToast);
+              toast.error('Ups! Slot Kilat pada tanggal yang Anda pilih telah penuh. Silakan kembali memilih tanggal lain.');
+              isSubmittingRef.current = false;
+              setIsSubmitting(false);
+              return;
             }
-            current.setDate(current.getDate() + 1);
+          } else {
+            // Regular: validate capacity across duration
+            const { regularCounts } = await fetchSlotAvailability();
+            let isAvailable = true;
+            const current = new Date(startDay);
+            current.setHours(0, 0, 0, 0);
+
+            for (let i = 0; i < formData.duration; i++) {
+              const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+              const count = regularCounts[dateStr] || 0;
+              if (count >= MAX_REGULAR_ADS_PER_DAY) {
+                isAvailable = false;
+                break;
+              }
+              current.setDate(current.getDate() + 1);
+            }
+
+            if (!isAvailable) {
+              toast.dismiss(loadingToast);
+              toast.error('Ups! Slot pada rentang tanggal yang Anda pilih telah penuh. Silakan kembali mengatur ulang tanggal di Step 3.');
+              isSubmittingRef.current = false;
+              setIsSubmitting(false);
+              return;
+            }
           }
 
-          if (!isAvailable) {
-            toast.dismiss(loadingToast);
-            toast.error('Ups! Slot pada rentang tanggal yang Anda pilih telah penuh. Silakan kembali mengatur ulang tanggal di Step 3.');
-            isSubmittingRef.current = false;
-            setIsSubmitting(false);
-            return;
-          }
-
-          // Calculate valid UTC dates if available
+          // Calculate valid UTC dates
           const [valHours, valMinutes] = formData.startTime.split(':').map(Number);
           startDay.setHours(valHours, valMinutes, 0, 0);
           calculatedStartDate = startDay.toISOString();
 
           const endDay = new Date(startDay);
-          endDay.setDate(endDay.getDate() + formData.duration);
+          endDay.setDate(endDay.getDate() + (formData.isKilatUpgrade ? 1 : formData.duration));
           calculatedEndDate = endDay.toISOString();
 
         } catch (error) {
@@ -167,6 +180,13 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
           setIsSubmitting(false);
           return;
         }
+      } else if (formData.isKilatUpgrade && formData.startDate && formData.startTime) {
+        // Kilat + non-autoApproval (manual/sensitive): save chosen schedule as kilat slot reservation
+        const kilatDay = new Date(formData.startDate);
+        const [h, m] = formData.startTime.split(':').map(Number);
+        kilatDay.setHours(h, m, 0, 0);
+        calculatedStartDate = kilatDay.toISOString();
+        calculatedEndDate = new Date(kilatDay.getTime() + 86400000).toISOString();
       }
 
       // Check if this is a reschedule
@@ -201,7 +221,8 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
         submission_method: isManualForm ? 'manual' : 'google_import',
         detected_keywords: formData.detectedKeywords || [],
         auth_user_id: user?.id,
-        ...(isAutoApproval ? {
+        distribution_type: formData.isKilatUpgrade ? 'kilat' : 'regular',
+        ...(isAutoApproval || formData.isKilatUpgrade ? {
           slot_booked_by: 'user',
           slot_reserved_at: new Date().toISOString()
         } : {})

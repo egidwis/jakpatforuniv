@@ -142,6 +142,7 @@ export function StepThreeSlotReservation({ formData, updateFormData, nextStep, p
               {availableDates.map((date, i) => {
                 const dateStr = getDateString(date);
                 const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
+                const baseCount = regularCountsByDate[dateStr] || 0;
                 const isFull = baseCount >= maxAdsPerDay;
                 
                 const selectedIndex = selectedDate ? availableDates.findIndex(d => getDateString(d) === getDateString(selectedDate)) : -1;

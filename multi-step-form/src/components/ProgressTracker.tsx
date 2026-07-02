@@ -23,9 +23,9 @@ export const getStatusSteps = (t: any, distributionType?: string) => {
     const isKilat = distributionType === 'kilat';
     return [
         { key: 'in_review', label: t('statusInReview'), icon: FileText, helper: t('statusInReviewHelper'), completedHelper: t('statusInReviewCompletedHelper') },
-        { key: 'slot', label: isKilat ? 'Jadwal Kilat' : t('statusScheduling'), icon: Calendar, helper: isKilat ? 'Jadwal Mulai Distribusi' : t('statusSchedulingHelper'), completedHelper: isKilat ? 'Jadwal Terkonfirmasi' : t('statusSchedulingCompletedHelper') },
+        { key: 'slot', label: isKilat ? t('statusKilatSlot') : t('statusScheduling'), icon: Calendar, helper: isKilat ? t('statusKilatSlotHelper') : t('statusSchedulingHelper'), completedHelper: isKilat ? t('statusKilatSlotCompletedHelper') : t('statusSchedulingCompletedHelper') },
         { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard, helper: t('statusPaymentHelper'), completedHelper: t('statusPaymentSuccessHelper') },
-        { key: 'publishing', label: isKilat ? 'Distribusi Kilat' : t('statusPublishing'), icon: PlayCircle, helper: isKilat ? 'Proses distribusi' : t('statusPublishingHelper'), liveHelper: isKilat ? 'Sedang didistribusikan' : t('statusPublishingLiveHelper'), completedHelper: isKilat ? 'Distribusi selesai' : t('statusPublishingCompletedHelper') },
+        { key: 'publishing', label: isKilat ? t('statusKilatPublishing') : t('statusPublishing'), icon: PlayCircle, helper: isKilat ? t('statusKilatPublishingHelper') : t('statusPublishingHelper'), liveHelper: isKilat ? t('statusKilatPublishingLiveHelper') : t('statusPublishingLiveHelper'), completedHelper: isKilat ? t('statusKilatPublishingCompletedHelper') : t('statusPublishingCompletedHelper') },
         { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2, helper: t('statusCompletedHelper'), completedHelper: t('statusCompletedHelper') },
     ];
 };

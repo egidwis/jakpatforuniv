@@ -28,6 +28,7 @@ export function StatusPage() {
     const [extendsBySubmission, setExtendsBySubmission] = useState<Record<string, FormSubmissionExtend[]>>({});
     const [extendPayments, setExtendPayments] = useState<Record<string, Record<string, ExtendPaymentInfo>>>({});
     const [searchParams, setSearchParams] = useSearchParams();
+    const steps = getStatusSteps(t);
 
     // Handle query params for notifications
     useEffect(() => {
