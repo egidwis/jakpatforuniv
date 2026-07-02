@@ -871,3 +871,15 @@ export const translations = {
 };
 
 export type TranslationKey = keyof typeof translations.en;
+
+/**
+ * Compile-time guard — DO NOT REMOVE.
+ *
+ * `satisfies` forces `translations.id` to define a string for every key in `en`.
+ * Add a key to `en` and forget it in `id` and `tsc` fails here, naming the
+ * missing key — instead of `t()` silently returning the raw key string at
+ * runtime (see LanguageContext `t`). The default language is `id`, so such a
+ * miss would hit the primary audience. Note: `vite build` does not typecheck —
+ * run `tsc -b` (or your IDE / CI) to surface this error.
+ */
+void (translations.id satisfies Record<TranslationKey, string>);

@@ -1,5 +1,5 @@
 // Language Context for i18n support
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { translations } from './translations';
 import type { Language, TranslationKey } from './translations';
@@ -34,12 +34,22 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
 
-  const t = (key: TranslationKey): string => {
-    return translations[language][key] || key;
-  };
+  // Memoized so its reference is stable across renders (only changes when the
+  // active language changes), letting React.memo'd consumers skip re-renders.
+  const t = useCallback(
+    (key: TranslationKey): string => translations[language][key] || key,
+    [language]
+  );
+
+  // Stable context value — without this, a new object every render would force
+  // all 27+ consumers of useLanguage() to re-render on any provider render.
+  const value = useMemo(
+    () => ({ language, setLanguage, t }),
+    [language, t]
+  );
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={value}>
       {children}
     </LanguageContext.Provider>
   );
