@@ -269,21 +269,39 @@ export function SubmissionsDesktopRow({
       </div>
     );
   } else if (paymentData.latestStatus === 'expired' || submission.payment_status === 'expired' || isActuallyExpired) {
+    // Expired reservation: the slot was released, so there is no valid schedule.
+    // Enforce "schedule-first, then pay" — disable Payment until the admin
+    // re-reserves a slot (via the Reserve Slot button). This prevents creating a
+    // payment for an unscheduled submission (pay-then-forget-to-schedule), which
+    // would leave the ad page uncreated. Same rule already applies on mobile and
+    // in the not-yet-scheduled branch below.
     paymentBtn = (
-      <div className="relative w-full">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-start h-8 text-xs font-medium shadow-sm text-gray-600 hover:text-emerald-600 border-gray-200 hover:border-emerald-200 bg-white transition-all"
-          onClick={() => onOpenPayment(submission)}
-        >
-          <CreditCard className="w-3.5 h-3.5 mr-2 shrink-0 text-emerald-500" />
-          Payment
-        </Button>
-        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">
-          Expired
-        </span>
-      </div>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="relative w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasValidSchedule}
+                className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${hasValidSchedule ? 'text-gray-600 hover:text-emerald-600 border-gray-200 hover:border-emerald-200 bg-white' : 'text-gray-400 border-gray-100 bg-gray-50'}`}
+                onClick={() => onOpenPayment(submission)}
+              >
+                <CreditCard className={`w-3.5 h-3.5 mr-2 shrink-0 ${hasValidSchedule ? 'text-emerald-500' : 'text-gray-400'}`} />
+                Payment
+              </Button>
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">
+                Expired
+              </span>
+            </div>
+          </TooltipTrigger>
+          {!hasValidSchedule && (
+            <TooltipContent side="top">
+              <p className="text-xs">Reserve a slot first.</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
     );
   } else if (isPending) {
     paymentBtn = (

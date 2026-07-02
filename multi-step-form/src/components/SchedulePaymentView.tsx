@@ -463,12 +463,35 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                 created_at: tx.created_at,
             }));
 
-            // Merge: start with invoices, then add transactions that aren't already represented
-            const seenPaymentIds = new Set((invoiceData || []).map((inv: any) => inv.payment_id));
-            const merged = [
-                ...(invoiceData || []),
-                ...txAsInvoices.filter((tx: any) => !seenPaymentIds.has(tx.payment_id)),
-            ];
+            // Merge by payment_id. A self-service payment has BOTH an invoices row
+            // and a transactions row sharing the same payment_id. On expiry,
+            // releaseExpiredSlot() only marks the transactions row 'expired' — the
+            // client cannot write to `invoices` (admin-only RLS, see
+            // sql/24_secure_invoices_rls.sql), so the invoice can be stale 'pending'.
+            // Prefer the more-terminal status so the badge is honest (e.g. shows
+            // "Expired" instead of "Pending") without needing an invoice write.
+            const statusRank = (s: string) => {
+                switch ((s || '').toLowerCase()) {
+                    case 'paid':
+                    case 'completed': return 3;
+                    case 'expired':
+                    case 'failed':
+                    case 'cancelled': return 2;
+                    case 'pending': return 1;
+                    default: return 0;
+                }
+            };
+            const byPaymentId = new Map<string, any>();
+            (invoiceData || []).forEach((inv: any) => byPaymentId.set(inv.payment_id, { ...inv }));
+            txAsInvoices.forEach((tx: any) => {
+                const existing = byPaymentId.get(tx.payment_id);
+                if (!existing) {
+                    byPaymentId.set(tx.payment_id, tx);
+                } else if (statusRank(tx.status) > statusRank(existing.status)) {
+                    existing.status = tx.status;
+                }
+            });
+            const merged = Array.from(byPaymentId.values());
 
             // Sort by created_at descending
             merged.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
