@@ -52,10 +52,18 @@ export function deriveLifecycle(
   // Legacy campaign end: submission_status 'live'/'scheduled' is never
   // transitioned to 'completed' in the DB, so derive it from end_date.
   // End-of-day local — a campaign ending today still counts as running.
-  const parsedEnd = submission.end_date ? new Date(submission.end_date) : null;
-  const legacyEndMs = parsedEnd && !Number.isNaN(parsedEnd.getTime())
-    ? new Date(parsedEnd.getFullYear(), parsedEnd.getMonth(), parsedEnd.getDate(), 23, 59, 59, 999).getTime()
-    : null;
+  // Date-only strings are parsed as local components (new Date('YYYY-MM-DD')
+  // would anchor to UTC midnight and roll back a day west of UTC).
+  let legacyEndMs: number | null = null;
+  if (submission.end_date) {
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(submission.end_date);
+    const parsedEnd = dateOnly
+      ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+      : new Date(submission.end_date);
+    if (!Number.isNaN(parsedEnd.getTime())) {
+      legacyEndMs = new Date(parsedEnd.getFullYear(), parsedEnd.getMonth(), parsedEnd.getDate(), 23, 59, 59, 999).getTime();
+    }
+  }
   const legacyEnded = legacyEndMs !== null && legacyEndMs < now;
   const isUserBookedUnpaid = submission.slot_booked_by === 'user' && reservedAtTime > 0 && !isPaid && !paymentData.hasEverPaid;
   const isActuallyExpired = !isPaid && !paymentData.hasEverPaid && (
