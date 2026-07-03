@@ -49,13 +49,21 @@ export function deriveLifecycle(
   const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
   const isLegacyActive = ['live', 'completed', 'scheduled'].includes(submission.status || '');
   const reservedAtTime = submission.slot_reserved_at ? new Date(submission.slot_reserved_at).getTime() : 0;
+  // Legacy campaign end: submission_status 'live'/'scheduled' is never
+  // transitioned to 'completed' in the DB, so derive it from end_date.
+  // End-of-day local — a campaign ending today still counts as running.
+  const parsedEnd = submission.end_date ? new Date(submission.end_date) : null;
+  const legacyEndMs = parsedEnd && !Number.isNaN(parsedEnd.getTime())
+    ? new Date(parsedEnd.getFullYear(), parsedEnd.getMonth(), parsedEnd.getDate(), 23, 59, 59, 999).getTime()
+    : null;
+  const legacyEnded = legacyEndMs !== null && legacyEndMs < now;
   const isUserBookedUnpaid = submission.slot_booked_by === 'user' && reservedAtTime > 0 && !isPaid && !paymentData.hasEverPaid;
   const isActuallyExpired = !isPaid && !paymentData.hasEverPaid && (
     paymentData.latestStatus === 'expired' ||
     submission.payment_status === 'expired' ||
     (submission.slot_booked_by === 'user' && reservedAtTime > 0 && now > reservedAtTime + 3600_000)
   );
-  const hasValidSchedule = (isScheduled || isLegacyActive) && !isActuallyExpired;
+  const hasValidSchedule = (isScheduled || (isLegacyActive && !legacyEnded)) && !isActuallyExpired;
   const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && hasValidSchedule;
   const canBuildPage = isPaid || isLegacyActive;
   const canReserveSlot = RESERVABLE_STATUSES.includes(submission.submission_status || '') || isLegacyActive;
@@ -81,12 +89,17 @@ export function deriveLifecycle(
   // Combined stage — precedence: rejected > spam > live > page_scheduled >
   // completed > paid > awaiting_payment > reserved_expired > reserved(<1h) >
   // approved > in_review. KILAT never passes 'paid' via legacy status.
+  // Legacy live/scheduled whose end_date passed derive 'completed'.
   let stage: LifecycleStage;
   if (displayStatus === 'rejected') stage = 'rejected';
   else if (displayStatus === 'spam') stage = 'spam';
-  else if (pageStatus === 'live' || (!isKilat && submission.status === 'live')) stage = 'live';
+  else if (pageStatus === 'live' || (!isKilat && submission.status === 'live' && !legacyEnded)) stage = 'live';
   else if (pageStatus === 'scheduled') stage = 'page_scheduled';
-  else if (pageStatus === 'completed' || (!isKilat && submission.status === 'completed')) stage = 'completed';
+  else if (
+    pageStatus === 'completed' ||
+    (!isKilat && submission.status === 'completed') ||
+    (!isKilat && isLegacyActive && legacyEnded)
+  ) stage = 'completed';
   else if (isPaid) stage = 'paid';
   else if (isPending) stage = 'awaiting_payment';
   else if (isActuallyExpired) stage = 'reserved_expired';
