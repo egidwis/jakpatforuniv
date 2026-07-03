@@ -634,9 +634,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       )}
 
       {/* Content */}
-      <div className={hideAuth ? 'p-4 pb-0 md:px-6 md:pt-4 md:pb-0 flex-1 min-h-0 flex flex-col' : 'max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-6 sm:pb-0 flex-1 min-h-0 flex flex-col'}>
+      <div className={hideAuth ? 'p-4 md:p-6 flex-1 min-h-0 flex flex-col gap-4' : 'max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-6 flex-1 min-h-0 flex flex-col gap-4'}>
 
-        <div className="bg-white p-4 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0 relative z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)]">
+        <div className="md:hidden bg-white p-4 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0 relative z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)]">
 
           {/* Top Row: Month Selector & Actions */}
           <div className="flex flex-row items-center gap-4 w-full">
@@ -754,27 +754,206 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           )}
         </div>
 
-        {loading ? (
-          <>
-            {/* Desktop List View Skeleton - hidden on mobile */}
-            <div className="hidden md:flex flex-col gap-2 flex-1 min-h-0 overflow-auto pb-4 pr-2 mt-3">
-              {Array(8).fill(0).map((_, i) => (
-                <div key={`skeleton-desktop-${i}`} className="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl">
-                  <div className="w-4 h-4 rounded bg-gray-100 animate-pulse shrink-0" />
-                  <div className="w-[76px] shrink-0 space-y-1">
-                    <div className="h-3 w-14 bg-gray-200 animate-pulse rounded" />
-                    <div className="h-2.5 w-10 bg-gray-100 animate-pulse rounded" />
-                  </div>
-                  <div className="h-4 w-[84px] bg-gray-100 animate-pulse rounded shrink-0" />
-                  <div className="h-4 flex-1 bg-gray-200 animate-pulse rounded" />
-                  <div className="hidden lg:block h-4 w-[220px] bg-gray-100 animate-pulse rounded shrink-0" />
-                  <div className="h-5 w-20 bg-gray-100 animate-pulse rounded-full shrink-0" />
-                </div>
-              ))}
+        {/* Desktop: unified list surface — toolbar, column header, rows, pagination in one card */}
+        <div className="hidden md:flex flex-1 min-h-0 flex-col bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {/* Toolbar row 1: Periode · search · refresh */}
+          <div className="shrink-0 flex items-center gap-4 px-4 py-3">
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const newDate = new Date(currentDate);
+                  newDate.setMonth(newDate.getMonth() - 1);
+                  setCurrentDate(newDate);
+                  setCurrentPage(1);
+                }}
+              >
+                <ChevronLeft className="h-4 w-4 text-gray-600" />
+              </Button>
+              <h2 className="text-sm font-semibold min-w-[120px] text-center text-gray-700 select-none">
+                {currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const newDate = new Date(currentDate);
+                  newDate.setMonth(newDate.getMonth() + 1);
+                  setCurrentDate(newDate);
+                  setCurrentPage(1);
+                }}
+              >
+                <ChevronRight className="h-4 w-4 text-gray-600" />
+              </Button>
+            </div>
+            <div className="flex-1 max-w-md relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search..."
+                className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+              />
+            </div>
+            {searchQuery && (
+              <span className="text-xs text-gray-400 whitespace-nowrap">
+                {filteredSubmissions.length} result{filteredSubmissions.length !== 1 ? 's' : ''}
+              </span>
+            )}
+            <Button
+              onClick={loadSubmissions}
+              variant="ghost"
+              size="icon"
+              disabled={loading}
+              className="ml-auto h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+
+          {/* Toolbar row 2: status filters (replaced by tabs + icons in the next task) */}
+          <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 pb-3 border-b border-gray-200">
+            {[
+              { id: 'all', label: 'All', count: statusCounts.all, color: 'bg-gray-100 text-gray-700' },
+              { id: 'in_review', label: 'Need Review', count: statusCounts.in_review, color: 'bg-blue-50 text-blue-700' },
+              { id: 'rejected', label: 'Rejected', count: statusCounts.rejected, color: 'bg-red-50 text-red-700' },
+              { id: 'approved', label: 'Approved', count: statusCounts.approved, color: 'bg-green-50 text-green-700' },
+              { id: 'paid', label: 'Paid', count: statusCounts.paid, color: 'bg-emerald-50 text-emerald-700' },
+              { id: 'spam', label: 'Revision / Spam', count: statusCounts.spam, color: 'bg-orange-50 text-orange-700' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id)}
+                className={`
+                  flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap h-8
+                  ${statusFilter === tab.id
+                    ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-200'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-900'}
+                `}
+              >
+                {tab.label}
+                {['in_review', 'rejected'].includes(tab.id) && (
+                  <span className={`
+                    px-1.5 py-0.5 rounded-md text-[10px] font-bold min-w-[18px] text-center
+                    ${statusFilter === tab.id ? 'bg-white/20 text-white' : tab.color}
+                  `}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Scrollable rows region with sticky column header */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              <div className="shrink-0 flex items-center">
+                <Checkbox
+                  checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
+                  onCheckedChange={() => rowSelection.toggleAll(pageIds)}
+                  aria-label="Select all on this page"
+                />
+              </div>
+              <span className="w-[76px] shrink-0">Submitted</span>
+              <span className="w-[84px] shrink-0">ID</span>
+              <span className="flex-1">Survey</span>
+              <span className="hidden lg:block w-[220px] shrink-0">Researcher</span>
+              <span className="shrink-0 pr-7">Status</span>
             </div>
 
-            {/* Mobile Card View Skeleton - hidden on desktop */}
-            <div className="md:hidden space-y-4">
+            {loading ? (
+              <div className="divide-y divide-gray-100">
+                {Array(8).fill(0).map((_, i) => (
+                  <div key={`skeleton-desktop-${i}`} className="flex items-center gap-3 px-4 py-3">
+                    <div className="w-4 h-4 rounded bg-gray-100 animate-pulse shrink-0" />
+                    <div className="w-[76px] shrink-0 space-y-1">
+                      <div className="h-3 w-14 bg-gray-200 animate-pulse rounded" />
+                      <div className="h-2.5 w-10 bg-gray-100 animate-pulse rounded" />
+                    </div>
+                    <div className="h-4 w-[84px] bg-gray-100 animate-pulse rounded shrink-0" />
+                    <div className="h-4 flex-1 bg-gray-200 animate-pulse rounded" />
+                    <div className="hidden lg:block h-4 w-[220px] bg-gray-100 animate-pulse rounded shrink-0" />
+                    <div className="h-5 w-20 bg-gray-100 animate-pulse rounded-full shrink-0" />
+                  </div>
+                ))}
+              </div>
+            ) : filteredSubmissions.length === 0 ? (
+              <div className="py-16 text-center">
+                <div className="inline-flex items-center justify-center w-14 h-14 bg-muted rounded-full mb-3">
+                  {submissions.length === 0
+                    ? <Eye className="w-7 h-7 text-muted-foreground" />
+                    : <Search className="w-7 h-7 text-muted-foreground" />}
+                </div>
+                <h3 className="text-lg font-semibold mb-1 text-foreground">
+                  {submissions.length === 0 ? 'No Submissions Yet' : 'No Results Found'}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {submissions.length === 0
+                    ? 'Survey submissions will appear here once researchers start submitting their forms.'
+                    : searchQuery
+                      ? `No submissions match your search query "${searchQuery}".`
+                      : 'No submissions match the current filter.'}
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {filteredSubmissions.map((submission) => (
+                  <SubmissionListRow
+                    key={submission.id}
+                    submission={submission}
+                    lifecycle={deriveLifecycle(
+                      submission,
+                      paymentStates[submission.id] || EMPTY_PAYMENT_STATE,
+                      existingPages[submission.id],
+                      scheduledSubmissionIds.has(submission.id)
+                    )}
+                    selected={rowSelection.isSelected(submission.id)}
+                    onSelectToggle={rowSelection.toggle}
+                    onOpen={setOpenSubmissionId}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Pagination footer */}
+          <div className="shrink-0 flex items-center justify-between border-t border-gray-200 px-4 py-3">
+            <div className="text-sm text-gray-500">
+              Showing {totalSubmissions === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalSubmissions)} of {totalSubmissions} results
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1 || loading}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <div className="text-sm font-medium">Page {currentPage}</div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => prev + 1)}
+                disabled={currentPage * pageSize >= totalSubmissions || loading}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile: unchanged card view */}
+        <div className="md:hidden">
+          {loading ? (
+            <div className="space-y-4">
               {Array(3).fill(0).map((_, i) => (
                 <Card key={`skeleton-mobile-${i}`} className="overflow-hidden mb-4 shadow-sm border-0">
                   <div className="p-4 border-b bg-gray-50/50 flex justify-between items-start">
@@ -807,96 +986,28 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 </Card>
               ))}
             </div>
-          </>
-        ) : submissions.length === 0 ? (
-          <Card className="p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
-              <Eye className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-xl font-semibold mb-2 text-foreground">No Submissions Yet</h3>
-            <p className="text-muted-foreground">
-              Survey submissions will appear here once researchers start submitting their forms.
-            </p>
-          </Card>
-        ) : filteredSubmissions.length === 0 ? (
-          <Card className="p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
-              <Search className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-xl font-semibold mb-2 text-foreground">No Results Found</h3>
-            <p className="text-muted-foreground">
-              No submissions match your search query "{searchQuery}".
-            </p>
-          </Card>
-        ) : (
-          <>
-            {/* Desktop List View - hidden on mobile */}
-            <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2 mt-3">
-              {/* List header: select-all + column labels */}
-              <div className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur rounded-xl shadow-sm px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                <div className="shrink-0 flex items-center">
-                  <Checkbox
-                    checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
-                    onCheckedChange={() => rowSelection.toggleAll(pageIds)}
-                    aria-label="Select all on this page"
-                  />
-                </div>
-                <span className="w-[76px] shrink-0">Submitted</span>
-                <span className="w-[84px] shrink-0">ID</span>
-                <span className="flex-1">Survey</span>
-                <span className="hidden lg:block w-[220px] shrink-0">Researcher</span>
-                <span className="shrink-0 pr-7">Status</span>
+          ) : submissions.length === 0 ? (
+            <Card className="p-12 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
+                <Eye className="w-8 h-8 text-muted-foreground" />
               </div>
-
-              <div className="flex flex-col gap-2 mt-3">
-                {filteredSubmissions.map((submission) => (
-                  <SubmissionListRow
-                    key={submission.id}
-                    submission={submission}
-                    lifecycle={deriveLifecycle(
-                      submission,
-                      paymentStates[submission.id] || EMPTY_PAYMENT_STATE,
-                      existingPages[submission.id],
-                      scheduledSubmissionIds.has(submission.id)
-                    )}
-                    selected={rowSelection.isSelected(submission.id)}
-                    onSelectToggle={rowSelection.toggle}
-                    onOpen={setOpenSubmissionId}
-                  />
-                ))}
+              <h3 className="text-xl font-semibold mb-2 text-foreground">No Submissions Yet</h3>
+              <p className="text-muted-foreground">
+                Survey submissions will appear here once researchers start submitting their forms.
+              </p>
+            </Card>
+          ) : filteredSubmissions.length === 0 ? (
+            <Card className="p-12 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
+                <Search className="w-8 h-8 text-muted-foreground" />
               </div>
-
-              {/* Pagination Controls */}
-              < div className="flex items-center justify-between px-4 py-4 border-t mt-4" >
-                <div className="text-sm text-gray-500">
-                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalSubmissions)} of {totalSubmissions} results
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1 || loading}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-                  <div className="text-sm font-medium">Page {currentPage}</div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(prev => prev + 1)}
-                    disabled={currentPage * pageSize >= totalSubmissions || loading}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div >
-            </div >
-
-            {/* Mobile Card View - shown only on mobile */}
-            <div className="md:hidden space-y-4">
+              <h3 className="text-xl font-semibold mb-2 text-foreground">No Results Found</h3>
+              <p className="text-muted-foreground">
+                No submissions match your search query "{searchQuery}".
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-4">
               {filteredSubmissions.map((submission) => (
                 <SubmissionsMobileCard
                   key={submission.id}
@@ -921,9 +1032,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                 />
               ))}
             </div>
-          </>
-        )
-        }
+          )}
+        </div>
       </div >
 
       {/* Modals removed and replaced by SchedulePaymentView */}

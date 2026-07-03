@@ -1,4 +1,4 @@
-import { ChevronRight, ShieldAlert, Zap } from 'lucide-react';
+import { ChevronRight, ShieldAlert } from 'lucide-react';
 import { Checkbox } from '../ui/checkbox';
 import { Chip } from '../ui/chip';
 import {
@@ -43,9 +43,9 @@ export function SubmissionListRow({
         }
       }}
       className={cn(
-        'group flex items-center gap-3 px-4 py-3 bg-white border rounded-xl cursor-pointer transition-all',
-        'hover:shadow hover:border-gray-300',
-        selected ? 'border-blue-300 bg-blue-50/40' : 'border-gray-200'
+        'group flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors',
+        'hover:bg-gray-50',
+        selected && 'bg-blue-50/50'
       )}
     >
       {/* Checkbox — stop propagation so it never opens the drawer */}
@@ -86,11 +86,13 @@ export function SubmissionListRow({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {submission.distribution_type === 'kilat' && (
-          <Chip variant="amber" size="sm" className="shrink-0">
-            <Zap className="w-3 h-3" /> KILAT
-          </Chip>
-        )}
+        <Chip
+          variant={submission.submission_method === 'google_import' ? 'orange' : 'indigo'}
+          size="sm"
+          className="shrink-0"
+        >
+          {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
+        </Chip>
         {submission.detected_keywords && submission.detected_keywords.length > 0 && (
           <TooltipProvider>
             <Tooltip>
