@@ -112,11 +112,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   useEffect(() => {
     let result = submissions;
 
-    // Split Regular Ads vs Kilat (desktop tab strip)
-    result = result.filter(sub => distTab === 'kilat'
-      ? sub.distribution_type === 'kilat'
-      : sub.distribution_type !== 'kilat');
-
     // Filter by Status
     if (statusFilter !== 'all') {
       result = result.filter(sub => {
@@ -130,7 +125,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
 
     setFilteredSubmissions(result);
-  }, [submissions, statusFilter, distTab]);
+  }, [submissions, statusFilter]);
 
   // Calculate Status Counts
   const statusCounts = {
@@ -141,6 +136,12 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     paid: submissions.filter(s => (s.payment_status || '').toLowerCase() === 'paid').length,
     spam: submissions.filter(s => s.status === 'spam').length,
   };
+
+  // Desktop-only view: the Regular/Kilat tab strip splits the loaded page;
+  // mobile has no tab UI and must keep showing every distribution type.
+  const desktopSubmissions = filteredSubmissions.filter(sub => distTab === 'kilat'
+    ? sub.distribution_type === 'kilat'
+    : sub.distribution_type !== 'kilat');
 
   // Client-side search logic removed in favor of Server-side search inside loadSubmissions
   // Reset page to 1 when search changes
@@ -608,8 +609,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     );
   }
 
-  // Selection helpers for the current page of rows
-  const pageIds = filteredSubmissions.map((s) => s.id);
+  // Selection helpers for the current page of rows (desktop-scoped: Regular/Kilat tab split)
+  const pageIds = desktopSubmissions.map((s) => s.id);
   const pageAllSelected = rowSelection.allSelected(pageIds);
   const pageSomeSelected = rowSelection.someSelected(pageIds);
 
@@ -840,7 +841,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             </div>
             {searchQuery && (
               <span className="text-xs text-gray-400 whitespace-nowrap">
-                {filteredSubmissions.length} result{filteredSubmissions.length !== 1 ? 's' : ''}
+                {desktopSubmissions.length} result{desktopSubmissions.length !== 1 ? 's' : ''}
               </span>
             )}
             <Button
@@ -948,7 +949,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   </div>
                 ))}
               </div>
-            ) : filteredSubmissions.length === 0 ? (
+            ) : desktopSubmissions.length === 0 ? (
               <div className="py-16 text-center">
                 <div className="inline-flex items-center justify-center w-14 h-14 bg-muted rounded-full mb-3">
                   {submissions.length === 0
@@ -968,7 +969,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {filteredSubmissions.map((submission) => (
+                {desktopSubmissions.map((submission) => (
                   <SubmissionListRow
                     key={submission.id}
                     submission={submission}

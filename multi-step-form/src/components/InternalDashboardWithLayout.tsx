@@ -254,7 +254,7 @@ export function InternalDashboardWithLayout() {
           <span
             className={cn(
               'font-semibold text-sm text-gray-900 whitespace-nowrap overflow-hidden transition-all duration-200',
-              collapsed ? 'w-0 h-0 opacity-0' : 'flex-1 opacity-100'
+              collapsed ? 'w-0 h-0 opacity-0 -my-1' : 'flex-1 opacity-100'
             )}
           >
             Internal Dashboard
@@ -349,7 +349,7 @@ export function InternalDashboardWithLayout() {
                       <div className={cn('h-full rounded-full transition-all duration-500', barColor)} style={{ width: `${pct}%` }} />
                     </div>
                     <span className={cn('text-[10px] whitespace-nowrap', isCritical ? 'text-red-500 font-semibold' : 'text-gray-400')}>
-                      ~{estMBStr} / 100 GB
+                      ~{estMBStr} / {STORAGE_LIMIT_MB >= 1024 ? `${(STORAGE_LIMIT_MB / 1024).toFixed(0)} GB` : `${STORAGE_LIMIT_MB} MB`}
                     </span>
                   </div>
                 </TooltipTrigger>
@@ -370,7 +370,7 @@ export function InternalDashboardWithLayout() {
           <div
             className={cn(
               'flex flex-col overflow-hidden transition-all duration-200',
-              collapsed ? 'w-0 h-0 opacity-0' : 'flex-1 opacity-100'
+              collapsed ? 'w-0 h-0 opacity-0 -my-1' : 'flex-1 opacity-100'
             )}
           >
             <span className="font-semibold text-xs text-gray-900 truncate">
