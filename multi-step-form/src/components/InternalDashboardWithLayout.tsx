@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, AlertTriangle, BarChart2, Users, Calendar, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, Calendar, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { cn, useMediaQuery } from '@/lib/utils';
@@ -242,118 +242,92 @@ export function InternalDashboardWithLayout() {
           )}
         >
         {/* Header */}
-        <div className={cn('border-b border-gray-200', collapsed ? 'p-3' : 'p-6')}>
-          {collapsed ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
+        <div className={cn('flex items-center border-b border-gray-200 px-3', collapsed ? 'flex-col gap-2 py-3' : 'h-14 gap-2')}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
                 J
               </div>
-              {/* Expand toggle - desktop only */}
-              <button
-                onClick={toggleCollapsed}
-                className="hidden md:flex items-center justify-center p-1.5 rounded-md hover:bg-gray-100"
-                title="Expand sidebar"
-              >
-                <PanelLeftOpen className="h-4 w-4 text-gray-600" />
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-                  J
-                </div>
-                <div className="flex flex-col">
-                  <h2 className="font-semibold text-sm text-gray-900">Internal Dashboard</h2>
-                  <p className="text-xs text-gray-500">Jakpat for Universities</p>
-                </div>
-              </div>
-              {/* Collapse toggle - desktop only */}
-              <button
-                onClick={toggleCollapsed}
-                className="hidden md:flex items-center justify-center p-1.5 rounded-md hover:bg-gray-100"
-                title="Collapse sidebar"
-              >
-                <PanelLeftClose className="h-4 w-4 text-gray-600" />
-              </button>
-              {/* Close button - only visible on mobile */}
-              {!isDesktop && (
-                <button
-                  onClick={() => setIsSidebarOpen(false)}
-                  className="p-2 rounded-md hover:bg-gray-100"
-                >
-                  <X className="h-5 w-5 text-gray-600" />
-                </button>
-              )}
-            </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">Jakpat for Universities</TooltipContent>
+          </Tooltip>
+          <span
+            className={cn(
+              'font-semibold text-sm text-gray-900 whitespace-nowrap overflow-hidden transition-all duration-200',
+              collapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
+            )}
+          >
+            Internal Dashboard
+          </span>
+          <button
+            onClick={toggleCollapsed}
+            className="hidden md:flex items-center justify-center p-1.5 rounded-md hover:bg-gray-100 shrink-0"
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed
+              ? <PanelLeftOpen className="h-4 w-4 text-gray-600" />
+              : <PanelLeftClose className="h-4 w-4 text-gray-600" />}
+          </button>
+          {!isDesktop && (
+            <button onClick={() => setIsSidebarOpen(false)} className="p-2 rounded-md hover:bg-gray-100">
+              <X className="h-5 w-5 text-gray-600" />
+            </button>
           )}
         </div>
 
         {/* Navigation */}
-        <nav className={cn('flex-1 space-y-1', collapsed ? 'p-2' : 'p-4')}>
+        <nav className="flex-1 space-y-1 p-2 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentPage === item.id;
-
-            if (collapsed) {
-              return (
-                <Tooltip key={item.id}>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => handlePageChange(item.id)}
+            const showUnread = item.id === 'conversations' && unreadConversations > 0;
+            return (
+              <Tooltip key={item.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => handlePageChange(item.id)}
+                    className={cn(
+                      'w-full flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    )}
+                  >
+                    <span className="relative shrink-0">
+                      <Icon className="h-4 w-4" />
+                      {showUnread && collapsed && (
+                        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
+                      )}
+                    </span>
+                    <span
                       className={cn(
-                        'w-full flex items-center justify-center px-2 py-2 rounded-md text-sm font-medium transition-colors',
-                        isActive
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                        'flex-1 text-left whitespace-nowrap overflow-hidden transition-all duration-200',
+                        collapsed ? 'w-0 opacity-0' : 'ml-3 opacity-100'
                       )}
                     >
-                      <span className="relative">
-                        <Icon className="h-4 w-4" />
-                        {item.id === 'conversations' && unreadConversations > 0 && (
-                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
+                      {item.label}
+                    </span>
+                    {showUnread && !collapsed && (
+                      <span
+                        className={cn(
+                          'px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0',
+                          isActive ? 'bg-blue-600 text-white' : 'bg-red-500 text-white'
                         )}
+                      >
+                        {unreadConversations > 99 ? '99+' : unreadConversations}
                       </span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              );
-            }
-
-            return (
-              <button
-                key={item.id}
-                onClick={() => handlePageChange(item.id)}
-                className={cn(
-                  'w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors', // Changed to justify-between
-                  isActive
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </div>
-                {item.id === 'conversations' && unreadConversations > 0 && (
-                  <span className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-bold",
-                    isActive
-                      ? "bg-white text-blue-600"
-                      : "bg-red-500 text-white"
-                  )}>
-                    {unreadConversations > 99 ? '99+' : unreadConversations}
-                  </span>
-                )}
-              </button>
+                    )}
+                  </button>
+                </TooltipTrigger>
+                {collapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
+              </Tooltip>
             );
           })}
         </nav>
 
         {/* Storage Meter - hidden when collapsed */}
         {!collapsed && (
-        <div className="px-4 py-3 border-t border-gray-200">
+        <div className="border-t border-gray-200 px-4 py-2.5">
           {(() => {
             // Calculate estimated MB from all sources with different avg sizes
             const proofMB = (storageStats.proofCount * 70) / 1024;    // ~70KB avg (compressed proof screenshots)
@@ -367,82 +341,56 @@ export function InternalDashboardWithLayout() {
             const barColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-emerald-500';
             const estMBStr = estMB >= 1024 ? `${(estMB / 1024).toFixed(1)} GB` : `${estMB.toFixed(0)} MB`;
             return (
-              <>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <HardDrive className={`h-3.5 w-3.5 ${isCritical ? 'text-red-500' : 'text-gray-400'}`} />
-                    <span className="text-[11px] font-medium text-gray-600">Supabase Storage</span>
-                  </div>
-                  {isCritical && (
-                    <span className="flex items-center gap-1 text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full">
-                      <AlertTriangle className="h-2.5 w-2.5" />
-                      Hampir penuh
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2 cursor-default">
+                    <HardDrive className={cn('h-3.5 w-3.5 shrink-0', isCritical ? 'text-red-500' : 'text-gray-400')} />
+                    <div className="h-1.5 flex-1 rounded-full bg-gray-200 overflow-hidden">
+                      <div className={cn('h-full rounded-full transition-all duration-500', barColor)} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className={cn('text-[10px] whitespace-nowrap', isCritical ? 'text-red-500 font-semibold' : 'text-gray-400')}>
+                      ~{estMBStr} / 100 GB
                     </span>
-                  )}
-                </div>
-                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-[10px] text-gray-500" title={`Proof: ${storageStats.proofCount.toLocaleString()} · Banner: ${storageStats.bannerCount} · Content: ~${storageStats.contentImageCount}`}>
-                    {totalFiles.toLocaleString()} file
-                  </span>
-                  <span className={`text-[10px] ${isCritical ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
-                    ~{estMBStr} / {STORAGE_LIMIT_MB >= 1024 ? `${(STORAGE_LIMIT_MB / 1024).toFixed(0)} GB` : `${STORAGE_LIMIT_MB} MB`}
-                  </span>
-                </div>
-              </>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  Supabase Storage — Proof: {storageStats.proofCount.toLocaleString()} · Banner: {storageStats.bannerCount} · Content: ~{storageStats.contentImageCount} ({totalFiles.toLocaleString()} file)
+                </TooltipContent>
+              </Tooltip>
             );
           })()}
         </div>
         )}
 
         {/* Footer */}
-        <div className={cn('border-t border-gray-200 bg-gray-50/50', collapsed ? 'p-3' : 'p-4')}>
-          {collapsed ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
-                {user?.email?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleLogout}
-                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <LogOut className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">Logout</TooltipContent>
-              </Tooltip>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 overflow-hidden">
-                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
-                  {user?.email?.charAt(0).toUpperCase() || 'U'}
-                </div>
-                <div className="flex flex-col overflow-hidden">
-                  <span className="font-semibold text-xs text-gray-900 truncate">
-                    {user?.user_metadata?.full_name || 'Admin User'}
-                  </span>
-                  <span className="text-[10px] text-gray-500 truncate" title={user?.email}>
-                    {user?.email}
-                  </span>
-                </div>
-              </div>
+        <div className={cn('border-t border-gray-200 bg-gray-50/50 p-3 flex items-center gap-2', collapsed && 'flex-col')}>
+          <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
+            {user?.email?.charAt(0).toUpperCase() || 'U'}
+          </div>
+          <div
+            className={cn(
+              'flex flex-col overflow-hidden transition-all duration-200',
+              collapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
+            )}
+          >
+            <span className="font-semibold text-xs text-gray-900 truncate">
+              {user?.user_metadata?.full_name || 'Admin User'}
+            </span>
+            <span className="text-[10px] text-gray-500 truncate" title={user?.email}>
+              {user?.email}
+            </span>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
               <button
                 onClick={handleLogout}
                 className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
-                title="Logout"
               >
                 <LogOut className="h-4 w-4" />
               </button>
-            </div>
-          )}
+            </TooltipTrigger>
+            {collapsed && <TooltipContent side="right">Logout</TooltipContent>}
+          </Tooltip>
         </div>
         </aside>
       </TooltipProvider>
