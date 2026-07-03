@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, supabase } from '../utils/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Checkbox } from './ui/checkbox';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 import { SchedulePaymentView } from './SchedulePaymentView';
 import { EditCriteriaModal } from './EditCriteriaModal';
 import { EditFormDetailsModal } from './EditFormDetailsModal';
@@ -25,6 +27,15 @@ import './InternalDashboard.css';
 
 const EMPTY_PAYMENT_STATE: PaymentState = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
 
+const STATUS_FILTER_OPTIONS = [
+  { id: 'all', label: 'All' },
+  { id: 'in_review', label: 'Need Review' },
+  { id: 'rejected', label: 'Rejected' },
+  { id: 'approved', label: 'Approved' },
+  { id: 'paid', label: 'Paid' },
+  { id: 'spam', label: 'Revision / Spam' },
+] as const;
+
 interface InternalDashboardProps {
   hideAuth?: boolean;
   onLogout?: () => void;
@@ -37,6 +48,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [distTab, setDistTab] = useState<'regular' | 'kilat'>('regular');
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
 
   // Derived schedule state: Set of submission IDs that have a slot reserved (start_date set)
   const [scheduledSubmissionIds, setScheduledSubmissionIds] = useState<Set<string>>(new Set());
@@ -96,6 +109,11 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   useEffect(() => {
     let result = submissions;
 
+    // Split Regular Ads vs Kilat (desktop tab strip)
+    result = result.filter(sub => distTab === 'kilat'
+      ? sub.distribution_type === 'kilat'
+      : sub.distribution_type !== 'kilat');
+
     // Filter by Status
     if (statusFilter !== 'all') {
       result = result.filter(sub => {
@@ -109,7 +127,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
 
     setFilteredSubmissions(result);
-  }, [submissions, statusFilter]);
+  }, [submissions, statusFilter, distTab]);
 
   // Calculate Status Counts
   const statusCounts = {
@@ -149,7 +167,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         pageSize,
         searchQuery,
         startOfMonth.toISOString(),
-        endOfMonth.toISOString()
+        endOfMonth.toISOString(),
+        sortDir === 'asc'
       );
 
       if (data) {
@@ -332,7 +351,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     if (isAdmin) {
       loadSubmissions();
     }
-  }, [isAdmin, currentPage, searchQuery, currentDate]);
+  }, [isAdmin, currentPage, searchQuery, currentDate, sortDir]);
 
   // Re-render every 60s so time-based chips (Reserved <1h / Expired) stay honest
   const [, setNowTick] = useState(0);
@@ -346,7 +365,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const clearSelection = rowSelection.clear;
   useEffect(() => {
     clearSelection();
-  }, [clearSelection, currentPage, currentDate, statusFilter, searchQuery]);
+  }, [clearSelection, currentPage, currentDate, statusFilter, searchQuery, distTab, sortDir]);
 
   // Drawer reads fresh data by id; close it when the row leaves the dataset
   const openSubmission = openSubmissionId
@@ -816,37 +835,64 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             </Button>
           </div>
 
-          {/* Toolbar row 2: status filters (replaced by tabs + icons in the next task) */}
-          <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 pb-3 border-b border-gray-200">
-            {[
-              { id: 'all', label: 'All', count: statusCounts.all, color: 'bg-gray-100 text-gray-700' },
-              { id: 'in_review', label: 'Need Review', count: statusCounts.in_review, color: 'bg-blue-50 text-blue-700' },
-              { id: 'rejected', label: 'Rejected', count: statusCounts.rejected, color: 'bg-red-50 text-red-700' },
-              { id: 'approved', label: 'Approved', count: statusCounts.approved, color: 'bg-green-50 text-green-700' },
-              { id: 'paid', label: 'Paid', count: statusCounts.paid, color: 'bg-emerald-50 text-emerald-700' },
-              { id: 'spam', label: 'Revision / Spam', count: statusCounts.spam, color: 'bg-orange-50 text-orange-700' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setStatusFilter(tab.id)}
-                className={`
-                  flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap h-8
-                  ${statusFilter === tab.id
-                    ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-200'
-                    : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-900'}
-                `}
+          {/* Toolbar row 2: Regular/Kilat tabs + filter & sort icons (Outlook-style) */}
+          <div className="shrink-0 flex items-center justify-between px-4 border-b border-gray-200">
+            <div className="flex">
+              {([['regular', 'Regular Ads'], ['kilat', 'Kilat']] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => setDistTab(id)}
+                  className={cn(
+                    'px-3 py-2 -mb-px text-sm font-medium border-b-2 transition-colors',
+                    distTab === id
+                      ? 'border-blue-600 text-blue-700'
+                      : 'border-transparent text-gray-500 hover:text-gray-800'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 pb-1">
+              {statusFilter !== 'all' && (
+                <button
+                  onClick={() => setStatusFilter('all')}
+                  className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-xs font-medium pl-2.5 pr-1.5 py-1"
+                  title="Clear status filter"
+                >
+                  {STATUS_FILTER_OPTIONS.find(o => o.id === statusFilter)?.label}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-gray-900" title="Filter status">
+                    <ListFilter className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  {STATUS_FILTER_OPTIONS.map((opt) => (
+                    <DropdownMenuItem
+                      key={opt.id}
+                      onClick={() => setStatusFilter(opt.id)}
+                      className={cn('flex items-center justify-between text-sm cursor-pointer', statusFilter === opt.id && 'font-semibold text-blue-700')}
+                    >
+                      {opt.label}
+                      <span className="text-xs text-gray-400">{statusCounts[opt.id]}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                onClick={() => { setSortDir(d => (d === 'desc' ? 'asc' : 'desc')); setCurrentPage(1); }}
+                title={sortDir === 'desc' ? 'Terbaru dulu — klik untuk terlama' : 'Terlama dulu — klik untuk terbaru'}
               >
-                {tab.label}
-                {['in_review', 'rejected'].includes(tab.id) && (
-                  <span className={`
-                    px-1.5 py-0.5 rounded-md text-[10px] font-bold min-w-[18px] text-center
-                    ${statusFilter === tab.id ? 'bg-white/20 text-white' : tab.color}
-                  `}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
+                {sortDir === 'desc' ? <ArrowDownWideNarrow className="w-4 h-4" /> : <ArrowUpNarrowWide className="w-4 h-4" />}
+              </Button>
+            </div>
           </div>
 
           {/* Scrollable rows region with sticky column header */}

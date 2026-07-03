@@ -586,7 +586,8 @@ export const getFormSubmissionsPaginated = async (
   limit: number,
   searchQuery: string = '',
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  ascending: boolean = false
 ) => {
   try {
     const from = (page - 1) * limit;
@@ -595,7 +596,7 @@ export const getFormSubmissionsPaginated = async (
     let query = supabase
       .from('form_submissions')
       .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending })
       .range(from, to);
 
     if (searchQuery) {
