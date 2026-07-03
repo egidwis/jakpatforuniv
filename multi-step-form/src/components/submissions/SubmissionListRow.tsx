@@ -20,13 +20,12 @@ interface SubmissionListRowProps {
   onOpen: (id: string) => void;
   /** Row currently open in the detail pane */
   active?: boolean;
-  /** Hide the researcher column (list is narrow while the pane is open) */
-  hideResearcher?: boolean;
 }
 
 /**
- * Compact one-line list row: checkbox · date · id · title · researcher ·
- * lifecycle chip · chevron. All detail & actions live in the drawer.
+ * Compact list row: checkbox · date · id · source chip + title with
+ * researcher subtitle · lifecycle chip · chevron. All detail & actions
+ * live in the drawer.
  */
 export function SubmissionListRow({
   submission,
@@ -35,7 +34,6 @@ export function SubmissionListRow({
   onSelectToggle,
   onOpen,
   active,
-  hideResearcher,
 }: SubmissionListRowProps) {
   return (
     <div
@@ -80,47 +78,45 @@ export function SubmissionListRow({
         #{submission.formId}
       </span>
 
-      {/* Title */}
-      <div className="flex-1 min-w-0 flex items-center gap-1.5">
-        <TooltipProvider>
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <span className="text-sm font-semibold text-gray-900 truncate">
-                {submission.formTitle}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-[400px]">
-              <p>{submission.formTitle}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <Chip
-          variant={submission.submission_method === 'google_import' ? 'orange' : 'indigo'}
-          size="sm"
-          className="shrink-0"
-        >
-          {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
-        </Chip>
-        {submission.detected_keywords && submission.detected_keywords.length > 0 && (
+      {/* Source chip · title, researcher subtitle below */}
+      <div className="flex-1 min-w-0 flex flex-col leading-tight">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Chip
+            variant={submission.submission_method === 'google_import' ? 'orange' : 'indigo'}
+            size="sm"
+            className="shrink-0"
+          >
+            {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
+          </Chip>
           <TooltipProvider>
-            <Tooltip>
+            <Tooltip delayDuration={300}>
               <TooltipTrigger asChild>
-                <ShieldAlert className="w-3.5 h-3.5 text-red-500 shrink-0 cursor-help" />
+                <span className="text-sm font-semibold text-gray-900 truncate">
+                  {submission.formTitle}
+                </span>
               </TooltipTrigger>
-              <TooltipContent>
-                <p>Detected: {submission.detected_keywords.join(', ')}</p>
+              <TooltipContent className="max-w-[400px]">
+                <p>{submission.formTitle}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        )}
-      </div>
-
-      {/* Researcher · University */}
-      <div className={cn('w-[220px] shrink-0 flex-col leading-tight min-w-0', hideResearcher ? 'hidden' : 'hidden lg:flex')}>
-        <span className="text-xs font-medium text-gray-700 truncate">{submission.researcherName}</span>
-        {submission.university && (
-          <span className="text-[11px] text-gray-400 truncate">{submission.university}</span>
-        )}
+          {submission.detected_keywords && submission.detected_keywords.length > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <ShieldAlert className="w-3.5 h-3.5 text-red-500 shrink-0 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Detected: {submission.detected_keywords.join(', ')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+        <span className="text-[11px] text-gray-500 truncate mt-0.5">
+          {submission.researcherName}
+          {submission.university ? ` · ${submission.university}` : ''}
+        </span>
       </div>
 
       {/* Lifecycle chip */}

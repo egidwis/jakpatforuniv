@@ -929,7 +929,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               <span className="w-[76px] shrink-0">Submitted</span>
               <span className="w-[84px] shrink-0">ID</span>
               <span className="flex-1">Survey</span>
-              <span className={cn('w-[220px] shrink-0', isXl && openSubmission ? 'hidden' : 'hidden lg:block')}>Researcher</span>
               <span className="shrink-0 pr-7">Status</span>
             </div>
 
@@ -943,8 +942,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                       <div className="h-2.5 w-10 bg-gray-100 animate-pulse rounded" />
                     </div>
                     <div className="h-4 w-[84px] bg-gray-100 animate-pulse rounded shrink-0" />
-                    <div className="h-4 flex-1 bg-gray-200 animate-pulse rounded" />
-                    <div className="hidden lg:block h-4 w-[220px] bg-gray-100 animate-pulse rounded shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="h-4 w-3/5 bg-gray-200 animate-pulse rounded" />
+                      <div className="h-2.5 w-2/5 bg-gray-100 animate-pulse rounded" />
+                    </div>
                     <div className="h-5 w-20 bg-gray-100 animate-pulse rounded-full shrink-0" />
                   </div>
                 ))}
@@ -983,7 +984,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                     onSelectToggle={rowSelection.toggle}
                     onOpen={setOpenSubmissionId}
                     active={isXl && submission.id === openSubmissionId}
-                    hideResearcher={isXl && !!openSubmission}
                   />
                 ))}
               </div>
