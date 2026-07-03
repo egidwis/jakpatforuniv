@@ -16,13 +16,15 @@ import { Link } from 'react-router-dom';
  * This function detects date-only values and sets the time to 08:00 UTC
  * (= 15:00 WIB), matching the default ad go-live convention.
  */
-function normalizeScheduleDate(dateStr: string): Date {
+function normalizeScheduleDate(dateStr: string | null | undefined): Date {
+    if (!dateStr || typeof dateStr !== 'string') {
+        return new Date();
+    }
     const d = new Date(dateStr);
-    // A date-only string ("2026-04-13") is parsed as midnight UTC.
-    // A full ISO string ("2026-04-13T08:00:00.000Z") keeps its real time.
-    // Detect date-only by checking if the original string lacks a "T" or time portion.
+    if (isNaN(d.getTime())) {
+        return new Date();
+    }
     if (!dateStr.includes('T')) {
-        // Date-only → assume 15:00 WIB = 08:00 UTC
         d.setUTCHours(8, 0, 0, 0);
     }
     return d;

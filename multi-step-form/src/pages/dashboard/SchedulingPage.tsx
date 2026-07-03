@@ -19,8 +19,14 @@ const localizer = momentLocalizer(moment);
  * which equals 07:00 WIB — before the intended 15:00 WIB go-live time.
  * This detects date-only values and sets the time to 08:00 UTC (= 15:00 WIB).
  */
-function normalizeScheduleDate(dateStr: string): Date {
+function normalizeScheduleDate(dateStr: string | null | undefined): Date {
+    if (!dateStr || typeof dateStr !== 'string') {
+        return new Date();
+    }
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) {
+        return new Date();
+    }
     if (!dateStr.includes('T')) {
         d.setUTCHours(8, 0, 0, 0);
     }
@@ -377,64 +383,68 @@ export function SchedulingPage() {
             const pendingSlots = await getPendingSlotsWithoutPage();
 
             // 3. Convert pages to calendar events
-            const pageEvents: CalendarEvent[] = (pages || []).map((page: any) => {
-                const startDate = normalizeScheduleDate(page.start_date || page.publish_start_date);
-                const endDate = normalizeScheduleDate(page.end_date || page.publish_end_date);
+            const pageEvents: CalendarEvent[] = (pages || [])
+                .filter((page: any) => (page.start_date || page.publish_start_date) && (page.end_date || page.publish_end_date))
+                .map((page: any) => {
+                    const startDate = normalizeScheduleDate(page.start_date || page.publish_start_date);
+                    const endDate = normalizeScheduleDate(page.end_date || page.publish_end_date);
 
-                // Determine Semantic Status Color
-                const now = new Date();
-                let eventStatus: keyof typeof STATUS_PALETTES = 'upcomingNoPage';
+                    // Determine Semantic Status Color
+                    const now = new Date();
+                    let eventStatus: keyof typeof STATUS_PALETTES = 'upcomingNoPage';
 
-                if (now > endDate) {
-                    eventStatus = 'completed';
-                } else if (now >= startDate && now <= endDate) {
-                    eventStatus = 'live';
-                } else {
-                    if (!page.is_published) {
-                        eventStatus = 'upcomingDraft';
+                    if (now > endDate) {
+                        eventStatus = 'completed';
+                    } else if (now >= startDate && now <= endDate) {
+                        eventStatus = 'live';
                     } else {
-                        eventStatus = 'upcomingScheduled';
+                        if (!page.is_published) {
+                            eventStatus = 'upcomingDraft';
+                        } else {
+                            eventStatus = 'upcomingScheduled';
+                        }
                     }
-                }
 
-                return {
-                    id: `page-${page.id}`,
-                    title: `Ad: ${page.form_title}`,
-                    start: startDate,
-                    end: endDate,
-                    resource: {
-                        ...page,
-                        type: 'ad',
-                        form_submission_id: page.submission_id,
-                        colorTheme: STATUS_PALETTES[eventStatus],
-                        page_id: page.id,
-                        page_title: page.title,
-                        page_is_published: page.is_published,
-                    },
-                };
-            });
+                    return {
+                        id: `page-${page.id}`,
+                        title: `Ad: ${page.form_title}`,
+                        start: startDate,
+                        end: endDate,
+                        resource: {
+                            ...page,
+                            type: 'ad',
+                            form_submission_id: page.submission_id,
+                            colorTheme: STATUS_PALETTES[eventStatus],
+                            page_id: page.id,
+                            page_title: page.title,
+                            page_is_published: page.is_published,
+                        },
+                    };
+                });
 
             // 4. Convert pending slots (no page yet) to calendar events
-            const slotEvents: CalendarEvent[] = (pendingSlots || []).map((slot: any) => {
-                const startDate = normalizeScheduleDate(slot.start_date);
-                const endDate = normalizeScheduleDate(slot.end_date);
+            const slotEvents: CalendarEvent[] = (pendingSlots || [])
+                .filter((slot: any) => slot.start_date && slot.end_date)
+                .map((slot: any) => {
+                    const startDate = normalizeScheduleDate(slot.start_date);
+                    const endDate = normalizeScheduleDate(slot.end_date);
 
-                return {
-                    id: `slot-${slot.id}`,
-                    title: `Ad: ${slot.form_title}`,
-                    start: startDate,
-                    end: endDate,
-                    resource: {
-                        ...slot,
-                        type: 'ad',
-                        form_submission_id: slot.id,
-                        colorTheme: STATUS_PALETTES.upcomingNoPage, // Amber-ish for no page
-                        page_id: null,
-                        page_title: null,
-                        page_is_published: false,
-                    },
-                };
-            });
+                    return {
+                        id: `slot-${slot.id}`,
+                        title: `Ad: ${slot.form_title}`,
+                        start: startDate,
+                        end: endDate,
+                        resource: {
+                            ...slot,
+                            type: 'ad',
+                            form_submission_id: slot.id,
+                            colorTheme: STATUS_PALETTES.upcomingNoPage, // Amber-ish for no page
+                            page_id: null,
+                            page_title: null,
+                            page_is_published: false,
+                        },
+                    };
+                });
 
             // 5. Fetch extends (form_submissions_extend) and convert to calendar events
             let extendEvents: CalendarEvent[] = [];
@@ -452,40 +462,42 @@ export function SchedulingPage() {
                     .order('start_date', { ascending: true });
 
                 if (!extError && extends_) {
-                    extendEvents = extends_.map((ext: any) => {
-                        const startDate = normalizeScheduleDate(ext.start_date);
-                        const endDate = normalizeScheduleDate(ext.end_date);
-                        const sub = Array.isArray(ext.form_submissions) ? ext.form_submissions[0] : ext.form_submissions;
+                    extendEvents = extends_
+                        .filter((ext: any) => ext.start_date && ext.end_date)
+                        .map((ext: any) => {
+                            const startDate = normalizeScheduleDate(ext.start_date);
+                            const endDate = normalizeScheduleDate(ext.end_date);
+                            const sub = Array.isArray(ext.form_submissions) ? ext.form_submissions[0] : ext.form_submissions;
 
-                        let extTheme = STATUS_PALETTES.extend;
-                        if (ext.submission_status === 'live') extTheme = STATUS_PALETTES.extendLive;
-                        else if (ext.submission_status === 'completed') extTheme = STATUS_PALETTES.completed;
-                        else if (ext.submission_status === 'waiting_payment') extTheme = STATUS_PALETTES.upcomingDraft; // Amber for pending
+                            let extTheme = STATUS_PALETTES.extend;
+                            if (ext.submission_status === 'live') extTheme = STATUS_PALETTES.extendLive;
+                            else if (ext.submission_status === 'completed') extTheme = STATUS_PALETTES.completed;
+                            else if (ext.submission_status === 'waiting_payment') extTheme = STATUS_PALETTES.upcomingDraft; // Amber for pending
 
-                        return {
-                            id: `ext-${ext.id}`,
-                            title: `Ext: ${sub?.title || 'Unknown'}`,
-                            start: startDate,
-                            end: endDate,
-                            resource: {
-                                type: 'extend',
-                                form_title: sub?.title || 'Unknown',
-                                researcher_name: sub?.full_name || '',
-                                form_submission_id: ext.submission_id,
-                                start_date: ext.start_date,
-                                end_date: ext.end_date,
-                                colorTheme: extTheme,
-                                page_id: ext.submission_id, // link to parent
-                                page_title: `Extend (${ext.period_batch})`,
-                                page_is_published: true,
-                                prize_per_winner: ext.prize_per_winner,
-                                winner_count: ext.winner_count,
-                                is_extend: true,
-                                period_batch: ext.period_batch,
-                                submission_status: ext.submission_status,
-                            },
-                        };
-                    });
+                            return {
+                                id: `ext-${ext.id}`,
+                                title: `Ext: ${sub?.title || 'Unknown'}`,
+                                start: startDate,
+                                end: endDate,
+                                resource: {
+                                    type: 'extend',
+                                    form_title: sub?.title || 'Unknown',
+                                    researcher_name: sub?.full_name || '',
+                                    form_submission_id: ext.submission_id,
+                                    start_date: ext.start_date,
+                                    end_date: ext.end_date,
+                                    colorTheme: extTheme,
+                                    page_id: ext.submission_id, // link to parent
+                                    page_title: `Extend (${ext.period_batch})`,
+                                    page_is_published: true,
+                                    prize_per_winner: ext.prize_per_winner,
+                                    winner_count: ext.winner_count,
+                                    is_extend: true,
+                                    period_batch: ext.period_batch,
+                                    submission_status: ext.submission_status,
+                                },
+                            };
+                        });
 
                     // Track submissions with an active/pending extend so the page editor
                     // can protect the original dates (and the cron-managed publish_*).

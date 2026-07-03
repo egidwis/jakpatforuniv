@@ -40,8 +40,14 @@ function isHeicFile(file: File): boolean {
  * which equals 07:00 WIB — before the intended 15:00 WIB go-live time.
  * This detects date-only values and sets the time to 08:00 UTC (= 15:00 WIB).
  */
-function normalizeScheduleDate(dateStr: string): Date {
+function normalizeScheduleDate(dateStr: string | null | undefined): Date {
+    if (!dateStr || typeof dateStr !== 'string') {
+        return new Date();
+    }
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) {
+        return new Date();
+    }
     if (!dateStr.includes('T')) {
         d.setUTCHours(8, 0, 0, 0);
     }
