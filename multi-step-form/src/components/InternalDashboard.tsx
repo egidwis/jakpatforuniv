@@ -8,7 +8,7 @@ import { Input } from './ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Checkbox } from './ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { cn } from '@/lib/utils';
+import { cn, useMediaQuery } from '@/lib/utils';
 import { SchedulePaymentView } from './SchedulePaymentView';
 import { EditCriteriaModal } from './EditCriteriaModal';
 import { EditFormDetailsModal } from './EditFormDetailsModal';
@@ -93,6 +93,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
   // Row selection (foundation for the upcoming bulk payment feature)
   const rowSelection = useRowSelection();
+
+  // Inline reading pane needs ≥1280px; below that the modal Sheet is used
+  const isXl = useMediaQuery('(min-width: 1280px)');
 
   // Map submission_id -> page data (slug, is_published)
   const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }>>({});
@@ -610,6 +613,22 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const pageAllSelected = rowSelection.allSelected(pageIds);
   const pageSomeSelected = rowSelection.someSelected(pageIds);
 
+  const detailProps = {
+    submission: openSubmission,
+    paymentData: openSubmission ? (paymentStates[openSubmission.id] || EMPTY_PAYMENT_STATE) : EMPTY_PAYMENT_STATE,
+    existingPage: openSubmission ? existingPages[openSubmission.id] : undefined,
+    isScheduled: openSubmission ? scheduledSubmissionIds.has(openSubmission.id) : false,
+    onOpenChange: (open: boolean) => { if (!open) setOpenSubmissionId(null); },
+    onStatusChange: handleStatusChange,
+    onPaymentStatusChange: handlePaymentStatusChange,
+    onEditFormDetails: handleOpenEditFormDetailsModal,
+    onEditCriteria: handleOpenEditCriteriaModal,
+    onOpenPageBuilder: handleOpenPageBuilder,
+    onOpenSchedule: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('schedule'); },
+    onOpenPayment: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('payment'); },
+    onExtendCreated: loadSubmissions,
+  };
+
   return (
     <div className={hideAuth ? 'h-full flex flex-col' : 'min-h-screen flex flex-col bg-background'}>
       {/* Header - Only show if not using sidebar layout */}
@@ -774,7 +793,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         </div>
 
         {/* Desktop: unified list surface — toolbar, column header, rows, pagination in one card */}
-        <div className="hidden md:flex flex-1 min-h-0 flex-col bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="hidden md:flex flex-1 min-h-0 bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col">
           {/* Toolbar row 1: Periode · search · refresh */}
           <div className="shrink-0 flex items-center gap-4 px-4 py-3">
             <div className="flex items-center gap-1">
@@ -908,7 +928,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               <span className="w-[76px] shrink-0">Submitted</span>
               <span className="w-[84px] shrink-0">ID</span>
               <span className="flex-1">Survey</span>
-              <span className="hidden lg:block w-[220px] shrink-0">Researcher</span>
+              <span className={cn('w-[220px] shrink-0', isXl && openSubmission ? 'hidden' : 'hidden lg:block')}>Researcher</span>
               <span className="shrink-0 pr-7">Status</span>
             </div>
 
@@ -961,6 +981,8 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                     selected={rowSelection.isSelected(submission.id)}
                     onSelectToggle={rowSelection.toggle}
                     onOpen={setOpenSubmissionId}
+                    active={isXl && submission.id === openSubmissionId}
+                    hideResearcher={isXl && !!openSubmission}
                   />
                 ))}
               </div>
@@ -994,6 +1016,12 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               </Button>
             </div>
           </div>
+          </div>
+
+          {/* Inline reading pane (Outlook split view) */}
+          {isXl && openSubmission && (
+            <SubmissionDetailSheet variant="pane" {...detailProps} />
+          )}
         </div>
 
         {/* Mobile: unchanged card view */}
@@ -1142,33 +1170,11 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         submissionCriteria={selectedSubmissionForPage?.criteria}
       />
 
-      {/* Detail Drawer — id-based so it always renders fresh data after refresh */}
-      <SubmissionDetailSheet
-        submission={openSubmission}
-        paymentData={openSubmission ? (paymentStates[openSubmission.id] || EMPTY_PAYMENT_STATE) : EMPTY_PAYMENT_STATE}
-        existingPage={openSubmission ? existingPages[openSubmission.id] : undefined}
-        isScheduled={openSubmission ? scheduledSubmissionIds.has(openSubmission.id) : false}
-        onOpenChange={(open) => {
-          if (!open) setOpenSubmissionId(null);
-        }}
-        onStatusChange={handleStatusChange}
-        onPaymentStatusChange={handlePaymentStatusChange}
-        onEditFormDetails={handleOpenEditFormDetailsModal}
-        onEditCriteria={handleOpenEditCriteriaModal}
-        onOpenPageBuilder={handleOpenPageBuilder}
-        onOpenSchedule={(sub) => {
-          setActiveScheduleSubmission(sub);
-          setScheduleInitialStep('schedule');
-        }}
-        onOpenPayment={(sub) => {
-          setActiveScheduleSubmission(sub);
-          setScheduleInitialStep('payment');
-        }}
-        onExtendCreated={loadSubmissions}
-      />
+      {/* Detail drawer (narrow screens) — ≥1280px uses the inline pane instead */}
+      {!isXl && <SubmissionDetailSheet {...detailProps} />}
 
       {/* Bulk actions toolbar (selection foundation for bulk payment) */}
-      <BulkActionsToolbar count={rowSelection.count} onClear={rowSelection.clear}>
+      <BulkActionsToolbar count={rowSelection.count} onClear={rowSelection.clear} shiftLeftPx={isXl && openSubmission ? 260 : 0}>
         <Button
           size="sm"
           variant="outline"

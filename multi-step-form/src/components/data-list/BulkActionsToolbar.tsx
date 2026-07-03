@@ -8,6 +8,8 @@ interface BulkActionsToolbarProps {
   onClear: () => void
   /** Action buttons slot, rendered between the count and the clear button */
   children?: React.ReactNode
+  /** Shifts the pill's center left, to keep it centered over the list column when the pane is open */
+  shiftLeftPx?: number
 }
 
 /**
@@ -18,6 +20,7 @@ export function BulkActionsToolbar({
   count,
   onClear,
   children,
+  shiftLeftPx = 0,
 }: BulkActionsToolbarProps) {
   const visible = count > 0
   const [entered, setEntered] = React.useState(false)
@@ -37,6 +40,7 @@ export function BulkActionsToolbar({
 
   return (
     <div
+      style={shiftLeftPx ? { left: `calc(50% - ${shiftLeftPx}px)` } : undefined}
       className={cn(
         "fixed bottom-6 left-1/2 z-40 -translate-x-1/2",
         "flex items-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-lg",

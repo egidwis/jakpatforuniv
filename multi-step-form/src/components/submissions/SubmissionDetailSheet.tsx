@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Chip } from '../ui/chip';
 import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
+import { DetailPane } from '../data-list/DetailPane';
 import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../../utils/cost-calculator';
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
@@ -51,6 +52,7 @@ interface SubmissionDetailSheetProps {
   onOpenSchedule: (submission: SurveySubmission) => void;
   onOpenPayment: (submission: SurveySubmission) => void;
   onExtendCreated: () => void;
+  variant?: 'sheet' | 'pane';
 }
 
 function copyToClipboard(text: string, message: string) {
@@ -82,6 +84,7 @@ export function SubmissionDetailSheet({
   onOpenSchedule,
   onOpenPayment,
   onExtendCreated,
+  variant = 'sheet',
 }: SubmissionDetailSheetProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('review');
 
@@ -120,36 +123,33 @@ export function SubmissionDetailSheet({
     </div>
   );
 
-  return (
-    <DetailSheet
-      open={!!submission}
-      onOpenChange={onOpenChange}
-      title={submission.formTitle}
-      subtitle={
-        <>
-          <span className="font-mono">#{submission.formId}</span>
-          {' · '}
-          {new Date(submission.submittedAt).toLocaleDateString('id-ID')}{' '}
-          {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-          {' · '}
-          {submission.researcherName}
-        </>
-      }
-      chips={
-        <>
-          <LifecycleChip submission={submission} lifecycle={lifecycle} size="sm" />
-          {isKilat && (
-            <Chip variant="amber" size="sm">
-              <Zap className="w-3 h-3" /> KILAT
-            </Chip>
-          )}
-          <Chip variant={submission.submission_method === 'google_import' ? 'orange' : 'indigo'} size="sm">
-            {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
-          </Chip>
-        </>
-      }
-      nav={tabBar}
-    >
+  const subtitle = (
+    <>
+      <span className="font-mono">#{submission.formId}</span>
+      {' · '}
+      {new Date(submission.submittedAt).toLocaleDateString('id-ID')}{' '}
+      {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+      {' · '}
+      {submission.researcherName}
+    </>
+  );
+
+  const chips = (
+    <>
+      <LifecycleChip submission={submission} lifecycle={lifecycle} size="sm" />
+      {isKilat && (
+        <Chip variant="amber" size="sm">
+          <Zap className="w-3 h-3" /> KILAT
+        </Chip>
+      )}
+      <Chip variant={submission.submission_method === 'google_import' ? 'orange' : 'indigo'} size="sm">
+        {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
+      </Chip>
+    </>
+  );
+
+  const body = (
+    <>
       {activeTab === 'review' && (
         <ReviewTab
           submission={submission}
@@ -187,6 +187,33 @@ export function SubmissionDetailSheet({
           onExtendCreated={onExtendCreated}
         />
       )}
+    </>
+  );
+
+  if (variant === 'pane') {
+    return (
+      <DetailPane
+        title={submission.formTitle}
+        subtitle={subtitle}
+        chips={chips}
+        nav={tabBar}
+        onClose={() => onOpenChange(false)}
+      >
+        {body}
+      </DetailPane>
+    );
+  }
+
+  return (
+    <DetailSheet
+      open={!!submission}
+      onOpenChange={onOpenChange}
+      title={submission.formTitle}
+      subtitle={subtitle}
+      chips={chips}
+      nav={tabBar}
+    >
+      {body}
     </DetailSheet>
   );
 }

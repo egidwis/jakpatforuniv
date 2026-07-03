@@ -18,6 +18,10 @@ interface SubmissionListRowProps {
   selected: boolean;
   onSelectToggle: (id: string) => void;
   onOpen: (id: string) => void;
+  /** Row currently open in the detail pane */
+  active?: boolean;
+  /** Hide the researcher column (list is narrow while the pane is open) */
+  hideResearcher?: boolean;
 }
 
 /**
@@ -30,6 +34,8 @@ export function SubmissionListRow({
   selected,
   onSelectToggle,
   onOpen,
+  active,
+  hideResearcher,
 }: SubmissionListRowProps) {
   return (
     <div
@@ -43,11 +49,13 @@ export function SubmissionListRow({
         }
       }}
       className={cn(
-        'group flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors',
+        'group relative flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors',
         'hover:bg-gray-50',
-        selected && 'bg-blue-50/50'
+        selected && 'bg-blue-50/50',
+        active && 'bg-blue-50'
       )}
     >
+      {active && <span aria-hidden="true" className="absolute left-0 top-0 h-full w-0.5 bg-blue-600" />}
       {/* Checkbox — stop propagation so it never opens the drawer */}
       <div onClick={(e) => e.stopPropagation()} className="shrink-0 flex items-center">
         <Checkbox
@@ -108,7 +116,7 @@ export function SubmissionListRow({
       </div>
 
       {/* Researcher · University */}
-      <div className="hidden lg:flex w-[220px] shrink-0 flex-col leading-tight min-w-0">
+      <div className={cn('w-[220px] shrink-0 flex-col leading-tight min-w-0', hideResearcher ? 'hidden' : 'hidden lg:flex')}>
         <span className="text-xs font-medium text-gray-700 truncate">{submission.researcherName}</span>
         {submission.university && (
           <span className="text-[11px] text-gray-400 truncate">{submission.university}</span>
