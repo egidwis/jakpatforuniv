@@ -254,7 +254,7 @@ export function InternalDashboardWithLayout() {
           <span
             className={cn(
               'font-semibold text-sm text-gray-900 whitespace-nowrap overflow-hidden transition-all duration-200',
-              collapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
+              collapsed ? 'w-0 h-0 opacity-0' : 'flex-1 opacity-100'
             )}
           >
             Internal Dashboard
@@ -370,7 +370,7 @@ export function InternalDashboardWithLayout() {
           <div
             className={cn(
               'flex flex-col overflow-hidden transition-all duration-200',
-              collapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
+              collapsed ? 'w-0 h-0 opacity-0' : 'flex-1 opacity-100'
             )}
           >
             <span className="font-semibold text-xs text-gray-900 truncate">
