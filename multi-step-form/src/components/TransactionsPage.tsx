@@ -17,8 +17,9 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Search, RefreshCw, Download, Filter } from 'lucide-react';
+import { Search, RefreshCw, Download, Filter, Wallet } from 'lucide-react';
 import { formatPaymentChannel } from '../utils/paymentChannel';
+import { DokuWalletModal } from './DokuWalletModal';
 
 
 interface Transaction {
@@ -46,6 +47,9 @@ export function TransactionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // DOKU Sub Account Wallet State
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
 
   // Date Filters
   const [selectedMonth, setSelectedMonth] = useState<number>(-1);
@@ -257,6 +261,18 @@ export function TransactionsPage() {
 
           {/* Right: Export, Prominent Revenue & Refresh */}
           <div className="flex items-center gap-3">
+            {/* DOKU Wallet */}
+            <Button
+              type="button"
+              onClick={() => setIsWalletModalOpen(true)}
+              variant="outline"
+              className="h-10 shrink-0 bg-white border-gray-200 hover:bg-gray-50 text-gray-700 shadow-sm"
+              title="DOKU Sub Account Wallet"
+            >
+              <Wallet className="w-4 h-4 mr-2" />
+              <span className="font-medium">DOKU Wallet</span>
+            </Button>
+
             {/* Export CSV */}
             <Button
               onClick={() => {
@@ -577,6 +593,14 @@ export function TransactionsPage() {
             </TableBody>
           </Table>
       </div>
+
+      {/* DOKU Sub Account Wallet Modal */}
+      <DokuWalletModal
+        isOpen={isWalletModalOpen}
+        onClose={() => setIsWalletModalOpen(false)}
+        sacId={import.meta.env.VITE_DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595'}
+        productName="Jakpat for Universities"
+      />
     </div >
   );
 }

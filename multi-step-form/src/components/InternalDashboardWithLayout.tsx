@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, AlertTriangle, BarChart2, Users } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, AlertTriangle, BarChart2, Users, Calendar, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { InternalDashboard } from './InternalDashboard';
 import { TransactionsPage } from './TransactionsPage';
@@ -21,6 +22,9 @@ export function InternalDashboardWithLayout() {
 
   const [currentPage, setCurrentPage] = useState<Page>('submissions');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(
+    () => localStorage.getItem('admin-sidebar-collapsed') === 'true'
+  );
   const [unreadConversations, setUnreadConversations] = useState(0);
   const [storageStats, setStorageStats] = useState({ proofCount: 0, bannerCount: 0, contentImageCount: 0 });
   const STORAGE_LIMIT_MB = 102400; // 100 GB Supabase Pro Plan storage limit
@@ -115,6 +119,9 @@ export function InternalDashboardWithLayout() {
   // Media query untuk detect desktop (md breakpoint = 768px)
   const isDesktop = useMediaQuery('(min-width: 768px)');
 
+  // Collapsed icon-rail mode is desktop-only; mobile always renders the expanded layout
+  const collapsed = isDesktop && isCollapsed;
+
   useEffect(() => {
     // Force light theme for internal dashboard - disable ALL dark mode
     document.documentElement.setAttribute('data-theme', 'light');
@@ -144,6 +151,12 @@ export function InternalDashboardWithLayout() {
   const handlePageChange = (page: Page) => {
     setCurrentPage(page);
     setIsSidebarOpen(false); // Close sidebar on mobile after navigation
+  };
+
+  const toggleCollapsed = () => {
+    const next = !isCollapsed;
+    setIsCollapsed(next);
+    localStorage.setItem('admin-sidebar-collapsed', String(next));
   };
 
   // If not logged in, show Login Screen (Full Page) WITHOUT Sidebar
@@ -187,7 +200,7 @@ export function InternalDashboardWithLayout() {
     {
       id: 'scheduling' as Page,
       label: 'Ads Schedule',
-      icon: FileText, // Or Calendar if imported
+      icon: Calendar,
     },
     {
       id: 'publish-page' as Page,
@@ -197,7 +210,7 @@ export function InternalDashboardWithLayout() {
     {
       id: 'mimin-setup' as Page,
       label: 'Mimin AI',
-      icon: MessageSquare,
+      icon: Bot,
     },
   ];
 
@@ -220,41 +233,93 @@ export function InternalDashboardWithLayout() {
       `}</style>
 
       {/* Sidebar - Always visible on desktop, sliding on mobile */}
-      <aside
-        className={cn(
-          'fixed md:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col transform transition-transform duration-300 ease-in-out',
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-        )}
-      >
+      <TooltipProvider delayDuration={0}>
+        <aside
+          className={cn(
+            'fixed md:static inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col transform transition-transform duration-300 ease-in-out md:transition-[width] md:duration-200',
+            collapsed ? 'w-16' : 'w-64',
+            isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          )}
+        >
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+        <div className={cn('border-b border-gray-200', collapsed ? 'p-3' : 'p-6')}>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-2">
               <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
                 J
               </div>
-              <div className="flex flex-col">
-                <h2 className="font-semibold text-sm text-gray-900">Internal Dashboard</h2>
-                <p className="text-xs text-gray-500">Jakpat for Universities</p>
-              </div>
-            </div>
-            {/* Close button - only visible on mobile */}
-            {!isDesktop && (
+              {/* Expand toggle - desktop only */}
               <button
-                onClick={() => setIsSidebarOpen(false)}
-                className="p-2 rounded-md hover:bg-gray-100"
+                onClick={toggleCollapsed}
+                className="hidden md:flex items-center justify-center p-1.5 rounded-md hover:bg-gray-100"
+                title="Expand sidebar"
               >
-                <X className="h-5 w-5 text-gray-600" />
+                <PanelLeftOpen className="h-4 w-4 text-gray-600" />
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
+                  J
+                </div>
+                <div className="flex flex-col">
+                  <h2 className="font-semibold text-sm text-gray-900">Internal Dashboard</h2>
+                  <p className="text-xs text-gray-500">Jakpat for Universities</p>
+                </div>
+              </div>
+              {/* Collapse toggle - desktop only */}
+              <button
+                onClick={toggleCollapsed}
+                className="hidden md:flex items-center justify-center p-1.5 rounded-md hover:bg-gray-100"
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose className="h-4 w-4 text-gray-600" />
+              </button>
+              {/* Close button - only visible on mobile */}
+              {!isDesktop && (
+                <button
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="p-2 rounded-md hover:bg-gray-100"
+                >
+                  <X className="h-5 w-5 text-gray-600" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className={cn('flex-1 space-y-1', collapsed ? 'p-2' : 'p-4')}>
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentPage === item.id;
+
+            if (collapsed) {
+              return (
+                <Tooltip key={item.id}>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => handlePageChange(item.id)}
+                      className={cn(
+                        'w-full flex items-center justify-center px-2 py-2 rounded-md text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                      )}
+                    >
+                      <span className="relative">
+                        <Icon className="h-4 w-4" />
+                        {item.id === 'conversations' && unreadConversations > 0 && (
+                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
+                        )}
+                      </span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{item.label}</TooltipContent>
+                </Tooltip>
+              );
+            }
 
             return (
               <button
@@ -286,7 +351,8 @@ export function InternalDashboardWithLayout() {
           })}
         </nav>
 
-        {/* Storage Meter */}
+        {/* Storage Meter - hidden when collapsed */}
+        {!collapsed && (
         <div className="px-4 py-3 border-t border-gray-200">
           {(() => {
             // Calculate estimated MB from all sources with different avg sizes
@@ -332,33 +398,54 @@ export function InternalDashboardWithLayout() {
             );
           })()}
         </div>
+        )}
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50/50">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 overflow-hidden">
+        <div className={cn('border-t border-gray-200 bg-gray-50/50', collapsed ? 'p-3' : 'p-4')}>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-2">
               <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
                 {user?.email?.charAt(0).toUpperCase() || 'U'}
               </div>
-              <div className="flex flex-col overflow-hidden">
-                <span className="font-semibold text-xs text-gray-900 truncate">
-                  {user?.user_metadata?.full_name || 'Admin User'}
-                </span>
-                <span className="text-[10px] text-gray-500 truncate" title={user?.email}>
-                  {user?.email}
-                </span>
-              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleLogout}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Logout</TooltipContent>
+              </Tooltip>
             </div>
-            <button
-              onClick={handleLogout}
-              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
-              title="Logout"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                  {user?.email?.charAt(0).toUpperCase() || 'U'}
+                </div>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="font-semibold text-xs text-gray-900 truncate">
+                    {user?.user_metadata?.full_name || 'Admin User'}
+                  </span>
+                  <span className="text-[10px] text-gray-500 truncate" title={user?.email}>
+                    {user?.email}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
-      </aside>
+        </aside>
+      </TooltipProvider>
 
       {/* Backdrop overlay for mobile - Only render on mobile */}
       {!isDesktop && isSidebarOpen && (

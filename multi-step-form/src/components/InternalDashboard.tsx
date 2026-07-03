@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, supabase } from '../utils/supabase';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { Checkbox } from './ui/checkbox';
 import { SchedulePaymentView } from './SchedulePaymentView';
 import { EditCriteriaModal } from './EditCriteriaModal';
 import { EditFormDetailsModal } from './EditFormDetailsModal';
@@ -16,13 +14,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
-import { Wallet } from 'lucide-react';
-import { DokuWalletModal } from './DokuWalletModal';
-import { SubmissionsDesktopRow, SubmissionsMobileCard } from './SubmissionsTableRow';
-import type { SurveySubmission, PaymentState } from './SubmissionsTableRow';
+import { SubmissionsMobileCard } from './SubmissionsTableRow';
+import type { SurveySubmission, PaymentState } from './submissions/types';
+import { deriveLifecycle } from './submissions/lifecycle';
+import { SubmissionListRow } from './submissions/SubmissionListRow';
+import { SubmissionDetailSheet } from './submissions/SubmissionDetailSheet';
+import { useRowSelection } from './data-list/useRowSelection';
+import { BulkActionsToolbar } from './data-list/BulkActionsToolbar';
 import './InternalDashboard.css';
 
-// SurveySubmission and PaymentState types are imported from './SubmissionsTableRow'
+const EMPTY_PAYMENT_STATE: PaymentState = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
 
 interface InternalDashboardProps {
   hideAuth?: boolean;
@@ -74,8 +75,11 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const [selectedSubmissionForPage, setSelectedSubmissionForPage] = useState<SurveySubmission | null>(null);
   const [pageBuilderData, setPageBuilderData] = useState<any>(null);
 
-  // DOKU Sub Account Wallet State
-  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  // Detail drawer state — keep only the id so the drawer always reads fresh data
+  const [openSubmissionId, setOpenSubmissionId] = useState<string | null>(null);
+
+  // Row selection (foundation for the upcoming bulk payment feature)
+  const rowSelection = useRowSelection();
 
   // Map submission_id -> page data (slug, is_published)
   const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }>>({});
@@ -330,6 +334,30 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
   }, [isAdmin, currentPage, searchQuery, currentDate]);
 
+  // Re-render every 60s so time-based chips (Reserved <1h / Expired) stay honest
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Clear selection when the visible dataset changes (page, month, filter, search).
+  // Selection deliberately survives loadSubmissions() refreshes.
+  const clearSelection = rowSelection.clear;
+  useEffect(() => {
+    clearSelection();
+  }, [clearSelection, currentPage, currentDate, statusFilter, searchQuery]);
+
+  // Drawer reads fresh data by id; close it when the row leaves the dataset
+  const openSubmission = openSubmissionId
+    ? submissions.find((s) => s.id === openSubmissionId) ?? null
+    : null;
+  useEffect(() => {
+    if (openSubmissionId && !loading && !openSubmission) {
+      setOpenSubmissionId(null);
+    }
+  }, [openSubmissionId, openSubmission, loading]);
+
   const handleStatusChange = async (submissionId: string, newStatus: string) => {
     // Intercept 'rejected' status
     if (newStatus === 'rejected') {
@@ -387,17 +415,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     setIsRejectionDialogOpen(false);
     setSelectedSubmissionForRejection(null);
     setRejectionNote('');
-  };
-
-  const calculateAdCost = (questionCount: number, duration: number) => {
-    // Using utility function for consistency
-    const totalAdCost = calculateTotalAdCost(questionCount, duration);
-    const dailyRate = duration > 0 ? totalAdCost / duration : 0;
-
-    return {
-      dailyRate,
-      totalAdCost
-    };
   };
 
   // Modals replaced by SchedulePaymentView
@@ -569,6 +586,11 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     );
   }
 
+  // Selection helpers for the current page of rows
+  const pageIds = filteredSubmissions.map((s) => s.id);
+  const pageAllSelected = rowSelection.allSelected(pageIds);
+  const pageSomeSelected = rowSelection.someSelected(pageIds);
+
   return (
     <div className={hideAuth ? 'h-full flex flex-col' : 'min-h-screen flex flex-col bg-background'}>
       {/* Header - Only show if not using sidebar layout */}
@@ -656,19 +678,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2 shrink-0 ml-auto">
-              {/* ... other code ... */}
-              <Button
-                type="button"
-                onClick={() => setIsWalletModalOpen(true)}
-                variant="outline"
-                size="sm"
-                className="h-8 px-2.5 rounded-lg text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 font-medium text-xs flex items-center gap-1.5 shadow-sm"
-                title="DOKU Sub Account Wallet"
-              >
-                <Wallet className="w-3.5 h-3.5 text-blue-600" />
-                <span>DOKU Wallet</span>
-              </Button>
-
               <Button
                 onClick={loadSubmissions}
                 variant="outline"
@@ -747,59 +756,21 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
 
         {loading ? (
           <>
-            {/* Desktop Table View Skeleton - hidden on mobile */}
-            <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2">
-              <Table className="min-w-[1200px] border-separate border-spacing-y-3">
-                <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
-                  <TableRow className="border-none hover:bg-transparent">
-                    <TableHead className="w-[80px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 rounded-l-xl pl-4">No</TableHead>
-                    <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Contact Info</TableHead>
-                    <TableHead className="w-[180px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Survey Page</TableHead>
-                    <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">University</TableHead>
-                    <TableHead className="w-[150px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Department</TableHead>
-                    <TableHead className="w-[250px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12">Survey Topic</TableHead>
-                    <TableHead className="w-[200px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 text-center">Status</TableHead>
-                    <TableHead className="w-[120px] text-xs font-bold text-gray-500 uppercase tracking-wider h-12 text-right rounded-r-xl pr-4">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {Array(5).fill(0).map((_, i) => (
-                    <TableRow key={`skeleton-desktop-${i}`} className="bg-white border-none shadow-sm rounded-xl">
-                      <TableCell className="align-middle py-4 border-y border-l border-gray-200 rounded-l-xl pl-4 flex items-center justify-center">
-                        <div className="w-6 h-6 rounded-full bg-gray-100 animate-pulse"></div>
-                      </TableCell>
-                      <TableCell className="align-top py-4 border-y border-gray-200">
-                        <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded mb-2"></div>
-                        <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
-                      </TableCell>
-                      <TableCell className="align-top py-4 border-y border-gray-200">
-                        <div className="h-4 w-5/6 bg-gray-200 animate-pulse rounded mb-2"></div>
-                        <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded"></div>
-                      </TableCell>
-                      <TableCell className="align-top py-4 border-y border-gray-200">
-                        <div className="h-4 w-full bg-gray-200 animate-pulse rounded"></div>
-                      </TableCell>
-                      <TableCell className="align-top py-4 border-y border-gray-200">
-                        <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded"></div>
-                      </TableCell>
-                      <TableCell className="align-top py-4 border-y border-gray-200">
-                        <div className="h-4 w-full bg-gray-200 animate-pulse rounded mb-2"></div>
-                        <div className="h-4 w-5/6 bg-gray-200 animate-pulse rounded"></div>
-                      </TableCell>
-                      <TableCell className="align-top py-4 border-y border-gray-200 text-center">
-                        <div className="h-6 w-24 bg-gray-200 rounded-full animate-pulse mx-auto mb-2"></div>
-                        <div className="h-3 w-16 bg-gray-100 rounded animate-pulse mx-auto"></div>
-                      </TableCell>
-                      <TableCell className="align-top py-4 border-y border-r border-gray-200 rounded-r-xl pr-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
-                          <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            {/* Desktop List View Skeleton - hidden on mobile */}
+            <div className="hidden md:flex flex-col gap-2 flex-1 min-h-0 overflow-auto pb-4 pr-2 mt-3">
+              {Array(8).fill(0).map((_, i) => (
+                <div key={`skeleton-desktop-${i}`} className="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl">
+                  <div className="w-4 h-4 rounded bg-gray-100 animate-pulse shrink-0" />
+                  <div className="w-[76px] shrink-0 space-y-1">
+                    <div className="h-3 w-14 bg-gray-200 animate-pulse rounded" />
+                    <div className="h-2.5 w-10 bg-gray-100 animate-pulse rounded" />
+                  </div>
+                  <div className="h-4 w-[84px] bg-gray-100 animate-pulse rounded shrink-0" />
+                  <div className="h-4 flex-1 bg-gray-200 animate-pulse rounded" />
+                  <div className="hidden lg:block h-4 w-[220px] bg-gray-100 animate-pulse rounded shrink-0" />
+                  <div className="h-5 w-20 bg-gray-100 animate-pulse rounded-full shrink-0" />
+                </div>
+              ))}
             </div>
 
             {/* Mobile Card View Skeleton - hidden on desktop */}
@@ -859,53 +830,41 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           </Card>
         ) : (
           <>
-            {/* Desktop Table View - hidden on mobile */}
-            <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2">
-              <Table className="min-w-[1200px] border-separate border-spacing-y-3 table-fixed">
-                <colgroup>
-                  <col style={{ width: '110px' }} />
-                  <col style={{ width: '290px' }} />
-                  <col style={{ width: '200px' }} />
-                  <col style={{ width: '190px' }} />
-                  <col style={{ width: '410px' }} />
-                </colgroup>
-                <TableHeader className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm rounded-xl">
-                  <TableRow className="border-none hover:bg-transparent shadow-none">
-                    <TableHead className="w-[110px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-6 border-y border-l border-transparent rounded-l-xl">Submitted</TableHead>
-                    <TableHead className="w-[290px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Form Details</TableHead>
-                    <TableHead className="w-[200px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Criteria & Incentive</TableHead>
-                    <TableHead className="w-[190px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 border-y border-transparent">Researcher</TableHead>
-                    <TableHead className="w-[410px] text-[11px] font-bold text-gray-500 uppercase tracking-wider h-10 pl-8 pr-6 border-y border-r border-transparent rounded-r-xl">Campaign Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredSubmissions.map((submission) => (
-                    <SubmissionsDesktopRow
-                      key={submission.id}
-                      submission={submission}
-                      paymentData={paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null }}
-                      existingPage={existingPages[submission.id]}
-                      isScheduled={scheduledSubmissionIds.has(submission.id)}
-                      onStatusChange={handleStatusChange}
-                      onPaymentStatusChange={handlePaymentStatusChange}
-                      onEditFormDetails={handleOpenEditFormDetailsModal}
-                      onEditCriteria={handleOpenEditCriteriaModal}
-                      onOpenPageBuilder={handleOpenPageBuilder}
-                      onOpenSchedule={(sub) => {
-                        setActiveScheduleSubmission(sub);
-                        setScheduleInitialStep('schedule');
-                      }}
-                      onOpenPayment={(sub) => {
-                        setActiveScheduleSubmission(sub);
-                        setScheduleInitialStep('payment');
-                      }}
-                      onExtendCreated={loadSubmissions}
-                    />
-                  ))}
+            {/* Desktop List View - hidden on mobile */}
+            <div className="hidden md:block flex-1 min-h-0 overflow-auto pb-4 pr-2 mt-3">
+              {/* List header: select-all + column labels */}
+              <div className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur rounded-xl shadow-sm px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                <div className="shrink-0 flex items-center">
+                  <Checkbox
+                    checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
+                    onCheckedChange={() => rowSelection.toggleAll(pageIds)}
+                    aria-label="Select all on this page"
+                  />
+                </div>
+                <span className="w-[76px] shrink-0">Submitted</span>
+                <span className="w-[84px] shrink-0">ID</span>
+                <span className="flex-1">Survey</span>
+                <span className="hidden lg:block w-[220px] shrink-0">Researcher</span>
+                <span className="shrink-0 pr-7">Status</span>
+              </div>
 
-                </TableBody>
-              </Table>
-
+              <div className="flex flex-col gap-2 mt-3">
+                {filteredSubmissions.map((submission) => (
+                  <SubmissionListRow
+                    key={submission.id}
+                    submission={submission}
+                    lifecycle={deriveLifecycle(
+                      submission,
+                      paymentStates[submission.id] || EMPTY_PAYMENT_STATE,
+                      existingPages[submission.id],
+                      scheduledSubmissionIds.has(submission.id)
+                    )}
+                    selected={rowSelection.isSelected(submission.id)}
+                    onSelectToggle={rowSelection.toggle}
+                    onOpen={setOpenSubmissionId}
+                  />
+                ))}
+              </div>
 
               {/* Pagination Controls */}
               < div className="flex items-center justify-between px-4 py-4 border-t mt-4" >
@@ -1027,13 +986,44 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         submissionCriteria={selectedSubmissionForPage?.criteria}
       />
 
-      {/* DOKU Sub Account Wallet Modal */}
-      <DokuWalletModal
-        isOpen={isWalletModalOpen}
-        onClose={() => setIsWalletModalOpen(false)}
-        sacId={import.meta.env.VITE_DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595'}
-        productName="Jakpat for Universities"
+      {/* Detail Drawer — id-based so it always renders fresh data after refresh */}
+      <SubmissionDetailSheet
+        submission={openSubmission}
+        paymentData={openSubmission ? (paymentStates[openSubmission.id] || EMPTY_PAYMENT_STATE) : EMPTY_PAYMENT_STATE}
+        existingPage={openSubmission ? existingPages[openSubmission.id] : undefined}
+        isScheduled={openSubmission ? scheduledSubmissionIds.has(openSubmission.id) : false}
+        onOpenChange={(open) => {
+          if (!open) setOpenSubmissionId(null);
+        }}
+        onStatusChange={handleStatusChange}
+        onPaymentStatusChange={handlePaymentStatusChange}
+        onEditFormDetails={handleOpenEditFormDetailsModal}
+        onEditCriteria={handleOpenEditCriteriaModal}
+        onOpenPageBuilder={handleOpenPageBuilder}
+        onOpenSchedule={(sub) => {
+          setActiveScheduleSubmission(sub);
+          setScheduleInitialStep('schedule');
+        }}
+        onOpenPayment={(sub) => {
+          setActiveScheduleSubmission(sub);
+          setScheduleInitialStep('payment');
+        }}
+        onExtendCreated={loadSubmissions}
       />
+
+      {/* Bulk actions toolbar (selection foundation for bulk payment) */}
+      <BulkActionsToolbar count={rowSelection.count} onClear={rowSelection.clear}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled
+          className="h-7 px-2.5 text-xs text-gray-400 border-gray-200"
+          title="Coming soon"
+        >
+          <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Create Bulk Payment
+          <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide bg-gray-100 rounded px-1 py-0.5">Soon</span>
+        </Button>
+      </BulkActionsToolbar>
     </div>
   );
 }

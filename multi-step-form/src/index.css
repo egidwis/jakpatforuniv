@@ -46,3 +46,23 @@
     transform: scale(0.95);
   }
 }
+
+/* Sheet (right drawer) animations — Radix Dialog waits for CSS animations
+   before unmounting, so exit animation must be a keyframe animation. */
+@keyframes sheetSlideInFromRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheetSlideOutToRight {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
