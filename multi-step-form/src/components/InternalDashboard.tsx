@@ -675,7 +675,10 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       {/* Content */}
       <div className={hideAuth ? 'p-4 md:p-6 flex-1 min-h-0 flex flex-col gap-4' : 'max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-6 flex-1 min-h-0 flex flex-col gap-4'}>
 
-        <div className="md:hidden bg-white p-4 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0 relative z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)]">
+        {/* Mobile-only filter card. Legacy src/styles.css loads after Tailwind and
+            redefines `.flex`, which overrides `md:hidden` — so this element must not
+            use `flex` for its own layout (space-y keeps the same vertical stack). */}
+        <div className="md:hidden bg-white p-4 rounded-xl border border-gray-100 space-y-4 shrink-0 relative z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)]">
 
           {/* Top Row: Month Selector & Actions */}
           <div className="flex flex-row items-center gap-4 w-full">
