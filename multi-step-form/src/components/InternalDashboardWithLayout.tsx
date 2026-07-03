@@ -325,9 +325,8 @@ export function InternalDashboardWithLayout() {
           })}
         </nav>
 
-        {/* Storage Meter - hidden when collapsed */}
-        {!collapsed && (
-        <div className="border-t border-gray-200 px-4 py-2.5">
+        {/* Storage Meter — linear bar expanded, progress ring in rail mode */}
+        <div className={cn('border-t border-gray-200 py-2.5', collapsed ? 'px-2 flex justify-center' : 'px-4')}>
           {(() => {
             // Calculate estimated MB from all sources with different avg sizes
             const proofMB = (storageStats.proofCount * 70) / 1024;    // ~70KB avg (compressed proof screenshots)
@@ -339,7 +338,36 @@ export function InternalDashboardWithLayout() {
             const isCritical = pct >= 80;
             const isWarning = pct >= 60;
             const barColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-emerald-500';
+            const ringColor = isCritical ? 'text-red-500' : isWarning ? 'text-yellow-500' : 'text-emerald-500';
             const estMBStr = estMB >= 1024 ? `${(estMB / 1024).toFixed(1)} GB` : `${estMB.toFixed(0)} MB`;
+            const limitStr = STORAGE_LIMIT_MB >= 1024 ? `${(STORAGE_LIMIT_MB / 1024).toFixed(0)} GB` : `${STORAGE_LIMIT_MB} MB`;
+            const detail = `Supabase Storage — Proof: ${storageStats.proofCount.toLocaleString()} · Banner: ${storageStats.bannerCount} · Content: ~${storageStats.contentImageCount} (${totalFiles.toLocaleString()} file)`;
+            if (collapsed) {
+              const r = 14;
+              const c = 2 * Math.PI * r;
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="relative h-8 w-8 cursor-default">
+                      <svg viewBox="0 0 32 32" className="h-8 w-8 -rotate-90">
+                        <circle cx="16" cy="16" r={r} fill="none" strokeWidth="2.5" className="stroke-gray-200" />
+                        <circle
+                          cx="16" cy="16" r={r} fill="none" strokeWidth="2.5" strokeLinecap="round"
+                          stroke="currentColor"
+                          strokeDasharray={c}
+                          strokeDashoffset={c * (1 - pct / 100)}
+                          className={cn('transition-all duration-500', ringColor)}
+                        />
+                      </svg>
+                      <HardDrive className={cn('absolute inset-0 m-auto h-3.5 w-3.5', isCritical ? 'text-red-500' : 'text-gray-400')} />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    ~{estMBStr} / {limitStr} · {detail}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
             return (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -349,18 +377,15 @@ export function InternalDashboardWithLayout() {
                       <div className={cn('h-full rounded-full transition-all duration-500', barColor)} style={{ width: `${pct}%` }} />
                     </div>
                     <span className={cn('text-[10px] whitespace-nowrap', isCritical ? 'text-red-500 font-semibold' : 'text-gray-400')}>
-                      ~{estMBStr} / {STORAGE_LIMIT_MB >= 1024 ? `${(STORAGE_LIMIT_MB / 1024).toFixed(0)} GB` : `${STORAGE_LIMIT_MB} MB`}
+                      ~{estMBStr} / {limitStr}
                     </span>
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="right">
-                  Supabase Storage — Proof: {storageStats.proofCount.toLocaleString()} · Banner: {storageStats.bannerCount} · Content: ~{storageStats.contentImageCount} ({totalFiles.toLocaleString()} file)
-                </TooltipContent>
+                <TooltipContent side="right">{detail}</TooltipContent>
               </Tooltip>
             );
           })()}
         </div>
-        )}
 
         {/* Footer */}
         <div className={cn('border-t border-gray-200 bg-gray-50/50 p-3 flex items-center gap-2', collapsed && 'flex-col')}>
