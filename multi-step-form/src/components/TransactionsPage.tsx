@@ -9,7 +9,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Search, RefreshCw, Download, Filter } from 'lucide-react';
+import { Search, RefreshCw, Download, Filter, ChevronDown } from 'lucide-react';
 import { formatPaymentChannel } from '../utils/paymentChannel';
 import { cn, useMediaQuery } from '@/lib/utils';
 import {
@@ -22,6 +22,8 @@ import { TransactionDetailSheet } from './transactions/TransactionDetailSheet';
 import { WalletView } from './transactions/WalletView';
 
 type FinanceTab = 'transaksi' | 'wallet';
+
+const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
 export function TransactionsPage() {
   const [activeTab, setActiveTab] = useState<FinanceTab>('transaksi');
@@ -187,72 +189,64 @@ export function TransactionsPage() {
           productName="Jakpat for Universities"
         />
       ) : (
-        <>
-          {/* Toolbar */}
-          <div className="bg-white p-4 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0 relative z-30 shadow-[0_4px_20px_rgb(0,0,0,0.05)]">
-            {/* Row 1: periode + export/revenue/refresh */}
-            <div className="flex flex-row flex-wrap items-center justify-between gap-3 w-full">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-sm font-semibold text-gray-600">Periode</span>
-                <div className="flex items-center gap-2 bg-gray-50/80 p-1.5 rounded-lg border border-gray-200/50">
-                  <div className="relative">
-                    <select
-                      className="h-8 pl-3 pr-8 text-sm font-semibold bg-transparent border-0 rounded-md focus:outline-none focus:ring-0 appearance-none cursor-pointer hover:bg-white hover:shadow-sm transition-all w-36 text-gray-700"
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                    >
-                      <option value={-1}>Semua Bulan</option>
-                      {['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].map((month, index) => (
-                        <option key={index} value={index}>{month}</option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                    </div>
-                  </div>
-                  <div className="w-px h-4 bg-gray-200" />
-                  <div className="relative">
-                    <select
-                      className="h-8 pl-3 pr-8 text-sm font-semibold bg-transparent border-0 rounded-md focus:outline-none focus:ring-0 appearance-none cursor-pointer hover:bg-white hover:shadow-sm transition-all w-24 text-gray-700"
-                      value={selectedYear}
-                      onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                    >
-                      {[2024, 2025, 2026, 2027].map((year) => (
-                        <option key={year} value={year}>{year}</option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                    </div>
-                  </div>
+        /* Unified list surface — toolbar, column header, rows, footer in one card
+           (mirrors the submissions desktop pattern) */
+        <div className="flex-1 min-h-0 flex bg-white border border-gray-200 rounded-xl overflow-hidden mb-4">
+          <div className="flex-1 min-w-0 flex flex-col">
+            {/* Toolbar row 1: Periode · search · revenue/export/refresh */}
+            <div className="shrink-0 flex flex-wrap items-center gap-3 px-4 py-3">
+              <div className="flex items-center gap-1">
+                <div className="relative">
+                  <select
+                    className="h-8 pl-2 pr-7 text-sm font-semibold bg-transparent border-0 rounded-md focus:outline-none focus:ring-0 appearance-none cursor-pointer hover:bg-gray-50 transition-colors text-gray-700"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                  >
+                    <option value={-1}>Semua Bulan</option>
+                    {MONTHS.map((month, index) => (
+                      <option key={index} value={index}>{month}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                </div>
+                <div className="w-px h-4 bg-gray-200" />
+                <div className="relative">
+                  <select
+                    className="h-8 pl-2 pr-7 text-sm font-semibold bg-transparent border-0 rounded-md focus:outline-none focus:ring-0 appearance-none cursor-pointer hover:bg-gray-50 transition-colors text-gray-700"
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  >
+                    {[2024, 2025, 2026, 2027].map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  onClick={handleExportCsv}
-                  variant="outline"
-                  className="h-10 shrink-0 bg-white border-gray-200 hover:bg-gray-50 text-gray-700 shadow-sm"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  <span className="font-medium">Export CSV</span>
-                </Button>
+              <div className="flex-1 min-w-[200px] max-w-md relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Cari ID transaksi, nama, atau email..."
+                  className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
 
-                {/* Revenue display with breakdown dropdown */}
+              <div className="flex items-center gap-1 ml-auto">
+                {/* Total Pendapatan — compact trigger, breakdown in dropdown */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <div
-                      className="flex items-center gap-4 bg-emerald-50 pl-4 pr-3 py-2 rounded-xl border border-emerald-100 hover:bg-emerald-100/50 hover:border-emerald-200 transition-all cursor-pointer group shadow-sm select-none"
-                      role="button"
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors select-none"
+                      title="Breakdown pendapatan"
                     >
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] uppercase font-bold text-emerald-600 tracking-wide leading-none mb-1">Total Pendapatan</span>
-                        <span className="text-lg font-bold text-emerald-700 group-hover:text-emerald-800 transition-colors leading-none">{formatIDR(totalRevenue)}</span>
-                      </div>
-                      <div className="h-9 w-9 bg-emerald-100 rounded-full flex items-center justify-center group-hover:bg-emerald-200 group-hover:scale-105 transition-all shadow-inner shrink-0">
-                        <span className="text-emerald-600 font-bold text-lg">$</span>
-                      </div>
-                    </div>
+                      <span className="text-[10px] uppercase font-bold tracking-wide text-emerald-600">Pendapatan</span>
+                      <span className="text-sm font-bold">{formatIDR(totalRevenue)}</span>
+                      <ChevronDown className="w-3.5 h-3.5 text-emerald-500" />
+                    </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[340px] p-0 shadow-2xl border-gray-100 rounded-xl mt-2 animate-in fade-in zoom-in-95 duration-200">
                     <div className="p-6 bg-white rounded-xl">
@@ -283,137 +277,129 @@ export function TransactionsPage() {
                 </DropdownMenu>
 
                 <Button
+                  onClick={handleExportCsv}
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                  title="Export CSV"
+                >
+                  <Download className="w-4 h-4" />
+                </Button>
+
+                <Button
                   onClick={fetchTransactions}
-                  variant="outline"
+                  variant="ghost"
+                  size="icon"
                   disabled={loading}
-                  className="h-10 w-10 p-0 rounded-xl text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200 shrink-0 shadow-sm transition-all"
+                  className="h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
                   title="Refresh data"
                 >
-                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
               </div>
             </div>
 
-            <div className="h-px bg-gray-100 w-full" />
-
-            {/* Row 2: search + status filter chips */}
-            <div className="flex flex-row flex-wrap items-center justify-start gap-4 w-full">
-              <div className="relative w-full max-w-[400px]">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Cari ID transaksi, nama, atau email..."
-                  className="pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm w-full shadow-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { id: 'all', label: 'Semua', count: statusCounts.all },
-                  { id: 'pending', label: 'Menunggu', count: statusCounts.pending },
-                  { id: 'completed', label: 'Lunas', count: statusCounts.completed },
-                  { id: 'failed', label: 'Gagal', count: statusCounts.failed },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setStatusFilter(tab.id)}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap',
-                      statusFilter === tab.id
-                        ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-200'
-                        : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-900'
-                    )}
-                  >
-                    {tab.label}
-                    {tab.id !== 'all' && (
-                      <span className={cn(
-                        'px-1.5 py-0.5 rounded-md text-[10px] font-bold',
-                        statusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
-                      )}>
-                        {tab.count}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+            {/* Toolbar row 2: status tabs (Outlook-style, mirrors Regular/Kilat) */}
+            <div className="shrink-0 flex items-center px-4 border-b border-gray-200 overflow-x-auto scrollbar-hide">
+              {[
+                { id: 'all', label: 'Semua', count: statusCounts.all },
+                { id: 'pending', label: 'Menunggu', count: statusCounts.pending },
+                { id: 'completed', label: 'Lunas', count: statusCounts.completed },
+                { id: 'failed', label: 'Gagal', count: statusCounts.failed },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setStatusFilter(tab.id)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-2 -mb-px text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                    statusFilter === tab.id
+                      ? 'border-blue-600 text-blue-700'
+                      : 'border-transparent text-gray-500 hover:text-gray-800'
+                  )}
+                >
+                  {tab.label}
+                  {tab.id !== 'all' && (
+                    <span className={cn(
+                      'px-1.5 py-0.5 rounded-md text-[10px] font-bold',
+                      statusFilter === tab.id ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'
+                    )}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
-          </div>
 
-          {/* List surface + inline reading pane */}
-          <div className="flex-1 min-h-0 flex bg-white border border-gray-200 rounded-xl overflow-hidden mt-4 mb-4">
-            <div className="flex-1 min-w-0 flex flex-col">
-              {/* Sticky column header */}
-              <div className="shrink-0 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                <span className="hidden sm:block w-[76px] shrink-0">Tanggal</span>
-                <span className="hidden md:block w-[110px] shrink-0">ID</span>
-                <span className="flex-1">Survei</span>
-                <span className="shrink-0 sm:w-[110px] text-right">Total</span>
-                <span className="shrink-0 sm:w-[88px]">Status</span>
-                <span className="hidden sm:block w-[110px] shrink-0">Metode</span>
-                <span className="w-4 shrink-0" />
-              </div>
+            {/* Sticky column header */}
+            <div className="shrink-0 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              <span className="hidden sm:block w-[76px] shrink-0">Tanggal</span>
+              <span className="hidden md:block w-[110px] shrink-0">ID</span>
+              <span className="flex-1">Survei</span>
+              <span className="shrink-0 sm:w-[110px] text-right">Total</span>
+              <span className="shrink-0 sm:w-[88px]">Status</span>
+              <span className="hidden sm:block w-[110px] shrink-0">Metode</span>
+              <span className="w-4 shrink-0" />
+            </div>
 
-              {/* Rows */}
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                {loading ? (
-                  <div className="divide-y divide-gray-100">
-                    {Array(8).fill(0).map((_, i) => (
-                      <div key={`skeleton-${i}`} className="flex items-center gap-3 px-4 py-3">
-                        <div className="hidden sm:block w-[76px] shrink-0">
-                          <div className="h-3 w-14 bg-gray-200 animate-pulse rounded mb-1" />
-                          <div className="h-2.5 w-10 bg-gray-100 animate-pulse rounded" />
-                        </div>
-                        <div className="hidden md:block w-[110px] shrink-0">
-                          <div className="h-4 w-full bg-gray-100 animate-pulse rounded" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="h-4 w-3/5 bg-gray-200 animate-pulse rounded mb-1.5" />
-                          <div className="h-2.5 w-2/5 bg-gray-100 animate-pulse rounded" />
-                        </div>
-                        <div className="h-4 w-20 bg-gray-200 animate-pulse rounded shrink-0" />
-                        <div className="h-5 w-16 bg-gray-100 animate-pulse rounded-full shrink-0" />
+            {/* Rows */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {loading ? (
+                <div className="divide-y divide-gray-100">
+                  {Array(8).fill(0).map((_, i) => (
+                    <div key={`skeleton-${i}`} className="flex items-center gap-3 px-4 py-3">
+                      <div className="hidden sm:block w-[76px] shrink-0">
+                        <div className="h-3 w-14 bg-gray-200 animate-pulse rounded mb-1" />
+                        <div className="h-2.5 w-10 bg-gray-100 animate-pulse rounded" />
                       </div>
-                    ))}
-                  </div>
-                ) : filteredTransactions.length === 0 ? (
-                  <div className="py-16 text-center">
-                    <div className="inline-flex items-center justify-center w-14 h-14 bg-gray-50 rounded-full mb-3">
-                      <Filter className="w-7 h-7 text-gray-300" />
+                      <div className="hidden md:block w-[110px] shrink-0">
+                        <div className="h-4 w-full bg-gray-100 animate-pulse rounded" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="h-4 w-3/5 bg-gray-200 animate-pulse rounded mb-1.5" />
+                        <div className="h-2.5 w-2/5 bg-gray-100 animate-pulse rounded" />
+                      </div>
+                      <div className="h-4 w-20 bg-gray-200 animate-pulse rounded shrink-0" />
+                      <div className="h-5 w-16 bg-gray-100 animate-pulse rounded-full shrink-0" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-1 text-gray-900">Tidak ada transaksi ditemukan</h3>
-                    <p className="text-sm text-gray-500">Coba ubah filter atau kata kunci pencarian Anda.</p>
+                  ))}
+                </div>
+              ) : filteredTransactions.length === 0 ? (
+                <div className="py-16 text-center">
+                  <div className="inline-flex items-center justify-center w-14 h-14 bg-gray-50 rounded-full mb-3">
+                    <Filter className="w-7 h-7 text-gray-300" />
                   </div>
-                ) : (
-                  <div className="divide-y divide-gray-100">
-                    {filteredTransactions.map((transaction) => (
-                      <TransactionListRow
-                        key={transaction.id}
-                        transaction={transaction}
-                        onOpen={setOpenTransactionId}
-                        active={isXl && transaction.id === openTransactionId}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Footer count */}
-              <div className="shrink-0 border-t border-gray-200 px-4 py-3 text-sm text-gray-500">
-                Total: <span className="font-bold text-gray-900">{filteredTransactions.length}</span> transaksi
-              </div>
+                  <h3 className="text-lg font-semibold mb-1 text-gray-900">Tidak ada transaksi ditemukan</h3>
+                  <p className="text-sm text-gray-500">Coba ubah filter atau kata kunci pencarian Anda.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {filteredTransactions.map((transaction) => (
+                    <TransactionListRow
+                      key={transaction.id}
+                      transaction={transaction}
+                      onOpen={setOpenTransactionId}
+                      active={isXl && transaction.id === openTransactionId}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Inline reading pane (Outlook split view) */}
-            {isXl && openTransaction && (
-              <TransactionDetailSheet
-                variant="pane"
-                transaction={openTransaction}
-                onOpenChange={(open) => !open && setOpenTransactionId(null)}
-              />
-            )}
+            {/* Footer count */}
+            <div className="shrink-0 border-t border-gray-200 px-4 py-3 text-sm text-gray-500">
+              Total: <span className="font-bold text-gray-900">{filteredTransactions.length}</span> transaksi
+            </div>
           </div>
-        </>
+
+          {/* Inline reading pane (Outlook split view) */}
+          {isXl && openTransaction && (
+            <TransactionDetailSheet
+              variant="pane"
+              transaction={openTransaction}
+              onOpenChange={(open) => !open && setOpenTransactionId(null)}
+            />
+          )}
+        </div>
       )}
 
       {/* Detail drawer (narrow screens) — ≥1280px uses the inline pane instead */}
