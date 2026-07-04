@@ -10,7 +10,7 @@ export function CustomerTierChip({ customer }: { customer: Customer }) {
   const tier = customerTier(customer);
   if (tier === 'vvip') {
     return (
-      <Badge className="bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500 text-white border-none font-extrabold rounded-md px-2.5 py-0.5 shadow-lg shadow-fuchsia-500/30 tracking-wide" variant="default">
+      <Badge className="bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500 text-white border-none font-extrabold rounded-full px-2.5 py-0.5 shadow-lg shadow-fuchsia-500/30 tracking-wide" variant="default">
         ✦ VVIP
       </Badge>
     );

@@ -171,47 +171,61 @@ export function InternalDashboardWithLayout() {
     return null;
   }
 
-  const menuItems = [
+  const menuGroups = [
     {
-      id: 'submissions' as Page,
-      label: 'Submissions',
-      icon: FileText,
+      items: [
+        {
+          id: 'submissions' as Page,
+          label: 'Submissions',
+          icon: FileText,
+        },
+        {
+          id: 'customers' as Page,
+          label: 'Customers',
+          icon: Users,
+        },
+        {
+          id: 'scheduling' as Page,
+          label: 'Ads Schedule',
+          icon: Calendar,
+        },
+        {
+          id: 'publish-page' as Page,
+          label: 'Pages',
+          icon: Globe,
+        },
+      ]
     },
     {
-      id: 'transactions' as Page,
-      label: 'Keuangan',
-      icon: CreditCard,
+      divider: true,
+      items: [
+        {
+          id: 'transactions' as Page,
+          label: 'Finance',
+          icon: CreditCard,
+        },
+        {
+          id: 'analytics' as Page,
+          label: 'Analytics',
+          icon: BarChart2,
+        },
+      ]
     },
     {
-      id: 'analytics' as Page,
-      label: 'Analytics',
-      icon: BarChart2,
-    },
-    {
-      id: 'customers' as Page,
-      label: 'Customers',
-      icon: Users,
-    },
-    {
-      id: 'conversations' as Page,
-      label: 'Conversations',
-      icon: MessageSquare,
-    },
-    {
-      id: 'scheduling' as Page,
-      label: 'Ads Schedule',
-      icon: Calendar,
-    },
-    {
-      id: 'publish-page' as Page,
-      label: 'Pages',
-      icon: Globe,
-    },
-    {
-      id: 'mimin-setup' as Page,
-      label: 'Mimin AI',
-      icon: Bot,
-    },
+      divider: true,
+      items: [
+        {
+          id: 'conversations' as Page,
+          label: 'Conversations',
+          icon: MessageSquare,
+        },
+        {
+          id: 'mimin-setup' as Page,
+          label: 'Mimin AI',
+          icon: Bot,
+        },
+      ]
+    }
   ];
 
   return (
@@ -277,52 +291,59 @@ export function InternalDashboardWithLayout() {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 p-2 overflow-y-auto">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentPage === item.id;
-            const showUnread = item.id === 'conversations' && unreadConversations > 0;
-            return (
-              <Tooltip key={item.id}>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => handlePageChange(item.id)}
-                    className={cn(
-                      'w-full flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                    )}
-                  >
-                    <span className="relative shrink-0">
-                      <Icon className="h-4 w-4" />
-                      {showUnread && collapsed && (
-                        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
-                      )}
-                    </span>
-                    <span
-                      className={cn(
-                        'flex-1 text-left whitespace-nowrap overflow-hidden transition-all duration-200',
-                        collapsed ? 'w-0 opacity-0' : 'ml-3 opacity-100'
-                      )}
-                    >
-                      {item.label}
-                    </span>
-                    {showUnread && !collapsed && (
-                      <span
+          {menuGroups.map((group, groupIdx) => (
+            <div key={groupIdx} className="space-y-1">
+              {group.divider && (
+                <hr className={cn("border-gray-200", collapsed ? "my-2.5 mx-1" : "my-2.5 mx-2")} />
+              )}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentPage === item.id;
+                const showUnread = item.id === 'conversations' && unreadConversations > 0;
+                return (
+                  <Tooltip key={item.id} open={collapsed ? undefined : false}>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handlePageChange(item.id)}
                         className={cn(
-                          'px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0',
-                          isActive ? 'bg-blue-600 text-white' : 'bg-red-500 text-white'
+                          'w-full flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                         )}
                       >
-                        {unreadConversations > 99 ? '99+' : unreadConversations}
-                      </span>
-                    )}
-                  </button>
-                </TooltipTrigger>
-                {collapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
-              </Tooltip>
-            );
-          })}
+                        <span className="relative shrink-0">
+                          <Icon className="h-4 w-4" />
+                          {showUnread && collapsed && (
+                            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500" />
+                          )}
+                        </span>
+                        <span
+                          className={cn(
+                            'flex-1 text-left whitespace-nowrap overflow-hidden transition-all duration-200',
+                            collapsed ? 'w-0 opacity-0' : 'ml-3 opacity-100'
+                          )}
+                        >
+                          {item.label}
+                        </span>
+                        {showUnread && !collapsed && (
+                          <span
+                            className={cn(
+                              'px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0',
+                              isActive ? 'bg-blue-600 text-white' : 'bg-red-500 text-white'
+                            )}
+                          >
+                            {unreadConversations > 99 ? '99+' : unreadConversations}
+                          </span>
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{item.label}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Storage Meter — linear bar expanded, progress ring in rail mode */}

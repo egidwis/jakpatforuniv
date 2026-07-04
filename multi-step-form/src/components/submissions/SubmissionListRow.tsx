@@ -91,7 +91,7 @@ export function SubmissionListRow({
           <TooltipProvider>
             <Tooltip delayDuration={300}>
               <TooltipTrigger asChild>
-                <span className="text-sm font-semibold text-gray-900 truncate">
+                <span className="text-sm font-semibold text-gray-900 truncate min-w-0">
                   {submission.formTitle}
                 </span>
               </TooltipTrigger>
@@ -120,7 +120,7 @@ export function SubmissionListRow({
       </div>
 
       {/* Lifecycle chip */}
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+      <div onClick={(e) => e.stopPropagation()} className="w-[120px] shrink-0 flex justify-end">
         <LifecycleChip submission={submission} lifecycle={lifecycle} size="sm" />
       </div>
 
