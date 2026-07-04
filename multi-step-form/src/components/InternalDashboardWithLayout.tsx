@@ -179,7 +179,7 @@ export function InternalDashboardWithLayout() {
     },
     {
       id: 'transactions' as Page,
-      label: 'Transactions',
+      label: 'Keuangan',
       icon: CreditCard,
     },
     {
