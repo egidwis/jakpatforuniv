@@ -35,18 +35,25 @@ penempatan DOKU Wallet yang saat ini berupa Dialog modal di tengah layar.
 ### Baris kompak (mencermin `SubmissionListRow`)
 
 ```
-tanggal+jam · [chip metode] judul survei          total (mono) · [chip status] · ›
-              peneliti · email
+tanggal+jam · #ID transaksi · judul survei     total (mono) · [chip status] · [chip metode] · ›
+                              peneliti
 ```
 
+- Kolom, kiri ke kanan: tanggal pembayaran (`created_at`, format tanggal+jam
+  seperti sekarang) · ID transaksi (`payment_id`, mono + truncate, gaya kolom
+  ID submissions) · judul survei **tanpa chip di depannya** dengan subtitle
+  nama peneliti (email pindah ke detail) · total (mono) · chip status · chip
+  metode pembayaran · chevron.
 - Klik baris membuka detail; tidak ada aksi inline di baris.
-- Rincian item, memo, dan tombol download pindah seluruhnya ke detail.
+- Rincian item, memo, email peneliti, dan tombol download pindah seluruhnya
+  ke detail.
 - Chip memakai `ui/chip.tsx`:
   - Status: `green` Lunas, `amber` Menunggu, `red` Gagal.
   - Metode: `blue` untuk DOKU/channel (QRIS dsb. via `formatPaymentChannel`),
     `amber` untuk Mayar (legacy — dipertahankan hanya untuk data historis),
     `purple` untuk Invoice Manual.
-- Di mobile: kolom tanggal disatukan ke subtitle, total + status tetap terlihat.
+- Di mobile: kolom tanggal dan ID disembunyikan/disatukan ke subtitle;
+  judul, total + chip status tetap terlihat.
 
 ### Detail transaksi — `TransactionDetailSheet`
 
