@@ -2,6 +2,61 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import crypto from 'crypto';
+import { pathToFileURL } from 'url';
+
+// Dev-only bridge: menjalankan Cloudflare Pages Functions asli di
+// functions/api/doku/sac/*.js saat `vite dev`, karena runtime Pages tidak ada
+// di dev server. Node 20+ menyediakan Web API yang dipakai functions tersebut
+// (Request, Response, fetch, crypto.subtle), jadi dev dan prod tetap satu
+// jalur kode — tidak ada duplikasi logika seperti dokuProxyPlugin (checkout).
+function dokuSacFunctionsDevPlugin() {
+  const HANDLERS = ['balance', 'history', 'payout', 'create', 'transfer'];
+  return {
+    name: 'doku-sac-functions-dev',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const match = req.url && req.url.match(/^\/api\/doku\/sac\/([a-z]+)(\?|$)/);
+        if (!match || !HANDLERS.includes(match[1])) return next();
+
+        (async () => {
+          const modulePath = pathToFileURL(
+            path.resolve(__dirname, 'functions/api/doku/sac', `${match[1]}.js`)
+          ).href;
+          const { onRequest } = await import(modulePath);
+
+          const env = loadEnv('', process.cwd(), '');
+          const url = `http://${req.headers.host || 'localhost'}${req.url}`;
+
+          let body;
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            body = await new Promise((resolve, reject) => {
+              let data = '';
+              req.on('data', (chunk) => (data += chunk));
+              req.on('end', () => resolve(data));
+              req.on('error', reject);
+            });
+          }
+
+          const request = new Request(url, {
+            method: req.method,
+            headers: { 'content-type': req.headers['content-type'] || 'application/json' },
+            body: body || undefined,
+          });
+
+          const response = await onRequest({ request, env });
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        })().catch((error) => {
+          console.error('💥 DOKU SAC dev bridge error:', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: error.message }));
+        });
+      });
+    },
+  };
+}
 
 
 
@@ -196,7 +251,7 @@ function googleFormsProxyPlugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), dokuProxyPlugin(), googleFormsProxyPlugin()],
+  plugins: [react(), dokuProxyPlugin(), dokuSacFunctionsDevPlugin(), googleFormsProxyPlugin()],
   base: '/',
   resolve: {
     alias: {
