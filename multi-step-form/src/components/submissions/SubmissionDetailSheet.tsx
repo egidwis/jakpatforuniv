@@ -184,11 +184,7 @@ export function SubmissionDetailSheet({
     </span>
   );
 
-  const chips = isKilat ? (
-    <Chip variant="amber" size="sm">
-      <Zap className="w-3 h-3" /> KILAT
-    </Chip>
-  ) : undefined;
+  const chips = undefined;
 
   const body = (
     <>
@@ -796,7 +792,7 @@ function ReservationTab({
                 <Chip variant="amber" size="sm" dot pulse>&lt;1h</Chip>
               )}
             </div>
-            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            <div className="grid grid-cols-[auto_1fr] !gap-x-3 !gap-y-1 text-xs">
               <span className="text-gray-400">Start</span>
               <span className="font-medium text-gray-900">{formatDate(submission.start_date)}</span>
               <span className="text-gray-400">End</span>
@@ -867,62 +863,6 @@ function PaymentTab({
 
   return (
     <>
-      <DetailSheetSection title="Status Pembayaran">
-        <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5">
-          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-            <span className="text-gray-400">Status</span>
-            <span className={cn('font-semibold capitalize', lifecycle.isPaid ? 'text-green-600' : lifecycle.isActuallyExpired ? 'text-red-600' : 'text-gray-900')}>
-              {paymentData.latestStatus || submission.payment_status || 'No payment yet'}
-            </span>
-            <span className="text-gray-400">Amount</span>
-            <span className="font-medium text-gray-900">
-              Rp {paymentData.latestAmount ? paymentData.latestAmount.toLocaleString('id-ID') : '0'}
-            </span>
-            <span className="text-gray-400">Invoices</span>
-            <span className="font-medium text-gray-900">{paymentData.invoiceCount}</span>
-            {paymentData.hasEverPaid && !lifecycle.isPaid && (
-              <>
-                <span className="text-gray-400">Riwayat</span>
-                <span className="font-medium text-green-600">Pernah dibayar</span>
-              </>
-            )}
-          </div>
-        </div>
-        {paymentData.latestPaymentUrl && !lifecycle.isPaid && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-8 text-xs justify-start text-amber-700 border-amber-200 bg-amber-50/60 hover:bg-amber-100"
-            onClick={() => copyToClipboard(paymentData.latestPaymentUrl!, 'Payment link copied!')}
-          >
-            <Copy className="w-3.5 h-3.5 mr-2" /> Copy payment link untuk researcher
-          </Button>
-        )}
-      </DetailSheetSection>
-
-      <DetailSheetSection title="Aksi">
-        <PaymentAction
-          submission={submission}
-          paymentData={paymentData}
-          lifecycle={lifecycle}
-          onOpenPayment={onOpenPayment}
-        />
-        {!lifecycle.isPaid && (
-          <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2.5 space-y-2">
-            <p className="text-[11px] text-emerald-800 leading-snug">
-              Pembayaran diterima di luar sistem (transfer manual)? Tandai submission ini sebagai lunas.
-            </p>
-            <Button
-              size="sm"
-              className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => onPaymentStatusChange(submission.id, 'paid')}
-            >
-              <Check className="w-3.5 h-3.5 mr-1.5" /> Mark as Paid
-            </Button>
-          </div>
-        )}
-      </DetailSheetSection>
-
       <DetailSheetSection
         title="Detail Form & Biaya"
         action={
@@ -970,6 +910,62 @@ function PaymentTab({
           <p className="text-xs text-gray-400 italic">Durasi belum diisi — biaya iklan belum bisa dihitung.</p>
         )}
       </DetailSheetSection>
+
+      <DetailSheetSection title="Aksi">
+        <PaymentAction
+          submission={submission}
+          paymentData={paymentData}
+          lifecycle={lifecycle}
+          onOpenPayment={onOpenPayment}
+        />
+        {!lifecycle.isPaid && (
+          <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2.5 space-y-2">
+            <p className="text-[11px] text-emerald-800 leading-snug">
+              Pembayaran diterima di luar sistem (transfer manual)? Tandai submission ini sebagai lunas.
+            </p>
+            <Button
+              size="sm"
+              className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => onPaymentStatusChange(submission.id, 'paid')}
+            >
+              <Check className="w-3.5 h-3.5 mr-1.5" /> Mark as Paid
+            </Button>
+          </div>
+        )}
+      </DetailSheetSection>
+
+      <DetailSheetSection title="Status Pembayaran">
+        <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5">
+          <div className="grid grid-cols-[auto_1fr] !gap-x-3 !gap-y-1 text-xs">
+            <span className="text-gray-400">Status</span>
+            <span className={cn('font-semibold capitalize', lifecycle.isPaid ? 'text-green-600' : lifecycle.isActuallyExpired ? 'text-red-600' : 'text-gray-900')}>
+              {paymentData.latestStatus || submission.payment_status || 'No payment yet'}
+            </span>
+            <span className="text-gray-400">Amount</span>
+            <span className="font-medium text-gray-900">
+              Rp {paymentData.latestAmount ? paymentData.latestAmount.toLocaleString('id-ID') : '0'}
+            </span>
+            <span className="text-gray-400">Invoices</span>
+            <span className="font-medium text-gray-900">{paymentData.invoiceCount}</span>
+            {paymentData.hasEverPaid && !lifecycle.isPaid && (
+              <>
+                <span className="text-gray-400">Riwayat</span>
+                <span className="font-medium text-green-600">Pernah dibayar</span>
+              </>
+            )}
+          </div>
+        </div>
+        {paymentData.latestPaymentUrl && !lifecycle.isPaid && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-8 text-xs justify-start text-amber-700 border-amber-200 bg-amber-50/60 hover:bg-amber-100"
+            onClick={() => copyToClipboard(paymentData.latestPaymentUrl!, 'Payment link copied!')}
+          >
+            <Copy className="w-3.5 h-3.5 mr-2" /> Copy payment link untuk researcher
+          </Button>
+        )}
+      </DetailSheetSection>
     </>
   );
 }
@@ -1006,7 +1002,7 @@ function PageTab({
           </div>
         ) : existingPage ? (
           <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5">
-            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            <div className="grid grid-cols-[auto_1fr] !gap-x-3 !gap-y-1 text-xs">
               <span className="text-gray-400">Status</span>
               <span className="font-semibold text-gray-900 capitalize">{lifecycle.pageStatus}</span>
               <span className="text-gray-400">Title</span>

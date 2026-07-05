@@ -375,6 +375,71 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
   }, [openSubmissionId, openSubmission, loading]);
 
+  // Client tier: fetched async against full Supabase history (not just current-month page)
+  const [clientTier, setClientTier] = useState<'vvip' | 'vip' | 'returning' | 'new' | undefined>(undefined);
+
+  useEffect(() => {
+    if (!openSubmission) { setClientTier(undefined); return; }
+
+    const email = openSubmission.researcherEmail?.toLowerCase();
+    const rawPhone = openSubmission.phone_number;
+    const normPhone = rawPhone ? rawPhone.replace(/\D/g, '').replace(/^0/, '62') : '';
+
+    async function fetchTier() {
+      // Build OR filter by email and/or normalized phone
+      const orParts: string[] = [];
+      if (email && email !== 'no email') orParts.push(`email.eq.${email}`);
+      if (normPhone.length >= 10) {
+        // Try both stored formats: with leading 0 and with 62 prefix
+        const withZero = '0' + normPhone.slice(2);
+        orParts.push(`phone_number.eq.${rawPhone}`);
+        orParts.push(`phone_number.eq.${normPhone}`);
+        orParts.push(`phone_number.eq.${withZero}`);
+      }
+      if (!orParts.length) { setClientTier('new'); return; }
+
+      const { data: subData } = await supabase
+        .from('form_submissions')
+        .select('id, payment_status')
+        .or(orParts.join(','));
+
+      if (!subData?.length) { setClientTier('new'); return; }
+
+      const ids = subData.map((s: any) => s.id);
+
+      // Fetch actual paid amounts from transactions (same logic as CustomersPage)
+      const { data: txData } = await supabase
+        .from('transactions')
+        .select('form_submission_id, amount, status')
+        .in('form_submission_id', ids);
+
+      const paidMap = new Map<string, number>();
+      (txData || []).forEach((tx: any) => {
+        if (['paid', 'completed'].includes(tx.status)) {
+          paidMap.set(tx.form_submission_id, (paidMap.get(tx.form_submission_id) || 0) + tx.amount);
+        }
+      });
+
+      const totalOrders = subData.length;
+      let paidCount = 0;
+      let totalSpent = 0;
+      subData.forEach((s: any) => {
+        if ((s.payment_status || '').toLowerCase() === 'paid') {
+          paidCount++;
+          totalSpent += paidMap.get(s.id) || 0;
+        }
+      });
+
+      // Same thresholds as customerTier() in customers/types.ts
+      if (paidCount >= 5 && totalSpent >= 5_000_000) setClientTier('vvip');
+      else if (paidCount >= 3 && totalSpent >= 1_000_000) setClientTier('vip');
+      else if (totalOrders >= 2) setClientTier('returning');
+      else setClientTier('new');
+    }
+
+    fetchTier();
+  }, [openSubmission?.id]);
+
   const handleStatusChange = async (submissionId: string, newStatus: string, notes?: string) => {
     const submission = submissions.find(s => s.id === submissionId);
     if (!submission) return;
@@ -617,70 +682,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   const pageAllSelected = rowSelection.allSelected(pageIds);
   const pageSomeSelected = rowSelection.someSelected(pageIds);
 
-  // Client tier: fetched async against full Supabase history (not just current-month page)
-  const [clientTier, setClientTier] = useState<'vvip' | 'vip' | 'returning' | 'new' | undefined>(undefined);
 
-  useEffect(() => {
-    if (!openSubmission) { setClientTier(undefined); return; }
-
-    const email = openSubmission.researcherEmail?.toLowerCase();
-    const rawPhone = openSubmission.phone_number;
-    const normPhone = rawPhone ? rawPhone.replace(/\D/g, '').replace(/^0/, '62') : '';
-
-    async function fetchTier() {
-      // Build OR filter by email and/or normalized phone
-      const orParts: string[] = [];
-      if (email && email !== 'no email') orParts.push(`email.eq.${email}`);
-      if (normPhone.length >= 10) {
-        // Try both stored formats: with leading 0 and with 62 prefix
-        const withZero = '0' + normPhone.slice(2);
-        orParts.push(`phone_number.eq.${rawPhone}`);
-        orParts.push(`phone_number.eq.${normPhone}`);
-        orParts.push(`phone_number.eq.${withZero}`);
-      }
-      if (!orParts.length) { setClientTier('new'); return; }
-
-      const { data: subData } = await supabase
-        .from('form_submissions')
-        .select('id, payment_status')
-        .or(orParts.join(','));
-
-      if (!subData?.length) { setClientTier('new'); return; }
-
-      const ids = subData.map((s: any) => s.id);
-
-      // Fetch actual paid amounts from transactions (same logic as CustomersPage)
-      const { data: txData } = await supabase
-        .from('transactions')
-        .select('form_submission_id, amount, status')
-        .in('form_submission_id', ids);
-
-      const paidMap = new Map<string, number>();
-      (txData || []).forEach((tx: any) => {
-        if (['paid', 'completed'].includes(tx.status)) {
-          paidMap.set(tx.form_submission_id, (paidMap.get(tx.form_submission_id) || 0) + tx.amount);
-        }
-      });
-
-      const totalOrders = subData.length;
-      let paidCount = 0;
-      let totalSpent = 0;
-      subData.forEach((s: any) => {
-        if ((s.payment_status || '').toLowerCase() === 'paid') {
-          paidCount++;
-          totalSpent += paidMap.get(s.id) || 0;
-        }
-      });
-
-      // Same thresholds as customerTier() in customers/types.ts
-      if (paidCount >= 5 && totalSpent >= 5_000_000) setClientTier('vvip');
-      else if (paidCount >= 3 && totalSpent >= 1_000_000) setClientTier('vip');
-      else if (totalOrders >= 2) setClientTier('returning');
-      else setClientTier('new');
-    }
-
-    fetchTier();
-  }, [openSubmission?.id]);
 
   const detailProps = {
     submission: openSubmission,
