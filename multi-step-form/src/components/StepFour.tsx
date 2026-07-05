@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
-import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, type FormSubmission } from '../utils/supabase';
+import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, type FormSubmission } from '../utils/supabase';
+import { resolveSubmissionMode, type SubmissionMode } from '../utils/submissionMode';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
 import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from '../utils/constants';
@@ -189,9 +190,12 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
         calculatedEndDate = new Date(kilatDay.getTime() + 86400000).toISOString();
       }
 
-      // Check if this is a reschedule
-      const isReschedule = !!(formData as any).submissionIdToReplace;
-      const submissionIdToReplace = (formData as any).submissionIdToReplace;
+      // Raw reschedule intent carried in the form draft (may be stale — an
+      // abandoned reschedule can leave this behind and leak into a new survey).
+      const rescheduleIntent = {
+        isReschedule: (formData as any).isReschedule === true,
+        submissionIdToReplace: (formData as any).submissionIdToReplace as string | undefined,
+      };
 
       // Siapkan data untuk disimpan ke Supabase
       const submissionData: FormSubmission = {
@@ -231,13 +235,31 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
       // Simpan data ke Supabase dengan penanganan error yang lebih baik
       let savedData;
       try {
-        if (isReschedule && submissionIdToReplace) {
-          // For reschedule: update existing submission instead of creating new
-          console.log('Rescheduling submission:', submissionIdToReplace);
-          savedData = await updateFormSubmissionById(submissionIdToReplace, submissionData);
+        // Resolve whether this is a genuine reschedule (update the same survey)
+        // or a new submission. Guards against stale reschedule intent leaking
+        // from an abandoned draft and overwriting a *different* survey in place.
+        let mode: SubmissionMode = { mode: 'create' };
+        if (rescheduleIntent.isReschedule && rescheduleIntent.submissionIdToReplace) {
+          let existingSurveyUrl: string | null = null;
+          try {
+            const existing = await getFormSubmissionById(rescheduleIntent.submissionIdToReplace);
+            existingSurveyUrl = existing?.survey_url ?? null;
+          } catch (e) {
+            console.warn('Could not load reschedule target; treating as new submission:', e);
+          }
+          mode = resolveSubmissionMode(rescheduleIntent, submissionData.survey_url, existingSurveyUrl);
+          if (mode.mode === 'create') {
+            console.warn('Reschedule intent did not match the target survey — creating a new submission instead of overwriting.');
+          }
+        }
+
+        if (mode.mode === 'reschedule') {
+          // Genuine reschedule: update existing submission instead of creating new
+          console.log('Rescheduling submission:', mode.submissionId);
+          savedData = await updateFormSubmissionById(mode.submissionId, submissionData);
           console.log('Submission updated successfully:', savedData);
         } else {
-          // For new submission: create new record
+          // New submission: create new record
           savedData = await saveFormSubmission(submissionData);
           console.log('New submission saved:', savedData);
         }
