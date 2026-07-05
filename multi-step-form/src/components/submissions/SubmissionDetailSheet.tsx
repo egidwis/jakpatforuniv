@@ -31,6 +31,8 @@ import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { deriveLifecycle } from './lifecycle';
 import { LifecycleChip } from './LifecycleChip';
+import { ReviewStatusChip } from './ReviewStatusChip';
+import { ReviewTimeline } from './ReviewTimeline';
 import { ReserveSlotAction, PaymentAction, PageAction, ExtendAction } from './CampaignActions';
 
 type DetailTab = 'info' | 'review' | 'reservation' | 'payment' | 'page';
@@ -49,7 +51,7 @@ interface SubmissionDetailSheetProps {
   existingPage?: ExistingPage;
   isScheduled: boolean;
   onOpenChange: (open: boolean) => void;
-  onStatusChange: (submissionId: string, newStatus: string) => void;
+  onStatusChange: (submissionId: string, newStatus: string, notes?: string) => void;
   onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onEditCriteria: (submission: SurveySubmission) => void;
@@ -94,11 +96,15 @@ export function SubmissionDetailSheet({
   clientTier,
 }: SubmissionDetailSheetProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
+  const [reviewNote, setReviewNote] = useState('');
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
 
   // Reset to the Info tab whenever a different submission is opened
   const submissionId = submission?.id;
   useEffect(() => {
     setActiveTab('info');
+    setReviewNote('');
+    setIsHistoryExpanded(false);
   }, [submissionId]);
 
   if (!submission) return null;
@@ -188,7 +194,7 @@ export function SubmissionDetailSheet({
     <>
       {activeTab === 'info' && <InfoTab submission={submission} lifecycle={lifecycle} onDataUpdated={onExtendCreated} />}
       {activeTab === 'review' && (
-        <ReviewTab submission={submission} onEditCriteria={onEditCriteria} />
+        <ReviewTab submission={submission} />
       )}
       {activeTab === 'reservation' && (
         <ReservationTab
@@ -223,46 +229,85 @@ export function SubmissionDetailSheet({
   );
 
   const { displayStatus } = lifecycle;
+  const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
+
   const footer = activeTab !== 'review' ? undefined : (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 flex-wrap">
-        <LifecycleChip submission={submission} lifecycle={lifecycle} />
+    <div className="space-y-4">
+      {/* Row 1: Status & Timeline Toggle */}
+      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-gray-400 font-medium">Review Status:</span>
+          <ReviewStatusChip status={displayStatus} />
+        </div>
+        
+        <ReviewTimeline
+          history={submission.review_history || []}
+          isExpanded={isHistoryExpanded}
+          onToggle={() => setIsHistoryExpanded(!isHistoryExpanded)}
+        />
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        <Button
-          size="sm"
-          className="h-9 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold"
-          disabled={displayStatus === 'approved'}
-          onClick={() => onStatusChange(submission.id, 'approved')}
-        >
-          <Check className="w-3.5 h-3.5 mr-1.5" /> Approve
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-9 text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-          disabled={displayStatus === 'rejected'}
-          onClick={() => onStatusChange(submission.id, 'rejected')}
-        >
-          <X className="w-3.5 h-3.5 mr-1.5" /> Reject
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-9 text-xs font-semibold text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-          disabled={displayStatus === 'spam'}
-          onClick={() => onStatusChange(submission.id, 'spam')}
-        >
-          <Ban className="w-3.5 h-3.5 mr-1.5" /> Spam
-        </Button>
-      </div>
-      {displayStatus !== 'in_review' && (
-        <button
-          className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-blue-600 transition-colors"
-          onClick={() => onStatusChange(submission.id, 'in_review')}
-        >
-          <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
-        </button>
+
+      {/* Conditional: compose & buttons if in need review status */}
+      {isNeedReview ? (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label htmlFor="review-note-input" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+              Review Notes (Optional)
+            </label>
+            <Textarea
+              id="review-note-input"
+              placeholder="Tambahkan catatan (misal alasan reject atau info tambahan)..."
+              value={reviewNote}
+              onChange={(e) => setReviewNote(e.target.value)}
+              className="text-xs min-h-[60px] max-h-[120px] bg-slate-50/50 focus:bg-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <Button
+              size="sm"
+              className="h-9 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold"
+              onClick={() => {
+                onStatusChange(submission.id, 'approved', reviewNote);
+                setReviewNote('');
+              }}
+            >
+              <Check className="w-3.5 h-3.5 mr-1.5" /> Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={() => {
+                onStatusChange(submission.id, 'rejected', reviewNote);
+                setReviewNote('');
+              }}
+            >
+              <X className="w-3.5 h-3.5 mr-1.5" /> Reject
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 text-xs font-semibold text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+              onClick={() => {
+                onStatusChange(submission.id, 'spam', reviewNote);
+                setReviewNote('');
+              }}
+            >
+              <Ban className="w-3.5 h-3.5 mr-1.5" /> Spam
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-center pt-1">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors px-3 py-1.5 rounded-md hover:bg-blue-50 border border-transparent hover:border-blue-100"
+            onClick={() => onStatusChange(submission.id, 'in_review', reviewNote)}
+          >
+            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
+          </button>
+        </div>
       )}
     </div>
   );
@@ -650,16 +695,15 @@ function InfoTab({
 
 function ReviewTab({
   submission,
-  onEditCriteria,
 }: {
   submission: SurveySubmission;
-  onEditCriteria: (submission: SurveySubmission) => void;
 }) {
   return (
     <>
       {/* Survey preview */}
       <DetailSheetSection
         title="Kuesioner"
+        className="flex flex-col flex-1 h-full"
         action={
           <div className="flex items-center gap-1">
             <Button
@@ -684,7 +728,7 @@ function ReviewTab({
         }
       >
         {submission.formUrl ? (
-          <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
+          <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
             <div className="px-3 py-1.5 border-b border-gray-200 bg-white flex items-center gap-1.5 min-w-0">
               <Globe className="w-3 h-3 text-gray-400 shrink-0" />
               <span className="text-[11px] text-gray-500 truncate">{submission.formUrl.replace(/^https?:\/\//, '')}</span>
@@ -692,7 +736,7 @@ function ReviewTab({
             <iframe
               src={submission.formUrl}
               title={`Preview: ${submission.formTitle}`}
-              className="w-full h-[420px] bg-white"
+              className="w-full flex-1 bg-white"
               sandbox="allow-scripts allow-same-origin allow-forms"
             />
             <p className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-200 bg-white">
@@ -705,54 +749,12 @@ function ReviewTab({
           </div>
         )}
         {submission.detected_keywords && submission.detected_keywords.length > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+          <div className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 mt-3">
             <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
             <p className="text-xs text-red-700">
               Detected keywords: <span className="font-medium">{submission.detected_keywords.join(', ')}</span>
             </p>
           </div>
-        )}
-        {submission.admin_notes && (
-          <p className="text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-md px-2.5 py-1.5 leading-relaxed">
-            <span className="font-medium text-gray-700">Catatan admin:</span> {submission.admin_notes}
-          </p>
-        )}
-      </DetailSheetSection>
-
-      {/* Criteria & incentive */}
-      <DetailSheetSection
-        title="Criteria & Incentive"
-        action={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-gray-500 hover:text-blue-600"
-            onClick={() => onEditCriteria(submission)}
-          >
-            <PenLine className="w-3 h-3 mr-1" /> Edit
-          </Button>
-        }
-      >
-        {submission.criteria ? (
-          <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{submission.criteria}</p>
-        ) : (
-          <p className="text-xs text-gray-400 italic bg-gray-50 px-2.5 py-1.5 rounded border border-dashed border-gray-200">
-            Target not set
-          </p>
-        )}
-        {submission.prize_per_winner ? (
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <Chip variant="green" size="sm">Rp {submission.prize_per_winner.toLocaleString('id-ID')}</Chip>
-            <Chip variant="outline" size="sm">{submission.winnerCount || 0} user</Chip>
-            <span className="text-gray-500">
-              Total:{' '}
-              <span className="font-medium text-gray-900">
-                Rp {((submission.prize_per_winner || 0) * (submission.winnerCount || 0)).toLocaleString('id-ID')}
-              </span>
-            </span>
-          </div>
-        ) : (
-          <p className="text-[11px] text-gray-400 italic">No incentive</p>
         )}
       </DetailSheetSection>
     </>

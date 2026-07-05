@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { ReviewHistoryEntry } from '../components/submissions/types';
 
 // Supabase URL dan anon key akan diambil dari environment variables
 // Anda perlu menambahkan variabel ini di file .env.local
@@ -480,11 +481,19 @@ export const updatePaymentStatus = async (id: string, status: string) => {
 };
 
 // Fungsi untuk update status form
-export const updateFormStatus = async (id: string, status: string, notes?: string) => {
+export const updateFormStatus = async (
+  id: string,
+  status: string,
+  notes?: string,
+  reviewHistory?: ReviewHistoryEntry[]
+) => {
   try {
     const updateData: any = { submission_status: status };
     if (notes !== undefined) {
       updateData.admin_notes = notes;
+    }
+    if (reviewHistory !== undefined) {
+      updateData.review_history = reviewHistory;
     }
 
     const { data, error } = await supabase
@@ -493,7 +502,27 @@ export const updateFormStatus = async (id: string, status: string, notes?: strin
       .eq('id', id)
       .select();
 
-    if (error) throw error;
+    if (error) {
+      const isMissingColumn = error.code === '42703' || error.message?.includes('review_history');
+      if (isMissingColumn && reviewHistory !== undefined) {
+        console.warn('review_history column does not exist. Retrying update without review_history...');
+        const fallbackData: any = { submission_status: status };
+        if (notes !== undefined) {
+          fallbackData.admin_notes = notes;
+        }
+        console.log('Sending fallback update query with data:', fallbackData);
+        const { data: retryData, error: retryError } = await supabase
+          .from('form_submissions')
+          .update(fallbackData)
+          .eq('id', id)
+          .select();
+        
+        console.log('Fallback retry result:', { retryData, retryError });
+        if (retryError) throw retryError;
+        return retryData[0];
+      }
+      throw error;
+    }
     return data[0];
   } catch (error: any) {
     console.error('Error updating form status:', error);

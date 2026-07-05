@@ -3,6 +3,12 @@
 // (moved from SubmissionsTableRow.tsx; re-exported there during migration)
 // ─────────────────────────────────────────────────────────────
 
+export interface ReviewHistoryEntry {
+  action: 'in_review' | 'approved' | 'rejected' | 'spam';
+  notes?: string;
+  timestamp: string; // ISO 8601
+}
+
 export interface SurveySubmission {
   id: string;
   formId: string;
@@ -36,6 +42,7 @@ export interface SurveySubmission {
   admin_notes?: string;
   submission_status?: string;
   distribution_type?: 'regular' | 'kilat';
+  review_history?: ReviewHistoryEntry[];
 }
 
 export interface PaymentState {
