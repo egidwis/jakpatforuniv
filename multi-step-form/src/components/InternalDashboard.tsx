@@ -17,12 +17,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsMobileCard } from './SubmissionsTableRow';
-import type { SurveySubmission, PaymentState } from './submissions/types';
+import type { SurveySubmission, PaymentState, ReviewHistoryEntry } from './submissions/types';
 import { deriveLifecycle } from './submissions/lifecycle';
 import { SubmissionListRow } from './submissions/SubmissionListRow';
 import { SubmissionDetailSheet } from './submissions/SubmissionDetailSheet';
 import { useRowSelection } from './data-list/useRowSelection';
-import { BulkActionsToolbar } from './data-list/BulkActionsToolbar';
 import './InternalDashboard.css';
 
 const EMPTY_PAYMENT_STATE: PaymentState = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
@@ -77,11 +76,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
   // Edit Form Details Modal State
   const [isEditFormDetailsModalOpen, setIsEditFormDetailsModalOpen] = useState(false);
   const [selectedSubmissionForDetails, setSelectedSubmissionForDetails] = useState<SurveySubmission | null>(null);
-
-  // Rejection Dialog State
-  const [isRejectionDialogOpen, setIsRejectionDialogOpen] = useState(false);
-  const [selectedSubmissionForRejection, setSelectedSubmissionForRejection] = useState<SurveySubmission | null>(null);
-  const [rejectionNote, setRejectionNote] = useState('');
 
   // PageBuilder Modal State
   const [isPageBuilderOpen, setIsPageBuilderOpen] = useState(false);
@@ -381,19 +375,24 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
   }, [openSubmissionId, openSubmission, loading]);
 
-  const handleStatusChange = async (submissionId: string, newStatus: string) => {
-    // Intercept 'rejected' status
-    if (newStatus === 'rejected') {
-      const submission = submissions.find(s => s.id === submissionId);
-      if (submission) {
-        setSelectedSubmissionForRejection(submission);
-        setRejectionNote(submission.admin_notes || ''); // Pre-fill if exists
-        setIsRejectionDialogOpen(true);
-      }
-      return;
-    }
+  const handleStatusChange = async (submissionId: string, newStatus: string, notes?: string) => {
+    const submission = submissions.find(s => s.id === submissionId);
+    if (!submission) return;
 
-    await executeStatusUpdate(submissionId, newStatus);
+    // Build new history entry
+    const newEntry: ReviewHistoryEntry = {
+      action: newStatus as ReviewHistoryEntry['action'],
+      notes: notes || undefined,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Append to existing history
+    const updatedHistory = [
+      ...(submission.review_history || []),
+      newEntry,
+    ];
+
+    await executeStatusUpdate(submissionId, newStatus, notes, updatedHistory);
   };
 
   const handlePaymentStatusChange = async (submissionId: string, newStatus: string) => {
@@ -412,12 +411,27 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
   };
 
-  const executeStatusUpdate = async (submissionId: string, newStatus: string, notes?: string) => {
+  const executeStatusUpdate = async (
+    submissionId: string,
+    newStatus: string,
+    notes?: string,
+    reviewHistory?: ReviewHistoryEntry[]
+  ) => {
     try {
-      await updateFormStatus(submissionId, newStatus, notes);
+      await updateFormStatus(submissionId, newStatus, notes, reviewHistory);
 
       const updateState = (prev: SurveySubmission[]) =>
-        prev.map(s => s.id === submissionId ? { ...s, status: newStatus, submission_status: newStatus, admin_notes: notes !== undefined ? notes : s.admin_notes } : s);
+        prev.map(s =>
+          s.id === submissionId
+            ? {
+                ...s,
+                status: newStatus,
+                submission_status: newStatus,
+                admin_notes: notes !== undefined ? notes : s.admin_notes,
+                review_history: reviewHistory || s.review_history,
+              }
+            : s
+        );
 
       setSubmissions(updateState);
       // filteredSubmissions will be updated by useEffect
@@ -427,17 +441,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       console.error('Error updating status:', error);
       toast.error('Failed to update status');
     }
-  };
-
-  const confirmRejection = async () => {
-    if (!selectedSubmissionForRejection) return;
-
-    // Notes are optional, but recommended for rejection
-    await executeStatusUpdate(selectedSubmissionForRejection.id, 'rejected', rejectionNote);
-
-    setIsRejectionDialogOpen(false);
-    setSelectedSubmissionForRejection(null);
-    setRejectionNote('');
   };
 
   // Modals replaced by SchedulePaymentView
@@ -926,7 +929,36 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           </div>
 
           {/* Toolbar row 2: Regular/Kilat tabs + filter & sort icons (Outlook-style) */}
-          <div className="shrink-0 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="shrink-0 flex items-center justify-between px-4 border-b border-gray-200 relative min-h-[44px]">
+            {/* Bulk Selection Overlay (Yahoo Mail style) */}
+            {rowSelection.count > 0 && (
+              <div className="absolute inset-0 z-20 flex items-center justify-between bg-blue-50/95 px-4 backdrop-blur-[2px] transition-all">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-semibold text-blue-900">
+                    {rowSelection.count} selected
+                  </span>
+                  <span className="h-4 w-px bg-blue-200" aria-hidden="true" />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled
+                    className="h-7 px-2.5 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/50"
+                    title="Coming soon"
+                  >
+                    <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Create Bulk Payment
+                    <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide bg-blue-100/80 rounded px-1 py-0.5">Soon</span>
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={rowSelection.clear}
+                  className="h-7 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100/50 hover:text-blue-900"
+                >
+                  <X className="w-3.5 h-3.5 mr-1" /> Clear
+                </Button>
+              </div>
+            )}
             <div className="flex">
               {([['regular', 'Regular Ads'], ['kilat', 'Kilat']] as const).map(([id, label]) => (
                 <button
@@ -1202,34 +1234,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
         onUpdate={handleFormDetailsUpdated}
       />
 
-      {/* Rejection Note Dialog */}
-      <Dialog open={isRejectionDialogOpen} onOpenChange={setIsRejectionDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reject Submission</DialogTitle>
-            <DialogDescription>
-              Please provide a reason for rejecting this submission. This note will be visible to admins.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="rejection-note">Admin Notes (Reason)</Label>
-              <Textarea
-                id="rejection-note"
-                placeholder="e.g. Duplicate submission, Invalid survey link..."
-                value={rejectionNote}
-                onChange={(e) => setRejectionNote(e.target.value)}
-                className="h-24"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRejectionDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmRejection}>Confirm Reject</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Page Builder Modal */}
       <PageBuilderModal
         isOpen={isPageBuilderOpen}
@@ -1248,19 +1252,6 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       {/* Detail drawer (narrow screens) — ≥1280px uses the inline pane instead */}
       {!isXl && <SubmissionDetailSheet {...detailProps} />}
 
-      {/* Bulk actions toolbar (selection foundation for bulk payment) */}
-      <BulkActionsToolbar count={rowSelection.count} onClear={rowSelection.clear} shiftLeftPx={isXl && openSubmission ? 260 : 0}>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled
-          className="h-7 px-2.5 text-xs text-gray-400 border-gray-200"
-          title="Coming soon"
-        >
-          <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Create Bulk Payment
-          <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide bg-gray-100 rounded px-1 py-0.5">Soon</span>
-        </Button>
-      </BulkActionsToolbar>
     </div>
   );
 }
