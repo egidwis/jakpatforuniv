@@ -32,6 +32,19 @@ function formatDateTime(iso: string): string {
   return `${d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} ${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`;
 }
 
+function formatDate(value: string | null | undefined): string {
+  if (!value) return 'Not set';
+  return new Date(value).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatScheduleRange(start?: string | null, end?: string | null): string {
+  if (!start && !end) return 'Belum dijadwalkan';
+  if (start && end) {
+    return `${formatDate(start)} — ${formatDate(end)}`;
+  }
+  return formatDate(start || end);
+}
+
 /**
  * Transaction detail: item breakdown + memo, payment info, and actions.
  * Same variant contract as SubmissionDetailSheet — pane at ≥1280px,
@@ -68,6 +81,35 @@ export function TransactionDetailSheet({
 
   const body = (
     <>
+      <DetailSheetSection title="Submission yang Dibayar">
+        {transaction.form_submissions ? (
+          <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-3.5 shadow-sm">
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Judul Survey</span>
+              <p className="text-sm font-semibold text-slate-800 leading-snug">
+                {transaction.form_submissions.title}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4 pt-1 border-t border-slate-100">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Submission ID</span>
+                <span className="font-mono text-xs font-semibold text-slate-700 bg-white border border-slate-200/50 rounded-md px-2 py-0.5">
+                  #{transaction.form_submissions.id ? transaction.form_submissions.id.substring(0, 8) : '—'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">Tanggal Schedule</span>
+                <span className="text-xs text-slate-700 font-semibold block">
+                  {formatScheduleRange(transaction.form_submissions.start_date, transaction.form_submissions.end_date)}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 italic">Data submission tidak tersedia</p>
+        )}
+      </DetailSheetSection>
+
       <DetailSheetSection title="Rincian Item">
         {items.length > 0 ? (
           <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">

@@ -23,6 +23,12 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Chip } from '../ui/chip';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../ui/tooltip';
 import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
 import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../../utils/cost-calculator';
@@ -166,7 +172,7 @@ export function SubmissionDetailSheet({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors"
           >
             <MessageCircle className="w-3 h-3" /> WhatsApp
           </a>
@@ -175,7 +181,7 @@ export function SubmissionDetailSheet({
           <a
             href={`mailto:${submission.researcherEmail}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
           >
             <Mail className="w-3 h-3" /> Email
           </a>
@@ -190,7 +196,7 @@ export function SubmissionDetailSheet({
     <>
       {activeTab === 'info' && <InfoTab submission={submission} lifecycle={lifecycle} onDataUpdated={onExtendCreated} />}
       {activeTab === 'review' && (
-        <ReviewTab submission={submission} />
+        <ReviewTab submission={submission} onEditFormDetails={onEditFormDetails} />
       )}
       {activeTab === 'reservation' && (
         <ReservationTab
@@ -691,8 +697,10 @@ function InfoTab({
 
 function ReviewTab({
   submission,
+  onEditFormDetails,
 }: {
   submission: SurveySubmission;
+  onEditFormDetails: (submission: SurveySubmission) => void;
 }) {
   return (
     <>
@@ -702,24 +710,57 @@ function ReviewTab({
         className="flex flex-col flex-1 h-full"
         action={
           <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => copyToClipboard(submission.formUrl, 'Survey link copied!')}
-              disabled={!submission.formUrl}
-            >
-              <Copy className="w-3 h-3 mr-1" /> Copy Link
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
-              disabled={!submission.formUrl}
-            >
-              <ExternalLink className="w-3 h-3 mr-1" /> Buka
-            </Button>
+            <TooltipProvider>
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => onEditFormDetails(submission)}
+                  >
+                    <PenLine className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
+                  Edit Link
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => copyToClipboard(submission.formUrl, 'Survey link copied!')}
+                    disabled={!submission.formUrl}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
+                  Copy Link
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
+                    disabled={!submission.formUrl}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
+                  Buka Link
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         }
       >

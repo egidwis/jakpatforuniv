@@ -2,6 +2,7 @@ import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type Customer, customerDisplayId } from './types';
 import { CustomerTierChip } from './CustomerTierChip';
+import { formatIDR } from '../transactions/types';
 
 interface CustomerListRowProps {
   customer: Customer;
@@ -45,7 +46,7 @@ export function CustomerListRow({ customer, onOpen, active }: CustomerListRowPro
       </span>
 
       {/* Customer: name, email subtitle below */}
-      <div className="flex-1 min-w-0 flex flex-col leading-tight">
+      <div className="flex-[1.5] min-w-0 flex flex-col leading-tight">
         <span className="text-sm font-semibold text-gray-900 truncate" title={customer.name}>
           {customer.name}
         </span>
@@ -53,7 +54,7 @@ export function CustomerListRow({ customer, onOpen, active }: CustomerListRowPro
       </div>
 
       {/* Universitas, jurusan · jenjang subtitle — hidden below lg */}
-      <div className="hidden lg:block w-[220px] shrink-0">
+      <div className="hidden lg:block flex-1 min-w-[220px]">
         <div className="flex flex-col leading-tight">
           <span className="text-sm text-gray-700 truncate" title={customer.university}>
             {customer.university}
@@ -64,6 +65,16 @@ export function CustomerListRow({ customer, onOpen, active }: CustomerListRowPro
           </span>
         </div>
       </div>
+
+      {/* Orders count — hidden below sm */}
+      <span className="hidden sm:block w-[70px] shrink-0 text-center text-sm text-gray-600 font-medium">
+        {customer.totalOrders}
+      </span>
+
+      {/* Spent amount — hidden below sm */}
+      <span className="hidden sm:block w-[110px] shrink-0 text-right text-sm font-semibold font-mono text-gray-900">
+        {formatIDR(customer.totalSpent)}
+      </span>
 
       {/* Tier chip */}
       <div className="shrink-0 w-[92px]">

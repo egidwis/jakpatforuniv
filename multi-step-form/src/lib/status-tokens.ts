@@ -36,7 +36,7 @@ export interface StatusToken {
 
 export const STATUS_TOKENS: Record<LifecycleStage, StatusToken> = {
   in_review: { label: "Need Review", variant: "blue", dot: true },
-  approved: { label: "Approved", variant: "green" },
+  approved: { label: "Approved", variant: "indigo" },
   rejected: { label: "Rejected", variant: "red" },
   spam: { label: "Spam", variant: "orange" },
   reserved: { label: "Reserved", variant: "blue" },
@@ -48,7 +48,7 @@ export const STATUS_TOKENS: Record<LifecycleStage, StatusToken> = {
   },
   reserved_expired: { label: "Expired", variant: "red" },
   awaiting_payment: { label: "Waiting Payment", variant: "amber", dot: true },
-  paid: { label: "Paid", variant: "green" },
+  paid: { label: "Paid", variant: "purple" },
   completed: { label: "Completed", variant: "slate" },
   page_scheduled: { label: "Page Scheduled", variant: "indigo" },
   live: { label: "Live", variant: "green", dot: true, pulse: true },

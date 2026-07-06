@@ -93,7 +93,9 @@ export function CustomerDetailSheet({
                   <p className="text-sm font-medium text-gray-900 truncate" title={sub.title || undefined}>
                     {sub.title || 'Untitled Survey'}
                   </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">{formatDate(sub.created_at)}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    <span className="font-mono text-gray-500">#{sub.id.slice(0, 8)}</span> · {formatDate(sub.created_at)}
+                  </p>
                 </div>
                 <div className="shrink-0 flex items-center gap-2">
                   <Chip variant={chip.variant} size="sm">{chip.label}</Chip>

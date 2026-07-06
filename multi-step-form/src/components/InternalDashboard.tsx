@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react';
+import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, supabase } from '../utils/supabase';
 import { fetchProfileNames } from '../utils/profileNames';
 import { emailLocalPart } from './customers/types';
@@ -914,7 +914,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
                 type="text"
-                placeholder="Search..."
+                placeholder="Cari judul survey, researcher, atau ID submission..."
                 className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
@@ -969,17 +969,21 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
               </div>
             )}
             <div className="flex">
-              {([['regular', 'Regular Ads'], ['kilat', 'Kilat']] as const).map(([id, label]) => (
+              {([
+                ['regular', 'Regular Ads', Calendar],
+                ['kilat', 'Kilat', Zap]
+              ] as const).map(([id, label, Icon]) => (
                 <button
                   key={id}
                   onClick={() => setDistTab(id)}
                   className={cn(
-                    'px-3 py-2 -mb-px text-sm font-medium border-b-2 transition-colors',
+                    'flex items-center gap-1.5 px-3 py-2 -mb-px text-sm font-medium border-b-2 transition-colors',
                     distTab === id
                       ? 'border-blue-600 text-blue-700'
                       : 'border-transparent text-gray-500 hover:text-gray-800'
                   )}
                 >
+                  <Icon className="w-4 h-4" />
                   {label}
                 </button>
               ))}

@@ -629,7 +629,18 @@ export const getFormSubmissionsPaginated = async (
       .range(from, to);
 
     if (searchQuery) {
-      query = query.or(`title.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`);
+      const cleanHex = searchQuery.replace(/#/g, '').trim();
+      const isShortId = /^[0-9a-fA-F]{8}$/.test(cleanHex);
+      const isFullUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cleanHex);
+
+      if (isFullUuid) {
+        query = query.eq('id', cleanHex);
+      } else if (isShortId) {
+        query = query.gte('id', `${cleanHex}-0000-0000-0000-000000000000`)
+                     .lte('id', `${cleanHex}-ffff-ffff-ffff-ffffffffffff`);
+      } else {
+        query = query.or(`title.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`);
+      }
     }
 
     if (startDate && endDate) {

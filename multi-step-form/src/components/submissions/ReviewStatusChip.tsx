@@ -8,12 +8,12 @@ interface ReviewStatusChipProps {
 export function ReviewStatusChip({ status, size = 'md' }: ReviewStatusChipProps) {
   const normStatus = status || 'in_review';
 
-  let variant: 'blue' | 'green' | 'red' | 'orange' | 'slate' = 'blue';
+  let variant: 'blue' | 'green' | 'red' | 'orange' | 'slate' | 'indigo' = 'blue';
   let label = 'Need Review';
 
   switch (normStatus) {
     case 'approved':
-      variant = 'green';
+      variant = 'indigo';
       label = 'Approved';
       break;
     case 'rejected':

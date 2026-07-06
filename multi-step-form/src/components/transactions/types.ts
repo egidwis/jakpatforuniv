@@ -14,9 +14,12 @@ export interface Transaction {
   updated_at: string;
   form_submission_id: string;
   form_submissions?: {
+    id: string;
     title: string;
     full_name: string;
     email: string;
+    start_date?: string | null;
+    end_date?: string | null;
   };
 }
 

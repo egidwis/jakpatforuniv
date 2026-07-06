@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Search, RefreshCw, Download, Filter, ChevronDown } from 'lucide-react';
+import { Search, RefreshCw, Download, Filter, ChevronDown, ReceiptText, Wallet, ListFilter, X } from 'lucide-react';
 import { formatPaymentChannel } from '../utils/paymentChannel';
 import { cn, useMediaQuery } from '@/lib/utils';
 import {
@@ -45,9 +46,12 @@ export function TransactionsPage() {
         .select(`
           *,
           form_submissions!inner(
+            id,
             title,
             full_name,
-            email
+            email,
+            start_date,
+            end_date
           )
         `)
         .order('created_at', { ascending: false });
@@ -164,20 +168,21 @@ export function TransactionsPage() {
       <div className="shrink-0 flex items-center border-b border-gray-200 mb-4">
         {(
           [
-            ['transaksi', 'Transaksi'],
-            ['wallet', 'Wallet'],
+            ['transaksi', 'Transaksi', ReceiptText],
+            ['wallet', 'Wallet', Wallet],
           ] as const
-        ).map(([id, label]) => (
+        ).map(([id, label, Icon]) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
             className={cn(
-              'px-4 py-2.5 -mb-px text-sm font-semibold border-b-2 transition-colors',
+              'flex items-center gap-1.5 px-4 py-2.5 -mb-px text-sm font-semibold border-b-2 transition-colors',
               activeTab === id
                 ? 'border-blue-600 text-blue-700'
                 : 'border-transparent text-gray-500 hover:text-gray-800'
             )}
           >
+            <Icon className="w-4 h-4" />
             {label}
           </button>
         ))}
@@ -234,6 +239,17 @@ export function TransactionsPage() {
                 />
               </div>
 
+              {statusFilter !== 'all' && (
+                <button
+                  onClick={() => setStatusFilter('all')}
+                  className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-[11px] font-semibold pl-2.5 pr-1.5 py-1 transition-colors hover:bg-slate-700 animate-in fade-in zoom-in-95 duration-200"
+                  title="Hapus filter status"
+                >
+                  Status: {statusFilter === 'pending' ? 'Menunggu' : statusFilter === 'completed' ? 'Lunas' : 'Gagal'}
+                  <X className="w-3 h-3 ml-0.5" />
+                </button>
+              )}
+
               <div className="flex items-center gap-1 ml-auto">
                 {/* Total Pendapatan — compact trigger, breakdown in dropdown */}
                 <DropdownMenu>
@@ -276,6 +292,66 @@ export function TransactionsPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                      title="Filter Status Pembayaran"
+                    >
+                      <ListFilter className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 bg-white p-1 border shadow-md rounded-md z-50">
+                    <DropdownMenuItem
+                      onClick={() => setStatusFilter('all')}
+                      className={cn(
+                        'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
+                        statusFilter === 'all' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                      )}
+                    >
+                      <span>Semua</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setStatusFilter('pending')}
+                      className={cn(
+                        'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
+                        statusFilter === 'pending' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                      )}
+                    >
+                      <span>Menunggu</span>
+                      <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
+                        {statusCounts.pending}
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setStatusFilter('completed')}
+                      className={cn(
+                        'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
+                        statusFilter === 'completed' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                      )}
+                    >
+                      <span>Lunas</span>
+                      <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
+                        {statusCounts.completed}
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setStatusFilter('failed')}
+                      className={cn(
+                        'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
+                        statusFilter === 'failed' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                      )}
+                    >
+                      <span>Gagal</span>
+                      <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
+                        {statusCounts.failed}
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <Button
                   onClick={handleExportCsv}
                   variant="ghost"
@@ -299,50 +375,18 @@ export function TransactionsPage() {
               </div>
             </div>
 
-            {/* Toolbar row 2: status tabs (Outlook-style, mirrors Regular/Kilat) */}
-            <div className="shrink-0 flex items-center px-4 border-b border-gray-200 overflow-x-auto scrollbar-hide">
-              {[
-                { id: 'all', label: 'Semua', count: statusCounts.all },
-                { id: 'pending', label: 'Menunggu', count: statusCounts.pending },
-                { id: 'completed', label: 'Lunas', count: statusCounts.completed },
-                { id: 'failed', label: 'Gagal', count: statusCounts.failed },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setStatusFilter(tab.id)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 -mb-px text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
-                    statusFilter === tab.id
-                      ? 'border-blue-600 text-blue-700'
-                      : 'border-transparent text-gray-500 hover:text-gray-800'
-                  )}
-                >
-                  {tab.label}
-                  {tab.id !== 'all' && (
-                    <span className={cn(
-                      'px-1.5 py-0.5 rounded-md text-[10px] font-bold',
-                      statusFilter === tab.id ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'
-                    )}>
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {/* Sticky column header */}
-            <div className="shrink-0 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-              <span className="hidden sm:block w-[76px] shrink-0">Tanggal</span>
-              <span className="hidden md:block w-[110px] shrink-0">ID</span>
-              <span className="flex-1">Survei</span>
-              <span className="shrink-0 sm:w-[110px] text-right">Total</span>
-              <span className="shrink-0 sm:w-[88px]">Status</span>
-              <span className="hidden sm:block w-[110px] shrink-0">Metode</span>
-              <span className="w-4 shrink-0" />
-            </div>
-
-            {/* Rows */}
+            {/* Scrollable rows & sticky header region */}
             <div className="flex-1 min-h-0 overflow-y-auto">
+              {/* Sticky column header */}
+              <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                <span className="hidden sm:block w-[76px] shrink-0">Tanggal</span>
+                <span className="hidden md:block w-[110px] shrink-0">ID</span>
+                <span className="flex-1">Survei</span>
+                <span className="shrink-0 sm:w-[110px] text-right">Total</span>
+                <span className="shrink-0 sm:w-[88px]">Status</span>
+                <span className="hidden sm:block w-[110px] shrink-0">Metode</span>
+                <span className="w-4 shrink-0" />
+              </div>
               {loading ? (
                 <div className="divide-y divide-gray-100">
                   {Array(8).fill(0).map((_, i) => (
