@@ -9,6 +9,7 @@ import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, Ch
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsManagerView } from './SubmissionsManagerView';
 import { toast } from 'sonner';
+import { fetchProfileNames } from '../utils/profileNames';
 
 interface PageData {
     id: string;
@@ -25,10 +26,12 @@ interface PageData {
     form_submissions?: {
         title: string;
         full_name: string;
+        auth_user_id?: string | null;
         university?: string;
         prize_per_winner?: number;
         winner_count?: number;
     };
+    owner_name?: string;
     current_winners_count?: number;
     has_pending_proofs?: boolean;
     page_respondents?: { count: number }[];
@@ -199,6 +202,7 @@ export function PublishPageManagement() {
                     form_submissions (
                         title,
                         full_name,
+                        auth_user_id,
                         university,
                         prize_per_winner,
                         winner_count
@@ -212,6 +216,14 @@ export function PublishPageManagement() {
             if (error) throw error;
 
             const pagesWithWinners = data || [];
+            const ownerNames = await fetchProfileNames(
+              pagesWithWinners.map((p: any) => p.form_submissions?.auth_user_id)
+            );
+            pagesWithWinners.forEach((p: any) => {
+              const authId = p.form_submissions?.auth_user_id;
+              // Auth name for the owner; orphan pages fall back to the Nama Invoice.
+              p.owner_name = (authId && ownerNames.get(authId)) || p.form_submissions?.full_name || '';
+            });
             const pageIds = pagesWithWinners.map(p => p.id);
 
             if (pageIds.length > 0) {
@@ -341,7 +353,8 @@ export function PublishPageManagement() {
             const matchesSearch =
                 page.title?.toLowerCase().includes(searchLower) ||
                 page.slug?.toLowerCase().includes(searchLower) ||
-                page.form_submissions?.full_name?.toLowerCase().includes(searchLower);
+                page.form_submissions?.full_name?.toLowerCase().includes(searchLower) ||
+                page.owner_name?.toLowerCase().includes(searchLower);
 
             if (!matchesSearch) return false;
 
@@ -572,9 +585,9 @@ export function PublishPageManagement() {
                                         <span className="w-6 text-center text-xs font-bold text-gray-400 shrink-0">{index + 1}</span>
                                         <div className="flex-1 min-w-0">
                                             <div className="font-semibold text-gray-900 text-sm truncate">{page.title}</div>
-                                            {page.submission_id && page.form_submissions?.full_name && (
+                                            {page.submission_id && page.owner_name && (
                                                 <div className="text-[11px] text-gray-500 truncate">
-                                                    {page.form_submissions.full_name}{page.form_submissions.university ? ` - ${page.form_submissions.university}` : ''}
+                                                    {page.owner_name}{page.form_submissions?.university ? ` - ${page.form_submissions.university}` : ''}
                                                 </div>
                                             )}
                                         </div>
@@ -671,10 +684,10 @@ export function PublishPageManagement() {
                                             <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono">
                                                 <span>ID: {page.id}</span>
                                             </div>
-                                            {page.submission_id && page.form_submissions?.full_name && (
+                                            {page.submission_id && page.owner_name && (
                                                 <div className="text-xs text-gray-500 font-medium mt-1">
-                                                    {page.form_submissions.full_name}
-                                                    {page.form_submissions.university ? ` - ${page.form_submissions.university}` : ''}
+                                                    {page.owner_name}
+                                                    {page.form_submissions?.university ? ` - ${page.form_submissions.university}` : ''}
                                                 </div>
                                             )}
                                         </div>
