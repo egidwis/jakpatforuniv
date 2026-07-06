@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react';
 import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, supabase } from '../utils/supabase';
+import { fetchProfileNames } from '../utils/profileNames';
+import { emailLocalPart } from './customers/types';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -170,12 +172,13 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       );
 
       if (data) {
+        const authNames = await fetchProfileNames(data.map((s: any) => s.auth_user_id));
         const transformed: SurveySubmission[] = data.map((sub: any) => ({
           id: sub.id,
           formId: sub.id.substring(0, 8), // Mock ID from UUID
           formTitle: sub.title || 'Untitled Survey',
           formUrl: sub.survey_url,
-          researcherName: sub.full_name || 'Unknown',
+          researcherName: authNames.get(sub.auth_user_id) || emailLocalPart(sub.email) || 'Unknown',
           researcherEmail: sub.email || 'No Email',
 
           submittedAt: sub.created_at || new Date().toISOString(), // Store raw ISO string
