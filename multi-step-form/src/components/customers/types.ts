@@ -32,7 +32,15 @@ export interface Customer {
   firstOrder: string;
   lastOrder: string;
   submissions: RawSubmission[];
+  invoiceNames: InvoiceName[];
   isLinked: boolean;
+}
+
+/** A distinct per-survey Nama Invoice used by this account (search-only). */
+export interface InvoiceName {
+  name: string;
+  count: number;
+  lastUsed: string;
 }
 
 export function normalizePhone(phone: string): string {
@@ -46,7 +54,34 @@ export function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export function aggregateCustomers(submissions: RawSubmission[]): Customer[] {
+/** Local-part of an email, used as the researcher-name fallback for accounts
+ * with no profiles name. Never returns the Nama Invoice. */
+export function emailLocalPart(email: string | null): string {
+  if (!email) return '';
+  const at = email.indexOf('@');
+  return at > 0 ? email.slice(0, at) : email;
+}
+
+/** Distinct Nama Invoice values across an account's submissions, most-recent
+ * first. Search-only — never rendered on Customers surfaces. */
+function computeInvoiceNames(subs: RawSubmission[]): InvoiceName[] {
+  const map = new Map<string, { count: number; lastUsed: string }>();
+  subs.forEach((s) => {
+    const nm = (s.full_name || '').trim();
+    if (!nm) return;
+    const prev = map.get(nm);
+    if (!prev) map.set(nm, { count: 1, lastUsed: s.created_at });
+    else {
+      prev.count += 1;
+      if (new Date(s.created_at).getTime() > new Date(prev.lastUsed).getTime()) prev.lastUsed = s.created_at;
+    }
+  });
+  return Array.from(map.entries())
+    .map(([name, v]) => ({ name, count: v.count, lastUsed: v.lastUsed }))
+    .sort((a, b) => new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime());
+}
+
+export function aggregateCustomers(submissions: RawSubmission[], authNames: Map<string, string> = new Map()): Customer[] {
   const customerMap = new Map<string, Customer>();
   // Phone → key lookup for merging orphans
   const phoneToKey = new Map<string, string>();
@@ -59,7 +94,7 @@ export function aggregateCustomers(submissions: RawSubmission[]): Customer[] {
     if (!customerMap.has(key)) {
       customerMap.set(key, {
         key, authUserId: sub.auth_user_id, name: '', email: '', phone: '', university: '', department: '', education: '',
-        totalOrders: 0, paidCount: 0, totalSpent: 0, firstOrder: sub.created_at, lastOrder: sub.created_at, submissions: [], isLinked: true,
+        totalOrders: 0, paidCount: 0, totalSpent: 0, firstOrder: sub.created_at, lastOrder: sub.created_at, submissions: [], invoiceNames: [], isLinked: true,
       });
     }
     const c = customerMap.get(key)!;
@@ -106,7 +141,7 @@ export function aggregateCustomers(submissions: RawSubmission[]): Customer[] {
       if (!customerMap.has(orphanKey)) {
         customerMap.set(orphanKey, {
           key: orphanKey, authUserId: null, name: '', email: '', phone: '', university: '', department: '', education: '',
-          totalOrders: 0, paidCount: 0, totalSpent: 0, firstOrder: sub.created_at, lastOrder: sub.created_at, submissions: [], isLinked: false,
+          totalOrders: 0, paidCount: 0, totalSpent: 0, firstOrder: sub.created_at, lastOrder: sub.created_at, submissions: [], invoiceNames: [], isLinked: false,
         });
       }
       customerMap.get(orphanKey)!.submissions.push(sub);
@@ -117,7 +152,14 @@ export function aggregateCustomers(submissions: RawSubmission[]): Customer[] {
   customerMap.forEach(c => {
     c.submissions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     const latest = c.submissions[0];
-    c.name = latest.full_name || 'Unknown';
+    if (c.isLinked && c.authUserId) {
+      // Linked account: name from auth (profiles); never the Nama Invoice.
+      c.name = authNames.get(c.authUserId) || emailLocalPart(latest.email) || 'Unknown';
+    } else {
+      // Orphan (unlinked): no auth name — accepted exception, use its Nama Invoice.
+      c.name = latest.full_name || emailLocalPart(latest.email) || 'Unknown';
+    }
+    c.invoiceNames = computeInvoiceNames(c.submissions);
     c.email = latest.email || '-';
     c.phone = latest.phone_number || '-';
     c.university = latest.university || '-';
