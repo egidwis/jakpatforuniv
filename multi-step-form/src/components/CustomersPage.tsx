@@ -12,11 +12,13 @@ import {
 } from './customers/types';
 import { CustomerListRow } from './customers/CustomerListRow';
 import { CustomerDetailSheet } from './customers/CustomerDetailSheet';
+import { fetchProfileNames } from '../utils/profileNames';
 
 type TierTab = 'all' | 'vip' | 'returning' | 'new';
 
 export function CustomersPage() {
   const [submissions, setSubmissions] = useState<RawSubmission[]>([]);
+  const [authNames, setAuthNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [tierTab, setTierTab] = useState<TierTab>('all');
@@ -57,6 +59,7 @@ export function CustomersPage() {
       }));
 
       setSubmissions(merged);
+      setAuthNames(await fetchProfileNames(merged.map((s) => s.auth_user_id)));
     } catch (error) {
       console.error('Error fetching submissions:', error);
       toast.error('Gagal memuat data customer');
@@ -67,7 +70,7 @@ export function CustomersPage() {
 
   useEffect(() => { fetchSubmissions(); }, []);
 
-  const customers = useMemo(() => aggregateCustomers(submissions), [submissions]);
+  const customers = useMemo(() => aggregateCustomers(submissions, authNames), [submissions, authNames]);
 
   // Tab counts come from the full list — search must not change them
   const tierCounts = useMemo(() => {
@@ -94,7 +97,8 @@ export function CustomersPage() {
         c.name.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
         c.university.toLowerCase().includes(q) ||
-        c.phone.includes(q)
+        c.phone.includes(q) ||
+        c.invoiceNames.some((n) => n.name.toLowerCase().includes(q))
       );
     }
     // aggregateCustomers already returns lastOrder desc — only re-sort for name
@@ -126,7 +130,7 @@ export function CustomersPage() {
             <div className="flex-1 min-w-[200px] max-w-md relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Cari nama, email, universitas, atau telepon..."
+                placeholder="Cari nama, email, universitas, telepon, atau nama invoice..."
                 className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
