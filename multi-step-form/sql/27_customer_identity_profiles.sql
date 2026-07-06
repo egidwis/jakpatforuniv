@@ -23,24 +23,34 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 2. Backfill accounts created before the trigger existed (gaps only).
+-- 2. Backfill: create missing rows AND fill names that are still null on
+--    pre-existing rows. profiles predates this trigger (rich influencer table),
+--    so some rows already exist with a null full_name — `do nothing` would skip
+--    them forever. `do update ... where full_name is null` fills the auth name
+--    without clobbering a name a user may have already set.
 insert into public.profiles (id, email, full_name)
 select u.id, u.email, u.raw_user_meta_data->>'full_name'
 from   auth.users u
 where  u.email is not null
-on conflict (id) do nothing;
+on conflict (id) do update
+  set full_name = excluded.full_name
+  where public.profiles.full_name is null
+    and excluded.full_name is not null;
 
--- 3. Admin-only name lookup. SECURITY DEFINER so it works regardless of the
---    (about-to-be-tightened) profiles SELECT policy. Non-admin callers get
---    zero rows because the WHERE gate fails for them.
-create or replace function public.get_profile_names(p_ids uuid[] default null)
-returns table(id uuid, full_name text)
+-- 3. Admin-only identity lookup (name + auth email). SECURITY DEFINER so it
+--    works regardless of the tightened profiles SELECT policy. Non-admin
+--    callers get zero rows because the WHERE gate fails for them.
+--    DROP first: the return signature changed (added email), and Postgres will
+--    not let CREATE OR REPLACE alter an existing function's return type.
+drop function if exists public.get_profile_names(uuid[]);
+create function public.get_profile_names(p_ids uuid[] default null)
+returns table(id uuid, full_name text, email text)
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select p.id, p.full_name
+  select p.id, p.full_name, p.email
   from   public.profiles p
   where  (auth.jwt() ->> 'email') = 'product@jakpat.net'
     and  (p_ids is null or p.id = any(p_ids));

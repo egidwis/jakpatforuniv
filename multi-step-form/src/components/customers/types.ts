@@ -81,7 +81,7 @@ function computeInvoiceNames(subs: RawSubmission[]): InvoiceName[] {
     .sort((a, b) => new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime());
 }
 
-export function aggregateCustomers(submissions: RawSubmission[], authNames: Map<string, string> = new Map()): Customer[] {
+export function aggregateCustomers(submissions: RawSubmission[], authNames: Map<string, { name: string; email: string }> = new Map()): Customer[] {
   const customerMap = new Map<string, Customer>();
   // Phone → key lookup for merging orphans
   const phoneToKey = new Map<string, string>();
@@ -152,15 +152,16 @@ export function aggregateCustomers(submissions: RawSubmission[], authNames: Map<
   customerMap.forEach(c => {
     c.submissions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     const latest = c.submissions[0];
+    const authEntry = c.authUserId ? authNames.get(c.authUserId) : undefined;
     if (c.isLinked && c.authUserId) {
-      // Linked account: name from auth (profiles); never the Nama Invoice.
-      c.name = authNames.get(c.authUserId) || emailLocalPart(latest.email) || 'Unknown';
+      // Linked account: identity from the auth account (profiles); never biodata/Nama Invoice.
+      c.name = authEntry?.name || 'Unknown';
     } else {
-      // Orphan (unlinked): no auth name — accepted exception, use its Nama Invoice.
+      // Orphan (unlinked): no auth identity — accepted exception, use its Nama Invoice.
       c.name = latest.full_name || emailLocalPart(latest.email) || 'Unknown';
     }
     c.invoiceNames = computeInvoiceNames(c.submissions);
-    c.email = latest.email || '-';
+    c.email = (c.isLinked && authEntry?.email) ? authEntry.email : (latest.email || '-');
     c.phone = latest.phone_number || '-';
     c.university = latest.university || '-';
     c.department = latest.department || '-';

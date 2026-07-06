@@ -18,7 +18,7 @@ type TierTab = 'all' | 'vip' | 'returning' | 'new';
 
 export function CustomersPage() {
   const [submissions, setSubmissions] = useState<RawSubmission[]>([]);
-  const [authNames, setAuthNames] = useState<Map<string, string>>(new Map());
+  const [authNames, setAuthNames] = useState<Map<string, { name: string; email: string }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [tierTab, setTierTab] = useState<TierTab>('all');

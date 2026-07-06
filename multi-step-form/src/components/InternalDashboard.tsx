@@ -178,8 +178,12 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           formId: sub.id.substring(0, 8), // Mock ID from UUID
           formTitle: sub.title || 'Untitled Survey',
           formUrl: sub.survey_url,
-          researcherName: authNames.get(sub.auth_user_id) || emailLocalPart(sub.email) || 'Unknown',
-          researcherEmail: sub.email || 'No Email',
+          researcherName: sub.auth_user_id
+            ? (authNames.get(sub.auth_user_id)?.name || 'Unknown')
+            : (sub.full_name || emailLocalPart(sub.email) || 'Unknown'),
+          researcherEmail: sub.auth_user_id
+            ? (authNames.get(sub.auth_user_id)?.email || 'No Email')
+            : (sub.email || 'No Email'),
 
           submittedAt: sub.created_at || new Date().toISOString(), // Store raw ISO string
           questionCount: sub.question_count || 0,
