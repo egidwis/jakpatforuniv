@@ -10,6 +10,7 @@ import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsManagerView } from './SubmissionsManagerView';
 import { toast } from 'sonner';
 import { fetchProfileNames } from '../utils/profileNames';
+import { emailLocalPart } from './customers/types';
 
 interface PageData {
     id: string;
@@ -27,6 +28,7 @@ interface PageData {
         title: string;
         full_name: string;
         auth_user_id?: string | null;
+        email?: string | null;
         university?: string;
         prize_per_winner?: number;
         winner_count?: number;
@@ -203,6 +205,7 @@ export function PublishPageManagement() {
                         title,
                         full_name,
                         auth_user_id,
+                        email,
                         university,
                         prize_per_winner,
                         winner_count
@@ -221,8 +224,11 @@ export function PublishPageManagement() {
             );
             pagesWithWinners.forEach((p: any) => {
               const authId = p.form_submissions?.auth_user_id;
-              // Auth name for the owner; orphan pages fall back to the Nama Invoice.
-              p.owner_name = (authId && ownerNames.get(authId)) || p.form_submissions?.full_name || '';
+              // Linked page: auth name -> email local-part -> '' (never the Nama Invoice).
+              // Orphan page (no auth_user_id): its Nama Invoice — accepted exception.
+              p.owner_name = authId
+                ? (ownerNames.get(authId) || emailLocalPart(p.form_submissions?.email ?? null) || '')
+                : (p.form_submissions?.full_name || '');
             });
             const pageIds = pagesWithWinners.map(p => p.id);
 
