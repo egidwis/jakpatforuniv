@@ -155,7 +155,12 @@ export async function onRequestGet(context) {
                 });
 
                 return Object.entries(periods).map(([pb, p]) => {
-                    const hasActive = p.statuses.some(s => activeStatuses.includes(s));
+                    const hasActiveStatus = p.statuses.some(s => activeStatuses.includes(s));
+                    const now = new Date().getTime();
+                    const endDate = p.end_date ? new Date(p.end_date).getTime() : 0;
+                    const isExpired = endDate > 0 ? endDate < now : false;
+                    const hasActive = hasActiveStatus && !isExpired;
+
                     return {
                         period_batch: pb,
                         prize_per_winner: p.base_p + p.add_p,
