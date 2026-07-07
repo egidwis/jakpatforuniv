@@ -11,6 +11,8 @@ import PaymentFailedPage from './pages/PaymentFailedPage';
 import PaymentRetryPage from './pages/PaymentRetryPage';
 import { InvoicePage } from './pages/InvoicePage';
 import LoginPage from './pages/LoginPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import PrivateRoute from './components/PrivateRoute';
 import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
@@ -97,6 +99,8 @@ function AppContent() {
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard/submit" replace />} />
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/payment-success" element={<PaymentSuccessPage />} />
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
               <Route path="/payment-retry" element={<PaymentRetryPage />} />

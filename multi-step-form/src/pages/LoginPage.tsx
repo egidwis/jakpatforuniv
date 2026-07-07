@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { signInWithGoogle, signInWithPassword, signUp } from '../utils/supabase';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -139,7 +139,17 @@ export default function LoginPage() {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Password</label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Password</label>
+                                {mode === 'login' && (
+                                    <Link
+                                        to="/forgot-password"
+                                        className="text-xs font-semibold text-blue-600 hover:text-blue-500"
+                                    >
+                                        Lupa password?
+                                    </Link>
+                                )}
+                            </div>
                             <input
                                 type="password"
                                 value={password} onChange={e => setPassword(e.target.value)}

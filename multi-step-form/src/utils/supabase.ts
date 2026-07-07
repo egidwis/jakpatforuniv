@@ -142,6 +142,41 @@ export const signUp = async (email: string, password: string, fullName: string) 
   }
 };
 
+/**
+ * Mengirim email recovery agar user bisa mengatur ulang password-nya sendiri.
+ * Link di email akan mengarahkan user ke halaman /reset-password.
+ * Catatan keamanan: Supabase tidak pernah mengungkap apakah email terdaftar,
+ * jadi respons sukses tidak menandakan email tersebut ada di sistem.
+ */
+export const sendPasswordResetEmail = async (email: string) => {
+  try {
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Error sending password reset email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Mengatur password baru untuk user yang sedang login.
+ * Dipakai di halaman /reset-password setelah sesi recovery terbentuk
+ * dari link email (event PASSWORD_RECOVERY).
+ */
+export const updateUserPassword = async (newPassword: string) => {
+  try {
+    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Error updating password:', error);
+    throw error;
+  }
+};
+
 // Tipe data untuk form submissions
 export interface FormSubmission {
   id?: string;

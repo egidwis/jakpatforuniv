@@ -111,6 +111,57 @@ function dokuCreatePaymentDevPlugin() {
   };
 }
 
+// Dev-only bridge for the forgot-password email existence check
+// functions/api/auth/check-email.js. Same rationale as the DOKU bridges: the
+// Pages runtime isn't present under `vite dev`, so we import the real onRequest
+// handler and run it on Node's Web APIs — one code path for dev+prod.
+function authCheckEmailDevPlugin() {
+  return {
+    name: 'auth-check-email-dev',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url || !/^\/api\/auth\/check-email(\?|$)/.test(req.url)) return next();
+
+        (async () => {
+          const modulePath = pathToFileURL(
+            path.resolve(__dirname, 'functions/api/auth/check-email.js')
+          ).href;
+          const { onRequest } = await import(modulePath);
+
+          const env = loadEnv('', process.cwd(), '');
+          const url = `http://${req.headers.host || 'localhost'}${req.url}`;
+
+          let body;
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            body = await new Promise((resolve, reject) => {
+              let data = '';
+              req.on('data', (chunk) => (data += chunk));
+              req.on('end', () => resolve(data));
+              req.on('error', reject);
+            });
+          }
+
+          const request = new Request(url, {
+            method: req.method,
+            headers: { 'content-type': req.headers['content-type'] || 'application/json' },
+            body: body || undefined,
+          });
+
+          const response = await onRequest({ request, env });
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        })().catch((error) => {
+          console.error('💥 auth check-email dev bridge error:', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: error.message }));
+        });
+      });
+    },
+  };
+}
+
 
 
 function dokuProxyPlugin() {
@@ -304,7 +355,7 @@ function googleFormsProxyPlugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), dokuProxyPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), googleFormsProxyPlugin()],
+  plugins: [react(), dokuProxyPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin()],
   base: '/',
   resolve: {
     alias: {

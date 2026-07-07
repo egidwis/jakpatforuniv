@@ -1,0 +1,51 @@
+# Supabase project config — Jakpat for Universities
+# Project ref taken from VITE_SUPABASE_URL (https://zewuzezbmrmpttysjvpg.supabase.co).
+#
+# ⚠️  IMPORTANT: `supabase config push` OVERWRITES the remote/dashboard settings
+#     with whatever is in this file. Review every value before pushing so you do
+#     not clobber a working dashboard configuration. Until you adopt the CLI,
+#     configure these same values in the Dashboard (see instructions in the PR /
+#     commit message). Secrets are referenced via env(...) and must live in a
+#     `.env` at the repo root (NOT committed) — never hard-code the API key here.
+project_id = "zewuzezbmrmpttysjvpg"
+
+[auth]
+# Base URL of the dashboard app (Cloudflare Pages: submit.jakpatforuniv.com).
+site_url = "https://submit.jakpatforuniv.com"
+# Allowed redirect targets for magic links / recovery links. The reset flow
+# lands users on /reset-password (see src/pages/ResetPasswordPage.tsx).
+additional_redirect_urls = [
+  "https://submit.jakpatforuniv.com/reset-password",
+  "http://localhost:5173/reset-password",
+  "http://localhost:5199/reset-password",
+]
+
+[auth.email]
+# Keep the current behaviour: email/password signup on, with email confirmation.
+enable_signup = true
+enable_confirmations = true
+
+# ── Reset password ("recovery") email ────────────────────────────────────────
+# Subject shown in the inbox + branded HTML body kept under version control.
+# We use Supabase's BUILT-IN email service (no custom SMTP), so the sender name
+# stays "Supabase Auth" — only the subject and body are customised here.
+# NOTE: the built-in service is rate-limited and not meant for production volume.
+# To brand the sender ("Jakpat for Universities") later, enable custom SMTP below
+# with any provider whose domain is verified.
+[auth.email.template.recovery]
+subject = "Atur Ulang Password Akun Jakpat for Universities"
+content_path = "./supabase/templates/recovery.html"
+
+# ── Custom SMTP (DISABLED) ───────────────────────────────────────────────────
+# Left here as a template for when a working email provider is available.
+# Resend was the original plan but that account is suspended. To enable: verify a
+# sending domain with a provider, put its API key/password in the repo-root .env
+# as SUPABASE_AUTH_SMTP_PASSWORD, then uncomment and adjust host/port/user.
+# [auth.email.smtp]
+# enabled = true
+# host = "smtp.resend.com"
+# port = 465
+# user = "resend"
+# pass = "env(SUPABASE_AUTH_SMTP_PASSWORD)"
+# admin_email = "noreply@jakpatforuniv.com"
+# sender_name = "Jakpat for Universities"
