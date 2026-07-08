@@ -43,6 +43,9 @@ export interface SurveySubmission {
   submission_status?: string;
   distribution_type?: 'regular' | 'kilat';
   review_history?: ReviewHistoryEntry[];
+  invoiceName?: string;
+  invoiceEmail?: string;
+  invoicePhone?: string;
 }
 
 export interface PaymentState {

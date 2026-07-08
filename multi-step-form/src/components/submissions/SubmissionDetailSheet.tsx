@@ -680,6 +680,20 @@ function InfoTab({
         </div>
       </DetailSheetSection>
 
+      {/* ── Invoice (read-only) ───────────────────────── */}
+      <DetailSheetSection title="Invoice">
+        <div className="grid grid-cols-[120px_1fr] !gap-x-3 !gap-y-1.5 text-xs">
+          <span className="text-gray-400">Nama Invoice</span>
+          <span className="font-medium text-gray-900">{submission.invoiceName || 'Belum diisi'}</span>
+
+          <span className="text-gray-400">Email</span>
+          <span className="font-medium text-gray-900">{submission.invoiceEmail || 'Belum diisi'}</span>
+
+          <span className="text-gray-400">Nomor HP</span>
+          <span className="font-medium text-gray-900">{submission.invoicePhone || 'Belum diisi'}</span>
+        </div>
+      </DetailSheetSection>
+
       {/* ── Status ────────────────────────────────────── */}
       <DetailSheetSection title="Status Submission">
         <div className="flex items-center">

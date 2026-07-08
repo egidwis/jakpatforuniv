@@ -184,6 +184,9 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           researcherEmail: sub.auth_user_id
             ? (authNames.get(sub.auth_user_id)?.email || 'No Email')
             : (sub.email || 'No Email'),
+          invoiceName: sub.full_name,
+          invoiceEmail: sub.email,
+          invoicePhone: sub.phone_number,
 
           submittedAt: sub.created_at || new Date().toISOString(), // Store raw ISO string
           questionCount: sub.question_count || 0,
