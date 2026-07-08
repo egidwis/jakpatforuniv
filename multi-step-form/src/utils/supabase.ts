@@ -123,14 +123,28 @@ export const signInWithPassword = async (email: string, password: string) => {
   }
 };
 
-export const signUp = async (email: string, password: string, fullName: string) => {
+export interface SignUpBiodata {
+  fullName: string;
+  phoneNumber: string;
+  university: string;
+  department: string;
+  status: string;
+  referralSource?: string;
+}
+
+export const signUp = async (email: string, password: string, biodata: SignUpBiodata) => {
   try {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
-          full_name: fullName,
+          full_name: biodata.fullName,
+          phone_number: biodata.phoneNumber,
+          university: biodata.university,
+          department: biodata.department,
+          status: biodata.status,
+          referral_source: biodata.referralSource || null,
         },
       },
     });
@@ -140,6 +154,63 @@ export const signUp = async (email: string, password: string, fullName: string) 
     console.error('Error signing up:', error);
     throw error;
   }
+};
+
+/**
+ * Profil researcher milik user yang sedang login (RLS: SELECT owner-only,
+ * lihat sql/28). Satu akun = satu researcher; biodata di sini menjadi sumber
+ * prefill multi-step form dan default kartu Detail Invoice.
+ */
+export interface ResearcherProfile {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  phone_number: string | null;
+  university: string | null;
+  department: string | null;
+  status: string | null;
+  referral_source: string | null;
+}
+
+export const isProfileComplete = (profile: ResearcherProfile | null): boolean => {
+  if (!profile) return false;
+  return Boolean(
+    profile.full_name?.trim() &&
+    profile.phone_number?.trim() &&
+    profile.university?.trim() &&
+    profile.department?.trim() &&
+    profile.status?.trim()
+  );
+};
+
+export const getOwnProfile = async (): Promise<ResearcherProfile | null> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, phone_number, university, department, status, referral_source')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (error) throw error;
+    return data as ResearcherProfile | null;
+  } catch (error: any) {
+    console.error('Error fetching own profile:', error);
+    return null;
+  }
+};
+
+export const updateOwnProfile = async (updates: Partial<Omit<ResearcherProfile, 'id' | 'email'>>) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  const { error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', user.id);
+  if (error) throw error;
+  // Sinkronkan user_metadata agar prefill berbasis auth (nama) tetap konsisten.
+  const { error: metaError } = await supabase.auth.updateUser({ data: updates });
+  if (metaError) console.error('Error syncing user metadata:', metaError);
 };
 
 /**
@@ -508,6 +579,22 @@ export const updatePaymentStatus = async (id: string, status: string) => {
       .select();
 
     if (error) throw error;
+
+    // If marked as paid, also update any pending invoices/transactions for this submission
+    if (status === 'paid') {
+      await supabase
+        .from('invoices')
+        .update({ status: 'paid' })
+        .eq('form_submission_id', id)
+        .in('status', ['pending', 'expired']);
+
+      await supabase
+        .from('transactions')
+        .update({ status: 'paid' })
+        .eq('form_submission_id', id)
+        .in('status', ['pending', 'expired']);
+    }
+
     return data[0];
   } catch (error: any) {
     console.error('Error updating payment status:', error);

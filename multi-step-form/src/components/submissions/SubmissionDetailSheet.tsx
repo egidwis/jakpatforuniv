@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   X,
   Zap,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
@@ -29,9 +30,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
-import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../../utils/cost-calculator';
+import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculateAdCostPerDay } from '../../utils/cost-calculator';
 import { updateFormDetails, updateSubmissionCriteria } from '../../utils/supabase';
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
@@ -911,6 +913,7 @@ function PaymentTab({
   onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
 }) {
+  const [isConfirmPaymentOpen, setIsConfirmPaymentOpen] = useState(false);
   const adCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
   const incentiveCost = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
   const discount = calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
@@ -931,35 +934,38 @@ function PaymentTab({
           </Button>
         }
       >
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Chip variant="outline" size="sm">{submission.questionCount} Qs</Chip>
-          {submission.duration ? <Chip variant="outline" size="sm">{submission.duration} Days</Chip> : null}
-          {submission.voucher_code && (
-            <Chip variant="purple" size="sm">
-              <Zap className="w-3 h-3 fill-purple-600" /> {submission.voucher_code}
-            </Chip>
-          )}
-        </div>
         {submission.duration && submission.duration > 0 ? (
           <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 space-y-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-gray-500">Ad cost</span>
+              <span className="text-gray-500">
+                Ad cost <span className="text-[10px] text-gray-400 font-normal">({submission.questionCount} Qs | Rp {new Intl.NumberFormat('id-ID').format(calculateAdCostPerDay(submission.questionCount || 0))} x {submission.duration} {submission.duration === 1 ? 'day' : 'days'})</span>
+              </span>
               <span className={cn('font-medium text-gray-900', discount > 0 && 'line-through text-gray-400 font-normal')}>
                 Rp {new Intl.NumberFormat('id-ID').format(adCost)}
               </span>
             </div>
             {discount > 0 && (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Discount ({submission.voucher_code})</span>
-                  <span className="font-medium text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(discount)}</span>
-                </div>
-                <div className="flex justify-between pt-1 border-t border-gray-200">
-                  <span className="text-gray-500 font-medium">Final ad cost</span>
-                  <span className="font-bold text-emerald-600">Rp {new Intl.NumberFormat('id-ID').format(finalAdCost)}</span>
-                </div>
-              </>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Discount ({submission.voucher_code})</span>
+                <span className="font-medium text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(discount)}</span>
+              </div>
             )}
+            {incentiveCost > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">
+                  Incentive cost <span className="text-[10px] text-gray-400 font-normal">(Rp {new Intl.NumberFormat('id-ID').format(submission.prize_per_winner || 0)} × {submission.winnerCount || 0})</span>
+                </span>
+                <span className="font-medium text-gray-900">
+                  Rp {new Intl.NumberFormat('id-ID').format(incentiveCost)}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between pt-1 border-t border-gray-200 mt-1">
+              <span className="text-gray-600 font-medium">Total cost</span>
+              <span className="font-bold text-blue-600">
+                Rp {new Intl.NumberFormat('id-ID').format(finalAdCost + incentiveCost)}
+              </span>
+            </div>
           </div>
         ) : (
           <p className="text-xs text-gray-400 italic">Durasi belum diisi — biaya iklan belum bisa dihitung.</p>
@@ -981,13 +987,52 @@ function PaymentTab({
             <Button
               size="sm"
               className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => onPaymentStatusChange(submission.id, 'paid')}
+              onClick={() => setIsConfirmPaymentOpen(true)}
             >
               <Check className="w-3.5 h-3.5 mr-1.5" /> Mark as Paid
             </Button>
           </div>
         )}
       </DetailSheetSection>
+
+      <Dialog open={isConfirmPaymentOpen} onOpenChange={setIsConfirmPaymentOpen}>
+        <DialogContent 
+          className="sm:max-w-[360px] p-6 text-center"
+          style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+        >
+          <DialogHeader className="space-y-1 text-center sm:text-center">
+            <DialogTitle className="text-base font-bold text-gray-900 leading-snug">
+              Tandai Submission Sebagai Lunas?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-amber-600 font-semibold leading-relaxed">
+              Pastikan dana transfer manual benar-benar sudah diterima.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="text-[11px] text-gray-500 bg-slate-50/80 border border-slate-100 rounded-lg p-3.5 leading-relaxed">
+            Tindakan ini akan mengupdate status submission dan <span className="font-semibold text-gray-700">semua invoice/transaksi terkait menjadi lunas (paid)</span>.
+          </div>
+
+          <div className="flex justify-center gap-3">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsConfirmPaymentOpen(false)}
+              className="text-xs font-semibold h-9 px-5 text-gray-600 border-gray-200 hover:bg-gray-50"
+            >
+              Batal
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 px-5"
+              onClick={() => {
+                onPaymentStatusChange(submission.id, 'paid');
+                setIsConfirmPaymentOpen(false);
+              }}
+            >
+              Ya, Tandai Lunas
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DetailSheetSection title="Status Pembayaran">
         <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5">

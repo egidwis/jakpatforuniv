@@ -480,6 +480,19 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       setSubmissions(updateState);
       setFilteredSubmissions(updateState);
       
+      // Update local payment state for UI changes
+      setPaymentStates(prev => {
+        const curr = prev[submissionId];
+        if (!curr) return prev;
+        return {
+          ...prev,
+          [submissionId]: {
+            ...curr,
+            latestStatus: newStatus as any,
+          }
+        };
+      });
+      
       toast.success(`Payment status marked as ${newStatus}`);
     } catch (error) {
       toast.error('Failed to update payment status');
