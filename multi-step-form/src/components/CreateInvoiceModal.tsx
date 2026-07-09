@@ -60,7 +60,7 @@ export function CreateInvoiceModal({
       }));
     }
     return [
-      { id: '1', name: 'Jakpat for University (ads)', qty: 1, price: defaultAmount, category: 'Jakpat for University (ads)' }
+      { id: '1', name: 'Jakpat for Universities (ads)', qty: 1, price: defaultAmount, category: 'Jakpat for Universities (ads)' }
     ];
   });
 
@@ -83,7 +83,7 @@ export function CreateInvoiceModal({
           ...item
         })));
       } else {
-        setItems([{ id: Date.now().toString(), name: 'Jakpat for University (ads)', qty: 1, price: defaultAmount, category: 'Jakpat for University (ads)' }]);
+        setItems([{ id: Date.now().toString(), name: 'Jakpat for Universities (ads)', qty: 1, price: defaultAmount, category: 'Jakpat for Universities (ads)' }]);
       }
       setNote('');
     }
@@ -225,8 +225,8 @@ export function CreateInvoiceModal({
                       onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
                       className="w-full h-10 px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <option value="Jakpat for University (ads)">Jakpat for University (ads)</option>
-                      <option value="Jakpat for University (Platform)">Jakpat for University (Platform)</option>
+                      <option value="Jakpat for Universities (ads)">Jakpat for Universities (ads)</option>
+                      <option value="Jakpat for Universities (Platform)">Jakpat for Universities (Platform)</option>
                       <option value="Respondent's Incentive">Respondent's Incentive</option>
                       <option value="Lainnya">Lainnya</option>
                     </select>

@@ -413,10 +413,10 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
             const discountedPerDay = discount > 0 ? Math.max(0, costPerDay - Math.ceil(discount / duration)) : costPerDay;
             invoiceItems.push({
                 id: Date.now().toString() + '0',
-                name: 'Jakpat for University (ads)',
+                name: 'Jakpat for Universities (ads)',
                 qty: duration,
                 price: discountedPerDay,
-                category: 'Jakpat for University (ads)'
+                category: 'Jakpat for Universities (ads)'
             });
         }
         if (prizePerWinner > 0 && winnerCount > 0) {
@@ -432,10 +432,10 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
         if (invoiceItems.length === 0) {
             invoiceItems.push({
                 id: Date.now().toString(),
-                name: 'Jakpat for University (ads)',
+                name: 'Jakpat for Universities (ads)',
                 qty: 1,
                 price: 0,
-                category: 'Jakpat for University (ads)'
+                category: 'Jakpat for Universities (ads)'
             });
         }
 
@@ -1048,8 +1048,8 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                                                             onChange={(e) => handleItemChange(item.id, 'category', e.target.value)}
                                                             className="w-full h-10 px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                                         >
-                                                            <option value="Jakpat for University (ads)">Jakpat for University (ads)</option>
-                                                            <option value="Jakpat for University (Platform)">Jakpat for University (Platform)</option>
+                                                            <option value="Jakpat for Universities (ads)">Jakpat for Universities (ads)</option>
+                                                            <option value="Jakpat for Universities (Platform)">Jakpat for Universities (Platform)</option>
                                                             <option value="Respondent's Incentive">Respondent's Incentive</option>
                                                             <option value="Lainnya">Lainnya</option>
                                                         </select>

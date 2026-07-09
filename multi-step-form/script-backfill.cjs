@@ -11,13 +11,13 @@ const transactions = [
         name: 'USEP SUHUD',
         amount: 2525000,
         items: [
-            { id: '1', name: 'Jakpat for University (Platform) - EM-2601-JAK', qty: 1, price: 150000, category: 'Jakpat for University (Platform)' },
+            { id: '1', name: 'Jakpat for Universities (Platform) - EM-2601-JAK', qty: 1, price: 150000, category: 'Jakpat for Universities (Platform)' },
             { id: '2', name: "Respondent's Incentive - EM-2601-JAK", qty: 5, price: 25000, category: "Respondent's Incentive" },
-            { id: '3', name: 'Jakpat for University (Platform) - EM-2602-JAK', qty: 2, price: 300000, category: 'Jakpat for University (Platform)' },
+            { id: '3', name: 'Jakpat for Universities (Platform) - EM-2602-JAK', qty: 2, price: 300000, category: 'Jakpat for Universities (Platform)' },
             { id: '4', name: "Respondent's Incentive - EM-2602-JAK", qty: 5, price: 30000, category: "Respondent's Incentive" },
-            { id: '5', name: 'Jakpat for University (Platform) - EM-2603-JAK', qty: 2, price: 300000, category: 'Jakpat for University (Platform)' },
+            { id: '5', name: 'Jakpat for Universities (Platform) - EM-2603-JAK', qty: 2, price: 300000, category: 'Jakpat for Universities (Platform)' },
             { id: '6', name: "Respondent's Incentive - EM-2603-JAK", qty: 5, price: 30000, category: "Respondent's Incentive" },
-            { id: '7', name: 'Jakpat for University (Platform) - EM-2604-JAK', qty: 2, price: 300000, category: 'Jakpat for University (Platform)' },
+            { id: '7', name: 'Jakpat for Universities (Platform) - EM-2604-JAK', qty: 2, price: 300000, category: 'Jakpat for Universities (Platform)' },
             { id: '8', name: "Respondent's Incentive - EM-2604-JAK", qty: 5, price: 30000, category: "Respondent's Incentive" }
         ]
     }

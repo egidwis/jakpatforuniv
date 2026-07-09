@@ -101,7 +101,7 @@ export function SurveyListingPage() {
             <div className="max-w-7xl mx-auto">
                 <div className="text-center mb-16 space-y-4">
                     <div className="inline-block p-2 px-4 rounded-full bg-blue-100 text-blue-700 text-sm font-semibold mb-2">
-                        🌟 Jakpat for University
+                        🌟 Jakpat for Universities
                     </div>
                     <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight">
                         Daftar Survei Terbaru
