@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ACADEMIC_STATUS_OPTIONS, DEPARTMENT_OPTIONS, UNIVERSITY_OPTIONS, REFERRAL_SOURCE_OPTIONS, collapseReferralSource } from '../constants/biodata';
+
+const inputClass = "flex h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 dark:bg-gray-900 dark:border-gray-700";
 
 export default function LoginPage() {
     const { session, loading } = useAuth();
@@ -16,6 +19,12 @@ export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [university, setUniversity] = useState('');
+    const [department, setDepartment] = useState('');
+    const [status, setStatus] = useState('');
+    const [referralSource, setReferralSource] = useState('');
+    const [referralSourceOther, setReferralSourceOther] = useState('');
 
     const location = useLocation();
     const from = location.state?.from?.pathname || '/dashboard';
@@ -42,9 +51,27 @@ export default function LoginPage() {
             toast.error('Please fill in all fields');
             return;
         }
-        if (mode === 'signup' && !fullName) {
-            toast.error('Please enter your full name');
-            return;
+        if (mode === 'signup') {
+            if (!fullName.trim()) {
+                toast.error('Mohon isi nama lengkap Anda');
+                return;
+            }
+            if (!phoneNumber.trim() || phoneNumber.trim().length < 10) {
+                toast.error('Mohon isi nomor telepon yang valid (min. 10 digit)');
+                return;
+            }
+            if (!university.trim()) {
+                toast.error('Mohon isi universitas/institusi Anda');
+                return;
+            }
+            if (!department.trim()) {
+                toast.error('Mohon pilih jurusan Anda');
+                return;
+            }
+            if (!status) {
+                toast.error('Mohon pilih status akademik Anda');
+                return;
+            }
         }
 
         try {
@@ -53,7 +80,16 @@ export default function LoginPage() {
                 await signInWithPassword(email, password);
                 // Redirect handled by AuthContext/Navigate
             } else {
-                await signUp(email, password, fullName);
+                await signUp(email, password, {
+                    fullName: fullName.trim(),
+                    phoneNumber: phoneNumber.trim(),
+                    university: university.trim(),
+                    department: department.trim(),
+                    status,
+                    referralSource: referralSource
+                        ? collapseReferralSource(referralSource, referralSourceOther)
+                        : undefined,
+                });
                 toast.success('Registration successful! Please check your email to verify your account.');
                 setMode('login'); // Switch to login after signup
             }
@@ -117,16 +153,95 @@ export default function LoginPage() {
 
                     <form onSubmit={handleEmailAuth} className="space-y-4">
                         {mode === 'signup' && (
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Full Name</label>
-                                <input
-                                    type="text"
-                                    value={fullName} onChange={e => setFullName(e.target.value)}
-                                    className="flex h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 dark:bg-gray-900 dark:border-gray-700"
-                                    placeholder="John Doe"
-                                    disabled={isLoggingIn}
-                                />
-                            </div>
+                            <>
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Full Name</label>
+                                    <input
+                                        type="text"
+                                        value={fullName} onChange={e => setFullName(e.target.value)}
+                                        className={inputClass}
+                                        placeholder="John Doe"
+                                        disabled={isLoggingIn}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">No Telepon</label>
+                                    <input
+                                        type="tel"
+                                        value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}
+                                        className={inputClass}
+                                        placeholder="08xxxxxxxxxx"
+                                        disabled={isLoggingIn}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Universitas</label>
+                                        <input
+                                            type="text"
+                                            list="university-options"
+                                            value={university} onChange={e => setUniversity(e.target.value)}
+                                            className={inputClass}
+                                            placeholder="Ketik atau pilih universitas"
+                                            disabled={isLoggingIn}
+                                        />
+                                        <datalist id="university-options">
+                                            {UNIVERSITY_OPTIONS.map(opt => <option key={opt} value={opt} />)}
+                                        </datalist>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Jurusan</label>
+                                        <input
+                                            type="text"
+                                            list="department-options"
+                                            value={department} onChange={e => setDepartment(e.target.value)}
+                                            className={inputClass}
+                                            placeholder="Ketik atau pilih jurusan"
+                                            disabled={isLoggingIn}
+                                        />
+                                        <datalist id="department-options">
+                                            {DEPARTMENT_OPTIONS.map(opt => <option key={opt} value={opt} />)}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Status Akademik</label>
+                                    <select
+                                        value={status} onChange={e => setStatus(e.target.value)}
+                                        className={inputClass}
+                                        disabled={isLoggingIn}
+                                    >
+                                        <option value="">Pilih status akademik</option>
+                                        {ACADEMIC_STATUS_OPTIONS.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                        Dari mana Anda mengetahui kami? <span className="font-normal text-gray-400">(opsional)</span>
+                                    </label>
+                                    <select
+                                        value={referralSource} onChange={e => setReferralSource(e.target.value)}
+                                        className={inputClass}
+                                        disabled={isLoggingIn}
+                                    >
+                                        <option value="">Pilih salah satu</option>
+                                        {REFERRAL_SOURCE_OPTIONS.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                    {referralSource === 'Lainnya' && (
+                                        <input
+                                            type="text"
+                                            value={referralSourceOther} onChange={e => setReferralSourceOther(e.target.value)}
+                                            className={inputClass}
+                                            placeholder="Sebutkan sumbernya"
+                                            disabled={isLoggingIn}
+                                        />
+                                    )}
+                                </div>
+                            </>
                         )}
                         <div className="space-y-1.5">
                             <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Email</label>

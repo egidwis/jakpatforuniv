@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getFormSubmissionsByUser, deleteFormSubmission } from '../utils/supabase';
+import { getFormSubmissionsByUser, deleteFormSubmission, getOwnProfile } from '../utils/supabase';
+import { expandReferralSource } from '../constants/biodata';
+import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
 import type { SurveyFormData } from '../types';
-import { StepOne } from './StepOne';
-import { StepTwo } from './StepTwo';
-import { StepThreeSlotReservation as StepThree } from './StepThreeSlotReservation';
-import { StepFour } from './StepFour';
+import { StepSurveyDetails } from './StepSurveyDetails';
+import { StepSchedule } from './StepSchedule';
+import { StepCheckout } from './StepCheckout';
 import { UnifiedHeader } from './UnifiedHeader';
 import { Menu } from 'lucide-react';
 import { Button } from './ui/button';
@@ -24,7 +25,30 @@ const getEndDateFromDuration = (duration: number) => {
   return date.toISOString().split('T')[0];
 };
 
-const STORAGE_KEY = 'survey_form_draft';
+const STORAGE_KEY = SURVEY_DRAFT_KEY;
+
+// Baca draft dengan migrasi dari skema step lama (1 Survei, 2 Biodata,
+// 3 Jadwal, 4 Review, 5 Kilat) ke skema baru tanpa biodata (1 Survei,
+// 2 Jadwal, 3 Review, 4 Kilat). Draft lama dipetakan lalu dipindah ke kunci v2.
+const readDraft = (): { formData?: Partial<SurveyFormData>; currentStep?: number } | null => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+
+    const legacy = localStorage.getItem(LEGACY_SURVEY_DRAFT_KEY);
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      const stepMap: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 3, 5: 4 };
+      parsed.currentStep = stepMap[parsed.currentStep as number] ?? 1;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
+      return parsed;
+    }
+  } catch {
+    // Draft korup — mulai dari awal
+  }
+  return null;
+};
 
 
 // Default values untuk form
@@ -39,7 +63,7 @@ const defaultFormData: SurveyFormData = {
   startDate: '',
   endDate: '',
 
-  // Step 2
+  // Kontak invoice (diedit di checkout) + biodata researcher (prefill dari profil)
   fullName: '',
   email: '',
   phoneNumber: '',
@@ -48,10 +72,10 @@ const defaultFormData: SurveyFormData = {
   status: '',
   referralSource: '',
   referralSourceOther: '',
-  winnerCount: 0, // Default 0, akan diisi di step 2
-  prizePerWinner: 0, // Default 0, akan diisi di step 2
+  winnerCount: 0,
+  prizePerWinner: 0,
 
-  // Step 3
+  // Checkout
   voucherCode: '',
 
   // JFU Kilat
@@ -73,32 +97,20 @@ export function MultiStepForm() {
   // Initialize state from localStorage if available
   const [resetKey, setResetKey] = useState(0);
   const [currentStep, setCurrentStep] = useState<number>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return typeof parsed.currentStep === 'number' ? parsed.currentStep : 1;
-      } catch (e) {
-        return 1;
-      }
-    }
-    return 1;
+    const draft = readDraft();
+    const step = typeof draft?.currentStep === 'number' ? draft.currentStep : 1;
+    return Math.min(Math.max(step, 1), 4);
   });
 
   const [formData, setFormData] = useState<SurveyFormData>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Merge with default to ensure all fields exist
-        // Always reset startDate/endDate to prevent stale cached dates
-        const merged = { ...defaultFormData, ...parsed.formData };
-        merged.startDate = '';
-        merged.endDate = '';
-        return merged;
-      } catch (e) {
-        return defaultFormData;
-      }
+    const draft = readDraft();
+    if (draft?.formData) {
+      // Merge with default to ensure all fields exist
+      // Always reset startDate/endDate to prevent stale cached dates
+      const merged = { ...defaultFormData, ...draft.formData };
+      merged.startDate = '';
+      merged.endDate = '';
+      return merged;
     }
     return defaultFormData;
   });
@@ -126,7 +138,28 @@ export function MultiStepForm() {
           };
         });
 
-        // 2. Fetch previous submission for extra details (using user ID, not email)
+        // 2. Prefill biodata researcher dari profiles (diam-diam — StepTwo
+        // sudah dihapus, tapi snapshot form_submissions tetap harus lengkap).
+        try {
+          const profile = await getOwnProfile();
+          if (profile) {
+            const ref = expandReferralSource(profile.referral_source);
+            setFormData(prev => ({
+              ...prev,
+              fullName: prev.fullName || profile.full_name || '',
+              phoneNumber: prev.phoneNumber || profile.phone_number || '',
+              university: prev.university || profile.university || '',
+              department: prev.department || profile.department || '',
+              status: prev.status || profile.status || '',
+              referralSource: prev.referralSource || ref.source,
+              referralSourceOther: prev.referralSourceOther || ref.other,
+            }));
+          }
+        } catch (error) {
+          console.error('Failed to prefill from profile', error);
+        }
+
+        // 3. Fetch previous submission for extra details (using user ID, not email)
         if (user.id) {
           try {
             const previousSubmissions = await getFormSubmissionsByUser(user.id, user.email);
@@ -134,10 +167,10 @@ export function MultiStepForm() {
               const latest = previousSubmissions[0];
               setFormData(prev => ({
                 ...prev,
-                phoneNumber: latest.phone_number || prev.phoneNumber,
-                university: latest.university || prev.university,
-                department: latest.department || prev.department,
-                status: latest.status || prev.status
+                phoneNumber: prev.phoneNumber || latest.phone_number || '',
+                university: prev.university || latest.university || '',
+                department: prev.department || latest.department || '',
+                status: prev.status || latest.status || ''
               }));
               
               // Only bounce if they haven't started filling out a fresh form (no draft data)
@@ -179,14 +212,17 @@ export function MultiStepForm() {
 
   const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
 
+  // Skema step: 1 = Detail Survei, 2 = Jadwal (hanya auto-approval),
+  // 3 = Review & Pembayaran, 4 = Jadwal Kilat.
+
   // Fungsi untuk pindah ke step berikutnya
   const nextStep = () => {
     setCurrentStep(prev => {
-      // If moving from step 2, and not auto-approval, skip to step 4
-      if (prev === 2 && !isAutoApprovalPath) {
-        return 4;
+      // Non-auto-approval melewati step Jadwal: langsung ke Review
+      if (prev === 1 && !isAutoApprovalPath) {
+        return 3;
       }
-      return Math.min(prev + 1, 4);
+      return Math.min(prev + 1, 3);
     });
     window.scrollTo(0, 0);
   };
@@ -194,9 +230,9 @@ export function MultiStepForm() {
   // Fungsi untuk kembali ke step sebelumnya
   const prevStep = () => {
     setCurrentStep(prev => {
-      // If moving back from step 4, and not auto-approval, skip to step 2
-      if (prev === 4 && !isAutoApprovalPath) {
-        return 2;
+      // Dari Review, non-auto-approval kembali langsung ke Detail Survei
+      if (prev === 3 && !isAutoApprovalPath) {
+        return 1;
       }
       return Math.max(prev - 1, 1);
     });
@@ -261,7 +297,7 @@ export function MultiStepForm() {
       startDate: '',
       startTime: '',
     });
-    setCurrentStep(5);
+    setCurrentStep(4);
     window.scrollTo(0, 0);
   };
 
@@ -328,7 +364,7 @@ export function MultiStepForm() {
           return null;
         })()}
         {currentStep === 1 && (
-          <StepOne
+          <StepSurveyDetails
             key={resetKey}
             formData={formData}
             updateFormData={updateFormData}
@@ -338,7 +374,7 @@ export function MultiStepForm() {
         )}
 
         {currentStep === 2 && (
-          <StepTwo
+          <StepSchedule
             formData={formData}
             updateFormData={updateFormData}
             nextStep={nextStep}
@@ -347,16 +383,7 @@ export function MultiStepForm() {
         )}
 
         {currentStep === 3 && (
-          <StepThree
-            formData={formData}
-            updateFormData={updateFormData}
-            nextStep={nextStep}
-            prevStep={prevStep}
-          />
-        )}
-
-        {currentStep === 4 && (
-          <StepFour
+          <StepCheckout
             formData={formData}
             updateFormData={updateFormData}
             prevStep={prevStep}
@@ -365,8 +392,8 @@ export function MultiStepForm() {
           />
         )}
 
-        {currentStep === 5 && (
-          <StepThree
+        {currentStep === 4 && (
+          <StepSchedule
             formData={formData}
             updateFormData={updateFormData}
             nextStep={() => {
@@ -375,12 +402,12 @@ export function MultiStepForm() {
                 kilatStartDate: formData.startDate,
                 kilatStartTime: formData.startTime,
               });
-              setCurrentStep(4);
+              setCurrentStep(3);
               window.scrollTo(0, 0);
             }}
             prevStep={() => {
               undoKilatUpgrade();
-              setCurrentStep(4);
+              setCurrentStep(3);
               window.scrollTo(0, 0);
             }}
             mode="kilat"

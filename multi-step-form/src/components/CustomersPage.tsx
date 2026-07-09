@@ -8,8 +8,11 @@ import { cn, useMediaQuery } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   type RawSubmission,
+  type CustomerProfileRow,
   aggregateCustomers,
+  mergeProfileOnlyCustomers,
   customerTier,
+  orderTime,
 } from './customers/types';
 import { CustomerListRow } from './customers/CustomerListRow';
 import { CustomerDetailSheet } from './customers/CustomerDetailSheet';
@@ -19,6 +22,7 @@ type TierTab = 'all' | 'vip' | 'returning' | 'new';
 
 export function CustomersPage() {
   const [submissions, setSubmissions] = useState<RawSubmission[]>([]);
+  const [profileRows, setProfileRows] = useState<CustomerProfileRow[]>([]);
   const [authNames, setAuthNames] = useState<Map<string, { name: string; email: string }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,7 +61,13 @@ export function CustomersPage() {
         actual_paid: paidMap.get(sub.id) || 0,
       }));
 
+      // 4. Semua profil customer (akun terdaftar) — termasuk yang belum pernah
+      // submit, agar customer pra-submission ikut tampil (sql/32).
+      const { data: profileData, error: profileError } = await supabase.rpc('get_customer_profiles');
+      if (profileError) console.error('Error fetching customer profiles:', profileError);
+
       setSubmissions(merged);
+      setProfileRows((profileData as CustomerProfileRow[]) || []);
       setAuthNames(await fetchProfileNames(merged.map((s) => s.auth_user_id)));
     } catch (error) {
       console.error('Error fetching submissions:', error);
@@ -69,7 +79,10 @@ export function CustomersPage() {
 
   useEffect(() => { fetchSubmissions(); }, []);
 
-  const customers = useMemo(() => aggregateCustomers(submissions, authNames), [submissions, authNames]);
+  const customers = useMemo(
+    () => mergeProfileOnlyCustomers(aggregateCustomers(submissions, authNames), profileRows),
+    [submissions, authNames, profileRows]
+  );
 
   // Tab counts come from the full list — search must not change them
   const tierCounts = useMemo(() => {
@@ -110,8 +123,8 @@ export function CustomersPage() {
     } else if (sortBy === 'spent_desc') {
       result = [...result].sort((a, b) => b.totalSpent - a.totalSpent);
     } else {
-      // Default: lastOrder desc
-      result = [...result].sort((a, b) => new Date(b.lastOrder).getTime() - new Date(a.lastOrder).getTime());
+      // Default: lastOrder desc (customer pra-submission tanpa order di bawah)
+      result = [...result].sort((a, b) => orderTime(b.lastOrder) - orderTime(a.lastOrder));
     }
     return result;
   }, [customers, tierTab, searchTerm, sortBy]);

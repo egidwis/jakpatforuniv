@@ -13,7 +13,7 @@ const getDateString = (date: Date) => {
 
 import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from '../utils/constants';
 
-interface StepThreeSlotReservationProps {
+interface StepScheduleProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   nextStep: () => void;
@@ -21,7 +21,7 @@ interface StepThreeSlotReservationProps {
   mode?: 'regular' | 'kilat';
 }
 
-export function StepThreeSlotReservation({ formData, updateFormData, nextStep, prevStep, mode = 'regular' }: StepThreeSlotReservationProps) {
+export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mode = 'regular' }: StepScheduleProps) {
   const { t } = useLanguage();
   const [selectedDate, setSelectedDate] = useState<Date | null>(
     formData.startDate ? new Date(formData.startDate) : null

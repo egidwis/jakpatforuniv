@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getFormSubmissionById, releaseExpiredSlot, prepareForReschedule } from '../utils/supabase';
 import { createPayment } from '../utils/payment';
+import { SURVEY_DRAFT_KEY } from '../utils/constants';
 import { toast } from 'sonner';
 import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw, CheckCircle } from 'lucide-react';
 import type { FormSubmission } from '../utils/supabase';
@@ -242,9 +243,10 @@ export function PaymentCheckoutPage() {
                       isReschedule: true,
                       submissionIdToReplace: submission.id,
                     };
-                    localStorage.setItem('survey_form_draft', JSON.stringify({
+                    // Step 2 = Jadwal pada skema step baru (tanpa step biodata)
+                    localStorage.setItem(SURVEY_DRAFT_KEY, JSON.stringify({
                       formData: recoveredData,
-                      currentStep: 3
+                      currentStep: 2
                     }));
                     
                     toast.dismiss(loadingToast);

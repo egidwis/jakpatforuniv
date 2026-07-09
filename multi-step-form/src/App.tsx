@@ -14,9 +14,11 @@ import LoginPage from './pages/LoginPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import PrivateRoute from './components/PrivateRoute';
+import RequireCompleteProfile from './components/RequireCompleteProfile';
 import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
 import { ChatPage } from './pages/dashboard/ChatPage';
+import { ProfilePage } from './pages/dashboard/ProfilePage';
 import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
 import { SurveyListingPage } from './pages/public/SurveyListingPage';
 import { SurveyPage } from './pages/public/SurveyPage';
@@ -87,9 +89,14 @@ function AppContent() {
           </PrivateRoute>
         }>
           <Route index element={<Navigate to="/dashboard/submit" replace />} />
-          <Route path="submit" element={<MultiStepForm />} />
+          <Route path="submit" element={
+            <RequireCompleteProfile>
+              <MultiStepForm />
+            </RequireCompleteProfile>
+          } />
           <Route path="status" element={<StatusPage />} />
           <Route path="chat" element={<ChatPage />} />
+          <Route path="profile" element={<ProfilePage />} />
           <Route path="payment/:submissionId" element={<PaymentCheckoutPage />} />
         </Route>
 

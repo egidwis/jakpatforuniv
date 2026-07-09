@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -6,18 +6,31 @@ import {
   FileText,
   MessageSquare,
   LogOut,
-  User
+  User,
+  UserCircle
 } from 'lucide-react';
 import { Button } from './ui/button';
 
 import { LanguageSwitcher } from './LanguageSwitcher';
 import jfuIcon from '../assets/jfu-icon.png';
+import { getOwnProfile, isProfileComplete } from '../utils/supabase';
 
 export function DashboardLayout() {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [profileIncomplete, setProfileIncomplete] = useState(false);
+
+  // Banner ajakan melengkapi profil (user Google / user lama). Dicek ulang tiap
+  // pindah halaman agar hilang segera setelah profil dilengkapi.
+  useEffect(() => {
+    let cancelled = false;
+    getOwnProfile().then((profile) => {
+      if (!cancelled) setProfileIncomplete(!isProfileComplete(profile));
+    });
+    return () => { cancelled = true; };
+  }, [location.pathname]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -41,6 +54,11 @@ export function DashboardLayout() {
       label: 'Support',
       path: '/dashboard/chat',
       icon: <MessageSquare className="w-5 h-5" />
+    },
+    {
+      label: 'Profil',
+      path: '/dashboard/profile',
+      icon: <UserCircle className="w-5 h-5" />
     }
   ];
 
@@ -70,7 +88,7 @@ export function DashboardLayout() {
                 <h1 className="text-xl font-bold bg-clip-text text-transparent leading-tight" style={{ backgroundImage: 'linear-gradient(to right, #0091ff, #0077cc)' }}>
                   Dashboard
                 </h1>
-                <p className="text-xs text-gray-500 mt-0.5">Jakpat For University</p>
+                <p className="text-xs text-gray-500 mt-0.5">Jakpat For Universities</p>
               </div>
             </div>
           </div>
@@ -130,6 +148,17 @@ export function DashboardLayout() {
 
       {/* Main Content */}
       <main className="flex-1 min-w-0 overflow-y-auto h-screen md:pl-64">
+        {profileIncomplete && location.pathname !== '/dashboard/profile' && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-center">
+            <span className="text-xs text-amber-800">
+              Profil Anda belum lengkap.{' '}
+              <Link to="/dashboard/profile" className="font-semibold underline hover:text-amber-900">
+                Lengkapi sekarang
+              </Link>{' '}
+              agar bisa memasang survei.
+            </span>
+          </div>
+        )}
         <Outlet context={{ isSidebarOpen, toggleSidebar }} />
       </main>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, getExtendsBySubmissionIds, deleteFormSubmission, prepareForReschedule, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
+import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -556,10 +557,10 @@ export function StatusPage() {
                                                                         submissionIdToReplace: submission.id,
                                                                     };
                                                                     
-                                                                    // Save to localStorage
-                                                                    localStorage.setItem('survey_form_draft', JSON.stringify({
+                                                                    // Save to localStorage (step 2 = Jadwal pada skema step baru)
+                                                                    localStorage.setItem(SURVEY_DRAFT_KEY, JSON.stringify({
                                                                         formData: recoveredData,
-                                                                        currentStep: 3
+                                                                        currentStep: 2
                                                                     }));
                                                                     
                                                                     toast.dismiss(loadingToast);

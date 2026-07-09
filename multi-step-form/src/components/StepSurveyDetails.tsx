@@ -7,7 +7,7 @@ import { StepOneFormFields } from './StepOneFormFields';
 import { AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
-interface StepOneProps {
+interface StepSurveyDetailsProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   nextStep: () => void;
@@ -16,7 +16,7 @@ interface StepOneProps {
 
 type FlowState = 'method-selection' | 'google-form' | 'manual' | 'form-fields';
 
-export function StepOne({ formData, updateFormData, nextStep, onHeaderVisibilityChange }: StepOneProps) {
+export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeaderVisibilityChange }: StepSurveyDetailsProps) {
   const { t } = useLanguage();
 
   // Initialize flowState based on existing formData

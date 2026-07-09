@@ -51,7 +51,13 @@ export function normalizePhone(phone: string): string {
 }
 
 export function formatDate(dateString: string): string {
+  if (!dateString) return '—';
   return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Sort key untuk tanggal order; customer pra-submission (tanpa order) = 0. */
+export function orderTime(dateString: string): number {
+  return dateString ? new Date(dateString).getTime() : 0;
 }
 
 /** Local-part of an email, used as the researcher-name fallback for accounts
@@ -174,7 +180,49 @@ export function aggregateCustomers(submissions: RawSubmission[], authNames: Map<
     c.lastOrder = c.submissions[0].created_at;
   });
 
-  return Array.from(customerMap.values()).sort((a, b) => new Date(b.lastOrder).getTime() - new Date(a.lastOrder).getTime());
+  return Array.from(customerMap.values()).sort((a, b) => orderTime(b.lastOrder) - orderTime(a.lastOrder));
+}
+
+/** Baris profil customer dari RPC admin get_customer_profiles (sql/32). */
+export interface CustomerProfileRow {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone_number: string | null;
+  university: string | null;
+  department: string | null;
+  status: string | null;
+  referral_source: string | null;
+}
+
+/**
+ * Tambahkan customer pra-submission: akun terdaftar (profiles) yang belum
+ * pernah submit survei, sehingga admin melihat customer sejak hari pertama
+ * daftar. Identitas & biodata diambil dari profil; agregat order nol.
+ */
+export function mergeProfileOnlyCustomers(customers: Customer[], profiles: CustomerProfileRow[]): Customer[] {
+  const seen = new Set(customers.map((c) => c.authUserId).filter(Boolean));
+  const profileOnly: Customer[] = profiles
+    .filter((p) => !seen.has(p.id))
+    .map((p) => ({
+      key: `auth:${p.id}`,
+      authUserId: p.id,
+      name: p.full_name || emailLocalPart(p.email) || 'Unknown',
+      email: p.email || '-',
+      phone: p.phone_number || '-',
+      university: p.university || '-',
+      department: p.department || '-',
+      education: p.status || '-',
+      totalOrders: 0,
+      paidCount: 0,
+      totalSpent: 0,
+      firstOrder: '',
+      lastOrder: '',
+      submissions: [],
+      invoiceNames: [],
+      isLinked: true,
+    }));
+  return [...customers, ...profileOnly];
 }
 
 /**

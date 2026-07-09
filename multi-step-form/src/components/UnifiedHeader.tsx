@@ -28,18 +28,18 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
 
     const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
 
+    // Skema step tanpa biodata: 1 Detail Survei, 2 Jadwal (auto-approval saja),
+    // 3 Review & Pembayaran. Step 4 = Jadwal Kilat, ditampilkan sebagai step 3.
     const steps = isAutoApprovalPath ? [
         { number: 1, title: t('step1') },
-        { number: 2, title: t('step2') },
-        { number: 3, title: 'Jadwal' },
-        { number: 4, title: 'Bayar' }
+        { number: 2, title: 'Jadwal' },
+        { number: 3, title: 'Bayar' }
     ] : [
         { number: 1, title: t('step1') },
-        { number: 2, title: t('step2') },
-        { number: 4, title: 'Review' }
+        { number: 3, title: 'Review' }
     ];
 
-    const displayStep = currentStep === 5 ? 4 : currentStep;
+    const displayStep = currentStep === 4 ? 3 : currentStep;
 
     return (
         <div className="fixed top-4 right-4 left-4 md:left-[17rem] md:right-8 z-40">
@@ -94,7 +94,7 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                             <div className="hidden sm:flex flex-col">
                                 <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Current Step</span>
                                 <span className="text-sm font-bold text-gray-900 line-clamp-1 max-w-[100px] md:max-w-none">
-                                    {currentStep === 5 ? 'JFU Kilat' : (steps.find(s => s.number === currentStep)?.title || 'Survey')}
+                                    {currentStep === 4 ? 'JFU Kilat' : (steps.find(s => s.number === currentStep)?.title || 'Survey')}
                                 </span>
                             </div>
                         </div>

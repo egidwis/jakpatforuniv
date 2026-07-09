@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
-import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, type FormSubmission } from '../utils/supabase';
+import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, getOwnProfile, type FormSubmission } from '../utils/supabase';
 import { resolveSubmissionMode, type SubmissionMode } from '../utils/submissionMode';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
-import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from '../utils/constants';
+import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY, SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
@@ -26,10 +26,11 @@ import {
   User,
   GraduationCap,
   Mail,
+  Phone,
   Zap
 } from 'lucide-react';
 
-interface StepFourProps {
+interface StepCheckoutProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   prevStep: () => void;
@@ -37,7 +38,7 @@ interface StepFourProps {
   onUndoKilat?: () => void;
 }
 
-export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, onUndoKilat }: StepFourProps) {
+export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKilat, onUndoKilat }: StepCheckoutProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
 
@@ -53,9 +54,50 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
 
+  // Detail Invoice: default diambil dari data akun (profil + auth); toggle OFF
+  // untuk mengisi kontak invoice custom khusus order ini (tidak mengubah profil).
+  const [useAccountData, setUseAccountData] = useState(true);
+  const [accountDefaults, setAccountDefaults] = useState<{ fullName: string; email: string; phoneNumber: string } | null>(null);
+
   // Derive auto approval status
   const isManualForm = formData.isManualEntry || (formData.surveyUrl && !formData.surveyUrl.includes('docs.google.com/forms'));
   const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
+
+  // Email invoice berbeda dari email login → invoice terkirim ke email custom
+  const isEmailMismatch = user?.email && formData.email && formData.email.trim().toLowerCase() !== user.email.toLowerCase();
+
+  useEffect(() => {
+    let cancelled = false;
+    getOwnProfile().then(profile => {
+      if (cancelled) return;
+      const defaults = {
+        fullName: profile?.full_name || user?.user_metadata?.full_name || '',
+        email: user?.email || profile?.email || '',
+        phoneNumber: profile?.phone_number || '',
+      };
+      setAccountDefaults(defaults);
+      // Draft yang membawa kontak custom (mis. reschedule order lama) membuat
+      // toggle mulai dalam keadaan OFF agar nilainya tidak tertimpa.
+      const matchesAccount =
+        (!formData.fullName || formData.fullName === defaults.fullName) &&
+        (!formData.email || formData.email === defaults.email) &&
+        (!formData.phoneNumber || formData.phoneNumber === defaults.phoneNumber);
+      if (matchesAccount) {
+        setUseAccountData(true);
+        updateFormData({ fullName: defaults.fullName, email: defaults.email, phoneNumber: defaults.phoneNumber });
+      } else {
+        setUseAccountData(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const handleUseAccountDataChange = (checked: boolean) => {
+    setUseAccountData(checked);
+    if (checked && accountDefaults) {
+      updateFormData({ ...accountDefaults });
+    }
+  };
 
   // Hitung biaya saat form data berubah
   useEffect(() => {
@@ -98,6 +140,26 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
 
       if (!formData.title || !formData.description || !formData.questionCount || !formData.duration) {
         toast.error(t('errorCompleteAllSurveyData'));
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validasi kontak invoice (eks validasi StepTwo — biodata kini dari profil)
+      if (!formData.fullName || !formData.fullName.trim()) {
+        toast.error(t('errorFullNameEmpty'));
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        return;
+      }
+      if (!formData.email || !formData.email.trim() || !formData.email.includes('@') || !formData.email.includes('.')) {
+        toast.error(t('errorEmailInvalid'));
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        return;
+      }
+      if (!formData.phoneNumber || formData.phoneNumber.trim().length < 10) {
+        toast.error(t('errorPhoneMinLength'));
         isSubmittingRef.current = false;
         setIsSubmitting(false);
         return;
@@ -158,7 +220,7 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
 
             if (!isAvailable) {
               toast.dismiss(loadingToast);
-              toast.error('Ups! Slot pada rentang tanggal yang Anda pilih telah penuh. Silakan kembali mengatur ulang tanggal di Step 3.');
+              toast.error('Ups! Slot pada rentang tanggal yang Anda pilih telah penuh. Silakan kembali mengatur ulang tanggal di step Jadwal.');
               isSubmittingRef.current = false;
               setIsSubmitting(false);
               return;
@@ -314,7 +376,8 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
         }
 
         setTimeout(() => {
-          localStorage.removeItem('survey_form_draft');
+          localStorage.removeItem(SURVEY_DRAFT_KEY);
+          localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
           window.open(`${window.location.origin}/dashboard/status?status=survey_submitted`, '_self');
         }, 1500);
 
@@ -326,7 +389,8 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
         toast.success('Slot berhasil diamankan. Silahkan selesaikan pembayaran.');
 
         setTimeout(() => {
-          localStorage.removeItem('survey_form_draft');
+          localStorage.removeItem(SURVEY_DRAFT_KEY);
+          localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
           // Navigate to new local PaymentCheckoutPage
           window.open(`${window.location.origin}/dashboard/payment/${savedData.id}`, '_self');
         }, 1500);
@@ -476,23 +540,104 @@ export function StepFour({ formData, updateFormData, prevStep, onUpgradeKilat, o
                 </div>
               )}
 
-              {/* Customer Info */}
+              {/* Customer Info — kontak invoice pindah ke kartu Detail Invoice */}
               <div className="px-6 pt-5 pb-6 flex flex-col md:flex-row gap-2 md:gap-6 hover:bg-blue-50/30 transition-colors">
                 <div className="w-full md:w-1/4 text-[10px] font-bold text-gray-500 uppercase tracking-wider pt-1">{t('ordererData')}</div>
-                <div className="w-full md:w-3/4 grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><User size={12} /> {t('nameAndContact')}</div>
-                    <div className="text-sm font-medium text-gray-900">{formData.fullName}</div>
-                    <div className="text-[11px] text-gray-500 break-all">{formData.email}</div>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><GraduationCap size={12} /> {t('institutionAndProfile')}</div>
-                    <div className="text-sm font-medium text-gray-900 line-clamp-1" title={formData.university}>{formData.university}</div>
-                    <div className="text-[11px] text-gray-500">{formData.status} • {formData.department}</div>
-                  </div>
+                <div className="w-full md:w-3/4">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><GraduationCap size={12} /> {t('institutionAndProfile')}</div>
+                  <div className="text-sm font-medium text-gray-900 line-clamp-1" title={formData.university}>{formData.university}</div>
+                  <div className="text-[11px] text-gray-500">{formData.status} • {formData.department}</div>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* SECTION: INVOICE DETAILS */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
+                <User size={18} />
+              </div>
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Detail Invoice</h3>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={useAccountData}
+                onChange={(e) => handleUseAccountDataChange(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                style={{ accentColor: '#0091ff' }}
+              />
+              <span className="text-xs font-medium text-gray-600">Sama dengan data akun</span>
+            </label>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <p className="text-xs text-gray-400 -mt-1">Invoice dan notifikasi pembayaran order ini akan dikirim ke kontak berikut.</p>
+
+            {useAccountData ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><User size={12} /> Nama</div>
+                  <div className="text-sm font-medium text-gray-900">{formData.fullName || '—'}</div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Mail size={12} /> Email</div>
+                  <div className="text-sm font-medium text-gray-900 break-all">{formData.email || '—'}</div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Phone size={12} /> No Telepon</div>
+                  <div className="text-sm font-medium text-gray-900">{formData.phoneNumber || '—'}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="invoiceFullName" className="text-sm font-medium text-gray-700">Nama Lengkap <span className="text-red-500">*</span></label>
+                  <input
+                    id="invoiceFullName"
+                    type="text"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
+                    placeholder="Nama sesuai KTP"
+                    value={formData.fullName}
+                    onChange={(e) => updateFormData({ fullName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="invoiceEmail" className="text-sm font-medium text-gray-700">Email Invoice <span className="text-red-500">*</span></label>
+                  <input
+                    id="invoiceEmail"
+                    type="email"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
+                    placeholder="email@contoh.com"
+                    value={formData.email}
+                    onChange={(e) => updateFormData({ email: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label htmlFor="invoicePhoneNumber" className="text-sm font-medium text-gray-700">No Telepon <span className="text-red-500">*</span></label>
+                  <input
+                    id="invoicePhoneNumber"
+                    type="tel"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
+                    placeholder="08xxxxxxxxxx"
+                    value={formData.phoneNumber}
+                    onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            {isEmailMismatch && (
+              <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-700">
+                  Email ini berbeda dari akun login Anda (<strong>{user?.email}</strong>). Invoice pembayaran akan dikirim ke email yang Anda isi di atas.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

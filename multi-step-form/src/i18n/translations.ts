@@ -10,9 +10,6 @@ export const translations = {
 
     // Step Navigation
     step1: "Survey Details",
-    step2: "Configuration & Incentive",
-    step3: "Personal Data",
-    step4: "Review & Payment",
 
     // Step One - Survey Source Selection
     surveyDetails: "Survey Details",
@@ -181,43 +178,6 @@ export const translations = {
     respondentCriteriaHelp: "Respondent criteria are displayed on the ad *only as a guide*. Since this service advertises surveys to a *random audience profile*, the characteristics of respondents who participate may vary.",
 
 
-    // Step Three Fields
-    contactInformation: "Contact Information",
-    academicInformation: "Academic Information",
-    referralSourceTitle: "How Did You Find Us?",
-
-    fullNameLabel: "Full Name",
-    fullNamePlaceholder: "e.g., John Doe",
-    fullNameHelp: "Enter full name as per ID card",
-
-    emailLabel: "Email",
-    emailPlaceholder: "e.g., john.doe@university.ac.id",
-    emailHelp: "Active email for payment notifications",
-
-    phoneNumberLabel: "Phone Number",
-    phoneNumberPlaceholder: "e.g., 081234567890",
-    phoneNumberHelp: "Format: 08xxxxxxxxxx (without spaces or dashes)",
-
-    universityLabel: "University",
-    universityPlaceholder: "e.g., University of Indonesia",
-    universityHelp: "Name of university or educational institution",
-
-    departmentLabel: "Department / Faculty",
-    departmentPlaceholder: "e.g., Computer Science",
-    departmentHelp: "Your department or faculty",
-
-    statusLabel: "Academic Status",
-    statusPlaceholder: "Select academic status",
-    statusHelp: "Select your current academic status",
-
-    referralSourceLabel: "Where did you hear about Jakpat for Universities?",
-    referralSourcePlaceholder: "Select source",
-    referralSourceHelp: "Select where you found out about us",
-
-    referralSourceOtherLabel: "Specify Source",
-    referralSourceOtherPlaceholder: "Specify source",
-    referralSourceOtherHelp: "Required if 'Other' is selected",
-
     // Step One Method Selection
     startByFillingData: "Start by filling in survey data",
     chooseMethodSuitable: "Choose the method that suits you best.",
@@ -330,16 +290,10 @@ export const translations = {
     errorMinPrize: "Minimum Rp 25,000 per winner",
     errorFixFields: "Please fix the problematic fields",
 
-    // Validation Error Messages - StepThree
+    // Validation Error Messages - Invoice contact (StepCheckout)
     errorFullNameEmpty: "Full name cannot be empty",
-    errorEmailEmpty: "Email cannot be empty",
     errorEmailInvalid: "Invalid email format",
-    errorPhoneEmpty: "Phone number cannot be empty",
     errorPhoneMinLength: "Phone number minimum 10 digits",
-    errorUniversityEmpty: "University cannot be empty",
-    errorDepartmentEmpty: "Department cannot be empty",
-    errorStatusRequired: "Academic status must be selected",
-    errorReferralSourceOther: "Please specify other information source",
 
     // Validation Error Messages - StepFour
     errorCompleteAllSurveyData: "Please complete all survey data",
@@ -442,9 +396,6 @@ export const translations = {
 
     // Step Navigation
     step1: "Detail Survey",
-    step2: "Konfigurasi & Insentif",
-    step3: "Data Diri",
-    step4: "Review & Pembayaran",
 
     // Step One - Survey Source Selection
     surveyDetails: "Detail Survey",
@@ -546,46 +497,6 @@ export const translations = {
     respondentCriteriaPlaceholder: "Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif",
     respondentCriteriaLabel: "Kriteria Responden",
     respondentCriteriaHelp: "Kriteria responden ditampilkan pada iklan *hanya sebagai panduan*. Karena layanan ini mengiklankan survei ke *audiens berprofil random*, karakteristik responden yang mengisi dapat beragam.",
-
-    // Step Two Fields
-
-
-    // Step Three Fields
-    contactInformation: "Informasi Kontak",
-    academicInformation: "Informasi Akademik",
-    referralSourceTitle: "Dari Mana Anda Mengetahui Kami?",
-
-    fullNameLabel: "Nama Lengkap",
-    fullNamePlaceholder: "Contoh: Budi Santoso",
-    fullNameHelp: "Masukkan nama lengkap sesuai KTP",
-
-    emailLabel: "Email",
-    emailPlaceholder: "Contoh: budi.santoso@university.ac.id",
-    emailHelp: "Email aktif untuk notifikasi pembayaran",
-
-    phoneNumberLabel: "No Telepon",
-    phoneNumberPlaceholder: "Contoh: 081234567890",
-    phoneNumberHelp: "Format: 08xxxxxxxxxx (tanpa spasi atau tanda hubung)",
-
-    universityLabel: "Universitas",
-    universityPlaceholder: "Contoh: Universitas Indonesia",
-    universityHelp: "Nama universitas atau institusi pendidikan",
-
-    departmentLabel: "Jurusan / Fakultas",
-    departmentPlaceholder: "Contoh: Ilmu Komputer",
-    departmentHelp: "Jurusan atau fakultas Anda",
-
-    statusLabel: "Status Akademik",
-    statusPlaceholder: "Pilih status akademik",
-    statusHelp: "Pilih status akademik Anda saat ini",
-
-    referralSourceLabel: "Tahu Jakpat for Universities dari mana?",
-    referralSourcePlaceholder: "Pilih sumber informasi",
-    referralSourceHelp: "Pilih dari mana Anda mengetahui tentang kami",
-
-    referralSourceOtherLabel: "Sebutkan Sumber",
-    referralSourceOtherPlaceholder: "Sebutkan sumber informasi",
-    referralSourceOtherHelp: "Wajib diisi jika memilih 'Lainnya'",
 
     // Step One Method Selection
     startByFillingData: "Mulai dengan mengisi data survei",
@@ -700,16 +611,10 @@ export const translations = {
     errorMinPrize: "Minimal Rp 25.000 per pemenang",
     errorFixFields: "Mohon perbaiki field yang bermasalah",
 
-    // Validation Error Messages - StepThree
+    // Validation Error Messages - Kontak invoice (StepCheckout)
     errorFullNameEmpty: "Nama lengkap tidak boleh kosong",
-    errorEmailEmpty: "Email tidak boleh kosong",
     errorEmailInvalid: "Format email tidak valid",
-    errorPhoneEmpty: "Nomor telepon tidak boleh kosong",
     errorPhoneMinLength: "Nomor telepon minimal 10 digit",
-    errorUniversityEmpty: "Universitas tidak boleh kosong",
-    errorDepartmentEmpty: "Jurusan tidak boleh kosong",
-    errorStatusRequired: "Status akademik harus dipilih",
-    errorReferralSourceOther: "Sebutkan sumber informasi lainnya",
 
     // Validation Error Messages - StepFour
     errorCompleteAllSurveyData: "Mohon lengkapi semua data survey",
