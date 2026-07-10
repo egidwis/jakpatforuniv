@@ -105,6 +105,7 @@ export async function onRequestGet(context) {
             .from('survey_pages')
             .select('*, form_submissions!submission_id(prize_per_winner, winner_count)')
             .eq('is_published', true)
+            .or('is_hidden.eq.false,is_hidden.is.null')
             // Base order; final ordering is applied in JS via compareDisplayOrder
             // (manual display_order, then type priority, then recency).
             .order('created_at', { ascending: false });
