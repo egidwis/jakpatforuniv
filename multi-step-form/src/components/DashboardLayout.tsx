@@ -7,7 +7,7 @@ import {
   MessageSquare,
   LogOut,
   User,
-  UserCircle
+  ChevronRight
 } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -54,13 +54,10 @@ export function DashboardLayout() {
       label: 'Support',
       path: '/dashboard/chat',
       icon: <MessageSquare className="w-5 h-5" />
-    },
-    {
-      label: 'Profil',
-      path: '/dashboard/profile',
-      icon: <UserCircle className="w-5 h-5" />
     }
   ];
+
+  const isProfileActive = location.pathname.startsWith('/dashboard/profile');
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col md:flex-row">
@@ -114,31 +111,60 @@ export function DashboardLayout() {
             ))}
           </div>
 
-          <div className="p-4 border-t space-y-4">
-            <div className="flex items-center gap-3 px-2">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)' }}>
-                {user?.user_metadata?.avatar_url ? (
-                  <img src={user.user_metadata.avatar_url} alt="Profile" className="w-8 h-8 rounded-full" />
-                ) : (
-                  <User className="w-4 h-4" style={{ color: '#0091ff' }} />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-gray-900 dark:text-white">
-                  {user?.user_metadata?.full_name || 'User'}
-                </p>
-                <p className="text-xs text-gray-500 truncate">
-                  {user?.email}
-                </p>
-              </div>
+          <div className="p-4 border-t space-y-3">
+            {/* Language Switcher */}
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-gray-400 dark:text-gray-500 font-medium tracking-wide uppercase">Language</span>
+              <LanguageSwitcher />
             </div>
 
-            <div className="flex items-center gap-2 justify-between">
-              <div className="flex gap-1">
+            {/* Divider */}
+            <div className="border-t border-gray-100 dark:border-gray-700" />
 
-                <LanguageSwitcher />
-              </div>
-              <Button variant="ghost" size="icon" onClick={handleSignOut} title="Sign Out" className="text-red-500 hover:text-red-600 hover:bg-red-50">
+            {/* Profile Link + Sign Out */}
+            <div className="flex items-center gap-2">
+              <Link
+                to="/dashboard/profile"
+                onClick={() => setIsSidebarOpen(false)}
+                title="Lihat Profil"
+                className={`
+                  flex items-center gap-3 flex-1 min-w-0 px-2 py-2 rounded-lg transition-all duration-150 group
+                  ${isProfileActive
+                    ? 'dark:bg-blue-900/20 dark:text-blue-400'
+                    : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }
+                `}
+                style={isProfileActive ? { backgroundColor: 'rgba(0, 145, 255, 0.06)' } : {}}
+              >
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ring-2 transition-all duration-150"
+                  style={{
+                    backgroundColor: 'rgba(0, 145, 255, 0.1)',
+                    ringColor: isProfileActive ? '#0091ff' : 'transparent',
+                    boxShadow: isProfileActive ? '0 0 0 2px #0091ff' : '0 0 0 2px transparent'
+                  }}
+                >
+                  {user?.user_metadata?.avatar_url ? (
+                    <img src={user.user_metadata.avatar_url} alt="Profile" className="w-8 h-8 rounded-full" />
+                  ) : (
+                    <User className="w-4 h-4" style={{ color: '#0091ff' }} />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate text-gray-900 dark:text-white">
+                    {user?.user_metadata?.full_name || 'User'}
+                  </p>
+                  <p className="text-xs text-gray-400 truncate">
+                    {user?.email}
+                  </p>
+                </div>
+                <ChevronRight
+                  className="w-4 h-4 flex-shrink-0 text-gray-300 dark:text-gray-600 group-hover:text-gray-400 dark:group-hover:text-gray-400 transition-colors"
+                  style={isProfileActive ? { color: '#0091ff' } : {}}
+                />
+              </Link>
+
+              <Button variant="ghost" size="icon" onClick={handleSignOut} title="Sign Out" className="text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0">
                 <LogOut className="w-4 h-4" />
               </Button>
             </div>

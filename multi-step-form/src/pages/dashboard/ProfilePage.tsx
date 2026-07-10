@@ -3,11 +3,17 @@ import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom
 import { useAuth } from '@/context/AuthContext';
 import { getOwnProfile, updateOwnProfile, isProfileComplete, type ResearcherProfile } from '@/utils/supabase';
 import { ACADEMIC_STATUS_OPTIONS, DEPARTMENT_OPTIONS, UNIVERSITY_OPTIONS, REFERRAL_SOURCE_OPTIONS, collapseReferralSource, expandReferralSource } from '@/constants/biodata';
+import { Combobox } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
-import { Loader2, Menu, User, GraduationCap, Megaphone, Info } from 'lucide-react';
+import { Loader2, Menu, User, GraduationCap, Megaphone, Info, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
-const inputClass = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200 bg-white';
+const getInputClass = (hasError: boolean) => 
+  `w-full px-4 py-2.5 rounded-xl border transition-all duration-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 ${
+    hasError 
+      ? 'border-red-500 hover:border-red-600 focus:ring-red-500/20 focus:border-red-500' 
+      : 'border-gray-200 hover:border-gray-300 focus:ring-blue-500/20 focus:border-blue-500'
+  }`;
 
 /**
  * Halaman profil researcher (konsep 1 akun = 1 researcher).
@@ -35,6 +41,7 @@ export function ProfilePage() {
     const [status, setStatus] = useState('');
     const [referralSource, setReferralSource] = useState('');
     const [referralSourceOther, setReferralSourceOther] = useState('');
+    const [errors, setErrors] = useState<Record<string, string>>({});
 
     useEffect(() => {
         const load = async () => {
@@ -49,6 +56,7 @@ export function ProfilePage() {
                 const ref = expandReferralSource(profile.referral_source);
                 setReferralSource(ref.source);
                 setReferralSourceOther(ref.other);
+                setErrors({});
             } else {
                 setFullName(user?.user_metadata?.full_name || '');
             }
@@ -59,14 +67,41 @@ export function ProfilePage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!fullName.trim()) { toast.error('Mohon isi nama lengkap Anda'); return; }
-        if (!phoneNumber.trim() || phoneNumber.trim().length < 10) { toast.error('Mohon isi nomor telepon yang valid (min. 10 digit)'); return; }
-        if (!university.trim()) { toast.error('Mohon isi universitas/institusi Anda'); return; }
-        if (!department.trim()) { toast.error('Mohon pilih jurusan Anda'); return; }
-        if (!status) { toast.error('Mohon pilih status akademik Anda'); return; }
+        const newErrors: Record<string, string> = {};
+
+        if (!fullName.trim()) {
+            newErrors.fullName = 'Nama lengkap wajib diisi';
+        }
+        if (!phoneNumber.trim()) {
+            newErrors.phoneNumber = 'Nomor telepon wajib diisi';
+        } else if (phoneNumber.trim().length < 10) {
+            newErrors.phoneNumber = 'Nomor telepon minimal 10 digit';
+        }
+        if (!university.trim()) {
+            newErrors.university = 'Universitas wajib diisi';
+        }
+        if (!department.trim()) {
+            newErrors.department = 'Jurusan wajib diisi';
+        }
+        if (!status) {
+            newErrors.status = 'Status akademik wajib diisi';
+        }
+        if (!referralSource) {
+            newErrors.referralSource = 'Sumber informasi wajib dipilih';
+        }
+        if (referralSource === 'Lainnya' && !referralSourceOther.trim()) {
+            newErrors.referralSourceOther = 'Mohon sebutkan sumber informasi Anda';
+        }
+
+        if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors);
+            toast.error('Mohon lengkapi semua kolom wajib dengan benar');
+            return;
+        }
 
         try {
             setSaving(true);
+            setErrors({});
             await updateOwnProfile({
                 full_name: fullName.trim(),
                 phone_number: phoneNumber.trim(),
@@ -101,13 +136,6 @@ export function ProfilePage() {
 
     return (
         <div className="max-w-3xl mx-auto px-6 py-8">
-            {/* Mobile header */}
-            <div className="flex items-center gap-3 mb-6 md:hidden">
-                <Button variant="ghost" size="icon" onClick={toggleSidebar} className="-ml-2 h-9 w-9">
-                    <Menu className="w-5 h-5 text-gray-700" />
-                </Button>
-                <span className="text-sm font-semibold text-gray-700">Profil</span>
-            </div>
 
             <div className="mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">
@@ -120,14 +148,22 @@ export function ProfilePage() {
                 </p>
             </div>
 
-            {isOnboarding && (
-                <div className="flex items-start gap-2 mb-6 p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                    <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-blue-700">
-                        1 akun = 1 researcher. Detail invoice per order tetap bisa diubah saat checkout tanpa mengubah profil ini.
-                    </p>
+            {/* Callout Info Card (Always Visible) */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 dark:from-blue-950/20 dark:to-indigo-950/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-6 mb-8 flex gap-4 items-start shadow-sm">
+                <div className="p-2 bg-blue-500/10 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400 rounded-xl flex-shrink-0 mt-0.5">
+                    <Sparkles className="w-5 h-5" />
                 </div>
-            )}
+                <div className="space-y-2 flex-1">
+                    <h4 className="text-sm font-semibold text-blue-950 dark:text-blue-100">Biar risetmu makin gampang! 🚀</h4>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed font-medium">
+                        Lengkapi profil kampusmu yuk! Ini bakal bantu kami ngasih <strong>layanan yang lebih baik sesuai kebutuhanmu</strong> dan otomatis ngisi detail invoice biar sesuai format kampusmu.
+                    </p>
+                    <div className="flex items-center gap-1.5 pt-1 text-[11px] text-blue-600/80 dark:text-blue-400/80 font-medium">
+                        <Info className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Tenang aja, detail invoice tetap bisa diubah bebas kok pas checkout!</span>
+                    </div>
+                </div>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-6" noValidate>
                 {/* Kontak */}
@@ -141,13 +177,33 @@ export function ProfilePage() {
                     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                             <label htmlFor="fullName" className="text-sm font-medium text-gray-700">Nama Lengkap <span className="text-red-500">*</span></label>
-                            <input id="fullName" type="text" className={inputClass} value={fullName}
-                                onChange={(e) => setFullName(e.target.value)} placeholder="Nama lengkap Anda" />
+                            <input 
+                                id="fullName" 
+                                type="text" 
+                                className={getInputClass(!!errors.fullName)} 
+                                value={fullName}
+                                onChange={(e) => {
+                                    setFullName(e.target.value);
+                                    if (errors.fullName) setErrors(prev => { const copy = { ...prev }; delete copy.fullName; return copy; });
+                                }} 
+                                placeholder="Nama lengkap Anda" 
+                            />
+                            {errors.fullName && <p className="text-xs text-red-500 font-medium mt-1">{errors.fullName}</p>}
                         </div>
                         <div className="space-y-2">
                             <label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">No Telepon <span className="text-red-500">*</span></label>
-                            <input id="phoneNumber" type="tel" className={inputClass} value={phoneNumber}
-                                onChange={(e) => setPhoneNumber(e.target.value)} placeholder="08xxxxxxxxxx" />
+                            <input 
+                                id="phoneNumber" 
+                                type="tel" 
+                                className={getInputClass(!!errors.phoneNumber)} 
+                                value={phoneNumber}
+                                onChange={(e) => {
+                                    setPhoneNumber(e.target.value);
+                                    if (errors.phoneNumber) setErrors(prev => { const copy = { ...prev }; delete copy.phoneNumber; return copy; });
+                                }} 
+                                placeholder="08xxxxxxxxxx" 
+                            />
+                            {errors.phoneNumber && <p className="text-xs text-red-500 font-medium mt-1">{errors.phoneNumber}</p>}
                         </div>
                     </div>
                 </div>
@@ -163,29 +219,51 @@ export function ProfilePage() {
                     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                             <label htmlFor="university" className="text-sm font-medium text-gray-700">Universitas <span className="text-red-500">*</span></label>
-                            <input id="university" type="text" list="university-options" className={inputClass} value={university}
-                                onChange={(e) => setUniversity(e.target.value)} placeholder="Ketik atau pilih universitas" />
-                            <datalist id="university-options">
-                                {UNIVERSITY_OPTIONS.map(opt => <option key={opt} value={opt} />)}
-                            </datalist>
+                            <Combobox 
+                                id="university" 
+                                value={university} 
+                                onChange={(val) => {
+                                    setUniversity(val);
+                                    if (errors.university) setErrors(prev => { const copy = { ...prev }; delete copy.university; return copy; });
+                                }} 
+                                options={UNIVERSITY_OPTIONS} 
+                                placeholder="Ketik atau pilih universitas" 
+                                error={!!errors.university}
+                            />
+                            {errors.university && <p className="text-xs text-red-500 font-medium mt-1">{errors.university}</p>}
                         </div>
                         <div className="space-y-2">
                             <label htmlFor="department" className="text-sm font-medium text-gray-700">Jurusan <span className="text-red-500">*</span></label>
-                            <input id="department" type="text" list="department-options" className={inputClass} value={department}
-                                onChange={(e) => setDepartment(e.target.value)} placeholder="Ketik atau pilih jurusan" />
-                            <datalist id="department-options">
-                                {DEPARTMENT_OPTIONS.map(opt => <option key={opt} value={opt} />)}
-                            </datalist>
+                            <Combobox 
+                                id="department" 
+                                value={department} 
+                                onChange={(val) => {
+                                    setDepartment(val);
+                                    if (errors.department) setErrors(prev => { const copy = { ...prev }; delete copy.department; return copy; });
+                                }} 
+                                options={DEPARTMENT_OPTIONS} 
+                                placeholder="Ketik atau pilih jurusan" 
+                                error={!!errors.department}
+                            />
+                            {errors.department && <p className="text-xs text-red-500 font-medium mt-1">{errors.department}</p>}
                         </div>
                         <div className="space-y-2 md:col-span-2">
                             <label htmlFor="status" className="text-sm font-medium text-gray-700">Status Akademik <span className="text-red-500">*</span></label>
-                            <select id="status" className={`${inputClass} appearance-none`} value={status}
-                                onChange={(e) => setStatus(e.target.value)}>
+                            <select 
+                                id="status" 
+                                className={`${getInputClass(!!errors.status)} appearance-none`} 
+                                value={status}
+                                onChange={(e) => {
+                                    setStatus(e.target.value);
+                                    if (errors.status) setErrors(prev => { const copy = { ...prev }; delete copy.status; return copy; });
+                                }}
+                            >
                                 <option value="">Pilih status akademik Anda saat ini</option>
                                 {ACADEMIC_STATUS_OPTIONS.map(opt => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
                             </select>
+                            {errors.status && <p className="text-xs text-red-500 font-medium mt-1">{errors.status}</p>}
                         </div>
                     </div>
                 </div>
@@ -196,19 +274,41 @@ export function ProfilePage() {
                         <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
                             <Megaphone size={18} />
                         </div>
-                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Dari Mana Anda Mengetahui Kami?</h3>
+                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                            Dari Mana Anda Mengetahui Kami? <span className="text-red-500">*</span>
+                        </h3>
                     </div>
                     <div className="p-6 space-y-4">
-                        <select className={`${inputClass} appearance-none`} value={referralSource}
-                            onChange={(e) => { setReferralSource(e.target.value); if (e.target.value !== 'Lainnya') setReferralSourceOther(''); }}>
-                            <option value="">Pilih salah satu (opsional)</option>
+                        <select 
+                            className={`${getInputClass(!!errors.referralSource)} appearance-none`} 
+                            value={referralSource}
+                            onChange={(e) => { 
+                                setReferralSource(e.target.value); 
+                                if (e.target.value !== 'Lainnya') setReferralSourceOther(''); 
+                                if (errors.referralSource) setErrors(prev => { const copy = { ...prev }; delete copy.referralSource; return copy; });
+                            }}
+                        >
+                            <option value="">Pilih salah satu</option>
                             {REFERRAL_SOURCE_OPTIONS.map(opt => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
                         </select>
+                        {errors.referralSource && <p className="text-xs text-red-500 font-medium mt-1">{errors.referralSource}</p>}
+                        
                         {referralSource === 'Lainnya' && (
-                            <input type="text" className={inputClass} value={referralSourceOther}
-                                onChange={(e) => setReferralSourceOther(e.target.value)} placeholder="Sebutkan sumbernya" />
+                            <div className="space-y-2">
+                                <input 
+                                    type="text" 
+                                    className={getInputClass(!!errors.referralSourceOther)} 
+                                    value={referralSourceOther}
+                                    onChange={(e) => {
+                                        setReferralSourceOther(e.target.value);
+                                        if (errors.referralSourceOther) setErrors(prev => { const copy = { ...prev }; delete copy.referralSourceOther; return copy; });
+                                    }} 
+                                    placeholder="Sebutkan sumbernya" 
+                                />
+                                {errors.referralSourceOther && <p className="text-xs text-red-500 font-medium mt-1">{errors.referralSourceOther}</p>}
+                            </div>
                         )}
                     </div>
                 </div>
