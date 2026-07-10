@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check, Download, Loader2, Users, AlertTriangle, GripVertical } from 'lucide-react';
+import { Search, ExternalLink, RefreshCw, PenLine, Plus, Trophy, ChevronLeft, ChevronRight, Check, Download, Loader2, Users, AlertTriangle, GripVertical, EyeOff, Eye } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsManagerView } from './SubmissionsManagerView';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ interface PageData {
     slug: string;
     title: string;
     is_published: boolean;
+    is_hidden?: boolean;
     is_extra_ad: boolean;
     views_count: number;
     publish_start_date: string | null;
@@ -385,6 +386,25 @@ export function PublishPageManagement() {
         fetchPages(); // Refresh data
     };
 
+    const handleToggleHide = async (page: PageData) => {
+        const action = page.is_hidden ? 'menampilkan kembali' : 'menyembunyikan';
+        if (!confirm(`Yakin ingin ${action} halaman "${page.title}" dari API Mobile App?`)) return;
+        
+        try {
+            const { error } = await supabase
+                .from('survey_pages')
+                .update({ is_hidden: !page.is_hidden })
+                .eq('id', page.id);
+                
+            if (error) throw error;
+            toast.success(`Halaman berhasil ${page.is_hidden ? 'ditampilkan' : 'disembunyikan'} dari Mobile App`);
+            await fetchPages();
+        } catch (error) {
+            console.error('Error toggling hide page:', error);
+            toast.error(`Gagal ${page.is_hidden ? 'menampilkan' : 'menyembunyikan'} halaman`);
+        }
+    };
+
     // Sort by status priority: Draft > Scheduled > Live > Finished
     const getStatusPriority = (page: PageData) => {
         const now = new Date();
@@ -601,10 +621,18 @@ export function PublishPageManagement() {
                                         ) : (
                                             <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full text-[11px] border border-blue-100 shrink-0">Survey Ad</span>
                                         )}
+                                        {page.is_hidden && (
+                                            <span className="font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full text-[11px] border border-red-100 shrink-0" title="Hidden from Mobile API">Hidden</span>
+                                        )}
                                         <span className="text-[11px] text-gray-400 shrink-0 hidden md:inline">{page.views_count || 0} views</span>
-                                        <Button variant="outline" size="sm" onClick={() => handleEditPage(page)} title="Edit Page" className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 border-gray-200 shrink-0">
-                                            <PenLine className="w-4 h-4" />
-                                        </Button>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <Button variant="outline" size="sm" onClick={() => handleToggleHide(page)} title={page.is_hidden ? "Show on Mobile App" : "Hide from Mobile App"} className={`h-8 w-8 p-0 border-gray-200 ${page.is_hidden ? 'text-blue-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50' : 'text-gray-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50'}`}>
+                                                {page.is_hidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                            </Button>
+                                            <Button variant="outline" size="sm" onClick={() => handleEditPage(page)} title="Edit Page" className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 border-gray-200">
+                                                <PenLine className="w-4 h-4" />
+                                            </Button>
+                                        </div>
                                     </li>
                                 ))}
                             </ul>
