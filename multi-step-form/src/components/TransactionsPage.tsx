@@ -131,7 +131,7 @@ export function TransactionsPage() {
     : null;
 
   const handleExportCsv = () => {
-    const headers = ['Transaction ID', 'Survey Title', 'Researcher', 'Payment Method', 'Payment Channel', 'Amount', 'Status', 'Created At', 'Payment ID'];
+    const headers = ['Transaction ID', 'Survey Title', 'Researcher', 'Payment Method', 'Payment Channel', 'Amount', 'Status', 'Created At', 'Invoice Number'];
     const csvContent = [
       headers.join(','),
       ...filteredTransactions.map((t) =>
@@ -380,7 +380,7 @@ export function TransactionsPage() {
               {/* Sticky column header */}
               <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                 <span className="hidden sm:block w-[76px] shrink-0">Tanggal</span>
-                <span className="hidden md:block w-[110px] shrink-0">ID</span>
+                <span className="hidden md:block w-[200px] shrink-0">Invoice</span>
                 <span className="flex-1">Survei</span>
                 <span className="shrink-0 sm:w-[110px] text-right">Total</span>
                 <span className="shrink-0 sm:w-[88px]">Status</span>
@@ -395,7 +395,7 @@ export function TransactionsPage() {
                         <div className="h-3 w-14 bg-gray-200 animate-pulse rounded mb-1" />
                         <div className="h-2.5 w-10 bg-gray-100 animate-pulse rounded" />
                       </div>
-                      <div className="hidden md:block w-[110px] shrink-0">
+                      <div className="hidden md:block w-[200px] shrink-0">
                         <div className="h-4 w-full bg-gray-100 animate-pulse rounded" />
                       </div>
                       <div className="flex-1 min-w-0">
