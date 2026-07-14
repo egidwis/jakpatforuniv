@@ -9,6 +9,7 @@ import { fetchSlotAvailability } from '../utils/supabase';
 import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY, SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
+import { Switch } from './ui/switch';
 import {
   Ticket,
   Wallet,
@@ -24,7 +25,6 @@ import {
   ExternalLink,
   CalendarCheck,
   User,
-  GraduationCap,
   Mail,
   Phone,
   Zap
@@ -56,7 +56,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
 
   // Detail Invoice: default diambil dari data akun (profil + auth); toggle OFF
   // untuk mengisi kontak invoice custom khusus order ini (tidak mengubah profil).
-  const [useAccountData, setUseAccountData] = useState(true);
+  const [useAccountData, setUseAccountData] = useState(false);
   const [accountDefaults, setAccountDefaults] = useState<{ fullName: string; email: string; phoneNumber: string } | null>(null);
 
   // Derive auto approval status
@@ -76,26 +76,35 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         phoneNumber: profile?.phone_number || '',
       };
       setAccountDefaults(defaults);
-      // Draft yang membawa kontak custom (mis. reschedule order lama) membuat
-      // toggle mulai dalam keadaan OFF agar nilainya tidak tertimpa.
+      // Cocokkan data hanya jika data formulir tidak kosong
       const matchesAccount =
-        (!formData.fullName || formData.fullName === defaults.fullName) &&
-        (!formData.email || formData.email === defaults.email) &&
-        (!formData.phoneNumber || formData.phoneNumber === defaults.phoneNumber);
+        formData.fullName === defaults.fullName &&
+        formData.email === defaults.email &&
+        formData.phoneNumber === defaults.phoneNumber &&
+        formData.fullName !== '';
       if (matchesAccount) {
         setUseAccountData(true);
-        updateFormData({ fullName: defaults.fullName, email: defaults.email, phoneNumber: defaults.phoneNumber });
       } else {
         setUseAccountData(false);
       }
     });
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, formData.fullName, formData.email, formData.phoneNumber]);
 
   const handleUseAccountDataChange = (checked: boolean) => {
     setUseAccountData(checked);
     if (checked && accountDefaults) {
-      updateFormData({ ...accountDefaults });
+      updateFormData({
+        fullName: accountDefaults.fullName,
+        email: accountDefaults.email,
+        phoneNumber: accountDefaults.phoneNumber
+      });
+    } else {
+      updateFormData({
+        fullName: '',
+        email: '',
+        phoneNumber: ''
+      });
     }
   };
 
@@ -450,105 +459,134 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         )}
 
         {/* SECTION: SURVEY OVERVIEW (ORDER REQUEST) */}
-        <div className="bg-gradient-to-br from-blue-50 via-white to-indigo-50/40 rounded-xl border border-blue-100 shadow-sm overflow-hidden transition-all duration-200 mb-4">
-          <div className="px-6 py-4 border-b border-blue-100/60 bg-blue-50/30 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FileText size={16} className="text-blue-600" />
-              <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider">{t('orderOverviewTitle')}</h3>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 mb-4 hover:shadow-md">
+          {/* Card Header */}
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600">
+                <FileText size={18} />
+              </div>
+              <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">{t('orderOverviewTitle')}</h3>
             </div>
+            
+            {/* Elegant Header Status Badge for JFU Kilat */}
+            {formData.isKilatUpgrade && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs">
+                <Zap size={11} className="fill-white" />
+                JFU KILAT
+              </span>
+            )}
           </div>
 
-          <div className="p-0">
-            <div className="divide-y divide-blue-100/50">
-              {/* Grup Pertama: Survei & Spesifikasi (Tanpa Pembatas) */}
-              <div className="hover:bg-blue-50/30 transition-colors">
-                {/* Info Survei */}
-                <div className="px-6 pt-5 pb-2 flex flex-col md:flex-row gap-2 md:gap-6">
-                  <div className="w-full md:w-1/4 text-[10px] font-bold text-gray-500 uppercase tracking-wider pt-1">{t('surveyAndTarget')}</div>
-                  <div className="w-full md:w-3/4 flex flex-col gap-2">
-                    <div>
-                      <div className="text-sm font-bold text-gray-900">{formData.title}</div>
-                      <a href={formData.surveyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:underline text-xs break-all mt-0.5">
-                        <ExternalLink size={10} className="shrink-0" />
-                        {formData.surveyUrl}
-                      </a>
-                    </div>
-                    <div className="flex items-start gap-1.5 text-xs text-gray-700 bg-white/80 px-2.5 py-1.5 rounded border border-blue-100/50 inline-flex w-fit max-w-full shadow-sm">
-                      <Target size={12} className="text-rose-500 shrink-0 mt-0.5" />
-                      <span className="line-clamp-2">{formData.criteriaResponden}</span>
-                    </div>
-                  </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Left Column: Survey Information & Target */}
+              <div className="space-y-4">
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">{t('surveyAndTarget')}</div>
+                  <div className="text-base font-bold text-gray-900 mb-1">{formData.title}</div>
+                  <a 
+                    href={formData.surveyUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 hover:underline text-xs break-all"
+                  >
+                    <ExternalLink size={12} className="shrink-0" />
+                    {formData.surveyUrl}
+                  </a>
                 </div>
-
-                {/* Spesifikasi & Insentif */}
-                <div className="px-6 pt-2 pb-5 flex flex-col md:flex-row gap-2 md:gap-6">
-                  {/* Spacer untuk mensejajarkan konten dengan kolom di atasnya pada tampilan desktop */}
-                  <div className="hidden md:block md:w-1/4"></div>
-                  <div className="w-full md:w-3/4 grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><FileText size={12} /> {t('questionsAndDuration')}</div>
-                      <div className="text-sm font-medium text-gray-900">{formData.questionCount} Qs • {formData.duration} {t('days')}</div>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Gift size={12} /> {t('respondentIncentiveLabel')}</div>
-                      <div className="text-sm font-medium text-gray-900">{formData.winnerCount} {t('winner')}</div>
-                      <div className="text-[11px] text-gray-500">@ Rp {formatRupiah(formData.prizePerWinner)}</div>
-                    </div>
+                
+                <div className="flex items-start gap-2.5 text-xs text-gray-700 bg-gray-50/80 p-3 rounded-lg border border-gray-200/50 shadow-xs max-w-full">
+                  <Target size={14} className="text-rose-500 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold text-gray-600 mb-0.5">Kriteria Responden</div>
+                    <span className="leading-relaxed">{formData.criteriaResponden}</span>
                   </div>
                 </div>
               </div>
 
-              {/* JFU Kilat Mode Active Banner */}
-              {formData.isKilatUpgrade && (
-                <div className="px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-amber-50 to-amber-100 border-y border-amber-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-                      <Zap size={20} className="fill-white" />
+              {/* Right Column: Specification */}
+              <div className="space-y-4">
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Spesifikasi Survei</div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Qs & Duration */}
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center shrink-0">
+                      <FileText size={14} className="text-gray-500" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-amber-900">{t('kilatModeActive')}</h4>
-                      <p className="text-xs text-amber-700 font-medium">{t('kilatBenefitFast')} • {t('kilatBenefitNoPage')}</p>
+                      <div className="text-[10px] font-medium text-gray-400 uppercase">{t('questionsAndDuration')}</div>
+                      <div className="text-xs font-semibold text-gray-900 mt-0.5">
+                        {formData.questionCount} Qs • {formData.isKilatUpgrade ? t('kilatDuration') : `${formData.duration} ${t('days')}`}
+                      </div>
                     </div>
                   </div>
-                  {onUndoKilat && (
-                    <button
-                      onClick={onUndoKilat}
-                      className="px-4 py-2 text-xs font-semibold text-amber-700 bg-white border border-amber-300 rounded-lg shadow-sm hover:bg-amber-50 transition-colors whitespace-nowrap"
-                    >
-                      {t('kilatUndoButton')}
-                    </button>
+
+                  {/* Incentive */}
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center shrink-0">
+                      <Gift size={14} className="text-gray-500" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-medium text-gray-400 uppercase">{t('respondentIncentiveLabel')}</div>
+                      <div className="text-xs font-semibold text-gray-900 mt-0.5">
+                        {formData.winnerCount} {t('winner')}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">@ Rp {formatRupiah(formData.prizePerWinner)}</div>
+                    </div>
+                  </div>
+
+                  {/* Release Schedule (If Auto Approval) */}
+                  {isAutoApproval && formData.startDate && (
+                    <div className="flex gap-2.5 items-start sm:col-span-2">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                        <CalendarCheck size={14} className="text-blue-500" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-medium text-blue-500 uppercase">{t('releaseSchedule')}</div>
+                        <div className="text-xs font-bold text-blue-900 mt-0.5">
+                          {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {
+                            (() => {
+                              const ed = new Date(formData.startDate);
+                              ed.setDate(ed.getDate() + (formData.duration || 1));
+                              return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+                            })()
+                          } (15:00 WIB)
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
-              )}
 
-              {/* Jadwal (If Reserved) */}
-              {isAutoApproval && formData.startDate && (
-                <div className="px-6 py-5 flex flex-col md:flex-row gap-2 md:gap-6 hover:bg-blue-100/50 transition-colors bg-blue-50/50">
-                  <div className="w-full md:w-1/4 text-[10px] font-bold text-blue-600 uppercase tracking-wider pt-1">{t('releaseSchedule')}</div>
-                  <div className="w-full md:w-3/4">
-                    <div className="flex items-center gap-1.5 text-sm font-semibold text-blue-900">
-                      <CalendarCheck size={14} />
-                      {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {
-                        (() => {
-                          const ed = new Date(formData.startDate);
-                          ed.setDate(ed.getDate() + (formData.duration || 1));
-                          return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-                        })()
-                      } (15:00 WIB)
+              </div>
+
+              {/* Mode JFU Kilat Active Banner (Simplified footer) */}
+              {formData.isKilatUpgrade && (
+                <div className="md:col-span-2 border-t border-dashed border-gray-150 pt-4 mt-2 w-full flex flex-col gap-1">
+                  {/* Line 1: Title & Undo Button */}
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2 text-xs text-amber-800 font-bold">
+                      <Zap size={14} className="fill-amber-500 text-amber-500 shrink-0" />
+                      <span>{t('kilatModeActive')}</span>
                     </div>
+                    {onUndoKilat && (
+                      <button
+                        onClick={onUndoKilat}
+                        className="text-xs font-semibold text-gray-400 hover:text-gray-600 hover:underline transition-all whitespace-nowrap"
+                      >
+                        {t('kilatUndoButton')}
+                      </button>
+                    )}
+                  </div>
+                  {/* Line 2: Details */}
+                  <div className="pl-[22px] text-[11px] text-amber-600 leading-relaxed">
+                    {t('kilatBenefitFast')} &bull; {t('kilatBenefitNoPage')}
                   </div>
                 </div>
               )}
 
-              {/* Customer Info — kontak invoice pindah ke kartu Detail Invoice */}
-              <div className="px-6 pt-5 pb-6 flex flex-col md:flex-row gap-2 md:gap-6 hover:bg-blue-50/30 transition-colors">
-                <div className="w-full md:w-1/4 text-[10px] font-bold text-gray-500 uppercase tracking-wider pt-1">{t('ordererData')}</div>
-                <div className="w-full md:w-3/4">
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><GraduationCap size={12} /> {t('institutionAndProfile')}</div>
-                  <div className="text-sm font-medium text-gray-900 line-clamp-1" title={formData.university}>{formData.university}</div>
-                  <div className="text-[11px] text-gray-500">{formData.status} • {formData.department}</div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -560,69 +598,67 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
               <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
                 <User size={18} />
               </div>
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Detail Invoice</h3>
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('invoiceDetailTitle')}</h3>
             </div>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-2.5 select-none">
+              <span className="text-xs font-medium text-gray-600">{t('sameAsAccount')}</span>
+              <Switch
                 checked={useAccountData}
-                onChange={(e) => handleUseAccountDataChange(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 cursor-pointer"
-                style={{ accentColor: '#0091ff' }}
+                onCheckedChange={handleUseAccountDataChange}
+                className="data-[state=unchecked]:!bg-gray-300 data-[state=checked]:!bg-blue-600"
               />
-              <span className="text-xs font-medium text-gray-600">Sama dengan data akun</span>
-            </label>
+            </div>
           </div>
 
           <div className="p-6 space-y-4">
-            <p className="text-xs text-gray-400 -mt-1">Invoice dan notifikasi pembayaran order ini akan dikirim ke kontak berikut.</p>
+            <p className="text-xs text-gray-400 -mt-1">{t('invoiceContactHelp')}</p>
 
             {useAccountData ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><User size={12} /> Nama</div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><User size={12} /> {t('invoiceNameLabel')}</div>
                   <div className="text-sm font-medium text-gray-900">{formData.fullName || '—'}</div>
                 </div>
                 <div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Mail size={12} /> Email</div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Mail size={12} /> {t('invoiceEmailLabel')}</div>
                   <div className="text-sm font-medium text-gray-900 break-all">{formData.email || '—'}</div>
                 </div>
                 <div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Phone size={12} /> No Telepon</div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Phone size={12} /> {t('invoicePhoneLabel')}</div>
                   <div className="text-sm font-medium text-gray-900">{formData.phoneNumber || '—'}</div>
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label htmlFor="invoiceFullName" className="text-sm font-medium text-gray-700">Nama Lengkap <span className="text-red-500">*</span></label>
+                  <label htmlFor="invoiceFullName" className="text-sm font-medium text-gray-700">{t('invoiceNameLabel')} <span className="text-red-500">*</span></label>
                   <input
                     id="invoiceFullName"
                     type="text"
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
-                    placeholder="Nama sesuai KTP"
+                    placeholder={t('invoiceNamePlaceholder')}
                     value={formData.fullName}
                     onChange={(e) => updateFormData({ fullName: e.target.value })}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label htmlFor="invoiceEmail" className="text-sm font-medium text-gray-700">Email Invoice <span className="text-red-500">*</span></label>
+                  <label htmlFor="invoiceEmail" className="text-sm font-medium text-gray-700">{t('invoiceEmailLabel')} <span className="text-red-500">*</span></label>
                   <input
                     id="invoiceEmail"
                     type="email"
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
-                    placeholder="email@contoh.com"
+                    placeholder={t('invoiceEmailPlaceholder')}
                     value={formData.email}
                     onChange={(e) => updateFormData({ email: e.target.value })}
                   />
                 </div>
                 <div className="space-y-1.5 md:col-span-2">
-                  <label htmlFor="invoicePhoneNumber" className="text-sm font-medium text-gray-700">No Telepon <span className="text-red-500">*</span></label>
+                  <label htmlFor="invoicePhoneNumber" className="text-sm font-medium text-gray-700">{t('invoicePhoneLabel')} <span className="text-red-500">*</span></label>
                   <input
                     id="invoicePhoneNumber"
                     type="tel"
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
-                    placeholder="08xxxxxxxxxx"
+                    placeholder={t('invoicePhonePlaceholder')}
                     value={formData.phoneNumber}
                     onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
                   />
@@ -634,106 +670,102 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
               <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
                 <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-amber-700">
-                  Email ini berbeda dari akun login Anda (<strong>{user?.email}</strong>). Invoice pembayaran akan dikirim ke email yang Anda isi di atas.
+                  {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
                 </p>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* SECTION: PROMO CODE */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
-                <Ticket size={18} />
-              </div>
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('promoCode')}</h3>
-            </div>
-            {voucherInfo.isValid && (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                <CheckCircle size={12} />
-                <span>Digunakan</span>
-              </div>
-            )}
-          </div>
+            {/* Divider line */}
+            <hr className="border-gray-100 my-5" />
 
-          <div className="p-6">
-            <label htmlFor="voucherCode" className="text-sm font-medium text-gray-700 mb-2 block">{t('voucherCodeLabel')}</label>
-            <div className="relative">
-              <input
-                id="voucherCode"
-                type="text"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
-                  ${voucherInfo.isValid
-                    ? 'border-emerald-200 focus:ring-emerald-200 bg-emerald-50/30 text-emerald-900'
-                    : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }
-                `}
-                style={!voucherInfo.isValid ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!voucherInfo.isValid) {
-                    if (voucherInfo.isError) {
-                      // If invalid with error (expired, etc), use red
-                      e.target.style.borderColor = '#ef4444'; // red-500
-                      e.target.style.boxShadow = '0 0 0 4px rgba(239, 68, 68, 0.1)';
-                    } else {
-                      // Standard focus
-                      e.target.style.borderColor = '#0091ff';
-                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+            {/* SECTION: PROMO / REFERRAL CODE INLINE */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label htmlFor="voucherCode" className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  {t('voucherTitle')}
+                </label>
+                {voucherInfo.isValid && (
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                    <CheckCircle size={12} />
+                    <span>{t('voucherApplied')}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <input
+                  id="voucherCode"
+                  type="text"
+                  className={`w-full px-4 py-2.5 rounded-xl border text-sm transition-all duration-200
+                    ${voucherInfo.isValid
+                      ? 'border-emerald-200 focus:ring-emerald-200 bg-emerald-50/30 text-emerald-900'
+                      : 'border-gray-200 hover:border-gray-300 bg-white'
                     }
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!voucherInfo.isValid) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={t('voucherCodePlaceholder')}
-                value={formData.voucherCode || ''}
-                onChange={handleVoucherChange}
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                <Ticket size={16} />
-              </div>
-            </div>
-            {voucherInfo.isValid && voucherInfo.message && (
-              <p className="text-xs text-emerald-600 flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2">
-                <CheckCircle className="w-3 h-3" /> {voucherInfo.message}
-              </p>
-            )}
-            {!voucherInfo.isValid && voucherInfo.message && (
-              <p className={`text-xs flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2 ${voucherInfo.isError ? 'text-red-600' : 'text-gray-500'}`}>
-                {voucherInfo.isError ? <AlertTriangle className="w-3 h-3" /> : <Info className="w-3 h-3" />} {voucherInfo.message}
-              </p>
-            )}
-
-            {/* Upgrade CTA */}
-            {voucherInfo.isValid && voucherInfo.isKilatEligible && !formData.isKilatUpgrade && onUpgradeKilat && (
-              <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
-                    <Zap size={16} className="fill-amber-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-sm font-bold text-amber-900">{t('kilatUpgradeTitle')}</h4>
-                    <p className="text-xs text-amber-800 mt-0.5">{t('kilatUpgradeTagline')}</p>
-                    <ul className="text-[11px] text-amber-700 mt-2 space-y-1 font-medium">
-                      <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitFast')}</li>
-                      <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitNoPage')}</li>
-                      <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitPrice')}</li>
-                    </ul>
-                    <button
-                      onClick={onUpgradeKilat}
-                      className="mt-3 w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      {t('kilatUpgradeButton')}
-                    </button>
-                  </div>
+                  `}
+                  style={!voucherInfo.isValid ? { outlineColor: '#0091ff' } : {}}
+                  onFocus={(e) => {
+                    if (!voucherInfo.isValid) {
+                      if (voucherInfo.isError) {
+                        e.target.style.borderColor = '#ef4444';
+                        e.target.style.boxShadow = '0 0 0 4px rgba(239, 68, 68, 0.1)';
+                      } else {
+                        e.target.style.borderColor = '#0091ff';
+                        e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
+                      }
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!voucherInfo.isValid) {
+                      e.target.style.borderColor = '#e5e7eb';
+                      e.target.style.boxShadow = 'none';
+                    }
+                  }}
+                  placeholder={t('voucherPlaceholder')}
+                  value={formData.voucherCode || ''}
+                  onChange={handleVoucherChange}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <Ticket size={16} />
                 </div>
               </div>
-            )}
+              
+              {voucherInfo.isValid && voucherInfo.message && (
+                <p className="text-xs text-emerald-600 flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2">
+                  <CheckCircle className="w-3 h-3" /> {voucherInfo.message}
+                </p>
+              )}
+              {!voucherInfo.isValid && voucherInfo.message && (
+                <p className={`text-xs flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2 ${voucherInfo.isError ? 'text-red-600' : 'text-gray-500'}`}>
+                  {voucherInfo.isError ? <AlertTriangle className="w-3 h-3" /> : <Info className="w-3 h-3" />} {voucherInfo.message}
+                </p>
+              )}
+
+              {/* Upgrade CTA */}
+              {voucherInfo.isValid && voucherInfo.isKilatEligible && !formData.isKilatUpgrade && onUpgradeKilat && (
+                <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+                      <Zap size={16} className="fill-amber-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-bold text-amber-900">{t('kilatUpgradeTitle')}</h4>
+                      <p className="text-xs text-amber-800 mt-0.5">{t('kilatUpgradeTagline')}</p>
+                      <ul className="text-[11px] text-amber-700 mt-2 space-y-1 font-medium">
+                        <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitFast')}</li>
+                        <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitNoPage')}</li>
+                        <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitPrice')}</li>
+                      </ul>
+                      <button
+                        onClick={onUpgradeKilat}
+                        className="mt-3 w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        {t('kilatUpgradeButton')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -858,12 +890,12 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                 ? 'opacity-60 cursor-not-allowed pointer-events-none'
                 : 'hover:shadow-xl hover:-translate-y-0.5'
               }
-            ${(formData.hasPersonalDataQuestions || formData.voucherCode?.toUpperCase() === 'JFUFEB')
+            ${!isAutoApproval
                 ? 'bg-amber-500 hover:bg-amber-600'
                 : 'shadow-lg hover:shadow-xl'
               }
           `}
-            style={!(formData.hasPersonalDataQuestions || formData.voucherCode?.toUpperCase() === 'JFUFEB') ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
+            style={isAutoApproval ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
           >
             {isSubmitting ? (
               <>
@@ -873,7 +905,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                 </svg>
                 Memproses...
               </>
-            ) : (formData.hasPersonalDataQuestions || formData.voucherCode?.toUpperCase() === 'JFUFEB') ? (
+            ) : !isAutoApproval ? (
               <>
                 <Send size={18} />
                 {t('submitForReview')}

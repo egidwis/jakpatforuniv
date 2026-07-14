@@ -21,6 +21,12 @@ export function DashboardLayout() {
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [profileIncomplete, setProfileIncomplete] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+
+  // Reset avatar error when user profile changes
+  useEffect(() => {
+    setAvatarError(false);
+  }, [user?.user_metadata?.avatar_url]);
 
   // Banner ajakan melengkapi profil (user Google / user lama). Dicek ulang tiap
   // pindah halaman agar hilang segera setelah profil dilengkapi.
@@ -144,8 +150,13 @@ export function DashboardLayout() {
                     boxShadow: isProfileActive ? '0 0 0 2px #0091ff' : '0 0 0 2px transparent'
                   }}
                 >
-                  {user?.user_metadata?.avatar_url ? (
-                    <img src={user.user_metadata.avatar_url} alt="Profile" className="w-8 h-8 rounded-full" />
+                  {user?.user_metadata?.avatar_url && !avatarError ? (
+                    <img 
+                      src={user.user_metadata.avatar_url} 
+                      alt="Profile" 
+                      className="w-8 h-8 rounded-full object-cover" 
+                      onError={() => setAvatarError(true)}
+                    />
                   ) : (
                     <User className="w-4 h-4" style={{ color: '#0091ff' }} />
                   )}

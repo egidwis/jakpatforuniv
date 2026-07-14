@@ -16,11 +16,23 @@ export default function RequireCompleteProfile({ children }: { children: React.R
 
     useEffect(() => {
         let cancelled = false;
-        getOwnProfile().then((profile) => {
+        
+        const checkStatus = async () => {
+            const [profile, { data }] = await Promise.all([
+                getOwnProfile(),
+                import('../utils/supabase').then(m => m.supabase.auth.getUser())
+            ]);
+            
             if (cancelled) return;
-            setComplete(isProfileComplete(profile));
+            
+            const isDbComplete = isProfileComplete(profile);
+            const hasFilledAfterRelease = data.user?.user_metadata?.profile_filled_v2 === true;
+
+            setComplete(isDbComplete && hasFilledAfterRelease);
             setChecking(false);
-        });
+        };
+        
+        checkStatus();
         return () => { cancelled = true; };
     }, []);
 

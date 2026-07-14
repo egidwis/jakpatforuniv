@@ -124,20 +124,10 @@ export function MultiStepForm() {
       currentStep
     }));
   }, [formData, currentStep]);
-
-   // Auto-fill form data from logged-in user
+    // Auto-fill form data from logged-in user
   useEffect(() => {
     const loadUserData = async () => {
       if (user) {
-        // 1. Basic auth data - Always set from auth (this is the identity fix)
-        setFormData(prev => {
-          return {
-            ...prev,
-            email: prev.email || user.email || '',
-            fullName: user.user_metadata?.full_name || prev.fullName
-          };
-        });
-
         // 2. Prefill biodata researcher dari profiles (diam-diam — StepTwo
         // sudah dihapus, tapi snapshot form_submissions tetap harus lengkap).
         try {
@@ -146,8 +136,6 @@ export function MultiStepForm() {
             const ref = expandReferralSource(profile.referral_source);
             setFormData(prev => ({
               ...prev,
-              fullName: prev.fullName || profile.full_name || '',
-              phoneNumber: prev.phoneNumber || profile.phone_number || '',
               university: prev.university || profile.university || '',
               department: prev.department || profile.department || '',
               status: prev.status || profile.status || '',
@@ -167,7 +155,6 @@ export function MultiStepForm() {
               const latest = previousSubmissions[0];
               setFormData(prev => ({
                 ...prev,
-                phoneNumber: prev.phoneNumber || latest.phone_number || '',
                 university: prev.university || latest.university || '',
                 department: prev.department || latest.department || '',
                 status: prev.status || latest.status || ''

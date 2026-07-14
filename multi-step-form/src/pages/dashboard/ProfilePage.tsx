@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { getOwnProfile, updateOwnProfile, isProfileComplete, type ResearcherProfile } from '@/utils/supabase';
+import { getOwnProfile, updateOwnProfile, isProfileComplete, type ResearcherProfile, supabase } from '@/utils/supabase';
 import { ACADEMIC_STATUS_OPTIONS, DEPARTMENT_OPTIONS, UNIVERSITY_OPTIONS, REFERRAL_SOURCE_OPTIONS, collapseReferralSource, expandReferralSource } from '@/constants/biodata';
 import { Combobox } from '@/components/ui/combobox';
-import { Button } from '@/components/ui/button';
-import { Loader2, Menu, User, GraduationCap, Megaphone, Info, Sparkles } from 'lucide-react';
+import { Loader2, User, GraduationCap, Megaphone, Info, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLanguage } from '@/i18n/LanguageContext';
 
 const getInputClass = (hasError: boolean) => 
   `w-full px-4 py-2.5 rounded-xl border transition-all duration-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 ${
@@ -14,6 +14,35 @@ const getInputClass = (hasError: boolean) =>
       ? 'border-red-500 hover:border-red-600 focus:ring-red-500/20 focus:border-red-500' 
       : 'border-gray-200 hover:border-gray-300 focus:ring-blue-500/20 focus:border-blue-500'
   }`;
+
+// Dynamic translations helper for options
+const getAcademicStatusLabel = (val: string, t: any) => {
+    switch (val) {
+        case 'Dosen': return t('academicStatusDosen');
+        case 'Mahasiswa S3 (Doktor)': return t('academicStatusS3');
+        case 'Mahasiswa S2 (Master)': return t('academicStatusS2');
+        case 'Mahasiswa S1 (Sarjana)': return t('academicStatusS1');
+        case 'Mahasiswa D3 (Diploma)': return t('academicStatusD3');
+        case 'Pelajar SMA/SMK': return t('academicStatusSMA');
+        default: return val;
+    }
+};
+
+const getReferralLabel = (val: string, t: any) => {
+    switch (val) {
+        case 'Tiktok': return t('referralTiktok');
+        case 'Instagram': return t('referralInstagram');
+        case 'LinkedIn': return t('referralLinkedIn');
+        case 'Website Jakpat': return t('referralWebsiteJakpat');
+        case 'Blog Jakpat': return t('referralBlogJakpat');
+        case 'Google Search': return t('referralGoogleSearch');
+        case 'Chat GPT': return t('referralChatGPT');
+        case 'Rekomendasi Dosen': return t('referralRekomendasiDosen');
+        case 'Rekomendasi Teman': return t('referralRekomendasiTeman');
+        case 'Lainnya': return t('referralLainnya');
+        default: return val;
+    }
+};
 
 /**
  * Halaman profil researcher (konsep 1 akun = 1 researcher).
@@ -25,7 +54,7 @@ const getInputClass = (hasError: boolean) =>
  */
 export function ProfilePage() {
     const { user } = useAuth();
-    const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
+    const { t } = useLanguage();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const nextPath = searchParams.get('next');
@@ -46,9 +75,14 @@ export function ProfilePage() {
     useEffect(() => {
         const load = async () => {
             const profile: ResearcherProfile | null = await getOwnProfile();
-            setIsOnboarding(!isProfileComplete(profile));
-            if (profile) {
-                setFullName(profile.full_name || user?.user_metadata?.full_name || '');
+            const complete = isProfileComplete(profile);
+            setIsOnboarding(!complete);
+            
+            // Cek apakah profil sudah pernah disimpan setelah rilis ini (lewat user_metadata)
+            const hasFilledAfterRelease = user?.user_metadata?.profile_filled_v2 === true;
+
+            if (profile && complete && hasFilledAfterRelease) {
+                setFullName(profile.full_name || '');
                 setPhoneNumber(profile.phone_number || '');
                 setUniversity(profile.university || '');
                 setDepartment(profile.department || '');
@@ -58,7 +92,14 @@ export function ProfilePage() {
                 setReferralSourceOther(ref.other);
                 setErrors({});
             } else {
-                setFullName(user?.user_metadata?.full_name || '');
+                setFullName('');
+                setPhoneNumber('');
+                setUniversity('');
+                setDepartment('');
+                setStatus('');
+                setReferralSource('');
+                setReferralSourceOther('');
+                setErrors({});
             }
             setLoading(false);
         };
@@ -70,32 +111,32 @@ export function ProfilePage() {
         const newErrors: Record<string, string> = {};
 
         if (!fullName.trim()) {
-            newErrors.fullName = 'Nama lengkap wajib diisi';
+            newErrors.fullName = t('errFullNameRequired');
         }
         if (!phoneNumber.trim()) {
-            newErrors.phoneNumber = 'Nomor telepon wajib diisi';
+            newErrors.phoneNumber = t('errPhoneNumberRequired');
         } else if (phoneNumber.trim().length < 10) {
-            newErrors.phoneNumber = 'Nomor telepon minimal 10 digit';
+            newErrors.phoneNumber = t('errPhoneNumberMin');
         }
         if (!university.trim()) {
-            newErrors.university = 'Universitas wajib diisi';
+            newErrors.university = t('errUniversityRequired');
         }
         if (!department.trim()) {
-            newErrors.department = 'Jurusan wajib diisi';
+            newErrors.department = t('errDepartmentRequired');
         }
         if (!status) {
-            newErrors.status = 'Status akademik wajib diisi';
+            newErrors.status = t('errAcademicStatusRequired');
         }
         if (!referralSource) {
-            newErrors.referralSource = 'Sumber informasi wajib dipilih';
+            newErrors.referralSource = t('errReferralRequired');
         }
         if (referralSource === 'Lainnya' && !referralSourceOther.trim()) {
-            newErrors.referralSourceOther = 'Mohon sebutkan sumber informasi Anda';
+            newErrors.referralSourceOther = t('errReferralOtherRequired');
         }
 
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
-            toast.error('Mohon lengkapi semua kolom wajib dengan benar');
+            toast.error(t('fillRequiredFields'));
             return;
         }
 
@@ -112,7 +153,13 @@ export function ProfilePage() {
                     ? collapseReferralSource(referralSource, referralSourceOther)
                     : null,
             });
-            toast.success('Profil berhasil disimpan');
+
+            // Tandai bahwa user sudah mengisi profil setelah rilis ini (simpan ke user_metadata)
+            await supabase.auth.updateUser({
+                data: { profile_filled_v2: true }
+            });
+
+            toast.success(t('profileSaveSuccess'));
             if (nextPath) {
                 navigate(nextPath, { replace: true });
             } else {
@@ -120,7 +167,7 @@ export function ProfilePage() {
             }
         } catch (error: any) {
             console.error('Error saving profile:', error);
-            toast.error(error.message || 'Gagal menyimpan profil');
+            toast.error(error.message || t('profileSaveFailed'));
         } finally {
             setSaving(false);
         }
@@ -139,12 +186,10 @@ export function ProfilePage() {
 
             <div className="mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">
-                    {isOnboarding ? 'Lengkapi Profil Anda' : 'Profil Researcher'}
+                    {isOnboarding ? t('profileCompleteTitle') : t('profileTitle')}
                 </h1>
                 <p className="text-sm text-gray-500 mt-1">
-                    {isOnboarding
-                        ? 'Sebelum memasang survei, lengkapi biodata researcher Anda terlebih dahulu. Cukup sekali — order berikutnya tidak akan menanyakannya lagi.'
-                        : 'Biodata ini dipakai sebagai identitas researcher dan default detail invoice di setiap order.'}
+                    {isOnboarding ? t('onboardingDesc') : t('profileDesc')}
                 </p>
             </div>
 
@@ -154,13 +199,13 @@ export function ProfilePage() {
                     <Sparkles className="w-5 h-5" />
                 </div>
                 <div className="space-y-2 flex-1">
-                    <h4 className="text-sm font-semibold text-blue-950 dark:text-blue-100">Biar risetmu makin gampang! 🚀</h4>
+                    <h4 className="text-sm font-semibold text-blue-950 dark:text-blue-100">{t('makeResearchEasier')}</h4>
                     <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed font-medium">
-                        Lengkapi profil kampusmu yuk! Ini bakal bantu kami ngasih <strong>layanan yang lebih baik sesuai kebutuhanmu</strong> dan otomatis ngisi detail invoice biar sesuai format kampusmu.
+                        {t('profilePageCalloutText')}
                     </p>
                     <div className="flex items-center gap-1.5 pt-1 text-[11px] text-blue-600/80 dark:text-blue-400/80 font-medium">
                         <Info className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>Tenang aja, detail invoice tetap bisa diubah bebas kok pas checkout!</span>
+                        <span>{t('invoiceDetailsChangeable')}</span>
                     </div>
                 </div>
             </div>
@@ -172,11 +217,11 @@ export function ProfilePage() {
                         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
                             <User size={18} />
                         </div>
-                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Data Diri</h3>
+                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('profilePersonalData')}</h3>
                     </div>
                     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                            <label htmlFor="fullName" className="text-sm font-medium text-gray-700">Nama Lengkap <span className="text-red-500">*</span></label>
+                            <label htmlFor="fullName" className="text-sm font-medium text-gray-700">{t('fullName')} <span className="text-red-500">*</span></label>
                             <input 
                                 id="fullName" 
                                 type="text" 
@@ -186,12 +231,12 @@ export function ProfilePage() {
                                     setFullName(e.target.value);
                                     if (errors.fullName) setErrors(prev => { const copy = { ...prev }; delete copy.fullName; return copy; });
                                 }} 
-                                placeholder="Nama lengkap Anda" 
+                                placeholder={t('fullNamePlaceholder')} 
                             />
                             {errors.fullName && <p className="text-xs text-red-500 font-medium mt-1">{errors.fullName}</p>}
                         </div>
                         <div className="space-y-2">
-                            <label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">No Telepon <span className="text-red-500">*</span></label>
+                            <label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">{t('phoneNumber')} <span className="text-red-500">*</span></label>
                             <input 
                                 id="phoneNumber" 
                                 type="tel" 
@@ -214,11 +259,11 @@ export function ProfilePage() {
                         <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
                             <GraduationCap size={18} />
                         </div>
-                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Informasi Akademik</h3>
+                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('academicInfo')}</h3>
                     </div>
                     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                            <label htmlFor="university" className="text-sm font-medium text-gray-700">Universitas <span className="text-red-500">*</span></label>
+                            <label htmlFor="university" className="text-sm font-medium text-gray-700">{t('university')} <span className="text-red-500">*</span></label>
                             <Combobox 
                                 id="university" 
                                 value={university} 
@@ -227,13 +272,13 @@ export function ProfilePage() {
                                     if (errors.university) setErrors(prev => { const copy = { ...prev }; delete copy.university; return copy; });
                                 }} 
                                 options={UNIVERSITY_OPTIONS} 
-                                placeholder="Ketik atau pilih universitas" 
+                                placeholder={t('universityPlaceholder')} 
                                 error={!!errors.university}
                             />
                             {errors.university && <p className="text-xs text-red-500 font-medium mt-1">{errors.university}</p>}
                         </div>
                         <div className="space-y-2">
-                            <label htmlFor="department" className="text-sm font-medium text-gray-700">Jurusan <span className="text-red-500">*</span></label>
+                            <label htmlFor="department" className="text-sm font-medium text-gray-700">{t('department')} <span className="text-red-500">*</span></label>
                             <Combobox 
                                 id="department" 
                                 value={department} 
@@ -242,13 +287,13 @@ export function ProfilePage() {
                                     if (errors.department) setErrors(prev => { const copy = { ...prev }; delete copy.department; return copy; });
                                 }} 
                                 options={DEPARTMENT_OPTIONS} 
-                                placeholder="Ketik atau pilih jurusan" 
+                                placeholder={t('departmentPlaceholder')} 
                                 error={!!errors.department}
                             />
                             {errors.department && <p className="text-xs text-red-500 font-medium mt-1">{errors.department}</p>}
                         </div>
                         <div className="space-y-2 md:col-span-2">
-                            <label htmlFor="status" className="text-sm font-medium text-gray-700">Status Akademik <span className="text-red-500">*</span></label>
+                            <label htmlFor="status" className="text-sm font-medium text-gray-700">{t('academicStatus')} <span className="text-red-500">*</span></label>
                             <select 
                                 id="status" 
                                 className={`${getInputClass(!!errors.status)} appearance-none`} 
@@ -258,9 +303,11 @@ export function ProfilePage() {
                                     if (errors.status) setErrors(prev => { const copy = { ...prev }; delete copy.status; return copy; });
                                 }}
                             >
-                                <option value="">Pilih status akademik Anda saat ini</option>
+                                <option value="">{t('academicStatusPlaceholder')}</option>
                                 {ACADEMIC_STATUS_OPTIONS.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    <option key={opt.value} value={opt.value}>
+                                        {getAcademicStatusLabel(opt.value, t)}
+                                    </option>
                                 ))}
                             </select>
                             {errors.status && <p className="text-xs text-red-500 font-medium mt-1">{errors.status}</p>}
@@ -275,7 +322,7 @@ export function ProfilePage() {
                             <Megaphone size={18} />
                         </div>
                         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
-                            Dari Mana Anda Mengetahui Kami? <span className="text-red-500">*</span>
+                            {t('referralTitle')} <span className="text-red-500">*</span>
                         </h3>
                     </div>
                     <div className="p-6 space-y-4">
@@ -288,9 +335,11 @@ export function ProfilePage() {
                                 if (errors.referralSource) setErrors(prev => { const copy = { ...prev }; delete copy.referralSource; return copy; });
                             }}
                         >
-                            <option value="">Pilih salah satu</option>
+                            <option value="">{t('referralPlaceholder')}</option>
                             {REFERRAL_SOURCE_OPTIONS.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                <option key={opt.value} value={opt.value}>
+                                    {getReferralLabel(opt.value, t)}
+                                </option>
                             ))}
                         </select>
                         {errors.referralSource && <p className="text-xs text-red-500 font-medium mt-1">{errors.referralSource}</p>}
@@ -305,7 +354,7 @@ export function ProfilePage() {
                                         setReferralSourceOther(e.target.value);
                                         if (errors.referralSourceOther) setErrors(prev => { const copy = { ...prev }; delete copy.referralSourceOther; return copy; });
                                     }} 
-                                    placeholder="Sebutkan sumbernya" 
+                                    placeholder={t('referralSourceOtherPlaceholder')} 
                                 />
                                 {errors.referralSourceOther && <p className="text-xs text-red-500 font-medium mt-1">{errors.referralSourceOther}</p>}
                             </div>
@@ -321,7 +370,7 @@ export function ProfilePage() {
                         style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)' }}
                     >
                         {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                        {isOnboarding && nextPath ? 'Simpan & Lanjut Pasang Survei →' : 'Simpan Profil'}
+                        {isOnboarding && nextPath ? t('saveAndContinue') : t('saveProfile')}
                     </button>
                 </div>
             </form>
