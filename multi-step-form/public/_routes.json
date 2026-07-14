@@ -9,8 +9,6 @@
     "/homepage/*",
     "/homepage",
     "/favicon.webp",
-    "/payment-failed.html",
-    "/payment-success.html",
     "/submit-success.html",
     "/survey-disqualified.html",
     "/survey-success.html"

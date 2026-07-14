@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { supabase } from './supabase';
-import type { FormSubmission, Transaction } from './supabase';
 
 interface PaymentData {
   formSubmissionId: string;
@@ -30,12 +29,6 @@ export interface InvoiceData {
 export const getPaymentGatewayProvider = () => 'doku';
 // -------------------------------------------------------------------------------- //
 
-// Doku Simulation detection
-const isDokuSimulationMode = () => {
-  const clientId = import.meta.env.VITE_DOKU_CLIENT_ID;
-  return !clientId || clientId.trim() === '' || clientId.includes('your');
-};
-
 export const checkPaymentGatewayStatus = async (): Promise<boolean> => {
   // DOKU doesn't need a frontend status check — webhook handles everything
   return true;
@@ -46,22 +39,8 @@ export const checkPaymentGatewayStatus = async (): Promise<boolean> => {
 // ==============================================================================
 export const createPayment = async (paymentData: PaymentData) => {
   try {
-    const { formSubmissionId, amount, expiredAt } = paymentData;
+    const { formSubmissionId, expiredAt } = paymentData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
-
-    if (isDokuSimulationMode()) {
-      const simulatedPaymentId = `sim_doku_${Date.now()}`;
-      const transactionData: Transaction = {
-        form_submission_id: formSubmissionId,
-        payment_id: simulatedPaymentId,
-        payment_method: 'simulation',
-        amount,
-        status: 'pending',
-        payment_url: `${origin}/payment-success?id=${formSubmissionId}&simulation=true`
-      };
-      await supabase.from('transactions').insert([transactionData]);
-      return transactionData.payment_url;
-    }
 
     // Payment + invoice/transaction rows are created SERVER-SIDE via
     // /api/doku/create-payment (service_role). The server derives the amount
@@ -116,9 +95,16 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
       payment_due_date: 60 * 24 * 7 // 7 Hari
     };
 
+    // /api/doku/checkout is admin-gated by functions/api/doku/_middleware.js;
+    // callers (SchedulePaymentView, ExtendSection) only exist in the internal
+    // dashboard, so an admin session is always present here.
+    const { data: { session } } = await supabase.auth.getSession();
     const fetchResponse = await fetch(`${origin}/api/doku/checkout`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
       body: JSON.stringify(requestData),
       signal: AbortSignal.timeout(15000)
     });
@@ -140,42 +126,5 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
   } catch (err: any) {
     console.error('Error creating DOKU manual invoice:', err);
     throw new Error(err.message || 'Gagal membuat invoice manual DOKU');
-  }
-};
-
-// ==============================================================================
-// VERIFY PAYMENT & STATUS
-// ==============================================================================
-export const verifyPayment = async (paymentId: string) => {
-  // DOKU uses webhook-based verification — no frontend polling needed
-  return { statusCode: 200, status: 'pending' };
-};
-
-export const updatePaymentStatus = async (paymentId: string, status: string) => {
-  try {
-    const { data: transaction, error: transactionError } = await supabase
-      .from('transactions')
-      .update({ status })
-      .eq('payment_id', paymentId)
-      .select('form_submission_id');
-
-    if (transactionError) throw transactionError;
-
-    if (!transaction || transaction.length === 0) {
-      throw new Error('Transaction not found');
-    }
-
-    const { data: formSubmission, error: formError } = await supabase
-      .from('form_submissions')
-      .update({ payment_status: status })
-      .eq('id', transaction[0].form_submission_id)
-      .select();
-
-    if (formError) throw formError;
-
-    return formSubmission[0] as FormSubmission;
-  } catch (error) {
-    console.error('Error updating payment status:', error);
-    throw error;
   }
 };

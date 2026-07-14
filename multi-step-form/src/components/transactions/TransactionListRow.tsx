@@ -1,6 +1,7 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Copy } from 'lucide-react';
 import { Chip } from '../ui/chip';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import {
   type Transaction,
   formatIDR,
@@ -24,7 +25,7 @@ interface TransactionListRowProps {
  */
 export function TransactionListRow({ transaction, onOpen, active }: TransactionListRowProps) {
   const date = new Date(transaction.created_at);
-  const method = methodChipInfo(transaction.payment_method, transaction.payment_channel);
+  const method = methodChipInfo(transaction.payment_method, transaction.payment_channel, transaction.status);
   const title = transaction.form_submissions?.title || 'Judul tidak tersedia';
 
   return (
@@ -58,10 +59,26 @@ export function TransactionListRow({ transaction, onOpen, active }: TransactionL
         </div>
       </div>
 
-      {/* ID transaksi — hidden below md */}
-      <span className="hidden md:block w-[110px] shrink-0 font-mono text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 truncate">
-        #{transaction.payment_id}
-      </span>
+      {/* ID transaksi (Invoice) — hidden below md */}
+      <div className="hidden md:flex items-center gap-1 w-[200px] shrink-0">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (transaction.payment_id) {
+              navigator.clipboard.writeText(transaction.payment_id)
+                .then(() => toast.success('Invoice disalin'))
+                .catch(() => toast.error('Gagal menyalin'));
+            }
+          }}
+          className="group/copy flex items-center justify-between text-left font-mono text-[11px] text-gray-500 bg-gray-50 hover:bg-gray-100 hover:text-gray-700 border border-gray-200/60 rounded pl-1.5 pr-1 py-0.5 truncate w-full transition-colors"
+          title="Klik untuk menyalin Invoice"
+        >
+          <span className="truncate flex-1">
+            {transaction.payment_id || '—'}
+          </span>
+          <Copy className="w-3.5 h-3.5 text-gray-400 group-hover/copy:text-gray-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+        </button>
+      </div>
 
       {/* Judul survei, peneliti subtitle below (no leading chip) */}
       <div className="flex-1 min-w-0 flex flex-col leading-tight">

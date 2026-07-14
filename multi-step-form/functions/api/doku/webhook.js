@@ -13,10 +13,37 @@ export async function onRequest(context) {
     });
   }
 
+  // ======================================================================
+  // SECRET URL CHECK — must run BEFORE format detection. The format branch
+  // (SNAP / SNAP B2B / Jokul) is chosen from headers the CALLER sends, so an
+  // attacker can pick the weakest branch; the secret only closes that if it
+  // applies to every branch without exception.
+  // Rollout: with WEBHOOK_ENFORCE_SECRET !== 'true' requests without the
+  // secret are still processed but logged (stage A); set it to 'true' once
+  // the DOKU dashboard Notification URL carries ?k=<secret> (stage B).
+  // ======================================================================
+  {
+    const requestUrl = new URL(context.request.url);
+    const providedSecret = requestUrl.searchParams.get('k');
+    const expectedSecret = context.env.DOKU_WEBHOOK_SECRET;
+    const secretOk = !!expectedSecret && providedSecret === expectedSecret;
+
+    if (!secretOk) {
+      if (context.env.WEBHOOK_ENFORCE_SECRET === 'true') {
+        console.error('[webhook] Rejected: missing/invalid ?k= secret (enforcement on)');
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      console.warn('[webhook] MISSING SECRET — request without valid ?k= was still processed (enforcement off). Update the DOKU Notification URL, then set WEBHOOK_ENFORCE_SECRET=true.');
+    }
+  }
+
   try {
     const rawBodyText = await context.request.text();
     const headers = context.request.headers;
-    
+
     const secretKey = context.env.DOKU_SECRET_KEY;
     const ourClientId = context.env.DOKU_CLIENT_ID || context.env.VITE_DOKU_CLIENT_ID;
 
@@ -48,6 +75,9 @@ export async function onRequest(context) {
       const snapTimestamp = headers.get('X-TIMESTAMP') || headers.get('X-Timestamp');
 
       console.log(`[SNAP Webhook] CHANNEL-ID: ${channelId}, X-PARTNER-ID: ${snapPartnerId}, X-EXTERNAL-ID: ${snapExternalId}, X-TIMESTAMP: ${snapTimestamp}`);
+      // Log the real SNAP signature (NOT enforced yet) — material for building
+      // proper SNAP BI HMAC verification from actual payloads, not guesses.
+      console.log(`[SNAP Webhook] Signature headers (logged, not enforced): X-SIGNATURE: ${headers.get('X-SIGNATURE') || headers.get('X-Signature')}`);
 
       if (!snapPartnerId || !snapExternalId || !snapTimestamp) {
         console.error("[SNAP Webhook] Missing required SNAP headers");
@@ -57,9 +87,10 @@ export async function onRequest(context) {
         });
       }
 
-      // Validate that X-PARTNER-ID matches our configured DOKU Client ID
-      if (ourClientId && snapPartnerId !== ourClientId) {
-        console.error(`[SNAP Webhook] X-PARTNER-ID mismatch: got ${snapPartnerId}, expected ${ourClientId}`);
+      // Validate that X-PARTNER-ID matches our configured DOKU Client ID.
+      // Fail-closed: without DOKU_CLIENT_ID configured we cannot validate anyone.
+      if (!ourClientId || snapPartnerId !== ourClientId) {
+        console.error(`[SNAP Webhook] X-PARTNER-ID mismatch or DOKU_CLIENT_ID unset: got ${snapPartnerId}`);
         return new Response(JSON.stringify({ error: "Partner ID mismatch" }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' }
@@ -73,9 +104,10 @@ export async function onRequest(context) {
       // ================================================================
       console.log(`[SNAP B2B Webhook] X-CLIENT-KEY: ${xClientKey}, X-TIMESTAMP: ${xTimestamp}`);
 
-      // Validate that X-CLIENT-KEY matches our configured DOKU Client ID
-      if (ourClientId && xClientKey !== ourClientId) {
-        console.error(`[SNAP B2B Webhook] X-CLIENT-KEY mismatch: got ${xClientKey}, expected ${ourClientId}`);
+      // Validate that X-CLIENT-KEY matches our configured DOKU Client ID.
+      // Fail-closed: without DOKU_CLIENT_ID configured we cannot validate anyone.
+      if (!ourClientId || xClientKey !== ourClientId) {
+        console.error(`[SNAP B2B Webhook] X-CLIENT-KEY mismatch or DOKU_CLIENT_ID unset: got ${xClientKey}`);
         return new Response(JSON.stringify({ error: "Client Key mismatch" }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' }
@@ -245,13 +277,27 @@ export async function onRequest(context) {
     // notification shapes and store the raw code; the frontend maps it to a
     // friendly label. `channel.id` (e.g. "VIRTUAL_ACCOUNT_BCA", "QRIS") is the
     // most descriptive; fall back to service/acquirer/SNAP fields.
+    // Jokul checkout notifications carry channel.id; some shapes only carry
+    // service.id + acquirer.id (e.g. VIRTUAL_ACCOUNT + BSI → combine them);
+    // SNAP VA notifications use virtualAccountData / additionalInfo.channelCode.
+    // formatPaymentChannel() on the frontend maps whatever raw code we store
+    // to a friendly label and prettifies unknown codes.
+    const serviceId = requestData.service?.id || null;
+    const acquirerId = requestData.acquirer?.id || null;
     const paymentChannel =
       requestData.channel?.id ||
-      requestData.service?.id ||
-      requestData.acquirer?.id ||
+      (serviceId && acquirerId ? `${serviceId}_${acquirerId}` : serviceId || acquirerId) ||
       requestData.additionalInfo?.channel ||
+      requestData.additionalInfo?.channelCode ||
+      (requestData.virtualAccountData ? 'VIRTUAL_ACCOUNT' : null) ||
       requestData.paymentType ||
       null;
+
+    if (!paymentChannel && (status === 'SUCCESS' || status === 'PAID')) {
+      // A paid notification whose channel we couldn't extract = a payload
+      // shape we haven't seen; dump it so the chain above can be extended.
+      console.warn('[Webhook] Could not extract payment channel from a success notification. Full payload:', JSON.stringify(requestData));
+    }
 
     if (!invoiceNumber) {
       console.error('Invoice Number / Payment ID not found in webhook data');
@@ -288,6 +334,59 @@ export async function onRequest(context) {
          throw new Error('Supabase credentials not found in environment');
       }
       
+      // ====================================================================
+      // STEP 0: AMOUNT VERIFICATION — must happen BEFORE any DB write.
+      // The transactions PATCH below is the first write; if this check came
+      // after it, a forged webhook could still flip transactions.status to
+      // 'completed' even though the invoice stays unpaid.
+      // SNAP sends paidAmount.value as a decimal STRING (e.g. "10000.00"),
+      // so compare with Number() on BOTH sides.
+      // ====================================================================
+      const lookupHeaders = {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json'
+      };
+      const encodedInvoice = encodeURIComponent(invoiceNumber);
+
+      const invAmountRes = await fetch(
+        `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount&limit=1`,
+        { headers: lookupHeaders }
+      );
+      const invAmountRows = await invAmountRes.json();
+      let expectedAmount = Array.isArray(invAmountRows) && invAmountRows.length > 0
+        ? Number(invAmountRows[0].amount)
+        : null;
+
+      // Legacy rows may exist only in transactions (pre-invoices flow).
+      if (expectedAmount === null) {
+        const txnAmountRes = await fetch(
+          `${supabaseUrl}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount&limit=1`,
+          { headers: lookupHeaders }
+        );
+        const txnAmountRows = await txnAmountRes.json();
+        expectedAmount = Array.isArray(txnAmountRows) && txnAmountRows.length > 0
+          ? Number(txnAmountRows[0].amount)
+          : null;
+      }
+
+      if (expectedAmount !== null && !Number.isNaN(expectedAmount)) {
+        const webhookAmount = Number(amount);
+        if (Number.isNaN(webhookAmount) || webhookAmount !== expectedAmount) {
+          // Do NOT write anything; reply 200 so DOKU stops retrying. Status
+          // stays 'pending' for an admin to reconcile.
+          console.error(`[Webhook] AMOUNT MISMATCH for ${invoiceNumber}: webhook amount=${JSON.stringify(amount)}, expected=${expectedAmount}. No DB writes performed. Raw payload was logged above.`);
+          return new Response(JSON.stringify({
+            success: false,
+            message: 'Amount mismatch — notification ignored',
+            invoiceNumber
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+
       // ====================================================================
       // STEP 1: Try to find form_submission_id from transactions OR invoices
       // ====================================================================

@@ -1,6 +1,10 @@
 import type { SurveyFormData, CostCalculation } from '../types';
 import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER } from './constants';
 
+// DUPLICATED in functions/api/doku/create-payment.js (server-side authoritative
+// copy) — the two MUST be changed together: price tiers, voucher list, and the
+// Kilat add-on. Pages Functions bundle standalone, so they can't import this file.
+
 /**
  * Menghitung biaya iklan berdasarkan jumlah pertanyaan dan durasi
  * @param questionCount Jumlah pertanyaan dalam survei

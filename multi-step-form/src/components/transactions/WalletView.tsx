@@ -15,6 +15,15 @@ import {
   History,
 } from 'lucide-react';
 import { useMediaQuery } from '@/lib/utils';
+import { supabase } from '@/utils/supabase';
+
+// /api/doku/sac/* is admin-gated by functions/api/doku/_middleware.js — every
+// request must carry the Supabase access token. getSession() (instead of
+// useAuth()) avoids a race where the first fetch fires before context loads.
+const authHeaders = async (): Promise<Record<string, string>> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+};
 
 interface WalletViewProps {
   sacId?: string;
@@ -62,7 +71,9 @@ export function WalletView({
     if (!sacId) return;
     setLoadingBalance(true);
     try {
-      const response = await fetch(`/api/doku/sac/balance?account_id=${sacId}`);
+      const response = await fetch(`/api/doku/sac/balance?account_id=${sacId}`, {
+        headers: await authHeaders(),
+      });
       const data = await response.json();
       if (response.ok && data.balance) {
         setBalance(data.balance);
@@ -81,7 +92,9 @@ export function WalletView({
     if (!sacId) return;
     setLoadingHistory(true);
     try {
-      const response = await fetch(`/api/doku/sac/history?account_id=${sacId}`);
+      const response = await fetch(`/api/doku/sac/history?account_id=${sacId}`, {
+        headers: await authHeaders(),
+      });
       const data = await response.json();
       if (response.ok && data.data) {
         setHistoryData(data.data);
@@ -116,7 +129,7 @@ export function WalletView({
     try {
       const response = await fetch('/api/doku/sac/payout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({
           account_id: sacId,
           amount: numAmount,

@@ -11,6 +11,76 @@
 // NOTE: Intentionally self-contained (no imports) — each Cloudflare Pages Function
 // is bundled as a standalone module. Cross-file ESM imports silently fail.
 
+// ─── Server-side pricing ────────────────────────────────────────────────────
+// DUPLICATED from src/utils/cost-calculator.ts + src/utils/constants.ts — the
+// two copies MUST be changed together (tiers, vouchers, Kilat add-on). The
+// duplication is unavoidable: Pages Functions can't import from src/. The
+// client copy only renders estimates; THIS copy decides what gets charged.
+
+const KILAT_ADDON_COST = 250000;
+const KILAT_ADDON_COST_VOUCHER = 200000;
+
+function calculateAdCostPerDay(questionCount) {
+  if (questionCount === 0) return 0;
+  if (questionCount <= 15) return 150000;
+  if (questionCount <= 30) return 200000;
+  if (questionCount <= 50) return 300000;
+  if (questionCount <= 70) return 400000;
+  return 500000;
+}
+
+function calculateDiscount(voucherCode, adCost, incentiveCost, duration) {
+  if (!voucherCode) return 0;
+  const code = voucherCode.toUpperCase();
+
+  if (code === 'JAKPATUNIV2025') return 0; // expired
+  if (code === 'JFUTGRX') {
+    const totalBeforeDiscount = adCost + incentiveCost;
+    return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
+  }
+  if (code === 'JFUFEB') {
+    if (duration === 7) return adCost > 1000000 ? adCost - 1000000 : 0;
+    return 0;
+  }
+  if (code === 'PPISWEDIA' || code === 'TEGARGANTENG') return adCost * 0.2;
+
+  const tenPercentCodes = [
+    'JFUTYR', 'SEKARJFU', 'ADINDAJFU', 'RAJAJFU', 'SACIJFU', 'JFUGITA',
+    'JFUTANIA', 'JFUEDO', 'JFURAISA', 'JFUANA', 'JFUSALSA', 'JFUNATALIA',
+    'JFUSUHUD',
+  ];
+  if (tenPercentCodes.includes(code)) return adCost * 0.1;
+
+  return 0;
+}
+
+// Mirrors calculateTotalCost(SurveyFormData) but takes the snake_case DB row.
+function computeTotalCostFromSubmission(sub) {
+  const questionCount = Number(sub.question_count) || 0;
+  const duration = Number(sub.duration) || 0;
+  const winnerCount = Number(sub.winner_count) || 0;
+  const prizePerWinner = Number(sub.prize_per_winner) || 0;
+  const voucherCode = sub.voucher_code || undefined;
+  const isKilat = sub.distribution_type === 'kilat';
+
+  const incentiveCost = winnerCount * prizePerWinner;
+
+  if (isKilat) {
+    // Kilat: base rate (no duration multiplier) + add-on + incentive, no discount
+    const adCostBase = calculateAdCostPerDay(questionCount);
+    const kilatAddon =
+      voucherCode && voucherCode.toUpperCase() === 'JFUSUHUD'
+        ? KILAT_ADDON_COST_VOUCHER
+        : KILAT_ADDON_COST;
+    return adCostBase + kilatAddon + incentiveCost;
+  }
+
+  const adCost = calculateAdCostPerDay(questionCount) * duration;
+  const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration);
+  return adCost + incentiveCost - discount;
+}
+// ─── End server-side pricing ────────────────────────────────────────────────
+
 export async function onRequest(context) {
   const { request, env } = context;
 
@@ -42,7 +112,8 @@ export async function onRequest(context) {
     // 1. Read the submission — source of truth for amount and customer details.
     const subRes = await fetch(
       `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}` +
-        `&select=id,total_cost,title,full_name,email,phone_number,payment_status,slot_booked_by,slot_reserved_at&limit=1`,
+        `&select=id,total_cost,title,full_name,email,phone_number,payment_status,slot_booked_by,slot_reserved_at` +
+        `,question_count,duration,winner_count,prize_per_winner,voucher_code,distribution_type&limit=1`,
       { headers: sbHeaders }
     );
     const subs = await subRes.json();
@@ -66,9 +137,36 @@ export async function onRequest(context) {
       }
     }
 
-    const amount = Number(sub.total_cost);
+    // The server recomputes the price from the pricing inputs; total_cost in
+    // the DB originates from the client (StepCheckout INSERT) and is only
+    // trusted as a cross-check.
+    const amount = computeTotalCostFromSubmission(sub);
     if (!amount || amount <= 0) {
       return json({ error: 'Invalid submission amount' }, 400);
+    }
+
+    const storedTotalCost = Number(sub.total_cost);
+    if (storedTotalCost !== amount) {
+      // Could be tampering, could be client/server formula drift (e.g. a
+      // voucher changed on one side only) — log both values plus the inputs
+      // so the two cases can be told apart. Don't treat as an attack outright.
+      console.warn(
+        `[create-payment] total_cost mismatch for ${formSubmissionId}: db=${storedTotalCost}, server=${amount}. ` +
+        `Inputs: question_count=${sub.question_count}, duration=${sub.duration}, winner_count=${sub.winner_count}, ` +
+        `prize_per_winner=${sub.prize_per_winner}, voucher_code=${sub.voucher_code}, distribution_type=${sub.distribution_type}. ` +
+        `Correcting DB to server value.`
+      );
+      const fixRes = await fetch(
+        `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}`,
+        {
+          method: 'PATCH',
+          headers: { ...sbHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify({ total_cost: amount }),
+        }
+      );
+      if (!fixRes.ok) {
+        console.error(`[create-payment] Failed to correct total_cost (status ${fixRes.status})`);
+      }
     }
 
     // 2. Invoice number — same self-service format (JFU-<8chars>-<ts>).

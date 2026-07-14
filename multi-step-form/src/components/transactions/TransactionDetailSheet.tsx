@@ -58,7 +58,7 @@ export function TransactionDetailSheet({
   if (!transaction) return null;
 
   const { items, memo } = parseTransactionNote(transaction.note);
-  const method = methodChipInfo(transaction.payment_method, transaction.payment_channel);
+  const method = methodChipInfo(transaction.payment_method, transaction.payment_channel, transaction.status);
   const title = transaction.form_submissions?.title || 'Judul tidak tersedia';
 
   const subtitle = (
@@ -152,7 +152,7 @@ export function TransactionDetailSheet({
       <DetailSheetSection title="Pembayaran">
         <dl className="space-y-2 text-sm">
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-gray-500 shrink-0">Payment ID</dt>
+            <dt className="text-gray-500 shrink-0">No. Invoice</dt>
             <dd className="flex items-center gap-1 min-w-0">
               <span className="font-mono text-xs text-gray-900 truncate">
                 {transaction.payment_id || '—'}
@@ -162,8 +162,8 @@ export function TransactionDetailSheet({
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 shrink-0 text-gray-400 hover:text-gray-700"
-                  title="Salin Payment ID"
-                  onClick={() => copyToClipboard(transaction.payment_id, 'Payment ID')}
+                  title="Salin No. Invoice"
+                  onClick={() => copyToClipboard(transaction.payment_id, 'No. Invoice')}
                 >
                   <Copy className="h-3 w-3" />
                 </Button>

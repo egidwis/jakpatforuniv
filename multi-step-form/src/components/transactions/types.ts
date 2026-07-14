@@ -71,10 +71,24 @@ export const STATUS_CHIP_VARIANTS: Record<Transaction['status'], ChipVariant> = 
 
 export function methodChipInfo(
   method: string,
-  channel?: string | null
+  channel?: string | null,
+  status?: Transaction['status']
 ): { label: string; variant: ChipVariant } {
+  // Rows created by the old always-on simulation bug (see payment.ts history):
+  // the data is fake, so say so — these need admin follow-up, not disguise.
+  if (method === 'simulation') {
+    return { label: 'Simulasi — bukan pembayaran nyata', variant: 'red' };
+  }
   if (method === 'doku') {
-    return { label: channel ? formatPaymentChannel(channel) : 'DOKU', variant: 'blue' };
+    if (channel) {
+      return { label: formatPaymentChannel(channel), variant: 'blue' };
+    }
+    // Channel is only known once the webhook's success notification arrives.
+    // Unpaid → genuinely not chosen yet; paid without channel → legacy row
+    // from before 23_add_payment_channel.sql (or a webhook shape we missed).
+    return status === 'completed'
+      ? { label: 'DOKU · channel tidak tercatat', variant: 'slate' }
+      : { label: 'Menunggu channel', variant: 'slate' };
   }
   // LEGACY: transaksi lama dibuat lewat Mayar (gateway lama, sudah diganti DOKU).
   // Dipertahankan agar data historis tetap tampil — tidak ada flow Mayar baru.
