@@ -6,3 +6,9 @@ compatibility_flags = ["nodejs_compat"]
 [env.production.vars]
 VITE_SUPABASE_URL = "https://zewuzezbmrmpttysjvpg.supabase.co"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpld3V6ZXpibXJtcHR0eXNqdnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3NDg0MzMsImV4cCI6MjA2MzMyNDQzM30.IsFpW4TMm1mrLse-dZNvZpB-srOIFb9f2XBgNpaOwpI"
+# Warn-only dulu; flip ke "true" hanya SETELAH Notification URL DOKU membawa ?k=<secret>
+# (Langkah 4 runbook). Dibaca di functions/api/doku/webhook.js (=== 'true').
+WEBHOOK_ENFORCE_SECRET = "false"
+# Gerbang admin /api/doku/*. Comma-separated. Kode punya fallback ke email ini
+# (functions/api/doku/_middleware.js), jadi ini eksplisit-kan saja.
+ADMIN_EMAILS = "product@jakpat.net"
