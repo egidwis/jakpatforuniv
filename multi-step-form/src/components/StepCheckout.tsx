@@ -630,7 +630,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 md:col-span-2">
                   <label htmlFor="invoiceFullName" className="text-sm font-medium text-gray-700">{t('invoiceNameLabel')} <span className="text-red-500">*</span></label>
                   <input
                     id="invoiceFullName"
@@ -651,8 +651,16 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                     value={formData.email}
                     onChange={(e) => updateFormData({ email: e.target.value })}
                   />
+                  {isEmailMismatch && (
+                    <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg mt-1.5">
+                      <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-amber-700">
+                        {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
+                      </p>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-1.5 md:col-span-2">
+                <div className="space-y-1.5">
                   <label htmlFor="invoicePhoneNumber" className="text-sm font-medium text-gray-700">{t('invoicePhoneLabel')} <span className="text-red-500">*</span></label>
                   <input
                     id="invoicePhoneNumber"
@@ -663,15 +671,6 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                     onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
                   />
                 </div>
-              </div>
-            )}
-
-            {isEmailMismatch && (
-              <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-700">
-                  {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
-                </p>
               </div>
             )}
 
