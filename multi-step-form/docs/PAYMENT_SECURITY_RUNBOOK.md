@@ -39,13 +39,22 @@ Settings → Environment variables, scope **Production**:
 | Nama | Isi |
 |---|---|
 | `DOKU_WEBHOOK_SECRET` | string acak — generate: `openssl rand -hex 32` |
-| `WEBHOOK_ENFORCE_SECRET` | `false` (dulu — lihat langkah 4) |
+| `WEBHOOK_ENFORCE_SECRET` | `true` sejak 2026-07-15 (mulai `false`, flip di langkah 4) |
 | `ADMIN_EMAILS` | `product@jakpat.net` (opsional, ada fallback di kode) |
 
 Penting: env var Pages hanya berlaku untuk **deployment berikutnya** — setelah
 menambah, deploy ulang sekali.
 
 ## 4. Dashboard DOKU — rollout secret 2 tahap
+
+> **STATUS (2026-07-15):** ✅ **ENFORCED** (`WEBHOOK_ENFORCE_SECRET = "true"`).
+> Warn-only ditahan beberapa jam untuk mengumpulkan bukti; setelah log DOKU bersih
+> dari `[webhook] MISSING SECRET` di semua notifikasi yang dipakai, flip dilakukan.
+> Bukti sebelum flip: notifikasi **Checkout/Jokul** (QRIS success) membawa `?k=`
+> valid & diproses 200; tidak ada `[webhook] MISSING SECRET`. Sejak titik ini
+> webhook tanpa secret valid ditolak 401 di baris pertama handler. **Reversibel
+> instan**: kalau ada notifikasi sah tembus 401, balik `wrangler.toml` ke `"false"`
+> + `npm run deploy`.
 
 1. Ubah Notification URL menjadi
    `https://submit.jakpatforuniv.com/api/doku/webhook?k=<secret dari langkah 3>`.
@@ -57,9 +66,25 @@ menambah, deploy ulang sekali.
    Functions logs, atau `npx wrangler pages deployment tail`). Tunggu sampai
    **tidak ada lagi** baris `[webhook] MISSING SECRET` pada notifikasi DOKU asli
    — artinya semua notifikasi sudah membawa `?k=`.
+3a. **PENTING — cek `?k=` di SEMUA field Notification URL, bukan cuma Checkout.**
+   Gerbang `?k=` dicek paling atas (sebelum deteksi format), jadi berlaku untuk
+   ketiga format yang diterima handler ini:
+   - **Jokul** (Checkout: QRIS/VA/e-wallet) — validasi internal HMAC-SHA256 penuh.
+   - **SNAP** (Sub-Account / SAC) — validasi X-PARTNER-ID = Client ID.
+   - **SNAP B2B** (Payout / disbursement) — validasi X-CLIENT-KEY = Client ID.
+   SNAP & SNAP B2B biasanya dikonfigurasi dari **field Notification URL yang
+   terpisah** di dashboard DOKU. Kalau hanya field Checkout yang diberi `?k=`,
+   maka setelah flip notifikasi SNAP/B2B akan ditolak 401 di gerbang atas dan
+   status payout/VA gagal ter-update. Sebelum flip: pastikan tiap field yang
+   menunjuk `/api/doku/webhook` sudah membawa `?k=`, **atau** konfirmasi bahwa
+   metode SNAP/payout otomatis memang tidak dipakai produksi (endpoint `sac/*`
+   adalah tools admin — kalau tidak aktif, notifikasi SNAP B2B tidak muncul).
+   Tunggu sampai log menampilkan minimal satu contoh sukses (tanpa `MISSING
+   SECRET`) dari **tiap metode yang benar-benar dipakai**, bukan cuma QRIS.
 4. Baru set `WEBHOOK_ENFORCE_SECRET=true` + deploy ulang. Sejak titik ini webhook
    tanpa secret ditolak 401 di baris pertama handler, sebelum penyerang sempat
-   memilih cabang format terlemah.
+   memilih cabang format terlemah. Flip ini satu baris & reversibel instan —
+   kalau ada notifikasi sah tembus 401, balik ke `"false"` + deploy.
 
 **Jangan balik urutannya** — kalau enforcement dinyalakan sebelum Notification
 URL diganti, pembayaran sah akan gagal tercatat.
@@ -115,6 +140,14 @@ migrasi `23_add_payment_channel.sql`, berarti ekstraksi channel dulu meleset —
 rantai fallback baru + log payload utuh di webhook akan menangkap bentuk barunya
 pada pembayaran sukses berikutnya. Uji sekalian satu pembayaran sandbox QRIS dan
 pastikan chip di dashboard menampilkan "QRIS".
+
+> **HASIL (2026-07-15):** ✅ Ekstraksi channel **sehat**. 104 baris
+> `completed/doku/channel_kosong=true` semuanya historis (terakhir **2026-06-25**,
+> sebelum ekstraksi andal). Sejak itu **tidak ada** baris kosong baru; baris
+> `channel_kosong=false` berlanjut sampai hari ini (termasuk tes QRIS `QRIS_DOKU`
+> 15 Jul 03:17). 104 baris lama itu murni **kosmetik** (chip slate "DOKU · channel
+> tidak tercatat" di dashboard) — **tidak perlu aksi**; backfill opsional & tidak
+> sepadan. Sisa baris = legacy Mayar / simulation (Langkah 6) / pending doku.
 
 ## Risiko sisa yang sengaja belum ditutup (pekerjaan lanjutan)
 
