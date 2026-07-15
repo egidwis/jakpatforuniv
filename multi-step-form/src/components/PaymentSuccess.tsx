@@ -32,6 +32,14 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
 
   const fetchFormData = async (id: string, isManualRefresh = false) => {
     if (isManualRefresh) setIsRefreshing(true);
+    else setLoading(true);
+    // Clear any stale error from a previous attempt before re-fetching. Without
+    // this, the error set on the very first render (when formId was still
+    // undefined) — or from a failed "Coba Lagi" — stays latched in state, so the
+    // `error || !formData` guard below keeps showing the ErrorPage even after a
+    // successful fetch. That is what made a valid pending submission render
+    // "Terjadi Kesalahan / ID form tidak ditemukan".
+    setError(null);
     try {
       // Race antara request asli dan timeout
       const timeoutPromise = new Promise((_, reject) =>
