@@ -2684,10 +2684,12 @@ select.form-input.border-red-500:focus {
 
 @media (max-width: 767px) {
 
+  /* Dulu 4.5rem atas untuk memberi ruang bar step sticky di atas; bar kini
+     floating di bawah layar, jadi padding atasnya dikembalikan normal. */
   .method-selection-container,
   .google-form-flow-container,
   .manual-flow-container {
-    padding: 4.5rem 0.75rem 2rem;
+    padding: 1rem 0.75rem 2rem;
   }
 
   .method-selection-header {

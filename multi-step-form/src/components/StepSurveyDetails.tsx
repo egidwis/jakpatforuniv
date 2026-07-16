@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
 import { StepOneMethodSelection } from './StepOneMethodSelection';
 import { StepOneGoogleForm } from './StepOneGoogleForm';
 import { StepOneFormFields } from './StepOneFormFields';
+import { ProfileCompletionSheet } from './ProfileCompletionSheet';
+import { isProfileGateSatisfied } from './ProfileForm';
 import { AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -37,6 +39,26 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   const [flowState, setFlowState] = useState<FlowState>(getInitialFlowState());
   const [showConfirmSwitch, setShowConfirmSwitch] = useState(false);
 
+  // Gate kelengkapan profil — pengganti RequireCompleteProfile di level route.
+  // Prefetch saat mount; hasilnya di-await saat user memilih metode, sehingga
+  // klik terasa instan pada kasus umum (cek sudah selesai duluan).
+  const profileGateRef = useRef<Promise<boolean> | null>(null);
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [pendingMethod, setPendingMethod] = useState<'google' | 'manual' | null>(null);
+
+  useEffect(() => {
+    profileGateRef.current = isProfileGateSatisfied();
+    // Layar pilih metode (edukasi produk) bebas dilihat tanpa profil lengkap;
+    // tapi draft lama bisa melewati layar itu (getInitialFlowState) — untuk
+    // kasus itu gate tetap harus jalan, jadi cek juga saat mount.
+    if (flowState !== 'method-selection') {
+      profileGateRef.current.then((ok) => {
+        if (!ok) setProfileSheetOpen(true);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Notify parent about header visibility
   useEffect(() => {
     if (onHeaderVisibilityChange) {
@@ -49,8 +71,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   // Check if form has data
   const hasFilledData = formData.title || formData.description || formData.questionCount > 0;
 
-  // Handle method selection
-  const handleMethodSelection = (method: 'google' | 'manual') => {
+  const proceedWithMethod = (method: 'google' | 'manual') => {
     if (method === 'google') {
       setFlowState('google-form');
       updateFormData({ isManualEntry: false });
@@ -59,6 +80,43 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
       updateFormData({ isManualEntry: true });
     }
   };
+
+  // Handle method selection — di sinilah gate profil berlaku: profil belum
+  // lengkap → buka drawer profil dulu, metode terpilih disimpan sebagai pending.
+  const handleMethodSelection = async (method: 'google' | 'manual') => {
+    let ok = await (profileGateRef.current ?? (profileGateRef.current = isProfileGateSatisfied()));
+    if (!ok) {
+      // Hasil prefetch bisa basi — profil mungkin baru dilengkapi lewat banner
+      // DashboardLayout tanpa meninggalkan halaman ini. Cek ulang dulu.
+      profileGateRef.current = isProfileGateSatisfied();
+      ok = await profileGateRef.current;
+    }
+    if (!ok) {
+      setPendingMethod(method);
+      setProfileSheetOpen(true);
+      return;
+    }
+    proceedWithMethod(method);
+  };
+
+  const handleProfileCompleted = () => {
+    // Profil baru saja tersimpan lengkap — cache gate diperbarui supaya
+    // pemilihan metode berikutnya tidak memanggil Supabase lagi.
+    profileGateRef.current = Promise.resolve(true);
+    setProfileSheetOpen(false);
+    if (pendingMethod) {
+      proceedWithMethod(pendingMethod);
+      setPendingMethod(null);
+    }
+  };
+
+  const profileSheet = (
+    <ProfileCompletionSheet
+      open={profileSheetOpen}
+      onOpenChange={setProfileSheetOpen}
+      onCompleted={handleProfileCompleted}
+    />
+  );
 
   // Handle back to method selection
   const handleBackToMethodSelection = () => {
@@ -131,18 +189,26 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
 
   // Render based on flow state
   if (flowState === 'method-selection') {
-    return <StepOneMethodSelection onSelectMethod={handleMethodSelection} />;
+    return (
+      <>
+        <StepOneMethodSelection onSelectMethod={handleMethodSelection} />
+        {profileSheet}
+      </>
+    );
   }
 
   if (flowState === 'google-form') {
     return (
-      <StepOneGoogleForm
-        formData={formData}
-        updateFormData={updateFormData}
-        onBack={handleBackToMethodSelection}
-        onSwitchMethod={handleSwitchToManual}
-        onFormReady={handleFormReady}
-      />
+      <>
+        <StepOneGoogleForm
+          formData={formData}
+          updateFormData={updateFormData}
+          onBack={handleBackToMethodSelection}
+          onSwitchMethod={handleSwitchToManual}
+          onFormReady={handleFormReady}
+        />
+        {profileSheet}
+      </>
     );
   }
 
@@ -150,6 +216,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   if (flowState === 'manual') {
     return (
       <div className="manual-flow-container">
+        {profileSheet}
         <StepOneFormFields
           formData={formData}
           updateFormData={updateFormData}
@@ -204,6 +271,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   if (flowState === 'form-fields') {
     return (
       <div className="form-fields-container">
+        {profileSheet}
         <StepOneFormFields
           formData={formData}
           updateFormData={updateFormData}

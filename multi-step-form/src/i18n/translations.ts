@@ -67,7 +67,7 @@ export const translations = {
     buttonSelectForm: "Find File in Drive",
 
     // Status Page
-    pageTitle: "Track Status",
+    pageTitle: "My Orders",
     pageSubtitle: "Monitor the progress of your survey submissions in real-time.",
     statusAll: "All Status",
     statusInReview: "Under Review",
@@ -481,12 +481,29 @@ export const translations = {
     // Dashboard revamp — homepage product hub
     createNewOrder: "Create New Order",
     comingSoon: "Coming Soon",
-    productAdsTitle: "Ads Survei",
+    productAdsTitle: "Survey Ads",
+    productAdsHook: "For maximum reach —",
     productAdsDesc: "Distribute your survey to Jakpat panel respondents",
     productKilatTitle: "JFU Kilat",
+    productKilatHook: "For maximum speed —",
     productKilatDesc: "Express distribution, faster results",
     productRespAccessTitle: "Respondent Access",
+    productRespAccessHook: "For precise targeting —",
     productRespAccessDesc: "Direct access to respondents for your research",
+
+    // Product entry pages (submit-iklan & submit-kilat)
+    adsEntryFactReach: "Shown in the Jakpat app to thousands of active respondents daily",
+    adsEntryFactPrice: "Starting from {price}/day (up to 15 questions)",
+    adsEntryFactDuration: "Flexible airing duration",
+    adsEntryKilatCrossLink: "Need results within hours? Meet Kilat",
+    kilatFactPush: "Express distribution via push notification in the Jakpat app",
+    kilatFactFast: "Results start coming in within hours",
+    kilatFactOneDay: "Airs for one full day",
+    kilatFactPrice: "Base rate + {price} add-on",
+    kilatComingSoonNote: "Kilat is not open for direct orders yet. In the meantime, reach your respondents with Survey Ads.",
+    kilatStartWithAds: "Start with Survey Ads",
+    profileSheetTitle: "Complete your profile first",
+    profileSheetDesc: "One time only — your order and invoice details are taken from this profile.",
 
     // Dashboard revamp — order list & filters
     filterAll: "All",
@@ -829,7 +846,7 @@ export const translations = {
     buttonSelectForm: "Cari File di Drive",
 
     // Status Page
-    pageTitle: "Track Status",
+    pageTitle: "Order Saya",
     pageSubtitle: "Pantau progress submission survey Anda secara real-time.",
     statusAll: "Semua Status",
     statusInReview: "Under Review",
@@ -1007,12 +1024,29 @@ export const translations = {
     // Dashboard revamp — hub produk homepage
     createNewOrder: "Buat Order Baru",
     comingSoon: "Segera Hadir",
-    productAdsTitle: "Ads Survei",
-    productAdsDesc: "Sebarkan survei kamu ke responden panel Jakpat",
-    productKilatTitle: "JFU Kilat",
-    productKilatDesc: "Distribusi ekspres, hasil lebih cepat",
+    productAdsTitle: "Iklan Survei",
+    productAdsHook: "Untuk jangkauan maksimal —",
+    productAdsDesc: "Tayangkan surveimu di hadapan ribuan responden aktif Jakpat tiap harinya.",
+    productKilatTitle: "Kilat",
+    productKilatHook: "Untuk kecepatan maksimal —",
+    productKilatDesc: "Distribusi ekspres dengan fitur push notifikasi pada aplikasi jakpat",
     productRespAccessTitle: "Respondent Access",
+    productRespAccessHook: "Untuk targeting presisi —",
     productRespAccessDesc: "Akses langsung ke responden untuk risetmu",
+
+    // Halaman pintu masuk produk (submit-iklan & submit-kilat)
+    adsEntryFactReach: "Tayang di aplikasi Jakpat — ribuan responden aktif tiap hari",
+    adsEntryFactPrice: "Mulai {price}/hari (maks 15 pertanyaan)",
+    adsEntryFactDuration: "Durasi tayang fleksibel",
+    adsEntryKilatCrossLink: "Butuh hasil dalam hitungan jam? Kenali Kilat",
+    kilatFactPush: "Distribusi ekspres lewat push notification di aplikasi Jakpat",
+    kilatFactFast: "Hasil mulai masuk dalam hitungan jam",
+    kilatFactOneDay: "Tayang penuh selama 1 hari",
+    kilatFactPrice: "Tarif dasar + add-on {price}",
+    kilatComingSoonNote: "Kilat belum dibuka untuk order langsung. Sementara ini, jangkau respondenmu lewat Iklan Survei.",
+    kilatStartWithAds: "Mulai dengan Iklan Survei",
+    profileSheetTitle: "Lengkapi profil dulu",
+    profileSheetDesc: "Cukup sekali — data order dan invoice kamu diambil dari profil ini.",
 
     // Dashboard revamp — daftar order & filter
     filterAll: "Semua",

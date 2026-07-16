@@ -7,14 +7,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, AlertCircle, RefreshCw, ChevronRight, Send, Search, Megaphone } from 'lucide-react';
+import { MessageCircle, AlertCircle, RefreshCw, ChevronRight, Send, Search, Megaphone, ListFilter, Check } from 'lucide-react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ProgressTracker, getStatusSteps, normalizeScheduleDate, type ExtendPaymentInfo } from '@/components/ProgressTracker';
 import { AiringPeriodsBar } from '@/components/AiringPeriodsBar';
 import { PageHeader } from '@/components/PageHeader';
-import { CreateOrderCards } from '@/components/CreateOrderCards';
+import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
 import { NextStepCallout } from '@/components/NextStepCallout';
 import { OrderDetailsSection } from '@/components/OrderDetailsSection';
 import { deriveOrderUiState, type OrderGroup } from '@/components/status/deriveOrderUiState';
@@ -256,7 +262,7 @@ export function StatusPage() {
             toast.success('Silakan pilih slot baru untuk jadwal ulang');
 
             // Navigate to submit page
-            navigate('/dashboard/submit');
+            navigate('/dashboard/submit-iklan');
         } catch (error) {
             console.error('Error preparing for reschedule:', error);
             toast.dismiss(loadingToast);
@@ -370,7 +376,7 @@ export function StatusPage() {
                     </div>
                     {/* Skeleton mengikuti anatomi kartu Soft DNA */}
                     {[1, 2].map((i) => (
-                        <div key={i} className="border border-jfu-primary/[0.06] shadow-card overflow-hidden bg-white" style={{ borderRadius: '20px' }}>
+                        <div key={i} className="border border-jfu-primary/[0.12] shadow-card overflow-hidden bg-white" style={{ borderRadius: '20px' }}>
                             <div className="p-5 space-y-2 border-b border-gray-100">
                                 <div className="flex justify-between items-center">
                                     <Skeleton className="h-6 w-24 rounded-full bg-gray-100" />
@@ -401,26 +407,69 @@ export function StatusPage() {
             <PageHeader
                 title={t('pageTitle')}
                 action={
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleRefresh}
-                        disabled={refreshing}
-                        title={t('refresh')}
-                        className="h-9 w-9 text-jfu-primary hover:bg-jfu-primary/10 hover:text-jfu-primary dark:text-gray-300"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                        {/* Filter status pindah dari baris chips ke dropdown di header;
+                            badge merah menjaga sinyal "butuh aksi" tetap terlihat tanpa klik. */}
+                        {submissions.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger
+                                    aria-label={t('filterAll')}
+                                    className={`relative flex items-center justify-center h-9 w-9 rounded-md transition-colors outline-none ${selectedFilter !== 'all'
+                                        ? 'bg-jfu-primary/[0.12] text-jfu-primary'
+                                        : 'text-jfu-primary hover:bg-jfu-primary/10 dark:text-gray-300'
+                                        }`}
+                                >
+                                    <ListFilter className="w-4 h-4" />
+                                    {needsActionCount > 0 && (
+                                        <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                                            {needsActionCount}
+                                        </span>
+                                    )}
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-44">
+                                    {filterChips.map((chip) => (
+                                        <DropdownMenuItem
+                                            key={chip.value}
+                                            onClick={() => setSelectedFilter(chip.value)}
+                                            className="cursor-pointer justify-between"
+                                        >
+                                            <span className={selectedFilter === chip.value ? 'font-semibold text-jfu-primary' : ''}>
+                                                {chip.label}
+                                                {typeof chip.count === 'number' && chip.count > 0 && (
+                                                    <span className="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                                                        {chip.count}
+                                                    </span>
+                                                )}
+                                            </span>
+                                            {selectedFilter === chip.value && <Check className="w-4 h-4 text-jfu-primary" />}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleRefresh}
+                            disabled={refreshing}
+                            title={t('refresh')}
+                            className="h-9 w-9 text-jfu-primary hover:bg-jfu-primary/10 hover:text-jfu-primary dark:text-gray-300"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                        </Button>
+                    </div>
                 }
             />
 
             <div className="max-w-4xl mx-auto px-4 md:px-6 py-4">
-                {/* Hub produk — jalur masuk Buat Order setelah keluar dari navbar */}
-                <CreateOrderCards hasOrders={submissions.length > 0} />
+                {/* Hub produk — jalur masuk Buat Order setelah keluar dari navbar.
+                    Saat belum ada order, empty state di bawah yang memegang kartu
+                    produk (satu pintu masuk, tanpa duplikasi CTA). */}
+                {submissions.length > 0 && <CreateOrderCards />}
 
                 {submissions.length === 0 ? (
                     /* Empty state = halaman landing user baru, rasa kartu landing page */
-                    <Card className="border border-jfu-primary/[0.06] overflow-hidden shadow-card" style={{ borderRadius: '20px' }}>
+                    <Card className="border border-jfu-primary/[0.12] overflow-hidden shadow-card" style={{ borderRadius: '20px' }}>
                         <CardContent className="flex flex-col items-center justify-center py-12 text-center px-6 bg-white">
                             <div className="w-14 h-14 bg-jfu-primary/[0.08] rounded-full flex items-center justify-center mb-4">
                                 <span className="text-2xl" aria-hidden="true">🚀</span>
@@ -449,41 +498,15 @@ export function StatusPage() {
                                 </ol>
                             </div>
 
-                            <Link to="/dashboard/submit" className="w-full max-w-sm">
-                                <Button
-                                    className="w-full min-h-11 rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 hover:from-jfu-primary hover:to-jfu-light transition-all"
-                                >
-                                    {t('createFirstOrder')}
-                                </Button>
-                            </Link>
+                            {/* Kartu produk menggantikan tombol generik "Buat Order
+                                Pertama" — ujung alur baca langsung memilih produk. */}
+                            <div className="w-full max-w-lg text-left">
+                                <ProductCardGrid />
+                            </div>
                         </CardContent>
                     </Card>
                 ) : (
                     <div className="space-y-4">
-                        {/* Filter chips — satu baris scrollable */}
-                        <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-                            <div className="flex gap-2 w-max">
-                                {filterChips.map((chip) => (
-                                    <Button
-                                        key={chip.value}
-                                        variant={selectedFilter === chip.value ? 'default' : 'outline'}
-                                        size="sm"
-                                        onClick={() => setSelectedFilter(chip.value)}
-                                        className={`rounded-full px-4 text-xs font-semibold whitespace-nowrap border ${selectedFilter === chip.value
-                                            ? 'bg-jfu-primary/[0.12] text-jfu-primary border-jfu-primary/20 hover:bg-jfu-primary/[0.18] hover:text-jfu-primary'
-                                            : 'bg-white text-[#666] border-gray-200 hover:border-jfu-primary/30 hover:bg-white hover:text-jfu-primary'}`}
-                                    >
-                                        {chip.label}
-                                        {typeof chip.count === 'number' && chip.count > 0 && (
-                                            <span className={`ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[10px] font-bold ${selectedFilter === chip.value ? 'bg-jfu-primary/20 text-jfu-primary' : 'bg-red-100 text-red-700'}`}>
-                                                {chip.count}
-                                            </span>
-                                        )}
-                                    </Button>
-                                ))}
-                            </div>
-                        </div>
-
                         {filtered.length === 0 ? (
                             <p className="text-sm text-gray-400 text-center py-10">{t('noOrdersInFilter')}</p>
                         ) : (
@@ -504,7 +527,7 @@ export function StatusPage() {
                                            nyaris tak terlihat, soft shadow lebar, pemisah header tipis.
                                            borderRadius inline karena .rounded-lg legacy styles.css menang
                                            di cascade atas utilitas radius Tailwind pada <Card>. */
-                                        <Card key={submission.id} className="overflow-hidden border border-jfu-primary/[0.06] shadow-card hover:shadow-xl transition-shadow" style={{ borderRadius: '20px' }}>
+                                        <Card key={submission.id} className="overflow-hidden border border-jfu-primary/[0.12] shadow-card hover:shadow-xl transition-shadow" style={{ borderRadius: '20px' }}>
                                             {/* A. Header: chip layanan + badge status + judul */}
                                             <CardHeader className="bg-white pb-3 space-y-2.5 border-b border-gray-100">
                                                 <div className="flex items-center justify-between gap-3">

@@ -39,7 +39,7 @@ export function AppNav() {
         <header className="sticky top-0 z-40 h-14 md:h-16 bg-white/90 backdrop-blur shadow-[0_4px_20px_rgba(25,118,210,0.08)]">
             <div className="max-w-4xl mx-auto h-full px-4 md:px-6 flex items-center justify-between gap-4">
                 <Link
-                    to="/dashboard/status"
+                    to="/dashboard"
                     className="flex items-center gap-2.5 shrink-0"
                     title={t('backToOrders')}
                 >

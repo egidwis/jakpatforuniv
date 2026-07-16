@@ -43,25 +43,27 @@ export function UnifiedHeader({ currentStep, formData, onReset }: UnifiedHeaderP
     const displayStep = currentStep === 4 ? 3 : currentStep;
 
     return (
-        // Bar kedua yang menempel di bawah AppNav (sticky, in-flow — tanpa
-        // padding-top hack di konten). Navbar tetap tampil selama order form.
-        <div className="sticky top-14 md:top-16 z-30 bg-white/90 backdrop-blur border-b border-gray-100">
-            <div className="transition-all duration-200">
-                <div className="w-full max-w-5xl mx-auto px-4 md:px-6 py-3">
+        // Kartu floating di bawah layar (desktop & mobile) — wrapper fixed
+        // pointer-events-none supaya area di kiri/kanan kartu tetap bisa
+        // di-scroll/diklik; safe-area untuk home indicator iOS.
+        <div className="fixed bottom-0 inset-x-0 z-30 pointer-events-none pb-[env(safe-area-inset-bottom)]">
+            <div className="pointer-events-auto max-w-5xl mx-3 md:mx-6 xl:mx-auto mb-3 md:mb-4 rounded-2xl border border-jfu-primary/[0.12] bg-white/95 backdrop-blur shadow-[0_8px_30px_rgba(25,118,210,0.18)]">
+                <div className="w-full px-4 md:px-6 py-3">
                     <div className="flex items-center justify-between">
 
                         {/* LEFT: Menu & Mini Stepper */}
                         <div className="flex items-center gap-2 md:gap-4">
-                            {/* Keluar dari focus mode → kembali ke Order Saya.
-                                Draft sudah tersimpan otomatis (SURVEY_DRAFT_KEY). */}
+                            {/* X = batalkan submission (dengan konfirmasi di handleReset):
+                                draft dihapus dan user mulai dari awal. Tanpa onReset
+                                (tidak terjadi saat ini) fallback pulang ke Order Saya. */}
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="mr-0 -ml-2"
-                                onClick={() => navigate('/dashboard/status')}
-                                title={t('backToOrders')}
+                                className="mr-0 -ml-2 text-gray-500 hover:text-red-600 hover:bg-red-50"
+                                onClick={() => (onReset ? onReset() : navigate('/dashboard'))}
+                                title={t('cancelSubmission')}
                             >
-                                <X className="w-5 h-5 text-gray-700" />
+                                <X className="w-5 h-5" />
                             </Button>
 
                             <div className="flex items-center gap-0.5 md:gap-1">
@@ -103,26 +105,12 @@ export function UnifiedHeader({ currentStep, formData, onReset }: UnifiedHeaderP
                             </div>
                         </div>
 
-                        {/* RIGHT: Cost & Info */}
-                        <div className="flex items-center gap-2 md:gap-6">
-                            <div className="text-right">
-                                <p className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider hidden sm:block">Estimated Cost</p>
-                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider sm:hidden">Cost</p>
-                                <p className="text-sm md:text-lg font-bold text-jfu-primary">Rp{formatRupiah(calculation.totalCost)}</p>
-                            </div>
-
-                            {onReset && (
-                                <div className="border-l border-gray-200 pl-6 hidden md:block">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={onReset}
-                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
-                                    >
-                                        {t('cancelSubmission')}
-                                    </Button>
-                                </div>
-                            )}
+                        {/* RIGHT: Cost — tombol "Batal" dihapus; membatalkan
+                            submission kini lewat tombol X di kiri. */}
+                        <div className="text-right">
+                            <p className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider hidden sm:block">Estimated Cost</p>
+                            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider sm:hidden">Cost</p>
+                            <p className="text-sm md:text-lg font-bold text-jfu-primary">Rp{formatRupiah(calculation.totalCost)}</p>
                         </div>
 
                     </div>

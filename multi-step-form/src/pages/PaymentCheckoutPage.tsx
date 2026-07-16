@@ -38,7 +38,7 @@ export function PaymentCheckoutPage() {
       setSubmission(data);
 
       if (data.payment_status === 'paid') {
-        navigate('/dashboard/status?payment_status=paid');
+        navigate('/dashboard?payment_status=paid');
         return;
       }
 
@@ -101,7 +101,7 @@ export function PaymentCheckoutPage() {
         const data = await getFormSubmissionById(submissionId);
         if (data && data.payment_status === 'paid') {
           clearInterval(poll);
-          navigate('/dashboard/status?payment_status=paid');
+          navigate('/dashboard?payment_status=paid');
         }
       } catch (e) {
         // silent
@@ -159,7 +159,7 @@ export function PaymentCheckoutPage() {
       const data = await getFormSubmissionById(submissionId);
       if (data && data.payment_status === 'paid') {
         toast.success(t('checkoutPaidSuccess'));
-        setTimeout(() => navigate('/dashboard/status?payment_status=paid'), 1000);
+        setTimeout(() => navigate('/dashboard?payment_status=paid'), 1000);
       } else {
         toast.info(t('checkoutNotPaidYet'));
       }
@@ -192,7 +192,7 @@ export function PaymentCheckoutPage() {
       <div className="sticky top-14 md:top-16 z-30 bg-gray-50/90 backdrop-blur-md border-b border-gray-200/70">
         <div className="max-w-xl mx-auto px-4 h-12 flex items-center">
           <button
-            onClick={() => navigate('/dashboard/status')}
+            onClick={() => navigate('/dashboard')}
             className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors -ml-1 px-1 py-2"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -214,7 +214,7 @@ export function PaymentCheckoutPage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
-                onClick={() => navigate('/dashboard/status')}
+                onClick={() => navigate('/dashboard')}
                 className="px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-50 transition-colors"
               >
                 {t('checkoutBackDashboard')}
@@ -263,7 +263,7 @@ export function PaymentCheckoutPage() {
                     
                     toast.dismiss(loadingToast);
                     toast.success('Silakan pilih slot baru untuk jadwal ulang');
-                    navigate('/dashboard/submit');
+                    navigate('/dashboard/submit-iklan');
                   } catch (error) {
                     console.error('Error preparing for reschedule:', error);
                     toast.dismiss(loadingToast);

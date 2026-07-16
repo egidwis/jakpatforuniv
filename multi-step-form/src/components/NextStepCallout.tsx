@@ -86,7 +86,7 @@ export function NextStepCallout({ submission, ui, invoiceId, extendPayments, onR
             );
             cta = (
                 <div className="flex flex-col md:flex-row gap-2 mt-3">
-                    <Link to="/dashboard/submit" className="w-full md:w-auto">
+                    <Link to="/dashboard/submit-iklan" className="w-full md:w-auto">
                         <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal}`}>
                             {t('resubmit')}
                         </Button>

@@ -182,7 +182,7 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
                 // Try to close tab, fallback to dashboard if browser prevents it
                 window.close();
                 setTimeout(() => {
-                  window.location.href = "/dashboard/status";
+                  window.location.href = "/dashboard";
                 }, 500);
               }} 
               className="button button-primary"
@@ -190,7 +190,7 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
               Tutup Halaman Ini
             </button>
           ) : (
-            <a href="/dashboard/status" className="button button-primary">
+            <a href="/dashboard" className="button button-primary">
               Lihat Dashboard
             </a>
           )}

@@ -387,7 +387,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         setTimeout(() => {
           localStorage.removeItem(SURVEY_DRAFT_KEY);
           localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
-          window.open(`${window.location.origin}/dashboard/status?status=survey_submitted`, '_self');
+          window.open(`${window.location.origin}/dashboard?status=survey_submitted`, '_self');
         }, 1500);
 
       } else {

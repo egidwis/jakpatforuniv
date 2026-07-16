@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { useLocation, Outlet } from 'react-router-dom';
 import { AppNav } from './AppNav';
+import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { getOwnProfile, isProfileComplete } from '../utils/supabase';
 
 export function DashboardLayout() {
   const location = useLocation();
   const [profileIncomplete, setProfileIncomplete] = useState(false);
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
 
   // Chat mengatur tingginya sendiri (full-height di bawah navbar),
   // jadi tanpa padding bawah dari layout.
@@ -25,17 +27,32 @@ export function DashboardLayout() {
     <div className="min-h-screen bg-jfu-bg font-jakarta dark:bg-gray-900">
       <AppNav />
 
+      {/* Selaras dengan gate di flow submit: banner membuka drawer profil di
+          tempat, bukan menavigasi ke /dashboard/profile. */}
       {profileIncomplete && location.pathname !== '/dashboard/profile' && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-center">
           <span className="text-xs text-amber-800">
             Profil Anda belum lengkap.{' '}
-            <Link to="/dashboard/profile" className="font-semibold underline hover:text-amber-900">
+            <button
+              type="button"
+              onClick={() => setProfileSheetOpen(true)}
+              className="font-semibold underline hover:text-amber-900"
+            >
               Lengkapi sekarang
-            </Link>{' '}
+            </button>{' '}
             agar bisa memasang survei.
           </span>
         </div>
       )}
+
+      <ProfileCompletionSheet
+        open={profileSheetOpen}
+        onOpenChange={setProfileSheetOpen}
+        onCompleted={() => {
+          setProfileSheetOpen(false);
+          setProfileIncomplete(false);
+        }}
+      />
 
       <main className={isChat ? 'min-w-0' : 'min-w-0 pb-10'}>
         <Outlet />

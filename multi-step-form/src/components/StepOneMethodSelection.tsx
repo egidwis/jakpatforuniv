@@ -1,109 +1,136 @@
+import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
-import { Zap, CheckCircle2, Clock, Info } from 'lucide-react';
+import { Zap, CheckCircle2, Clock, Info, BarChart3, Smartphone, Tag, CalendarRange, Download, PenLine, ChevronRight } from 'lucide-react';
+import { calculateAdCostPerDay } from '../utils/cost-calculator';
 
 interface StepOneMethodSelectionProps {
   onSelectMethod: (method: 'google' | 'manual') => void;
 }
 
+/**
+ * Pintu masuk produk Iklan Survei (/dashboard/submit-iklan) — layar pertama
+ * flow submission. Bukan sekadar pemilih metode input: bagian atas
+ * mengedukasi produknya (jangkauan, harga mulai, durasi) supaya user paham
+ * apa yang dibeli sebelum memilih cara mengisi data survei.
+ */
 export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectionProps) {
   const { t } = useLanguage();
 
+  // Harga mulai diturunkan dari kalkulator harga (tier terendah, ≤15
+  // pertanyaan) — bukan string hardcode, supaya tidak desync dengan pricing.
+  const startingPrice = new Intl.NumberFormat('id-ID').format(calculateAdCostPerDay(15));
+
+  const facts = [
+    { icon: Smartphone, label: t('adsEntryFactReach') },
+    { icon: Tag, label: t('adsEntryFactPrice').replace('{price}', `Rp${startingPrice}`) },
+    { icon: CalendarRange, label: t('adsEntryFactDuration') },
+  ];
+
   return (
-    <div className="method-selection-container">
-      {/* Page Title */}
-      <div className="method-selection-header">
-        <h1 className="method-selection-title text-2xl font-semibold text-gray-900">{t('startByFillingData')}</h1>
-        <p className="method-selection-subtitle text-sm text-gray-500 mt-1">
-          {t('chooseMethodSuitable')}
+    <div className="max-w-3xl mx-auto">
+      {/* Header edukasi produk */}
+      <div className="text-center mb-8">
+        <span className="inline-flex w-14 h-14 rounded-2xl bg-jfu-primary/[0.08] text-jfu-primary items-center justify-center mb-4">
+          <BarChart3 className="w-7 h-7" />
+        </span>
+        <h1 className="text-2xl md:text-3xl font-bold text-[#1a1a1a]">{t('productAdsTitle')}</h1>
+        <p className="text-sm md:text-base text-[#666] mt-2 max-w-md mx-auto leading-relaxed">
+          <span className="font-semibold text-jfu-primary">{t('productAdsHook')}</span>{' '}
+          {t('productAdsDesc')}
         </p>
+
+        {/* Fakta ringkas: jangkauan, harga mulai, durasi */}
+        <div className="flex flex-wrap justify-center gap-2 mt-5">
+          {facts.map(({ icon: Icon, label }) => (
+            <span
+              key={label}
+              className="inline-flex items-center gap-1.5 rounded-full border border-jfu-primary/[0.15] bg-white px-3 py-1.5 text-xs font-medium text-[#444] shadow-sm"
+            >
+              <Icon className="w-3.5 h-3.5 text-jfu-primary shrink-0" />
+              {label}
+            </span>
+          ))}
+        </div>
       </div>
 
-      <div className="method-cards-grid">
+      {/* Pilihan metode input */}
+      <div className="text-center mb-5">
+        <h2 className="text-base md:text-lg font-bold text-[#1a1a1a]">{t('startByFillingData')}</h2>
+        <p className="text-sm text-[#666] mt-1">{t('chooseMethodSuitable')}</p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 items-stretch">
         {/* PRIMARY: Google Form Import */}
-        <div className="method-card method-card-primary">
-          {/* Recommended Badge */}
-          <div className="method-card-badge">
-            <span className="badge-icon">⭐</span>
-            <span className="badge-text">{t('recommended')}</span>
-          </div>
+        <div className="relative flex flex-col rounded-2xl border-2 border-jfu-primary/40 bg-white p-5 shadow-card">
+          <span className="absolute -top-3 right-4 inline-flex items-center gap-1 rounded-full bg-amber-400/90 px-3 py-1 text-[10px] font-bold tracking-wide text-amber-950 shadow-sm">
+            ⭐ {t('recommended')}
+          </span>
 
-          {/* Card Content */}
-          <div className="method-card-content">
-            {/* Icon */}
-            <div className="method-card-icon method-card-icon-primary">
-              <Zap size={32} />
-            </div>
+          <span className="inline-flex w-11 h-11 rounded-xl bg-jfu-primary text-white items-center justify-center mb-4">
+            <Zap className="w-5 h-5" />
+          </span>
 
-            {/* Title */}
-            <h2 className="method-card-title text-lg font-semibold mt-4 mb-6">{t('googleFormImportTitle')}</h2>
+          <h3 className="text-base font-bold text-[#1a1a1a] mb-3">{t('googleFormImportTitle')}</h3>
 
-            {/* Benefits List */}
-            <ul className="method-card-benefits space-y-3 mb-8">
-              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
-                <CheckCircle2 className="benefit-icon text-blue-500 flex-shrink-0" size={18} />
-                <span className="benefit-text">{t('benefit100Accurate')}</span>
-              </li>
-              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
-                <Zap className="benefit-icon text-amber-500 flex-shrink-0" size={18} />
-                <span className="benefit-text font-medium text-gray-900">{t('benefitAutoFill')}</span>
-              </li>
-              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
-                <Clock className="benefit-icon text-emerald-500 flex-shrink-0" size={18} />
-                <span className="benefit-text">{t('benefitSaveTime')}</span>
-              </li>
-            </ul>
+          <ul className="space-y-2.5 mb-6">
+            <li className="flex items-center gap-2.5 text-sm text-[#555]">
+              <CheckCircle2 className="w-4 h-4 text-jfu-primary shrink-0" />
+              {t('benefit100Accurate')}
+            </li>
+            <li className="flex items-center gap-2.5 text-sm font-semibold text-[#1a1a1a]">
+              <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+              {t('benefitAutoFill')}
+            </li>
+            <li className="flex items-center gap-2.5 text-sm text-[#555]">
+              <Clock className="w-4 h-4 text-emerald-500 shrink-0" />
+              {t('benefitSaveTime')}
+            </li>
+          </ul>
 
-            {/* CTA Button */}
-            <button
-              onClick={() => onSelectMethod('google')}
-              className="method-card-cta method-card-cta-primary"
-            >
-              <svg className="cta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M7 16a4 4 0 0 1-.88-7.903A5 5 0 1 1 15.9 6L16 6a5 5 0 0 1 1 9.9M9 19l3 3m0 0l3-3m-3 3v-7" />
-              </svg>
-              {t('importFromGoogleForm')}
-            </button>
-          </div>
+          <button
+            onClick={() => onSelectMethod('google')}
+            className="mt-auto w-full min-h-11 inline-flex items-center justify-center gap-2 rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 transition-all"
+          >
+            <Download className="w-4 h-4" />
+            {t('importFromGoogleForm')}
+          </button>
         </div>
 
         {/* SECONDARY: Manual Input */}
-        <div className="method-card method-card-secondary">
-          {/* Card Content */}
-          <div className="method-card-content flex flex-col items-start text-left h-full">
-            {/* Icon */}
-            <div className="method-card-icon method-card-icon-secondary">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </div>
+        <div className="flex flex-col rounded-2xl border border-jfu-primary/[0.12] bg-white p-5 shadow-card">
+          <span className="inline-flex w-11 h-11 rounded-xl bg-gray-100 text-gray-500 items-center justify-center mb-4">
+            <PenLine className="w-5 h-5" />
+          </span>
 
-            {/* Title */}
-            <h2 className="method-card-title text-lg font-semibold mt-4 mb-2">{t('manualFillTitle')}</h2>
+          <h3 className="text-base font-bold text-[#1a1a1a] mb-2">{t('manualFillTitle')}</h3>
 
-            {/* Description */}
-            <p className="method-card-description text-sm text-gray-500 text-left leading-relaxed mb-auto">
-              {t('manualFillDescription')}
-            </p>
+          <p className="text-sm text-[#666] leading-relaxed">{t('manualFillDescription')}</p>
 
-            {/* Admin Review Info - Left Aligned */}
-            <div className="flex items-center gap-1.5 mt-8 mb-4 text-blue-600/80 text-xs">
-              <Info size={12} strokeWidth={2.5} />
-              <span className="font-medium">{t('requiresAdminReview')}</span>
-            </div>
-
-            {/* CTA Button */}
-            <button
-              onClick={() => onSelectMethod('manual')}
-              className="method-card-cta method-card-cta-secondary w-full"
-            >
-              {t('fillManually')}
-            </button>
+          <div className="flex items-center gap-1.5 mt-4 mb-4 text-jfu-primary/80 text-xs">
+            <Info className="w-3.5 h-3.5 shrink-0" strokeWidth={2.5} />
+            <span className="font-medium">{t('requiresAdminReview')}</span>
           </div>
+
+          <button
+            onClick={() => onSelectMethod('manual')}
+            className="mt-auto w-full min-h-11 inline-flex items-center justify-center rounded-full font-semibold text-jfu-primary border border-jfu-primary/25 bg-white hover:bg-jfu-primary/[0.06] transition-colors"
+          >
+            {t('fillManually')}
+          </button>
         </div>
       </div>
 
-      {/* Info Notice removed - moved to subtitle */}
+      {/* Cross-link edukasi Kilat */}
+      <div className="text-center mt-8">
+        <Link
+          to="/dashboard/submit-kilat"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#666] hover:text-jfu-primary transition-colors"
+        >
+          <Zap className="w-4 h-4 text-amber-500" />
+          {t('adsEntryKilatCrossLink')}
+          <ChevronRight className="w-4 h-4" />
+        </Link>
+      </div>
     </div>
   );
 }

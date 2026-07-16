@@ -299,8 +299,9 @@ export function MultiStepForm() {
 
   return (
     <div className="multi-step-form">
-      {/* Bar step sticky di bawah AppNav. Saat disembunyikan (pemilihan
-          metode / import GForm) AppNav sendiri sudah jadi header halaman. */}
+      {/* Bar step floating di bawah layar (desktop & mobile). Saat
+          disembunyikan (pemilihan metode / import GForm) AppNav sendiri
+          sudah jadi header halaman. */}
       {isHeaderVisible && (
         <UnifiedHeader
           currentStep={currentStep}
@@ -309,8 +310,9 @@ export function MultiStepForm() {
         />
       )}
 
-      {/* Form Content */}
-      <div className="form-content mt-8 max-w-5xl mx-auto px-6 pb-24">
+      {/* Form Content — pb besar supaya tombol navigasi step terakhir tidak
+          tertutup bar step yang floating di bawah. */}
+      <div className="form-content mt-8 max-w-5xl mx-auto px-6 pb-32 md:pb-36">
         {/* Lebaran Holiday Banner — auto-hides after 25 Mar 2026 12:00 WIB */}
         {(() => {
           const bannerExpiry = new Date('2026-03-25T05:00:00Z'); // 12:00 WIB
