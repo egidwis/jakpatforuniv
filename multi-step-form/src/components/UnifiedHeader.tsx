@@ -1,18 +1,19 @@
 import type { SurveyFormData } from '../types';
 import { calculateTotalCost } from '../utils/cost-calculator';
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
-import { Menu, Check } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface UnifiedHeaderProps {
     currentStep: number;
     formData: SurveyFormData;
-    onToggleSidebar: () => void;
     onReset?: () => void;
 }
 
-export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset }: UnifiedHeaderProps) {
+export function UnifiedHeader({ currentStep, formData, onReset }: UnifiedHeaderProps) {
+    const navigate = useNavigate();
     const { t } = useLanguage();
     const calculation = useMemo(() => calculateTotalCost(formData), [
         formData.questionCount,
@@ -42,21 +43,25 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
     const displayStep = currentStep === 4 ? 3 : currentStep;
 
     return (
-        <div className="fixed top-4 right-4 left-4 md:left-[17rem] md:right-8 z-40">
-            <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl transition-all duration-200">
-                <div className="w-full max-w-5xl mx-auto px-6 py-4">
+        // Bar kedua yang menempel di bawah AppNav (sticky, in-flow — tanpa
+        // padding-top hack di konten). Navbar tetap tampil selama order form.
+        <div className="sticky top-14 md:top-16 z-30 bg-white/90 backdrop-blur border-b border-gray-100">
+            <div className="transition-all duration-200">
+                <div className="w-full max-w-5xl mx-auto px-4 md:px-6 py-3">
                     <div className="flex items-center justify-between">
 
                         {/* LEFT: Menu & Mini Stepper */}
                         <div className="flex items-center gap-2 md:gap-4">
-                            {/* Hamburger Menu (Mobile Only) */}
+                            {/* Keluar dari focus mode → kembali ke Order Saya.
+                                Draft sudah tersimpan otomatis (SURVEY_DRAFT_KEY). */}
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="md:hidden mr-0 -ml-2"
-                                onClick={onToggleSidebar}
+                                className="mr-0 -ml-2"
+                                onClick={() => navigate('/dashboard/status')}
+                                title={t('backToOrders')}
                             >
-                                <Menu className="w-5 h-5 md:w-6 md:h-6 text-gray-700" />
+                                <X className="w-5 h-5 text-gray-700" />
                             </Button>
 
                             <div className="flex items-center gap-0.5 md:gap-1">
@@ -68,18 +73,17 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                                         <div key={step.number} className="flex items-center">
                                             {/* Line Connector (except first) */}
                                             {idx > 0 && (
-                                                <div className={`w-3 md:w-8 h-0.5 mx-0.5 md:mx-2 rounded-full transition-colors duration-300`} style={{ backgroundColor: isCompleted || isActive ? '#0091ff' : '#e5e7eb' }} />
+                                                <div className={`w-3 md:w-8 h-0.5 mx-0.5 md:mx-2 rounded-full transition-colors duration-300 ${isCompleted || isActive ? 'bg-jfu-primary' : 'bg-gray-200'}`} />
                                             )}
 
                                             {/* Circle */}
                                             <div
                                                 className={`
                         w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center font-bold text-[10px] ring-2 md:ring-4 ring-white transition-all duration-300
-                        ${isActive ? 'text-white shadow-md scale-110' : ''}
-                        ${isCompleted ? 'text-white' : ''}
+                        ${isActive ? 'bg-jfu-primary text-white shadow-md scale-110' : ''}
+                        ${isCompleted ? 'bg-jfu-primary text-white' : ''}
                         ${!isActive && !isCompleted ? 'bg-gray-100 border border-gray-200' : ''}
                       `}
-                                                style={isActive || isCompleted ? { backgroundColor: '#0091ff' } : {}}
                                             >
                                                 {isCompleted && <Check className="w-2.5 h-2.5 md:w-3 md:h-3" />}
                                                 {isActive && <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-white rounded-full" />}
@@ -104,7 +108,7 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                             <div className="text-right">
                                 <p className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider hidden sm:block">Estimated Cost</p>
                                 <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider sm:hidden">Cost</p>
-                                <p className="text-sm md:text-lg font-bold" style={{ color: '#0091ff' }}>Rp{formatRupiah(calculation.totalCost)}</p>
+                                <p className="text-sm md:text-lg font-bold text-jfu-primary">Rp{formatRupiah(calculation.totalCost)}</p>
                             </div>
 
                             {onReset && (

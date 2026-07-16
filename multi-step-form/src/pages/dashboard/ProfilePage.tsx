@@ -4,9 +4,10 @@ import { useAuth } from '@/context/AuthContext';
 import { getOwnProfile, updateOwnProfile, isProfileComplete, type ResearcherProfile, supabase } from '@/utils/supabase';
 import { ACADEMIC_STATUS_OPTIONS, DEPARTMENT_OPTIONS, UNIVERSITY_OPTIONS, REFERRAL_SOURCE_OPTIONS, collapseReferralSource, expandReferralSource } from '@/constants/biodata';
 import { Combobox } from '@/components/ui/combobox';
-import { Loader2, User, GraduationCap, Megaphone, Info, Sparkles } from 'lucide-react';
+import { Loader2, User, GraduationCap, Megaphone, Info, Sparkles, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '@/i18n/LanguageContext';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 const getInputClass = (hasError: boolean) => 
   `w-full px-4 py-2.5 rounded-xl border transition-all duration-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 ${
@@ -53,9 +54,14 @@ const getReferralLabel = (val: string, t: any) => {
  * Biodata ini menjadi sumber prefill order form & default Detail Invoice.
  */
 export function ProfilePage() {
-    const { user } = useAuth();
+    const { user, signOut } = useAuth();
     const { t } = useLanguage();
     const navigate = useNavigate();
+
+    const handleSignOut = async () => {
+        await signOut();
+        navigate('/login');
+    };
     const [searchParams] = useSearchParams();
     const nextPath = searchParams.get('next');
 
@@ -374,6 +380,23 @@ export function ProfilePage() {
                     </button>
                 </div>
             </form>
+
+            {/* Bahasa & keluar — juga tersedia di dropdown avatar AppNav;
+                dipertahankan di sini sebagai akses eksplisit di mobile. */}
+            <div className="md:hidden mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-xs text-gray-400 dark:text-gray-500 font-medium tracking-wide uppercase">Language</span>
+                    <LanguageSwitcher />
+                </div>
+                <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="w-full min-h-11 flex items-center justify-center gap-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors"
+                >
+                    <LogOut className="w-4 h-4" />
+                    {t('signOut')}
+                </button>
+            </div>
         </div>
     );
 }

@@ -467,6 +467,66 @@ export const translations = {
     voucherTitle: "Voucher/Referral Code (Optional)",
     voucherApplied: "Applied",
     voucherPlaceholder: "Enter voucher or referral code",
+
+    // Dashboard revamp — navigation
+    navOrders: "My Orders",
+    navCreateOrder: "New Order",
+    navHelp: "Help",
+    navProfile: "Profile",
+    signOut: "Sign Out",
+    backToOrders: "Back to My Orders",
+    refresh: "Refresh",
+    language: "Language",
+
+    // Dashboard revamp — homepage product hub
+    createNewOrder: "Create New Order",
+    comingSoon: "Coming Soon",
+    productAdsTitle: "Ads Survei",
+    productAdsDesc: "Distribute your survey to Jakpat panel respondents",
+    productKilatTitle: "JFU Kilat",
+    productKilatDesc: "Express distribution, faster results",
+    productRespAccessTitle: "Respondent Access",
+    productRespAccessDesc: "Direct access to respondents for your research",
+
+    // Dashboard revamp — order list & filters
+    filterAll: "All",
+    filterNeedsAction: "Action Needed",
+    filterOngoing: "In Progress",
+    filterDone: "Done",
+    noOrdersInFilter: "No orders in this category.",
+    noOrdersTitle: "No orders yet",
+    createFirstOrder: "Create Your First Order",
+    howItWorksTitle: "How it works",
+    howItWorksStep1: "Submit your survey",
+    howItWorksStep2: "Review & payment",
+    howItWorksStep3: "Your survey is advertised to Jakpat respondents",
+    chatAboutOrder: "Need help with this order? Chat with Mimin",
+
+    // Dashboard revamp — next-step callout
+    calloutReviewManual: "Your survey is being reviewed by our admin — max 2 working days (Mon–Fri). We'll notify you by email.",
+    calloutReviewAuto: "Automatic review in progress — results usually appear within minutes.",
+    calloutDetectedKeywords: "Detected:",
+    calloutChooseSchedule: "Your survey is approved! Pick an airing schedule to continue.",
+    calloutPayBefore: "Complete your payment before",
+    calloutPayBeforeSuffix: "or the slot will be released.",
+    calloutPaymentGeneric: "Complete your payment to secure your survey's airing schedule.",
+    calloutAwaitingInvoice: "Slot reserved. Waiting for the admin to issue your invoice — max 1 working day.",
+    calloutExpired: "Payment expired and the slot was released. Pick a new schedule — no need to resubmit.",
+    calloutReadyPrefix: "Payment received ✓. Your survey airs starting",
+    calloutLivePrefix: "Your survey is live until",
+    respondentExpectation: "JFU advertises your survey to Jakpat respondents — the number of responses depends on respondent interest and is not guaranteed.",
+    calloutCompletedPrefix: "Airing period ended on",
+    calloutCompletedSuffix: "Thank you for using JFU!",
+
+    // Dashboard revamp — order details accordion
+    orderDetails: "Order details",
+    detailQuestions: "Questions",
+    detailPrize: "Winner incentive",
+    detailCriteria: "Respondent criteria",
+    detailSurveyLink: "Original survey link",
+    viewSurvey: "View Survey",
+    aboutService: "About this service",
+    aboutServiceBody: "JFU advertises your survey (banner + title) in the Jakpat app during the airing period. The number of respondents depends on respondents' interest in your survey and is not guaranteed. Coming soon: JFU Kilat — push-notification distribution with faster results.",
   },
 
   id: {
@@ -933,6 +993,66 @@ export const translations = {
     voucherTitle: "Kode Voucher/Referral (Optional)",
     voucherApplied: "Digunakan",
     voucherPlaceholder: "Masukkan kode voucher atau referral",
+
+    // Dashboard revamp — navigasi
+    navOrders: "Order Saya",
+    navCreateOrder: "Buat Order",
+    navHelp: "Bantuan",
+    navProfile: "Profil",
+    signOut: "Keluar",
+    backToOrders: "Kembali ke Order Saya",
+    refresh: "Muat ulang",
+    language: "Bahasa",
+
+    // Dashboard revamp — hub produk homepage
+    createNewOrder: "Buat Order Baru",
+    comingSoon: "Segera Hadir",
+    productAdsTitle: "Ads Survei",
+    productAdsDesc: "Sebarkan survei kamu ke responden panel Jakpat",
+    productKilatTitle: "JFU Kilat",
+    productKilatDesc: "Distribusi ekspres, hasil lebih cepat",
+    productRespAccessTitle: "Respondent Access",
+    productRespAccessDesc: "Akses langsung ke responden untuk risetmu",
+
+    // Dashboard revamp — daftar order & filter
+    filterAll: "Semua",
+    filterNeedsAction: "Butuh Aksi",
+    filterOngoing: "Berjalan",
+    filterDone: "Selesai",
+    noOrdersInFilter: "Tidak ada order di kategori ini.",
+    noOrdersTitle: "Belum ada order",
+    createFirstOrder: "Buat Order Pertama",
+    howItWorksTitle: "Cara kerjanya",
+    howItWorksStep1: "Ajukan survei kamu",
+    howItWorksStep2: "Review & pembayaran",
+    howItWorksStep3: "Survei kamu diiklankan ke responden Jakpat",
+    chatAboutOrder: "Butuh bantuan soal order ini? Chat Mimin",
+
+    // Dashboard revamp — callout langkah berikutnya
+    calloutReviewManual: "Survei kamu sedang direview admin — maksimal 2 hari kerja (Senin–Jumat). Hasilnya kami kabari via email.",
+    calloutReviewAuto: "Review otomatis sedang berjalan — hasil biasanya keluar dalam beberapa menit.",
+    calloutDetectedKeywords: "Terdeteksi:",
+    calloutChooseSchedule: "Survei kamu disetujui! Pilih jadwal tayang untuk melanjutkan.",
+    calloutPayBefore: "Selesaikan pembayaran sebelum",
+    calloutPayBeforeSuffix: "agar slot tidak hangus.",
+    calloutPaymentGeneric: "Selesaikan pembayaran untuk mengamankan jadwal tayang survei kamu.",
+    calloutAwaitingInvoice: "Slot berhasil dipesan. Menunggu admin menerbitkan tagihan — maksimal 1 hari kerja.",
+    calloutExpired: "Pembayaran kedaluwarsa dan slot dilepas. Pilih jadwal baru — tidak perlu submit ulang.",
+    calloutReadyPrefix: "Pembayaran diterima ✓. Survei kamu tayang mulai",
+    calloutLivePrefix: "Survei kamu sedang tayang sampai",
+    respondentExpectation: "JFU mengiklankan survei kamu ke responden Jakpat — jumlah respons bergantung minat responden dan tidak dijamin.",
+    calloutCompletedPrefix: "Masa tayang selesai pada",
+    calloutCompletedSuffix: "Terima kasih sudah menggunakan JFU!",
+
+    // Dashboard revamp — accordion detail order
+    orderDetails: "Detail order",
+    detailQuestions: "Jumlah pertanyaan",
+    detailPrize: "Insentif pemenang",
+    detailCriteria: "Kriteria responden",
+    detailSurveyLink: "Link survei asli",
+    viewSurvey: "Lihat Survei",
+    aboutService: "Tentang layanan",
+    aboutServiceBody: "JFU mengiklankan survei kamu (banner + judul) di aplikasi Jakpat selama masa tayang. Jumlah responden bergantung minat responden terhadap survei kamu dan tidak dijamin. Segera hadir: JFU Kilat — distribusi via push notification dengan hasil lebih cepat.",
   }
 };
 

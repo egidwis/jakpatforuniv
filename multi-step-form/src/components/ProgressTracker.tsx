@@ -199,7 +199,8 @@ export function ProgressTracker({
     onReschedule,
     activeStartDate,
     activeEndDate,
-    isExtended
+    isExtended,
+    compactCompleted = false
 }: {
     submission: FormSubmission;
     currentStep: number;
@@ -212,6 +213,12 @@ export function ProgressTracker({
     activeStartDate?: string | null;
     activeEndDate?: string | null;
     isExtended?: boolean;
+    /**
+     * Mode ringkas untuk kartu StatusPage baru: step selesai tampil label-saja,
+     * helper hanya di step aktif, dan tombol aksi inline (bayar/jadwal/invoice)
+     * disembunyikan karena NextStepCallout yang memegang CTA.
+     */
+    compactCompleted?: boolean;
 }) {
     const { t } = useLanguage();
 
@@ -261,18 +268,17 @@ export function ProgressTracker({
             <div className="hidden md:block">
                 <div className="relative">
                     {/* Background Line */}
-                    <div className="absolute top-5 left-0 w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full" />
+                    <div className="absolute top-5 left-0 w-full h-px bg-gray-200" />
 
                     {/* Progress Line */}
                     <div
-                        className="absolute top-5 left-0 h-1 rounded-full transition-all duration-500"
-                        style={{ width: `${(currentStep / (steps.length - 1)) * 100}%`, backgroundColor: '#0091ff' }}
+                        className="absolute top-5 left-0 h-[2px] transition-all duration-500 bg-jfu-primary"
+                        style={{ width: `${(currentStep / (steps.length - 1)) * 100}%` }}
                     />
 
                     {/* Step Circles */}
                     <div className="relative flex justify-between">
                         {steps.map((step, index) => {
-                            const Icon = step.icon;
                             const isCompleted = index < currentStep;
                             const isCurrent = index === currentStep;
 
@@ -283,18 +289,17 @@ export function ProgressTracker({
                                         className={`
                                             w-10 h-10 rounded-full flex items-center justify-center z-10 transition-all duration-300
                                             ${isCompleted
-                                                ? 'text-white ring-4 ring-blue-100 dark:ring-blue-900'
+                                                ? 'bg-jfu-primary/[0.12] text-jfu-primary'
                                                 : isCurrent
-                                                    ? 'text-white ring-4 ring-blue-200 dark:ring-blue-800 animate-pulse'
-                                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                                                    ? 'bg-jfu-primary text-white'
+                                                    : 'bg-white border border-gray-200 text-gray-400'
                                             }
                                         `}
-                                        style={isCompleted || isCurrent ? { backgroundColor: '#0091ff' } : {}}
                                     >
                                         {isCompleted ? (
                                             <CheckCircle2 className="w-5 h-5" />
                                         ) : (
-                                            <Icon className="w-5 h-5" />
+                                            <span className="font-semibold text-sm leading-none">{index + 1}</span>
                                         )}
                                     </div>
 
@@ -304,8 +309,8 @@ export function ProgressTracker({
                                             className={`
                                                 text-xs font-semibold block
                                                 ${isCompleted || isCurrent
-                                                    ? 'text-gray-900 dark:text-gray-100'
-                                                    : 'text-gray-400 dark:text-gray-500'
+                                                    ? 'text-[#1a1a1a]'
+                                                    : 'text-gray-400'
                                                 }
                                             `}
                                         >
@@ -313,25 +318,25 @@ export function ProgressTracker({
                                         </span>
                                         {/* Helper text / schedule info / pay button */}
                                         <div className="flex flex-col items-center gap-1 mt-1">
-                                            {((isCurrent && !paymentLink) || isCurrent || isCompleted) && (
-                                                <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[120px] leading-tight block">
+                                            {((isCurrent && !paymentLink) || isCurrent || (isCompleted && !compactCompleted)) && (
+                                                <span className="text-[11px] text-gray-500 max-w-[120px] leading-tight block">
                                                     {getDynamicHelper(step, isCompleted)}
                                                 </span>
                                             )}
 
                                             {/* Schedule Date (under scheduling step) */}
-                                            {(isCurrent || isCompleted) && step.key === 'slot' && submission.start_date && (
-                                                <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-0.5 inline-block leading-tight">
+                                            {(isCurrent || (isCompleted && !compactCompleted)) && step.key === 'slot' && submission.start_date && (
+                                                <span className="text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full mt-0.5 inline-block leading-tight">
                                                     {normalizeScheduleDate(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {submission.end_date ? normalizeScheduleDate(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}
                                                 </span>
                                             )}
 
                                             {/* Expired Slot Reschedule Button */}
-                                            {isCurrent && step.key === 'slot' && isExpired && onReschedule && (
+                                            {!compactCompleted && isCurrent && step.key === 'slot' && isExpired && onReschedule && (
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="h-6 mt-1 text-[10px] px-2 text-red-600 border-red-200 hover:bg-red-50"
+                                                    className="h-6 mt-1 text-[10px] px-2 rounded-full font-bold text-rose-600 border-rose-300 hover:bg-rose-50"
                                                     onClick={onReschedule}
                                                 >
                                                     {t('rescheduleSlot')}
@@ -339,11 +344,11 @@ export function ProgressTracker({
                                             )}
 
                                             {/* New Slot Schedule Button (when status is approved) */}
-                                            {isCurrent && step.key === 'slot' && !submission.start_date && !isExpired && onReschedule && (
+                                            {!compactCompleted && isCurrent && step.key === 'slot' && !submission.start_date && !isExpired && onReschedule && (
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="h-6 mt-1 text-[10px] px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+                                                    className="h-6 mt-1 text-[10px] px-2 rounded-full font-semibold text-jfu-primary border-jfu-primary/20 hover:bg-jfu-primary/[0.08]"
                                                     onClick={onReschedule}
                                                 >
                                                     {t('chooseSchedule')}
@@ -351,30 +356,29 @@ export function ProgressTracker({
                                             )}
 
                                             {/* Live Date Badge (under publishing step) */}
-                                            {(isCurrent || isCompleted) && step.key === 'publishing' && pubStart && (() => {
+                                            {(isCurrent || (isCompleted && !compactCompleted)) && step.key === 'publishing' && pubStart && (() => {
                                                 const now = new Date();
                                                 const isLive = !!(pubStart && pubEnd &&
                                                     normalizeScheduleDate(pubStart) <= now && normalizeScheduleDate(pubEnd) >= now);
                                                 const extLabel = isExtended ? ` (${t('extendedLabel')})` : '';
                                                 return isLive ? (
-                                                    <span className="text-[11px] font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-0.5 inline-block leading-tight">
+                                                    <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full mt-0.5 inline-block leading-tight">
                                                         {t('statusLiveUntil')} {pubEnd ? normalizeScheduleDate(pubEnd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : ''}{extLabel}
                                                     </span>
                                                 ) : (
-                                                    <span className="text-[11px] text-gray-400 mt-0.5 inline-block leading-tight">
+                                                    <span className="text-[11px] text-gray-500 mt-0.5 inline-block leading-tight">
                                                         Scheduled: {normalizeScheduleDate(pubStart).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {normalizeScheduleDate(pubStart).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB{extLabel}
                                                     </span>
                                                 );
                                             })()}
 
                                             {/* Pay Now Button (Desktop) */}
-                                            {isCurrent && step.key === 'payment' && paymentLink && (
+                                            {!compactCompleted && isCurrent && step.key === 'payment' && paymentLink && (
                                                 <a
                                                     href={paymentLink}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 mt-1 px-3 py-1 text-xs font-semibold text-white rounded-full hover:opacity-90 transition-opacity shadow-sm"
-                                                    style={{ backgroundColor: '#0091ff' }}
+                                                    className="inline-flex items-center gap-1 mt-1 px-3 py-1 text-xs font-semibold text-white bg-jfu-primary rounded-full hover:bg-jfu-dark transition-colors"
                                                 >
                                                     <CreditCard className="w-3 h-3" />
                                                     {t('payNow')}
@@ -383,7 +387,7 @@ export function ProgressTracker({
                                             )}
 
                                             {/* Invoice/Receipt Link (Desktop) */}
-                                            {step.key === 'payment' && invoiceId && (() => {
+                                            {!compactCompleted && step.key === 'payment' && invoiceId && (() => {
                                                 const isPaidVal = (submission.payment_status || '').toLowerCase() === 'paid' || 
                                                                   (submission.submission_status || '').toLowerCase() === 'paid' ||
                                                                   ['scheduled', 'live', 'completed'].includes((submission.submission_status || '').toLowerCase());
@@ -393,7 +397,7 @@ export function ProgressTracker({
                                                             href={`/invoices/${invoiceId}`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="text-[10px] text-blue-600 hover:text-blue-700 underline flex items-center gap-0.5 mt-1 font-medium"
+                                                            className="text-[10px] text-jfu-primary hover:text-jfu-dark underline flex items-center gap-0.5 mt-1 font-medium"
                                                         >
                                                             <FileText className="w-3 h-3 mr-1.5" />
                                                             {t('downloadReceipt')}
@@ -406,7 +410,7 @@ export function ProgressTracker({
                                                             href={`/invoices/${invoiceId}`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="text-[10px] text-gray-400 underline flex items-center gap-0.5 mt-1"
+                                                            className="text-[10px] text-gray-500 underline flex items-center gap-0.5 mt-1"
                                                         >
                                                             <FileText className="w-3 h-3 mr-1.5" />
                                                             {t('viewInvoice')}
@@ -427,11 +431,10 @@ export function ProgressTracker({
             {/* Mobile Progress Steps */}
             <div className="md:hidden space-y-0">
                 {steps.map((step, index) => {
-                    const Icon = step.icon;
                     const isCompleted = index < currentStep;
                     const isCurrent = index === currentStep;
                     const isLast = index === steps.length - 1;
-                    
+
                     return (
                         <div key={step.key} className="relative flex gap-3 items-start">
                             {/* Vertical Line + Circle */}
@@ -440,25 +443,23 @@ export function ProgressTracker({
                                     className={`
                                         w-8 h-8 rounded-full flex items-center justify-center z-10 shrink-0 transition-all duration-300
                                         ${isCompleted
-                                            ? 'text-white ring-2 ring-blue-100 dark:ring-blue-900'
+                                            ? 'bg-jfu-primary/[0.12] text-jfu-primary'
                                             : isCurrent
-                                                ? 'text-white ring-2 ring-blue-200 dark:ring-blue-800 animate-pulse'
-                                                : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                                                ? 'bg-jfu-primary text-white'
+                                                : 'bg-white border border-gray-200 text-gray-400'
                                         }
                                     `}
-                                    style={isCompleted || isCurrent ? { backgroundColor: '#0091ff' } : {}}
                                 >
                                     {isCompleted ? (
                                         <CheckCircle2 className="w-4 h-4" />
                                     ) : (
-                                        <Icon className="w-4 h-4" />
+                                        <span className="font-semibold text-xs leading-none">{index + 1}</span>
                                     )}
                                 </div>
                                 {/* Connector Line */}
                                 {!isLast && (
                                     <div
-                                        className={`w-0.5 flex-1 min-h-[24px] ${isCompleted ? '' : 'bg-gray-200 dark:bg-gray-700'}`}
-                                        style={isCompleted ? { backgroundColor: '#0091ff' } : {}}
+                                        className={`w-px flex-1 min-h-[24px] ${isCompleted ? 'bg-jfu-primary/40' : 'bg-gray-200'}`}
                                     />
                                 )}
                             </div>
@@ -469,49 +470,49 @@ export function ProgressTracker({
                                     className={`
                                         text-xs font-semibold block
                                         ${isCompleted || isCurrent
-                                            ? 'text-gray-900 dark:text-gray-100'
-                                            : 'text-gray-400 dark:text-gray-500'
+                                            ? 'text-[#1a1a1a]'
+                                            : 'text-gray-400'
                                         }
                                     `}
                                 >
                                     {step.label}
                                 </span>
-                                {(isCurrent || isCompleted) && (
-                                    <span className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight block mt-0.5">
+                                {(isCurrent || (isCompleted && !compactCompleted)) && (
+                                    <span className="text-[11px] text-gray-500 leading-tight block mt-0.5">
                                         {getDynamicHelper(step, isCompleted)}
                                     </span>
                                 )}
 
                                 {/* Schedule Date (Mobile) */}
-                                {(isCurrent || isCompleted) && step.key === 'slot' && submission.start_date && (
-                                    <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1 inline-block leading-tight">
+                                {(isCurrent || (isCompleted && !compactCompleted)) && step.key === 'slot' && submission.start_date && (
+                                    <span className="text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full mt-1 inline-block leading-tight">
                                         {normalizeScheduleDate(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {submission.end_date ? normalizeScheduleDate(submission.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '...'}
                                     </span>
                                 )}
 
                                 {/* Live/Schedule Date (Mobile, publishing) */}
-                                {(isCurrent || isCompleted) && step.key === 'publishing' && pubStart && (() => {
+                                {(isCurrent || (isCompleted && !compactCompleted)) && step.key === 'publishing' && pubStart && (() => {
                                     const now = new Date();
                                     const isLive = !!(pubStart && pubEnd &&
                                         normalizeScheduleDate(pubStart) <= now && normalizeScheduleDate(pubEnd) >= now);
                                     const extLabel = isExtended ? ` (${t('extendedLabel')})` : '';
                                     return isLive ? (
-                                        <span className="text-[11px] font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full mt-1 inline-block leading-tight">
+                                        <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full mt-1 inline-block leading-tight">
                                             {t('statusLiveUntil')} {pubEnd ? normalizeScheduleDate(pubEnd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : ''}{extLabel}
                                         </span>
                                     ) : (
-                                        <span className="text-[11px] text-gray-400 mt-1 inline-block leading-tight">
+                                        <span className="text-[11px] text-gray-500 mt-1 inline-block leading-tight">
                                             Scheduled: {normalizeScheduleDate(pubStart).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}, {normalizeScheduleDate(pubStart).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB{extLabel}
                                         </span>
                                     );
                                 })()}
 
                                 {/* Expired Reschedule Button (Mobile) */}
-                                {isCurrent && step.key === 'slot' && isExpired && onReschedule && (
+                                {!compactCompleted && isCurrent && step.key === 'slot' && isExpired && onReschedule && (
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        className="h-6 mt-1 text-[10px] px-2 text-red-600 border-red-200 hover:bg-red-50"
+                                        className="h-6 mt-1 text-[10px] px-2 rounded-full font-bold text-rose-600 border-rose-300 hover:bg-rose-50"
                                         onClick={onReschedule}
                                     >
                                         {t('rescheduleSlot')}
@@ -519,11 +520,11 @@ export function ProgressTracker({
                                 )}
 
                                 {/* New Slot Schedule Button (Mobile) */}
-                                {isCurrent && step.key === 'slot' && !submission.start_date && !isExpired && onReschedule && (
+                                {!compactCompleted && isCurrent && step.key === 'slot' && !submission.start_date && !isExpired && onReschedule && (
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        className="h-6 mt-1 text-[10px] px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+                                        className="h-6 mt-1 text-[10px] px-2 rounded-full font-semibold text-jfu-primary border-jfu-primary/20 hover:bg-jfu-primary/[0.08]"
                                         onClick={onReschedule}
                                     >
                                         {t('chooseSchedule')}
@@ -531,14 +532,13 @@ export function ProgressTracker({
                                 )}
 
                                 {/* Pay Now Button (Mobile) */}
-                                {isCurrent && step.key === 'payment' && paymentLink && (
+                                {!compactCompleted && isCurrent && step.key === 'payment' && paymentLink && (
                                     <div className="mt-2 flex flex-col gap-1.5">
                                         <a
                                             href={paymentLink}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white rounded-full hover:opacity-90 transition-opacity shadow-sm w-fit"
-                                            style={{ backgroundColor: '#0091ff' }}
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-jfu-primary rounded-full hover:bg-jfu-dark transition-colors w-fit"
                                         >
                                             <CreditCard className="w-3 h-3" />
                                             {t('payNow')}
@@ -548,7 +548,7 @@ export function ProgressTracker({
                                 )}
 
                                 {/* Receipt/Invoice Link (Mobile) */}
-                                {step.key === 'payment' && invoiceId && (() => {
+                                {!compactCompleted && step.key === 'payment' && invoiceId && (() => {
                                     const isPaidVal = (submission.payment_status || '').toLowerCase() === 'paid' || 
                                                       (submission.submission_status || '').toLowerCase() === 'paid' ||
                                                       ['scheduled', 'live', 'completed'].includes((submission.submission_status || '').toLowerCase());
@@ -559,7 +559,7 @@ export function ProgressTracker({
                                                     href={`/invoices/${invoiceId}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-[10px] text-blue-600 hover:text-blue-700 underline flex items-center gap-0.5 font-medium"
+                                                    className="text-[10px] text-jfu-primary hover:text-jfu-dark underline flex items-center gap-0.5 font-medium"
                                                 >
                                                     <FileText className="w-3.5 h-3.5 mr-1" />
                                                     {t('downloadReceipt')}
@@ -574,7 +574,7 @@ export function ProgressTracker({
                                                     href={`/invoices/${invoiceId}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-[10px] text-gray-400 underline flex items-center gap-0.5"
+                                                    className="text-[10px] text-gray-500 underline flex items-center gap-0.5"
                                                 >
                                                     <FileText className="w-3 h-3 mr-1.5" />
                                                     {t('viewInvoice')}

@@ -88,7 +88,7 @@ function AppContent() {
             <DashboardLayout />
           </PrivateRoute>
         }>
-          <Route index element={<Navigate to="/dashboard/submit" replace />} />
+          <Route index element={<Navigate to="/dashboard/status" replace />} />
           <Route path="submit" element={
             <RequireCompleteProfile>
               <MultiStepForm />
@@ -104,7 +104,7 @@ function AppContent() {
         <Route path="*" element={
           <PublicLayout>
             <Routes>
-              <Route path="/" element={<Navigate to="/dashboard/submit" replace />} />
+              <Route path="/" element={<Navigate to="/dashboard/status" replace />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />

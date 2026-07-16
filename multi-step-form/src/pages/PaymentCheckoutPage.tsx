@@ -4,7 +4,7 @@ import { getFormSubmissionById, releaseExpiredSlot, prepareForReschedule } from 
 import { createPayment } from '../utils/payment';
 import { SURVEY_DRAFT_KEY } from '../utils/constants';
 import { toast } from 'sonner';
-import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw, CheckCircle } from 'lucide-react';
+import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw, CheckCircle, ArrowLeft } from 'lucide-react';
 import type { FormSubmission } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -178,7 +178,7 @@ export function PaymentCheckoutPage() {
 
   if (isLoading) {
     return (
-      <div className="pt-24 flex items-center justify-center min-h-screen">
+      <div className="pt-24 flex items-center justify-center min-h-[60vh]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
@@ -187,8 +187,20 @@ export function PaymentCheckoutPage() {
   if (!submission) return null;
 
   return (
-    <div className="pt-24 min-h-screen bg-gray-50/50 pb-12">
-      <div className="max-w-xl mx-auto px-6">
+    <div className="min-h-screen bg-gray-50/50 pb-12">
+      {/* Header back — bar kedua yang menempel di bawah AppNav */}
+      <div className="sticky top-14 md:top-16 z-30 bg-gray-50/90 backdrop-blur-md border-b border-gray-200/70">
+        <div className="max-w-xl mx-auto px-4 h-12 flex items-center">
+          <button
+            onClick={() => navigate('/dashboard/status')}
+            className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors -ml-1 px-1 py-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            {t('backToOrders')}
+          </button>
+        </div>
+      </div>
+      <div className="max-w-xl mx-auto px-6 pt-8">
 
         {/* Expired State */}
         {isExpired ? (

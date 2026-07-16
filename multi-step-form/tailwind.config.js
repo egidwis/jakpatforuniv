@@ -7,12 +7,26 @@ export default {
   ],
   theme: {
   	extend: {
+  		fontFamily: {
+  			jakarta: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif']
+  		},
+  		boxShadow: {
+  			card: '0 8px 32px rgba(0,0,0,0.06)',
+  			glow: '0 8px 25px rgba(25,118,210,0.3)'
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
+  			jfu: {
+  				primary: '#1976D2',
+  				light: '#42A5F5',
+  				dark: '#1565C0',
+  				sky: '#0091ff',
+  				bg: '#fdfdf8'
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
@@ -63,6 +77,20 @@ export default {
   				border: 'hsl(var(--sidebar-border))',
   				ring: 'hsl(var(--sidebar-ring))'
   			}
+  		},
+  		keyframes: {
+  			'accordion-down': {
+  				from: { height: '0' },
+  				to: { height: 'var(--radix-accordion-content-height)' }
+  			},
+  			'accordion-up': {
+  				from: { height: 'var(--radix-accordion-content-height)' },
+  				to: { height: '0' }
+  			}
+  		},
+  		animation: {
+  			'accordion-down': 'accordion-down 0.2s ease-out',
+  			'accordion-up': 'accordion-up 0.2s ease-out'
   		}
   	}
   },

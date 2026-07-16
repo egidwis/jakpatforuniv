@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { HelpCircle, Send, Bot, Menu } from 'lucide-react';
-import { useOutletContext, useSearchParams } from 'react-router-dom';
+import { HelpCircle, Send, Bot } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
-import { supabase, getOrCreateChatSession, getChatMessages, saveChatMessage } from '@/utils/supabase';
+import { supabase, getOrCreateChatSession, getChatMessages, saveChatMessage, getFormSubmissionsByUser, getExtendsBySubmissionIds, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
+import { deriveOrderUiState, describeOrderForChat } from '@/components/status/deriveOrderUiState';
 import {
     Accordion,
     AccordionContent,
@@ -17,7 +18,6 @@ import ReactMarkdown from 'react-markdown';
 
 export function ChatPage() {
     const { user } = useAuth();
-    const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
 
 
     const defaultFaqs = [
@@ -90,6 +90,11 @@ export function ChatPage() {
     const [systemPrompt, setSystemPrompt] = useState<string>('');
     const [faqs, setFaqs] = useState<Array<{q: string, a: string}>>([]);
 
+    // Order milik user, untuk disuntikkan sebagai ORDER CONTEXT ke system
+    // prompt — tanpa ini Mimin buta terhadap order dan tidak bisa menjawab
+    // "kapan survei saya tayang?".
+    const [userOrders, setUserOrders] = useState<Array<{ submission: FormSubmission; extends_: FormSubmissionExtend[] }>>([]);
+
     // Initial load for persistence
     useEffect(() => {
         const initData = async () => {
@@ -101,7 +106,7 @@ export function ChatPage() {
                 ]);
 
                 if (promptData) setSystemPrompt(promptData.value);
-                
+
                 if (faqsData && faqsData.length > 0) {
                     setFaqs(faqsData.map(f => ({ q: f.question, a: f.answer })));
                 } else {
@@ -123,9 +128,26 @@ export function ChatPage() {
                     }
                 }
             }
+
+            // 3. Fetch order user untuk ORDER CONTEXT (maks. 3 terbaru, data
+            // milik sendiri di bawah RLS — dibangun client-side seperti prompt)
+            if (user?.id) {
+                try {
+                    const subs = await getFormSubmissionsByUser(user.id, user.email);
+                    const recent = subs.slice(0, 3);
+                    const ids = recent.map((s) => s.id).filter((id): id is string => !!id);
+                    const allExtends = ids.length > 0 ? await getExtendsBySubmissionIds(ids) : [];
+                    setUserOrders(recent.map((submission) => ({
+                        submission,
+                        extends_: allExtends.filter((e) => e.submission_id === submission.id),
+                    })));
+                } catch (err) {
+                    console.error('Error fetching orders for chat context:', err);
+                }
+            }
         };
         initData();
-    }, [user?.email]);
+    }, [user?.email, user?.id]);
 
     // Auto-scroll to bottom
     useEffect(() => {
@@ -133,6 +155,14 @@ export function ChatPage() {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages]);
+
+    const orderStates = useMemo(
+        () => userOrders.map(({ submission, extends_ }) => ({
+            submission,
+            ui: deriveOrderUiState(submission, extends_),
+        })),
+        [userOrders]
+    );
 
     // Build system prompt (shared by handleSendMessage and sendMessageDirect)
     const buildSystemPrompt = useCallback(() => {
@@ -159,6 +189,23 @@ You are politely professional and helpful.
 6. **NEVER fabricate sample data, tables, or examples** that are not in the Knowledge Base.`;
 
         const currentFaqs = faqs.length > 0 ? faqs : defaultFaqs;
+
+        // Blok ORDER CONTEXT: data order asli user (maks. 3 terbaru). Bot hanya
+        // boleh menjawab pertanyaan status dari blok ini — tidak boleh mengarang.
+        const orderContext = orderStates.length > 0
+            ? `
+
+=== ORDER CONTEXT (DATA ORDER ASLI MILIK USER INI) ===
+Berikut order survei terbaru milik user yang sedang chat denganmu (maksimal 3 terbaru ditampilkan):
+
+${orderStates.map(({ submission, ui }) => describeOrderForChat(submission, ui)).join('\n\n')}
+
+ATURAN ORDER CONTEXT:
+1. Jawab pertanyaan tentang status/jadwal/pembayaran order user HANYA berdasarkan blok ORDER CONTEXT di atas. JANGAN mengarang status, tanggal, atau jumlah di luar blok ini.
+2. Jika user menanyakan order yang TIDAK ada di blok ini, gunakan jawaban fallback resmi (arahkan ke product@jakpat.net atau halaman Order Saya di dashboard).
+3. Jumlah responden TIDAK PERNAH dijamin — JFU hanya mengiklankan survei. Jangan menjanjikan angka responden.
+4. Untuk aksi (bayar, pilih jadwal, ajukan ulang), arahkan user ke halaman "Order Saya" di dashboard.`
+            : '';
 
         return `${basePrompt}
 
@@ -209,9 +256,10 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
    - Jakpat for Univ TIDAK menyediakan export data dalam format Excel/CSV.
    - Jakpat for Univ TIDAK menambahkan data demografi otomatis ke hasil surveimu.
    - Jika kamu ingin data demografi, kamu perlu menambahkan pertanyaan demografi sendiri di dalam kuesionermu.
+${orderContext}
 
 === BEHAVIORAL RULES ===
-1. ONLY answer based on the Knowledge Base and Additional Verified Information above. NO EXCEPTIONS.
+1. ONLY answer based on the Knowledge Base, Additional Verified Information, and (for this user's own orders) the ORDER CONTEXT above. NO EXCEPTIONS.
 2. **DO NOT** provide the Admin's or Jakpat Team's WhatsApp number if asked. Instead, inform:
    - Kamu tidak bisa membagikan nomor kontak pribadi.
    - Jika mereka sudah submit survei, Tim Jakpat akan otomatis mereview-nya.
@@ -226,7 +274,7 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
    - Jaminkan bahwa saat pembayaran/penjadwalan, admin akan menghubungi untuk diskusi detail custom distribution.
 6. REPEAT: If the question is outside your knowledge, ALWAYS use the fallback response. NEVER guess or improvise.
 `;
-    }, [systemPrompt, faqs]);
+    }, [systemPrompt, faqs, orderStates]);
 
     // Auto-send message from query param
     const sendMessageDirect = useCallback(async (messageText: string) => {
@@ -276,7 +324,7 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
         } finally {
             setIsLoading(false);
         }
-    }, [messages, isLoading, sessionId]);
+    }, [messages, isLoading, sessionId, buildSystemPrompt]);
 
     useEffect(() => {
         const messageParam = searchParams.get('message');
@@ -295,191 +343,178 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
     const handleSendMessage = async (e?: React.FormEvent) => {
         e?.preventDefault();
         if (!input.trim() || isLoading) return;
-
         const userMessage = input.trim();
         setInput('');
-        const newMessages = [...messages, { role: 'user' as const, content: userMessage }];
-        setMessages(newMessages);
-        setIsLoading(true);
-
-        // Save user message to DB
-        if (sessionId) {
-            saveChatMessage(sessionId, 'user', userMessage);
-        }
-
-        const systemPrompt = buildSystemPrompt();
-
-        try {
-            const response = await fetch("/api/chat", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    "model": "google/gemini-2.5-flash-lite",
-                    "messages": [
-                        { "role": "system", "content": systemPrompt },
-                        ...newMessages.map(m => ({ role: m.role, content: m.content }))
-                    ]
-                })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok || data.error) {
-                console.error('[Mimin AI] OpenRouter error:', { status: response.status, error: data.error, data });
-            }
-
-            const aiContent = data.choices?.[0]?.message?.content || "Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.";
-
-            setMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
-
-            // Save Assistant message to DB
-            if (sessionId) {
-                saveChatMessage(sessionId, 'assistant', aiContent);
-            }
-
-        } catch (error) {
-            console.error('Chat error:', error);
-            setMessages(prev => [...prev, { role: 'assistant', content: "Maaf, koneksi terputus. Mohon periksa internet Anda." }]);
-        } finally {
-            setIsLoading(false);
-        }
+        await sendMessageDirect(userMessage);
     };
 
+    // Quick-reply chips (mobile): pertanyaan teratas disesuaikan state order
+    // user, sisanya dari knowledge base + eskalasi admin.
+    const quickReplies = useMemo(() => {
+        const chips: string[] = [];
+        const calloutSet = new Set(orderStates.map((o) => o.ui.callout));
+
+        if (calloutSet.has('payment') || calloutSet.has('extend_payment')) chips.push('Bagaimana cara membayar order saya?');
+        if (calloutSet.has('review_manual') || calloutSet.has('review_auto')) chips.push('Berapa lama proses review survei?');
+        if (calloutSet.has('ready_to_launch') || calloutSet.has('payment') || calloutSet.has('awaiting_invoice')) chips.push('Kapan survei saya tayang?');
+        if (calloutSet.has('live')) {
+            chips.push('Survei saya sedang tayang, berapa responden yang bisa didapat dalam sehari?');
+            chips.push('Mana link iklan survei saya?');
+        }
+        if (calloutSet.has('revision')) chips.push('Kenapa survei saya perlu revisi?');
+        if (calloutSet.has('expired')) chips.push('Pembayaran saya kedaluwarsa, apa yang harus saya lakukan?');
+
+        // Isi sisa slot dari FAQ knowledge base
+        const currentFaqs = faqs.length > 0 ? faqs : defaultFaqs;
+        for (const faq of currentFaqs) {
+            if (chips.length >= 5) break;
+            if (!chips.includes(faq.q)) chips.push(faq.q);
+        }
+
+        chips.push('Saya ingin menghubungi admin');
+        return chips;
+    }, [orderStates, faqs]);
+
     return (
-        <div className="p-6 md:p-8 max-w-6xl mx-auto h-screen md:h-[calc(100vh-4rem)] flex flex-col">
-            {/* Floating Mobile Header */}
-            <div className="fixed top-4 left-4 right-4 z-40 md:hidden">
-                <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-between">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={toggleSidebar}
-                        className="-ml-2 h-9 w-9"
-                    >
-                        <Menu className="w-5 h-5 text-gray-700" />
-                    </Button>
-                    <span className="text-sm font-semibold text-gray-700">Support</span>
-                    <div className="w-9" />
-                </div>
-            </div>
-            <div className="h-16 shrink-0 md:hidden" />{/* Spacer for floating header */}
-            <div className="space-y-4 h-full flex flex-col pt-2">
-                <div className="grid md:grid-cols-2 gap-6 items-start flex-1 min-h-0">
-                    {/* FAQ Card - Left Side */}
-                    <Card className="h-full flex flex-col overflow-hidden border-transparent shadow-sm bg-gray-50/50 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 transition-colors duration-300">
-                        <CardHeader className="pb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-xl flex items-center justify-center shadow-inner">
-                                    <HelpCircle className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                                </div>
-                                <div>
-                                    <CardTitle className="text-xl">FAQ</CardTitle>
-                                    <CardDescription>Pertanyaan umum seputar Jakpat for Univ.</CardDescription>
-                                </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="overflow-y-auto pr-4 custom-scrollbar">
-                            <Accordion type="single" collapsible className="w-full">
-                                {faqs.map((faq, i) => (
-                                    <AccordionItem key={i} value={`item-${i}`} className="border-b border-gray-100 dark:border-gray-700/50 px-2">
-                                        <AccordionTrigger className="text-left py-4 text-[15px] font-medium hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                            {faq.q}
-                                        </AccordionTrigger>
-                                        <AccordionContent className="text-gray-600 dark:text-gray-300 text-sm pb-4 leading-relaxed">
-                                            {faq.a}
-                                        </AccordionContent>
-                                    </AccordionItem>
-                                ))}
-                            </Accordion>
-                        </CardContent>
-                    </Card>
-
-                    {/* Chat AI Card - Right Side */}
-                    <Card className="border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 h-full flex flex-col shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-shadow duration-300 overflow-hidden ring-1 ring-blue-50 dark:ring-blue-900/20">
-                        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-b border-blue-100 dark:border-blue-800/50 pb-4">
-                            <div className="flex items-center gap-4">
-                                <div className="relative">
-                                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-md">
-                                        <Bot className="w-7 h-7 text-white" />
+        <div className="h-[calc(100dvh-3.5rem)] md:h-auto">
+            <div className="max-w-4xl mx-auto h-full px-0 md:px-6 md:py-4">
+                <div className="h-full md:h-[calc(100vh-7.5rem)] md:grid md:grid-cols-2 md:gap-6 md:items-stretch">
+                    {/* FAQ — desktop saja; di mobile FAQ hadir sebagai quick-reply chips */}
+                    <div className="hidden md:block h-full min-h-0">
+                        <Card className="h-full flex flex-col overflow-hidden border border-jfu-primary/[0.06] shadow-card bg-white transition-colors duration-300" style={{ borderRadius: '20px' }}>
+                            <CardHeader className="pb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-jfu-primary/[0.08] rounded-xl flex items-center justify-center">
+                                        <HelpCircle className="w-5 h-5 text-jfu-primary" />
                                     </div>
-                                    <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></span>
-                                </div>
-                                <div>
-                                    <CardTitle className="text-xl font-bold text-gray-900 dark:text-white">Mimin AI</CardTitle>
-                                    <CardDescription className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 mt-0.5">
-                                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                                        Sedang online - Siap membantu
-                                    </CardDescription>
-                                </div>
-                            </div>
-                        </CardHeader>
-
-                        {/* Chat Messages Area */}
-                        <CardContent className="flex-1 overflow-y-auto p-5 space-y-6 bg-slate-50/50 dark:bg-slate-900/50" ref={scrollRef}>
-                            {messages.map((msg, idx) => (
-                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                                    <div className={`
-                                        max-w-[85%] px-5 py-3.5 text-[15px] shadow-sm
-                                        ${msg.role === 'user'
-                                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm'
-                                            : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-700/50 rounded-2xl rounded-tl-sm shadow-sm'
-                                        }
-                                    `}>
-                                        <ReactMarkdown
-                                            components={{
-                                                p: (props) => <p className="mb-2.5 last:mb-0 leading-relaxed" {...props} />,
-                                                ul: (props) => <ul className="list-disc pl-5 mb-2.5 space-y-1" {...props} />,
-                                                ol: (props) => <ol className="list-decimal pl-5 mb-2.5 space-y-1" {...props} />,
-                                                li: (props) => <li className="pl-1" {...props} />,
-                                                strong: (props) => <span className="font-semibold" {...props} />,
-                                                a: (props) => <a className={`${msg.role === 'user' ? 'text-blue-200 hover:text-blue-100' : 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'} underline transition-colors`} target="_blank" rel="noopener noreferrer" {...props} />,
-                                            }}
-                                        >
-                                            {msg.content}
-                                        </ReactMarkdown>
+                                    <div>
+                                        <CardTitle className="text-xl font-bold text-[#1a1a1a]">FAQ</CardTitle>
+                                        <CardDescription className="text-[#666]">Pertanyaan umum seputar Jakpat for Univ.</CardDescription>
                                     </div>
                                 </div>
-                            ))}
-                            {isLoading && (
-                                <div className="flex justify-start animate-in fade-in duration-300">
-                                    <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tl-sm px-5 py-3 border border-gray-100 dark:border-gray-700/50 shadow-sm flex items-center gap-3 text-sm text-gray-500">
-                                        <div className="flex gap-1">
-                                            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                                            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                                            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></span>
+                            </CardHeader>
+                            <CardContent className="overflow-y-auto pr-4 custom-scrollbar">
+                                <Accordion type="single" collapsible className="w-full">
+                                    {faqs.map((faq, i) => (
+                                        <AccordionItem key={i} value={`item-${i}`} className="border-b border-gray-100 px-2">
+                                            <AccordionTrigger className="text-left py-4 text-[15px] font-medium text-[#1a1a1a] hover:text-jfu-primary transition-colors">
+                                                {faq.q}
+                                            </AccordionTrigger>
+                                            <AccordionContent className="text-gray-600 text-sm pb-4 leading-relaxed">
+                                                {faq.a}
+                                            </AccordionContent>
+                                        </AccordionItem>
+                                    ))}
+                                </Accordion>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Chat Mimin AI — tampilan utama tab Bantuan */}
+                    <div className="h-full min-h-0">
+                        <Card className="border-0 md:border md:border-jfu-primary/[0.06] bg-white h-full flex flex-col rounded-none md:rounded-[20px] shadow-none md:shadow-card overflow-hidden">
+                            <CardHeader className="relative bg-white border-b border-gray-100 py-3 md:pb-4">
+                                <div className="flex items-center gap-3 md:gap-4">
+                                    <div className="relative">
+                                        <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-jfu-primary to-jfu-light rounded-full flex items-center justify-center shadow-glow">
+                                            <Bot className="w-6 h-6 md:w-7 md:h-7 text-white" />
                                         </div>
-                                        <span className="font-medium">Mimin sedang mengetik...</span>
+                                        <span className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
+                                    </div>
+                                    <div>
+                                        <CardTitle className="text-lg md:text-xl font-bold text-[#1a1a1a]">Mimin AI</CardTitle>
+                                        <CardDescription className="flex items-center gap-1.5 text-xs font-medium text-[#666] mt-0.5">
+                                            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                                            Sedang online - Siap membantu
+                                        </CardDescription>
                                     </div>
                                 </div>
-                            )}
-                        </CardContent>
+                            </CardHeader>
 
-                        {/* Chat Input Area */}
-                        <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700/50 shadow-[0_-4px_24px_-12px_rgba(0,0,0,0.05)]">
-                            <form onSubmit={handleSendMessage} className="flex gap-3 relative">
-                                <Input
-                                    placeholder="Ketik pertanyaanmu di sini..."
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    disabled={isLoading}
-                                    className="flex-1 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 focus-visible:ring-blue-500 focus-visible:ring-offset-0 focus-visible:border-blue-500 py-6 pl-4 pr-14 rounded-xl text-[15px] shadow-sm transition-all placeholder:text-gray-400"
-                                />
-                                <Button
-                                    type="submit"
-                                    size="icon"
-                                    disabled={isLoading || !input.trim()}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-all disabled:opacity-50"
-                                >
-                                    <Send className="w-4 h-4 ml-0.5" />
-                                </Button>
-                            </form>
-                            <div className="text-[11px] font-medium text-center text-gray-400 dark:text-gray-500 mt-3 tracking-wide">
-                                ⚡ Powered by Jakpat AI
+                            {/* Chat Messages Area */}
+                            <CardContent className="flex-1 overflow-y-auto p-4 md:p-5 space-y-5 md:space-y-6 bg-jfu-bg" ref={scrollRef}>
+                                {messages.map((msg, idx) => (
+                                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+                                        <div className={`
+                                            max-w-[85%] px-4 py-3 md:px-5 md:py-3.5 text-[15px] shadow-sm
+                                            ${msg.role === 'user'
+                                                ? 'bg-gradient-to-br from-jfu-primary to-jfu-light text-white rounded-2xl rounded-tr-sm'
+                                                : 'bg-white text-[#1a1a1a] border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm'
+                                            }
+                                        `}>
+                                            <ReactMarkdown
+                                                components={{
+                                                    p: (props) => <p className="mb-2.5 last:mb-0 leading-relaxed" {...props} />,
+                                                    ul: (props) => <ul className="list-disc pl-5 mb-2.5 space-y-1" {...props} />,
+                                                    ol: (props) => <ol className="list-decimal pl-5 mb-2.5 space-y-1" {...props} />,
+                                                    li: (props) => <li className="pl-1" {...props} />,
+                                                    strong: (props) => <span className="font-semibold" {...props} />,
+                                                    a: (props) => <a className={`${msg.role === 'user' ? 'text-white/90 hover:text-white' : 'text-jfu-primary hover:text-jfu-dark'} underline transition-colors`} target="_blank" rel="noopener noreferrer" {...props} />,
+                                                }}
+                                            >
+                                                {msg.content}
+                                            </ReactMarkdown>
+                                        </div>
+                                    </div>
+                                ))}
+                                {isLoading && (
+                                    <div className="flex justify-start animate-in fade-in duration-300">
+                                        <div className="bg-white rounded-2xl rounded-tl-sm px-5 py-3 border border-gray-200 shadow-sm flex items-center gap-3 text-sm text-gray-500">
+                                            <div className="flex gap-1">
+                                                <span className="w-1.5 h-1.5 bg-jfu-primary rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                                                <span className="w-1.5 h-1.5 bg-jfu-primary rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                                                <span className="w-1.5 h-1.5 bg-jfu-primary rounded-full animate-bounce"></span>
+                                            </div>
+                                            <span className="font-medium">Mimin sedang mengetik...</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+
+                            {/* Quick-reply chips (mobile) — FAQ versi tap-to-ask, pill DNA */}
+                            <div className="md:hidden border-t border-gray-100 bg-white">
+                                <div className="overflow-x-auto">
+                                    <div className="flex gap-2 w-max px-4 py-2.5">
+                                        {quickReplies.map((q) => (
+                                            <button
+                                                key={q}
+                                                type="button"
+                                                disabled={isLoading}
+                                                onClick={() => sendMessageDirect(q)}
+                                                className="whitespace-nowrap rounded-full border border-jfu-primary/20 bg-jfu-primary/[0.06] px-3 py-1.5 text-xs font-semibold text-jfu-primary active:bg-jfu-primary/[0.15] disabled:opacity-50 max-w-[260px] truncate"
+                                            >
+                                                {q}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </Card>
+
+                            {/* Chat Input Area */}
+                            <div className="p-3 md:p-4 bg-white border-t border-gray-100">
+                                <form onSubmit={handleSendMessage} className="flex gap-3 relative">
+                                    <Input
+                                        placeholder="Ketik pertanyaanmu di sini..."
+                                        value={input}
+                                        onChange={(e) => setInput(e.target.value)}
+                                        disabled={isLoading}
+                                        className="flex-1 bg-white text-[#1a1a1a] border border-gray-200 focus-visible:ring-jfu-primary/30 focus-visible:ring-offset-0 focus-visible:border-jfu-primary py-6 pl-5 pr-14 rounded-full text-[15px] shadow-sm transition-all placeholder:text-gray-400"
+                                    />
+                                    <Button
+                                        type="submit"
+                                        size="icon"
+                                        disabled={isLoading || !input.trim()}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 bg-gradient-to-br from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary text-white rounded-full shadow-sm transition-all disabled:opacity-50"
+                                    >
+                                        <Send className="w-4 h-4 ml-0.5" />
+                                    </Button>
+                                </form>
+                                <div className="hidden md:block text-[11px] font-medium text-center text-gray-400 mt-3 tracking-wide">
+                                    ⚡ Powered by Jakpat AI
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
                 </div>
             </div>
         </div>
