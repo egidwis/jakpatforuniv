@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, getExtendsBySubmissionIds, deleteFormSubmission, prepareForReschedule, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, getExtendsBySubmissionIds, getPageViewsBySubmissionIds, deleteFormSubmission, prepareForReschedule, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
 import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, AlertCircle, RefreshCw, ChevronRight, Send, Search, Megaphone, ListFilter, Check } from 'lucide-react';
+import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check, Link2, FileText } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -17,12 +16,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ProgressTracker, getStatusSteps, normalizeScheduleDate, type ExtendPaymentInfo } from '@/components/ProgressTracker';
-import { AiringPeriodsBar } from '@/components/AiringPeriodsBar';
+import { type ExtendPaymentInfo } from '@/components/ProgressTracker';
+import { AiringPeriodsSection } from '@/components/status/AiringPeriodsSection';
 import { PageHeader } from '@/components/PageHeader';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
-import { NextStepCallout } from '@/components/NextStepCallout';
-import { OrderDetailsSection } from '@/components/OrderDetailsSection';
+import { RevisionNotice } from '@/components/status/RevisionNotice';
+import { SurveyDetailsSection } from '@/components/status/SurveyDetailsSection';
 import { deriveOrderUiState, type OrderGroup } from '@/components/status/deriveOrderUiState';
 
 type FilterValue = 'all' | OrderGroup;
@@ -40,6 +39,8 @@ export function StatusPage() {
     // Duration extensions per submission + their payment info (keyed by extend id)
     const [extendsBySubmission, setExtendsBySubmission] = useState<Record<string, FormSubmissionExtend[]>>({});
     const [extendPayments, setExtendPayments] = useState<Record<string, Record<string, ExtendPaymentInfo>>>({});
+    // Jumlah views banner per submission (survey_pages.views_count) — indikator performa iklan di Detail Order
+    const [pageViews, setPageViews] = useState<Record<string, number>>({});
     const [searchParams, setSearchParams] = useSearchParams();
 
     const filterParam = searchParams.get('filter') as FilterValue | null;
@@ -101,7 +102,7 @@ export function StatusPage() {
             const allSubmissionIds = data.map((s) => s.id).filter((id): id is string => !!id);
 
             // Run the per-submission transaction loop and the batched extends fetch together
-            const [, allExtends] = await Promise.all([
+            const [, allExtends, viewsMap] = await Promise.all([
                 // Use Promise.all for parallel fetching to prevent blocking
                 Promise.all(data.map(async (submission) => {
                     if (submission.id) {
@@ -164,6 +165,7 @@ export function StatusPage() {
                     }
                 })),
                 getExtendsBySubmissionIds(allSubmissionIds),
+                getPageViewsBySubmissionIds(allSubmissionIds),
             ]);
 
             // Group extends by their parent submission
@@ -177,6 +179,7 @@ export function StatusPage() {
             setExtendPayments(extPayments);
             setPaymentLinks(links);
             setInvoiceIds(invIds);
+            setPageViews(viewsMap);
         } catch (error) {
             console.error('Failed to fetch submissions', error);
         } finally {
@@ -270,76 +273,7 @@ export function StatusPage() {
         }
     };
 
-    // Warna badge = pill tint lembut ala stat-badge landing page: latar tint
-    // muda + teks pekat senada, border 1px senada yang samar.
-    const getStatusBadgeInfo = (currentStep: number, submission?: FormSubmission, activeStart?: string | null, activeEnd?: string | null) => {
-        const steps = getStatusSteps(t, submission?.distribution_type);
-
-        if (currentStep === -1) {
-            return {
-                label: t('statusRevisionNeeded'),
-                color: 'bg-amber-50 text-amber-700 border-amber-200',
-                icon: <AlertCircle className="w-4 h-4" />,
-                style: {}
-            };
-        }
-
-        const step = steps[currentStep];
-        let color = 'bg-gray-50 text-gray-600 border-gray-200';
-        let label = step.label;
-
-        // Override label for publishing step based on actual status (extension-aware dates)
-        if (step.key === 'publishing' && submission) {
-            const now = new Date();
-            const startStr = activeStart ?? submission.start_date;
-            const endStr = activeEnd ?? submission.end_date;
-            const startDate = startStr ? normalizeScheduleDate(startStr) : null;
-            const endDate = endStr ? normalizeScheduleDate(endStr) : null;
-            const isLive = startDate && endDate && startDate <= now && endDate >= now;
-            const isCompleted = endDate && endDate < now;
-
-            if (isCompleted) {
-                label = 'Completed';
-                color = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-            } else if (isLive) {
-                label = 'Live';
-                color = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-            } else if (startDate && startDate > now) {
-                label = 'Ready to Launch';  // Scheduled but not yet live
-                color = 'bg-jfu-primary/[0.08] text-jfu-primary border-jfu-primary/20';
-            }
-        }
-
-        switch (step.key) {
-            case 'in_review':
-                color = 'bg-jfu-primary/[0.08] text-jfu-primary border-jfu-primary/20';
-                break;
-            case 'payment':
-                color = 'bg-amber-50 text-amber-700 border-amber-200';
-                break;
-            case 'scheduling':
-                color = 'bg-purple-50 text-purple-700 border-purple-200';
-                break;
-            case 'publishing':
-                // Color already set above based on actual status
-                if (!submission) {
-                    color = 'bg-jfu-primary/[0.08] text-jfu-primary border-jfu-primary/20';
-                }
-                break;
-            case 'completed':
-                color = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                break;
-        }
-
-        return {
-            label,
-            color,
-            icon: <step.icon className="w-4 h-4" />,
-            style: {}
-        };
-    };
-
-    // Satu sumber kebenaran state UI per order (chips, badge, callout, sort)
+    // Satu sumber kebenaran state UI per order (chips, callout, sort)
     const withUiState = submissions.map((submission) => {
         const exts = extendsBySubmission[submission.id!] || [];
         const pays = extendPayments[submission.id!] || {};
@@ -479,28 +413,11 @@ export function StatusPage() {
                                 {t('noSubmissionsDesc')}
                             </p>
 
-                            {/* Mini "cara kerjanya" */}
-                            <div className="w-full max-w-sm text-left mb-6">
-                                <p className="text-xs font-semibold text-[#666] mb-3">{t('howItWorksTitle')}</p>
-                                <ol className="space-y-3">
-                                    {[
-                                        { icon: <Send className="w-4 h-4" />, label: t('howItWorksStep1') },
-                                        { icon: <Search className="w-4 h-4" />, label: t('howItWorksStep2') },
-                                        { icon: <Megaphone className="w-4 h-4" />, label: t('howItWorksStep3') },
-                                    ].map((step, i) => (
-                                        <li key={i} className="flex items-center gap-3 text-sm text-[#1a1a1a]">
-                                            <span className="w-8 h-8 rounded-full bg-jfu-primary/[0.08] text-jfu-primary flex items-center justify-center shrink-0">
-                                                {step.icon}
-                                            </span>
-                                            <span><span className="font-semibold text-gray-400 mr-1.5">{i + 1}.</span>{step.label}</span>
-                                        </li>
-                                    ))}
-                                </ol>
-                            </div>
-
                             {/* Kartu produk menggantikan tombol generik "Buat Order
-                                Pertama" — ujung alur baca langsung memilih produk. */}
-                            <div className="w-full max-w-lg text-left">
+                                Pertama" — ujung alur baca langsung memilih produk.
+                                Tanpa max-w agar proporsi kartu sama dengan versi
+                                di CreateOrderCards (hub "Buat Order"). */}
+                            <div className="w-full text-left">
                                 <ProductCardGrid />
                             </div>
                         </CardContent>
@@ -512,85 +429,78 @@ export function StatusPage() {
                         ) : (
                             <div className="space-y-4">
                                 {filtered.map(({ submission, exts, pays, ui }) => {
-                                    // Override badge for expired payment
-                                    const badgeInfo = ui.isExpired && submission.payment_status !== 'paid'
-                                        ? {
-                                            label: 'Payment Expired',
-                                            color: 'bg-rose-50 text-rose-700 border-rose-200',
-                                            icon: <AlertCircle className="w-4 h-4" />,
-                                            style: {}
-                                        }
-                                        : getStatusBadgeInfo(ui.currentStep, submission, ui.eff.activeStartDate, ui.eff.activeEndDate);
-
                                     return (
                                         /* Kartu Soft DNA (pola comparison-card landing): putih, border
                                            nyaris tak terlihat, soft shadow lebar, pemisah header tipis.
                                            borderRadius inline karena .rounded-lg legacy styles.css menang
                                            di cascade atas utilitas radius Tailwind pada <Card>. */
                                         <Card key={submission.id} className="overflow-hidden border border-jfu-primary/[0.12] shadow-card hover:shadow-xl transition-shadow" style={{ borderRadius: '20px' }}>
-                                            {/* A. Header: chip layanan + badge status + judul */}
+                                            {/* A. Header: identitas survei — chip tipe produk + judul + link
+                                                asli + jumlah pertanyaan. TANPA badge status: status hidup di
+                                                panel aksi & stepper periode (satu info satu rumah). */}
                                             <CardHeader className="bg-white pb-3 space-y-2.5 border-b border-gray-100">
-                                                <div className="flex items-center justify-between gap-3">
+                                                <div>
                                                     <Chip
                                                         variant={submission.distribution_type === 'kilat' ? 'amber' : 'blue'}
                                                         size="sm"
                                                     >
-                                                        {submission.distribution_type === 'kilat' ? '⚡ JFU Kilat' : 'Regular'}
+                                                        {submission.distribution_type === 'kilat' ? `⚡ ${t('productKilatTitle')}` : t('productAdsTitle')}
                                                     </Chip>
-                                                    <Badge variant="outline" className={`${badgeInfo.color} rounded-full border px-3 py-1 text-[11px] font-semibold flex items-center gap-1.5 shrink-0`} style={badgeInfo.style}>
-                                                        {badgeInfo.icon}
-                                                        {badgeInfo.label}
-                                                    </Badge>
                                                 </div>
                                                 <CardTitle className="text-base md:text-lg font-bold text-[#1a1a1a] leading-snug line-clamp-2" title={submission.title}>
                                                     {submission.title}
                                                 </CardTitle>
+                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                                                    {submission.survey_url && (
+                                                        /* Alamat link ditampilkan apa adanya (tanpa skema, di-truncate)
+                                                           — bukan label generik — supaya user bisa memastikan survei
+                                                           mana yang dimaksud tanpa harus membukanya. */
+                                                        <a
+                                                            href={submission.survey_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            title={submission.survey_url}
+                                                            className="flex items-center gap-1.5 text-xs font-medium text-jfu-primary hover:underline min-w-0 max-w-full"
+                                                        >
+                                                            <Link2 className="w-3.5 h-3.5 shrink-0" />
+                                                            <span className="truncate">{submission.survey_url.replace(/^https?:\/\//, '')}</span>
+                                                        </a>
+                                                    )}
+                                                    <span className="flex items-center gap-1.5 text-xs text-[#666]">
+                                                        <FileText className="w-3.5 h-3.5 text-gray-400" />
+                                                        {submission.question_count} {t('questionsUnit')}
+                                                    </span>
+                                                </div>
                                             </CardHeader>
 
-                                            <CardContent className="pt-5 pb-4 bg-white">
-                                                {/* B. Langkah berikutnya (elemen kunci) */}
-                                                <NextStepCallout
-                                                    submission={submission}
-                                                    ui={ui}
-                                                    invoiceId={invoiceIds[submission.id!] || null}
-                                                    extendPayments={pays}
-                                                    onReschedule={() => handleReschedule(submission)}
-                                                    onDelete={() => handleDeleteSubmission(submission.id!)}
-                                                />
-
-                                                {/* C. Tracker 5 langkah (selalu terlihat, mode ringkas) */}
-                                                {ui.currentStep !== -1 && (
-                                                    <>
-                                                        <div className="mt-1">
-                                                            <ProgressTracker
-                                                                submission={submission}
-                                                                currentStep={ui.currentStep}
-                                                                paymentLink={ui.finalPaymentLink}
-                                                                invoiceId={invoiceIds[submission.id!] || null}
-                                                                steps={getStatusSteps(t, submission.distribution_type)}
-                                                                isExpired={ui.isExpired}
-                                                                awaitingInvoice={ui.awaitingInvoice}
-                                                                activeStartDate={ui.eff.activeStartDate}
-                                                                activeEndDate={ui.eff.activeEndDate}
-                                                                isExtended={ui.eff.isExtended}
-                                                                compactCompleted
-                                                                onReschedule={() => handleReschedule(submission)}
-                                                            />
-                                                        </div>
-
-                                                        {/* D. Periode tayang (asli + perpanjangan terkonfirmasi) */}
-                                                        <AiringPeriodsBar submission={submission} extends_={exts} />
-                                                    </>
+                                            <CardContent className="pt-4 pb-4 bg-white">
+                                                {/* B. Banner revisi — satu-satunya state card-level */}
+                                                {ui.callout === 'revision' && (
+                                                    <RevisionNotice
+                                                        submission={submission}
+                                                        onDelete={() => handleDeleteSubmission(submission.id!)}
+                                                    />
                                                 )}
 
-                                                {/* E. Detail order (accordion, default tertutup) */}
-                                                <OrderDetailsSection
-                                                    submission={submission}
-                                                    extends_={exts}
-                                                    extendPayments={pays}
-                                                    invoiceId={invoiceIds[submission.id!] || null}
-                                                    isPaid={ui.isPaid}
-                                                />
+                                                {/* C. Detail survei (accordion, tertutup) */}
+                                                <SurveyDetailsSection submission={submission} />
+
+                                                {/* D. Jadwal iklan — tiap jadwal membawa panel aksi + stepper
+                                                    + info administrasinya sendiri (Order ID, durasi, insentif,
+                                                    total, invoice). Tidak ada section "Info Order" terpisah:
+                                                    info level-jadwal ambigu begitu ada perpanjangan. */}
+                                                {ui.currentStep !== -1 && (
+                                                    <AiringPeriodsSection
+                                                        submission={submission}
+                                                        ui={ui}
+                                                        extends_={exts}
+                                                        extendPayments={pays}
+                                                        viewsCount={submission.id ? pageViews[submission.id] : undefined}
+                                                        invoiceId={invoiceIds[submission.id!] || null}
+                                                        isPaid={ui.isPaid}
+                                                        onReschedule={() => handleReschedule(submission)}
+                                                    />
+                                                )}
 
                                                 {/* F. Footer: baris chat penuh (deep-link ke Mimin dengan konteks order) */}
                                                 <div className="border-t border-gray-100 mt-3" />

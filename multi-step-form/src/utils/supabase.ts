@@ -505,6 +505,30 @@ export const getExtendsBySubmissionIds = async (
   }
 };
 
+// Jumlah views banner per submission (survey_pages.views_count), untuk
+// ditampilkan di Detail Order sebagai indikator performa iklan.
+export const getPageViewsBySubmissionIds = async (
+  submissionIds: string[]
+): Promise<Record<string, number>> => {
+  if (!submissionIds.length) return {};
+  try {
+    const { data, error } = await supabase
+      .from('survey_pages')
+      .select('submission_id, views_count')
+      .in('submission_id', submissionIds);
+
+    if (error) throw error;
+    const result: Record<string, number> = {};
+    (data || []).forEach((row: { submission_id: string; views_count: number | null }) => {
+      result[row.submission_id] = row.views_count || 0;
+    });
+    return result;
+  } catch (error) {
+    console.error('Error getting page views by submission ids:', error);
+    return {};
+  }
+};
+
 // Fungsi untuk mendapatkan form submission berdasarkan ID
 export const getFormSubmissionById = async (id: string) => {
   try {
