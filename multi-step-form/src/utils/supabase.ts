@@ -505,26 +505,27 @@ export const getExtendsBySubmissionIds = async (
   }
 };
 
-// Jumlah views banner per submission (survey_pages.views_count), untuk
-// ditampilkan di Detail Order sebagai indikator performa iklan.
-export const getPageViewsBySubmissionIds = async (
+// Halaman iklan (survey_pages) per submission — link publik (slug) + jumlah
+// views, ditampilkan sebagai satu blok order-level (satu halaman dipakai
+// semua jadwal iklan, views akumulatif seluruh jadwal, bukan milik satu jadwal).
+export const getSurveyPagesBySubmissionIds = async (
   submissionIds: string[]
-): Promise<Record<string, number>> => {
+): Promise<Record<string, { views: number; slug: string | null }>> => {
   if (!submissionIds.length) return {};
   try {
     const { data, error } = await supabase
       .from('survey_pages')
-      .select('submission_id, views_count')
+      .select('submission_id, views_count, slug')
       .in('submission_id', submissionIds);
 
     if (error) throw error;
-    const result: Record<string, number> = {};
-    (data || []).forEach((row: { submission_id: string; views_count: number | null }) => {
-      result[row.submission_id] = row.views_count || 0;
+    const result: Record<string, { views: number; slug: string | null }> = {};
+    (data || []).forEach((row: { submission_id: string; views_count: number | null; slug: string | null }) => {
+      result[row.submission_id] = { views: row.views_count || 0, slug: row.slug || null };
     });
     return result;
   } catch (error) {
-    console.error('Error getting page views by submission ids:', error);
+    console.error('Error getting survey pages by submission ids:', error);
     return {};
   }
 };

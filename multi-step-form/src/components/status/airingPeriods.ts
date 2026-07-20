@@ -2,248 +2,299 @@ import type { FormSubmission, FormSubmissionExtend } from '@/utils/supabase';
 import type { TranslationKey } from '@/i18n/translations';
 import {
     getCurrentStepIndex,
-    getStatusSteps,
     normalizeScheduleDate,
     type ExtendPaymentInfo,
 } from '@/components/ProgressTracker';
 import { extendStatusLabelKey } from '@/utils/extend-ui';
-import { isAutoReviewed, type OrderUiState } from './deriveOrderUiState';
+import type { OrderUiState } from './deriveOrderUiState';
 
 type TFn = (key: TranslationKey) => string;
 
-export interface PeriodStepDef {
-    key: string;
-    label: string;
+export type BookingState =
+    | 'choose_schedule'
+    | 'awaiting_invoice'
+    | 'waiting_payment'
+    | 'expired'
+    | 'paid'
+    | 'cancelled';
+
+export type PublicationState = 'none' | 'scheduled' | 'live' | 'completed';
+
+export interface IncentiveInfo {
+    mode: 'plain' | 'new_pool' | 'accumulated' | 'none_same_period';
+    winnerCount?: number;
+    prizePerWinner?: number;
+    additionalPrize?: number;
 }
 
 /**
- * Satu periode tayang sebagai unit setara — periode asli maupun perpanjangan.
- * Order dan extend punya lifecycle berbeda (extend tidak pernah melewati
- * review/slot), jadi tiap periode membawa daftar step-nya sendiri.
+ * Satu jadwal iklan (jendela tayang) — jadwal asli maupun perpanjangan —
+ * sebagai unit setara membawa tiga blok data sendiri: Info (administrasi),
+ * Booking & Pembayaran, dan Penayangan. Menggantikan model stepper: tidak
+ * ada lagi konsep "langkah" abstrak, tiap fakta membawa rumahnya sendiri.
  */
-export interface AiringPeriod {
+export interface ScheduleCard {
     key: string; // 'original' | extend.id
     kind: 'original' | 'extend';
     label: string;
+    /** 1, 2, 3, ... — dipakai di trigger accordion sebagai "#1" dkk, supaya
+     * tidak mengulang kata "Jadwal Iklan" yang sudah jadi judul fase. */
+    ordinal: number;
+    dateRange: string;
     startDate: Date | null;
     endDate: Date | null;
-    dateRange: string;
-    /** Key gaya chip (kosakata extend-ui: waiting_payment/scheduled/live/completed/cancelled/expired/in_review) */
+    /** Key gaya chip ringkasan baris (kosakata extend-ui) */
     chipStatus: string;
     chipLabel: string;
-    steps: PeriodStepDef[];
-    /** Index step aktif — monoton, tidak pernah ditarik mundur periode lain */
-    currentStep: number;
-    /** false untuk extend cancelled (baris ringkas saja, tanpa stepper) */
-    expandable: boolean;
-    ext?: FormSubmissionExtend;
-    pay?: ExtendPaymentInfo | null;
-    hasExpiredPaymentLink: boolean;
+    info: {
+        id: string;
+        createdAt: string | null;
+        duration: number;
+        periodBatch: string | null;
+        incentive: IncentiveInfo | null;
+        voucherCode: string | null;
+    };
+    booking: {
+        state: BookingState;
+        amount: number;
+        payUrl: string | null;
+        isExternalLink: boolean;
+        /** Deadline bayar — hanya untuk slot user-booked jadwal asli */
+        deadline: Date | null;
+        invoicePaymentId: string | null;
+        isPaidForLabel: boolean; // menentukan label "Invoice" vs "Kwitansi"
+    };
+    publication: {
+        state: PublicationState;
+        start: Date | null;
+        end: Date | null;
+    };
 }
 
 const fmtShort = (d: Date | null) =>
     d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '—';
 
-/** Step milik periode perpanjangan: Pembayaran → Terjadwal → Tayang → Selesai */
-export function getExtendSteps(t: TFn): PeriodStepDef[] {
-    return [
-        { key: 'payment', label: t('extStepPayment') },
-        { key: 'scheduled', label: t('extStatusScheduled') },
-        { key: 'live', label: t('extStatusLive') },
-        { key: 'completed', label: t('extStatusCompleted') },
-    ];
-}
-
-/** Posisi step sebuah extend dari submission_status-nya (+ tanggal utk live/selesai by-date). */
-export function getExtendStepIndex(ext: FormSubmissionExtend): number {
-    const status = (ext.submission_status || 'waiting_payment').toLowerCase();
-    if (status === 'completed') return 3;
-    if (status === 'live') return 2;
-    if (status === 'paid' || status === 'scheduled') {
-        const now = new Date();
-        const start = ext.start_date ? normalizeScheduleDate(ext.start_date) : null;
-        const end = ext.end_date ? normalizeScheduleDate(ext.end_date) : null;
-        if (end && end < now) return 3;
-        if (start && end && start <= now && end >= now) return 2;
-        return 1;
+function buildIncentive(ext: FormSubmissionExtend | undefined, submission: FormSubmission): IncentiveInfo | null {
+    if (ext) {
+        if (ext.is_new_month && ext.prize_per_winner && ext.prize_per_winner > 0) {
+            return { mode: 'new_pool', winnerCount: ext.winner_count, prizePerWinner: ext.prize_per_winner };
+        }
+        if (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0) {
+            return { mode: 'accumulated', additionalPrize: ext.additional_prize_per_winner };
+        }
+        return { mode: 'none_same_period' };
     }
-    return 0; // waiting_payment / cancelled / unknown
+    if (submission.winner_count && submission.prize_per_winner) {
+        return { mode: 'plain', winnerCount: submission.winner_count, prizePerWinner: submission.prize_per_winner };
+    }
+    return null;
 }
 
 /**
- * Susun daftar periode: asli dulu, lalu extend urut tanggal mulai.
- * Step periode asli dihitung langsung dari submission (tanpa hack
- * effectiveStep yang menarik mundur stepper saat ada extend aktif);
- * koreksi expired mengikuti deriveOrderUiState.
+ * Susun daftar jadwal iklan (asli + tiap perpanjangan) sebagai unit setara.
+ * Jadwal asli hanya muncul setelah order lolos review (step >= 1) — sebelum
+ * itu, kartu order masih di Fase Review, belum ada jadwal untuk ditampilkan.
  */
-export function buildAiringPeriods(
+export function buildScheduleCards(
     submission: FormSubmission,
     ui: OrderUiState,
     extendsList: FormSubmissionExtend[],
     payments: Record<string, ExtendPaymentInfo>,
+    invoiceId: string | null,
     t: TFn
-): AiringPeriod[] {
+): ScheduleCard[] {
     const now = new Date();
-    const periods: AiringPeriod[] = [];
-
-    // — Periode asli —
+    const cards: ScheduleCard[] = [];
     const rawStep = getCurrentStepIndex(submission);
-    const origStep = ui.isExpired ? 1 : Math.max(rawStep, 0);
-    const origSteps = getStatusSteps(t, submission.distribution_type)
-        .map((s: { key: string; label: string }) => ({ key: s.key, label: s.label }));
-    const oStart = submission.start_date ? normalizeScheduleDate(submission.start_date) : null;
-    const oEnd = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
+    const totalPeriods = 1 + extendsList.length;
 
-    let origChipStatus: string;
-    let origChipLabel: string;
-    if (ui.isExpired) {
-        origChipStatus = 'expired';
-        origChipLabel = t('extStatusExpired');
-    } else if (origStep === 4) {
-        origChipStatus = 'completed';
-        origChipLabel = t('extStatusCompleted');
-    } else if (origStep === 3) {
-        const isLive =
-            (submission.submission_status || '').toLowerCase() === 'live' ||
-            !!(oStart && oEnd && oStart <= now && oEnd >= now);
-        origChipStatus = isLive ? 'live' : 'scheduled';
-        origChipLabel = isLive ? t('extStatusLive') : t('extStatusScheduled');
-    } else if (origStep === 2) {
-        origChipStatus = 'waiting_payment';
-        origChipLabel = t('extStatusWaitingPayment');
-    } else {
-        // Review / slot: netral abu-abu, label mengikuti step aktifnya
-        origChipStatus = 'in_review';
-        origChipLabel = origSteps[origStep]?.label || t('statusInReview');
+    if (rawStep >= 1 || ui.isExpired) {
+        const step = ui.isExpired ? 1 : rawStep;
+        const oStart = submission.start_date ? normalizeScheduleDate(submission.start_date) : null;
+        const oEnd = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
+
+        let bookingState: BookingState;
+        if (ui.isExpired) bookingState = 'expired';
+        else if (step === 1) bookingState = 'choose_schedule';
+        else if (step === 2) bookingState = ui.finalPaymentLink ? 'waiting_payment' : 'awaiting_invoice';
+        else bookingState = 'paid'; // step 3 atau 4
+
+        let pubState: PublicationState = 'none';
+        if (bookingState === 'paid') {
+            if (step === 4) pubState = 'completed';
+            else {
+                const isLive =
+                    (submission.submission_status || '').toLowerCase() === 'live' ||
+                    !!(oStart && oEnd && oStart <= now && oEnd >= now);
+                pubState = isLive ? 'live' : 'scheduled';
+            }
+        }
+
+        let chipStatus: string;
+        let chipLabel: string;
+        if (bookingState === 'expired') {
+            chipStatus = 'expired';
+            chipLabel = t(extendStatusLabelKey('expired'));
+        } else if (pubState === 'completed' || pubState === 'live' || pubState === 'scheduled') {
+            chipStatus = pubState;
+            chipLabel = t(extendStatusLabelKey(pubState));
+        } else if (bookingState === 'waiting_payment') {
+            chipStatus = 'waiting_payment';
+            chipLabel = t(extendStatusLabelKey('waiting_payment'));
+        } else {
+            chipStatus = 'in_review';
+            chipLabel = bookingState === 'choose_schedule' ? 'Pilih Jadwal' : 'Menunggu Tagihan';
+        }
+
+        cards.push({
+            key: 'original',
+            kind: 'original',
+            label: totalPeriods > 1 ? `${t('airingPeriodLabel')} 1` : t('airingPeriodLabel'),
+            ordinal: 1,
+            dateRange: oStart || oEnd ? `${fmtShort(oStart)}–${fmtShort(oEnd)}` : '—',
+            startDate: oStart,
+            endDate: oEnd,
+            chipStatus,
+            chipLabel,
+            info: {
+                id: submission.id || '',
+                createdAt: submission.created_at || null,
+                duration: submission.duration,
+                periodBatch: null,
+                incentive: buildIncentive(undefined, submission),
+                voucherCode: submission.voucher_code || null,
+            },
+            booking: {
+                state: bookingState,
+                amount: submission.total_cost,
+                payUrl: bookingState === 'waiting_payment' ? ui.finalPaymentLink : null,
+                isExternalLink: !!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard'),
+                deadline: ui.paymentDeadline,
+                invoicePaymentId: invoiceId,
+                isPaidForLabel: ui.isPaid,
+            },
+            publication: {
+                state: pubState,
+                start: oStart,
+                end: oEnd,
+            },
+        });
     }
 
-    // Semua periode berlabel "Periode Iklan" (dinomori saat >1) — tanpa
-    // istilah "Asli"/"Perpanjangan" (keputusan product owner 2026-07-19).
-    const totalPeriods = 1 + extendsList.length;
-    const periodLabel = (n: number) =>
-        totalPeriods > 1 ? `${t('airingPeriodLabel')} ${n}` : t('airingPeriodLabel');
-
-    periods.push({
-        key: 'original',
-        kind: 'original',
-        label: periodLabel(1),
-        startDate: oStart,
-        endDate: oEnd,
-        dateRange: oStart || oEnd ? `${fmtShort(oStart)}–${fmtShort(oEnd)}` : '—',
-        chipStatus: origChipStatus,
-        chipLabel: origChipLabel,
-        steps: origSteps,
-        currentStep: origStep,
-        expandable: true,
-        hasExpiredPaymentLink: false,
-    });
-
-    // — Periode perpanjangan —
     const sorted = [...extendsList].sort((a, b) => {
-        const as = a.start_date ? normalizeScheduleDate(a.start_date).getTime() : 0;
-        const bs = b.start_date ? normalizeScheduleDate(b.start_date).getTime() : 0;
+        const as = a.start_date
+            ? normalizeScheduleDate(a.start_date).getTime()
+            : a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bs = b.start_date
+            ? normalizeScheduleDate(b.start_date).getTime()
+            : b.created_at ? new Date(b.created_at).getTime() : 0;
         return as - bs;
     });
 
     sorted.forEach((ext, i) => {
         const pay = ext.id ? payments[ext.id] || null : null;
         const status = (ext.submission_status || 'waiting_payment').toLowerCase();
-        const hasExpiredPaymentLink = status === 'waiting_payment' && pay?.status === 'expired';
-        const stepIdx = getExtendStepIndex(ext);
-        // Chip confirmed extend ikut posisi step (by-date, pola AiringPeriodsBar
-        // lama): extend 'paid'/'scheduled' yang masa tayangnya lewat ber-chip
-        // Selesai, bukan Lunas.
-        let displayStatus: string;
-        if (hasExpiredPaymentLink) displayStatus = 'expired';
-        else if (status === 'cancelled' || status === 'waiting_payment') displayStatus = status;
-        else displayStatus = stepIdx === 3 ? 'completed' : stepIdx === 2 ? 'live' : 'scheduled';
         const start = ext.start_date ? normalizeScheduleDate(ext.start_date) : null;
         const end = ext.end_date ? normalizeScheduleDate(ext.end_date) : null;
 
-        periods.push({
+        let bookingState: BookingState;
+        if (status === 'cancelled') bookingState = 'cancelled';
+        else if (status === 'waiting_payment') {
+            if (pay?.status === 'expired') bookingState = 'expired';
+            else if (pay?.status === 'pending' && pay.paymentUrl) bookingState = 'waiting_payment';
+            else bookingState = 'awaiting_invoice'; // admin belum menerbitkan tagihan perpanjangan
+        } else {
+            bookingState = 'paid';
+        }
+
+        let pubState: PublicationState = 'none';
+        if (bookingState === 'paid') {
+            if (status === 'completed') pubState = 'completed';
+            else if (status === 'live') pubState = 'live';
+            else if (end && end < now) pubState = 'completed';
+            else if (start && end && start <= now && end >= now) pubState = 'live';
+            else pubState = 'scheduled';
+        }
+
+        let chipStatus: string;
+        let chipLabel: string;
+        if (bookingState === 'cancelled') {
+            chipStatus = 'cancelled';
+            chipLabel = t(extendStatusLabelKey('cancelled'));
+        } else if (bookingState === 'expired') {
+            chipStatus = 'expired';
+            chipLabel = t(extendStatusLabelKey('expired'));
+        } else if (pubState === 'completed' || pubState === 'live' || pubState === 'scheduled') {
+            chipStatus = pubState;
+            chipLabel = t(extendStatusLabelKey(pubState));
+        } else if (bookingState === 'waiting_payment') {
+            chipStatus = 'waiting_payment';
+            chipLabel = t(extendStatusLabelKey('waiting_payment'));
+        } else {
+            chipStatus = 'in_review';
+            chipLabel = 'Menunggu Tagihan';
+        }
+
+        cards.push({
             key: ext.id || `ext-${i}`,
             kind: 'extend',
-            label: periodLabel(i + 2),
+            label: `${t('airingPeriodLabel')} ${i + 2}`,
+            ordinal: i + 2,
+            dateRange: start || end ? `${fmtShort(start)}–${fmtShort(end)}` : '—',
             startDate: start,
             endDate: end,
-            dateRange: start || end ? `${fmtShort(start)}–${fmtShort(end)}` : '—',
-            chipStatus: displayStatus,
-            chipLabel: t(extendStatusLabelKey(displayStatus)),
-            steps: getExtendSteps(t),
-            currentStep: stepIdx,
-            expandable: status !== 'cancelled',
-            ext,
-            pay,
-            hasExpiredPaymentLink,
+            chipStatus,
+            chipLabel,
+            info: {
+                id: ext.id || '',
+                createdAt: ext.created_at || null,
+                duration: ext.duration,
+                periodBatch: ext.period_batch || null,
+                incentive: buildIncentive(ext, submission),
+                voucherCode: ext.voucher_code || null,
+            },
+            booking: {
+                state: bookingState,
+                amount: pay?.amount || ext.total_cost,
+                payUrl: bookingState === 'waiting_payment' ? pay?.paymentUrl || null : null,
+                isExternalLink: true,
+                deadline: null,
+                invoicePaymentId: pay?.paymentId || null,
+                isPaidForLabel: bookingState === 'paid',
+            },
+            publication: {
+                state: pubState,
+                start,
+                end,
+            },
         });
     });
 
-    return periods;
-}
-
-export type OriginalPanelState =
-    | 'review_manual'
-    | 'review_auto'
-    | 'choose_schedule'
-    | 'payment'
-    | 'awaiting_invoice'
-    | 'expired'
-    | 'ready_to_launch'
-    | 'live'
-    | 'completed';
-
-/**
- * State panel aksi milik PERIODE ASLI — dihitung dari step mentah submission
- * dan tanggal aslinya, BUKAN dari ui.callout/eff: callout bisa dibajak state
- * extend (extend_payment, atau 'live' saat perpanjangan tayang padahal
- * periode asli sudah selesai). Panel tiap periode harus bercerita tentang
- * periodenya sendiri.
- */
-export function getOriginalPanelState(submission: FormSubmission, ui: OrderUiState): OriginalPanelState | null {
-    if (getCurrentStepIndex(submission) === -1) return null; // revisi → banner card-level
-    if (ui.isExpired) return 'expired';
-
-    const step = Math.max(getCurrentStepIndex(submission), 0);
-    if (step === 0) return isAutoReviewed(submission) ? 'review_auto' : 'review_manual';
-    if (step === 1) return 'choose_schedule';
-    if (step === 2) return ui.finalPaymentLink ? 'payment' : 'awaiting_invoice';
-    if (step === 4) return 'completed';
-
-    const now = new Date();
-    const start = submission.start_date ? normalizeScheduleDate(submission.start_date) : null;
-    const end = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
-    const isLive =
-        (submission.submission_status || '').toLowerCase() === 'live' ||
-        !!(start && end && start <= now && end >= now);
-    return isLive ? 'live' : 'ready_to_launch';
+    return cards;
 }
 
 /**
- * Periode yang terbuka default: yang paling butuh perhatian user sekarang.
- * Prioritas: extend butuh bayar > sedang tayang > terjadwal terdekat >
- * selesai terakhir > asli.
+ * Kartu yang terbuka default: yang paling butuh perhatian user sekarang.
+ * Prioritas: butuh bayar > sedang tayang > terjadwal terdekat > selesai
+ * terakhir > kartu pertama yang belum dibatalkan.
  */
-export function pickDefaultExpandedKey(periods: AiringPeriod[]): string {
-    const candidates = periods.filter((p) => p.expandable);
-
-    const needsPay = candidates.find(
-        (p) => p.kind === 'extend' && (p.chipStatus === 'waiting_payment' || p.chipStatus === 'expired')
-    );
+export function pickDefaultExpandedKey(cards: ScheduleCard[]): string {
+    const needsPay = cards.find((c) => c.booking.state === 'waiting_payment' || c.booking.state === 'expired');
     if (needsPay) return needsPay.key;
 
-    const live = candidates.find((p) => p.chipStatus === 'live');
+    const live = cards.find((c) => c.publication.state === 'live');
     if (live) return live.key;
 
     const now = Date.now();
-    const upcoming = candidates
-        .filter((p) => p.chipStatus === 'scheduled' && p.startDate && p.startDate.getTime() > now)
+    const upcoming = cards
+        .filter((c) => c.publication.state === 'scheduled' && c.startDate && c.startDate.getTime() > now)
         .sort((a, b) => a.startDate!.getTime() - b.startDate!.getTime())[0];
     if (upcoming) return upcoming.key;
 
-    const lastCompleted = candidates
-        .filter((p) => p.chipStatus === 'completed' && p.endDate)
+    const lastCompleted = cards
+        .filter((c) => c.publication.state === 'completed' && c.endDate)
         .sort((a, b) => b.endDate!.getTime() - a.endDate!.getTime())[0];
     if (lastCompleted) return lastCompleted.key;
 
-    return 'original';
+    return cards.find((c) => c.booking.state !== 'cancelled')?.key || cards[0]?.key || 'original';
 }

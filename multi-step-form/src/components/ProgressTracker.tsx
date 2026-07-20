@@ -1,5 +1,4 @@
 import { type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
-import { CheckCircle2, FileText, Calendar, CreditCard, PlayCircle } from 'lucide-react';
 
 /**
  * Normalize a schedule date string for accurate time comparison.
@@ -20,20 +19,6 @@ export function normalizeScheduleDate(dateStr: string | null | undefined): Date 
     }
     return d;
 }
-
-// Step lifecycle order asli (5 langkah). Tanpa helper text — teks "sekarang
-// gimana" milik PeriodActionPanel; stepper (PeriodStepper) hanya label + posisi.
-// Field icon dipakai badge status di StatusPage (getStatusBadgeInfo).
-export const getStatusSteps = (t: any, distributionType?: string) => {
-    const isKilat = distributionType === 'kilat';
-    return [
-        { key: 'in_review', label: t('statusInReview'), icon: FileText },
-        { key: 'slot', label: isKilat ? t('statusKilatSlot') : t('statusScheduling'), icon: Calendar },
-        { key: 'payment', label: t('statusWaitingPayment'), icon: CreditCard },
-        { key: 'publishing', label: isKilat ? t('statusKilatPublishing') : t('statusPublishing'), icon: PlayCircle },
-        { key: 'completed', label: t('statusCompleted'), icon: CheckCircle2 },
-    ];
-};
 
 // Get the current step index based on submission_status and related data
 // This ensures sync between admin dashboard and user track status

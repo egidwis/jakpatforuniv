@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, getExtendsBySubmissionIds, getPageViewsBySubmissionIds, deleteFormSubmission, prepareForReschedule, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, getExtendsBySubmissionIds, getSurveyPagesBySubmissionIds, deleteFormSubmission, prepareForReschedule, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
 import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check, Link2, FileText } from 'lucide-react';
+import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -17,11 +17,11 @@ import { Button } from '@/components/ui/button';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { type ExtendPaymentInfo } from '@/components/ProgressTracker';
-import { AiringPeriodsSection } from '@/components/status/AiringPeriodsSection';
+import { Phase } from '@/components/status/PhaseRail';
+import { ReviewPhase, getReviewChip } from '@/components/status/ReviewPhase';
+import { SchedulePhase } from '@/components/status/SchedulePhase';
 import { PageHeader } from '@/components/PageHeader';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
-import { RevisionNotice } from '@/components/status/RevisionNotice';
-import { SurveyDetailsSection } from '@/components/status/SurveyDetailsSection';
 import { deriveOrderUiState, type OrderGroup } from '@/components/status/deriveOrderUiState';
 
 type FilterValue = 'all' | OrderGroup;
@@ -39,8 +39,8 @@ export function StatusPage() {
     // Duration extensions per submission + their payment info (keyed by extend id)
     const [extendsBySubmission, setExtendsBySubmission] = useState<Record<string, FormSubmissionExtend[]>>({});
     const [extendPayments, setExtendPayments] = useState<Record<string, Record<string, ExtendPaymentInfo>>>({});
-    // Jumlah views banner per submission (survey_pages.views_count) — indikator performa iklan di Detail Order
-    const [pageViews, setPageViews] = useState<Record<string, number>>({});
+    // Halaman iklan per submission (slug + views) — blok order-level di bawah list jadwal
+    const [surveyPages, setSurveyPages] = useState<Record<string, { views: number; slug: string | null }>>({});
     const [searchParams, setSearchParams] = useSearchParams();
 
     const filterParam = searchParams.get('filter') as FilterValue | null;
@@ -102,7 +102,7 @@ export function StatusPage() {
             const allSubmissionIds = data.map((s) => s.id).filter((id): id is string => !!id);
 
             // Run the per-submission transaction loop and the batched extends fetch together
-            const [, allExtends, viewsMap] = await Promise.all([
+            const [, allExtends, pagesMap] = await Promise.all([
                 // Use Promise.all for parallel fetching to prevent blocking
                 Promise.all(data.map(async (submission) => {
                     if (submission.id) {
@@ -165,7 +165,7 @@ export function StatusPage() {
                     }
                 })),
                 getExtendsBySubmissionIds(allSubmissionIds),
-                getPageViewsBySubmissionIds(allSubmissionIds),
+                getSurveyPagesBySubmissionIds(allSubmissionIds),
             ]);
 
             // Group extends by their parent submission
@@ -179,7 +179,7 @@ export function StatusPage() {
             setExtendPayments(extPayments);
             setPaymentLinks(links);
             setInvoiceIds(invIds);
-            setPageViews(viewsMap);
+            setSurveyPages(pagesMap);
         } catch (error) {
             console.error('Failed to fetch submissions', error);
         } finally {
@@ -435,9 +435,10 @@ export function StatusPage() {
                                            borderRadius inline karena .rounded-lg legacy styles.css menang
                                            di cascade atas utilitas radius Tailwind pada <Card>. */
                                         <Card key={submission.id} className="overflow-hidden border border-jfu-primary/[0.12] shadow-card hover:shadow-xl transition-shadow" style={{ borderRadius: '20px' }}>
-                                            {/* A. Header: identitas survei — chip tipe produk + judul + link
-                                                asli + jumlah pertanyaan. TANPA badge status: status hidup di
-                                                panel aksi & stepper periode (satu info satu rumah). */}
+                                            {/* A. Header minimal: chip tipe produk + judul saja. Identitas
+                                                survei (link, jumlah pertanyaan, kriteria, status review) dan
+                                                semua info lain kini hidup di fase masing-masing di bawah
+                                                (satu info satu rumah, tanpa stepper). */}
                                             <CardHeader className="bg-white pb-3 space-y-2.5 border-b border-gray-100">
                                                 <div>
                                                     <Chip
@@ -450,57 +451,27 @@ export function StatusPage() {
                                                 <CardTitle className="text-base md:text-lg font-bold text-[#1a1a1a] leading-snug line-clamp-2" title={submission.title}>
                                                     {submission.title}
                                                 </CardTitle>
-                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                                                    {submission.survey_url && (
-                                                        /* Alamat link ditampilkan apa adanya (tanpa skema, di-truncate)
-                                                           — bukan label generik — supaya user bisa memastikan survei
-                                                           mana yang dimaksud tanpa harus membukanya. */
-                                                        <a
-                                                            href={submission.survey_url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            title={submission.survey_url}
-                                                            className="flex items-center gap-1.5 text-xs font-medium text-jfu-primary hover:underline min-w-0 max-w-full"
-                                                        >
-                                                            <Link2 className="w-3.5 h-3.5 shrink-0" />
-                                                            <span className="truncate">{submission.survey_url.replace(/^https?:\/\//, '')}</span>
-                                                        </a>
-                                                    )}
-                                                    <span className="flex items-center gap-1.5 text-xs text-[#666]">
-                                                        <FileText className="w-3.5 h-3.5 text-gray-400" />
-                                                        {submission.question_count} {t('questionsUnit')}
-                                                    </span>
-                                                </div>
                                             </CardHeader>
 
                                             <CardContent className="pt-4 pb-4 bg-white">
-                                                {/* B. Banner revisi — satu-satunya state card-level */}
-                                                {ui.callout === 'revision' && (
-                                                    <RevisionNotice
+                                                <Phase number={1} title="Review" chip={getReviewChip(submission)}>
+                                                    <ReviewPhase
                                                         submission={submission}
                                                         onDelete={() => handleDeleteSubmission(submission.id!)}
                                                     />
-                                                )}
+                                                </Phase>
 
-                                                {/* C. Detail survei (accordion, tertutup) */}
-                                                <SurveyDetailsSection submission={submission} />
-
-                                                {/* D. Jadwal iklan — tiap jadwal membawa panel aksi + stepper
-                                                    + info administrasinya sendiri (Order ID, durasi, insentif,
-                                                    total, invoice). Tidak ada section "Info Order" terpisah:
-                                                    info level-jadwal ambigu begitu ada perpanjangan. */}
-                                                {ui.currentStep !== -1 && (
-                                                    <AiringPeriodsSection
+                                                <Phase number={2} title="Jadwal Iklan" isLast>
+                                                    <SchedulePhase
                                                         submission={submission}
                                                         ui={ui}
                                                         extends_={exts}
                                                         extendPayments={pays}
-                                                        viewsCount={submission.id ? pageViews[submission.id] : undefined}
                                                         invoiceId={invoiceIds[submission.id!] || null}
-                                                        isPaid={ui.isPaid}
+                                                        pageInfo={submission.id ? surveyPages[submission.id] : undefined}
                                                         onReschedule={() => handleReschedule(submission)}
                                                     />
-                                                )}
+                                                </Phase>
 
                                                 {/* F. Footer: baris chat penuh (deep-link ke Mimin dengan konteks order) */}
                                                 <div className="border-t border-gray-100 mt-3" />
