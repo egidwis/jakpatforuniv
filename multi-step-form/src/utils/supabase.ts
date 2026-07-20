@@ -1286,6 +1286,19 @@ export const fetchSlotAvailability = async (
  */
 export const releaseExpiredSlot = async (submissionId: string) => {
   try {
+    // Guard: don't release if payment was already completed (race condition
+    // between DOKU webhook and the 1-hour client-side timer).
+    const { data: current } = await supabase
+      .from('form_submissions')
+      .select('payment_status')
+      .eq('id', submissionId)
+      .single();
+
+    if (current && ['paid', 'completed'].includes(current.payment_status)) {
+      console.log(`Slot release skipped for ${submissionId}: payment already '${current.payment_status}'`);
+      return true;
+    }
+
     // 1. Clear slot data and mark payment as expired in form_submissions
     const { error: subError } = await supabase
       .from('form_submissions')
