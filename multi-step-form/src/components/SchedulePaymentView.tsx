@@ -284,7 +284,19 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                 endDateObj.toISOString()
             );
 
-            await updateFormStatus(submission.id!, 'slot_reserved');
+            // Only set status to 'slot_reserved' if payment hasn't been completed yet.
+            // This prevents regressing the status from 'paid' back to 'slot_reserved'
+            // when an admin re-books or adjusts the schedule after payment.
+            const { data: freshSub } = await supabase
+                .from('form_submissions')
+                .select('payment_status')
+                .eq('id', submission.id)
+                .single();
+
+            const isAlreadyPaid = freshSub && ['paid', 'completed'].includes(freshSub.payment_status);
+            if (!isAlreadyPaid) {
+                await updateFormStatus(submission.id!, 'slot_reserved');
+            }
 
             // Set slot_booked_by to 'admin' and append [EXTRA_AD] if needed
             const { data: currentSubForNotes } = await supabase
