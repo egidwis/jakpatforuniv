@@ -354,6 +354,18 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
     const handleCancelSchedule = async () => {
         if (!submission?.id) return;
+
+        const { data: freshSub, error: checkError } = await supabase
+            .from('form_submissions')
+            .select('payment_status')
+            .eq('id', submission.id)
+            .single();
+
+        if (!checkError && freshSub && ['paid', 'completed'].includes(freshSub.payment_status)) {
+            toast.error('Submission ini sudah dibayar — reservasi slot tidak bisa dibatalkan dari sini.');
+            return;
+        }
+
         setIsLoading(true);
         try {
             await supabase
@@ -789,7 +801,7 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
                                     const dotColor = displayCount > activeMaxPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
 
-                                    const detailsForDate = slotDetails[dateStr] || [];
+                                    const detailsForDate = (slotDetails[dateStr] || []).filter(ad => ad.isExtra === isExtraMode);
 
                                     return (
                                         <TooltipProvider key={dateStr} delayDuration={100}>

@@ -168,7 +168,7 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
 
                 const dotColor = displayCount > maxAdsPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
 
-                const detailsForDate = slotDetails[dateStr] || [];
+                const detailsForDate = (slotDetails[dateStr] || []).filter(ad => !ad.isExtra);
 
                 return (
                   <button
