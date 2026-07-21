@@ -1,5 +1,6 @@
 import type { SurveyFormData } from '../types';
 import { calculateTotalCost, isManualVerificationVoucher } from '../utils/cost-calculator';
+import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useMemo } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { Menu, Check } from 'lucide-react';
@@ -14,13 +15,19 @@ interface UnifiedHeaderProps {
 
 export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset }: UnifiedHeaderProps) {
     const { t } = useLanguage();
-    const calculation = useMemo(() => calculateTotalCost(formData), [
-        formData.questionCount,
-        formData.duration,
-        formData.winnerCount,
-        formData.prizePerWinner,
-        formData.voucherCode
-    ]);
+    // ILKOMUNY yang sudah dipakai akun ini → jangan tampilkan harga diskon.
+    const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
+    const calculation = useMemo(
+        () => calculateTotalCost(ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData),
+        [
+            formData.questionCount,
+            formData.duration,
+            formData.winnerCount,
+            formData.prizePerWinner,
+            formData.voucherCode,
+            ilkomunyBlocked
+        ]
+    );
 
     const formatRupiah = (amount: number) => {
         return new Intl.NumberFormat('id-ID').format(amount);

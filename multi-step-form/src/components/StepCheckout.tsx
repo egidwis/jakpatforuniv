@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
-import { calculateTotalCost, getVoucherInfo, ilkomunyExpired, isManualVerificationVoucher } from '../utils/cost-calculator';
-import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, getOwnProfile, hasRedeemedVoucher, type FormSubmission } from '../utils/supabase';
+import { calculateTotalCost, getVoucherInfo, isManualVerificationVoucher } from '../utils/cost-calculator';
+import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, getOwnProfile, type FormSubmission } from '../utils/supabase';
+import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { resolveSubmissionMode, type SubmissionMode } from '../utils/submissionMode';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
@@ -51,7 +52,10 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
     totalCost: 0
   });
 
-  const [voucherInfo, setVoucherInfo] = useState<{ isValid: boolean; message?: string; discount?: number }>({ isValid: false });
+  const [voucherInfo, setVoucherInfo] = useState<{ isValid: boolean; message?: string; discount?: number; isError?: boolean; isKilatEligible?: boolean }>({ isValid: false });
+  // ILKOMUNY sudah pernah dipakai akun ini (redemption lunas ATAU submission aktif)
+  // → voucher tak berlaku (diskon tak diterapkan, pesan ditampilkan).
+  const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
@@ -110,15 +114,19 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
     }
   };
 
-  // Hitung biaya saat form data berubah
+  // Hitung biaya + info voucher saat form data (atau status pakai ILKOMUNY) berubah.
+  // ILKOMUNY yang sudah dipakai → voucher di-strip: diskon TIDAK diterapkan & pesan
+  // "sudah pernah digunakan" tampil, tanpa memblokir submit (order lanjut harga normal).
   useEffect(() => {
-    const calculation = calculateTotalCost(formData);
-    setCostCalculation(calculation);
+    const effectiveForm = ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData;
+    setCostCalculation(calculateTotalCost(effectiveForm));
 
-    // Update voucher info
-    const info = getVoucherInfo(formData.voucherCode, formData.duration);
-    setVoucherInfo(info);
-  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode]);
+    if (ilkomunyBlocked) {
+      setVoucherInfo({ isValid: false, isError: true, message: 'Kode voucher ini sudah pernah digunakan (berlaku satu kali per akun).' });
+    } else {
+      setVoucherInfo(getVoucherInfo(formData.voucherCode, formData.duration));
+    }
+  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode, ilkomunyBlocked]);
 
   // Format angka ke format rupiah
   const formatRupiah = (amount: number) => {
@@ -174,32 +182,6 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         isSubmittingRef.current = false;
         setIsSubmitting(false);
         return;
-      }
-
-      // Gate voucher ILKOMUNY: sekali pakai per akun + masa berlaku s/d 31 Des 2026.
-      // "Sekali pakai" butuh identitas akun (auth_user_id) → wajib login. Gerbang
-      // otoritatif tetap UNIQUE(auth_user_id, voucher_code) di DB + pencatatan webhook;
-      // cek ini mencegah pemakaian ganda sebelum uang berpindah.
-      if (formData.voucherCode?.toUpperCase() === 'ILKOMUNY') {
-        if (!user) {
-          toast.error('Silakan login terlebih dahulu untuk memakai voucher ILKOMUNY.');
-          isSubmittingRef.current = false;
-          setIsSubmitting(false);
-          return;
-        }
-        if (ilkomunyExpired()) {
-          toast.error('Voucher ILKOMUNY sudah berakhir (berlaku sampai 31 Desember 2026).');
-          isSubmittingRef.current = false;
-          setIsSubmitting(false);
-          return;
-        }
-        const alreadyUsed = await hasRedeemedVoucher('ILKOMUNY');
-        if (alreadyUsed) {
-          toast.error('Akun ini sudah pernah memakai voucher ILKOMUNY. Voucher hanya berlaku satu kali per akun.');
-          isSubmittingRef.current = false;
-          setIsSubmitting(false);
-          return;
-        }
       }
 
       // Cek apakah form diisi secara manual
@@ -318,7 +300,10 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
           : formData.referralSource,
         winner_count: formData.winnerCount,
         prize_per_winner: formData.prizePerWinner,
-        voucher_code: formData.voucherCode,
+        // ILKOMUNY yang sudah dipakai: simpan tanpa voucher agar recompute admin
+        // (SchedulePaymentView) tidak menerapkan ulang diskonnya. costCalculation
+        // sudah dihitung tanpa diskon (lihat effect di atas).
+        voucher_code: ilkomunyBlocked ? '' : formData.voucherCode,
         total_cost: costCalculation.totalCost,
         subtotal: costCalculation.subtotal,
         ppn_amount: costCalculation.ppn,

@@ -250,6 +250,32 @@ export const hasRedeemedVoucher = async (code: string): Promise<boolean> => {
 };
 
 /**
+ * True bila akun yang login sudah punya submission dengan `code` yang masih
+ * "hidup" — belum dibatalkan / gagal / kadaluarsa. Melengkapi hasRedeemedVoucher
+ * (yang hanya terisi saat pembayaran lunas via webhook): ini menangkap order
+ * yang baru di-submit tapi belum dibayar, sehingga voucher sekali-pakai langsung
+ * terasa dipakai sejak submit pertama (dan bisa diuji di lokal). Pemakaian ulang
+ * tetap diperbolehkan bila order lama dibatalkan admin / gagal / kadaluarsa.
+ */
+export const hasActiveVoucherSubmission = async (code: string): Promise<boolean> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('payment_status, submission_status')
+    .eq('auth_user_id', user.id)
+    .ilike('voucher_code', code);
+  if (error) {
+    console.error('Error checking active voucher submission:', error);
+    return false;
+  }
+  return (data || []).some((s: any) =>
+    s.payment_status !== 'failed' &&
+    s.payment_status !== 'expired' &&
+    s.submission_status !== 'cancelled');
+};
+
+/**
  * Mengirim email recovery agar user bisa mengatur ulang password-nya sendiri.
  * Link di email akan mengarahkan user ke halaman /reset-password.
  * Catatan keamanan: Supabase tidak pernah mengungkap apakah email terdaftar,
