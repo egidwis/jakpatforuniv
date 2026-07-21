@@ -1,9 +1,20 @@
 import type { SurveyFormData, CostCalculation } from '../types';
-import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER } from './constants';
+import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT } from './constants';
 
 // DUPLICATED in functions/api/doku/create-payment.js (server-side authoritative
-// copy) — the two MUST be changed together: price tiers, voucher list, and the
-// Kilat add-on. Pages Functions bundle standalone, so they can't import this file.
+// copy) — the two MUST be changed together: price tiers, voucher list, the
+// Kilat add-on, AND the PPN math. Pages Functions bundle standalone, so they
+// can't import this file.
+
+/**
+ * Menghitung PPN dari Dasar Pengenaan Pajak (DPP = subtotal setelah diskon).
+ * Memakai persen bulat lalu Math.round agar hasilnya rupiah bulat & deterministik.
+ * Pembulatan ini WAJIB identik dengan salinan server (create-payment.js); kalau
+ * beda, create-payment.js akan mendeteksi mismatch total_cost di setiap order.
+ */
+export function calculatePpn(dpp: number): number {
+  return Math.round((dpp * PPN_PERCENT) / 100);
+}
 
 /**
  * Menghitung biaya iklan berdasarkan jumlah pertanyaan dan durasi
@@ -239,12 +250,16 @@ export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
     const isVoucherKilat = formData.voucherCode?.toUpperCase() === 'JFUSUHUD';
     const kilatAddon = isVoucherKilat ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST;
     // No discount applied on top of Kilat add-on
+    const subtotal = adCostBase + kilatAddon + incentiveCost;
+    const ppn = calculatePpn(subtotal);
     return {
       adCost: adCostBase,
       incentiveCost,
       discount: 0,
       kilatAddonCost: kilatAddon,
-      totalCost: adCostBase + kilatAddon + incentiveCost,
+      subtotal,
+      ppn,
+      totalCost: subtotal + ppn,
     };
   }
 
@@ -253,11 +268,15 @@ export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
   const incentiveCost = calculateIncentiveCost(formData.winnerCount, formData.prizePerWinner);
   const discount = calculateDiscount(formData.voucherCode, adCost, incentiveCost, formData.duration);
 
+  const subtotal = adCost + incentiveCost - discount;
+  const ppn = calculatePpn(subtotal);
   return {
     adCost,
     incentiveCost,
     discount,
     kilatAddonCost: 0,
-    totalCost: adCost + incentiveCost - discount
+    subtotal,
+    ppn,
+    totalCost: subtotal + ppn
   };
 }

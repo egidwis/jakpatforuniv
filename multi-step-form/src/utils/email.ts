@@ -70,6 +70,15 @@ const generateSuccessEmailContent = (formData: FormSubmission): string => {
             <td style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Tanggal:</strong></td>
             <td style="padding: 8px 0; border-bottom: 1px solid #eee;">${formData.start_date} - ${formData.end_date}</td>
           </tr>
+          ${formData.ppn_amount != null ? `
+          <tr>
+            <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Subtotal:</td>
+            <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Rp ${formatRupiah(formData.subtotal ?? (formData.total_cost - formData.ppn_amount))}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; border-bottom: 1px solid #eee;">PPN 11%:</td>
+            <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Rp ${formatRupiah(formData.ppn_amount)}</td>
+          </tr>` : ''}
           <tr>
             <td style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Total Biaya:</strong></td>
             <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Rp ${formatRupiah(formData.total_cost)}</td>
@@ -112,7 +121,7 @@ const generateFailedEmailContent = (formData: FormSubmission): string => {
           </tr>
           <tr>
             <td style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Total Biaya:</strong></td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Rp ${formatRupiah(formData.total_cost)}</td>
+            <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Rp ${formatRupiah(formData.total_cost)}${formData.ppn_amount != null ? ' <span style="color:#999; font-size:12px;">(termasuk PPN 11%)</span>' : ''}</td>
           </tr>
         </table>
       </div>

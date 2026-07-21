@@ -248,7 +248,10 @@ export const translations = {
     respondentIncentive: "Respondent Incentive",
     subtotal: "Subtotal",
     discount: "Discount",
+    ppn: "VAT 11%",
+    priceExcludesTax: "excl. VAT 11%",
     totalPayment: "Total Payment",
+    totalIncludesTax: "Total includes VAT 11%",
     disclaimer: "By proceeding, you agree to our Terms of Service and Privacy Policy",
 
     // Buttons
@@ -648,7 +651,10 @@ export const translations = {
     respondentIncentive: "Insentif Responden",
     subtotal: "Subtotal",
     discount: "Diskon",
+    ppn: "PPN 11%",
+    priceExcludesTax: "belum termasuk PPN 11%",
     totalPayment: "Total Pembayaran",
+    totalIncludesTax: "Total sudah termasuk PPN 11%",
     disclaimer: "Dengan melanjutkan, Anda menyetujui Syarat Layanan dan Kebijakan Privasi kami",
 
     // Buttons

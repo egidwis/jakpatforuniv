@@ -299,6 +299,9 @@ export function PaymentCheckoutPage() {
                     <div className="text-right">
                       <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block mb-0.5">{t('checkoutTotalLabel')}</span>
                       <span className="text-lg font-bold text-blue-600">Rp {new Intl.NumberFormat('id-ID').format(submission.total_cost || 0)}</span>
+                      {submission.ppn_amount != null && (
+                        <span className="block text-[10px] text-gray-400 mt-0.5">{t('totalIncludesTax')}</span>
+                      )}
                     </div>
                   </div>
 

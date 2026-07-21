@@ -45,6 +45,8 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
   const [costCalculation, setCostCalculation] = useState<CostCalculation>({
     adCost: 0,
     incentiveCost: 0,
+    subtotal: 0,
+    ppn: 0,
     discount: 0,
     totalCost: 0
   });
@@ -292,6 +294,8 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         prize_per_winner: formData.prizePerWinner,
         voucher_code: formData.voucherCode,
         total_cost: costCalculation.totalCost,
+        subtotal: costCalculation.subtotal,
+        ppn_amount: costCalculation.ppn,
         payment_status: 'pending',
         submission_method: isManualForm ? 'manual' : 'google_import',
         detected_keywords: formData.detectedKeywords || [],
@@ -820,8 +824,20 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                 </div>
               )}
 
+              {/* Subtotal (DPP) */}
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-500">{t('subtotal')}</div>
+                <div className="text-sm text-gray-700">Rp {formatRupiah(costCalculation.subtotal)}</div>
+              </div>
+
+              {/* PPN 11% */}
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-500">{t('ppn')}</div>
+                <div className="text-sm text-gray-700">Rp {formatRupiah(costCalculation.ppn)}</div>
+              </div>
+
               {/* Total */}
-              <div className="flex justify-between items-end pt-4">
+              <div className="flex justify-between items-end pt-4 border-t border-dashed border-gray-200">
                 <div className="text-base font-bold text-gray-900">{t('totalPayment')}</div>
                 <div className="text-2xl font-bold" style={{ color: '#0091ff' }}>Rp {formatRupiah(costCalculation.totalCost)}</div>
               </div>

@@ -45,7 +45,9 @@ export interface SurveyFormData {
 export interface CostCalculation {
   adCost: number;
   incentiveCost: number;
-  totalCost: number;
+  subtotal: number;    // Dasar Pengenaan Pajak (DPP) — sebelum PPN, setelah diskon
+  ppn: number;         // PPN 11% dari subtotal (rupiah bulat)
+  totalCost: number;   // subtotal + ppn — ini yang ditagih DOKU
   discount: number;
   kilatAddonCost?: number; // JFU Kilat add-on
 }
