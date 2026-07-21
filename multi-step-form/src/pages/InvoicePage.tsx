@@ -17,7 +17,10 @@ interface InvoiceItem {
 interface InvoiceData {
     id: string; // Transaction ID
     payment_id: string;
-    amount: number;
+    amount: number;              // grand total (termasuk PPN utk invoice baru)
+    subtotal?: number | null;    // DPP sebelum PPN (null utk invoice lama pra-PPN)
+    ppn_rate?: number | null;    // tarif PPN saat transaksi (mis. 0.11)
+    ppn_amount?: number | null;  // nominal PPN (null utk invoice lama pra-PPN)
     status: string;
     payment_method?: string;
     payment_channel?: string;
@@ -165,6 +168,18 @@ export function InvoicePage() {
     // ---- Derived state -----------------------------------------------------
     const isPaid = ['completed', 'paid'].includes((data.status || '').toLowerCase());
 
+    // PPN breakdown. Invoices created before PPN have ppn_amount = null → render
+    // as total-only (no PPN line, no retroactive change to a settled receipt).
+    const hasPpn = data.ppn_amount != null;
+    const ppnAmount = data.ppn_amount ?? 0;
+    // The pre-tax base: prefer the stored subtotal, else derive it (amount − PPN).
+    const subtotalValue = data.subtotal ?? (data.amount - ppnAmount);
+
+    // Line items are pre-tax. For the self-service fallback (single generic line,
+    // no note), show the DPP when PPN applies so items sum to the subtotal, not
+    // the grand total (which would double-count PPN against the separate line).
+    const fallbackLineTotal = hasPpn ? subtotalValue : data.amount;
+
     // Parse line items from the transaction note (JSON), with a safe fallback.
     let items: InvoiceItem[] = [];
     try {
@@ -172,13 +187,13 @@ export function InvoicePage() {
             const parsed = JSON.parse(data.note);
             items = parsed.items || [];
         } else {
-            items = [{ category: 'Pembayaran', price: data.amount, qty: 1 }];
+            items = [{ category: 'Pembayaran', price: fallbackLineTotal, qty: 1 }];
         }
     } catch (e) {
-        items = [{ category: 'Pembayaran', price: data.amount, qty: 1 }];
+        items = [{ category: 'Pembayaran', price: fallbackLineTotal, qty: 1 }];
     }
     if (items.length === 0) {
-        items = [{ category: 'Pembayaran', price: data.amount, qty: 1 }];
+        items = [{ category: 'Pembayaran', price: fallbackLineTotal, qty: 1 }];
     }
 
     // ---- Formatters --------------------------------------------------------
@@ -376,8 +391,20 @@ export function InvoicePage() {
                         </table>
                     </div>
 
-                    {/* Total + terbilang */}
+                    {/* Total + terbilang (Subtotal → PPN → Total bila invoice ber-PPN) */}
                     <div className="flex flex-col items-end mb-10">
+                        {hasPpn && (
+                            <div className="w-full sm:w-[320px] mb-2 text-sm">
+                                <div className="flex justify-between items-center py-1 text-gray-600">
+                                    <span>Subtotal</span>
+                                    <span className="tabular">{formatCurrency(subtotalValue)}</span>
+                                </div>
+                                <div className="flex justify-between items-center py-1 text-gray-600 border-b border-gray-200 pb-2">
+                                    <span>PPN 11%</span>
+                                    <span className="tabular">{formatCurrency(ppnAmount)}</span>
+                                </div>
+                            </div>
+                        )}
                         <div className="print-exact w-full sm:w-[320px] bg-slate-900 text-white rounded-xl px-5 py-4 flex justify-between items-center">
                             <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">Total</span>
                             <span className="font-bold text-2xl tabular">{formatCurrency(data.amount)}</span>

@@ -15,6 +15,8 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
   const [costCalculation, setCostCalculation] = useState<CostCalculation>({
     adCost: 0,
     incentiveCost: 0,
+    subtotal: 0,
+    ppn: 0,
     discount: 0,
     totalCost: 0
   });

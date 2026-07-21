@@ -272,7 +272,9 @@ export interface FormSubmission {
   winner_count?: number;
   prize_per_winner?: number;
   voucher_code?: string;
-  total_cost: number;
+  total_cost: number;          // grand total, termasuk PPN
+  subtotal?: number;           // DPP sebelum PPN (null utk submission pra-PPN)
+  ppn_amount?: number;         // PPN 11% (null utk submission pra-PPN)
   payment_status?: string;
   submission_method?: string;
   detected_keywords?: string[];
@@ -291,7 +293,10 @@ export interface Transaction {
   form_submission_id: string;
   payment_id?: string;
   payment_method?: string;
-  amount: number;
+  amount: number;              // grand total, termasuk PPN
+  subtotal?: number;           // DPP sebelum PPN
+  ppn_rate?: number;           // tarif PPN yang berlaku saat transaksi (mis. 0.11)
+  ppn_amount?: number;         // nominal PPN
   status: string;
   payment_url?: string;
   payment_channel?: string;
@@ -308,7 +313,10 @@ export interface Invoice {
   form_submission_id: string;
   payment_id: string;
   invoice_url: string;
-  amount: number;
+  amount: number;              // grand total, termasuk PPN
+  subtotal?: number;           // DPP sebelum PPN
+  ppn_rate?: number;           // tarif PPN yang berlaku (mis. 0.11)
+  ppn_amount?: number;         // nominal PPN
   status: string;
   entity_type?: 'submission' | 'extend';
   extend_id?: string;
@@ -333,7 +341,9 @@ export interface FormSubmissionExtend {
   additional_prize_per_winner?: number;
   is_new_month?: boolean;
   period_batch?: string;
-  total_cost: number;
+  total_cost: number;          // grand total, termasuk PPN
+  subtotal?: number;           // DPP sebelum PPN
+  ppn_amount?: number;         // PPN 11%
   voucher_code?: string;
   admin_notes?: string;
   created_at?: string;

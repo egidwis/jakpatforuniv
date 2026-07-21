@@ -156,6 +156,12 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
           <ul className="space-y-1 text-sm text-gray-600 relative z-10">
             <li><span className="font-medium">Form ID:</span> <span className="font-mono text-xs">{formData.id}</span></li>
             <li><span className="font-medium">Durasi:</span> {formData.duration} hari</li>
+            {formData.ppn_amount != null && (
+              <>
+                <li><span className="font-medium">Subtotal:</span> Rp {new Intl.NumberFormat('id-ID').format(formData.subtotal ?? (formData.total_cost - formData.ppn_amount))}</li>
+                <li><span className="font-medium">PPN 11%:</span> Rp {new Intl.NumberFormat('id-ID').format(formData.ppn_amount)}</li>
+              </>
+            )}
             <li><span className="font-medium">Total Tagihan:</span> Rp {new Intl.NumberFormat('id-ID').format(formData.total_cost)}</li>
           </ul>
         </div>
