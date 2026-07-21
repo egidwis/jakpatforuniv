@@ -454,14 +454,14 @@ export function StatusPage() {
                                             </CardHeader>
 
                                             <CardContent className="pt-4 pb-4 bg-white">
-                                                <Phase number={1} title="Review" chip={getReviewChip(submission)}>
+                                                <Phase number={1} title={t('phaseReviewTitle')} chip={getReviewChip(submission, t)}>
                                                     <ReviewPhase
                                                         submission={submission}
                                                         onDelete={() => handleDeleteSubmission(submission.id!)}
                                                     />
                                                 </Phase>
 
-                                                <Phase number={2} title="Jadwal Iklan" isLast>
+                                                <Phase number={2} title={t('airingPeriodLabel')} isLast>
                                                     <SchedulePhase
                                                         submission={submission}
                                                         ui={ui}

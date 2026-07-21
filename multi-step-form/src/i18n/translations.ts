@@ -12,7 +12,6 @@ export const translations = {
     step1: "Survey Details",
 
     // Step One - Survey Source Selection
-    surveyDetails: "Survey Details",
     chooseSurveySource: "Choose your survey source",
 
     // Google Form Option
@@ -85,7 +84,6 @@ export const translations = {
     incentiveNewPeriod: "New period",
     incentiveAccumulated: "added to the previous incentive pool",
     periodBatchLabel: "Period",
-    extStepPayment: "Payment",
     payExtension: "Pay Extension",
     extendWaitingPaymentAlert: "Admin has approved your duration extension. Complete the payment so it can be scheduled and aired.",
     extendExpiredHint: "This extension's payment link has expired. Please reschedule the extension via admin / Contact Support.",
@@ -101,7 +99,6 @@ export const translations = {
     noSubmissionsDesc: "You haven't submitted any survey for distribution yet. Choose an option below to start distributing your survey to Jakpat respondents.",
     submittedOn: "Submitted on",
     days: "Days",
-    adDuration: "Ad Duration",
 
     winner: "winner",
 
@@ -142,7 +139,6 @@ export const translations = {
     footer: "Jakpat for Universities © 2025",
 
     // Total Cost
-    totalCost: "Total Cost",
     perQuestion: "questions x 1 (day)",
 
     // Step Two Fields
@@ -517,16 +513,39 @@ export const translations = {
     calloutCompletedSuffix: "Thank you for using JFU!",
 
     // Dashboard revamp — survey details & order info accordions
-    surveyDetails: "Survey Details",
     orderId: "Order ID",
     orderIdCopied: "Order ID copied to clipboard",
     adDuration: "Ad duration",
     totalCost: "Total cost",
     questionsUnit: "questions",
-    detailDescription: "Survey description",
     detailPrize: "Winner incentive",
-    detailCriteria: "Respondent criteria",
-    detailViews: "Views",
+
+    // Order card v3 — phase ① Review
+    phaseReviewTitle: "Review",
+    reviewChipRejected: "Needs Revision",
+    reviewChipPending: "Awaiting Review",
+    reviewChipApproved: "Approved",
+
+    // Order card v3 — phase ② Jadwal Iklan (schedule cards)
+    sectionInfo: "Info",
+    sectionBookingPayment: "Booking & Payment",
+    sectionPublication: "Publication",
+    bookingStatusChooseSchedule: "Awaiting Schedule",
+    bookingStatusAwaitingInvoice: "Awaiting Invoice",
+    voucherLabel: "Voucher",
+    statusLabel: "Status",
+    invoiceRowLabel: "Invoice",
+    receiptRowLabel: "Receipt",
+    viewInvoiceLink: "View invoice",
+    viewReceiptLink: "View receipt",
+    airingScheduleLabel: "Airing Schedule",
+    incentiveNoAdditionNote: "No addition — current incentive still applies",
+    calloutAwaitingInvoiceExtend: "Waiting for the admin to issue the extension invoice.",
+    calloutCancelledSchedule: "This schedule was cancelled by the admin. Need an explanation? Chat with Mimin below.",
+    scheduleEmptyRejected: "Finish your survey revision first to continue to the ad schedule.",
+    scheduleEmptyPending: "Ad schedules can be picked once your review is approved.",
+    adPageLinkLabel: "Ad Page",
+    viewsUnit: "views",
   },
 
   id: {
@@ -538,7 +557,6 @@ export const translations = {
     step1: "Detail Survey",
 
     // Step One - Survey Source Selection
-    surveyDetails: "Detail Survey",
     chooseSurveySource: "Pilih sumber survey Anda",
 
     // Google Form Option
@@ -617,7 +635,6 @@ export const translations = {
     footer: "Jakpat for Universities © 2025",
 
     // Total Cost
-    totalCost: "Total Biaya",
     perQuestion: "pertanyaan x 1 (hari)",
 
     // Step Two Fields
@@ -847,7 +864,6 @@ export const translations = {
     incentiveNewPeriod: "Periode baru",
     incentiveAccumulated: "diakumulasi ke insentif sebelumnya",
     periodBatchLabel: "Periode",
-    extStepPayment: "Pembayaran",
     payExtension: "Bayar Perpanjangan",
     extendWaitingPaymentAlert: "Admin telah menyetujui perpanjangan durasi survei Anda. Selesaikan pembayaran agar perpanjangan dapat dijadwalkan dan ditayangkan.",
     extendExpiredHint: "Link pembayaran perpanjangan ini telah kedaluwarsa. Silakan jadwalkan ulang perpanjangan melalui admin / Hubungi Support.",
@@ -862,7 +878,6 @@ export const translations = {
     createFirstSurvey: "Buat Survey Baru",
     noSubmissionsDesc: "Anda belum mengajukan survei apapun untuk didistribusikan. Pilih salah satu opsi di bawah untuk mulai mendistribusikan surveimu ke responden Jakpat.",
     submittedOn: "Diajukan pada",
-    adDuration: "Durasi Iklan",
 
     winner: "pemenang",
 
@@ -1043,16 +1058,39 @@ export const translations = {
     calloutCompletedSuffix: "Terima kasih sudah menggunakan JFU!",
 
     // Dashboard revamp — accordion detail survei & info order
-    surveyDetails: "Detail Survei",
     orderId: "Order ID",
     orderIdCopied: "Order ID disalin ke clipboard",
     adDuration: "Durasi iklan",
     totalCost: "Total biaya",
     questionsUnit: "pertanyaan",
-    detailDescription: "Deskripsi survei",
     detailPrize: "Insentif pemenang",
-    detailCriteria: "Kriteria responden",
-    detailViews: "Jumlah views",
+
+    // Order card v3 — fase ① Review
+    phaseReviewTitle: "Review",
+    reviewChipRejected: "Perlu Revisi",
+    reviewChipPending: "Menunggu Review",
+    reviewChipApproved: "Disetujui",
+
+    // Order card v3 — fase ② Jadwal Iklan (kartu jadwal)
+    sectionInfo: "Info",
+    sectionBookingPayment: "Booking & Pembayaran",
+    sectionPublication: "Penayangan",
+    bookingStatusChooseSchedule: "Menunggu jadwal dipilih",
+    bookingStatusAwaitingInvoice: "Menunggu Tagihan",
+    voucherLabel: "Voucher",
+    statusLabel: "Status",
+    invoiceRowLabel: "Invoice",
+    receiptRowLabel: "Kwitansi",
+    viewInvoiceLink: "Lihat invoice",
+    viewReceiptLink: "Lihat kwitansi",
+    airingScheduleLabel: "Jadwal Tayang",
+    incentiveNoAdditionNote: "Tanpa tambahan — insentif berjalan tetap berlaku",
+    calloutAwaitingInvoiceExtend: "Menunggu admin menerbitkan tagihan perpanjangan.",
+    calloutCancelledSchedule: "Jadwal ini dibatalkan oleh admin. Butuh penjelasan? Chat Mimin di bawah.",
+    scheduleEmptyRejected: "Selesaikan revisi survei terlebih dahulu untuk melanjutkan ke jadwal iklan.",
+    scheduleEmptyPending: "Jadwal iklan bisa dipilih setelah review disetujui.",
+    adPageLinkLabel: "Halaman Iklan",
+    viewsUnit: "views",
   }
 };
 

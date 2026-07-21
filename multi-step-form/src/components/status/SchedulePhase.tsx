@@ -27,7 +27,8 @@ import {
     AccordionTrigger,
 } from '@/components/ui/accordion';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { extendStatusStyle } from '@/utils/extend-ui';
+import type { TranslationKey } from '@/i18n/translations';
+import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import { getCurrentStepIndex } from '@/components/ProgressTracker';
 import type { FormSubmission, FormSubmissionExtend } from '@/utils/supabase';
 import type { ExtendPaymentInfo } from '@/components/ProgressTracker';
@@ -140,6 +141,7 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function IncentiveValue({ info }: { info: IncentiveInfo }) {
+    const { t } = useLanguage();
     if (info.mode === 'plain') {
         return <span>{info.winnerCount} × {formatRupiah(info.prizePerWinner!)}</span>;
     }
@@ -148,7 +150,7 @@ function IncentiveValue({ info }: { info: IncentiveInfo }) {
             <span className="inline-flex items-center gap-1.5 flex-wrap">
                 {info.winnerCount} × {formatRupiah(info.prizePerWinner!)}
                 <Badge variant="outline" className="px-1.5 py-0 h-4 text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 rounded-full">
-                    Periode baru
+                    {t('incentiveNewPeriod')}
                 </Badge>
             </span>
         );
@@ -157,11 +159,11 @@ function IncentiveValue({ info }: { info: IncentiveInfo }) {
         return (
             <span>
                 +{formatRupiah(info.additionalPrize!)}
-                <span className="block text-xs text-gray-500 font-normal">diakumulasi ke insentif sebelumnya</span>
+                <span className="block text-xs text-gray-500 font-normal">{t('incentiveAccumulated')}</span>
             </span>
         );
     }
-    return <span className="text-xs text-gray-500 font-normal">Tanpa tambahan — insentif berjalan tetap berlaku</span>;
+    return <span className="text-xs text-gray-500 font-normal">{t('incentiveNoAdditionNote')}</span>;
 }
 
 const iconCls = 'w-3.5 h-3.5';
@@ -182,20 +184,29 @@ function InfoSection({ card }: { card: ScheduleCard }) {
         rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('detailPrize'), value: <IncentiveValue info={card.info.incentive} /> });
     }
     return (
-        <Section label="Info">
+        <Section label={t('sectionInfo')}>
             <RowGrid rows={rows} />
         </Section>
     );
 }
 
-const BOOKING_STATUS_TEXT: Record<ScheduleCard['booking']['state'], { label: string; tone: string }> = {
-    choose_schedule: { label: 'Menunggu jadwal dipilih', tone: 'text-amber-700' },
-    awaiting_invoice: { label: 'Menunggu tagihan', tone: 'text-gray-500' },
-    waiting_payment: { label: 'Menunggu pembayaran', tone: 'text-amber-700' },
-    expired: { label: 'Kedaluwarsa', tone: 'text-rose-600' },
-    cancelled: { label: 'Dibatalkan', tone: 'text-gray-500' },
-    paid: { label: 'Lunas', tone: 'text-emerald-700' },
+const BOOKING_STATUS_TONE: Record<ScheduleCard['booking']['state'], string> = {
+    choose_schedule: 'text-amber-700',
+    awaiting_invoice: 'text-gray-500',
+    waiting_payment: 'text-amber-700',
+    expired: 'text-rose-600',
+    cancelled: 'text-gray-500',
+    paid: 'text-emerald-700',
 };
+
+/** Label dishare dengan chip trigger (extend-ui) untuk state yang sama-sama
+ * ada di enum shared — hanya choose_schedule/awaiting_invoice yang punya
+ * kunci sendiri karena bukan bagian dari status extend/publikasi. */
+function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: TranslationKey) => string): string {
+    if (state === 'choose_schedule') return t('bookingStatusChooseSchedule');
+    if (state === 'awaiting_invoice') return t('bookingStatusAwaitingInvoice');
+    return t(extendStatusLabelKey(state));
+}
 
 const ctaButtonClass = 'max-md:w-full min-h-11 md:min-h-9 justify-center whitespace-nowrap';
 const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 hover:from-jfu-primary hover:to-jfu-light transition-all';
@@ -204,23 +215,22 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
     const { t } = useLanguage();
     const b = card.booking;
     const rows: RowDef[] = [
-        { key: 'cost', icon: <Banknote className={iconCls} />, label: 'Total Biaya', value: formatRupiah(b.amount || 0) },
+        { key: 'cost', icon: <Banknote className={iconCls} />, label: t('totalCost'), value: formatRupiah(b.amount || 0) },
     ];
     if (card.info.voucherCode) {
-        rows.push({ key: 'voucher', icon: <Ticket className={iconCls} />, label: 'Voucher', value: <span className="font-mono text-xs">{card.info.voucherCode}</span> });
+        rows.push({ key: 'voucher', icon: <Ticket className={iconCls} />, label: t('voucherLabel'), value: <span className="font-mono text-xs">{card.info.voucherCode}</span> });
     }
-    const statusText = BOOKING_STATUS_TEXT[b.state];
     rows.push({
         key: 'status',
         icon: <CreditCard className={iconCls} />,
-        label: 'Status',
-        value: <span className={`font-semibold ${statusText.tone}`}>{statusText.label}</span>,
+        label: t('statusLabel'),
+        value: <span className={`font-semibold ${BOOKING_STATUS_TONE[b.state]}`}>{bookingStatusLabel(b.state, t)}</span>,
     });
     if (b.invoicePaymentId) {
         rows.push({
             key: 'invoice',
             icon: <FileText className={iconCls} />,
-            label: b.isPaidForLabel ? 'Kwitansi' : 'Invoice',
+            label: b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel'),
             value: (
                 <a
                     href={`/invoices/${b.invoicePaymentId}`}
@@ -228,7 +238,7 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
                     rel="noopener noreferrer"
                     className="text-jfu-primary hover:underline"
                 >
-                    {b.isPaidForLabel ? 'Lihat kwitansi' : 'Lihat invoice'}
+                    {b.isPaidForLabel ? t('viewReceiptLink') : t('viewInvoiceLink')}
                 </a>
             ),
         });
@@ -239,7 +249,7 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
         banner = (
             <div className="rounded-xl border p-3 mt-2 border-gray-200 bg-gray-50">
                 <p className="text-sm text-gray-600 leading-relaxed">
-                    {card.kind === 'extend' ? 'Menunggu admin menerbitkan tagihan perpanjangan.' : t('calloutAwaitingInvoice')}
+                    {card.kind === 'extend' ? t('calloutAwaitingInvoiceExtend') : t('calloutAwaitingInvoice')}
                 </p>
             </div>
         );
@@ -328,37 +338,45 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
         banner = (
             <div className="rounded-xl border p-3 mt-2 border-gray-200 bg-gray-50">
                 <p className="text-sm text-gray-600 leading-relaxed">
-                    Jadwal ini dibatalkan oleh admin. Butuh penjelasan? Chat Mimin di bawah.
+                    {t('calloutCancelledSchedule')}
                 </p>
             </div>
         );
     }
 
     return (
-        <Section label="Booking & Pembayaran">
+        <Section label={t('sectionBookingPayment')}>
             <RowGrid rows={rows} />
             {banner}
         </Section>
     );
 }
 
-const PUB_STATUS_TEXT: Record<ScheduleCard['publication']['state'], { label: string; tone: string }> = {
-    none: { label: '-', tone: 'text-gray-400' },
-    scheduled: { label: 'Terjadwal', tone: 'text-purple-700' },
-    live: { label: 'Sedang Tayang', tone: 'text-emerald-700' },
-    completed: { label: 'Selesai', tone: 'text-gray-500' },
+const PUB_STATUS_TONE: Record<ScheduleCard['publication']['state'], string> = {
+    none: 'text-gray-400',
+    scheduled: 'text-purple-700',
+    live: 'text-emerald-700',
+    completed: 'text-gray-500',
 };
 
+/** 'none' tidak pernah dirender (guard `booking.state !== 'paid'` di bawah
+ * selalu lolos duluan sebelum publication.state bisa 'none') — tetap perlu
+ * ditangani karena PublicationState mewajibkan Record lengkap. */
+function publicationStatusLabel(state: ScheduleCard['publication']['state'], t: (key: TranslationKey) => string): string {
+    if (state === 'none') return '-';
+    return t(extendStatusLabelKey(state));
+}
+
 function PublicationSection({ card }: { card: ScheduleCard }) {
+    const { t } = useLanguage();
     if (card.booking.state !== 'paid') return null;
     const p = card.publication;
-    const statusText = PUB_STATUS_TEXT[p.state];
     const rows: RowDef[] = [
-        { key: 'range', icon: <CalendarRange className={iconCls} />, label: 'Jadwal Tayang', value: card.dateRange },
-        { key: 'status', icon: <PlayCircle className={iconCls} />, label: 'Status', value: <span className={`font-semibold ${statusText.tone}`}>{statusText.label}</span> },
+        { key: 'range', icon: <CalendarRange className={iconCls} />, label: t('airingScheduleLabel'), value: card.dateRange },
+        { key: 'status', icon: <PlayCircle className={iconCls} />, label: t('statusLabel'), value: <span className={`font-semibold ${PUB_STATUS_TONE[p.state]}`}>{publicationStatusLabel(p.state, t)}</span> },
     ];
     return (
-        <Section label="Penayangan">
+        <Section label={t('sectionPublication')}>
             <RowGrid rows={rows} />
         </Section>
     );
@@ -381,9 +399,7 @@ export function SchedulePhase({ submission, ui, extends_, extendPayments, invoic
         <div>
             {cards.length === 0 ? (
                 <p className="text-sm text-gray-400 rounded-xl border border-dashed border-gray-200 px-3 py-4 text-center">
-                    {step === -1
-                        ? 'Selesaikan revisi survei terlebih dahulu untuk melanjutkan ke jadwal iklan.'
-                        : 'Jadwal iklan bisa dipilih setelah review disetujui.'}
+                    {step === -1 ? t('scheduleEmptyRejected') : t('scheduleEmptyPending')}
                 </p>
             ) : (
                 <Accordion
@@ -429,12 +445,12 @@ export function SchedulePhase({ submission, ui, extends_, extendPayments, invoic
                         className="flex items-center gap-1.5 text-xs font-medium text-jfu-primary hover:underline min-w-0"
                     >
                         <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">Halaman Iklan</span>
+                        <span className="truncate">{t('adPageLinkLabel')}</span>
                     </a>
                     {typeof pageInfo.views === 'number' && (
                         <span className="flex items-center gap-1 text-[11px] font-semibold text-jfu-primary shrink-0">
                             <Eye className="w-3.5 h-3.5" />
-                            {new Intl.NumberFormat('id-ID').format(pageInfo.views)} views
+                            {new Intl.NumberFormat('id-ID').format(pageInfo.views)} {t('viewsUnit')}
                         </span>
                     )}
                 </div>

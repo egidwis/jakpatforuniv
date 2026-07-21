@@ -143,7 +143,7 @@ export function buildScheduleCards(
             chipLabel = t(extendStatusLabelKey('waiting_payment'));
         } else {
             chipStatus = 'in_review';
-            chipLabel = bookingState === 'choose_schedule' ? 'Pilih Jadwal' : 'Menunggu Tagihan';
+            chipLabel = bookingState === 'choose_schedule' ? t('chooseSchedule') : t('bookingStatusAwaitingInvoice');
         }
 
         cards.push({
@@ -232,7 +232,7 @@ export function buildScheduleCards(
             chipLabel = t(extendStatusLabelKey('waiting_payment'));
         } else {
             chipStatus = 'in_review';
-            chipLabel = 'Menunggu Tagihan';
+            chipLabel = t('bookingStatusAwaitingInvoice');
         }
 
         cards.push({

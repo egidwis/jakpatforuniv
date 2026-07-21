@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { AlertCircle, FileText, Link2, Trash2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/i18n/LanguageContext';
+import type { TranslationKey } from '@/i18n/translations';
 import type { FormSubmission } from '@/utils/supabase';
 import { getCurrentStepIndex } from '@/components/ProgressTracker';
 import { isAutoReviewed } from './deriveOrderUiState';
@@ -14,14 +15,17 @@ interface ReviewPhaseProps {
 const ctaButtonClass = 'max-md:w-full min-h-11 md:min-h-9 justify-center whitespace-nowrap';
 const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 hover:from-jfu-primary hover:to-jfu-light transition-all';
 
-/** Chip status review — dipasang di heading Fase ① (lihat `Phase` di PhaseRail). */
-export function getReviewChip(submission: FormSubmission) {
+/** Chip status review — dipasang di heading Fase ① (lihat `Phase` di PhaseRail).
+ * `t` dioper sebagai parameter (bukan `useLanguage()` di dalam fungsi ini)
+ * karena fungsi ini bukan komponen React — pemanggil (StatusPage) yang
+ * sudah berada dalam render komponen menyediakan `t`. */
+export function getReviewChip(submission: FormSubmission, t: (key: TranslationKey) => string) {
     const step = getCurrentStepIndex(submission);
     if (step === -1) {
         return (
             <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-rose-50 border-rose-200 text-rose-600">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                Perlu Revisi
+                {t('reviewChipRejected')}
             </span>
         );
     }
@@ -29,14 +33,14 @@ export function getReviewChip(submission: FormSubmission) {
         return (
             <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-gray-50 border-gray-200 text-gray-600">
                 <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                Menunggu Review
+                {t('reviewChipPending')}
             </span>
         );
     }
     return (
         <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-emerald-50 border-emerald-200 text-emerald-700">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Disetujui
+            {t('reviewChipApproved')}
         </span>
     );
 }
