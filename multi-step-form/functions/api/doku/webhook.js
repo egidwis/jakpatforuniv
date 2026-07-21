@@ -561,6 +561,45 @@ export async function onRequest(context) {
               })
             }
           );
+
+          // Record a one-time voucher redemption (e.g. ILKOMUNY) on confirmed
+          // payment. The UNIQUE(auth_user_id, voucher_code) constraint in
+          // voucher_redemptions (sql/35) is the authoritative "once per account"
+          // gate; ignore-duplicates makes a repeat a harmless no-op.
+          if (formPaymentStatus === 'paid') {
+            try {
+              const subRes = await fetch(
+                `${supabaseUrl}/rest/v1/form_submissions?id=eq.${formSubmissionId}&select=auth_user_id,voucher_code&limit=1`,
+                { headers: lookupHeaders }
+              );
+              const subRows = await subRes.json();
+              const sub = Array.isArray(subRows) && subRows.length > 0 ? subRows[0] : null;
+              const code = sub && sub.voucher_code ? String(sub.voucher_code).toUpperCase() : null;
+              const LIMITED_VOUCHERS = ['ILKOMUNY'];
+              if (sub && sub.auth_user_id && code && LIMITED_VOUCHERS.includes(code)) {
+                const vrRes = await fetch(`${supabaseUrl}/rest/v1/voucher_redemptions`, {
+                  method: 'POST',
+                  headers: {
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${supabaseKey}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'resolution=ignore-duplicates'
+                  },
+                  body: JSON.stringify({
+                    auth_user_id: sub.auth_user_id,
+                    voucher_code: code,
+                    form_submission_id: formSubmissionId
+                  })
+                });
+                if (!vrRes.ok) {
+                  const vrText = await vrRes.text();
+                  console.warn(`[Webhook] voucher_redemptions insert non-OK (${vrRes.status}) for user ${sub.auth_user_id} / ${code}: ${vrText}`);
+                }
+              }
+            } catch (vrErr) {
+              console.error('[Webhook] Error recording voucher redemption:', vrErr);
+            }
+          }
         }
       } else {
         console.error(`Could not find form_submission_id for payment_id ${invoiceNumber} in either transactions or invoices!`);

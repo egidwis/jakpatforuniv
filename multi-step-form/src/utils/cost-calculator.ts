@@ -1,5 +1,5 @@
 import type { SurveyFormData, CostCalculation } from '../types';
-import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT } from './constants';
+import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL } from './constants';
 
 // DUPLICATED in functions/api/doku/create-payment.js (server-side authoritative
 // copy) — the two MUST be changed together: price tiers, voucher list, the
@@ -14,6 +14,28 @@ import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT } from './const
  */
 export function calculatePpn(dpp: number): number {
   return Math.round((dpp * PPN_PERCENT) / 100);
+}
+
+/**
+ * Masa berlaku voucher. Lewat batas → voucher mati (diskon 0 / invalid).
+ * DUPLICATED sebagai ISO literal di create-payment.js — jaga tetap sama.
+ */
+export function ilkomunyExpired(): boolean {
+  return Date.now() >= Date.parse(ILKOMUNY_VALID_UNTIL);
+}
+
+export function jfufebExpired(): boolean {
+  return Date.now() >= Date.parse(JFUFEB_VALID_UNTIL);
+}
+
+/**
+ * Voucher yang memerlukan verifikasi manual admin: order dikecualikan dari
+ * auto-approval dan tidak bayar langsung. Dipakai di StepCheckout, UnifiedHeader,
+ * dan MultiStepForm agar aturannya satu sumber (tak drift antar file).
+ */
+export function isManualVerificationVoucher(voucherCode: string | undefined): boolean {
+  const c = voucherCode?.toUpperCase();
+  return c === 'JFUFEB' || c === 'ILKOMUNY';
 }
 
 /**
@@ -82,12 +104,20 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
     return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
   }
 
-  // Voucher spesial JFUFEB
-  if (voucherCode.toUpperCase() === 'JFUFEB') {
+  // Voucher spesial JFUFEB & ILKOMUNY (pricing identik):
+  //   durasi 7 hari → harga iklan flat Rp 1.000.000
+  //   durasi lain   → harga iklan di-cap Rp 300.000/hari (tak pernah menaikkan harga)
+  // Masing-masing punya masa berlaku (JFUFEB s/d 20 Feb 2027, ILKOMUNY s/d 31 Des 2026);
+  // lewat itu tak ada diskon. DUPLICATED di create-payment.js — WAJIB diubah bersamaan.
+  const upper = voucherCode.toUpperCase();
+  if (upper === 'JFUFEB' || upper === 'ILKOMUNY') {
+    if (upper === 'JFUFEB' && jfufebExpired()) return 0;
+    if (upper === 'ILKOMUNY' && ilkomunyExpired()) return 0;
     if (duration === 7) {
       return adCost > 1000000 ? adCost - 1000000 : 0;
     }
-    return 0;
+    const cap = 300000 * duration; // Rp 300.000/hari
+    return adCost > cap ? adCost - cap : 0;
   }
 
   // Contoh: kode "Tiara" memberikan diskon 10%
@@ -182,18 +212,36 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
   }
 
   if (upperCode === 'JFUFEB') {
-    if (duration > 0 && duration !== 7) {
+    if (jfufebExpired()) {
       return {
         isValid: false,
-        message: 'Voucher hanya berlaku untuk durasi iklan 7 hari.',
+        message: 'Kode JFUFEB sudah berakhir (berlaku s/d 20 Feb 2027).',
         discount: 0,
         isError: true
       };
     }
-    return {
-      isValid: true,
-      message: 'Harga iklan flat Rp 1.000.000 (khusus 7 hari)'
-    };
+    if (duration === 7) {
+      return { isValid: true, message: 'Harga iklan flat Rp 1.000.000 (khusus 7 hari)' };
+    }
+    return { isValid: true, message: 'Harga iklan maks. Rp 300.000/hari' };
+  }
+
+  // ILKOMUNY: pricing sama JFUFEB, tapi ada masa berlaku (s/d 31 Des 2026) dan
+  // "sekali pakai per akun". Status "sudah dipakai" dicek async saat submit
+  // (getVoucherInfo sinkron, tak bisa query DB).
+  if (upperCode === 'ILKOMUNY') {
+    if (ilkomunyExpired()) {
+      return {
+        isValid: false,
+        message: 'Kode ILKOMUNY sudah berakhir (berlaku s/d 31 Des 2026).',
+        discount: 0,
+        isError: true
+      };
+    }
+    if (duration === 7) {
+      return { isValid: true, message: 'Harga iklan flat Rp 1.000.000 (khusus 7 hari)' };
+    }
+    return { isValid: true, message: 'Harga iklan maks. Rp 300.000/hari' };
   }
 
   if (upperCode === 'PPISWEDIA') {
@@ -214,6 +262,7 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
 
   const validCodes = [
     'JFUFEB',
+    'ILKOMUNY',
     'JFUTGRX',
     'JFUTYR',
     'SEKARJFU',

@@ -214,6 +214,42 @@ export const updateOwnProfile = async (updates: Partial<Omit<ResearcherProfile, 
 };
 
 /**
+ * Redemption voucher sekali-pakai per akun (mis. ILKOMUNY). Baris ditulis
+ * server-side oleh webhook DOKU saat pembayaran lunas; UI hanya MEMBACA lewat
+ * hasRedeemedVoucher() untuk memblokir pemakaian ganda. Lihat sql/35.
+ */
+export interface VoucherRedemption {
+  id?: string;
+  auth_user_id: string;
+  voucher_code: string;
+  form_submission_id?: string | null;
+  redeemed_at?: string;
+}
+
+/**
+ * True bila akun yang sedang login sudah pernah me-redeem `code`.
+ * Belum login → false (gate "wajib login" ditangani terpisah di pemanggil).
+ * Fail-open bila query error: gerbang otoritatif tetap UNIQUE(auth_user_id,
+ * voucher_code) di DB + pencatatan webhook, jadi UI tak boleh menghalangi user
+ * karena gangguan sesaat.
+ */
+export const hasRedeemedVoucher = async (code: string): Promise<boolean> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase
+    .from('voucher_redemptions')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .eq('voucher_code', code.toUpperCase())
+    .limit(1);
+  if (error) {
+    console.error('Error checking voucher redemption:', error);
+    return false;
+  }
+  return !!(data && data.length > 0);
+};
+
+/**
  * Mengirim email recovery agar user bisa mengatur ulang password-nya sendiri.
  * Link di email akan mengarahkan user ke halaman /reset-password.
  * Catatan keamanan: Supabase tidak pernah mengungkap apakah email terdaftar,

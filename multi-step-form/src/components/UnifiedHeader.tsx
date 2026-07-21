@@ -1,5 +1,5 @@
 import type { SurveyFormData } from '../types';
-import { calculateTotalCost } from '../utils/cost-calculator';
+import { calculateTotalCost, isManualVerificationVoucher } from '../utils/cost-calculator';
 import { useMemo } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { Menu, Check } from 'lucide-react';
@@ -26,7 +26,7 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
         return new Intl.NumberFormat('id-ID').format(amount);
     };
 
-    const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
+    const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && !isManualVerificationVoucher(formData.voucherCode);
 
     // Skema step tanpa biodata: 1 Detail Survei, 2 Jadwal (auto-approval saja),
     // 3 Review & Pembayaran. Step 4 = Jadwal Kilat, ditampilkan sebagai step 3.

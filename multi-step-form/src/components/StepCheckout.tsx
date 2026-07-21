@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
-import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
-import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, getOwnProfile, type FormSubmission } from '../utils/supabase';
+import { calculateTotalCost, getVoucherInfo, ilkomunyExpired, isManualVerificationVoucher } from '../utils/cost-calculator';
+import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, getOwnProfile, hasRedeemedVoucher, type FormSubmission } from '../utils/supabase';
 import { resolveSubmissionMode, type SubmissionMode } from '../utils/submissionMode';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
@@ -63,7 +63,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
 
   // Derive auto approval status
   const isManualForm = formData.isManualEntry || (formData.surveyUrl && !formData.surveyUrl.includes('docs.google.com/forms'));
-  const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
+  const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions && !isManualVerificationVoucher(formData.voucherCode);
 
   // Email invoice berbeda dari email login → invoice terkirim ke email custom
   const isEmailMismatch = user?.email && formData.email && formData.email.trim().toLowerCase() !== user.email.toLowerCase();
@@ -174,6 +174,32 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         isSubmittingRef.current = false;
         setIsSubmitting(false);
         return;
+      }
+
+      // Gate voucher ILKOMUNY: sekali pakai per akun + masa berlaku s/d 31 Des 2026.
+      // "Sekali pakai" butuh identitas akun (auth_user_id) → wajib login. Gerbang
+      // otoritatif tetap UNIQUE(auth_user_id, voucher_code) di DB + pencatatan webhook;
+      // cek ini mencegah pemakaian ganda sebelum uang berpindah.
+      if (formData.voucherCode?.toUpperCase() === 'ILKOMUNY') {
+        if (!user) {
+          toast.error('Silakan login terlebih dahulu untuk memakai voucher ILKOMUNY.');
+          isSubmittingRef.current = false;
+          setIsSubmitting(false);
+          return;
+        }
+        if (ilkomunyExpired()) {
+          toast.error('Voucher ILKOMUNY sudah berakhir (berlaku sampai 31 Desember 2026).');
+          isSubmittingRef.current = false;
+          setIsSubmitting(false);
+          return;
+        }
+        const alreadyUsed = await hasRedeemedVoucher('ILKOMUNY');
+        if (alreadyUsed) {
+          toast.error('Akun ini sudah pernah memakai voucher ILKOMUNY. Voucher hanya berlaku satu kali per akun.');
+          isSubmittingRef.current = false;
+          setIsSubmitting(false);
+          return;
+        }
       }
 
       // Cek apakah form diisi secara manual
@@ -371,8 +397,8 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         // MANUAL ATAU SENSITIVE DATA
         const reasonForReview = formData.hasPersonalDataQuestions
           ? 'contains personal data questions'
-          : formData.voucherCode?.toUpperCase() === 'JFUFEB'
-            ? 'voucher JFUFEB used'
+          : isManualVerificationVoucher(formData.voucherCode)
+            ? `voucher ${formData.voucherCode?.toUpperCase()} used`
             : 'manual form entry';
         console.log(`Form needs admin review (${reasonForReview}), redirect ke halaman submit-success`);
 
@@ -443,8 +469,8 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
           </div>
         )}
 
-        {/* Warning Banner for JFUFEB Voucher */}
-        {formData.voucherCode?.toUpperCase() === 'JFUFEB' && (
+        {/* Warning Banner for manual-verification vouchers (JFUFEB / ILKOMUNY) */}
+        {isManualVerificationVoucher(formData.voucherCode) && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
             <div className="flex gap-4">
               <div className="flex-shrink-0 mt-0.5">
@@ -455,7 +481,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                   Verifikasi Voucher Promo
                 </h4>
                 <p className="text-sm text-blue-800 leading-relaxed">
-                  Penggunaan voucher <strong>JFUFEB</strong> memerlukan verifikasi manual oleh admin. Form Anda akan dikirimkan untuk direview dan Anda belum perlu melakukan pembayaran sekarang. Admin akan segera memproses pesanan Anda.
+                  Penggunaan voucher <strong>{formData.voucherCode?.toUpperCase()}</strong> memerlukan verifikasi manual oleh admin. Form Anda akan dikirimkan untuk direview dan Anda belum perlu melakukan pembayaran sekarang. Admin akan segera memproses pesanan Anda.
                 </p>
               </div>
             </div>
