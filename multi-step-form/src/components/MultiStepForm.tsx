@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { getFormSubmissionsByUser, deleteFormSubmission, getOwnProfile } from '../utils/supabase';
 import { expandReferralSource } from '../constants/biodata';
 import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
+import { isManualVerificationVoucher } from '../utils/cost-calculator';
 import type { SurveyFormData } from '../types';
 import { StepSurveyDetails } from './StepSurveyDetails';
 import { StepSchedule } from './StepSchedule';
@@ -197,7 +198,7 @@ export function MultiStepForm() {
   }, [currentStep]);
 
 
-  const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
+  const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && !isManualVerificationVoucher(formData.voucherCode);
 
   // Skema step: 1 = Detail Survei, 2 = Jadwal (hanya auto-approval),
   // 3 = Review & Pembayaran, 4 = Jadwal Kilat.

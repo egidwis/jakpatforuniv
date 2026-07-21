@@ -26,6 +26,18 @@ const KILAT_ADDON_COST_VOUCHER = 200000;
 const PPN_PERCENT = 11;
 const PPN_RATE = 0.11;
 
+// Masa berlaku voucher (WIB). ISO ini WAJIB sama dengan src/utils/constants.ts.
+const ILKOMUNY_VALID_UNTIL = '2026-12-31T17:00:00Z';
+const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
+
+function ilkomunyExpired() {
+  return Date.now() >= Date.parse(ILKOMUNY_VALID_UNTIL);
+}
+
+function jfufebExpired() {
+  return Date.now() >= Date.parse(JFUFEB_VALID_UNTIL);
+}
+
 function calculatePpn(dpp) {
   return Math.round((dpp * PPN_PERCENT) / 100);
 }
@@ -48,9 +60,16 @@ function calculateDiscount(voucherCode, adCost, incentiveCost, duration) {
     const totalBeforeDiscount = adCost + incentiveCost;
     return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
   }
-  if (code === 'JFUFEB') {
+  // JFUFEB & ILKOMUNY (pricing identik): 7 hari flat Rp 1.000.000; durasi lain
+  // cap Rp 300.000/hari. Hanya ILKOMUNY yang punya masa berlaku (s/d 31 Des 2026)
+  // dan "sekali pakai" (ditegakkan via voucher_redemptions, bukan di sini).
+  // Cermin dari src/utils/cost-calculator.ts — WAJIB identik.
+  if (code === 'JFUFEB' || code === 'ILKOMUNY') {
+    if (code === 'JFUFEB' && jfufebExpired()) return 0;
+    if (code === 'ILKOMUNY' && ilkomunyExpired()) return 0;
     if (duration === 7) return adCost > 1000000 ? adCost - 1000000 : 0;
-    return 0;
+    const cap = 300000 * duration; // Rp 300.000/hari
+    return adCost > cap ? adCost - cap : 0;
   }
   if (code === 'PPISWEDIA' || code === 'TEGARGANTENG') return adCost * 0.2;
 
