@@ -1,20 +1,20 @@
 import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
     AlertCircle,
     Banknote,
+    CalendarCheck,
     CalendarClock,
     CalendarDays,
     CalendarRange,
+    ChevronDown,
     Clock,
     Copy,
     CreditCard,
     ExternalLink,
-    Eye,
     FileText,
     Gift,
-    Hash,
-    PlayCircle,
     Ticket,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -24,17 +24,13 @@ import {
     Accordion,
     AccordionContent,
     AccordionItem,
-    AccordionTrigger,
 } from '@/components/ui/accordion';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import { getCurrentStepIndex } from '@/components/ProgressTracker';
-import type { FormSubmission, FormSubmissionExtend } from '@/utils/supabase';
-import type { ExtendPaymentInfo } from '@/components/ProgressTracker';
-import type { OrderUiState } from './deriveOrderUiState';
+import type { FormSubmission } from '@/utils/supabase';
 import {
-    buildScheduleCards,
     pickDefaultExpandedKey,
     type ScheduleCard,
     type IncentiveInfo,
@@ -48,28 +44,58 @@ const formatDateLong = (d: string) =>
 
 interface SchedulePhaseProps {
     submission: FormSubmission;
-    ui: OrderUiState;
-    extends_: FormSubmissionExtend[];
-    extendPayments: Record<string, ExtendPaymentInfo>;
-    invoiceId: string | null;
-    pageInfo?: { views: number; slug: string | null };
+    cards: ScheduleCard[];
     onReschedule: () => void;
+    /** Fase ② sedang berjalan (`getActiveDashboardPhase(ui.currentStep) === 2`)
+     * — kartu paling relevan (`pickDefaultExpandedKey`) default terbuka. Kalau
+     * tidak, default semua tertutup; user tetap bisa expand manual. */
+    active: boolean;
 }
 
+/** Label dishare dengan chip trigger (extend-ui) untuk state yang sama-sama
+ * ada di enum shared — hanya choose_schedule/awaiting_invoice yang punya
+ * kunci sendiri karena bukan bagian dari status extend/publikasi. */
+function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: TranslationKey) => string): string {
+    if (state === 'choose_schedule') return t('bookingStatusChooseSchedule');
+    if (state === 'awaiting_invoice') return t('bookingStatusAwaitingInvoice');
+    return t(extendStatusLabelKey(state));
+}
+
+/** Warna (bg+teks+dot) dishare dengan `extendStatusStyle` untuk state yang
+ * overlap — dulu ada palet terpisah `BOOKING_STATUS_TONE` yang driftnya
+ * nyata (mis. "Lunas" tampil emerald di baris Status tapi biru di chip
+ * trigger untuk kartu yang sama). Hanya choose_schedule/awaiting_invoice
+ * (di luar enum shared) yang dapat warna sendiri. */
+function bookingStatusStyle(state: ScheduleCard['booking']['state']): { bg: string; text: string; dot: string } {
+    if (state === 'choose_schedule') return { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' };
+    if (state === 'awaiting_invoice') return { bg: 'bg-gray-50 border-gray-200', text: 'text-gray-500', dot: 'bg-gray-400' };
+    return extendStatusStyle(state);
+}
+
+/** Chip status pembayaran di judul kartu — SELALU tampil (satu jadwal
+ * maupun banyak), sama seperti chip "Disetujui" di Fase ①. Menggantikan
+ * baris "Status" yang dulu ada di section Booking & Pembayaran, supaya
+ * status cuma py satu rumah (chip), bukan dua yang berisiko drift. */
 function ScheduleChip({ card }: { card: ScheduleCard }) {
-    const style = extendStatusStyle(card.chipStatus);
+    const { t } = useLanguage();
+    const style = bookingStatusStyle(card.booking.state);
     return (
         <span className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${style.bg} ${style.text}`}>
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
-            {card.chipLabel}
+            {bookingStatusLabel(card.booking.state, t)}
         </span>
     );
 }
 
-/** ID jadwal yang bisa di-tap untuk menyalin UUID lengkap (pelaporan komplain). */
-function CopyableOrderId({ id }: { id: string }) {
+/** Tombol salin Order ID/ID perpanjangan — dirender TEPAT di samping teks
+ * Order ID di dalam trigger. Bukan `<button>` (elemen trigger accordion
+ * sendiri sudah `<button>` sungguhan — nesting `<button>` di dalamnya
+ * invalid HTML), tapi `<span role="button">` yang `stopPropagation()`
+ * kliknya supaya tap-to-copy tidak ikut men-toggle accordion di baliknya. */
+function CopyOrderIdButton({ id }: { id: string }) {
     const { t } = useLanguage();
-    const copy = async () => {
+    const copy = async (e: { stopPropagation: () => void }) => {
+        e.stopPropagation();
         try {
             await navigator.clipboard.writeText(id);
             toast.success(t('orderIdCopied'));
@@ -78,15 +104,22 @@ function CopyableOrderId({ id }: { id: string }) {
         }
     };
     return (
-        <button
-            type="button"
+        <span
+            role="button"
+            tabIndex={0}
             onClick={copy}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    copy(e);
+                }
+            }}
             title={id}
-            className="inline-flex items-center gap-1.5 font-mono text-[#1a1a1a] hover:text-jfu-primary transition-colors"
+            aria-label={t('copyOrderId')}
+            className="inline-flex shrink-0 p-1 -m-1 rounded-md text-gray-400 hover:text-jfu-primary hover:bg-jfu-primary/[0.06] transition-colors cursor-pointer"
         >
-            #{id.slice(0, 8).toUpperCase()}
-            <Copy className="w-3 h-3 text-gray-400" />
-        </button>
+            <Copy className="w-3.5 h-3.5" />
+        </span>
     );
 }
 
@@ -100,8 +133,8 @@ interface RowDef {
 /**
  * Baris data gaya kuitansi: SATU pasangan label:value per baris di semua
  * viewport. Kolom label FIXED (`9.5rem`, bukan `auto`) dan di-share oleh
- * Info/Booking & Pembayaran/Penayangan dalam satu kartu, supaya kolom value
- * ketiga section rata kiri — `auto` per-section dulu dicoba dan membuat
+ * Info & Booking & Pembayaran dalam satu kartu, supaya kolom value kedua
+ * section rata kiri — `auto` per-section dulu dicoba dan membuat
  * "Order ID" dan "Total Biaya" punya lebar kolom label sendiri-sendiri
  * (tidak sejajar). Lebar dipilih pas untuk label terpanjang di kartu ini,
  * "Insentif pemenang". Dua pasangan per baris juga sudah dicoba dan gagal —
@@ -127,10 +160,10 @@ function RowGrid({ rows }: { rows: RowDef[] }) {
     );
 }
 
-/** Sub-blok Info/Booking & Pembayaran/Penayangan dalam satu kartu jadwal.
- * Pengelompokan mengandalkan jarak (baris rapat 6px, antar section 16px via
- * space-y induk) + label kontras — tanpa garis pembatas (divider dicoba dan
- * dinilai user mengganggu). */
+/** Sub-blok Info/Booking & Pembayaran dalam satu kartu jadwal. Pengelompokan
+ * mengandalkan jarak (baris rapat 6px, antar section 16px via space-y induk)
+ * + label kontras — tanpa garis pembatas (divider dicoba dan dinilai user
+ * mengganggu). */
 function Section({ label, children }: { label: string; children: ReactNode }) {
     return (
         <div>
@@ -170,13 +203,14 @@ const iconCls = 'w-3.5 h-3.5';
 
 function InfoSection({ card }: { card: ScheduleCard }) {
     const { t } = useLanguage();
-    const rows: RowDef[] = [
-        { key: 'id', icon: <Hash className={iconCls} />, label: t('orderId'), value: <CopyableOrderId id={card.info.id} /> },
-    ];
+    const rows: RowDef[] = [];
     if (card.info.createdAt) {
         rows.push({ key: 'created', icon: <CalendarDays className={iconCls} />, label: t('submittedOn'), value: formatDateLong(card.info.createdAt) });
     }
     rows.push({ key: 'duration', icon: <Clock className={iconCls} />, label: t('adDuration'), value: `${card.info.duration} ${t('days')}` });
+    if (card.dateRange !== '—') {
+        rows.push({ key: 'airingDate', icon: <CalendarCheck className={iconCls} />, label: t('airingDateLabel'), value: card.dateRange });
+    }
     if (card.info.periodBatch) {
         rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: <span className="font-mono text-xs">{card.info.periodBatch}</span> });
     }
@@ -190,24 +224,6 @@ function InfoSection({ card }: { card: ScheduleCard }) {
     );
 }
 
-const BOOKING_STATUS_TONE: Record<ScheduleCard['booking']['state'], string> = {
-    choose_schedule: 'text-amber-700',
-    awaiting_invoice: 'text-gray-500',
-    waiting_payment: 'text-amber-700',
-    expired: 'text-rose-600',
-    cancelled: 'text-gray-500',
-    paid: 'text-emerald-700',
-};
-
-/** Label dishare dengan chip trigger (extend-ui) untuk state yang sama-sama
- * ada di enum shared — hanya choose_schedule/awaiting_invoice yang punya
- * kunci sendiri karena bukan bagian dari status extend/publikasi. */
-function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: TranslationKey) => string): string {
-    if (state === 'choose_schedule') return t('bookingStatusChooseSchedule');
-    if (state === 'awaiting_invoice') return t('bookingStatusAwaitingInvoice');
-    return t(extendStatusLabelKey(state));
-}
-
 const ctaButtonClass = 'max-md:w-full min-h-11 md:min-h-9 justify-center whitespace-nowrap';
 const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 hover:from-jfu-primary hover:to-jfu-light transition-all';
 
@@ -218,15 +234,14 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
         { key: 'cost', icon: <Banknote className={iconCls} />, label: t('totalCost'), value: formatRupiah(b.amount || 0) },
     ];
     if (card.info.voucherCode) {
-        rows.push({ key: 'voucher', icon: <Ticket className={iconCls} />, label: t('voucherLabel'), value: <span className="font-mono text-xs">{card.info.voucherCode}</span> });
+        rows.push({ key: 'voucher', icon: <Ticket className={iconCls} />, label: t('voucherLabel'), value: <span className="font-mono">{card.info.voucherCode}</span> });
     }
-    rows.push({
-        key: 'status',
-        icon: <CreditCard className={iconCls} />,
-        label: t('statusLabel'),
-        value: <span className={`font-semibold ${BOOKING_STATUS_TONE[b.state]}`}>{bookingStatusLabel(b.state, t)}</span>,
-    });
-    if (b.invoicePaymentId) {
+    /* Status dipindah ke chip judul kartu (`ScheduleChip`, selalu tampil di
+       trigger) — baris "Status" di sini dihapus supaya tidak dobel sumber. */
+    /* Invoice kedaluwarsa tidak lagi valid untuk dibayar (slot sudah
+       dilepas, CTA di banner expired sudah arahkan "Jadwalkan Ulang") —
+       link lama disembunyikan supaya tidak menyesatkan user ke invoice mati. */
+    if (b.invoicePaymentId && b.state !== 'expired') {
         rows.push({
             key: 'invoice',
             icon: <FileText className={iconCls} />,
@@ -236,8 +251,9 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
                     href={`/invoices/${b.invoicePaymentId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-jfu-primary hover:underline"
+                    className="inline-flex items-center gap-1.5 text-jfu-primary hover:underline"
                 >
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                     {b.isPaidForLabel ? t('viewReceiptLink') : t('viewInvoiceLink')}
                 </a>
             ),
@@ -352,47 +368,17 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
     );
 }
 
-const PUB_STATUS_TONE: Record<ScheduleCard['publication']['state'], string> = {
-    none: 'text-gray-400',
-    scheduled: 'text-purple-700',
-    live: 'text-emerald-700',
-    completed: 'text-gray-500',
-};
-
-/** 'none' tidak pernah dirender (guard `booking.state !== 'paid'` di bawah
- * selalu lolos duluan sebelum publication.state bisa 'none') — tetap perlu
- * ditangani karena PublicationState mewajibkan Record lengkap. */
-function publicationStatusLabel(state: ScheduleCard['publication']['state'], t: (key: TranslationKey) => string): string {
-    if (state === 'none') return '-';
-    return t(extendStatusLabelKey(state));
-}
-
-function PublicationSection({ card }: { card: ScheduleCard }) {
-    const { t } = useLanguage();
-    if (card.booking.state !== 'paid') return null;
-    const p = card.publication;
-    const rows: RowDef[] = [
-        { key: 'range', icon: <CalendarRange className={iconCls} />, label: t('airingScheduleLabel'), value: card.dateRange },
-        { key: 'status', icon: <PlayCircle className={iconCls} />, label: t('statusLabel'), value: <span className={`font-semibold ${PUB_STATUS_TONE[p.state]}`}>{publicationStatusLabel(p.state, t)}</span> },
-    ];
-    return (
-        <Section label={t('sectionPublication')}>
-            <RowGrid rows={rows} />
-        </Section>
-    );
-}
-
 /**
  * Fase ② — Jadwal Iklan: list kartu setara (asli + tiap perpanjangan), tiap
- * kartu membawa tiga blok sendiri (Info, Booking & Pembayaran, Penayangan).
- * Menggantikan model stepper — tidak ada lagi simbol "langkah" terpisah dari
- * datanya. Halaman & total views ditaruh order-level di bawah list (satu
- * halaman dipakai semua jadwal, views akumulatif — bukan milik satu jadwal).
+ * kartu membawa dua blok sendiri (Info, Booking & Pembayaran). Status tayang
+ * (Terjadwal/Tayang/Selesai) dan Halaman Iklan (link + views, order-level,
+ * dipakai bersama semua jadwal) sudah pindah rumah ke Fase ③ Penayangan —
+ * fase ini berhenti murni di status pembayaran ("Lunas"), tidak ikut
+ * melompat ke status tayang.
  */
-export function SchedulePhase({ submission, ui, extends_, extendPayments, invoiceId, pageInfo, onReschedule }: SchedulePhaseProps) {
+export function SchedulePhase({ submission, cards, onReschedule, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
     const step = getCurrentStepIndex(submission);
-    const cards = buildScheduleCards(submission, ui, extends_, extendPayments, invoiceId ?? null, t);
     const showChips = cards.length > 1;
 
     return (
@@ -405,55 +391,46 @@ export function SchedulePhase({ submission, ui, extends_, extendPayments, invoic
                 <Accordion
                     type="single"
                     collapsible
-                    defaultValue={pickDefaultExpandedKey(cards)}
+                    defaultValue={active ? pickDefaultExpandedKey(cards) : undefined}
                     className="rounded-xl border border-gray-100 divide-y divide-gray-100"
                 >
-                    {cards.map((card) => (
+                    {cards.map((card) => {
+                        const shortId = `#${card.info.id.slice(0, 8).toUpperCase()}`;
+                        return (
                         <AccordionItem key={card.key} value={card.key} className="border-b-0 px-3">
-                            <AccordionTrigger aria-label={`${card.label} ${card.dateRange}`} className="min-h-11 py-2.5 gap-2 hover:no-underline">
-                                <span className="flex flex-1 items-center gap-2 min-w-0 text-left">
+                            <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
+                                <AccordionPrimitive.Trigger
+                                    aria-label={`${card.label} ${showChips ? `#${card.ordinal}` : shortId}`}
+                                    className="flex flex-1 items-center gap-1 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all"
+                                >
                                     {/* "Jadwal Iklan" sudah jadi judul fase di atas (PhaseRail) —
-                                        tidak diulang di trigger. Satu kartu: tanggal jadi teks utama.
-                                        Banyak kartu (extend): cukup nomor urut "#N" buat membedakan,
-                                        bukan label penuh "Jadwal Iklan N" yang mengulang kata fase. */}
-                                    <span className={`text-xs font-bold shrink-0 ${card.booking.state === 'cancelled' ? 'text-gray-400' : 'text-[#1a1a1a]'}`}>
-                                        {showChips ? `#${card.ordinal}` : card.dateRange}
+                                        tidak diulang di trigger. Satu kartu: Order ID jadi teks
+                                        utama (dipindah dari section Info, supaya bisa dilihat tanpa
+                                        expand). Tanggal tayang pindah ke section Info (bukan di
+                                        trigger lagi). Banyak kartu (extend): cukup nomor urut "#N"
+                                        buat membedakan, bukan label penuh "Jadwal Iklan N" yang
+                                        mengulang kata fase. */}
+                                    <span className={`text-xs font-bold shrink-0 ${card.booking.state === 'cancelled' ? 'text-gray-400' : 'text-[#1a1a1a]'} ${showChips ? '' : 'font-mono'}`}>
+                                        {showChips ? `#${card.ordinal}` : shortId}
                                     </span>
-                                    {showChips && (
-                                        <span className="text-[11px] text-gray-500 truncate min-w-0">{card.dateRange}</span>
-                                    )}
+                                    {/* CopyOrderIdButton bukan `<button>` sungguhan (lihat komentar
+                                        di definisinya) — jadi aman dirender di dalam Trigger,
+                                        persis di samping teks Order ID/ordinal, sesuai permintaan
+                                        user (bukan lagi di ujung kanan row dekat chevron). */}
+                                    <CopyOrderIdButton id={card.info.id} />
                                     <span className="flex-1" />
-                                    {showChips && <ScheduleChip card={card} />}
-                                </span>
-                            </AccordionTrigger>
+                                    <ScheduleChip card={card} />
+                                </AccordionPrimitive.Trigger>
+                                <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
+                            </AccordionPrimitive.Header>
                             <AccordionContent className="pb-3 pt-1.5 space-y-4">
                                 <InfoSection card={card} />
                                 <BookingSection card={card} onReschedule={onReschedule} />
-                                <PublicationSection card={card} />
                             </AccordionContent>
                         </AccordionItem>
-                    ))}
+                        );
+                    })}
                 </Accordion>
-            )}
-
-            {pageInfo?.slug && (
-                <div className="flex items-center justify-between gap-2 mt-3 px-0.5">
-                    <a
-                        href={`/pages/${pageInfo.slug}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs font-medium text-jfu-primary hover:underline min-w-0"
-                    >
-                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{t('adPageLinkLabel')}</span>
-                    </a>
-                    {typeof pageInfo.views === 'number' && (
-                        <span className="flex items-center gap-1 text-[11px] font-semibold text-jfu-primary shrink-0">
-                            <Eye className="w-3.5 h-3.5" />
-                            {new Intl.NumberFormat('id-ID').format(pageInfo.views)} {t('viewsUnit')}
-                        </span>
-                    )}
-                </div>
             )}
         </div>
     );

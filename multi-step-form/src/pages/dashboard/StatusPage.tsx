@@ -18,11 +18,13 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { type ExtendPaymentInfo } from '@/components/ProgressTracker';
 import { Phase } from '@/components/status/PhaseRail';
-import { ReviewPhase, getReviewChip } from '@/components/status/ReviewPhase';
+import { ReviewPhase } from '@/components/status/ReviewPhase';
 import { SchedulePhase } from '@/components/status/SchedulePhase';
+import { PublicationPhase, getPublicationChip } from '@/components/status/PublicationPhase';
+import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { PageHeader } from '@/components/PageHeader';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
-import { deriveOrderUiState, type OrderGroup } from '@/components/status/deriveOrderUiState';
+import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 
 type FilterValue = 'all' | OrderGroup;
 
@@ -429,6 +431,10 @@ export function StatusPage() {
                         ) : (
                             <div className="space-y-4">
                                 {filtered.map(({ submission, exts, pays, ui }) => {
+                                    const cards = buildScheduleCards(submission, ui, exts, pays, invoiceIds[submission.id!] || null, t);
+                                    const pageInfo = submission.id ? surveyPages[submission.id] : undefined;
+                                    const activePhase = getActiveDashboardPhase(ui.currentStep);
+                                    const reachedPhase = activePhase ?? 3;
                                     return (
                                         /* Kartu Soft DNA (pola comparison-card landing): putih, border
                                            nyaris tak terlihat, soft shadow lebar, pemisah header tipis.
@@ -454,23 +460,25 @@ export function StatusPage() {
                                             </CardHeader>
 
                                             <CardContent className="pt-4 pb-4 bg-white">
-                                                <Phase number={1} title={t('phaseReviewTitle')} chip={getReviewChip(submission, t)}>
+                                                <Phase number={1} title={t('phaseReviewTitle')} active={reachedPhase >= 1} lineActive={reachedPhase >= 2}>
                                                     <ReviewPhase
                                                         submission={submission}
                                                         onDelete={() => handleDeleteSubmission(submission.id!)}
+                                                        active={activePhase === 1}
                                                     />
                                                 </Phase>
 
-                                                <Phase number={2} title={t('airingPeriodLabel')} isLast>
+                                                <Phase number={2} title={t('airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
                                                     <SchedulePhase
                                                         submission={submission}
-                                                        ui={ui}
-                                                        extends_={exts}
-                                                        extendPayments={pays}
-                                                        invoiceId={invoiceIds[submission.id!] || null}
-                                                        pageInfo={submission.id ? surveyPages[submission.id] : undefined}
+                                                        cards={cards}
                                                         onReschedule={() => handleReschedule(submission)}
+                                                        active={activePhase === 2}
                                                     />
+                                                </Phase>
+
+                                                <Phase number={3} title={t('sectionPublication')} chip={getPublicationChip(cards, t)} active={reachedPhase >= 3} isLast>
+                                                    <PublicationPhase cards={cards} pageInfo={pageInfo} />
                                                 </Phase>
 
                                                 {/* F. Footer: baris chat penuh (deep-link ke Mimin dengan konteks order) */}

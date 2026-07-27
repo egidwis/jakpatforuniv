@@ -46,6 +46,27 @@ export interface OrderUiState {
     group: OrderGroup;
 }
 
+/** Fase rail (①②③, lihat `PhaseRail.tsx`) yang SEDANG BERJALAN — beda dari
+ * `currentStep` (skala internal -1..4 dipakai callout/booking-state). Dipakai
+ * StatusPage utk (a) menyalakan nomor fase secara KUMULATIF (fase <= ini
+ * dianggap tercapai/menyala biru) dan (b) menentukan card fase mana yang
+ * default expand (hanya fase yang SEDANG berjalan; lainnya default collapse).
+ * `null` = order sudah selesai (fase ③ tuntas) — tidak ada fase yang
+ * "sedang berjalan" lagi, jadi nol card auto-expand, tapi ketiga nomor tetap
+ * dianggap tercapai (dipakai pemanggil sbg `?? 3` utk kumulatif menyala semua).
+ * Pemetaan (dikonfirmasi user 2026-07-27): fase ① berakhir begitu "approved"
+ * (currentStep >= 1), fase ② berakhir begitu "paid" (currentStep >= 3), fase
+ * ③ berakhir begitu "selesai" (currentStep === 4) — persis batas step yang
+ * SUDAH ADA di `getCurrentStepIndex`, tidak ada logika status baru. */
+export type DashboardPhase = 1 | 2 | 3 | null;
+
+export function getActiveDashboardPhase(currentStep: number): DashboardPhase {
+    if (currentStep <= 0) return 1; // -1 rejected, 0 in_review
+    if (currentStep <= 2) return 2; // 1 choose_schedule, 2 awaiting_invoice/waiting_payment
+    if (currentStep === 3) return 3; // paid, scheduled/live
+    return null; // 4 completed
+}
+
 /** Order lewat jalur review otomatis (import Google Form tanpa keyword data pribadi) */
 export function isAutoReviewed(submission: FormSubmission): boolean {
     return (

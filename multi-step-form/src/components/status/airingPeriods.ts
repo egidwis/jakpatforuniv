@@ -5,7 +5,6 @@ import {
     normalizeScheduleDate,
     type ExtendPaymentInfo,
 } from '@/components/ProgressTracker';
-import { extendStatusLabelKey } from '@/utils/extend-ui';
 import type { OrderUiState } from './deriveOrderUiState';
 
 type TFn = (key: TranslationKey) => string;
@@ -43,9 +42,6 @@ export interface ScheduleCard {
     dateRange: string;
     startDate: Date | null;
     endDate: Date | null;
-    /** Key gaya chip ringkasan baris (kosakata extend-ui) */
-    chipStatus: string;
-    chipLabel: string;
     info: {
         id: string;
         createdAt: string | null;
@@ -130,22 +126,6 @@ export function buildScheduleCards(
             }
         }
 
-        let chipStatus: string;
-        let chipLabel: string;
-        if (bookingState === 'expired') {
-            chipStatus = 'expired';
-            chipLabel = t(extendStatusLabelKey('expired'));
-        } else if (pubState === 'completed' || pubState === 'live' || pubState === 'scheduled') {
-            chipStatus = pubState;
-            chipLabel = t(extendStatusLabelKey(pubState));
-        } else if (bookingState === 'waiting_payment') {
-            chipStatus = 'waiting_payment';
-            chipLabel = t(extendStatusLabelKey('waiting_payment'));
-        } else {
-            chipStatus = 'in_review';
-            chipLabel = bookingState === 'choose_schedule' ? t('chooseSchedule') : t('bookingStatusAwaitingInvoice');
-        }
-
         cards.push({
             key: 'original',
             kind: 'original',
@@ -154,8 +134,6 @@ export function buildScheduleCards(
             dateRange: oStart || oEnd ? `${fmtShort(oStart)}–${fmtShort(oEnd)}` : '—',
             startDate: oStart,
             endDate: oEnd,
-            chipStatus,
-            chipLabel,
             info: {
                 id: submission.id || '',
                 createdAt: submission.created_at || null,
@@ -216,25 +194,6 @@ export function buildScheduleCards(
             else pubState = 'scheduled';
         }
 
-        let chipStatus: string;
-        let chipLabel: string;
-        if (bookingState === 'cancelled') {
-            chipStatus = 'cancelled';
-            chipLabel = t(extendStatusLabelKey('cancelled'));
-        } else if (bookingState === 'expired') {
-            chipStatus = 'expired';
-            chipLabel = t(extendStatusLabelKey('expired'));
-        } else if (pubState === 'completed' || pubState === 'live' || pubState === 'scheduled') {
-            chipStatus = pubState;
-            chipLabel = t(extendStatusLabelKey(pubState));
-        } else if (bookingState === 'waiting_payment') {
-            chipStatus = 'waiting_payment';
-            chipLabel = t(extendStatusLabelKey('waiting_payment'));
-        } else {
-            chipStatus = 'in_review';
-            chipLabel = t('bookingStatusAwaitingInvoice');
-        }
-
         cards.push({
             key: ext.id || `ext-${i}`,
             kind: 'extend',
@@ -243,8 +202,6 @@ export function buildScheduleCards(
             dateRange: start || end ? `${fmtShort(start)}–${fmtShort(end)}` : '—',
             startDate: start,
             endDate: end,
-            chipStatus,
-            chipLabel,
             info: {
                 id: ext.id || '',
                 createdAt: ext.created_at || null,
@@ -274,27 +231,37 @@ export function buildScheduleCards(
 }
 
 /**
- * Kartu yang terbuka default: yang paling butuh perhatian user sekarang.
- * Prioritas: butuh bayar > sedang tayang > terjadwal terdekat > selesai
- * terakhir > kartu pertama yang belum dibatalkan.
+ * Kartu yang terbuka default di Fase ② (Jadwal Iklan): yang paling butuh
+ * perhatian user dari sisi booking/pembayaran. Prioritas publikasi (tayang/
+ * terjadwal/selesai) bukan urusan fase ini lagi — itu milik `pickPublicationHighlight`
+ * di Fase ③.
+ * Prioritas: butuh bayar > kartu pertama yang belum dibatalkan.
  */
 export function pickDefaultExpandedKey(cards: ScheduleCard[]): string {
     const needsPay = cards.find((c) => c.booking.state === 'waiting_payment' || c.booking.state === 'expired');
     if (needsPay) return needsPay.key;
 
+    return cards.find((c) => c.booking.state !== 'cancelled')?.key || cards[0]?.key || 'original';
+}
+
+/**
+ * Kartu yang paling relevan untuk chip heading Fase ③ (Penayangan).
+ * Prioritas: sedang tayang > terjadwal terdekat > selesai terakhir.
+ */
+export function pickPublicationHighlight(cards: ScheduleCard[]): { state: PublicationState; card: ScheduleCard } | null {
     const live = cards.find((c) => c.publication.state === 'live');
-    if (live) return live.key;
+    if (live) return { state: 'live', card: live };
 
     const now = Date.now();
     const upcoming = cards
         .filter((c) => c.publication.state === 'scheduled' && c.startDate && c.startDate.getTime() > now)
         .sort((a, b) => a.startDate!.getTime() - b.startDate!.getTime())[0];
-    if (upcoming) return upcoming.key;
+    if (upcoming) return { state: 'scheduled', card: upcoming };
 
     const lastCompleted = cards
         .filter((c) => c.publication.state === 'completed' && c.endDate)
         .sort((a, b) => b.endDate!.getTime() - a.endDate!.getTime())[0];
-    if (lastCompleted) return lastCompleted.key;
+    if (lastCompleted) return { state: 'completed', card: lastCompleted };
 
-    return cards.find((c) => c.booking.state !== 'cancelled')?.key || cards[0]?.key || 'original';
+    return null;
 }
