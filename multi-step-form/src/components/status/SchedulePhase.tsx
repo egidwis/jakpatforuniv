@@ -294,11 +294,26 @@ function BookingSection({ card, submission, onReschedule }: { card: ScheduleCard
         rows.push({ key: 'voucher', icon: <Ticket className={iconCls} />, label: t('voucherCodeRowLabel'), value: voucherElement });
     }
 
+    // Harga ditampilkan SEBELUM PPN, konsisten dengan cara JFU mengomunikasikan
+    // harga di alur sebelum checkout. `b.subtotal` hanya terisi untuk order
+    // pasca-PPN; order lama tidak pernah dipungut PPN sehingga `amount`-nya
+    // memang sudah harga bersih — di situ keterangannya tidak dirender supaya
+    // tidak menjanjikan tagihan tambahan yang tak pernah ada.
+    const showsPreTax = b.subtotal !== null;
     rows.push({
         key: 'totalPayment',
         icon: <Banknote className="w-3.5 h-3.5 text-jfu-primary" />,
         label: t('totalPaymentLabel'),
-        value: <span className="text-base font-bold text-[#1a1a1a]">{formatRupiah(b.amount || 0)}</span>,
+        value: (
+            <span className="inline-flex flex-col">
+                <span className="text-base font-bold text-[#1a1a1a]">
+                    {formatRupiah(showsPreTax ? b.subtotal! : b.amount || 0)}
+                </span>
+                {showsPreTax && (
+                    <span className="block text-xs text-gray-500 font-normal">{t('priceExcludesTax')}</span>
+                )}
+            </span>
+        ),
     });
 
     if (b.invoicePaymentId && b.state !== 'expired') {

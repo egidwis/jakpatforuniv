@@ -56,7 +56,11 @@ export interface ScheduleCard {
     };
     booking: {
         state: BookingState;
+        /** Nominal yang DITAGIH (sudah termasuk PPN utk order pasca-21 Jul 2026) */
         amount: number;
+        /** DPP sebelum PPN. `null` untuk order pra-PPN — di situ `amount` memang
+         * sudah harga bersih tanpa pajak, jadi tidak ada yang perlu dipisah. */
+        subtotal: number | null;
         payUrl: string | null;
         isExternalLink: boolean;
         /** Deadline bayar efektif (lihat `deriveOrderUiState`) */
@@ -156,6 +160,7 @@ export function buildScheduleCards(
             booking: {
                 state: bookingState,
                 amount: submission.total_cost,
+                subtotal: typeof submission.ppn_amount === 'number' ? submission.subtotal ?? null : null,
                 payUrl: bookingState === 'waiting_payment' ? ui.finalPaymentLink : null,
                 isExternalLink: !!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard'),
                 deadline: ui.paymentDeadline,
@@ -225,6 +230,7 @@ export function buildScheduleCards(
             booking: {
                 state: bookingState,
                 amount: pay?.amount || ext.total_cost,
+                subtotal: typeof ext.ppn_amount === 'number' ? ext.subtotal ?? null : null,
                 payUrl: bookingState === 'waiting_payment' ? pay?.paymentUrl || null : null,
                 isExternalLink: true,
                 deadline: null,
