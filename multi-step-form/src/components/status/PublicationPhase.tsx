@@ -31,7 +31,6 @@ function PublicationRow({ card }: { card: ScheduleCard }) {
     return (
         <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
             <span className="flex items-center gap-2 min-w-0">
-                <span className="text-xs font-bold text-gray-400 shrink-0">#{card.ordinal}</span>
                 {/* Dua baris, bukan satu: chip status memakan sisi kanan, jadi
                     di mobile keterangan jam tidak muat disandingkan. */}
                 <span className="flex flex-col min-w-0">

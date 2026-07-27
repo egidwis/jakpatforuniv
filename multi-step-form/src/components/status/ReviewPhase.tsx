@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom';
-import { AlertCircle, Bot, FileText, Link2, Trash2, UserCheck, Users } from 'lucide-react';
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import { AlertCircle, Bot, ChevronDown, ExternalLink, FileText, Link2, Trash2, UserCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Accordion,
     AccordionContent,
     AccordionItem,
-    AccordionTrigger,
 } from '@/components/ui/accordion';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
@@ -77,12 +77,33 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
     return (
         <Accordion type="single" collapsible defaultValue={active ? 'review' : undefined} className="rounded-xl border border-gray-100 divide-y divide-gray-100">
             <AccordionItem value="review" className="border-b-0 px-3">
-                <AccordionTrigger className="min-h-11 py-2.5 gap-2 hover:no-underline">
-                    <span className="flex flex-1 items-center gap-2 min-w-0 text-left">
+                <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
+                    <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-2 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all">
                         {submission.survey_url ? (
                             <span className="flex items-center gap-1.5 min-w-0 text-sm">
                                 <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                                 <span className="truncate text-[#1a1a1a] font-medium">{submission.survey_url.replace(/^https?:\/\//, '')}</span>
+                                <span
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        window.open(submission.survey_url, '_blank', 'noopener,noreferrer');
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            window.open(submission.survey_url, '_blank', 'noopener,noreferrer');
+                                        }
+                                    }}
+                                    className="p-1 rounded-md text-gray-400 hover:text-jfu-primary hover:bg-gray-100 transition-colors shrink-0 flex items-center justify-center cursor-pointer"
+                                    title={t('openLinkInNewTab')}
+                                    aria-label={t('openLinkInNewTab')}
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                                </span>
                             </span>
                         ) : (
                             <span className="flex items-center gap-1.5 min-w-0 text-sm">
@@ -90,10 +111,11 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
                                 <span className="truncate text-[#1a1a1a] font-medium">{submission.question_count} {t('questionsUnit')}</span>
                             </span>
                         )}
-                        <span className="flex-1" />
+                        <span className="flex-1 min-w-2" />
                         {getReviewChip(submission, t)}
-                    </span>
-                </AccordionTrigger>
+                    </AccordionPrimitive.Trigger>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
+                </AccordionPrimitive.Header>
                 <AccordionContent className="pb-3 pt-1.5 space-y-3">
                     {rejected && (
                         <div className="rounded-xl border p-3 border-rose-200 bg-rose-50/60">

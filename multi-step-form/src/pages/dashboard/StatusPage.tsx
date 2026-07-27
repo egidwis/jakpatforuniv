@@ -6,7 +6,7 @@ import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check } from 'lucide-react';
+import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check, ArrowUp } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -20,7 +20,7 @@ import { type ExtendPaymentInfo } from '@/components/ProgressTracker';
 import { Phase } from '@/components/status/PhaseRail';
 import { ReviewPhase } from '@/components/status/ReviewPhase';
 import { SchedulePhase } from '@/components/status/SchedulePhase';
-import { PublicationPhase, getPublicationChip } from '@/components/status/PublicationPhase';
+import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { PageHeader } from '@/components/PageHeader';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
@@ -44,6 +44,19 @@ export function StatusPage() {
     // Halaman iklan per submission (slug + views) — blok order-level di bawah list jadwal
     const [surveyPages, setSurveyPages] = useState<Record<string, { views: number; slug: string | null }>>({});
     const [searchParams, setSearchParams] = useSearchParams();
+    const [showScrollTop, setShowScrollTop] = useState(false);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            setShowScrollTop(window.scrollY > 300);
+        };
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    const scrollToTop = () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
     const filterParam = searchParams.get('filter') as FilterValue | null;
     const selectedFilter: FilterValue = filterParam && ['butuh-aksi', 'berjalan', 'selesai'].includes(filterParam) ? filterParam : 'all';
@@ -288,8 +301,7 @@ export function StatusPage() {
     const filtered = withUiState
         .filter((o) => selectedFilter === 'all' || o.ui.group === selectedFilter)
         .sort((a, b) => {
-            // Order butuh aksi selalu di atas, sisanya terbaru dulu
-            if (a.ui.needsAction !== b.ui.needsAction) return a.ui.needsAction ? -1 : 1;
+            // Urutkan murni berdasarkan tanggal order terbaru (created_at descending)
             return new Date(b.submission.created_at || 0).getTime() - new Date(a.submission.created_at || 0).getTime();
         });
 
@@ -477,22 +489,22 @@ export function StatusPage() {
                                                     />
                                                 </Phase>
 
-                                                <Phase number={3} title={t('sectionPublication')} chip={getPublicationChip(cards, t)} active={reachedPhase >= 3} isLast>
+                                                <Phase number={3} title={t('sectionPublication')} active={reachedPhase >= 3} isLast>
                                                     <PublicationPhase cards={cards} pageInfo={pageInfo} />
                                                 </Phase>
 
-                                                {/* F. Footer: baris chat penuh (deep-link ke Mimin dengan konteks order) */}
+                                                {/* F. Footer: baris chat rata kanan (deep-link ke Mimin dengan konteks order) */}
                                                 <div className="border-t border-gray-100 mt-3" />
-                                                <Link
-                                                    to={`/dashboard/chat?message=${encodeURIComponent(`Saya ingin bertanya tentang order "${submission.title}"`)}`}
-                                                    className="mt-1 -mb-1 min-h-11 flex items-center justify-between gap-2 rounded-lg px-3 -mx-1 text-sm text-[#666] hover:text-jfu-primary hover:bg-jfu-primary/[0.06] transition-colors"
-                                                >
-                                                    <span className="flex items-center gap-2">
-                                                        <MessageCircle className="w-4 h-4" />
-                                                        {t('chatAboutOrder')}
-                                                    </span>
-                                                    <ChevronRight className="w-4 h-4 text-gray-300" />
-                                                </Link>
+                                                <div className="flex justify-end mt-1 -mb-1">
+                                                    <Link
+                                                        to={`/dashboard/chat?message=${encodeURIComponent(`Saya ingin bertanya tentang order "${submission.title}"`)}`}
+                                                        className="min-h-11 inline-flex items-center gap-2 rounded-lg px-3 text-sm text-[#666] hover:text-jfu-primary hover:bg-jfu-primary/[0.06] transition-colors"
+                                                    >
+                                                        <MessageCircle className="w-4 h-4 shrink-0" />
+                                                        <span>{t('chatAboutOrder')}</span>
+                                                        <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                                                    </Link>
+                                                </div>
                                             </CardContent>
                                         </Card>
                                     );
@@ -502,6 +514,17 @@ export function StatusPage() {
                     </div>
                 )}
             </div>
+
+            {/* Floating move to top button */}
+            <button
+                type="button"
+                onClick={scrollToTop}
+                aria-label="Kembali ke atas"
+                title="Kembali ke atas"
+                className={`fixed bottom-6 right-6 z-50 p-3 rounded-full bg-white text-jfu-primary shadow-xl border border-jfu-primary/20 hover:bg-jfu-primary hover:text-white transition-all duration-300 transform ${showScrollTop ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' : 'opacity-0 translate-y-4 scale-95 pointer-events-none'}`}
+            >
+                <ArrowUp className="w-5 h-5" />
+            </button>
         </div>
     );
 }

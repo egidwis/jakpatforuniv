@@ -502,7 +502,7 @@ export const translations = {
     noOrdersInFilter: "No orders in this category.",
     noOrdersTitle: "No orders yet",
     createFirstOrder: "Create Your First Order",
-    chatAboutOrder: "Need help with this order? Chat with Mimin",
+    chatAboutOrder: "Ask Mimin",
 
     // Dashboard revamp — next-step callout
     calloutReviewManual: "Your survey is being reviewed by our admin — max 2 working days (Mon–Fri). We'll notify you by email.",
@@ -526,6 +526,9 @@ export const translations = {
     // Dashboard revamp — survey details & order info accordions
     copyOrderId: "Copy booking ID",
     orderIdCopied: "Booking ID copied to clipboard",
+    scheduleAdAgain: "Schedule Ad Again",
+    extendScheduleComingSoon: "Feature to extend schedule is coming soon!",
+    comingSoonBadge: "Coming Soon",
     adDuration: "Ad duration",
     totalCost: "Total cost",
     questionsUnit: "questions",
@@ -538,6 +541,7 @@ export const translations = {
     reviewChipApproved: "Approved",
     reviewMethodAuto: "Auto Review - Google Form",
     reviewMethodManual: "Manual Review - Admin",
+    openLinkInNewTab: "Open link in new tab",
 
     // Order card v3 — phase ② Jadwal Iklan (schedule cards)
     sectionInfo: "Booking Info",
@@ -1066,7 +1070,7 @@ export const translations = {
     noOrdersInFilter: "Tidak ada order di kategori ini.",
     noOrdersTitle: "Belum ada order",
     createFirstOrder: "Buat Order Pertama",
-    chatAboutOrder: "Butuh bantuan soal order ini? Chat Mimin",
+    chatAboutOrder: "Tanya Mimin",
 
     // Dashboard revamp — callout langkah berikutnya
     calloutReviewManual: "Survei kamu sedang direview admin — maksimal 2 hari kerja (Senin–Jumat). Hasilnya kami kabari via email.",
@@ -1090,6 +1094,9 @@ export const translations = {
     // Dashboard revamp — accordion detail survei & info order
     copyOrderId: "Salin Booking ID",
     orderIdCopied: "Booking ID disalin ke clipboard",
+    scheduleAdAgain: "Jadwalkan Iklan Lagi",
+    extendScheduleComingSoon: "Fitur perpanjang jadwal akan segera hadir!",
+    comingSoonBadge: "Segera Hadir",
     adDuration: "Durasi iklan",
     totalCost: "Total biaya",
     questionsUnit: "pertanyaan",
@@ -1102,6 +1109,7 @@ export const translations = {
     reviewChipApproved: "Disetujui",
     reviewMethodAuto: "Review Otomatis - Google Form",
     reviewMethodManual: "Review Manual - Admin",
+    openLinkInNewTab: "Buka link di tab baru",
 
     // Order card v3 — fase ② Jadwal Iklan (kartu jadwal)
     sectionInfo: "Info Booking",
