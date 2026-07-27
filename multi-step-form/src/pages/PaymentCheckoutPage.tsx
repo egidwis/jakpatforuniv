@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw, CheckCircle, ArrowLeft } from 'lucide-react';
 import type { FormSubmission } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
+import { paymentCutoffInstant, toWibYmd } from '../utils/airing-window';
+import { normalizeScheduleDate } from '../components/ProgressTracker';
 
 export function PaymentCheckoutPage() {
   const { submissionId } = useParams<{ submissionId: string }>();
@@ -19,6 +21,9 @@ export function PaymentCheckoutPage() {
   const [isExpired, setIsExpired] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  /** Yang menghabiskan waktu adalah batas 14.00 WIB, bukan jendela 1 jam —
+   * pesannya beda, jadi statusnya dibedakan. */
+  const [isTooLateToday, setIsTooLateToday] = useState(false);
 
   useEffect(() => {
     loadSubmission();
@@ -45,12 +50,20 @@ export function PaymentCheckoutPage() {
       if (data.slot_reserved_at) {
         const reservedAt = new Date(data.slot_reserved_at).getTime();
         const oneHourAfter = reservedAt + 3600 * 1000; // 1 hour (3,600,000 ms)
+        // Jadwal hari-H hanya bisa dikejar kalau lunas sebelum 14.00 WIB —
+        // admin menyiapkan halaman iklannya pukul 14.00–15.00. Batas mana pun
+        // yang tiba lebih dulu, itu yang dipakai.
+        const cutoff = data.start_date
+          ? paymentCutoffInstant(toWibYmd(normalizeScheduleDate(data.start_date))).getTime()
+          : Infinity;
+        const deadline = Math.min(oneHourAfter, cutoff);
         const now = Date.now();
 
-        if (now > oneHourAfter) {
+        if (now > deadline) {
+          setIsTooLateToday(now > cutoff && cutoff <= oneHourAfter);
           handleExpired(data.id);
         } else {
-          setTimeLeft(Math.floor((oneHourAfter - now) / 1000));
+          setTimeLeft(Math.floor((deadline - now) / 1000));
           setIsExpired(false);
         }
       } else {
@@ -210,7 +223,13 @@ export function PaymentCheckoutPage() {
             </div>
             <h2 className="text-xl font-bold text-red-900 mb-2">{t('checkoutExpiredTitle')}</h2>
             <p className="text-sm text-red-700 leading-relaxed max-w-md mx-auto mb-8">
-              {t('checkoutExpiredDesc')} (<strong>{submission.start_date?.split('T')[0]}</strong>)
+              {isTooLateToday ? (
+                t('paymentTooLateToday')
+              ) : (
+                <>
+                  {t('checkoutExpiredDesc')} (<strong>{submission.start_date?.split('T')[0]}</strong>)
+                </>
+              )}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button

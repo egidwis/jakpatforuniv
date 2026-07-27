@@ -7,6 +7,7 @@ import { resolveSubmissionMode, type SubmissionMode } from '../utils/submissionM
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
 import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY, SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
+import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } from '../utils/airing-window';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { Switch } from './ui/switch';
@@ -194,6 +195,23 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
       let calculatedStartDate = null;
       let calculatedEndDate = null;
 
+      // StepSchedule menyimpan startDate sebagai YYYY-MM-DD, tapi draft lama /
+      // hasil reschedule bisa membawa ISO penuh — potong supaya perbandingan
+      // tanggal di helper selalu apple-to-apple.
+      const startYmd = formData.startDate ? String(formData.startDate).slice(0, 10) : '';
+
+      // Batas pemesanan hari-H (13.00 WIB) bisa terlewat sementara user duduk
+      // di step Checkout. Cek terakhir sebelum INSERT, sebelum tanggal apa pun
+      // dimaterialisasi — supaya tidak ada order lahir dengan start_date yang
+      // sudah lewat batas.
+      if (startYmd && isBookingClosedForDate(startYmd)) {
+        toast.dismiss(loadingToast);
+        toast.error(t('slotErrorPastCutoff'));
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        return;
+      }
+
       // Double-check availability for auto-approval
       if (isAutoApproval && formData.startDate && formData.startTime) {
         try {
@@ -202,7 +220,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
           if (formData.isKilatUpgrade) {
             // Kilat: check single day against kilat slot pool
             const { regularCounts: kilatCounts } = await fetchSlotAvailability(undefined, 'kilat');
-            const dateStr = `${startDay.getFullYear()}-${String(startDay.getMonth() + 1).padStart(2, '0')}-${String(startDay.getDate()).padStart(2, '0')}`;
+            const dateStr = toLocalYmd(startDay);
             if ((kilatCounts[dateStr] || 0) >= MAX_KILAT_ADS_PER_DAY) {
               toast.dismiss(loadingToast);
               toast.error('Ups! Slot Kilat pada tanggal yang Anda pilih telah penuh. Silakan kembali memilih tanggal lain.');
@@ -218,7 +236,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
             current.setHours(0, 0, 0, 0);
 
             for (let i = 0; i < formData.duration; i++) {
-              const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+              const dateStr = toLocalYmd(current);
               const count = regularCounts[dateStr] || 0;
               if (count >= MAX_REGULAR_ADS_PER_DAY) {
                 isAvailable = false;
@@ -236,14 +254,10 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
             }
           }
 
-          // Calculate valid UTC dates
-          const [valHours, valMinutes] = formData.startTime.split(':').map(Number);
-          startDay.setHours(valHours, valMinutes, 0, 0);
-          calculatedStartDate = startDay.toISOString();
-
-          const endDay = new Date(startDay);
-          endDay.setDate(endDay.getDate() + (formData.isKilatUpgrade ? 1 : formData.duration));
-          calculatedEndDate = endDay.toISOString();
+          // Jam tayang dikunci 15.00 WIB lewat helper, bukan setHours device —
+          // dulu user di luar WIB menyimpan instant yang meleset sejam.
+          calculatedStartDate = toAiringStartIso(startYmd);
+          calculatedEndDate = toAiringEndIso(startYmd, formData.isKilatUpgrade ? 1 : formData.duration);
 
         } catch (error) {
           toast.dismiss(loadingToast);
@@ -254,11 +268,8 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         }
       } else if (formData.isKilatUpgrade && formData.startDate && formData.startTime) {
         // Kilat + non-autoApproval (manual/sensitive): save chosen schedule as kilat slot reservation
-        const kilatDay = new Date(formData.startDate);
-        const [h, m] = formData.startTime.split(':').map(Number);
-        kilatDay.setHours(h, m, 0, 0);
-        calculatedStartDate = kilatDay.toISOString();
-        calculatedEndDate = new Date(kilatDay.getTime() + 86400000).toISOString();
+        calculatedStartDate = toAiringStartIso(startYmd);
+        calculatedEndDate = toAiringEndIso(startYmd, 1);
       }
 
       // Raw reschedule intent carried in the form draft (may be stale — an

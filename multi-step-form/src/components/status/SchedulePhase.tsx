@@ -15,6 +15,7 @@ import {
     ExternalLink,
     FileText,
     Gift,
+    Megaphone,
     Ticket,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +31,7 @@ import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import { getCurrentStepIndex } from '@/components/ProgressTracker';
 import type { FormSubmission } from '@/utils/supabase';
+import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount } from '@/utils/cost-calculator';
 import {
     pickDefaultExpandedKey,
     type ScheduleCard,
@@ -58,17 +60,19 @@ interface SchedulePhaseProps {
 function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: TranslationKey) => string): string {
     if (state === 'choose_schedule') return t('bookingStatusChooseSchedule');
     if (state === 'awaiting_invoice') return t('bookingStatusAwaitingInvoice');
+    if (state === 'too_late_today') return t('bookingStatusTooLateToday');
     return t(extendStatusLabelKey(state));
 }
 
 /** Warna (bg+teks+dot) dishare dengan `extendStatusStyle` untuk state yang
  * overlap — dulu ada palet terpisah `BOOKING_STATUS_TONE` yang driftnya
  * nyata (mis. "Lunas" tampil emerald di baris Status tapi biru di chip
- * trigger untuk kartu yang sama). Hanya choose_schedule/awaiting_invoice
- * (di luar enum shared) yang dapat warna sendiri. */
+ * trigger untuk kartu yang sama). Hanya choose_schedule/awaiting_invoice/
+ * too_late_today (di luar enum shared) yang dapat warna sendiri. */
 function bookingStatusStyle(state: ScheduleCard['booking']['state']): { bg: string; text: string; dot: string } {
     if (state === 'choose_schedule') return { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' };
     if (state === 'awaiting_invoice') return { bg: 'bg-gray-50 border-gray-200', text: 'text-gray-500', dot: 'bg-gray-400' };
+    if (state === 'too_late_today') return { bg: 'bg-rose-50 border-rose-200', text: 'text-rose-600', dot: 'bg-rose-400' };
     return extendStatusStyle(state);
 }
 
@@ -87,8 +91,8 @@ function ScheduleChip({ card }: { card: ScheduleCard }) {
     );
 }
 
-/** Tombol salin Order ID/ID perpanjangan — dirender TEPAT di samping teks
- * Order ID di dalam trigger. Bukan `<button>` (elemen trigger accordion
+/** Tombol salin Booking ID/ID perpanjangan — dirender TEPAT di samping teks
+ * Booking ID di dalam trigger. Bukan `<button>` (elemen trigger accordion
  * sendiri sudah `<button>` sungguhan — nesting `<button>` di dalamnya
  * invalid HTML), tapi `<span role="button">` yang `stopPropagation()`
  * kliknya supaya tap-to-copy tidak ikut men-toggle accordion di baliknya. */
@@ -133,15 +137,8 @@ interface RowDef {
 /**
  * Baris data gaya kuitansi: SATU pasangan label:value per baris di semua
  * viewport. Kolom label FIXED (`9.5rem`, bukan `auto`) dan di-share oleh
- * Info & Booking & Pembayaran dalam satu kartu, supaya kolom value kedua
- * section rata kiri — `auto` per-section dulu dicoba dan membuat
- * "Order ID" dan "Total Biaya" punya lebar kolom label sendiri-sendiri
- * (tidak sejajar). Lebar dipilih pas untuk label terpanjang di kartu ini,
- * "Insentif pemenang". Dua pasangan per baris juga sudah dicoba dan gagal —
- * value panjang ("Menunggu jadwal dipilih") melebarkan kolom bersama
- * sehingga value pendek menyisakan lubang di tengah baris.
- * `[display:grid]`, BUKAN class `grid`: styles.css legacy punya
- * `.grid { gap: 1.5rem }` yang menang cascade dan memaksa gap 24px.
+ * Info Booking & Detail Pembayaran dalam satu kartu, supaya kolom value kedua
+ * section rata kiri.
  */
 function RowGrid({ rows }: { rows: RowDef[] }) {
     if (rows.length === 0) return null;
@@ -160,10 +157,7 @@ function RowGrid({ rows }: { rows: RowDef[] }) {
     );
 }
 
-/** Sub-blok Info/Booking & Pembayaran dalam satu kartu jadwal. Pengelompokan
- * mengandalkan jarak (baris rapat 6px, antar section 16px via space-y induk)
- * + label kontras — tanpa garis pembatas (divider dicoba dan dinilai user
- * mengganggu). */
+/** Sub-blok Info Booking / Detail Pembayaran dalam satu kartu jadwal. */
 function Section({ label, children }: { label: string; children: ReactNode }) {
     return (
         <div>
@@ -175,23 +169,30 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 
 function IncentiveValue({ info }: { info: IncentiveInfo }) {
     const { t } = useLanguage();
-    if (info.mode === 'plain') {
-        return <span>{info.winnerCount} × {formatRupiah(info.prizePerWinner!)}</span>;
-    }
-    if (info.mode === 'new_pool') {
+    if (info.mode === 'plain' || info.mode === 'new_pool') {
+        const perWinner = info.prizePerWinner || 0;
+        const count = info.winnerCount || 0;
+        const total = perWinner * count;
         return (
             <span className="inline-flex items-center gap-1.5 flex-wrap">
-                {info.winnerCount} × {formatRupiah(info.prizePerWinner!)}
-                <Badge variant="outline" className="px-1.5 py-0 h-4 text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 rounded-full">
-                    {t('incentiveNewPeriod')}
-                </Badge>
+                <span className="text-gray-500 font-normal">
+                    {formatRupiah(perWinner)} × {count} =
+                </span>
+                <span className="font-semibold text-[#1a1a1a]">
+                    {formatRupiah(total)}
+                </span>
+                {info.mode === 'new_pool' && (
+                    <Badge variant="outline" className="px-1.5 py-0 h-4 text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 rounded-full">
+                        {t('incentiveNewPeriod')}
+                    </Badge>
+                )}
             </span>
         );
     }
     if (info.mode === 'accumulated') {
         return (
             <span>
-                +{formatRupiah(info.additionalPrize!)}
+                <span className="font-semibold text-[#1a1a1a]">+{formatRupiah(info.additionalPrize!)}</span>
                 <span className="block text-xs text-gray-500 font-normal">{t('incentiveAccumulated')}</span>
             </span>
         );
@@ -207,15 +208,28 @@ function InfoSection({ card }: { card: ScheduleCard }) {
     if (card.info.createdAt) {
         rows.push({ key: 'created', icon: <CalendarDays className={iconCls} />, label: t('submittedOn'), value: formatDateLong(card.info.createdAt) });
     }
-    rows.push({ key: 'duration', icon: <Clock className={iconCls} />, label: t('adDuration'), value: `${card.info.duration} ${t('days')}` });
-    if (card.dateRange !== '—') {
-        rows.push({ key: 'airingDate', icon: <CalendarCheck className={iconCls} />, label: t('airingDateLabel'), value: card.dateRange });
-    }
+    const durationText = `${card.info.duration} ${t('days')}`;
+    const airingValue = (
+        <span className="inline-flex flex-col">
+            <span className="inline-flex items-center gap-1.5">
+                <span className="font-medium text-[#1a1a1a]">{card.dateRange}</span>
+                <span className="text-gray-500 font-normal text-xs">({durationText})</span>
+            </span>
+            {/* Jam tayang serentak 15.00 WIB — sebelumnya cuma disebut di wizard
+                dan hilang begitu order jadi, sehingga user mengira tayang pagi.
+                Tidak dirender untuk jadwal yang belum dipilih ("—"). */}
+            {card.dateRange !== '—' && (
+                <span className="block text-xs text-gray-500 font-normal">{t('airingStartTimeNote')}</span>
+            )}
+        </span>
+    );
+    rows.push({ key: 'airingDate', icon: <CalendarCheck className={iconCls} />, label: t('airingDateLabel'), value: airingValue });
+
     if (card.info.periodBatch) {
         rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: <span className="font-mono text-xs">{card.info.periodBatch}</span> });
     }
     if (card.info.incentive) {
-        rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('detailPrize'), value: <IncentiveValue info={card.info.incentive} /> });
+        rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('rewardRespondentLabel'), value: <IncentiveValue info={card.info.incentive} /> });
     }
     return (
         <Section label={t('sectionInfo')}>
@@ -227,20 +241,66 @@ function InfoSection({ card }: { card: ScheduleCard }) {
 const ctaButtonClass = 'max-md:w-full min-h-11 md:min-h-9 justify-center whitespace-nowrap';
 const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 hover:from-jfu-primary hover:to-jfu-light transition-all';
 
-function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedule: () => void }) {
+function BookingSection({ card, submission, onReschedule }: { card: ScheduleCard; submission: FormSubmission; onReschedule: () => void }) {
     const { t } = useLanguage();
     const b = card.booking;
-    const rows: RowDef[] = [
-        { key: 'cost', icon: <Banknote className={iconCls} />, label: t('totalCost'), value: formatRupiah(b.amount || 0) },
-    ];
-    if (card.info.voucherCode) {
-        rows.push({ key: 'voucher', icon: <Ticket className={iconCls} />, label: t('voucherLabel'), value: <span className="font-mono">{card.info.voucherCode}</span> });
+    const questionCount = submission.question_count || 0;
+    const costPerDay = calculateAdCostPerDay(questionCount);
+    const duration = card.info.duration || 0;
+    const adCost = calculateTotalAdCost(questionCount, duration);
+
+    let adCostValue: ReactNode = null;
+    if (costPerDay > 0) {
+        adCostValue = (
+            <span className="inline-flex items-center gap-1 flex-wrap">
+                <span className="text-gray-500 font-normal">
+                    {formatRupiah(costPerDay)} <span className="text-gray-400 text-xs">({questionCount} Qs)</span> × {duration} {t('days')} =
+                </span>
+                <span className="font-semibold text-[#1a1a1a]">{formatRupiah(adCost)}</span>
+            </span>
+        );
+    } else {
+        adCostValue = <span className="font-semibold text-[#1a1a1a]">{formatRupiah(adCost)}</span>;
     }
-    /* Status dipindah ke chip judul kartu (`ScheduleChip`, selalu tampil di
-       trigger) — baris "Status" di sini dihapus supaya tidak dobel sumber. */
-    /* Invoice kedaluwarsa tidak lagi valid untuk dibayar (slot sudah
-       dilepas, CTA di banner expired sudah arahkan "Jadwalkan Ulang") —
-       link lama disembunyikan supaya tidak menyesatkan user ke invoice mati. */
+
+    let totalReward = 0;
+    if (card.info.incentive) {
+        if (card.info.incentive.mode === 'plain' || card.info.incentive.mode === 'new_pool') {
+            totalReward = (card.info.incentive.prizePerWinner || 0) * (card.info.incentive.winnerCount || 0);
+        } else if (card.info.incentive.mode === 'accumulated') {
+            totalReward = card.info.incentive.additionalPrize || 0;
+        }
+    }
+
+    const rows: RowDef[] = [
+        { key: 'adCost', icon: <Megaphone className={iconCls} />, label: t('adCostLabel'), value: adCostValue },
+        { key: 'totalReward', icon: <Gift className={iconCls} />, label: t('totalRewardLabel'), value: <span className="font-semibold text-[#1a1a1a]">{formatRupiah(totalReward)}</span> },
+    ];
+
+    if (card.info.voucherCode) {
+        const discount = calculateDiscount(card.info.voucherCode, adCost, totalReward, duration);
+        const voucherElement = (
+            <span className="inline-flex items-center gap-1.5 flex-wrap">
+                <span className="font-mono font-bold text-gray-800 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-xs uppercase tracking-wide">
+                    {card.info.voucherCode}
+                </span>
+                {discount > 0 && (
+                    <span className="text-emerald-600 font-semibold text-xs">
+                        (-{formatRupiah(discount)})
+                    </span>
+                )}
+            </span>
+        );
+        rows.push({ key: 'voucher', icon: <Ticket className={iconCls} />, label: t('voucherCodeRowLabel'), value: voucherElement });
+    }
+
+    rows.push({
+        key: 'totalPayment',
+        icon: <Banknote className="w-3.5 h-3.5 text-jfu-primary" />,
+        label: t('totalPaymentLabel'),
+        value: <span className="text-base font-bold text-[#1a1a1a]">{formatRupiah(b.amount || 0)}</span>,
+    });
+
     if (b.invoicePaymentId && b.state !== 'expired') {
         rows.push({
             key: 'invoice',
@@ -298,12 +358,23 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
                                 {b.deadline ? (
                                     <>
                                         {t('calloutPayBefore')}{' '}
-                                        <strong>{b.deadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</strong>{' '}
-                                        {t('calloutPayBeforeSuffix')}
+                                        <strong>{b.deadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })} WIB</strong>{' '}
+                                        {/* Konsekuensinya beda: reservasi 1 jam habis = slot
+                                            dilepas; batas 14.00 WIB habis = slot tetap ada tapi
+                                            iklan tidak bisa tayang di jadwal itu. */}
+                                        {b.deadlineCause === 'cutoff'
+                                            ? t('calloutPayBeforeSuffixCutoff')
+                                            : t('calloutPayBeforeSuffix')}
                                     </>
                                 ) : (
                                     t('calloutPaymentGeneric')
                                 )}
+                            </p>
+                            {/* Alasan di balik desakan bayar: kuota tayang harian
+                                terbatas dan urutan publish mengikuti urutan
+                                pembayaran masuk. */}
+                            <p className="text-xs text-gray-600 leading-relaxed mt-1.5">
+                                {t('paymentQuotaPriorityNote')}
                             </p>
                         </div>
                         {b.payUrl && (
@@ -350,6 +421,27 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
                 </div>
             </div>
         );
+    } else if (b.state === 'too_late_today') {
+        // Slot TIDAK dilepas di sini — untuk slot user-booked aturan 1 jam yang
+        // melepasnya, untuk slot admin-booked melepas otomatis sama saja
+        // membatalkan keputusan admin. Kartu hanya berhenti menawarkan bayar.
+        banner = (
+            <div className="rounded-xl border p-3 mt-2 border-rose-200 bg-rose-50/60">
+                <div className="flex gap-2.5">
+                    <Clock className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                    <div className="flex-1 min-w-0 md:flex md:items-center md:justify-between md:gap-3">
+                        <p className="text-sm text-[#1a1a1a] leading-relaxed min-w-0">{t('calloutTooLateToday')}</p>
+                        {card.kind === 'original' && (
+                            <div className="shrink-0 max-md:mt-2.5">
+                                <Button size="sm" onClick={onReschedule} className={`${ctaButtonClass} ${ctaRoyal}`}>
+                                    {t('rescheduleSlot')}
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
     } else if (b.state === 'cancelled') {
         banner = (
             <div className="rounded-xl border p-3 mt-2 border-gray-200 bg-gray-50">
@@ -370,16 +462,11 @@ function BookingSection({ card, onReschedule }: { card: ScheduleCard; onReschedu
 
 /**
  * Fase ② — Jadwal Iklan: list kartu setara (asli + tiap perpanjangan), tiap
- * kartu membawa dua blok sendiri (Info, Booking & Pembayaran). Status tayang
- * (Terjadwal/Tayang/Selesai) dan Halaman Iklan (link + views, order-level,
- * dipakai bersama semua jadwal) sudah pindah rumah ke Fase ③ Penayangan —
- * fase ini berhenti murni di status pembayaran ("Lunas"), tidak ikut
- * melompat ke status tayang.
+ * kartu membawa dua blok sendiri (Info Booking, Detail Pembayaran).
  */
 export function SchedulePhase({ submission, cards, onReschedule, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
     const step = getCurrentStepIndex(submission);
-    const showChips = cards.length > 1;
 
     return (
         <div>
@@ -400,23 +487,14 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                         <AccordionItem key={card.key} value={card.key} className="border-b-0 px-3">
                             <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
                                 <AccordionPrimitive.Trigger
-                                    aria-label={`${card.label} ${showChips ? `#${card.ordinal}` : shortId}`}
+                                    aria-label={`${card.label} Booking ID: ${shortId}`}
                                     className="flex flex-1 items-center gap-1 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all"
                                 >
-                                    {/* "Jadwal Iklan" sudah jadi judul fase di atas (PhaseRail) —
-                                        tidak diulang di trigger. Satu kartu: Order ID jadi teks
-                                        utama (dipindah dari section Info, supaya bisa dilihat tanpa
-                                        expand). Tanggal tayang pindah ke section Info (bukan di
-                                        trigger lagi). Banyak kartu (extend): cukup nomor urut "#N"
-                                        buat membedakan, bukan label penuh "Jadwal Iklan N" yang
-                                        mengulang kata fase. */}
-                                    <span className={`text-xs font-bold shrink-0 ${card.booking.state === 'cancelled' ? 'text-gray-400' : 'text-[#1a1a1a]'} ${showChips ? '' : 'font-mono'}`}>
-                                        {showChips ? `#${card.ordinal}` : shortId}
+                                    {/* Tampilkan "Booking ID: #ID" pada tiap kartu */}
+                                    <span className={`text-xs font-bold shrink-0 ${card.booking.state === 'cancelled' ? 'text-gray-400' : 'text-[#1a1a1a]'}`}>
+                                        <span>Booking ID: </span>
+                                        <span className="font-mono">{shortId}</span>
                                     </span>
-                                    {/* CopyOrderIdButton bukan `<button>` sungguhan (lihat komentar
-                                        di definisinya) — jadi aman dirender di dalam Trigger,
-                                        persis di samping teks Order ID/ordinal, sesuai permintaan
-                                        user (bukan lagi di ujung kanan row dekat chevron). */}
                                     <CopyOrderIdButton id={card.info.id} />
                                     <span className="flex-1" />
                                     <ScheduleChip card={card} />
@@ -425,7 +503,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                             </AccordionPrimitive.Header>
                             <AccordionContent className="pb-3 pt-1.5 space-y-4">
                                 <InfoSection card={card} />
-                                <BookingSection card={card} onReschedule={onReschedule} />
+                                <BookingSection card={card} submission={submission} onReschedule={onReschedule} />
                             </AccordionContent>
                         </AccordionItem>
                         );

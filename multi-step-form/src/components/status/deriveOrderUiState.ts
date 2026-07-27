@@ -6,6 +6,7 @@ import {
     type ExtendPaymentInfo,
     type EffectiveExtendStatus,
 } from '@/components/ProgressTracker';
+import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
 
 /**
  * Satu sumber kebenaran untuk state UI sebuah order. Dipakai oleh kartu
@@ -22,6 +23,7 @@ export type OrderCalloutState =
     | 'payment'
     | 'awaiting_invoice'
     | 'expired'
+    | 'too_late_today'
     | 'extend_payment'
     | 'ready_to_launch'
     | 'live'
@@ -39,8 +41,16 @@ export interface OrderUiState {
     awaitingInvoice: boolean;
     /** Link bayar final, termasuk fallback checkout internal untuk slot user-booked */
     finalPaymentLink: string | null;
-    /** Deadline bayar — HANYA untuk slot user-booked (slot_reserved_at + 1 jam) */
+    /** Deadline bayar efektif: yang paling awal antara slot_reserved_at + 1 jam
+     * (slot user-booked) dan batas 14.00 WIB hari-H bila jadwalnya hari ini. */
     paymentDeadline: Date | null;
+    /** Batas mana yang menang — menentukan konsekuensinya, dan karena itu
+     * kalimatnya: `slot` = reservasi dilepas, `cutoff` = slotnya tetap tapi
+     * iklan tidak bisa tayang di jadwal tersebut. */
+    paymentDeadlineCause: 'slot' | 'cutoff' | null;
+    /** Jadwalnya hari ini tapi batas bayar 14.00 WIB sudah lewat — admin tidak
+     * lagi punya waktu membangun halaman iklan sebelum 15.00. */
+    isTooLateToday: boolean;
     callout: OrderCalloutState;
     needsAction: boolean;
     group: OrderGroup;
@@ -112,10 +122,39 @@ export function deriveOrderUiState(
 
     const awaitingInvoice = currentStep === 2 && !finalPaymentLink && !isExpired;
 
-    const paymentDeadline =
-        currentStep === 2 && !isExpired && isUserBooked && submission.slot_reserved_at
+    // Jadwal hari-H hanya bisa dikejar kalau lunas sebelum 14.00 WIB — setelah
+    // itu admin tidak sempat membangun halaman iklan untuk tayang 15.00.
+    // Berlaku untuk SEMUA slot, termasuk yang dibooking admin (yang selama ini
+    // tidak punya deadline sama sekali karena invoicenya berjatuh tempo 7 hari).
+    const startYmd = submission.start_date
+        ? toWibYmd(normalizeScheduleDate(submission.start_date))
+        : null;
+    const isTooLateToday =
+        currentStep === 2 &&
+        !isExpired &&
+        !isPaid &&
+        !!startYmd &&
+        isPaymentTooLateForDate(startYmd);
+
+    const slotDeadline =
+        isUserBooked && submission.slot_reserved_at
             ? new Date(new Date(submission.slot_reserved_at).getTime() + PAYMENT_WINDOW_MS)
             : null;
+    const cutoffDeadline = startYmd && !isPaid ? paymentCutoffInstant(startYmd) : null;
+    // Ambil yang paling awal — batas mana pun yang lebih dulu tiba, itu yang
+    // jujur ditampilkan ke user.
+    const candidateDeadlines = [slotDeadline, cutoffDeadline].filter((d): d is Date => !!d);
+    const paymentDeadline =
+        currentStep === 2 && !isExpired && !isTooLateToday && candidateDeadlines.length > 0
+            ? new Date(Math.min(...candidateDeadlines.map((d) => d.getTime())))
+            : null;
+    // Kalau keduanya jatuh di detik yang sama, `slot` yang dipakai — reservasi
+    // dilepas adalah konsekuensi yang lebih keras, jadi itu yang perlu disebut.
+    const paymentDeadlineCause: 'slot' | 'cutoff' | null = !paymentDeadline
+        ? null
+        : slotDeadline && slotDeadline.getTime() === paymentDeadline.getTime()
+            ? 'slot'
+            : 'cutoff';
 
     const hasExtendAwaitingPayment = eff.waitingPaymentExtends.length > 0;
 
@@ -131,7 +170,10 @@ export function deriveOrderUiState(
     } else if (currentStep === 1) {
         callout = 'choose_schedule';
     } else if (currentStep === 2) {
-        callout = awaitingInvoice ? 'awaiting_invoice' : 'payment';
+        // too_late_today menang atas payment/awaiting_invoice: menawarkan bayar
+        // untuk jadwal yang sudah tidak bisa dikejar cuma memindahkan kekecewaan
+        // ke belakang.
+        callout = isTooLateToday ? 'too_late_today' : awaitingInvoice ? 'awaiting_invoice' : 'payment';
     } else if (currentStep === 4) {
         callout = 'completed';
     } else {
@@ -148,6 +190,7 @@ export function deriveOrderUiState(
     const needsAction =
         callout === 'revision' ||
         callout === 'expired' ||
+        callout === 'too_late_today' ||
         callout === 'extend_payment' ||
         callout === 'choose_schedule' ||
         (callout === 'payment' && !!finalPaymentLink);
@@ -167,6 +210,8 @@ export function deriveOrderUiState(
         awaitingInvoice,
         finalPaymentLink,
         paymentDeadline,
+        paymentDeadlineCause,
+        isTooLateToday,
         callout,
         needsAction,
         group,
@@ -195,6 +240,7 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
         payment: 'menunggu pembayaran dari user',
         awaiting_invoice: 'slot sudah dipesan, menunggu admin menerbitkan tagihan (maksimal 1 hari kerja)',
         expired: 'pembayaran kedaluwarsa sehingga slot dilepas; user perlu memilih jadwal baru dari halaman Order Saya (tidak perlu submit ulang)',
+        too_late_today: 'batas pembayaran 14.00 WIB untuk jadwal hari ini sudah lewat sehingga iklan tidak bisa tayang hari ini (halaman iklan disiapkan admin pukul 14.00-15.00); user perlu memilih jadwal baru dari halaman Order Saya (tidak perlu submit ulang)',
         extend_payment: 'perpanjangan durasi menunggu pembayaran',
         ready_to_launch: 'pembayaran diterima, menunggu jadwal tayang',
         live: 'sedang tayang (diiklankan ke responden Jakpat)',

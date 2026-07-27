@@ -6,12 +6,11 @@ import { fetchSlotAvailability } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
 
 
-// Helper to format date
-const getDateString = (date: Date) => {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-};
-
 import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from '../utils/constants';
+import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } from '../utils/airing-window';
+
+// Helper to format date
+const getDateString = toLocalYmd;
 
 interface StepScheduleProps {
   formData: SurveyFormData;
@@ -67,15 +66,22 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
     }
   };
 
-  // Generate next 14 days
+  // Generate next 15 days — satu lebih banyak dari 14 yang dulu, supaya saat
+  // tanggal hari ini sudah lewat batas pemesanan 13.00 WIB user tetap punya
+  // 14 tanggal yang benar-benar bisa dipilih.
   const availableDates = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 15; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
     availableDates.push(d);
   }
+
+  // Iklan tayang 15.00 WIB dan halaman iklannya dibangun admin pada 14.00–15.00,
+  // jadi pemesanan untuk hari yang sama ditutup pukul 13.00 WIB.
+  const isDateClosed = (date: Date) => isBookingClosedForDate(getDateString(date));
+  const isTodayClosed = availableDates.length > 0 && isDateClosed(availableDates[0]);
 
   const validateCapacityForRange = (startDay: Date, duration: number): boolean => {
     const current = new Date(startDay);
@@ -95,6 +101,14 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
   const handleNext = () => {
     if (!selectedDate || !selectedTime) {
       toast.error(t('slotErrorNoDate'));
+      return;
+    }
+
+    // Batas pemesanan bisa terlewat sambil halaman ini terbuka — cek ulang
+    // sebelum melanjutkan, jangan hanya mengandalkan tile yang disabled.
+    if (isDateClosed(selectedDate)) {
+      toast.error(t('slotErrorPastCutoff'));
+      setSelectedDate(null);
       return;
     }
 
@@ -144,7 +158,8 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
                 const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
                 const baseCount = regularCountsByDate[dateStr] || 0;
                 const isFull = baseCount >= maxAdsPerDay;
-                
+                const isClosed = isBookingClosedForDate(dateStr);
+
                 const selectedIndex = selectedDate ? availableDates.findIndex(d => getDateString(d) === getDateString(selectedDate)) : -1;
                 const effectiveDuration = mode === 'kilat' ? 1 : (formData.duration || 1);
                 const isSelectedInRange = selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + effectiveDuration;
@@ -162,6 +177,11 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
                     statusColors = mode === 'kilat' ? 'bg-amber-50 border-amber-500 ring-1 ring-amber-500 shadow-md' : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
                     textColor = mode === 'kilat' ? 'text-amber-900' : 'text-blue-900';
                   }
+                } else if (isClosed) {
+                  // Beda dari `isFull`: slotnya mungkin masih kosong, yang habis
+                  // waktunya. Digarisbawahi supaya tidak terbaca "penuh".
+                  statusColors = 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed';
+                  textColor = 'text-slate-500';
                 } else if (isFull) {
                   statusColors = 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed';
                 }
@@ -174,7 +194,7 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
                   <button
                     key={dateStr}
                     type="button"
-                    disabled={isFull}
+                    disabled={isFull || isClosed}
                     onClick={() => {
                       setSelectedDate(date);
                       setSelectedTime("15:00");
@@ -187,16 +207,28 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
                     <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
                       {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
                     </span>
-                    <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
-                      <div className={`w-1 h-1 rounded-full ${dotColor}`} />
-                      <span className={`text-[10px] font-semibold ${displayCount > maxAdsPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
-                        {displayCount}/{maxAdsPerDay}
-                      </span>
-                    </div>
+                    {isClosed ? (
+                      <div className="flex items-center gap-1 mt-auto bg-slate-200/60 px-1.5 py-0.5 rounded-full border border-slate-200">
+                        <span className="text-[10px] font-semibold text-slate-500">{t('slotClosedTodayLabel')}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
+                        <div className={`w-1 h-1 rounded-full ${dotColor}`} />
+                        <span className={`text-[10px] font-semibold ${displayCount > maxAdsPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
+                          {displayCount}/{maxAdsPerDay}
+                        </span>
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
+            {isTodayClosed && (
+              <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 text-xs leading-relaxed">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
+                <span>{t('slotClosedTodayNote')}</span>
+              </div>
+            )}
           </div>
 
           {/* Fixed 15:00 WIB info banner */}
@@ -209,19 +241,21 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
           </div>
 
           {selectedDate && (() => {
-            const duration = formData.duration || 1;
-            const startObj = new Date(selectedDate);
-            startObj.setHours(15, 0, 0, 0);
-            const endObj = new Date(startObj);
-            endObj.setDate(endObj.getDate() + duration);
-            const fmtDate = (d: Date) => d.toLocaleDateString('id-ID', { day: 'numeric', month: 'numeric', year: 'numeric' });
+            const duration = mode === 'kilat' ? 1 : (formData.duration || 1);
+            // Lewat helper WIB, bukan setHours lokal — user di luar WIB harus
+            // melihat instant yang sama dengan yang nanti tersimpan di DB.
+            const ymd = getDateString(selectedDate);
+            const startObj = new Date(toAiringStartIso(ymd));
+            const endObj = new Date(toAiringEndIso(ymd, duration));
+            const fmtDate = (d: Date) =>
+              d.toLocaleDateString('id-ID', { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'Asia/Jakarta' });
             return (
               <div className="mt-6 space-y-2 p-4 bg-gray-50 rounded-xl border border-gray-100">
                 <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Schedule Summary</p>
                 <div className="flex flex-row gap-2 mt-1">
                   <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
                     <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">Start Date</span>
-                    <span className="font-bold text-gray-900 text-sm">{fmtDate(startObj)} 15:00</span>
+                    <span className="font-bold text-gray-900 text-sm">{fmtDate(startObj)} 15.00 WIB</span>
                   </div>
                   <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
                     <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">{t('slotDurationLabel')}</span>
@@ -229,7 +263,7 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
                   </div>
                   <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
                     <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">End Date</span>
-                    <span className="font-bold text-gray-900 text-sm">{fmtDate(endObj)} 15:00</span>
+                    <span className="font-bold text-gray-900 text-sm">{fmtDate(endObj)} 15.00 WIB</span>
                   </div>
                 </div>
               </div>

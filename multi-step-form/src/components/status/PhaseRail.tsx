@@ -39,7 +39,7 @@ export function Phase({ number, title, chip, isLast, active = true, lineActive, 
                 {number}
             </div>
             <div className="flex items-center justify-between gap-2 min-h-[22px] mb-2.5">
-                <h3 className="text-sm font-bold text-[#1a1a1a]">{title}</h3>
+                <h3 className={`text-sm font-bold ${active ? 'text-[#1a1a1a]' : 'text-gray-400'}`}>{title}</h3>
                 {chip}
             </div>
             {children}

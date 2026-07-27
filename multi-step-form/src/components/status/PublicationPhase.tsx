@@ -32,7 +32,14 @@ function PublicationRow({ card }: { card: ScheduleCard }) {
         <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
             <span className="flex items-center gap-2 min-w-0">
                 <span className="text-xs font-bold text-gray-400 shrink-0">#{card.ordinal}</span>
-                <span className="text-[#1a1a1a] truncate">{card.dateRange}</span>
+                {/* Dua baris, bukan satu: chip status memakan sisi kanan, jadi
+                    di mobile keterangan jam tidak muat disandingkan. */}
+                <span className="flex flex-col min-w-0">
+                    <span className="text-[#1a1a1a] truncate">{card.dateRange}</span>
+                    {card.dateRange !== '—' && (
+                        <span className="text-[11px] text-gray-500">{t('airingStartTimeNote')}</span>
+                    )}
+                </span>
             </span>
             <span className={`flex items-center gap-1.5 text-xs font-semibold shrink-0 ${style.text}`}>
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />

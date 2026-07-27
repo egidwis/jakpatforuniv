@@ -14,6 +14,10 @@ export type BookingState =
     | 'awaiting_invoice'
     | 'waiting_payment'
     | 'expired'
+    /** Jadwalnya hari ini tapi batas bayar 14.00 WIB sudah lewat. Sengaja
+     * dipisah dari `expired` — sebabnya beda (slot tidak dilepas, yang habis
+     * adalah waktu admin menyiapkan halaman iklan), jadi copy-nya beda. */
+    | 'too_late_today'
     | 'paid'
     | 'cancelled';
 
@@ -55,8 +59,10 @@ export interface ScheduleCard {
         amount: number;
         payUrl: string | null;
         isExternalLink: boolean;
-        /** Deadline bayar — hanya untuk slot user-booked jadwal asli */
+        /** Deadline bayar efektif (lihat `deriveOrderUiState`) */
         deadline: Date | null;
+        /** Konsekuensi kalau deadline lewat — menentukan kalimat bannernya */
+        deadlineCause: 'slot' | 'cutoff' | null;
         invoicePaymentId: string | null;
         isPaidForLabel: boolean; // menentukan label "Invoice" vs "Kwitansi"
     };
@@ -112,8 +118,13 @@ export function buildScheduleCards(
         let bookingState: BookingState;
         if (ui.isExpired) bookingState = 'expired';
         else if (step === 1) bookingState = 'choose_schedule';
-        else if (step === 2) bookingState = ui.finalPaymentLink ? 'waiting_payment' : 'awaiting_invoice';
-        else bookingState = 'paid'; // step 3 atau 4
+        else if (step === 2) {
+            // Lewat batas 14.00 WIB menang atas waiting_payment/awaiting_invoice:
+            // jadwal ini sudah tidak bisa dikejar, jadi jangan tawarkan bayar.
+            bookingState = ui.isTooLateToday
+                ? 'too_late_today'
+                : ui.finalPaymentLink ? 'waiting_payment' : 'awaiting_invoice';
+        } else bookingState = 'paid'; // step 3 atau 4
 
         let pubState: PublicationState = 'none';
         if (bookingState === 'paid') {
@@ -148,6 +159,7 @@ export function buildScheduleCards(
                 payUrl: bookingState === 'waiting_payment' ? ui.finalPaymentLink : null,
                 isExternalLink: !!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard'),
                 deadline: ui.paymentDeadline,
+                deadlineCause: ui.paymentDeadlineCause,
                 invoicePaymentId: invoiceId,
                 isPaidForLabel: ui.isPaid,
             },
@@ -216,6 +228,7 @@ export function buildScheduleCards(
                 payUrl: bookingState === 'waiting_payment' ? pay?.paymentUrl || null : null,
                 isExternalLink: true,
                 deadline: null,
+                deadlineCause: null,
                 invoicePaymentId: pay?.paymentId || null,
                 isPaidForLabel: bookingState === 'paid',
             },
@@ -238,7 +251,12 @@ export function buildScheduleCards(
  * Prioritas: butuh bayar > kartu pertama yang belum dibatalkan.
  */
 export function pickDefaultExpandedKey(cards: ScheduleCard[]): string {
-    const needsPay = cards.find((c) => c.booking.state === 'waiting_payment' || c.booking.state === 'expired');
+    const needsPay = cards.find(
+        (c) =>
+            c.booking.state === 'waiting_payment' ||
+            c.booking.state === 'expired' ||
+            c.booking.state === 'too_late_today'
+    );
     if (needsPay) return needsPay.key;
 
     return cards.find((c) => c.booking.state !== 'cancelled')?.key || cards[0]?.key || 'original';

@@ -9,6 +9,7 @@ import { PageBuilderModal } from '@/components/PageBuilder/PageBuilderModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, ExternalLink, Activity, CalendarClock, ListTodo, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { isPaymentTooLateForDate, nowWib, toWibYmd } from '@/utils/airing-window';
 
 // Setup the localizer for react-big-calendar
 const localizer = momentLocalizer(moment);
@@ -42,6 +43,7 @@ const STATUS_PALETTES = {
     completed: { bg: '#f8fafc', border: '#e2e8f0', leftBorder: '#475569', text: '#1e293b', badgeBg: '#cbd5e1', badgeText: '#334155' }, // Dark Gray
     extend: { bg: '#f5f3ff', border: '#ddd6fe', leftBorder: '#8b5cf6', text: '#5b21b6', badgeBg: '#ede9fe', badgeText: '#6d28d9' }, // Violet (Extend)
     extendLive: { bg: '#ecfdf5', border: '#a7f3d0', leftBorder: '#10b981', text: '#065f46', badgeBg: '#d1fae5', badgeText: '#047857' }, // Emerald-Green (Extend Live)
+    lateNoPage: { bg: '#fef2f2', border: '#fecaca', leftBorder: '#ef4444', text: '#991b1b', badgeBg: '#fee2e2', badgeText: '#b91c1c' }, // Red — lunas tapi lewat batas 14.00 WIB
 };
 
 interface CalendarEvent {
@@ -89,7 +91,12 @@ const CustomAgendaEvent = ({ event, onSelectEvent }: { event: CalendarEvent, onS
     if (event.resource.submission_status === 'waiting_payment') {
         status = 'Waiting Payment';
     } else if (!event.resource.page_id) {
-        status = new Date() < event.start ? 'Pending' : 'Overdue';
+        // 'Terlambat' mengisi jendela buta antara 'Pending' dan 'Overdue':
+        // lunas, tayang hari ini, halaman belum dibuat, dan batas 14.00 WIB
+        // sudah lewat — masih sebelum start (15.00) jadi belum 'Overdue',
+        // tapi sudah tidak mungkin dikejar.
+        if (event.resource.isLateForToday) status = 'Terlambat';
+        else status = new Date() < event.start ? 'Pending' : 'Overdue';
     } else {
         status = new Date() >= event.start && new Date() <= event.end ? 'Active' : new Date() < event.start ? 'Upcoming' : 'Completed';
     }
@@ -429,6 +436,16 @@ export function SchedulingPage() {
                     const startDate = normalizeScheduleDate(slot.start_date);
                     const endDate = normalizeScheduleDate(slot.end_date);
 
+                    // Jaring pengaman untuk pembayaran yang lolos setelah 14.00
+                    // WIB (webhook telat / channel lambat): halaman iklannya
+                    // tidak akan sempat dibuat untuk tayang 15.00 hari ini.
+                    const startYmd = toWibYmd(startDate);
+                    const isPaid = ['paid', 'completed'].includes(slot.payment_status || '');
+                    // Sengaja dibatasi HARI INI saja — start yang sudah lewat
+                    // tetap milik 'Overdue' yang sudah ada.
+                    const isLateForToday =
+                        isPaid && startYmd === nowWib().ymd && isPaymentTooLateForDate(startYmd);
+
                     return {
                         id: `slot-${slot.id}`,
                         title: `Ad: ${slot.form_title}`,
@@ -438,7 +455,10 @@ export function SchedulingPage() {
                             ...slot,
                             type: 'ad',
                             form_submission_id: slot.id,
-                            colorTheme: STATUS_PALETTES.upcomingNoPage, // Amber-ish for no page
+                            isLateForToday,
+                            colorTheme: isLateForToday
+                                ? STATUS_PALETTES.lateNoPage
+                                : STATUS_PALETTES.upcomingNoPage, // Amber-ish for no page
                             page_id: null,
                             page_title: null,
                             page_is_published: false,
