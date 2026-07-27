@@ -13,12 +13,34 @@
 
 // ─── Server-side pricing ────────────────────────────────────────────────────
 // DUPLICATED from src/utils/cost-calculator.ts + src/utils/constants.ts — the
-// two copies MUST be changed together (tiers, vouchers, Kilat add-on). The
+// two copies MUST be changed together (tiers, vouchers, Kilat add-on, PPN). The
 // duplication is unavoidable: Pages Functions can't import from src/. The
 // client copy only renders estimates; THIS copy decides what gets charged.
 
 const KILAT_ADDON_COST = 250000;
 const KILAT_ADDON_COST_VOUCHER = 200000;
+
+// PPN 11% dipungut di ATAS subtotal (DPP). Pembulatan WAJIB identik dengan
+// calculatePpn() di src/utils/cost-calculator.ts, kalau tidak setiap order akan
+// men-trigger warning "total_cost mismatch" di bawah.
+const PPN_PERCENT = 11;
+const PPN_RATE = 0.11;
+
+// Masa berlaku voucher (WIB). ISO ini WAJIB sama dengan src/utils/constants.ts.
+const ILKOMUNY_VALID_UNTIL = '2026-12-31T17:00:00Z';
+const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
+
+function ilkomunyExpired() {
+  return Date.now() >= Date.parse(ILKOMUNY_VALID_UNTIL);
+}
+
+function jfufebExpired() {
+  return Date.now() >= Date.parse(JFUFEB_VALID_UNTIL);
+}
+
+function calculatePpn(dpp) {
+  return Math.round((dpp * PPN_PERCENT) / 100);
+}
 
 function calculateAdCostPerDay(questionCount) {
   if (questionCount === 0) return 0;
@@ -38,9 +60,16 @@ function calculateDiscount(voucherCode, adCost, incentiveCost, duration) {
     const totalBeforeDiscount = adCost + incentiveCost;
     return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
   }
-  if (code === 'JFUFEB') {
+  // JFUFEB & ILKOMUNY (pricing identik): 7 hari flat Rp 1.000.000; durasi lain
+  // cap Rp 300.000/hari. Hanya ILKOMUNY yang punya masa berlaku (s/d 31 Des 2026)
+  // dan "sekali pakai" (ditegakkan via voucher_redemptions, bukan di sini).
+  // Cermin dari src/utils/cost-calculator.ts — WAJIB identik.
+  if (code === 'JFUFEB' || code === 'ILKOMUNY') {
+    if (code === 'JFUFEB' && jfufebExpired()) return 0;
+    if (code === 'ILKOMUNY' && ilkomunyExpired()) return 0;
     if (duration === 7) return adCost > 1000000 ? adCost - 1000000 : 0;
-    return 0;
+    const cap = 300000 * duration; // Rp 300.000/hari
+    return adCost > cap ? adCost - cap : 0;
   }
   if (code === 'PPISWEDIA' || code === 'TEGARGANTENG') return adCost * 0.2;
 
@@ -55,6 +84,7 @@ function calculateDiscount(voucherCode, adCost, incentiveCost, duration) {
 }
 
 // Mirrors calculateTotalCost(SurveyFormData) but takes the snake_case DB row.
+// Returns { subtotal, ppn, total } — `total` (subtotal + PPN) is what gets charged.
 function computeTotalCostFromSubmission(sub) {
   const questionCount = Number(sub.question_count) || 0;
   const duration = Number(sub.duration) || 0;
@@ -65,6 +95,7 @@ function computeTotalCostFromSubmission(sub) {
 
   const incentiveCost = winnerCount * prizePerWinner;
 
+  let subtotal;
   if (isKilat) {
     // Kilat: base rate (no duration multiplier) + add-on + incentive, no discount
     const adCostBase = calculateAdCostPerDay(questionCount);
@@ -72,12 +103,15 @@ function computeTotalCostFromSubmission(sub) {
       voucherCode && voucherCode.toUpperCase() === 'JFUSUHUD'
         ? KILAT_ADDON_COST_VOUCHER
         : KILAT_ADDON_COST;
-    return adCostBase + kilatAddon + incentiveCost;
+    subtotal = adCostBase + kilatAddon + incentiveCost;
+  } else {
+    const adCost = calculateAdCostPerDay(questionCount) * duration;
+    const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration);
+    subtotal = adCost + incentiveCost - discount;
   }
 
-  const adCost = calculateAdCostPerDay(questionCount) * duration;
-  const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration);
-  return adCost + incentiveCost - discount;
+  const ppn = calculatePpn(subtotal);
+  return { subtotal, ppn, total: subtotal + ppn };
 }
 // ─── End server-side pricing ────────────────────────────────────────────────
 
@@ -139,8 +173,9 @@ export async function onRequest(context) {
 
     // The server recomputes the price from the pricing inputs; total_cost in
     // the DB originates from the client (StepCheckout INSERT) and is only
-    // trusted as a cross-check.
-    const amount = computeTotalCostFromSubmission(sub);
+    // trusted as a cross-check. `amount` is the PPN-inclusive grand total that
+    // gets charged and stored; `subtotal`/`ppn` are persisted alongside it.
+    const { subtotal, ppn, total: amount } = computeTotalCostFromSubmission(sub);
     if (!amount || amount <= 0) {
       return json({ error: 'Invalid submission amount' }, 400);
     }
@@ -161,7 +196,7 @@ export async function onRequest(context) {
         {
           method: 'PATCH',
           headers: { ...sbHeaders, Prefer: 'return=minimal' },
-          body: JSON.stringify({ total_cost: amount }),
+          body: JSON.stringify({ total_cost: amount, subtotal, ppn_amount: ppn }),
         }
       );
       if (!fixRes.ok) {
@@ -255,11 +290,16 @@ export async function onRequest(context) {
     }
 
     // 5. Persist BOTH rows via service_role (bypasses RLS).
+    //    `amount` is the PPN-inclusive grand total; subtotal/ppn_rate/ppn_amount
+    //    record the tax breakdown for reconciliation and invoice rendering.
     const transactionRow = {
       form_submission_id: formSubmissionId,
       payment_id: invoiceNumber,
       payment_method: 'doku',
       amount,
+      subtotal,
+      ppn_rate: PPN_RATE,
+      ppn_amount: ppn,
       status: 'pending',
       payment_url: paymentUrl,
     };
@@ -268,6 +308,9 @@ export async function onRequest(context) {
       payment_id: invoiceNumber,
       invoice_url: paymentUrl,
       amount,
+      subtotal,
+      ppn_rate: PPN_RATE,
+      ppn_amount: ppn,
       status: 'pending',
     };
 

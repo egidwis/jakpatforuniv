@@ -214,6 +214,68 @@ export const updateOwnProfile = async (updates: Partial<Omit<ResearcherProfile, 
 };
 
 /**
+ * Redemption voucher sekali-pakai per akun (mis. ILKOMUNY). Baris ditulis
+ * server-side oleh webhook DOKU saat pembayaran lunas; UI hanya MEMBACA lewat
+ * hasRedeemedVoucher() untuk memblokir pemakaian ganda. Lihat sql/35.
+ */
+export interface VoucherRedemption {
+  id?: string;
+  auth_user_id: string;
+  voucher_code: string;
+  form_submission_id?: string | null;
+  redeemed_at?: string;
+}
+
+/**
+ * True bila akun yang sedang login sudah pernah me-redeem `code`.
+ * Belum login → false (gate "wajib login" ditangani terpisah di pemanggil).
+ * Fail-open bila query error: gerbang otoritatif tetap UNIQUE(auth_user_id,
+ * voucher_code) di DB + pencatatan webhook, jadi UI tak boleh menghalangi user
+ * karena gangguan sesaat.
+ */
+export const hasRedeemedVoucher = async (code: string): Promise<boolean> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase
+    .from('voucher_redemptions')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .eq('voucher_code', code.toUpperCase())
+    .limit(1);
+  if (error) {
+    console.error('Error checking voucher redemption:', error);
+    return false;
+  }
+  return !!(data && data.length > 0);
+};
+
+/**
+ * True bila akun yang login sudah punya submission dengan `code` yang masih
+ * "hidup" — belum dibatalkan / gagal / kadaluarsa. Melengkapi hasRedeemedVoucher
+ * (yang hanya terisi saat pembayaran lunas via webhook): ini menangkap order
+ * yang baru di-submit tapi belum dibayar, sehingga voucher sekali-pakai langsung
+ * terasa dipakai sejak submit pertama (dan bisa diuji di lokal). Pemakaian ulang
+ * tetap diperbolehkan bila order lama dibatalkan admin / gagal / kadaluarsa.
+ */
+export const hasActiveVoucherSubmission = async (code: string): Promise<boolean> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('payment_status, submission_status')
+    .eq('auth_user_id', user.id)
+    .ilike('voucher_code', code);
+  if (error) {
+    console.error('Error checking active voucher submission:', error);
+    return false;
+  }
+  return (data || []).some((s: any) =>
+    s.payment_status !== 'failed' &&
+    s.payment_status !== 'expired' &&
+    s.submission_status !== 'cancelled');
+};
+
+/**
  * Mengirim email recovery agar user bisa mengatur ulang password-nya sendiri.
  * Link di email akan mengarahkan user ke halaman /reset-password.
  * Catatan keamanan: Supabase tidak pernah mengungkap apakah email terdaftar,
@@ -272,7 +334,9 @@ export interface FormSubmission {
   winner_count?: number;
   prize_per_winner?: number;
   voucher_code?: string;
-  total_cost: number;
+  total_cost: number;          // grand total, termasuk PPN
+  subtotal?: number;           // DPP sebelum PPN (null utk submission pra-PPN)
+  ppn_amount?: number;         // PPN 11% (null utk submission pra-PPN)
   payment_status?: string;
   submission_method?: string;
   detected_keywords?: string[];
@@ -291,7 +355,10 @@ export interface Transaction {
   form_submission_id: string;
   payment_id?: string;
   payment_method?: string;
-  amount: number;
+  amount: number;              // grand total, termasuk PPN
+  subtotal?: number;           // DPP sebelum PPN
+  ppn_rate?: number;           // tarif PPN yang berlaku saat transaksi (mis. 0.11)
+  ppn_amount?: number;         // nominal PPN
   status: string;
   payment_url?: string;
   payment_channel?: string;
@@ -308,7 +375,10 @@ export interface Invoice {
   form_submission_id: string;
   payment_id: string;
   invoice_url: string;
-  amount: number;
+  amount: number;              // grand total, termasuk PPN
+  subtotal?: number;           // DPP sebelum PPN
+  ppn_rate?: number;           // tarif PPN yang berlaku (mis. 0.11)
+  ppn_amount?: number;         // nominal PPN
   status: string;
   entity_type?: 'submission' | 'extend';
   extend_id?: string;
@@ -333,7 +403,9 @@ export interface FormSubmissionExtend {
   additional_prize_per_winner?: number;
   is_new_month?: boolean;
   period_batch?: string;
-  total_cost: number;
+  total_cost: number;          // grand total, termasuk PPN
+  subtotal?: number;           // DPP sebelum PPN
+  ppn_amount?: number;         // PPN 11%
   voucher_code?: string;
   admin_notes?: string;
   created_at?: string;

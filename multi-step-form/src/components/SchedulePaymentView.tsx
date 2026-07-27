@@ -21,10 +21,10 @@ import {
 import { supabase, updateScheduleDates, updateFormStatus, createInvoice, createTransaction, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchSlotAvailability } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
 import { createManualInvoice } from '../utils/payment';
-import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount } from '../utils/cost-calculator';
+import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculatePpn } from '../utils/cost-calculator';
 
 // Max 4 regular ads per day, 4 extra ads per day
-import { MAX_REGULAR_ADS_PER_DAY as MAX_ADS_PER_DAY, MAX_EXTRA_ADS_PER_DAY } from '../utils/constants';
+import { MAX_REGULAR_ADS_PER_DAY as MAX_ADS_PER_DAY, MAX_EXTRA_ADS_PER_DAY, PPN_RATE } from '../utils/constants';
 
 interface SchedulePaymentViewProps {
     submission: {
@@ -354,6 +354,18 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
     const handleCancelSchedule = async () => {
         if (!submission?.id) return;
+
+        const { data: freshSub, error: checkError } = await supabase
+            .from('form_submissions')
+            .select('payment_status')
+            .eq('id', submission.id)
+            .single();
+
+        if (!checkError && freshSub && ['paid', 'completed'].includes(freshSub.payment_status)) {
+            toast.error('Submission ini sudah dibayar — reservasi slot tidak bisa dibatalkan dari sini.');
+            return;
+        }
+
         setIsLoading(true);
         try {
             await supabase
@@ -563,6 +575,10 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                 return;
             }
 
+            // totalAmount = subtotal (DPP); PPN 11% dipungut di atasnya.
+            const invoicePpn = calculatePpn(totalAmount);
+            const invoiceGrandTotal = totalAmount + invoicePpn;
+
             const itemSummary = items.map(item => `${item.name} (${item.qty}x)`).join(', ');
             const description = note.trim() ? `${itemSummary} - ${note.trim()}` : itemSummary;
 
@@ -574,7 +590,7 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
             const paymentResponse = await createManualInvoice({
                 formSubmissionId: submission.id,
-                amount: totalAmount,
+                amount: invoiceGrandTotal,
                 description,
                 customerInfo: {
                     fullName: submission.researcherName,
@@ -587,7 +603,10 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                 form_submission_id: submission.id,
                 payment_id: paymentResponse.payment_id,
                 invoice_url: paymentResponse.invoice_url,
-                amount: totalAmount,
+                amount: invoiceGrandTotal,
+                subtotal: totalAmount,
+                ppn_rate: PPN_RATE,
+                ppn_amount: invoicePpn,
                 status: 'pending'
             };
 
@@ -600,7 +619,10 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                 form_submission_id: submission.id,
                 payment_id: paymentResponse.payment_id,
                 payment_method: paymentMethod,
-                amount: totalAmount,
+                amount: invoiceGrandTotal,
+                subtotal: totalAmount,
+                ppn_rate: PPN_RATE,
+                ppn_amount: invoicePpn,
                 status: 'pending',
                 payment_url: paymentResponse.invoice_url,
                 note: noteJson
@@ -779,7 +801,7 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
                                     const dotColor = displayCount > activeMaxPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
 
-                                    const detailsForDate = slotDetails[dateStr] || [];
+                                    const detailsForDate = (slotDetails[dateStr] || []).filter(ad => ad.isExtra === isExtraMode);
 
                                     return (
                                         <TooltipProvider key={dateStr} delayDuration={100}>
@@ -1118,11 +1140,21 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                                         </Button>
                                     </div>
 
-                                    {/* Total */}
+                                    {/* Total (Subtotal + PPN 11%) */}
                                     <div className="border-t pt-4">
-                                        <div className="flex justify-between items-center text-lg font-semibold bg-gray-50/50 p-3 rounded-lg border border-gray-100">
-                                            <span className="text-gray-600 text-sm uppercase tracking-wider font-bold">Total Tagihan</span>
-                                            <span className="text-blue-700">Rp {new Intl.NumberFormat('id-ID').format(totalAmount)}</span>
+                                        <div className="bg-gray-50/50 p-3 rounded-lg border border-gray-100 space-y-2">
+                                            <div className="flex justify-between items-center text-sm text-gray-600">
+                                                <span>Subtotal</span>
+                                                <span>Rp {new Intl.NumberFormat('id-ID').format(totalAmount)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm text-gray-600">
+                                                <span>PPN 11%</span>
+                                                <span>Rp {new Intl.NumberFormat('id-ID').format(calculatePpn(totalAmount))}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-lg font-semibold pt-2 border-t border-gray-200">
+                                                <span className="text-gray-600 text-sm uppercase tracking-wider font-bold">Total Tagihan</span>
+                                                <span className="text-blue-700">Rp {new Intl.NumberFormat('id-ID').format(totalAmount + calculatePpn(totalAmount))}</span>
+                                            </div>
                                         </div>
                                     </div>
 

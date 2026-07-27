@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
-import { calculateTotalCost, getVoucherInfo } from '../utils/cost-calculator';
+import { calculateTotalCost, getVoucherInfo, isManualVerificationVoucher } from '../utils/cost-calculator';
 import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, getOwnProfile, type FormSubmission } from '../utils/supabase';
+import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { resolveSubmissionMode, type SubmissionMode } from '../utils/submissionMode';
 import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
 import { fetchSlotAvailability } from '../utils/supabase';
@@ -46,11 +47,16 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
   const [costCalculation, setCostCalculation] = useState<CostCalculation>({
     adCost: 0,
     incentiveCost: 0,
+    subtotal: 0,
+    ppn: 0,
     discount: 0,
     totalCost: 0
   });
 
-  const [voucherInfo, setVoucherInfo] = useState<{ isValid: boolean; message?: string; discount?: number }>({ isValid: false });
+  const [voucherInfo, setVoucherInfo] = useState<{ isValid: boolean; message?: string; discount?: number; isError?: boolean; isKilatEligible?: boolean }>({ isValid: false });
+  // ILKOMUNY sudah pernah dipakai akun ini (redemption lunas ATAU submission aktif)
+  // → voucher tak berlaku (diskon tak diterapkan, pesan ditampilkan).
+  const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
@@ -62,7 +68,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
 
   // Derive auto approval status
   const isManualForm = formData.isManualEntry || (formData.surveyUrl && !formData.surveyUrl.includes('docs.google.com/forms'));
-  const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
+  const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions && !isManualVerificationVoucher(formData.voucherCode);
 
   // Email invoice berbeda dari email login → invoice terkirim ke email custom
   const isEmailMismatch = user?.email && formData.email && formData.email.trim().toLowerCase() !== user.email.toLowerCase();
@@ -109,15 +115,19 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
     }
   };
 
-  // Hitung biaya saat form data berubah
+  // Hitung biaya + info voucher saat form data (atau status pakai ILKOMUNY) berubah.
+  // ILKOMUNY yang sudah dipakai → voucher di-strip: diskon TIDAK diterapkan & pesan
+  // "sudah pernah digunakan" tampil, tanpa memblokir submit (order lanjut harga normal).
   useEffect(() => {
-    const calculation = calculateTotalCost(formData);
-    setCostCalculation(calculation);
+    const effectiveForm = ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData;
+    setCostCalculation(calculateTotalCost(effectiveForm));
 
-    // Update voucher info
-    const info = getVoucherInfo(formData.voucherCode, formData.duration);
-    setVoucherInfo(info);
-  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode]);
+    if (ilkomunyBlocked) {
+      setVoucherInfo({ isValid: false, isError: true, message: 'Kode voucher ini sudah pernah digunakan (berlaku satu kali per akun).' });
+    } else {
+      setVoucherInfo(getVoucherInfo(formData.voucherCode, formData.duration));
+    }
+  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode, ilkomunyBlocked]);
 
   // Format angka ke format rupiah
   const formatRupiah = (amount: number) => {
@@ -301,8 +311,13 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
           : formData.referralSource,
         winner_count: formData.winnerCount,
         prize_per_winner: formData.prizePerWinner,
-        voucher_code: formData.voucherCode,
+        // ILKOMUNY yang sudah dipakai: simpan tanpa voucher agar recompute admin
+        // (SchedulePaymentView) tidak menerapkan ulang diskonnya. costCalculation
+        // sudah dihitung tanpa diskon (lihat effect di atas).
+        voucher_code: ilkomunyBlocked ? '' : formData.voucherCode,
         total_cost: costCalculation.totalCost,
+        subtotal: costCalculation.subtotal,
+        ppn_amount: costCalculation.ppn,
         payment_status: 'pending',
         submission_method: isManualForm ? 'manual' : 'google_import',
         detected_keywords: formData.detectedKeywords || [],
@@ -378,8 +393,8 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         // MANUAL ATAU SENSITIVE DATA
         const reasonForReview = formData.hasPersonalDataQuestions
           ? 'contains personal data questions'
-          : formData.voucherCode?.toUpperCase() === 'JFUFEB'
-            ? 'voucher JFUFEB used'
+          : isManualVerificationVoucher(formData.voucherCode)
+            ? `voucher ${formData.voucherCode?.toUpperCase()} used`
             : 'manual form entry';
         console.log(`Form needs admin review (${reasonForReview}), redirect ke halaman submit-success`);
 
@@ -450,8 +465,8 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
           </div>
         )}
 
-        {/* Warning Banner for JFUFEB Voucher */}
-        {formData.voucherCode?.toUpperCase() === 'JFUFEB' && (
+        {/* Warning Banner for manual-verification vouchers (JFUFEB / ILKOMUNY) */}
+        {isManualVerificationVoucher(formData.voucherCode) && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
             <div className="flex gap-4">
               <div className="flex-shrink-0 mt-0.5">
@@ -462,7 +477,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                   Verifikasi Voucher Promo
                 </h4>
                 <p className="text-sm text-blue-800 leading-relaxed">
-                  Penggunaan voucher <strong>JFUFEB</strong> memerlukan verifikasi manual oleh admin. Form Anda akan dikirimkan untuk direview dan Anda belum perlu melakukan pembayaran sekarang. Admin akan segera memproses pesanan Anda.
+                  Penggunaan voucher <strong>{formData.voucherCode?.toUpperCase()}</strong> memerlukan verifikasi manual oleh admin. Form Anda akan dikirimkan untuk direview dan Anda belum perlu melakukan pembayaran sekarang. Admin akan segera memproses pesanan Anda.
                 </p>
               </div>
             </div>
@@ -831,8 +846,20 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                 </div>
               )}
 
+              {/* Subtotal (DPP) */}
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-500">{t('subtotal')}</div>
+                <div className="text-sm text-gray-700">Rp {formatRupiah(costCalculation.subtotal)}</div>
+              </div>
+
+              {/* PPN 11% */}
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-500">{t('ppn')}</div>
+                <div className="text-sm text-gray-700">Rp {formatRupiah(costCalculation.ppn)}</div>
+              </div>
+
               {/* Total */}
-              <div className="flex justify-between items-end pt-4">
+              <div className="flex justify-between items-end pt-4 border-t border-dashed border-gray-200">
                 <div className="text-base font-bold text-gray-900">{t('totalPayment')}</div>
                 <div className="text-2xl font-bold" style={{ color: '#0091ff' }}>Rp {formatRupiah(costCalculation.totalCost)}</div>
               </div>

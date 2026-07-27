@@ -738,7 +738,11 @@ export function AnalyticsDashboard() {
                         </TableRow>
                         <TableRow>
                           <TableCell className="font-bold text-orange-700">JFUFEB</TableCell>
-                          <TableCell className="text-gray-600">Harga iklan flat Rp 1.000.000 (khusus durasi 7 hari).</TableCell>
+                          <TableCell className="text-gray-600">Harga iklan flat Rp 1.000.000 untuk durasi 7 hari; durasi lain maks. Rp 300.000/hari. Verifikasi manual. Berlaku s/d 20 Feb 2027. Tidak untuk Kilat.</TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell className="font-bold text-orange-700">ILKOMUNY</TableCell>
+                          <TableCell className="text-gray-600">Sama seperti JFUFEB (flat Rp 1.000.000/7 hari, lainnya maks. Rp 300.000/hari). Verifikasi manual. Berlaku s/d 31 Des 2026. Sekali pakai per akun (wajib login). Tidak untuk Kilat.</TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell className="font-bold text-orange-700">TEGARGANTENG</TableCell>

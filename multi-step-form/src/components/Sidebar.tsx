@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost } from '../utils/cost-calculator';
+import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { MobileProgressBar } from './MobileProgressBar';
 import { SidebarHeader } from './SidebarHeader';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -15,15 +16,21 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
   const [costCalculation, setCostCalculation] = useState<CostCalculation>({
     adCost: 0,
     incentiveCost: 0,
+    subtotal: 0,
+    ppn: 0,
     discount: 0,
     totalCost: 0
   });
 
+  // ILKOMUNY yang sudah dipakai akun ini → jangan tampilkan harga diskon.
+  const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
+
   // Hitung biaya saat form data berubah - hanya field yang relevan
   useEffect(() => {
-    const calculation = calculateTotalCost(formData);
+    const effectiveForm = ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData;
+    const calculation = calculateTotalCost(effectiveForm);
     setCostCalculation(calculation);
-  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode]);
+  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode, ilkomunyBlocked]);
 
   // Format angka ke format rupiah
   const formatRupiah = (amount: number) => {

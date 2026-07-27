@@ -1,5 +1,6 @@
 import type { SurveyFormData } from '../types';
-import { calculateTotalCost } from '../utils/cost-calculator';
+import { calculateTotalCost, isManualVerificationVoucher } from '../utils/cost-calculator';
+import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -15,19 +16,25 @@ interface UnifiedHeaderProps {
 export function UnifiedHeader({ currentStep, formData, onReset }: UnifiedHeaderProps) {
     const navigate = useNavigate();
     const { t } = useLanguage();
-    const calculation = useMemo(() => calculateTotalCost(formData), [
-        formData.questionCount,
-        formData.duration,
-        formData.winnerCount,
-        formData.prizePerWinner,
-        formData.voucherCode
-    ]);
+    // ILKOMUNY yang sudah dipakai akun ini → jangan tampilkan harga diskon.
+    const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
+    const calculation = useMemo(
+        () => calculateTotalCost(ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData),
+        [
+            formData.questionCount,
+            formData.duration,
+            formData.winnerCount,
+            formData.prizePerWinner,
+            formData.voucherCode,
+            ilkomunyBlocked
+        ]
+    );
 
     const formatRupiah = (amount: number) => {
         return new Intl.NumberFormat('id-ID').format(amount);
     };
 
-    const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && formData.voucherCode?.toUpperCase() !== 'JFUFEB';
+    const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && !isManualVerificationVoucher(formData.voucherCode);
 
     // Skema step tanpa biodata: 1 Detail Survei, 2 Jadwal (auto-approval saja),
     // 3 Review & Pembayaran. Step 4 = Jadwal Kilat, ditampilkan sebagai step 3.

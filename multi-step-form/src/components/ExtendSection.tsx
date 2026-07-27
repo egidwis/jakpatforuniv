@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, fetchSlotAvailability, createInvoice, createTransaction } from '@/utils/supabase';
 import type { FormSubmissionExtend, Transaction, Invoice } from '@/utils/supabase';
 import { createManualInvoice } from '@/utils/payment';
-import { MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
-import { calculateAdCostPerDay, calculateIncentiveCost } from '@/utils/cost-calculator';
+import { MAX_REGULAR_ADS_PER_DAY, PPN_RATE } from '@/utils/constants';
+import { calculateAdCostPerDay, calculateIncentiveCost, calculatePpn } from '@/utils/cost-calculator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -347,7 +347,10 @@ export function ExtendSection({
     setPaymentItems(paymentItems.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
+  // paymentTotal = subtotal (DPP) dari item; PPN dipungut di atasnya.
   const paymentTotal = paymentItems.reduce((sum, item) => sum + (item.qty * item.price), 0);
+  const paymentPpn = calculatePpn(paymentTotal);
+  const paymentGrandTotal = paymentTotal + paymentPpn;
 
   const handleCreatePaymentLink = async () => {
     if (!paymentExtend?.id) return;
@@ -377,10 +380,10 @@ export function ExtendSection({
       };
       const noteJson = JSON.stringify(noteData);
 
-      // Create DOKU invoice
+      // Create DOKU invoice — charge the PPN-inclusive grand total.
       const paymentResponse = await createManualInvoice({
         formSubmissionId: submissionId,
-        amount: paymentTotal,
+        amount: paymentGrandTotal,
         description,
         customerInfo: {
           fullName: researcherName || 'Client',
@@ -394,7 +397,10 @@ export function ExtendSection({
         form_submission_id: submissionId,
         payment_id: paymentResponse.payment_id,
         invoice_url: paymentResponse.invoice_url,
-        amount: paymentTotal,
+        amount: paymentGrandTotal,
+        subtotal: paymentTotal,
+        ppn_rate: PPN_RATE,
+        ppn_amount: paymentPpn,
         status: 'pending',
         entity_type: 'extend',
         extend_id: paymentExtend.id,
@@ -406,7 +412,10 @@ export function ExtendSection({
         form_submission_id: submissionId,
         payment_id: paymentResponse.payment_id,
         payment_method: 'doku',
-        amount: paymentTotal,
+        amount: paymentGrandTotal,
+        subtotal: paymentTotal,
+        ppn_rate: PPN_RATE,
+        ppn_amount: paymentPpn,
         status: 'pending',
         payment_url: paymentResponse.invoice_url,
         note: noteJson,
@@ -415,11 +424,13 @@ export function ExtendSection({
       };
       await createTransaction(transactionData);
 
-      // Update extend total_cost and status
+      // Update extend total_cost (grand total) + PPN breakdown and status
       await supabase
         .from('form_submissions_extend')
         .update({
-          total_cost: paymentTotal,
+          total_cost: paymentGrandTotal,
+          subtotal: paymentTotal,
+          ppn_amount: paymentPpn,
           submission_status: 'waiting_payment',
           payment_status: 'pending',
         })
@@ -980,12 +991,22 @@ export function ExtendSection({
               />
             </div>
 
-            {/* Total */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <span className="text-sm font-semibold text-gray-700">Total Invoice</span>
-              <span className="text-lg font-bold text-gray-900">
-                Rp {paymentTotal.toLocaleString('id-ID')}
-              </span>
+            {/* Total (Subtotal + PPN 11%) */}
+            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-1.5">
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <span>Subtotal</span>
+                <span>Rp {paymentTotal.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <span>PPN 11%</span>
+                <span>Rp {paymentPpn.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex items-center justify-between pt-1.5 border-t border-gray-200">
+                <span className="text-sm font-semibold text-gray-700">Total Invoice</span>
+                <span className="text-lg font-bold text-gray-900">
+                  Rp {paymentGrandTotal.toLocaleString('id-ID')}
+                </span>
+              </div>
             </div>
 
             {/* Customer info preview */}
