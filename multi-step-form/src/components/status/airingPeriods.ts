@@ -10,6 +10,9 @@ import type { OrderUiState } from './deriveOrderUiState';
 type TFn = (key: TranslationKey) => string;
 
 export type BookingState =
+    /** Order sudah masuk (Booking ID terbit) tapi masih menunggu review admin —
+     * belum ada jadwal, belum ada tagihan. Kartu tampil netral abu-abu. */
+    | 'in_review'
     | 'choose_schedule'
     | 'awaiting_invoice'
     | 'waiting_payment'
@@ -98,8 +101,11 @@ function buildIncentive(ext: FormSubmissionExtend | undefined, submission: FormS
 
 /**
  * Susun daftar jadwal iklan (asli + tiap perpanjangan) sebagai unit setara.
- * Jadwal asli hanya muncul setelah order lolos review (step >= 1) — sebelum
- * itu, kartu order masih di Fase Review, belum ada jadwal untuk ditampilkan.
+ * Jadwal asli terbit sejak order masuk (step >= 0), termasuk selagi menunggu
+ * review: Booking ID, tanggal submit, hadiah, dan seluruh angka biaya sudah
+ * final sejak checkout, jadi tidak ada alasan menahannya. Yang belum ada di
+ * step 0 cuma jadwal tayang & tagihan. Hanya order yang ditolak (step -1) yang
+ * tidak punya kartu sama sekali.
  */
 export function buildScheduleCards(
     submission: FormSubmission,
@@ -114,13 +120,14 @@ export function buildScheduleCards(
     const rawStep = getCurrentStepIndex(submission);
     const totalPeriods = 1 + extendsList.length;
 
-    if (rawStep >= 1 || ui.isExpired) {
+    if (rawStep >= 0 || ui.isExpired) {
         const step = ui.isExpired ? 1 : rawStep;
         const oStart = submission.start_date ? normalizeScheduleDate(submission.start_date) : null;
         const oEnd = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
 
         let bookingState: BookingState;
         if (ui.isExpired) bookingState = 'expired';
+        else if (step === 0) bookingState = 'in_review';
         else if (step === 1) bookingState = 'choose_schedule';
         else if (step === 2) {
             // Lewat batas 14.00 WIB menang atas waiting_payment/awaiting_invoice:
@@ -165,7 +172,9 @@ export function buildScheduleCards(
                 isExternalLink: !!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard'),
                 deadline: ui.paymentDeadline,
                 deadlineCause: ui.paymentDeadlineCause,
-                invoicePaymentId: invoiceId,
+                // Belum lolos review = belum ada tagihan; jangan tampilkan baris
+                // Invoice walau ada baris nyasar di tabel transactions.
+                invoicePaymentId: bookingState === 'in_review' ? null : invoiceId,
                 isPaidForLabel: ui.isPaid,
             },
             publication: {

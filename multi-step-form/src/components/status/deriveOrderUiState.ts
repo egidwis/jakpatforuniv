@@ -7,6 +7,7 @@ import {
     type EffectiveExtendStatus,
 } from '@/components/ProgressTracker';
 import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
+import { isManualVerificationVoucher } from '@/utils/cost-calculator';
 
 /**
  * Satu sumber kebenaran untuk state UI sebuah order. Dipakai oleh kartu
@@ -17,8 +18,10 @@ import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils
 
 export type OrderCalloutState =
     | 'revision'
+    /** Satu-satunya state review. Order yang lolos auto-approval langsung ke
+     * `waiting_payment` (step 2) dan tak pernah menyentuh step 0, jadi "review
+     * otomatis sedang berjalan" bukan state yang bisa ada. */
     | 'review_manual'
-    | 'review_auto'
     | 'choose_schedule'
     | 'payment'
     | 'awaiting_invoice'
@@ -77,12 +80,28 @@ export function getActiveDashboardPhase(currentStep: number): DashboardPhase {
     return null; // 4 completed
 }
 
-/** Order lewat jalur review otomatis (import Google Form tanpa keyword data pribadi) */
+/**
+ * Label RETROSPEKTIF: "order ini lolos auto-approval waktu checkout" — bukan
+ * "review sedang berjalan". Review otomatis 100% sinkron (jalan saat import
+ * Google Form di Step One, sebelum checkout) dan tidak ada reviewer latar
+ * belakang, jadi tidak ada state "auto review in progress" yang bisa dilaporkan.
+ *
+ * Harus cermin `isAutoApproval` di StepCheckout: gerbang voucher verifikasi
+ * manual (ILKOMUNY/JFUFEB) ikut dihitung — tanpa itu order voucher di atas
+ * Google Form bersih salah dilabeli "otomatis" padahal admin yang mereview.
+ *
+ * Tetap tidak 100% presisi untuk order yang sudah lewat step 0: `hasPersonalData
+ * Questions` tak pernah dipersistensi (proksinya `detected_keywords`), dan
+ * ILKOMUNY yang sudah terpakai disimpan dengan `voucher_code` kosong. Karena itu
+ * pemanggil TIDAK boleh memakai fungsi ini untuk memutuskan copy saat `step === 0`
+ * — di sana review selalu manual secara konstruksi.
+ */
 export function isAutoReviewed(submission: FormSubmission): boolean {
     return (
         submission.submission_method !== 'manual' &&
         (submission.survey_url || '').includes('docs.google.com/forms') &&
-        !(submission.detected_keywords && submission.detected_keywords.length > 0)
+        !(submission.detected_keywords && submission.detected_keywords.length > 0) &&
+        !isManualVerificationVoucher(submission.voucher_code)
     );
 }
 
@@ -166,7 +185,9 @@ export function deriveOrderUiState(
     } else if (hasExtendAwaitingPayment) {
         callout = 'extend_payment';
     } else if (currentStep === 0) {
-        callout = isAutoReviewed(submission) ? 'review_auto' : 'review_manual';
+        // Selalu manual: step 0 hanya tercapai kalau auto-approval DITOLAK
+        // (form manual / ada keyword data pribadi / voucher verifikasi manual).
+        callout = 'review_manual';
     } else if (currentStep === 1) {
         callout = 'choose_schedule';
     } else if (currentStep === 2) {
@@ -235,7 +256,6 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
     const statusText: Record<OrderCalloutState, string> = {
         revision: 'perlu revisi karena belum sesuai syarat & ketentuan (mis. menanyakan data pribadi responden); user bisa ajukan ulang dari halaman Order Saya',
         review_manual: 'sedang direview admin (maksimal 2 hari kerja, hari kerja Senin-Jumat)',
-        review_auto: 'sedang direview otomatis (hasil dalam beberapa menit)',
         choose_schedule: 'sudah disetujui, menunggu user memilih jadwal tayang di halaman Order Saya',
         payment: 'menunggu pembayaran dari user',
         awaiting_invoice: 'slot sudah dipesan, menunggu admin menerbitkan tagihan (maksimal 1 hari kerja)',

@@ -7,6 +7,8 @@ import {
     AccordionContent,
     AccordionItem,
 } from '@/components/ui/accordion';
+import { Chip } from '@/components/ui/chip';
+import { InfoTooltip } from './InfoTooltip';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import type { FormSubmission } from '@/utils/supabase';
@@ -57,6 +59,39 @@ export function getReviewChip(submission: FormSubmission, t: (key: TranslationKe
 }
 
 /**
+ * Metode review sebagai chip + tooltip. Label chip menyebut SUMBER form
+ * (Google Forms / Manual) karena itulah yang menentukan bisa-tidaknya diperiksa
+ * otomatis; tooltip menjelaskan SIAPA yang mereview. Dulu dua fakta ini
+ * dipadatkan jadi satu kalimat ("Review Otomatis - Google Form") yang jadi
+ * panjang tanpa memperjelas apa pun.
+ *
+ * Belum ada chip Microsoft Forms: jalur itu belum diimplementasikan, dan
+ * `forms.office.com` saat ini jatuh ke `submission_method='manual'` (lihat
+ * `isManualForm` di StepCheckout) — jadi ia memang tampil sebagai "Manual".
+ *
+ * Ikon dibiarkan DI LUAR chip supaya baris ini rata kiri dengan baris "N
+ * pertanyaan" & kriteria di atasnya — chip-nya sendiri cuma memuat label.
+ * Keterangan pindah ke ⓘ di sebelah kanan chip, pola yang sama dengan rumus
+ * biaya di Fase ②.
+ */
+function ReviewMethodChip({ auto }: { auto: boolean }) {
+    const { t } = useLanguage();
+    return (
+        <>
+            {auto ? (
+                <Bot className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            ) : (
+                <UserCheck className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            )}
+            <Chip variant={auto ? 'blue' : 'slate'} size="sm">
+                {t(auto ? 'reviewMethodAuto' : 'reviewMethodManual')}
+            </Chip>
+            <InfoTooltip content={t(auto ? 'reviewMethodAutoHint' : 'reviewMethodManualHint')} />
+        </>
+    );
+}
+
+/**
  * Fase ① — identitas survei (link, jumlah pertanyaan, kriteria, deskripsi)
  * dan status review. Semua info survei yang dulu tinggal di header kartu
  * pindah ke sini (keputusan product owner 2026-07-19): header kartu kini
@@ -70,6 +105,10 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
     const step = getCurrentStepIndex(submission);
     const rejected = step === -1;
     const inReview = step === 0;
+    /** Selama masih di step 0 metodenya PASTI manual — `isAutoReviewed` cuma
+     * label retrospektif untuk order yang sudah lolos, jadi baru dipercaya
+     * setelah review kelar. */
+    const showsAutoMethod = !inReview && isAutoReviewed(submission);
 
     const desc = (submission.description || '').trim();
     const description = /^form description not available$/i.test(desc) ? '' : desc;
@@ -158,8 +197,10 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
 
                     {inReview && (
                         <div className="rounded-xl border p-3 border-gray-200 bg-gray-50">
+                            {/* Selalu copy manual: review otomatis sudah tuntas sebelum
+                                checkout, jadi order yang duduk di sini pasti menunggu admin. */}
                             <p className="text-sm text-gray-600 leading-relaxed">
-                                {isAutoReviewed(submission) ? t('calloutReviewAuto') : t('calloutReviewManual')}
+                                {t('calloutReviewManual')}
                             </p>
                         </div>
                     )}
@@ -179,12 +220,7 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
                                 </div>
                             )}
                             <div className="flex items-center gap-1.5 text-sm">
-                                {isAutoReviewed(submission) ? (
-                                    <Bot className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                ) : (
-                                    <UserCheck className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                )}
-                                <span className="text-[#1a1a1a]">{isAutoReviewed(submission) ? t('reviewMethodAuto') : t('reviewMethodManual')}</span>
+                                <ReviewMethodChip auto={showsAutoMethod} />
                             </div>
                         </div>
                         {description && (

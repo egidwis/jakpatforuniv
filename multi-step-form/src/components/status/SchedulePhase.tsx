@@ -15,7 +15,6 @@ import {
     ExternalLink,
     FileText,
     Gift,
-    Info,
     Megaphone,
     Plus,
     RotateCcw,
@@ -29,16 +28,10 @@ import {
     AccordionContent,
     AccordionItem,
 } from '@/components/ui/accordion';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { InfoTooltip } from './InfoTooltip';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
-import { getCurrentStepIndex } from '@/components/ProgressTracker';
 import type { FormSubmission } from '@/utils/supabase';
 import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount } from '@/utils/cost-calculator';
 import {
@@ -52,23 +45,6 @@ const formatRupiah = (amount: number) =>
 
 const formatDateLong = (d: string) =>
     new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-
-function InfoTooltip({ content }: { content: ReactNode }) {
-    return (
-        <TooltipProvider delayDuration={150}>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <span className="inline-flex items-center align-middle ml-1 cursor-help text-gray-400 hover:text-gray-600 transition-colors">
-                        <Info className="w-3.5 h-3.5" />
-                    </span>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs bg-gray-900 text-white border-gray-800 px-2.5 py-1.5 shadow-lg max-w-xs">
-                    {content}
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
-}
 
 interface SchedulePhaseProps {
     submission: FormSubmission;
@@ -153,6 +129,15 @@ function CopyOrderIdButton({ id }: { id: string }) {
     );
 }
 
+/**
+ * Warna kolom value (kanan). Kartu yang masih menunggu review diredam jadi
+ * abu-abu bersama labelnya: angkanya memang sudah final sejak checkout, tapi
+ * belum mengikat apa pun sampai admin menyetujui — jangan tampil setegas kartu
+ * yang sudah berjalan. Dipakai di semua titik yang dulu hardcode `#1a1a1a`,
+ * supaya tidak ada value yang ketinggalan hitam sendirian.
+ */
+const valueTone = (muted?: boolean) => (muted ? 'text-gray-400' : 'text-[#1a1a1a]');
+
 interface RowDef {
     key: string;
     icon: ReactNode;
@@ -166,7 +151,7 @@ interface RowDef {
  * Info Booking & Detail Pembayaran dalam satu kartu, supaya kolom value kedua
  * section rata kiri.
  */
-function RowGrid({ rows }: { rows: RowDef[] }) {
+function RowGrid({ rows, muted }: { rows: RowDef[]; muted?: boolean }) {
     if (rows.length === 0) return null;
     return (
         <dl className="[display:grid] grid-cols-[9.5rem_1fr] gap-x-3 gap-y-1.5 items-center">
@@ -176,7 +161,7 @@ function RowGrid({ rows }: { rows: RowDef[] }) {
                         <span className="text-gray-400 shrink-0">{row.icon}</span>
                         {row.label}
                     </dt>
-                    <dd className="text-sm text-[#1a1a1a] font-medium min-w-0">{row.value}</dd>
+                    <dd className={`text-sm font-medium min-w-0 ${valueTone(muted)}`}>{row.value}</dd>
                 </Fragment>
             ))}
         </dl>
@@ -193,14 +178,14 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
     );
 }
 
-function IncentiveValue({ info }: { info: IncentiveInfo }) {
+function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean }) {
     const { t } = useLanguage();
     if (info.mode === 'plain' || info.mode === 'new_pool') {
         const perWinner = info.prizePerWinner || 0;
         const count = info.winnerCount || 0;
         return (
             <span className="inline-flex items-center gap-1.5 flex-wrap">
-                <span className="font-medium text-[#1a1a1a]">
+                <span className={`font-medium ${valueTone(muted)}`}>
                     @{formatRupiah(perWinner)}, {count} {t('winner')}
                 </span>
                 {info.mode === 'new_pool' && (
@@ -213,7 +198,7 @@ function IncentiveValue({ info }: { info: IncentiveInfo }) {
     }
     if (info.mode === 'accumulated') {
         return (
-            <span className="font-medium text-[#1a1a1a]">+{formatRupiah(info.additionalPrize!)}</span>
+            <span className={`font-medium ${valueTone(muted)}`}>+{formatRupiah(info.additionalPrize!)}</span>
         );
     }
     return <span className="text-xs text-gray-500 font-normal">{t('incentiveNoAdditionNote')}</span>;
@@ -225,7 +210,7 @@ const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-j
 const ctaSoftRose = 'rounded-full font-semibold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 shadow-sm transition-all gap-1.5';
 const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-700 border border-amber-300 hover:bg-amber-50 hover:text-amber-800 shadow-sm transition-all gap-1.5';
 
-function InfoSection({ card }: { card: ScheduleCard }) {
+function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const { t } = useLanguage();
     const rows: RowDef[] = [];
     if (card.info.createdAt) {
@@ -234,7 +219,7 @@ function InfoSection({ card }: { card: ScheduleCard }) {
     const durationText = `${t('duration')}: ${card.info.duration} ${t('days')}`;
     const airingValue = (
         <span className="inline-flex items-center gap-1.5 flex-wrap">
-            <span className="font-medium text-[#1a1a1a]">{card.dateRange}</span>
+            <span className={`font-medium ${valueTone(muted)}`}>{card.dateRange}</span>
             {card.dateRange !== '—' && (
                 <>
                     <span className="text-gray-500 font-normal text-xs">({t('airingStartTimeNote')})</span>
@@ -249,16 +234,16 @@ function InfoSection({ card }: { card: ScheduleCard }) {
         rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: <span className="font-mono text-xs">{card.info.periodBatch}</span> });
     }
     if (card.info.incentive) {
-        rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('rewardRespondentLabel'), value: <IncentiveValue info={card.info.incentive} /> });
+        rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('rewardRespondentLabel'), value: <IncentiveValue info={card.info.incentive} muted={muted} /> });
     }
     return (
         <Section label={t('sectionInfo')}>
-            <RowGrid rows={rows} />
+            <RowGrid rows={rows} muted={muted} />
         </Section>
     );
 }
 
-function BookingSection({ card, submission }: { card: ScheduleCard; submission: FormSubmission }) {
+function BookingSection({ card, submission, muted }: { card: ScheduleCard; submission: FormSubmission; muted?: boolean }) {
     const { t } = useLanguage();
     const b = card.booking;
     const questionCount = submission.question_count || 0;
@@ -271,12 +256,12 @@ function BookingSection({ card, submission }: { card: ScheduleCard; submission: 
         const formulaText = `${formatRupiah(costPerDay)} / hari (${questionCount} Qs) × ${duration} hari`;
         adCostValue = (
             <span className="inline-flex items-center gap-1">
-                <span className="font-semibold text-[#1a1a1a]">{formatRupiah(adCost)}</span>
+                <span className={`font-semibold ${valueTone(muted)}`}>{formatRupiah(adCost)}</span>
                 <InfoTooltip content={formulaText} />
             </span>
         );
     } else {
-        adCostValue = <span className="font-semibold text-[#1a1a1a]">{formatRupiah(adCost)}</span>;
+        adCostValue = <span className={`font-semibold ${valueTone(muted)}`}>{formatRupiah(adCost)}</span>;
     }
 
     let totalReward = 0;
@@ -301,7 +286,7 @@ function BookingSection({ card, submission }: { card: ScheduleCard; submission: 
             label: t('totalRewardLabel'),
             value: (
                 <span className="inline-flex items-center gap-1">
-                    <span className="font-semibold text-[#1a1a1a]">{formatRupiah(totalReward)}</span>
+                    <span className={`font-semibold ${valueTone(muted)}`}>{formatRupiah(totalReward)}</span>
                     {rewardTooltipText && <InfoTooltip content={rewardTooltipText} />}
                 </span>
             ),
@@ -312,7 +297,7 @@ function BookingSection({ card, submission }: { card: ScheduleCard; submission: 
         const discount = calculateDiscount(card.info.voucherCode, adCost, totalReward, duration);
         const voucherElement = (
             <span className="inline-flex items-center gap-1.5 flex-wrap">
-                <span className="font-mono font-bold text-gray-800 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-xs uppercase tracking-wide">
+                <span className={`font-mono font-bold bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-xs uppercase tracking-wide ${muted ? 'text-gray-400' : 'text-gray-800'}`}>
                     {card.info.voucherCode}
                 </span>
                 {discount > 0 && (
@@ -332,7 +317,7 @@ function BookingSection({ card, submission }: { card: ScheduleCard; submission: 
         label: t('totalPaymentLabel'),
         value: (
             <span className="inline-flex items-center gap-1.5 flex-wrap">
-                <span className="text-base font-bold text-[#1a1a1a]">
+                <span className={`text-base font-bold ${valueTone(muted)}`}>
                     {formatRupiah(showsPreTax ? b.subtotal! : b.amount || 0)}
                 </span>
                 {showsPreTax && (
@@ -363,7 +348,7 @@ function BookingSection({ card, submission }: { card: ScheduleCard; submission: 
 
     return (
         <Section label={t('sectionBookingPayment')}>
-            <RowGrid rows={rows} />
+            <RowGrid rows={rows} muted={muted} />
         </Section>
     );
 }
@@ -372,6 +357,15 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     const { t } = useLanguage();
     const b = card.booking;
 
+    if (b.state === 'in_review') {
+        return (
+            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50">
+                <p className="text-sm text-gray-600 leading-relaxed">
+                    {t('scheduleEmptyPending')}
+                </p>
+            </div>
+        );
+    }
     if (b.state === 'awaiting_invoice') {
         return (
             <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50">
@@ -510,13 +504,15 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
  */
 export function SchedulePhase({ submission, cards, onReschedule, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
-    const step = getCurrentStepIndex(submission);
 
     return (
         <div>
             {cards.length === 0 ? (
+                /* Satu-satunya order tanpa kartu jadwal adalah yang ditolak —
+                   order yang masih direview sudah punya kartunya sendiri
+                   (Booking ID terbit sejak submit, lihat `buildScheduleCards`). */
                 <p className="text-sm text-gray-400 rounded-xl border border-dashed border-gray-200 px-3 py-4 text-center">
-                    {step === -1 ? t('scheduleEmptyRejected') : t('scheduleEmptyPending')}
+                    {t('scheduleEmptyRejected')}
                 </p>
             ) : (
                 <>
@@ -528,6 +524,15 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                     >
                         {cards.map((card) => {
                             const shortId = `#${card.info.id.slice(0, 8).toUpperCase()}`;
+                            /* Booking ID diredam untuk kartu yang belum aktif
+                               (review) maupun yang sudah mati (dibatalkan). */
+                            const mutedId = card.booking.state === 'in_review' || card.booking.state === 'cancelled';
+                            /* Isi kartu diredam KHUSUS saat masih review — lewat
+                               `valueTone` per-value, bukan `opacity`/`grayscale` di
+                               container: keduanya ikut memudarkan chip & aksen
+                               Rupiah, dan `[&_*]:text-*` kalah/menang cascade tak
+                               terduga lawan styles.css legacy. */
+                            const pendingReview = card.booking.state === 'in_review';
                             return (
                             <AccordionItem key={card.key} value={card.key} className="border-b-0 px-3">
                                 <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
@@ -536,7 +541,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                         className="flex flex-1 items-center gap-1 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all"
                                     >
                                         {/* Tampilkan "Booking ID: #ID" pada tiap kartu */}
-                                        <span className={`text-xs font-bold shrink-0 ${card.booking.state === 'cancelled' ? 'text-gray-400' : 'text-[#1a1a1a]'}`}>
+                                        <span className={`text-xs font-bold shrink-0 ${mutedId ? 'text-gray-400' : 'text-[#1a1a1a]'}`}>
                                             <span>Booking ID: </span>
                                             <span className="font-mono">{shortId}</span>
                                         </span>
@@ -548,8 +553,8 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                 </AccordionPrimitive.Header>
                                 <AccordionContent className="pb-3 pt-1.5 space-y-4">
                                     <ScheduleBanner card={card} onReschedule={onReschedule} />
-                                    <InfoSection card={card} />
-                                    <BookingSection card={card} submission={submission} />
+                                    <InfoSection card={card} muted={pendingReview} />
+                                    <BookingSection card={card} submission={submission} muted={pendingReview} />
                                 </AccordionContent>
                             </AccordionItem>
                             );

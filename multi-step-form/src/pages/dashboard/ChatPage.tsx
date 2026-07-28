@@ -355,7 +355,7 @@ ${orderContext}
         const calloutSet = new Set(orderStates.map((o) => o.ui.callout));
 
         if (calloutSet.has('payment') || calloutSet.has('extend_payment')) chips.push('Bagaimana cara membayar order saya?');
-        if (calloutSet.has('review_manual') || calloutSet.has('review_auto')) chips.push('Berapa lama proses review survei?');
+        if (calloutSet.has('review_manual')) chips.push('Berapa lama proses review survei?');
         if (calloutSet.has('ready_to_launch') || calloutSet.has('payment') || calloutSet.has('awaiting_invoice')) chips.push('Kapan survei saya tayang?');
         if (calloutSet.has('live')) {
             chips.push('Survei saya sedang tayang, berapa responden yang bisa didapat dalam sehari?');

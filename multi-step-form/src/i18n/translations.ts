@@ -506,7 +506,6 @@ export const translations = {
 
     // Dashboard revamp — next-step callout
     calloutReviewManual: "Your survey is being reviewed by our admin — max 2 working days (Mon–Fri). We'll notify you by email.",
-    calloutReviewAuto: "Automatic review in progress — results usually appear within minutes.",
     calloutDetectedKeywords: "Detected:",
     calloutChooseSchedule: "Your survey is approved! Pick an airing schedule to continue.",
     calloutPayBefore: "Complete your payment before",
@@ -539,8 +538,12 @@ export const translations = {
     reviewChipRejected: "Needs Revision",
     reviewChipPending: "Awaiting Review",
     reviewChipApproved: "Approved",
-    reviewMethodAuto: "Auto Review - Google Form",
-    reviewMethodManual: "Manual Review - Admin",
+    // Label chip = SUMBER form; hint = SIAPA yang mereview. Dua fakta berbeda
+    // yang dulu dipadatkan jadi satu kalimat ("Auto Review - Google Form").
+    reviewMethodAuto: "Google Forms",
+    reviewMethodManual: "Manual Review",
+    reviewMethodAutoHint: "Auto-review",
+    reviewMethodManualHint: "Reviewed by Admin",
     openLinkInNewTab: "Open link in new tab",
 
     // Order card v3 — phase ② Jadwal Iklan (schedule cards)
@@ -1074,7 +1077,6 @@ export const translations = {
 
     // Dashboard revamp — callout langkah berikutnya
     calloutReviewManual: "Survei kamu sedang direview admin — maksimal 2 hari kerja (Senin–Jumat). Hasilnya kami kabari via email.",
-    calloutReviewAuto: "Review otomatis sedang berjalan — hasil biasanya keluar dalam beberapa menit.",
     calloutDetectedKeywords: "Terdeteksi:",
     calloutChooseSchedule: "Survei kamu disetujui! Pilih jadwal tayang untuk melanjutkan.",
     calloutPayBefore: "Selesaikan pembayaran sebelum",
@@ -1107,8 +1109,10 @@ export const translations = {
     reviewChipRejected: "Perlu Revisi",
     reviewChipPending: "Menunggu Review",
     reviewChipApproved: "Disetujui",
-    reviewMethodAuto: "Review Otomatis - Google Form",
-    reviewMethodManual: "Review Manual - Admin",
+    reviewMethodAuto: "Google Forms",
+    reviewMethodManual: "Manual Review",
+    reviewMethodAutoHint: "Review otomatis",
+    reviewMethodManualHint: "Direview admin",
     openLinkInNewTab: "Buka link di tab baru",
 
     // Order card v3 — fase ② Jadwal Iklan (kartu jadwal)
