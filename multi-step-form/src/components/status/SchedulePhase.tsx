@@ -84,6 +84,7 @@ function bookingStatusStyle(state: ScheduleCard['booking']['state']): { bg: stri
  * status cuma py satu rumah (chip), bukan dua yang berisiko drift. */
 function ScheduleChip({ card }: { card: ScheduleCard }) {
     const { t } = useLanguage();
+    if (card.booking.state === 'in_review') return null;
     const style = bookingStatusStyle(card.booking.state);
     return (
         <span className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${style.bg} ${style.text}`}>

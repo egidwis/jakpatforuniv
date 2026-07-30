@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
+import { AdsFlowCard } from './AdsFlowCard';
 import { StepOneMethodSelection } from './StepOneMethodSelection';
 import { StepOneGoogleForm } from './StepOneGoogleForm';
 import { StepOneFormFields } from './StepOneFormFields';
@@ -188,25 +189,23 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   };
 
   // Render based on flow state
-  if (flowState === 'method-selection') {
+  if (flowState === 'method-selection' || flowState === 'google-form') {
+    const isImport = flowState === 'google-form';
     return (
       <>
-        <StepOneMethodSelection onSelectMethod={handleMethodSelection} />
-        {profileSheet}
-      </>
-    );
-  }
-
-  if (flowState === 'google-form') {
-    return (
-      <>
-        <StepOneGoogleForm
-          formData={formData}
-          updateFormData={updateFormData}
-          onBack={handleBackToMethodSelection}
-          onSwitchMethod={handleSwitchToManual}
-          onFormReady={handleFormReady}
-        />
+        <AdsFlowCard step={isImport ? 'import' : 'method'}>
+          {isImport ? (
+            <StepOneGoogleForm
+              formData={formData}
+              updateFormData={updateFormData}
+              onBack={handleBackToMethodSelection}
+              onSwitchMethod={handleSwitchToManual}
+              onFormReady={handleFormReady}
+            />
+          ) : (
+            <StepOneMethodSelection onSelectMethod={handleMethodSelection} />
+          )}
+        </AdsFlowCard>
         {profileSheet}
       </>
     );

@@ -7,7 +7,6 @@ import {
     AccordionContent,
     AccordionItem,
 } from '@/components/ui/accordion';
-import { Chip } from '@/components/ui/chip';
 import { InfoTooltip } from './InfoTooltip';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
@@ -83,9 +82,9 @@ function ReviewMethodChip({ auto }: { auto: boolean }) {
             ) : (
                 <UserCheck className="w-3.5 h-3.5 text-gray-400 shrink-0" />
             )}
-            <Chip variant={auto ? 'blue' : 'slate'} size="sm">
+            <span className="text-[#1a1a1a] font-bold text-xs">
                 {t(auto ? 'reviewMethodAuto' : 'reviewMethodManual')}
-            </Chip>
+            </span>
             <InfoTooltip content={t(auto ? 'reviewMethodAutoHint' : 'reviewMethodManualHint')} />
         </>
     );
@@ -118,38 +117,9 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
             <AccordionItem value="review" className="border-b-0 px-3">
                 <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
                     <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-2 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all">
-                        {submission.survey_url ? (
-                            <span className="flex items-center gap-1.5 min-w-0 text-sm">
-                                <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                <span className="truncate text-[#1a1a1a] font-medium">{submission.survey_url.replace(/^https?:\/\//, '')}</span>
-                                <span
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        window.open(submission.survey_url, '_blank', 'noopener,noreferrer');
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                            e.stopPropagation();
-                                            e.preventDefault();
-                                            window.open(submission.survey_url, '_blank', 'noopener,noreferrer');
-                                        }
-                                    }}
-                                    className="p-1 rounded-md text-gray-400 hover:text-jfu-primary hover:bg-gray-100 transition-colors shrink-0 flex items-center justify-center cursor-pointer"
-                                    title={t('openLinkInNewTab')}
-                                    aria-label={t('openLinkInNewTab')}
-                                >
-                                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                                </span>
-                            </span>
-                        ) : (
-                            <span className="flex items-center gap-1.5 min-w-0 text-sm">
-                                <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                <span className="truncate text-[#1a1a1a] font-medium">{submission.question_count} {t('questionsUnit')}</span>
-                            </span>
-                        )}
+                        <span className="flex items-center gap-1.5 min-w-0 text-sm">
+                            <ReviewMethodChip auto={showsAutoMethod} />
+                        </span>
                         <span className="flex-1 min-w-2" />
                         {getReviewChip(submission, t)}
                     </AccordionPrimitive.Trigger>
@@ -209,6 +179,22 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
                         {/* Stack satu kolom, bukan class `grid` — styles.css legacy
                             `.grid { gap: 1.5rem }` menang cascade & merenggangkan baris. */}
                         <div className="space-y-1.5">
+                            {submission.survey_url && (
+                                <div className="flex items-center gap-1.5 text-sm min-w-0">
+                                    <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                    <span className="truncate text-[#1a1a1a] font-medium">{submission.survey_url.replace(/^https?:\/\//, '')}</span>
+                                    <a
+                                        href={submission.survey_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1 rounded-md text-gray-400 hover:text-jfu-primary hover:bg-gray-100 transition-colors shrink-0 flex items-center justify-center cursor-pointer"
+                                        title={t('openLinkInNewTab')}
+                                        aria-label={t('openLinkInNewTab')}
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                                    </a>
+                                </div>
+                            )}
                             <div className="flex items-center gap-1.5 text-sm">
                                 <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                                 <span className="text-[#1a1a1a] font-medium">{submission.question_count} {t('questionsUnit')}</span>
@@ -219,9 +205,6 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
                                     <span className="text-[#1a1a1a]">{submission.criteria_responden}</span>
                                 </div>
                             )}
-                            <div className="flex items-center gap-1.5 text-sm">
-                                <ReviewMethodChip auto={showsAutoMethod} />
-                            </div>
                         </div>
                         {description && (
                             <p className="text-sm text-gray-600 leading-relaxed pt-1.5">{description}</p>

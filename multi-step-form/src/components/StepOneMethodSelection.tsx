@@ -1,136 +1,144 @@
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import { Link } from 'react-router-dom';
+import { ArrowLeft, Bot, ChevronDown, ChevronRight, Download, UserCheck, Zap } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
+import { InfoTooltip } from '@/components/status/InfoTooltip';
 import { useLanguage } from '../i18n/LanguageContext';
-import { Zap, CheckCircle2, Clock, Info, BarChart3, Smartphone, Tag, CalendarRange, Download, PenLine, ChevronRight } from 'lucide-react';
-import { calculateAdCostPerDay } from '../utils/cost-calculator';
 
 interface StepOneMethodSelectionProps {
   onSelectMethod: (method: 'google' | 'manual') => void;
 }
 
 /**
- * Pintu masuk produk Iklan Survei (/dashboard/submit-iklan) — layar pertama
- * flow submission. Bukan sekadar pemilih metode input: bagian atas
- * mengedukasi produknya (jangkauan, harga mulai, durasi) supaya user paham
- * apa yang dibeli sebelum memilih cara mengisi data survei.
+ * Body "pilih jalur review" dari kartu pintu-masuk Iklan Survei — dirender
+ * di dalam `AdsFlowCard` (cap biru + footer disclaimer T&C ada di sana, lihat
+ * doc comment-nya untuk alasan gradien/kontras & kenapa disclaimer wajib ada).
+ *
+ * Dua keputusan desain khusus file ini:
+ * 1. Level atas = METODE REVIEW (otomatis vs admin), sumber form turun jadi
+ *    anak accordion. Metode di halaman ini memang menentukan jalur review, jadi
+ *    judulnya langsung menyebut itu — tidak perlu chip yang mengulang judul.
+ *    Istilahnya reuse dari order card (lihat ReviewMethodChip di
+ *    status/ReviewPhase.tsx) supaya konsisten sampai user melihat statusnya.
+ * 2. Subtitle kedua baris WAJIB menyebut sumber form. Tanpa itu user Typeform
+ *    menekan "Review otomatis", tidak menemukan Typeform di dalamnya, lalu
+ *    mundur — dead-end yang sengaja dicegah saat struktur ini dipilih.
+ *
+ * Belum ada AI di jalur review (parser deterministik + regex PII), jadi tidak
+ * ada label "oleh AI" di sini. Harga juga sengaja tidak ditampilkan — angkanya
+ * bisa basi dan acuan "maks 15 pertanyaan" gampang disalahartikan jadi batas
+ * keras; harga muncul di checkout.
  */
 export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectionProps) {
   const { t } = useLanguage();
 
-  // Harga mulai diturunkan dari kalkulator harga (tier terendah, ≤15
-  // pertanyaan) — bukan string hardcode, supaya tidak desync dengan pricing.
-  const startingPrice = new Intl.NumberFormat('id-ID').format(calculateAdCostPerDay(15));
+  const reviewNoteTooltipContent = (
+    <span className="leading-relaxed">
+      {t('adsEntryReviewNotePart1')}{' '}
+      <a
+        href="/homepage/terms-conditions.html"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline hover:text-gray-200"
+      >
+        {t('termsConditions')}
+      </a>
+      {t('adsEntryReviewNotePart2')}
+    </span>
+  );
 
-  const facts = [
-    { icon: Smartphone, label: t('adsEntryFactReach') },
-    { icon: Tag, label: t('adsEntryFactPrice').replace('{price}', `Rp${startingPrice}`) },
-    { icon: CalendarRange, label: t('adsEntryFactDuration') },
-  ];
+  const rowBase = 'w-full flex items-center gap-3 px-4 md:px-5 py-3.5 min-h-11 text-left transition-colors';
+  const iconBox = 'inline-flex shrink-0 items-center justify-center';
+  const iconBoxTop = `${iconBox} w-11 h-11 rounded-xl`;
+  const iconBoxChild = `${iconBox} w-9 h-9 rounded-lg`;
 
   return (
-    <div className="max-w-3xl mx-auto">
-      {/* Header edukasi produk */}
-      <div className="text-center mb-8">
-        <span className="inline-flex w-14 h-14 rounded-2xl bg-jfu-primary/[0.08] text-jfu-primary items-center justify-center mb-4">
-          <BarChart3 className="w-7 h-7" />
-        </span>
-        <h1 className="text-2xl md:text-3xl font-bold text-[#1a1a1a]">{t('productAdsTitle')}</h1>
-        <p className="text-sm md:text-base text-[#666] mt-2 max-w-md mx-auto leading-relaxed">
-          <span className="font-semibold text-jfu-primary">{t('productAdsHook')}</span>{' '}
-          {t('productAdsDesc')}
-        </p>
-
-        {/* Fakta ringkas: jangkauan, harga mulai, durasi */}
-        <div className="flex flex-wrap justify-center gap-2 mt-5">
-          {facts.map(({ icon: Icon, label }) => (
-            <span
-              key={label}
-              className="inline-flex items-center gap-1.5 rounded-full border border-jfu-primary/[0.15] bg-white px-3 py-1.5 text-xs font-medium text-[#444] shadow-sm"
-            >
-              <Icon className="w-3.5 h-3.5 text-jfu-primary shrink-0" />
-              {label}
-            </span>
-          ))}
-        </div>
+    <>
+      <div className="flex items-center gap-0.5">
+        <h2 className="text-base md:text-lg font-bold text-[#1a1a1a]">{t('adsEntryMethodQuestion')}</h2>
+        <InfoTooltip content={reviewNoteTooltipContent} />
       </div>
 
-      {/* Pilihan metode input */}
-      <div className="text-center mb-5">
-        <h2 className="text-base md:text-lg font-bold text-[#1a1a1a]">{t('startByFillingData')}</h2>
-        <p className="text-sm text-[#666] mt-1">{t('chooseMethodSuitable')}</p>
-      </div>
+      <div className="mt-3.5 flex flex-col gap-3">
+        {/* Jalur 1: review otomatis — accordion ber-border rounded */}
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="auto" className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+            <AccordionPrimitive.Header className="flex">
+              <AccordionPrimitive.Trigger className={`${rowBase} hover:bg-jfu-primary/[0.04] [&[data-state=open]>svg]:rotate-180`}>
+                <span className={`${iconBoxTop} bg-jfu-primary/[0.08] text-jfu-primary`}>
+                  <Bot className="w-5 h-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-[#1a1a1a]">{t('reviewMethodAutoHint')}</span>
+                  <span className="flex items-center gap-1 text-xs mt-0.5 leading-relaxed flex-wrap">
+                    <Zap className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                    <span className="font-semibold text-emerald-600">{t('adsEntryAutoRowHighlight')}</span>
+                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-500">{t('adsEntryAutoRowTime')}</span>
+                  </span>
+                </span>
+                <ChevronDown className="w-4 h-4 shrink-0 text-jfu-primary/50 transition-transform duration-200" />
+              </AccordionPrimitive.Trigger>
+            </AccordionPrimitive.Header>
 
-      <div className="grid gap-4 sm:grid-cols-2 items-stretch">
-        {/* PRIMARY: Google Form Import */}
-        <div className="relative flex flex-col rounded-2xl border-2 border-jfu-primary/40 bg-white p-5 shadow-card">
-          <span className="absolute -top-3 right-4 inline-flex items-center gap-1 rounded-full bg-amber-400/90 px-3 py-1 text-[10px] font-bold tracking-wide text-amber-950 shadow-sm">
-            ⭐ {t('recommended')}
-          </span>
+            <AccordionContent className="pb-0 pt-0 bg-gray-50/50 border-t border-gray-100 divide-y divide-gray-100">
+              <button
+                type="button"
+                onClick={() => onSelectMethod('google')}
+                className={`${rowBase} pl-10 md:pl-12 hover:bg-jfu-primary/[0.04]`}
+              >
+                <span className={`${iconBoxChild} bg-jfu-primary/[0.08] text-jfu-primary`}>
+                  <Download className="w-4 h-4" />
+                </span>
+                <span className="min-w-0 flex-1 text-sm font-semibold text-[#1a1a1a]">{t('reviewMethodAuto')}</span>
+                <ChevronRight className="w-4 h-4 shrink-0 text-jfu-primary/50" />
+              </button>
 
-          <span className="inline-flex w-11 h-11 rounded-xl bg-jfu-primary text-white items-center justify-center mb-4">
-            <Zap className="w-5 h-5" />
-          </span>
+              <div aria-disabled="true" className={`${rowBase} pl-10 md:pl-12`}>
+                <span className={`${iconBoxChild} bg-gray-100 text-gray-400`}>
+                  <Download className="w-4 h-4" />
+                </span>
+                <span className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-gray-500">{t('msFormsImportTitle')}</span>
+                  <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                    {t('comingSoon')}
+                  </span>
+                </span>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
-          <h3 className="text-base font-bold text-[#1a1a1a] mb-3">{t('googleFormImportTitle')}</h3>
-
-          <ul className="space-y-2.5 mb-6">
-            <li className="flex items-center gap-2.5 text-sm text-[#555]">
-              <CheckCircle2 className="w-4 h-4 text-jfu-primary shrink-0" />
-              {t('benefit100Accurate')}
-            </li>
-            <li className="flex items-center gap-2.5 text-sm font-semibold text-[#1a1a1a]">
-              <Zap className="w-4 h-4 text-amber-500 shrink-0" />
-              {t('benefitAutoFill')}
-            </li>
-            <li className="flex items-center gap-2.5 text-sm text-[#555]">
-              <Clock className="w-4 h-4 text-emerald-500 shrink-0" />
-              {t('benefitSaveTime')}
-            </li>
-          </ul>
-
-          <button
-            onClick={() => onSelectMethod('google')}
-            className="mt-auto w-full min-h-11 inline-flex items-center justify-center gap-2 rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 transition-all"
-          >
-            <Download className="w-4 h-4" />
-            {t('importFromGoogleForm')}
-          </button>
-        </div>
-
-        {/* SECONDARY: Manual Input */}
-        <div className="flex flex-col rounded-2xl border border-jfu-primary/[0.12] bg-white p-5 shadow-card">
-          <span className="inline-flex w-11 h-11 rounded-xl bg-gray-100 text-gray-500 items-center justify-center mb-4">
-            <PenLine className="w-5 h-5" />
-          </span>
-
-          <h3 className="text-base font-bold text-[#1a1a1a] mb-2">{t('manualFillTitle')}</h3>
-
-          <p className="text-sm text-[#666] leading-relaxed">{t('manualFillDescription')}</p>
-
-          <div className="flex items-center gap-1.5 mt-4 mb-4 text-jfu-primary/80 text-xs">
-            <Info className="w-3.5 h-3.5 shrink-0" strokeWidth={2.5} />
-            <span className="font-medium">{t('requiresAdminReview')}</span>
-          </div>
-
-          <button
-            onClick={() => onSelectMethod('manual')}
-            className="mt-auto w-full min-h-11 inline-flex items-center justify-center rounded-full font-semibold text-jfu-primary border border-jfu-primary/25 bg-white hover:bg-jfu-primary/[0.06] transition-colors"
-          >
-            {t('fillManually')}
-          </button>
-        </div>
-      </div>
-
-      {/* Cross-link edukasi Kilat */}
-      <div className="text-center mt-8">
-        <Link
-          to="/dashboard/submit-kilat"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#666] hover:text-jfu-primary transition-colors"
+        {/* Jalur 2: review admin — tombol ber-border rounded */}
+        <button
+          type="button"
+          onClick={() => onSelectMethod('manual')}
+          className={`${rowBase} border border-gray-200 rounded-xl bg-white hover:bg-jfu-primary/[0.04] transition-colors`}
         >
-          <Zap className="w-4 h-4 text-amber-500" />
-          {t('adsEntryKilatCrossLink')}
-          <ChevronRight className="w-4 h-4" />
+          <span className={`${iconBoxTop} bg-gray-100 text-gray-500`}>
+            <UserCheck className="w-5 h-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-[#1a1a1a]">{t('reviewMethodManualHint')}</span>
+            <span className="flex items-center gap-1 text-xs mt-0.5 leading-relaxed flex-wrap text-gray-500">
+              <span>{t('adsEntryManualRowHighlight')}</span>
+              <span className="text-gray-300">·</span>
+              <span>{t('adsEntryManualRowTime')}</span>
+            </span>
+          </span>
+          <ChevronRight className="w-4 h-4 shrink-0 text-gray-400" />
+        </button>
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-gray-100 flex justify-center">
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-500" />
+          <span>{t('backToOrders')}</span>
         </Link>
       </div>
-    </div>
+    </>
   );
 }

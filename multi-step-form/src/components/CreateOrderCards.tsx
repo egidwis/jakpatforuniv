@@ -127,17 +127,10 @@ export function ProductCardGrid() {
  */
 export function CreateOrderCards() {
     const { t } = useLanguage();
-    const [open, setOpen] = useState<boolean>(() => {
-        try {
-            return localStorage.getItem(OPEN_KEY) === '1';
-        } catch { /* localStorage tidak tersedia — pakai default */ }
-        return false;
-    });
+    const [open, setOpen] = useState<boolean>(false);
 
     const handleOpenChange = (value: string) => {
-        const next = value === 'products';
-        try { localStorage.setItem(OPEN_KEY, next ? '1' : '0'); } catch { /* abaikan */ }
-        setOpen(next);
+        setOpen(value === 'products');
     };
 
     return (

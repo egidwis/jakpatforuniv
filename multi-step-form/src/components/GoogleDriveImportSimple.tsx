@@ -1,13 +1,13 @@
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import { AlertCircle, AlertTriangle, Check, ChevronDown, Loader2, ShieldCheck } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
 import { simpleGoogleAuth, type AuthResult } from '../utils/google-auth-simple';
 import { googlePicker } from '../utils/google-picker-browser';
 import { googleFormsApi } from '../utils/google-forms-api-browser';
 import type { SurveyFormData } from '../types';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../i18n/LanguageContext';
-import { PersonalDataWarningModal } from './PersonalDataWarningModal';
 
 interface GoogleDriveImportSimpleProps {
   formData: SurveyFormData;
@@ -16,6 +16,26 @@ interface GoogleDriveImportSimpleProps {
   onCancel?: () => void;
 }
 
+const REVIEW_STEP_MS = 1800;
+
+/**
+ * Import Google Form — restyle Soft DNA (v6), dirender di dalam body
+ * `AdsFlowCard`. Dulu punya kartu `.google-step-card` (border 2px, padding
+ * 2rem) dan biru `#0091ff` sendiri, beda dari kartu pintu masuk; sekarang
+ * blok Tailwind ringan yang cocok duduk di dalamnya.
+ *
+ * `isReviewing` SENGAJA state terpisah dari `isSelecting`. `isSelecting`
+ * sudah `true` sejak Google Picker dibuka dan baru `false` di `finally` —
+ * memakai itu untuk panel "sedang direview" berarti panel muncul saat picker
+ * MASIH terbuka dan tetap muncul kalau user membatalkannya: mengklaim
+ * pemeriksaan yang belum terjadi. `isReviewing` baru jadi true setelah
+ * `selectedFile` terbukti ada, tepat sebelum `extractToSurveyInfo`.
+ *
+ * Checklist di panel review TIDAK BOLEH memuat angka (mis. jumlah
+ * pertanyaan) — itu baru diketahui setelah ekstraksi selesai. Timing
+ * centangnya sendiri kosmetik (sama sifatnya dengan `minDuration` yang sudah
+ * ada sebelum ini), tapi klaim datanya tidak boleh kosmetik.
+ */
 export function GoogleDriveImportSimple({
   updateFormData,
   onFormDataLoaded,
@@ -26,9 +46,27 @@ export function GoogleDriveImportSimple({
   const [googleEmail, setGoogleEmail] = useState<string>('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [reviewStepIndex, setReviewStepIndex] = useState(0);
   const [importedForm, setImportedForm] = useState<any>(null);
+  const [failedFormTitle, setFailedFormTitle] = useState<string>('Google Form');
   const [connectError, setConnectError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+
+  // Checklist kosmetik: mencentang berurutan selama isReviewing. Reset begitu
+  // review selesai/batal supaya siklus berikutnya mulai dari awal lagi.
+  useEffect(() => {
+    if (!isReviewing) {
+      setReviewStepIndex(0);
+      return;
+    }
+    const t1 = setTimeout(() => setReviewStepIndex(1), REVIEW_STEP_MS);
+    const t2 = setTimeout(() => setReviewStepIndex(2), REVIEW_STEP_MS * 2);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isReviewing]);
 
   // Connect to Google
   const handleConnect = async () => {
@@ -113,6 +151,11 @@ export function GoogleDriveImportSimple({
         return;
       }
 
+      setFailedFormTitle(selectedFile.name || 'Google Form');
+
+      // Momen auto-review terlihat mulai di sini — SETELAH file terbukti
+      // dipilih, bukan sejak picker dibuka (lihat doc comment file).
+      setIsReviewing(true);
       const startTime = Date.now();
 
       // Extract form data
@@ -143,128 +186,81 @@ export function GoogleDriveImportSimple({
       }
     } catch (error: any) {
       console.error('Error selecting form:', error);
-      
+
       // Toast notification sederhana
       toast.error(t('errorSelectForm'));
-      
+
       // Detail error persisten di card
       const errMsg = error.message;
       if (errMsg === 'errorFormNotPublished' || errMsg === 'errorFormRestricted') {
-        const formTitle = selectedFile?.name || 'Google Form';
-        setImportError(t(errMsg).replace('{title}', formTitle));
+        setImportError(t('technicalIssueReasonNote'));
       } else {
-        setImportError(errMsg || t('errorExtractFormData'));
+        setImportError(errMsg || t('technicalIssueReasonNote'));
       }
     } finally {
       setIsSelecting(false);
+      setIsReviewing(false);
     }
   };
 
+  const reviewChecklist = [
+    t('autoReviewCheckQuestions'),
+    t('autoReviewCheckPersonalData'),
+    t('autoReviewCheckSummary'),
+  ];
+
   return (
-    <div className="google-drive-simple-container">
+    <div className="flex flex-col gap-3">
+      {/* Keamanan — ringkas + accordion (v6), di luar kartu Step 1 (permintaan
+          user setelah melihat draft: aksesnya milik keseluruhan proses import,
+          bukan cuma milik langkah "Hubungkan Google"). Dulu panel emerald
+          raksasa (shield dekoratif + 3 sub-kartu ber-hover) yang jadi blok
+          tertinggi di layar, mendorong tombol Hubungkan ke bawah fold. */}
+      {!isAuthenticated && (
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 px-3 overflow-hidden">
+          <Accordion type="single" collapsible>
+            <AccordionItem value="safety" className="border-b-0">
+              <AccordionPrimitive.Header className="flex">
+                <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-2 py-2.5 min-h-11 text-left [&[data-state=open]>svg]:rotate-180">
+                  <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span className="flex-1 text-xs font-semibold text-emerald-900">{t('googleSafetyToggle')}</span>
+                  <ChevronDown className="w-4 h-4 shrink-0 text-emerald-600/60 transition-transform duration-200" />
+                </AccordionPrimitive.Trigger>
+              </AccordionPrimitive.Header>
+              <AccordionContent className="pb-2.5 pt-0">
+                <div className="space-y-1 pl-6">
+                  <p className="text-xs text-emerald-800/80">✓ {t('googleSafetyPoint1')}</p>
+                  <p className="text-xs text-emerald-800/80">✓ {t('googleSafetyPoint2')}</p>
+                  <p className="text-xs text-emerald-800/80">✓ {t('googleSafetyPoint3')}</p>
+                  <p className="text-xs text-emerald-700/60 mt-1.5">· {t('permissionDrive')}</p>
+                  <p className="text-xs text-emerald-700/60">· {t('permissionForms')}</p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+      )}
+
       {!isAuthenticated ? (
-        <div className="flex flex-col gap-4">
+        <>
           {/* Step 1: Connect to Google */}
-          <div className="google-step-card">
-            <div className="google-step-header">
-              <div className="google-step-number">1</div>
-              <div className="google-step-content">
-                <h3 className="google-step-title">{t('googleConnectTitle')}</h3>
-                <p className="google-step-description">
-                  {t('googleConnectDescription')}
-                </p>
-              </div>
-            </div>
-
-
-
-            {/* Safety Note Redesigned */}
-            <div className="mb-6 relative overflow-hidden rounded-xl border bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm" style={{ borderColor: '#a7f3d0' }}>
-              {/* Decorative background element */}
-              <div className="absolute -right-6 -top-6 opacity-[0.07]">
-                <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                </svg>
-              </div>
-
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-4 border-b border-emerald-100 pb-3">
-                  <div className="p-2 bg-emerald-100 rounded-lg shrink-0 text-emerald-600 shadow-sm">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      <path d="m9 12 2 2 4-4" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-emerald-900 text-base">Jaminan Keamanan 100%</h4>
-                    <p className="text-xs text-emerald-700 font-medium">Privasi data Anda adalah prioritas kami</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1.5 mt-1">
-                  {/* Item 1 */}
-                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-emerald-50/50 hover:bg-emerald-100/50 transition-colors border border-transparent hover:border-emerald-100">
-                    <div className="bg-emerald-100/80 p-1.5 rounded-md text-emerald-600 shrink-0 mt-0.5">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-                        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-                        <line x1="2" x2="22" y1="2" y2="22" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h5 className="font-semibold text-emerald-900 text-[11px] uppercase tracking-wide mb-0.5">Tanpa Akses Penuh</h5>
-                      <p className="text-[11px] text-emerald-700 leading-relaxed">
-                        Kami <strong className="font-bold text-emerald-800">TIDAK BISA</strong> melihat atau mengakses seluruh file di Google Drive Anda.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Item 2 */}
-                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-emerald-50/50 hover:bg-emerald-100/50 transition-colors border border-transparent hover:border-emerald-100">
-                    <div className="bg-emerald-100/80 p-1.5 rounded-md text-emerald-600 shrink-0 mt-0.5">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M15.08 9.59 12 4.5 8.92 9.59a1 1 0 0 0 .16 1.21l1.52 1.52a2 2 0 0 1 .59 1.41V21h1.62v-7.27a2 2 0 0 1 .59-1.41l1.52-1.52a1 1 0 0 0 .16-1.21Z" />
-                        <path d="M12 4.5V2" />
-                        <path d="m8.92 9.59-1.92-1.92" />
-                        <path d="m15.08 9.59 1.92-1.92" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h5 className="font-semibold text-emerald-900 text-[11px] uppercase tracking-wide mb-0.5">Akses Terpilih</h5>
-                      <p className="text-[11px] text-emerald-700 leading-relaxed">
-                        Sistem hanya membaca <strong className="font-bold text-emerald-800">satu file spesifik</strong> yang Anda klik secara manual.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Item 3 */}
-                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-emerald-50/50 hover:bg-emerald-100/50 transition-colors border border-transparent hover:border-emerald-100">
-                    <div className="bg-emerald-100/80 p-1.5 rounded-md text-emerald-600 shrink-0 mt-0.5">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 20h9" />
-                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h5 className="font-semibold text-emerald-900 text-[11px] uppercase tracking-wide mb-0.5">Hanya Metadata</h5>
-                      <p className="text-[11px] text-emerald-700 leading-relaxed">
-                        Izin hanya untuk <strong className="font-bold text-emerald-800">menghitung respon</strong>, bukan merekam isinya.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+          <div className="rounded-xl border border-gray-100 p-3 md:p-3.5">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="w-8 h-8 rounded-lg bg-jfu-primary/[0.08] text-jfu-primary font-bold text-sm inline-flex items-center justify-center shrink-0">1</span>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-[#1a1a1a]">{t('googleConnectTitle')}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{t('googleConnectDescription')}</p>
               </div>
             </div>
 
             <button
               onClick={handleConnect}
               disabled={isConnecting}
-              className="google-connect-button"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-11 font-semibold rounded-xl bg-white text-[#3c4043] border border-gray-200 shadow-sm hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             >
               {isConnecting ? (
                 <>
-                  <Loader2 className="button-spinner" size={20} />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   {t('connecting')}
                 </>
               ) : (
@@ -281,231 +277,250 @@ export function GoogleDriveImportSimple({
             </button>
 
             {connectError && (
-              <div className="mt-4 p-3.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm flex gap-3 items-start animate-fade-in shadow-sm w-full">
-                <div className="p-1 bg-red-100 text-red-600 rounded-lg shrink-0 mt-0.5">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
-                </div>
+              <div className="mt-3 p-3 rounded-xl border border-rose-200 bg-rose-50 flex gap-2.5 items-start">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                 <div>
-                  <h4 className="font-bold text-red-900 mb-0.5">
+                  <h4 className="text-sm font-bold text-rose-900">
                     {connectError === 'insufficient_permissions' ? t('errorInsufficientPermissionsTitle') : t('errorConnectGoogleDrive')}
                   </h4>
-                  <p className="text-xs text-red-700 leading-relaxed font-medium">
-                    {connectError === 'insufficient_permissions' 
-                      ? t('errorInsufficientPermissionsDesc') 
-                      : connectError}
+                  <p className="text-xs text-rose-700 mt-0.5 leading-relaxed">
+                    {connectError === 'insufficient_permissions' ? t('errorInsufficientPermissionsDesc') : connectError}
                   </p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Step 2 Preview (Disabled) */}
-          <div className="google-step-card" style={{ opacity: 0.6, pointerEvents: 'none' }}>
-            <div className="google-step-header" style={{ marginBottom: '1.5rem' }}>
-              <div className="google-step-number" style={{ background: '#e2e8f0', color: '#94a3b8', boxShadow: 'none' }}>2</div>
-              <div className="google-step-content">
-                <h3 className="google-step-title" style={{ color: '#64748b' }}>{t('titleSelectForm')}</h3>
-                <p className="google-step-description" style={{ color: '#94a3b8' }}>
-                  {t('descriptionSelectForm')}
-                </p>
-              </div>
-            </div>
-
-            <div className="w-full flex items-center justify-center gap-2 px-4 py-3 font-medium rounded-xl bg-gray-100 text-gray-400 border border-gray-200">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              {t('buttonSelectForm')}
+          {/* Step 2 preview — redup, sama treatment dengan baris coming-soon
+              di kartu pintu-masuk (aria-disabled, tanpa tombol). */}
+          <div aria-disabled="true" className="flex items-center gap-3 px-1">
+            <span className="w-8 h-8 rounded-lg bg-gray-100 text-gray-400 font-bold text-sm inline-flex items-center justify-center shrink-0">2</span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-400">{t('titleSelectForm')}</h3>
+              <p className="text-xs text-gray-400 mt-0.5">{t('descriptionSelectForm')}</p>
             </div>
           </div>
-        </div>
+        </>
       ) : (
-        <div className="flex flex-col gap-4">
-          {/* Step 1 Success */}
-          <div className="google-step-card google-step-success">
-            <div className="google-step-header" style={{ marginBottom: 0 }}>
-              <div className="google-step-number google-step-number-success">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </div>
-              <div className="google-step-content flex-1">
-                <h3 className="google-step-title text-gray-900 m-0">{t('googleConnectedTitle')}</h3>
-                <div className="flex flex-wrap items-center gap-2 mt-1">
-                  <p className="google-step-description text-green-600 font-medium m-0">
-                    {googleEmail ? `Terhubung dengan ${googleEmail}` : t('googleConnectedMessage')}
+        <>
+          {/* Step 1 success */}
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-3 md:p-3.5">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 inline-flex items-center justify-center shrink-0">
+                <Check className="w-4 h-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-bold text-[#1a1a1a]">{t('googleConnectedTitle')}</h3>
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                  <p className="text-xs text-emerald-700 font-medium truncate">
+                    {googleEmail ? t('connectedAsEmail').replace('{email}', googleEmail) : t('googleConnectedMessage')}
                   </p>
-                  {googleEmail && <span className="text-emerald-300/60 font-bold">•</span>}
-                  <button
-                    onClick={handleChangeAccount}
-                    className="text-sm font-semibold text-emerald-600 hover:text-emerald-800 underline decoration-emerald-600/30 hover:decoration-emerald-800 transition-colors focus:outline-none"
-                  >
-                    Ganti Akun
+                  <button onClick={handleChangeAccount} className="text-xs font-semibold text-emerald-700 hover:underline shrink-0">
+                    {t('changeGoogleAccount')}
                   </button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Step 2 Success (if importedForm) or Active (if !importedForm) */}
+          {/* Step 2 */}
           {importedForm ? (
-            <div className={`google-step-card ${importedForm.hasPersonalDataQuestions ? 'border-amber-200 bg-amber-50/30' : 'google-step-success'}`}>
-              <div className="google-step-header" style={{ marginBottom: importedForm.hasPersonalDataQuestions ? '1rem' : 0 }}>
-                <div
-                  className={`google-step-number ${importedForm.hasPersonalDataQuestions ? 'shadow-md shadow-amber-500/20 text-white' : 'google-step-number-success'}`}
-                  style={importedForm.hasPersonalDataQuestions ? { background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' } : {}}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </div>
-                <div className="google-step-content flex-1">
-                  <h3 className="google-step-title text-gray-900 m-0">Survey Terpilih</h3>
-                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                    <p className={`google-step-description font-medium m-0 truncate max-w-[200px] sm:max-w-[300px] ${importedForm.hasPersonalDataQuestions ? 'text-amber-700' : 'text-green-600'}`} title={importedForm.title}>
+            <div>
+              <div className={`rounded-xl border p-3 md:p-3.5 transition-all ${
+                importedForm.hasPersonalDataQuestions
+                  ? 'border-amber-200 bg-amber-50/40'
+                  : 'border-emerald-100 bg-emerald-50/30'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <span className={`w-8 h-8 rounded-lg inline-flex items-center justify-center shrink-0 mt-0.5 ${
+                    importedForm.hasPersonalDataQuestions
+                      ? 'bg-amber-100 text-amber-600'
+                      : 'bg-emerald-100 text-emerald-600'
+                  }`}>
+                    {importedForm.hasPersonalDataQuestions ? (
+                      <AlertTriangle className="w-4 h-4" />
+                    ) : (
+                      <Check className="w-4 h-4" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-[#1a1a1a]">{t('selectedSurveyTitle')}</h3>
+                      {!importedForm.hasPersonalDataQuestions && (
+                        <button
+                          onClick={handleChangeForm}
+                          className="text-xs font-semibold text-jfu-primary hover:underline shrink-0"
+                        >
+                          {t('changeSelectedForm')}
+                        </button>
+                      )}
+                    </div>
+
+                    <p
+                      className="text-xs font-medium text-gray-700 truncate mt-0.5"
+                      title={importedForm.title}
+                    >
                       {importedForm.title}
                     </p>
-                    <span className={`${importedForm.hasPersonalDataQuestions ? 'text-amber-300' : 'text-emerald-300/60'} font-bold`}>•</span>
-                    <button
-                      onClick={handleChangeForm}
-                      className={`text-sm font-semibold hover:underline transition-colors focus:outline-none ${importedForm.hasPersonalDataQuestions ? 'text-amber-600 hover:text-amber-800 decoration-amber-600/30 hover:decoration-amber-800' : 'text-emerald-600 hover:text-emerald-800 decoration-emerald-600/30 hover:decoration-emerald-800'}`}
-                    >
-                      Ganti Form
-                    </button>
-                  </div>
-                </div>
-              </div>
 
-              {importedForm.hasPersonalDataQuestions && (
-                <div className="pt-2 border-t border-amber-100 mt-2">
-                  <div className="p-3.5 rounded-xl bg-amber-100/50 border border-amber-200/60 flex flex-col gap-2">
-                    <div className="flex items-start gap-3">
-                      <div className="p-1.5 bg-amber-200 text-amber-700 rounded-lg shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-                          <path d="M12 9v4" />
-                          <path d="M12 17h.01" />
-                        </svg>
+                    <div className={`mt-2 pt-2 border-t ${importedForm.hasPersonalDataQuestions ? 'border-amber-200/60' : 'border-gray-200/60'}`}>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                        <span className="font-semibold text-gray-700">
+                          {importedForm.questionCount} {t('questionsCountSuffix')}
+                        </span>
+                        <span className="text-gray-300">·</span>
+                        <span className={`font-semibold ${
+                          importedForm.hasPersonalDataQuestions ? 'text-amber-700' : 'text-emerald-700'
+                        }`}>
+                          {importedForm.hasPersonalDataQuestions
+                            ? t('statusDetectedSensitive')
+                            : t('statusReadyToAdvertise')}
+                        </span>
                       </div>
-                      <div>
-                        <h4 className="font-bold text-amber-900 text-sm">Terdeteksi Pertanyaan Data Pribadi</h4>
-                        <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                          Sistem mendeteksi form ini menanyakan: <strong className="bg-amber-200/60 px-1 py-0.5 rounded">{importedForm.detectedKeywords.join(', ')}</strong>.
-                          Sesuai <a href="/homepage/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin.
+
+                      {importedForm.hasPersonalDataQuestions && (
+                        <p className="text-xs text-amber-800 mt-1.5 leading-relaxed">
+                          {t('personalDataReasonNote').replace('{keywords}', importedForm.detectedKeywords.join(', '))}
                         </p>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Action Buttons below Card */}
+              {importedForm.hasPersonalDataQuestions ? (
+                <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
+                  <button
+                    onClick={handleChangeForm}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 min-h-11 font-semibold rounded-full border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    {t('changeSelectedForm')}
+                  </button>
+                  <button
+                    onClick={handleProceed}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 min-h-11 text-white font-semibold rounded-full bg-gradient-to-br from-amber-500 to-amber-600 shadow-glow hover:-translate-y-0.5 transition-all"
+                  >
+                    {t('personalDataContinueButton')}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <button
+                    onClick={handleProceed}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-11 text-white font-semibold rounded-full bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 transition-all"
+                  >
+                    {t('continue')}
+                  </button>
+                </div>
               )}
             </div>
-          ) : (
-            <div className="google-step-card">
-              <div className="google-step-header">
-                <div className="google-step-number">2</div>
-                <div className="google-step-content">
-                  <h3 className="google-step-title">{t('titleSelectForm')}</h3>
-                  <p className="google-step-description">
-                    {t('descriptionSelectForm')}
-                  </p>
+          ) : isReviewing ? (
+            <div className="rounded-xl border border-jfu-primary/15 bg-jfu-primary/[0.04] p-3 md:p-3.5">
+              <p className="flex items-center gap-2 text-sm font-semibold text-[#1a1a1a]">
+                <Loader2 className="w-4 h-4 animate-spin text-jfu-primary shrink-0" />
+                {t('reviewingSystem')}
+              </p>
+              <div className="mt-2 space-y-1.5 pl-6">
+                {reviewChecklist.map((label, i) => (
+                  <div key={label} className="flex items-center gap-2 text-xs">
+                    {i < reviewStepIndex ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    ) : i === reviewStepIndex ? (
+                      <Loader2 className="w-3.5 h-3.5 text-jfu-primary shrink-0 animate-spin" />
+                    ) : (
+                      <span className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <span className={i <= reviewStepIndex ? 'text-[#1a1a1a]' : 'text-gray-400'}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : importError ? (
+            <div>
+              <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-3 md:p-3.5">
+                <div className="flex items-start gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 inline-flex items-center justify-center shrink-0 mt-0.5">
+                    <AlertCircle className="w-4 h-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-[#1a1a1a]">{t('selectedSurveyTitle')}</h3>
+                    </div>
+
+                    <p
+                      className="text-xs font-medium text-gray-700 truncate mt-0.5"
+                      title={failedFormTitle}
+                    >
+                      {failedFormTitle}
+                    </p>
+
+                    <div className="mt-2 pt-2 border-t border-rose-200/60">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                        <span className="font-semibold text-gray-700">
+                          0 {t('questionsCountSuffix')}
+                        </span>
+                        <span className="text-gray-300">·</span>
+                        <span className="font-semibold text-rose-700">
+                          {t('statusDetectedIssue')}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-rose-800 mt-1.5 leading-relaxed">
+                        {importError}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
- 
+
+              {/* Action Buttons for Technical Issue Rejection */}
+              <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
+                <button
+                  onClick={handleSelectForm}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 min-h-11 font-semibold rounded-full border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  {t('changeSelectedForm')}
+                </button>
+                <button
+                  onClick={() => {
+                    if (onCancel) onCancel();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 min-h-11 text-white font-semibold rounded-full bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 transition-all"
+                >
+                  {t('personalDataContinueButton')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-100 p-3 md:p-3.5">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="w-8 h-8 rounded-lg bg-jfu-primary/[0.08] text-jfu-primary font-bold text-sm inline-flex items-center justify-center shrink-0">2</span>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-[#1a1a1a]">{t('titleSelectForm')}</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{t('descriptionSelectForm')}</p>
+                </div>
+              </div>
+
               <button
                 onClick={handleSelectForm}
                 disabled={isSelecting}
-                className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-3 text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)',
-                  boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)'
-                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-11 text-white font-semibold rounded-xl bg-jfu-primary hover:bg-jfu-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
               >
                 {isSelecting ? (
-                  <>
-                    <Loader2 className="button-spinner" size={20} />
-                    {t('reviewingSystem')}
-                  </>
+                  <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    {t('buttonSelectForm')}
-                  </>
-                )}
-              </button>
-
-              {importError && (
-                <div className="mt-4 p-3.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm flex gap-3 items-start animate-fade-in shadow-sm w-full">
-                  <div className="p-1 bg-red-100 text-red-600 rounded-lg shrink-0 mt-0.5">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-red-900 mb-0.5">
-                      {t('errorSelectForm')}
-                    </h4>
-                    <p className="text-xs text-red-700 leading-relaxed font-medium">
-                      {importError}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Proceed Buttons */}
-          {importedForm && (
-            <div className="flex flex-col gap-3 mt-4">
-              <button
-                onClick={handleProceed}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-white font-medium rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5"
-                style={{
-                  background: importedForm.hasPersonalDataQuestions
-                    ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' // amber
-                    : 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', // blue
-                  boxShadow: importedForm.hasPersonalDataQuestions
-                    ? '0 4px 12px rgba(245, 158, 11, 0.3)'
-                    : '0 4px 12px rgba(0, 145, 255, 0.3)'
-                }}
-              >
-                {importedForm.hasPersonalDataQuestions ? 'Lanjut ke Review Admin' : 'Import'}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14" />
-                  <path d="m12 5 7 7-7 7" />
-                </svg>
-              </button>
-
-              {importedForm.hasPersonalDataQuestions && (
-                <button
-                  onClick={() => {
-                    toast.info('Silakan hapus pertanyaan data pribadi di Google Form Anda, lalu import ulang.', { duration: 5000 });
-                    if (onCancel) onCancel();
-                    else handleChangeForm();
-                  }}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3.5 font-bold rounded-xl transition-all border-2 border-amber-400 text-amber-600 bg-white hover:bg-amber-50 hover:border-amber-500 shadow-sm hover:shadow active:scale-[0.98]"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                    <path d="M3 3v5h5" />
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
-                  Batal & Edit Form
-                </button>
-              )}
+                )}
+                {t('buttonSelectForm')}
+              </button>
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
