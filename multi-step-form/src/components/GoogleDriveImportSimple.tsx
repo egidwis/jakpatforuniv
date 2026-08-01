@@ -126,9 +126,21 @@ export function GoogleDriveImportSimple({
       }
 
       if (result) {
+        // Google Drive file name (Picker) dan Google Forms internal title
+        // (API info.title) adalah dua hal yang independen. User bisa rename
+        // file di Drive tanpa mengubah judul form di editor — Picker
+        // menampilkan file name, jadi kita pakai itu sebagai title agar
+        // sesuai dengan apa yang user pilih dan lihat.
+        const pickerName = selectedFile?.name;
+        if (pickerName && result.title && pickerName !== result.title) {
+          console.warn(
+            `[Google Import] Title mismatch — Picker: "${pickerName}" vs API: "${result.title}". Using Picker name.`
+          );
+        }
+
         const extractedData = {
           surveyUrl: result.url,
-          title: result.title,
+          title: pickerName || result.title,
           description: result.description,
           questionCount: result.questionCount,
           isManualEntry: false,

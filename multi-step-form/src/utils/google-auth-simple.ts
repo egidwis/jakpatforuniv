@@ -268,6 +268,7 @@ export class SimpleGoogleAuth {
 
     return fetch(url, {
       ...options,
+      cache: 'no-store',
       headers
     });
   }
