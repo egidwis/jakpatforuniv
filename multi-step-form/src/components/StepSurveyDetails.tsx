@@ -15,11 +15,14 @@ interface StepSurveyDetailsProps {
   updateFormData: (data: Partial<SurveyFormData>) => void;
   nextStep: () => void;
   onHeaderVisibilityChange?: (isVisible: boolean) => void;
+  /** Menaikkan fungsi "kembali ke pilih-metode" ke MultiStepForm supaya
+   *  UnifiedHeader (floating bar) bisa memicunya lewat tombol ←. */
+  onBackHandlerChange?: (handler: (() => void) | undefined) => void;
 }
 
 type FlowState = 'method-selection' | 'google-form' | 'manual' | 'form-fields';
 
-export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeaderVisibilityChange }: StepSurveyDetailsProps) {
+export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeaderVisibilityChange, onBackHandlerChange }: StepSurveyDetailsProps) {
   const { t } = useLanguage();
 
   // Initialize flowState based on existing formData
@@ -68,6 +71,17 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
       onHeaderVisibilityChange(shouldShowHeader);
     }
   }, [flowState, onHeaderVisibilityChange]);
+
+  // Notify parent about the "back to method selection" handler — only
+  // meaningful while UnifiedHeader is visible (manual/form-fields above).
+  useEffect(() => {
+    onBackHandlerChange?.(
+      flowState === 'manual' || flowState === 'form-fields'
+        ? handleBackToMethodSelection
+        : undefined
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowState, onBackHandlerChange]);
 
   // Check if form has data
   const hasFilledData = formData.title || formData.description || formData.questionCount > 0;
@@ -214,25 +228,32 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   // Manual flow - show form fields directly
   if (flowState === 'manual') {
     return (
-      <div className="manual-flow-container">
+      <>
+        <AdsFlowCard step="fields">
+          <StepOneFormFields
+            formData={formData}
+            updateFormData={updateFormData}
+            onSubmit={handleSubmit}
+            isGoogleImport={false}
+          />
+
+          {/* Switch to Google Form — mengikuti pola link di StepOneGoogleForm */}
+          <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-center gap-x-1 text-xs md:text-sm text-gray-500">
+            <span>{t('troubleFillingManual')}</span>
+            <button
+              type="button"
+              onClick={handleSwitchToGoogle}
+              className="font-semibold text-jfu-primary hover:underline"
+            >
+              {t('importFromGoogleForm')}
+            </button>
+          </div>
+        </AdsFlowCard>
+
         {profileSheet}
-        <StepOneFormFields
-          formData={formData}
-          updateFormData={updateFormData}
-          onSubmit={handleSubmit}
-          onBack={handleBackToMethodSelection}
-          isGoogleImport={false}
-        />
 
-        {/* Switch to Google Form */}
-        <div className="switch-method-section">
-          <p className="switch-method-text">{t('troubleFillingManual')}</p>
-          <button onClick={handleSwitchToGoogle} className="switch-method-link">
-            {t('importFromGoogleForm')}
-          </button>
-        </div>
-
-        {/* Confirmation Dialog for Switching */}
+        {/* Confirmation Dialog for Switching — sengaja DI LUAR AdsFlowCard,
+            yang memakai overflow-hidden dan akan memotong overlay-nya */}
         {showConfirmSwitch && (
           <div className="modal-overlay">
             <div className="modal-dialog">
@@ -262,22 +283,24 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             </div>
           </div>
         )}
-      </div>
+      </>
     );
   }
 
   // Form Fields View (after Google import)
   if (flowState === 'form-fields') {
     return (
-      <div className="form-fields-container">
+      <>
+        <AdsFlowCard step="fields">
+          <StepOneFormFields
+            formData={formData}
+            updateFormData={updateFormData}
+            onSubmit={handleSubmit}
+            isGoogleImport={true}
+          />
+        </AdsFlowCard>
         {profileSheet}
-        <StepOneFormFields
-          formData={formData}
-          updateFormData={updateFormData}
-          onSubmit={handleSubmit}
-          isGoogleImport={true}
-        />
-      </div>
+      </>
     );
   }
 

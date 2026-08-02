@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getFormSubmissionsByUser, deleteFormSubmission, getOwnProfile } from '../utils/supabase';
+import { getFormSubmissionsByUser, getOwnProfile } from '../utils/supabase';
 import { expandReferralSource } from '../constants/biodata';
 import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
-import { isManualVerificationVoucher } from '../utils/cost-calculator';
+import { isAutoApprovalPath as computeIsAutoApprovalPath } from '../utils/review-path';
 import type { SurveyFormData } from '../types';
 import { StepSurveyDetails } from './StepSurveyDetails';
 import { StepSchedule } from './StepSchedule';
@@ -85,15 +85,11 @@ const defaultFormData: SurveyFormData = {
   regularStartTimeBackup: '',
 };
 
-import { useLanguage } from '../i18n/LanguageContext';
-
 export function MultiStepForm() {
-  const { t } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
 
   // Initialize state from localStorage if available
-  const [resetKey, setResetKey] = useState(0);
   const [currentStep, setCurrentStep] = useState<number>(() => {
     const draft = readDraft();
     const step = typeof draft?.currentStep === 'number' ? draft.currentStep : 1;
@@ -114,6 +110,17 @@ export function MultiStepForm() {
   });
 
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  // Handler "kembali ke pilih-metode" milik StepSurveyDetails, dinaikkan ke sini
+  // supaya UnifiedHeader (floating bar) bisa memicu mundur saat currentStep === 1.
+  const [step1BackHandler, setStep1BackHandler] = useState<(() => void) | undefined>(undefined);
+  // useCallback supaya identitas stabil antar render — kalau prop ini berubah
+  // referensi tiap render, useEffect di StepSurveyDetails yang men-depend
+  // padanya akan terus menyala ulang dan memicu setState tanpa henti.
+  const handleStep1BackHandlerChange = useCallback((handler: (() => void) | undefined) => {
+    // `handler` adalah FUNGSI — setState harus dibungkus lagi, kalau tidak
+    // React mengiranya updater function dan langsung memanggilnya.
+    setStep1BackHandler(() => handler);
+  }, []);
 
   // Save to localStorage whenever state changes
   useEffect(() => {
@@ -195,7 +202,7 @@ export function MultiStepForm() {
   }, [currentStep]);
 
 
-  const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && !isManualVerificationVoucher(formData.voucherCode);
+  const isAutoApprovalPath = computeIsAutoApprovalPath(formData);
 
   // Skema step: 1 = Detail Survei, 2 = Jadwal (hanya auto-approval),
   // 3 = Review & Pembayaran, 4 = Jadwal Kilat.
@@ -222,46 +229,6 @@ export function MultiStepForm() {
       return Math.max(prev - 1, 1);
     });
     window.scrollTo(0, 0);
-  };
-
-  const handleReset = async () => {
-    const draft = localStorage.getItem(STORAGE_KEY);
-    let isReschedule = false;
-    if (draft) {
-      try {
-        const parsed = JSON.parse(draft);
-        isReschedule = parsed.formData?.isReschedule || false;
-      } catch (error) {
-        console.error("Error reading draft:", error);
-      }
-    }
-
-    // Different confirmation message for reschedule vs new submission
-    const confirmMessage = isReschedule 
-      ? 'Batalkan jadwal ulang? Data survey Anda tetap tersimpan dan bisa dijadwalkan ulang nanti.'
-      : t('confirmCancelSubmission');
-
-    if (confirm(confirmMessage)) {
-      if (draft) {
-        try {
-          const parsed = JSON.parse(draft);
-          // Only delete submission if it's NOT a reschedule
-          // For reschedule, the submission is already prepared and should be kept
-          if (!isReschedule && parsed.formData && (parsed.formData as any).submissionIdToReplace) {
-             const idToDelete = (parsed.formData as any).submissionIdToReplace;
-             await deleteFormSubmission(idToDelete);
-          }
-        } catch (error) {
-          console.error("Error reading draft for deletion:", error);
-        }
-      }
-
-      localStorage.removeItem(STORAGE_KEY);
-      setFormData(defaultFormData);
-      setCurrentStep(1);
-      setResetKey(prev => prev + 1);
-      window.scrollTo(0, 0);
-    }
   };
 
   // Fungsi untuk update form data
@@ -298,6 +265,19 @@ export function MultiStepForm() {
     });
   };
 
+  // Dipakai StepSchedule (mode kilat) DAN UnifiedHeader — satu fungsi supaya
+  // logika undo-kilat tidak duplikat di dua tempat.
+  const handleKilatBack = () => {
+    undoKilatUpgrade();
+    setCurrentStep(3);
+    window.scrollTo(0, 0);
+  };
+
+  const unifiedHeaderOnBack =
+    currentStep === 1 ? step1BackHandler :
+    currentStep === 4 ? handleKilatBack :
+    prevStep;
+
   return (
     <div className="multi-step-form">
       {/* Bar step floating di bawah layar (desktop & mobile). Saat
@@ -305,9 +285,8 @@ export function MultiStepForm() {
           sudah jadi header halaman. */}
       {isHeaderVisible && (
         <UnifiedHeader
-          currentStep={currentStep}
           formData={formData}
-          onReset={handleReset}
+          onBack={unifiedHeaderOnBack}
         />
       )}
 
@@ -338,11 +317,11 @@ export function MultiStepForm() {
         })()}
         {currentStep === 1 && (
           <StepSurveyDetails
-            key={resetKey}
             formData={formData}
             updateFormData={updateFormData}
             nextStep={nextStep}
             onHeaderVisibilityChange={setIsHeaderVisible}
+            onBackHandlerChange={handleStep1BackHandlerChange}
           />
         )}
 
@@ -378,11 +357,7 @@ export function MultiStepForm() {
               setCurrentStep(3);
               window.scrollTo(0, 0);
             }}
-            prevStep={() => {
-              undoKilatUpgrade();
-              setCurrentStep(3);
-              window.scrollTo(0, 0);
-            }}
+            prevStep={handleKilatBack}
             mode="kilat"
           />
         )}

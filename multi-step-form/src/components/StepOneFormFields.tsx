@@ -1,9 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
 import type { SurveyFormData } from '../types';
-import { CheckCircle, AlertCircle, Settings, Gift, Info, Lightbulb } from 'lucide-react';
-import { useLanguage } from '../i18n/LanguageContext';
-import { toast } from 'sonner';
+import {
+  AlignLeft,
+  CalendarDays,
+  CheckCircle,
+  Gift,
+  Hash,
+  Link2,
+  Trophy,
+  Type,
+  Users,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useLanguage } from '../i18n/LanguageContext';
+import { calculateAdCostPerDay } from '../utils/cost-calculator';
+import { isAutoApprovalPath } from '../utils/review-path';
+import {
+  FieldBlock,
+  FieldRow,
+  SectionLabel,
+  fieldInputClass,
+  fieldRowListClass,
+} from './SurveyFieldRow';
 
 // Helper function to get recommended prize based on question count
 const getRecommendedPrize = (questionCount: number): number => {
@@ -21,7 +40,6 @@ interface StepOneFormFieldsProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   onSubmit: () => void;
-  onBack?: () => void;
   isGoogleImport?: boolean;
 }
 
@@ -36,11 +54,24 @@ interface FormErrors {
   prizePerWinner?: string;
 }
 
+/**
+ * Body layar isi-form Iklan Survei — dirender di dalam `AdsFlowCard`
+ * (`step="fields"`, tanpa cap), dipakai dua jalur: manual dan lanjutan
+ * import Google Form (`isGoogleImport`). Navigasi mundur untuk keduanya kini
+ * hidup di `UnifiedHeader` (floating bar bawah), bukan di sini.
+ *
+ * Tata letaknya baris `label | input` bergaya tabel, bukan tumpukan kartu —
+ * lihat `SurveyFieldRow.tsx` untuk primitifnya dan untuk jebakan cascade
+ * `.flex-col` yang mengatur cara baris berganti arah.
+ *
+ * Barisnya SENGAJA tidak seragam. Field pendek/numerik pakai `compact`
+ * (berdampingan di semua lebar); field teks panjang menumpuk di bawah `md`
+ * karena URL Google Form tidak terbaca dalam ~180px di layar 360px.
+ */
 export function StepOneFormFields({
   formData,
   updateFormData,
   onSubmit,
-  onBack,
   isGoogleImport = false
 }: StepOneFormFieldsProps) {
   const { t } = useLanguage();
@@ -148,542 +179,350 @@ export function StepOneFormFields({
     }
   };
 
+  // Jalur review dibaca dari predikat bersama, BUKAN dari `isGoogleImport`:
+  // Google Form yang memicu deteksi PII tetap masuk antrean admin, jadi janji
+  // "hitungan detik" di sini akan bohong kalau disandarkan pada metode impor.
+  const isAutoPath = isAutoApprovalPath(formData);
+
+  const reviewPathTooltip = (
+    <span className="block leading-relaxed">
+      <span className="block font-semibold">
+        {isAutoPath ? t('reviewMethodAutoHint') : t('reviewMethodManualHint')}
+        {' · '}
+        {isAutoPath ? t('adsEntryAutoRowTime') : t('adsEntryManualRowTime')}
+      </span>
+      <span className="block mt-1">
+        {t('adsEntryReviewNotePart1')}{' '}
+        <a
+          href="/homepage/terms-conditions.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-gray-200"
+        >
+          {t('termsConditions')}
+        </a>
+        {t('adsEntryReviewNotePart2')}
+      </span>
+    </span>
+  );
+
+  const incentiveTooltip = <span className="leading-relaxed">{t('incentiveDistributionInfo')}</span>;
+
+  const winnerTooltip = (
+    <span className="leading-relaxed">
+      {t('maxWinnerWarning')}{' '}
+      <Link to="/dashboard/chat" target="_blank" className="font-semibold underline hover:text-gray-200">
+        {t('contactAdmin')}
+      </Link>
+      .
+    </span>
+  );
+
+  // Durasi memakai kondisi ganda milik desain lama: error tampil dari state
+  // `errors` SETELAH submit, tapi juga langsung saat angka di luar 1–30.
+  const durationOutOfRange =
+    formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30);
+  const durationHasError = (errors.duration && attemptedSubmit) || durationOutOfRange;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-      {/* Success Banner for Google Import */}
+    <form onSubmit={handleSubmit} noValidate>
       {isGoogleImport && (
-        <div className="info-box success mb-4">
-          <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-green-800">{t('successImportedFromGoogleDrive')}</p>
-              <p className="text-xs text-green-700 mt-1">
-                Judul, deskripsi, dan jumlah pertanyaan telah diisi otomatis berdasarkan form Google Anda.
-              </p>
-            </div>
-          </div>
-        </div>
+        <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+          <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+          {t('successImportedFromGoogleDrive')}
+        </p>
       )}
 
-      {/* SECTION: SURVEY INFORMATION */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
-              <Info size={18} />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('surveyInformation')}</h3>
-          </div>
-          {formData.surveyUrl && formData.title && formData.description && formData.questionCount > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full border border-green-100">
-              <CheckCircle size={12} />
-              <span>Complete</span>
-            </div>
-          )}
-        </div>
-        <div className="p-6 space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="surveyUrl" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {t('googleFormLink')} <span className="text-red-500">*</span>
-              {isGoogleImport && <span className="text-xs font-normal text-gray-500 ml-1">{t('surveyTitleFromGoogleDrive')}</span>}
-            </label>
-            <div className="relative">
-              <input
-                id="surveyUrl"
-                type="url"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 
-                  ${errors.surveyUrl && attemptedSubmit
-                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                  ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
-                `}
-                style={!errors.surveyUrl || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!(attemptedSubmit && errors.surveyUrl)) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!(attemptedSubmit && errors.surveyUrl)) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={t('googleFormLinkPlaceholder')}
-                value={formData.surveyUrl}
-                onChange={(e) => {
-                  if (!isGoogleImport) {
-                    updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
-                    if (attemptedSubmit && errors.surveyUrl) {
-                      setErrors({ ...errors, surveyUrl: undefined });
-                    }
-                  }
-                }}
-                readOnly={isGoogleImport}
-              />
-              {formData.surveyUrl && !errors.surveyUrl && !isGoogleImport && (
-                <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4" />
-              )}
-            </div>
-            {errors.surveyUrl && attemptedSubmit ? (
-              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {errors.surveyUrl}
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500">
-                Masukan link Google Form atau shortlink (forms.gle/...)
-              </p>
-            )}
-          </div>
+      {/* SEKSI 1 — INFORMASI SURVEY */}
+      <SectionLabel tooltip={reviewPathTooltip}>{t('surveyInformation')}</SectionLabel>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label htmlFor="title" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                {t('surveyTitle')} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  id="title"
-                  type="text"
-                  className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
-                    ${errors.title && attemptedSubmit
-                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 hover:border-gray-300'
-                    }
-                    ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
-                  `}
-                  style={!errors.title || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                  onFocus={(e) => {
-                    if (!(attemptedSubmit && errors.title)) {
-                      e.target.style.borderColor = '#0091ff';
-                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!(attemptedSubmit && errors.title)) {
-                      e.target.style.borderColor = '#e5e7eb';
-                      e.target.style.boxShadow = 'none';
-                    }
-                  }}
-                  placeholder={t('surveyTitlePlaceholder')}
-                  value={formData.title}
-                  onChange={(e) => {
-                    if (!isGoogleImport) {
-                      updateFormData({ title: e.target.value });
-                      if (attemptedSubmit && errors.title) {
-                        setErrors({ ...errors, title: undefined });
-                      }
-                    }
-                  }}
-                  readOnly={isGoogleImport}
-                />
-              </div>
-              {errors.title && attemptedSubmit && (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {errors.title}
-                </p>
-              )}
-            </div>
+      <div className={fieldRowListClass}>
+        <FieldRow
+          icon={Link2}
+          label={isGoogleImport ? t('googleFormLink') : t('surveyLinkLabel')}
+          htmlFor="surveyUrl"
+          required
+          error={attemptedSubmit ? errors.surveyUrl : undefined}
+          hint={isGoogleImport ? t('surveyTitleFromGoogleDrive') : undefined}
+        >
+          <input
+            id="surveyUrl"
+            type="url"
+            className={fieldInputClass}
+            placeholder={isGoogleImport ? t('googleFormLinkPlaceholder') : t('surveyLinkPlaceholder')}
+            value={formData.surveyUrl}
+            onChange={(e) => {
+              if (!isGoogleImport) {
+                updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
+                if (attemptedSubmit && errors.surveyUrl) {
+                  setErrors({ ...errors, surveyUrl: undefined });
+                }
+              }
+            }}
+            readOnly={isGoogleImport}
+          />
+        </FieldRow>
 
-            <div className="space-y-2">
-              <label htmlFor="questionCount" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                {t('questionCount')} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  id="questionCount"
-                  type="number"
-                  className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
-                    ${errors.questionCount && attemptedSubmit
-                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 hover:border-gray-300'
-                    }
-                    ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
-                  `}
-                  style={!errors.questionCount || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                  onFocus={(e) => {
-                    if (!(attemptedSubmit && errors.questionCount)) {
-                      e.target.style.borderColor = '#0091ff';
-                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!(attemptedSubmit && errors.questionCount)) {
-                      e.target.style.borderColor = '#e5e7eb';
-                      e.target.style.boxShadow = 'none';
-                    }
-                  }}
-                  placeholder={t('questionCountPlaceholder')}
-                  value={formData.questionCount || ''}
-                  onChange={(e) => {
-                    if (!isGoogleImport) {
-                      updateFormData({ questionCount: parseInt(e.target.value) || 0 });
-                      if (attemptedSubmit && errors.questionCount) {
-                        setErrors({ ...errors, questionCount: undefined });
-                      }
-                    }
-                  }}
-                  readOnly={isGoogleImport}
-                  min={1}
-                />
-              </div>
-              {errors.questionCount && attemptedSubmit ? (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {errors.questionCount}
-                </p>
-              ) : formData.questionCount > 0 && (
-                <p className="text-xs font-medium mt-1" style={{ color: '#0091ff' }}>
-                  Est. Cost: Rp {formData.questionCount <= 15 ? '150.000' : formData.questionCount <= 30 ? '200.000' : formData.questionCount <= 50 ? '300.000' : formData.questionCount <= 70 ? '400.000' : '500.000'}/hari
-                  <span className="text-gray-400 font-normal"> ({t('priceExcludesTax')})</span>
-                </p>
-              )}
-            </div>
-          </div>
+        <FieldRow
+          icon={Type}
+          label={t('surveyTitle')}
+          htmlFor="title"
+          required
+          error={attemptedSubmit ? errors.title : undefined}
+        >
+          <input
+            id="title"
+            type="text"
+            className={fieldInputClass}
+            placeholder={t('surveyTitlePlaceholder')}
+            value={formData.title}
+            onChange={(e) => {
+              if (!isGoogleImport) {
+                updateFormData({ title: e.target.value });
+                if (attemptedSubmit && errors.title) {
+                  setErrors({ ...errors, title: undefined });
+                }
+              }
+            }}
+            readOnly={isGoogleImport}
+          />
+        </FieldRow>
 
-          <div className="space-y-2">
-            <label htmlFor="description" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {t('surveyDescription')} <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <textarea
-                id="description"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 min-h-[120px] resize-y
-                  ${errors.description && attemptedSubmit
-                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                  ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
-                `}
-                style={!errors.description || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!(attemptedSubmit && errors.description)) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!(attemptedSubmit && errors.description)) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={t('surveyDescriptionPlaceholder')}
-                value={formData.description}
-                onChange={(e) => {
-                  if (!isGoogleImport) {
-                    updateFormData({ description: e.target.value });
-                    if (attemptedSubmit && errors.description) {
-                      setErrors({ ...errors, description: undefined });
-                    }
-                  }
-                }}
-                readOnly={isGoogleImport}
-                rows={4}
-                maxLength={500}
-              />
-              <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 font-medium bg-white/80 px-1.5 py-0.5 rounded">
-                {formData.description.length}/500
-              </div>
-            </div>
-            {errors.description && attemptedSubmit && (
-              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {errors.description}
-              </p>
-            )}
-          </div>
-        </div>
+        <FieldRow
+          icon={Hash}
+          label={t('questionCount')}
+          htmlFor="questionCount"
+          required
+          compact
+          error={attemptedSubmit ? errors.questionCount : undefined}
+          hint={
+            formData.questionCount > 0 ? (
+              <>
+                Rp {calculateAdCostPerDay(formData.questionCount).toLocaleString('id-ID')}/hari{' '}
+                <span className="text-gray-400">({t('priceExcludesTax')})</span>
+              </>
+            ) : undefined
+          }
+        >
+          <input
+            id="questionCount"
+            type="number"
+            className={fieldInputClass}
+            placeholder={t('questionCountPlaceholder')}
+            value={formData.questionCount || ''}
+            onChange={(e) => {
+              if (!isGoogleImport) {
+                updateFormData({ questionCount: parseInt(e.target.value) || 0 });
+                if (attemptedSubmit && errors.questionCount) {
+                  setErrors({ ...errors, questionCount: undefined });
+                }
+              }
+            }}
+            readOnly={isGoogleImport}
+            min={1}
+          />
+        </FieldRow>
+
+        <FieldBlock
+          icon={AlignLeft}
+          label={t('surveyDescription')}
+          htmlFor="description"
+          required
+          counter={`${formData.description.length}/500`}
+          error={attemptedSubmit ? errors.description : undefined}
+        >
+          <textarea
+            id="description"
+            className={`${fieldInputClass} min-h-[88px] resize-y leading-relaxed`}
+            placeholder={t('surveyDescriptionPlaceholder')}
+            value={formData.description}
+            onChange={(e) => {
+              if (!isGoogleImport) {
+                updateFormData({ description: e.target.value });
+                if (attemptedSubmit && errors.description) {
+                  setErrors({ ...errors, description: undefined });
+                }
+              }
+            }}
+            readOnly={isGoogleImport}
+            rows={4}
+            maxLength={500}
+          />
+        </FieldBlock>
       </div>
 
-      {/* SECTION: SURVEY CONFIGURATION */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-10">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
-              <Settings size={18} />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('surveyConfiguration')}</h3>
-          </div>
-          {formData.criteriaResponden && formData.duration > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full border border-green-100">
-              <CheckCircle size={12} />
-              <span>Complete</span>
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="criteriaResponden" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {t('respondentCriteriaLabel')} <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <textarea
-                id="criteriaResponden"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 min-h-[100px] resize-y
-                  ${errors.criteriaResponden && attemptedSubmit
-                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                  bg-white
-                `}
-                style={!errors.criteriaResponden || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!(attemptedSubmit && errors.criteriaResponden)) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!(attemptedSubmit && errors.criteriaResponden)) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={t('respondentCriteriaPlaceholder')}
-                value={formData.criteriaResponden}
-                onChange={(e) => {
-                  updateFormData({ criteriaResponden: e.target.value });
-                  if (attemptedSubmit && errors.criteriaResponden) {
-                    setErrors({ ...errors, criteriaResponden: undefined });
-                  }
-                }}
-                rows={3}
-                maxLength={200}
-              />
-              <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 font-medium bg-white/80 px-1.5 py-0.5 rounded">
-                {formData.criteriaResponden?.length || 0}/200
-              </div>
-            </div>
-            {errors.criteriaResponden && attemptedSubmit ? (
-              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {errors.criteriaResponden}
-              </p>
-            ) : (
-              <p className="text-xs flex items-start gap-2 mt-1 p-2 rounded-lg border text-left" style={{ backgroundColor: 'rgba(0, 145, 255, 0.05)', borderColor: 'rgba(0, 145, 255, 0.2)', color: '#0091ff' }}>
-                <Info size={14} className="mt-0.5 flex-shrink-0" />
-                <span className="leading-relaxed">
-                  {t('respondentCriteriaHelp').split('*').map((part, index) =>
-                    index % 2 === 1 ? <strong key={index} className="font-semibold">{part}</strong> : part
-                  )}
-                </span>
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="duration" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {t('surveyDurationLabel')} <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <input
-                id="duration"
-                type="number"
-                className={`w-full pl-4 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                  ${(errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30))
-                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                  bg-white
-                `}
-                style={(!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={t('surveyDurationPlaceholder')}
-                value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const intVal = parseInt(val);
-                  updateFormData({ duration: isNaN(intVal) ? 0 : intVal });
-                  if (attemptedSubmit && errors.duration) {
-                    setErrors({ ...errors, duration: undefined });
-                  }
-                }}
-                min={1}
-                max={30}
-              />
-              {formData.duration > 0 && formData.duration <= 30 && !errors.duration && (
-                <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4 pointer-events-none" />
-              )}
-            </div>
-            {((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30))) ? (
-              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {formData.duration > 30 ? t('errorDurationMax') : t('errorDurationZero')}
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500 mt-1">
-                {t('surveyDurationHelp')}
-              </p>
-            )}
-          </div>
-        </div>
+      {/* SEKSI 2 — KONFIGURASI IKLAN */}
+      <div className="mt-6">
+        <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
       </div>
 
-      {/* SECTION: INCENTIVE SETTINGS */}
-      <div className="bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/30 rounded-xl border border-emerald-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-emerald-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
-              <Gift size={18} />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('incentiveSettings')}</h3>
-          </div>
-          {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
-              <CheckCircle size={12} />
-              <span>Complete</span>
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="p-3 rounded-lg flex items-start gap-2 border" style={{ backgroundColor: 'rgba(0, 145, 255, 0.05)', borderColor: 'rgba(0, 145, 255, 0.2)' }}>
-            <Info className="w-4 h-4 mt-0.5" style={{ color: '#0091ff' }} />
-            <p className="text-sm" style={{ color: '#0077cc' }}>
-              {t('incentiveDistributionInfo')}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label htmlFor="prizePerWinner" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                {t('prizePerWinnerLabel')} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">Rp</div>
-                <input
-                  id="prizePerWinner"
-                  type="number"
-                  className={`w-full pl-10 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                    ${errors.prizePerWinner
-                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 hover:border-gray-300'
-                    }
-                    bg-white
-                  `}
-                  placeholder={t('prizePerWinnerPlaceholder')}
-                  value={formData.prizePerWinner}
-                  onChange={(e) => {
-                    updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
-                    if (attemptedSubmit && errors.prizePerWinner) {
-                      setErrors({ ...errors, prizePerWinner: undefined });
-                    }
-                  }}
-                  min={25000}
-                  step={1000}
-                />
-                {formData.prizePerWinner >= 25000 && !errors.prizePerWinner && (
-                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4 pointer-events-none" />
-                )}
-              </div>
-              {formData.prizePerWinner > 0 && formData.prizePerWinner < 25000 ? (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {t('errorMinPrize')}
-                </p>
+      <div className={fieldRowListClass}>
+        <FieldBlock
+          icon={Users}
+          label={t('respondentCriteriaLabel')}
+          htmlFor="criteriaResponden"
+          required
+          counter={`${formData.criteriaResponden?.length || 0}/200`}
+          error={attemptedSubmit ? errors.criteriaResponden : undefined}
+          // Panduan ini SENGAJA tetap terlihat, tidak jadi tooltip: ia mengoreksi
+          // ekspektasi keliru ("kriteria = penargetan") tepat saat user mengetik,
+          // dan yang salah paham justru tidak akan membuka tooltip.
+          hint={t('respondentCriteriaHelp')
+            .split('*')
+            .map((part, index) =>
+              index % 2 === 1 ? (
+                <strong key={index} className="font-semibold text-gray-600">{part}</strong>
               ) : (
-                <>
-                  {formData.prizePerWinner >= 25000 && formData.questionCount > 0 && (
-                    <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                      <Lightbulb className="w-3 h-3" />
-                      {t('recommendation')}: Rp {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}{t('perWinner')}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
+                part
+              )
+            )}
+        >
+          <textarea
+            id="criteriaResponden"
+            className={`${fieldInputClass} min-h-[72px] resize-y leading-relaxed`}
+            placeholder={t('respondentCriteriaPlaceholder')}
+            value={formData.criteriaResponden}
+            onChange={(e) => {
+              updateFormData({ criteriaResponden: e.target.value });
+              if (attemptedSubmit && errors.criteriaResponden) {
+                setErrors({ ...errors, criteriaResponden: undefined });
+              }
+            }}
+            rows={3}
+            maxLength={200}
+          />
+        </FieldBlock>
 
-            <div className="space-y-2">
-              <label htmlFor="winnerCount" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                {t('winnerCountLabel')} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  id="winnerCount"
-                  type="number"
-                  className={`w-full pl-4 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                    ${errors.winnerCount ? 'border-red-300 focus:ring-red-200 bg-red-50/30' : 'border-gray-200 hover:border-gray-300'}
-                     bg-white
-                  `}
-                  placeholder={t('winnerCountPlaceholder')}
-                  value={formData.winnerCount}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    updateFormData({ winnerCount: Math.min(val, 5) });
-                    if (attemptedSubmit && errors.winnerCount) {
-                      setErrors({ ...errors, winnerCount: undefined });
-                    }
-                  }}
-                  min={2}
-                  max={5}
-                />
-                {formData.winnerCount >= 2 && formData.winnerCount <= 5 && !errors.winnerCount && (
-                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4 pointer-events-none" />
-                )}
-              </div>
-              {formData.winnerCount > 0 && formData.winnerCount < 2 ? (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {t('errorMinWinners')}
-                </p>
-              ) : (
-                <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                  <span className="flex items-start gap-1">
-                    <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
-                    <span>
-                      {t('maxWinnerWarning')}{' '}
-                      <Link
-                        to="/dashboard/chat"
-                        target="_blank"
-                        className="font-semibold underline hover:no-underline"
-                        style={{ color: '#0091ff' }}
-                      >
-                        {t('contactAdmin')}
-                      </Link>.
-                    </span>
-                  </span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
-            <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 flex items-center justify-between">
-              <span className="text-sm font-medium text-emerald-800">{t('totalIncentiveRequired')}</span>
-              <p className="text-lg font-bold text-emerald-700">
-                💰 Rp {(formData.winnerCount * formData.prizePerWinner).toLocaleString('id-ID')}
-              </p>
-            </div>
-          )}
-        </div>
+        <FieldRow
+          icon={CalendarDays}
+          label={t('surveyDurationLabel')}
+          htmlFor="duration"
+          required
+          compact
+          labelWidth="w-[150px] md:w-[320px]"
+          error={
+            durationHasError
+              ? formData.duration > 30
+                ? t('errorDurationMax')
+                : t('errorDurationZero')
+              : undefined
+          }
+          hint={durationHasError ? undefined : t('surveyDurationHelp')}
+        >
+          <input
+            id="duration"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            className={fieldInputClass}
+            placeholder={t('surveyDurationPlaceholder')}
+            value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
+            onChange={(e) => {
+              const val = e.target.value;
+              const intVal = parseInt(val);
+              updateFormData({ duration: isNaN(intVal) ? 0 : intVal });
+              if (attemptedSubmit && errors.duration) {
+                setErrors({ ...errors, duration: undefined });
+              }
+            }}
+          />
+          <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">{t('days')}</span>
+        </FieldRow>
       </div>
 
-      {/* Navigation Buttons */}
-      <div className="flex justify-between items-center pt-4 mt-8">
-        {onBack && (
-          <button
-            type="button"
-            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
-            onClick={onBack}
-          >
-            ← {t('backButton')}
-          </button>
+      {/* SEKSI 3 — PENGATURAN INSENTIF */}
+      <div className="mt-6">
+        <SectionLabel tooltip={incentiveTooltip}>{t('incentiveSettings')}</SectionLabel>
+      </div>
+
+      <div className={fieldRowListClass}>
+        <FieldRow
+          icon={Gift}
+          label={t('prizePerWinnerLabel')}
+          htmlFor="prizePerWinner"
+          required
+          compact
+          labelWidth="w-[150px] md:w-[320px]"
+          error={
+            formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
+              ? t('errorMinPrize')
+              : undefined
+          }
+          hint={
+            formData.prizePerWinner >= 25000 && formData.questionCount > 0 ? (
+              <>
+                {t('recommendation')}: Rp{' '}
+                {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}
+                {t('perWinner')}
+              </>
+            ) : undefined
+          }
+        >
+          <span className="mr-1.5 shrink-0 text-sm text-gray-400">Rp</span>
+          <input
+            id="prizePerWinner"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            className={fieldInputClass}
+            placeholder={t('prizePerWinnerPlaceholder')}
+            value={formData.prizePerWinner}
+            onChange={(e) => {
+              updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
+              if (attemptedSubmit && errors.prizePerWinner) {
+                setErrors({ ...errors, prizePerWinner: undefined });
+              }
+            }}
+          />
+        </FieldRow>
+
+        <FieldRow
+          icon={Trophy}
+          label={t('winnerCountLabel')}
+          htmlFor="winnerCount"
+          required
+          compact
+          labelWidth="w-[150px] md:w-[320px]"
+          tooltip={winnerTooltip}
+          error={
+            formData.winnerCount > 0 && formData.winnerCount < 2 ? t('errorMinWinners') : undefined
+          }
+        >
+          <input
+            id="winnerCount"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            className={fieldInputClass}
+            placeholder={t('winnerCountPlaceholder')}
+            value={formData.winnerCount}
+            onChange={(e) => {
+              const val = parseInt(e.target.value) || 0;
+              updateFormData({ winnerCount: Math.min(val, 5) });
+              if (attemptedSubmit && errors.winnerCount) {
+                setErrors({ ...errors, winnerCount: undefined });
+              }
+            }}
+          />
+        </FieldRow>
+
+        {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
+            <span className="text-sm text-gray-600">{t('totalIncentiveRequired')}</span>
+            <span className="text-sm font-bold tabular-nums text-[#1a1a1a]">
+              Rp {(formData.winnerCount * formData.prizePerWinner).toLocaleString('id-ID')}
+            </span>
+          </div>
         )}
+      </div>
+
+      <div className="mt-6 flex justify-end">
         <button
           type="submit"
-          className={`px-6 py-2.5 rounded-xl text-white font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 ${!onBack ? 'ml-auto' : ''}`}
-          style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' }}
+          className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark"
         >
-          {t('continue')} →
+          {t('continue')}
+          <span aria-hidden="true">→</span>
         </button>
       </div>
     </form>

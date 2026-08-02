@@ -124,7 +124,8 @@ export const translations = {
     completeFormBelow: "Complete the form below",
     googleFormLink: "Google Form Link",
     googleFormLinkPlaceholder: "https://docs.google.com/forms/...",
-    googleFormLinkHelp: "Enter Google Form link or shortlink (forms.gle/abc) and click 'Preview' to auto-fill fields below. Non-Google Form links can be filled manually.",
+    surveyLinkLabel: "Survey Link",
+    surveyLinkPlaceholder: "https://forms.gle/... or your survey URL",
 
     surveyTitle: "Survey Title",
     surveyTitlePlaceholder: "Enter survey title",
@@ -142,8 +143,6 @@ export const translations = {
     continue: "Continue",
     cancel: "Cancel",
     save: "Save",
-    cancelSubmission: "Cancel",
-    confirmCancelSubmission: "Are you sure you want to cancel and start over? This will remove your current draft.",
 
     // Messages
     importedFromGoogle: "Imported from Google Drive",
@@ -649,7 +648,8 @@ export const translations = {
     completeFormBelow: "Lengkapi form dibawah ini",
     googleFormLink: "Link Google Form",
     googleFormLinkPlaceholder: "https://docs.google.com/forms/...",
-    googleFormLinkHelp: "Masukan link Google Form atau shortlink (forms.gle/abc) dan klik tombol \"Preview\" untuk mengisi field dibawah secara otomatis. Link selain Google Form bisa diisi secara manual.",
+    surveyLinkLabel: "Link Survei",
+    surveyLinkPlaceholder: "https://forms.gle/... atau link survei Anda",
 
     surveyTitle: "Judul",
     surveyTitlePlaceholder: "Masukkan judul survey",
@@ -667,8 +667,6 @@ export const translations = {
     continue: "Lanjut",
     cancel: "Batal",
     save: "Simpan",
-    cancelSubmission: "Batal",
-    confirmCancelSubmission: "Apakah Anda yakin ingin membatalkan dan mulai dari awal? Ini akan menghapus draft Anda saat ini.",
 
     // Messages
     importedFromGoogle: "Diimport dari Google Drive",
