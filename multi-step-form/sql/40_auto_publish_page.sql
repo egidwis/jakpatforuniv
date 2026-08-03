@@ -297,15 +297,18 @@ CREATE TRIGGER trg_form_submissions_ensure_page
 -- ORDER BY fs.end_date DESC;
 
 -- ============================================
--- OPTIONAL — give existing banner-less pages the same default banner
+-- DECLINED 2026-08-03 — do not run. Kept only to record the decision.
 -- ============================================
--- The reason for the default is visual consistency, and that argument does not
--- only apply to new pages: measured 2026-08-03, 235 of 262 published pages have
--- no banner at all. Leaving them as they are means the feed shows two different
--- kinds of card side by side — which is the confusion this was meant to remove.
+-- The proposal was to give the 235 of 262 published pages that have no banner
+-- the same default, for the visual consistency the default exists to provide.
 --
--- Restricted to pages whose window has not finished, so nothing is rewritten on
--- campaigns that are already over. Drop the date filter to cover everything.
+-- Product decision: leave them alone. Those pages are for campaigns that have
+-- finished airing and are no longer surfaced, so rewriting them buys nothing
+-- and touches 235 rows of history for a cosmetic reason. New pages get the
+-- default at creation; that is where the consistency argument actually applies.
+--
+-- If this is ever revisited, the statement below is restricted to windows that
+-- have not finished. Drop the date filter to cover everything.
 --
 -- UPDATE survey_pages
 -- SET banner_url = '/default-ad-banner.jpg',
