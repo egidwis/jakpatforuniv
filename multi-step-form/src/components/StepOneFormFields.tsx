@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import type { SurveyFormData } from '../types';
 import {
-  AlignLeft,
   CalendarDays,
   CheckCircle,
   Gift,
   Hash,
+  Info,
   Link2,
   Trophy,
   Type,
@@ -14,7 +14,6 @@ import {
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useLanguage } from '../i18n/LanguageContext';
-import { calculateAdCostPerDay } from '../utils/cost-calculator';
 import { isAutoApprovalPath } from '../utils/review-path';
 import {
   FieldBlock,
@@ -46,7 +45,6 @@ interface StepOneFormFieldsProps {
 interface FormErrors {
   surveyUrl?: string;
   title?: string;
-  description?: string;
   questionCount?: string;
   criteriaResponden?: string;
   duration?: string;
@@ -54,20 +52,50 @@ interface FormErrors {
   prizePerWinner?: string;
 }
 
+const isValidUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Body layar isi-form Iklan Survei — dirender di dalam `AdsFlowCard`
  * (`step="fields"`, tanpa cap), dipakai dua jalur: manual dan lanjutan
- * import Google Form (`isGoogleImport`). Navigasi mundur untuk keduanya kini
- * hidup di `UnifiedHeader` (floating bar bawah), bukan di sini.
- *
- * Tata letaknya baris `label | input` bergaya tabel, bukan tumpukan kartu —
- * lihat `SurveyFieldRow.tsx` untuk primitifnya dan untuk jebakan cascade
- * `.flex-col` yang mengatur cara baris berganti arah.
- *
- * Barisnya SENGAJA tidak seragam. Field pendek/numerik pakai `compact`
- * (berdampingan di semua lebar); field teks panjang menumpuk di bawah `md`
- * karena URL Google Form tidak terbaca dalam ~180px di layar 360px.
+ * import Google Form (`isGoogleImport`).
  */
+export function ReviewInfoBanner({ formData }: { formData: SurveyFormData }) {
+  const { t } = useLanguage();
+  const isAutoPath = isAutoApprovalPath(formData);
+
+  return (
+    <div className="mx-auto max-w-xl mb-4 p-3.5 md:p-4 rounded-2xl bg-blue-50/80 border border-blue-100/90 flex items-start gap-3 text-xs md:text-sm leading-relaxed text-blue-900 shadow-sm">
+      <Info className="w-5 h-5 mt-0.5 shrink-0 text-jfu-primary" aria-hidden="true" />
+      <div>
+        <p className="font-semibold text-blue-950 text-sm md:text-base">
+          {isAutoPath ? t('reviewMethodAutoHint') : t('reviewMethodManualHint')}
+          {' · '}
+          {isAutoPath ? t('adsEntryAutoRowTime') : t('adsEntryManualRowTime')}
+        </p>
+        <p className="mt-1 text-blue-800/90 leading-relaxed">
+          {t('adsEntryReviewNotePart1')}{' '}
+          <a
+            href="/homepage/terms-conditions.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-jfu-primary underline hover:text-jfu-dark"
+          >
+            {t('termsConditions')}
+          </a>
+          {t('adsEntryReviewNotePart2')}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function StepOneFormFields({
   formData,
   updateFormData,
@@ -79,6 +107,31 @@ export function StepOneFormFields({
   const hasInitializedRef = useRef(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+
+  const surveyUrlRef = useRef<HTMLTextAreaElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const criteriaRespondenRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (surveyUrlRef.current) {
+      surveyUrlRef.current.style.height = 'auto';
+      surveyUrlRef.current.style.height = `${Math.max(24, surveyUrlRef.current.scrollHeight)}px`;
+    }
+  }, [formData.surveyUrl]);
+
+  useEffect(() => {
+    if (titleRef.current) {
+      titleRef.current.style.height = 'auto';
+      titleRef.current.style.height = `${Math.max(24, titleRef.current.scrollHeight)}px`;
+    }
+  }, [formData.title]);
+
+  useEffect(() => {
+    if (criteriaRespondenRef.current) {
+      criteriaRespondenRef.current.style.height = 'auto';
+      criteriaRespondenRef.current.style.height = `${Math.max(60, criteriaRespondenRef.current.scrollHeight)}px`;
+    }
+  }, [formData.criteriaResponden]);
 
   // Auto-update prizePerWinner when component mounts or questionCount changes
   useEffect(() => {
@@ -126,14 +179,12 @@ export function StepOneFormFields({
 
     if (!formData.surveyUrl || !formData.surveyUrl.trim()) {
       newErrors.surveyUrl = t('errorSurveyLinkEmpty');
+    } else if (!isValidUrl(formData.surveyUrl.trim())) {
+      newErrors.surveyUrl = t('errorInvalidSurveyUrl');
     }
 
     if (!formData.title || !formData.title.trim()) {
       newErrors.title = t('errorTitleEmpty');
-    }
-
-    if (!formData.description || !formData.description.trim()) {
-      newErrors.description = t('errorDescriptionEmpty');
     }
 
     if (formData.questionCount <= 0) {
@@ -179,35 +230,6 @@ export function StepOneFormFields({
     }
   };
 
-  // Jalur review dibaca dari predikat bersama, BUKAN dari `isGoogleImport`:
-  // Google Form yang memicu deteksi PII tetap masuk antrean admin, jadi janji
-  // "hitungan detik" di sini akan bohong kalau disandarkan pada metode impor.
-  const isAutoPath = isAutoApprovalPath(formData);
-
-  const reviewPathTooltip = (
-    <span className="block leading-relaxed">
-      <span className="block font-semibold">
-        {isAutoPath ? t('reviewMethodAutoHint') : t('reviewMethodManualHint')}
-        {' · '}
-        {isAutoPath ? t('adsEntryAutoRowTime') : t('adsEntryManualRowTime')}
-      </span>
-      <span className="block mt-1">
-        {t('adsEntryReviewNotePart1')}{' '}
-        <a
-          href="/homepage/terms-conditions.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline hover:text-gray-200"
-        >
-          {t('termsConditions')}
-        </a>
-        {t('adsEntryReviewNotePart2')}
-      </span>
-    </span>
-  );
-
-  const incentiveTooltip = <span className="leading-relaxed">{t('incentiveDistributionInfo')}</span>;
-
   const winnerTooltip = (
     <span className="leading-relaxed">
       {t('maxWinnerWarning')}{' '}
@@ -234,7 +256,7 @@ export function StepOneFormFields({
       )}
 
       {/* SEKSI 1 — INFORMASI SURVEY */}
-      <SectionLabel tooltip={reviewPathTooltip}>{t('surveyInformation')}</SectionLabel>
+      <SectionLabel>{t('surveyInformation')}</SectionLabel>
 
       <div className={fieldRowListClass}>
         <FieldRow
@@ -245,10 +267,11 @@ export function StepOneFormFields({
           error={attemptedSubmit ? errors.surveyUrl : undefined}
           hint={isGoogleImport ? t('surveyTitleFromGoogleDrive') : undefined}
         >
-          <input
+          <textarea
             id="surveyUrl"
-            type="url"
-            className={fieldInputClass}
+            ref={surveyUrlRef}
+            rows={1}
+            className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[24px]`}
             placeholder={isGoogleImport ? t('googleFormLinkPlaceholder') : t('surveyLinkPlaceholder')}
             value={formData.surveyUrl}
             onChange={(e) => {
@@ -270,10 +293,12 @@ export function StepOneFormFields({
           required
           error={attemptedSubmit ? errors.title : undefined}
         >
-          <input
+          <textarea
             id="title"
-            type="text"
-            className={fieldInputClass}
+            ref={titleRef}
+            rows={1}
+            maxLength={100}
+            className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[24px]`}
             placeholder={t('surveyTitlePlaceholder')}
             value={formData.title}
             onChange={(e) => {
@@ -295,14 +320,6 @@ export function StepOneFormFields({
           required
           compact
           error={attemptedSubmit ? errors.questionCount : undefined}
-          hint={
-            formData.questionCount > 0 ? (
-              <>
-                Rp {calculateAdCostPerDay(formData.questionCount).toLocaleString('id-ID')}/hari{' '}
-                <span className="text-gray-400">({t('priceExcludesTax')})</span>
-              </>
-            ) : undefined
-          }
         >
           <input
             id="questionCount"
@@ -321,34 +338,8 @@ export function StepOneFormFields({
             readOnly={isGoogleImport}
             min={1}
           />
+          <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">items</span>
         </FieldRow>
-
-        <FieldBlock
-          icon={AlignLeft}
-          label={t('surveyDescription')}
-          htmlFor="description"
-          required
-          counter={`${formData.description.length}/500`}
-          error={attemptedSubmit ? errors.description : undefined}
-        >
-          <textarea
-            id="description"
-            className={`${fieldInputClass} min-h-[88px] resize-y leading-relaxed`}
-            placeholder={t('surveyDescriptionPlaceholder')}
-            value={formData.description}
-            onChange={(e) => {
-              if (!isGoogleImport) {
-                updateFormData({ description: e.target.value });
-                if (attemptedSubmit && errors.description) {
-                  setErrors({ ...errors, description: undefined });
-                }
-              }
-            }}
-            readOnly={isGoogleImport}
-            rows={4}
-            maxLength={500}
-          />
-        </FieldBlock>
       </div>
 
       {/* SEKSI 2 — KONFIGURASI IKLAN */}
@@ -357,49 +348,12 @@ export function StepOneFormFields({
       </div>
 
       <div className={fieldRowListClass}>
-        <FieldBlock
-          icon={Users}
-          label={t('respondentCriteriaLabel')}
-          htmlFor="criteriaResponden"
-          required
-          counter={`${formData.criteriaResponden?.length || 0}/200`}
-          error={attemptedSubmit ? errors.criteriaResponden : undefined}
-          // Panduan ini SENGAJA tetap terlihat, tidak jadi tooltip: ia mengoreksi
-          // ekspektasi keliru ("kriteria = penargetan") tepat saat user mengetik,
-          // dan yang salah paham justru tidak akan membuka tooltip.
-          hint={t('respondentCriteriaHelp')
-            .split('*')
-            .map((part, index) =>
-              index % 2 === 1 ? (
-                <strong key={index} className="font-semibold text-gray-600">{part}</strong>
-              ) : (
-                part
-              )
-            )}
-        >
-          <textarea
-            id="criteriaResponden"
-            className={`${fieldInputClass} min-h-[72px] resize-y leading-relaxed`}
-            placeholder={t('respondentCriteriaPlaceholder')}
-            value={formData.criteriaResponden}
-            onChange={(e) => {
-              updateFormData({ criteriaResponden: e.target.value });
-              if (attemptedSubmit && errors.criteriaResponden) {
-                setErrors({ ...errors, criteriaResponden: undefined });
-              }
-            }}
-            rows={3}
-            maxLength={200}
-          />
-        </FieldBlock>
-
         <FieldRow
           icon={CalendarDays}
           label={t('surveyDurationLabel')}
           htmlFor="duration"
           required
           compact
-          labelWidth="w-[150px] md:w-[320px]"
           error={
             durationHasError
               ? formData.duration > 30
@@ -407,7 +361,6 @@ export function StepOneFormFields({
                 : t('errorDurationZero')
               : undefined
           }
-          hint={durationHasError ? undefined : t('surveyDurationHelp')}
         >
           <input
             id="duration"
@@ -428,11 +381,55 @@ export function StepOneFormFields({
           />
           <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">{t('days')}</span>
         </FieldRow>
+
+        <FieldBlock
+          icon={Users}
+          label={t('respondentCriteriaLabel')}
+          htmlFor="criteriaResponden"
+          required
+          counter={`${formData.criteriaResponden?.length || 0}/300`}
+          error={attemptedSubmit ? errors.criteriaResponden : undefined}
+          // Panduan ini SENGAJA tetap terlihat, tidak jadi tooltip: ia mengoreksi
+          // ekspektasi keliru ("kriteria = penargetan") tepat saat user mengetik,
+          // dan yang salah paham justru tidak akan membuka tooltip.
+          hint={
+            <span className="flex items-start gap-1.5 text-gray-500">
+              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
+              <span>
+                {t('respondentCriteriaHelp')
+                  .split('*')
+                  .map((part, index) =>
+                    index % 2 === 1 ? (
+                      <strong key={index} className="font-semibold text-gray-600">{part}</strong>
+                    ) : (
+                      part
+                    )
+                  )}
+              </span>
+            </span>
+          }
+        >
+          <textarea
+            id="criteriaResponden"
+            ref={criteriaRespondenRef}
+            rows={2}
+            className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[60px]`}
+            placeholder={t('respondentCriteriaPlaceholder')}
+            value={formData.criteriaResponden}
+            onChange={(e) => {
+              updateFormData({ criteriaResponden: e.target.value });
+              if (attemptedSubmit && errors.criteriaResponden) {
+                setErrors({ ...errors, criteriaResponden: undefined });
+              }
+            }}
+            maxLength={300}
+          />
+        </FieldBlock>
       </div>
 
       {/* SEKSI 3 — PENGATURAN INSENTIF */}
       <div className="mt-6">
-        <SectionLabel tooltip={incentiveTooltip}>{t('incentiveSettings')}</SectionLabel>
+        <SectionLabel>{t('incentiveSettings')}</SectionLabel>
       </div>
 
       <div className={fieldRowListClass}>

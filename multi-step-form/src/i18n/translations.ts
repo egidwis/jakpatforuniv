@@ -131,8 +131,8 @@ export const translations = {
     surveyTitlePlaceholder: "Enter survey title",
     surveyTitleFromGoogleDrive: "(from Google Drive)",
 
-    questionCount: "Number of Questions",
-    questionCountPlaceholder: "Enter number of questions",
+    questionCount: "Questions",
+    questionCountPlaceholder: "12",
 
     surveyDescription: "Survey Description",
     surveyDescriptionPlaceholder: "Enter survey description",
@@ -159,7 +159,7 @@ export const translations = {
     perQuestion: "questions x 1 (day)",
 
     // Step Two Fields
-    surveyDurationLabel: "Ad survey duration (days)",
+    surveyDurationLabel: "Ad Duration",
     surveyDurationPlaceholder: "Enter duration in days (1-30)",
     surveyDurationHelp: "Ad period will be confirmed by admin via WhatsApp after payment",
     prizePerWinnerLabel: "Prize per winner",
@@ -174,7 +174,7 @@ export const translations = {
     perWinner: "/winner",
     respondentCriteriaPlaceholder: "Example: Age 18-35 years, Jakarta Domicile, Active Student",
     respondentCriteriaLabel: "Respondent Criteria",
-    respondentCriteriaHelp: "Respondent criteria are displayed on the ad *only as a guide*. Since this service advertises surveys to a *random audience profile*, the characteristics of respondents who participate may vary.",
+    respondentCriteriaHelp: "Respondent criteria on ads are only used as a *guide for prize draws*. Surveys are still distributed to a *randomly profiled audience*, so the respondents who complete them will be *diverse*.",
 
 
     // Step One Method Selection
@@ -215,6 +215,7 @@ export const translations = {
 
     // Validation Error Messages - StepOneFormFields
     errorSurveyLinkEmpty: "Survey link cannot be empty",
+    errorInvalidSurveyUrl: "Invalid survey URL. Must start with http:// or https://",
     errorTitleEmpty: "Survey title cannot be empty",
     errorDescriptionEmpty: "Survey description cannot be empty",
     errorQuestionCountInvalid: "Number of questions must be greater than 0",
@@ -655,8 +656,8 @@ export const translations = {
     surveyTitlePlaceholder: "Masukkan judul survey",
     surveyTitleFromGoogleDrive: "(dari Google Drive)",
 
-    questionCount: "Jumlah Pertanyaan",
-    questionCountPlaceholder: "Masukkan jumlah pertanyaan",
+    questionCount: "Pertanyaan",
+    questionCountPlaceholder: "12",
 
     surveyDescription: "Deskripsi Survey",
     surveyDescriptionPlaceholder: "Masukkan deskripsi survey",
@@ -683,7 +684,7 @@ export const translations = {
     perQuestion: "pertanyaan x 1 (hari)",
 
     // Step Two Fields
-    surveyDurationLabel: "Durasi survey iklan (hari)",
+    surveyDurationLabel: "Durasi Tayang",
     surveyDurationPlaceholder: "Masukkan durasi dalam hari (1-30)",
     surveyDurationHelp: "Periode iklan akan dikonfirmasi oleh admin via WhatsApp setelah pembayaran",
     prizePerWinnerLabel: "Hadiah per-pemenang",
@@ -698,7 +699,7 @@ export const translations = {
     perWinner: "/pemenang",
     respondentCriteriaPlaceholder: "Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif",
     respondentCriteriaLabel: "Kriteria Responden",
-    respondentCriteriaHelp: "Kriteria responden ditampilkan pada iklan *hanya sebagai panduan*. Karena layanan ini mengiklankan survei ke *audiens berprofil random*, karakteristik responden yang mengisi dapat beragam.",
+    respondentCriteriaHelp: "Kriteria responden pada iklan hanya digunakan sebagai *panduan pengundian hadiah*. Survei tetap ditayangkan ke *audiens berprofil acak*, sehingga responden yang mengisi akan *beragam*.",
 
     // Step One Method Selection
     importFromGoogleForm: "Import dari Google Form",
@@ -737,8 +738,9 @@ export const translations = {
     errorQuestionCountZero: "Jumlah pertanyaan harus lebih dari 0",
 
     // Validation Error Messages - StepOneFormFields
-    errorSurveyLinkEmpty: "Link survey tidak boleh kosong",
-    errorTitleEmpty: "Judul survey tidak boleh kosong",
+    errorSurveyLinkEmpty: "Link survei tidak boleh kosong",
+    errorInvalidSurveyUrl: "URL survei tidak valid. Pastikan diawali dengan http:// atau https://",
+    errorTitleEmpty: "Judul survei tidak boleh kosong",
     errorDescriptionEmpty: "Deskripsi survey tidak boleh kosong",
     errorQuestionCountInvalid: "Jumlah pertanyaan harus lebih dari 0",
     errorCompleteAllFields: "Mohon lengkapi semua field yang wajib diisi",

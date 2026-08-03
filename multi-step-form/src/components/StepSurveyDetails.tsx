@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { AdsFlowCard } from './AdsFlowCard';
 import { StepOneMethodSelection } from './StepOneMethodSelection';
 import { StepOneGoogleForm } from './StepOneGoogleForm';
-import { StepOneFormFields } from './StepOneFormFields';
+import { StepOneFormFields, ReviewInfoBanner } from './StepOneFormFields';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { isProfileGateSatisfied } from './ProfileForm';
 import { AlertTriangle } from 'lucide-react';
@@ -229,6 +229,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   if (flowState === 'manual') {
     return (
       <>
+        <ReviewInfoBanner formData={formData} />
         <AdsFlowCard step="fields">
           <StepOneFormFields
             formData={formData}
@@ -291,6 +292,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   if (flowState === 'form-fields') {
     return (
       <>
+        <ReviewInfoBanner formData={formData} />
         <AdsFlowCard step="fields">
           <StepOneFormFields
             formData={formData}

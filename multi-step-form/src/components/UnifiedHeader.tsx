@@ -36,8 +36,9 @@ export function UnifiedHeader({ formData, onBack }: UnifiedHeaderProps) {
         // pointer-events-none supaya area di kiri/kanan kartu tetap bisa
         // di-scroll/diklik; safe-area untuk home indicator iOS.
         <div className="fixed bottom-0 inset-x-0 z-30 pointer-events-none pb-[env(safe-area-inset-bottom)]">
-            <div className="pointer-events-auto max-w-5xl mx-3 md:mx-6 xl:mx-auto mb-3 md:mb-4 rounded-2xl border border-jfu-primary/[0.12] bg-white/95 backdrop-blur shadow-[0_8px_30px_rgba(25,118,210,0.18)]">
-                <div className="w-full px-4 md:px-6 py-3">
+            <div className="max-w-4xl mx-auto px-4 md:px-6">
+                <div className="pointer-events-auto w-full mb-3 md:mb-4 rounded-2xl border border-jfu-primary/[0.12] bg-white/95 backdrop-blur shadow-[0_8px_30px_rgba(25,118,210,0.18)]">
+                    <div className="w-full px-4 md:px-6 py-3">
                     <div className="flex items-center justify-between">
 
                         {/* LEFT: Kembali + judul produk statis. Handler yang tepat untuk
@@ -70,5 +71,6 @@ export function UnifiedHeader({ formData, onBack }: UnifiedHeaderProps) {
                 </div>
             </div>
         </div>
+    </div>
     );
 }

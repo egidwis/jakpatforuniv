@@ -49,7 +49,7 @@ export const fieldInputClass =
 export const fieldRowListClass = 'mt-2 flex flex-col gap-2';
 
 /** Lebar kolom label dibagi rata di semua baris (compact & default) supaya nilai sebaris X. */
-const FIELD_LABEL_WIDTH = 'md:w-[150px]';
+const FIELD_LABEL_WIDTH = 'w-[150px] shrink-0 md:w-[165px]';
 
 function rowShell(hasError?: boolean) {
   return (
@@ -72,7 +72,7 @@ function LabelContent({
 }) {
   return (
     <>
-      <Icon className="w-4 h-4 shrink-0 text-gray-400" aria-hidden="true" />
+      <Icon className="w-4 h-4 shrink-0 text-gray-400 mt-0.5" aria-hidden="true" />
       <span className="text-sm text-gray-600 leading-snug">
         {label}
         {required && <span className="text-rose-500"> *</span>}
@@ -148,28 +148,34 @@ export function FieldRow({
   tooltip,
   children,
 }: FieldRowProps) {
-  const inner = compact
-    ? 'flex items-stretch gap-3'
-    : 'flex [flex-direction:column] gap-1.5 md:[flex-direction:row] md:items-stretch md:gap-3';
-
-  const labelCell = compact
-    ? `flex items-center gap-2 min-w-0 shrink-0 ${labelWidth ?? 'w-[150px]'}`
-    : `flex items-center gap-2 min-w-0 md:shrink-0 ${labelWidth ?? FIELD_LABEL_WIDTH}`;
-
-  // Nilai rata kiri tepat setelah divider — sama seperti "Payment | 15 / hour"
-  // di Teero.
-  const valueCell = compact
-    ? `flex items-center min-w-0 flex-1 border-l border-gray-100 ${valueInset ?? 'pl-4'}`
-    : 'flex items-center min-w-0 flex-1 md:border-l md:border-gray-100 md:pl-4';
+  if (compact) {
+    return (
+      <div>
+        <div className={rowShell(!!error)}>
+          <div className="flex items-center gap-3">
+            <label htmlFor={htmlFor} className={`flex items-center gap-2 min-w-0 shrink-0 ${labelWidth ?? FIELD_LABEL_WIDTH}`}>
+              <LabelContent icon={icon} label={label} required={required} tooltip={tooltip} />
+            </label>
+            <div className={`flex items-center min-w-0 flex-1 border-l border-gray-100 ${valueInset ?? 'pl-4'}`}>
+              {children}
+            </div>
+          </div>
+        </div>
+        <RowFooter error={error} hint={hint} />
+      </div>
+    );
+  }
 
   return (
     <div>
       <div className={rowShell(!!error)}>
-        <div className={inner}>
-          <label htmlFor={htmlFor} className={labelCell}>
+        <div className="flex [flex-direction:column] gap-1.5 md:[flex-direction:row] md:items-start md:gap-3">
+          <label htmlFor={htmlFor} className={`flex items-center md:items-start gap-2 min-w-0 [width:100%] md:[width:165px] md:shrink-0 md:pt-0.5 ${labelWidth ?? ''}`}>
             <LabelContent icon={icon} label={label} required={required} tooltip={tooltip} />
           </label>
-          <div className={valueCell}>{children}</div>
+          <div className="flex items-start min-w-0 [width:100%] md:[width:auto] md:flex-1 border-0 md:border-l md:border-gray-100 pl-6 md:pl-4">
+            {children}
+          </div>
         </div>
       </div>
       <RowFooter error={error} hint={hint} />
