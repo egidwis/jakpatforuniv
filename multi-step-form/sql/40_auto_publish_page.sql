@@ -223,7 +223,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION ensure_survey_page(UUID) IS
-  'Creates and publishes the survey page for a paid submission if it does not exist yet. Banner is left NULL by design. Idempotent — returns the existing page id on a retry.';
+  'Creates and publishes the survey page for a paid submission if it does not exist yet. Gets the generic default banner, not a real one. Idempotent — returns the existing page id on a retry.';
 
 
 -- ============================================
