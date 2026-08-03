@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase, getCdnUrl } from '@/utils/supabase';
+import { normalizeJakpatId, jakpatIdWarning } from '@/utils/jakpat-id';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -250,7 +251,11 @@ export function SurveyPage() {
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        // Strip pasted wrappers (https://jakpat.net/s/…, jakpat.…, stray spaces)
+        // as they are typed, so the duplicate check and the stored value both
+        // see the bare ID.
+        const next = name === 'jakpat_id' ? normalizeJakpatId(value) : value;
+        setFormData(prev => ({ ...prev, [name]: next }));
     };
 
     const handleCustomFieldChange = (label: string, value: string) => {
@@ -922,6 +927,13 @@ export function SurveyPage() {
                                             </div>
                                         )}
                                     </div>
+                                    {/* Advisory only — never blocks submit. See utils/jakpat-id.ts */}
+                                    {!duplicateError && jakpatIdWarning(formData.jakpat_id) && (
+                                        <p className="text-amber-700 text-xs mt-2 flex items-start gap-1.5">
+                                            <AlertCircle className="w-3.5 h-3.5 mt-px shrink-0" />
+                                            <span>{jakpatIdWarning(formData.jakpat_id)}</span>
+                                        </p>
+                                    )}
                                     {duplicateError && (
                                         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-3 animate-in fade-in slide-in-from-top-2">
                                             <div className="flex items-start gap-3">

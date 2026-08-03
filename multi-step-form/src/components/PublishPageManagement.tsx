@@ -862,31 +862,12 @@ export function PublishPageManagement() {
                                                 </Button>
                                             )}
 
-                                            {/* Clear Banner Flag Button */}
-                                            {page.requires_banner_update && (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={async () => {
-                                                        try {
-                                                            const { error } = await supabase
-                                                                .from('survey_pages')
-                                                                .update({ requires_banner_update: false })
-                                                                .eq('id', page.id);
-                                                            if (error) throw error;
-                                                            toast.success('Banner flag cleared');
-                                                            fetchPages();
-                                                        } catch (err) {
-                                                            toast.error('Failed to clear banner flag');
-                                                        }
-                                                    }}
-                                                    title="Banner sudah diupdate, clear flag"
-                                                    className="h-8 px-2.5 text-amber-600 hover:text-amber-700 border-amber-200 hover:bg-amber-50 shrink-0 text-[10px] font-semibold"
-                                                >
-                                                    <Check className="w-3.5 h-3.5 mr-1" />
-                                                    Banner OK
-                                                </Button>
-                                            )}
+                                            {/* No "Banner OK" button by design.
+                                                The flag stopped being a gate in sql/36 — the ad airs whether
+                                                or not the banner is ready. Dismissing it by hand would only
+                                                hide the reminder while the banner is still missing, so it
+                                                clears the one way that is actually true: when a banner is
+                                                saved through the Page Builder. */}
                                         </div>
                                     </TableCell>
                                 </TableRow>

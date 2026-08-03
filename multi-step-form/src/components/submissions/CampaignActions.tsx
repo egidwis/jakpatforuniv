@@ -407,7 +407,6 @@ export function ExtendAction({
     <ExtendSection
       submissionId={submission.id}
       submissionTitle={submission.formTitle}
-      currentEndDate={submission.end_date || existingPage?.publish_end_date}
       currentPrizePerWinner={submission.prize_per_winner || 0}
       currentWinnerCount={submission.winnerCount || 0}
       questionCount={submission.questionCount || 0}

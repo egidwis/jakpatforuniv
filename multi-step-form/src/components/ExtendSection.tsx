@@ -4,6 +4,7 @@ import type { FormSubmissionExtend, Transaction, Invoice } from '@/utils/supabas
 import { createManualInvoice } from '@/utils/payment';
 import { MAX_REGULAR_ADS_PER_DAY, PPN_RATE } from '@/utils/constants';
 import { calculateAdCostPerDay, calculateIncentiveCost, calculatePpn } from '@/utils/cost-calculator';
+import { toAiringStartIso, toAiringEndIso } from '@/utils/airing-window';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +45,9 @@ import { toast } from 'sonner';
 interface ExtendSectionProps {
   submissionId: string;
   submissionTitle: string;
-  currentEndDate?: string | null;
+  // No currentEndDate: which batch a new schedule lands in is resolved by
+  // get_schedule_batch_context (sql/37), not by comparing against the first
+  // schedule's end date. Passing that date in is what caused double-billing.
   currentPrizePerWinner?: number;
   currentWinnerCount?: number;
   questionCount?: number;
@@ -69,6 +72,14 @@ interface ExtendPaymentInfo {
   amount: number;
 }
 
+/** Resolved server-side by get_schedule_batch_context (sql/37). */
+interface BatchContext {
+  periodBatch: string;
+  isNewBatch: boolean;
+  poolPrizePerWinner: number;
+  poolWinnerCount: number;
+}
+
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
   waiting_payment: { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500 animate-pulse' },
   paid: { bg: 'bg-blue-50 border-blue-200', text: 'text-blue-700', dot: 'bg-blue-500' },
@@ -81,7 +92,6 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
 export function ExtendSection({
   submissionId,
   submissionTitle,
-  currentEndDate,
   currentPrizePerWinner = 0,
   currentWinnerCount = 0,
   questionCount = 0,
@@ -102,6 +112,8 @@ export function ExtendSection({
   const [winnerCount, setWinnerCount] = useState(0);
   const [additionalPrize, setAdditionalPrize] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [batchContext, setBatchContext] = useState<BatchContext | null>(null);
+  const [isResolvingBatch, setIsResolvingBatch] = useState(false);
 
   const [isFetchingAds, setIsFetchingAds] = useState(false);
   const [regularCountsByDate, setRegularCountsByDate] = useState<Record<string, number>>({});
@@ -196,12 +208,33 @@ export function ExtendSection({
     }
   }, [isExpanded, fetchExtends]);
 
-  // Determine if the new extend is in the same month as parent end_date
-  const computeIsNewMonth = (extEndDate: string) => {
-    if (!currentEndDate) return true;
-    const parentMonth = new Date(currentEndDate).toISOString().substring(0, 7); // YYYY-MM
-    const extMonth = new Date(extEndDate).toISOString().substring(0, 7);
-    return parentMonth !== extMonth;
+  /**
+   * Does this survey already have a schedule in the batch the new one would
+   * land in? That — not "is it a different month from the FIRST schedule?" —
+   * decides whether a fresh prize pool has to be funded.
+   *
+   * Answered server-side so the batch string is derived by the same expression
+   * that computes the stored period_batch (sql/37_batch_pool_context.sql).
+   * Asking it in the browser is what let schedule #3 be billed for a pool
+   * schedule #2 had already funded.
+   */
+  const fetchBatchContext = async (endDateIso: string): Promise<BatchContext | null> => {
+    const { data, error } = await supabase.rpc('get_schedule_batch_context', {
+      p_submission_id: submissionId,
+      p_end_date: endDateIso,
+    });
+    if (error) {
+      console.error('Error resolving batch context:', error);
+      return null;
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return {
+      periodBatch: row.period_batch,
+      isNewBatch: row.is_new_batch,
+      poolPrizePerWinner: row.pool_prize_per_winner || 0,
+      poolWinnerCount: row.pool_winner_count || 0,
+    };
   };
 
   const handleOpenCreate = () => {
@@ -226,19 +259,27 @@ export function ExtendSection({
 
     setCreating(true);
     try {
-      // Calculate end_date from start_date + duration
-      const start = new Date(startDate);
-      // Set to 15:00 WIB (08:00 UTC) — go-live convention
-      start.setUTCHours(8, 0, 0, 0);
-      const end = new Date(start);
-      end.setDate(end.getDate() + duration);
+      // 15:00 WIB → 15:00 WIB, derived through airing-window so the device's
+      // own timezone never gets a say. The previous version mixed a UTC hour
+      // setter with a LOCAL setDate, which held on WIB machines and drifted
+      // elsewhere.
+      const startIso = toAiringStartIso(startDate);
+      const endDateStr = toAiringEndIso(startDate, duration);
 
-      const endDateStr = end.toISOString();
-      const isNewMonth = computeIsNewMonth(endDateStr);
+      // Re-resolve against the date actually being stored — the preview can go
+      // stale between render and submit, and this decision puts money on an
+      // invoice.
+      const resolved = await fetchBatchContext(endDateStr);
+      if (!resolved) {
+        toast.error('Gagal memastikan batch reward. Coba lagi.');
+        setCreating(false);
+        return;
+      }
+      const isNewBatch = resolved.isNewBatch;
 
-      // Validate: if new month, prize_per_winner and winner_count required
-      if (isNewMonth && (prizePerWinner <= 0 || winnerCount <= 0)) {
-        toast.error('Bulan baru: Prize per winner dan jumlah pemenang wajib diisi');
+      // A brand-new batch has no pool yet, so one has to be funded here.
+      if (isNewBatch && (prizePerWinner <= 0 || winnerCount <= 0)) {
+        toast.error(`Batch ${resolved.periodBatch} belum punya reward: prize per winner dan jumlah pemenang wajib diisi`);
         setCreating(false);
         return;
       }
@@ -246,14 +287,14 @@ export function ExtendSection({
       const extendData: FormSubmissionExtend = {
         submission_id: submissionId,
         duration,
-        start_date: start.toISOString(),
+        start_date: startIso,
         end_date: endDateStr,
         submission_status: 'waiting_payment',
         payment_status: 'pending',
-        prize_per_winner: isNewMonth ? prizePerWinner : 0,
-        winner_count: isNewMonth ? winnerCount : 0,
-        additional_prize_per_winner: !isNewMonth ? additionalPrize : 0,
-        is_new_month: isNewMonth,
+        prize_per_winner: isNewBatch ? prizePerWinner : 0,
+        winner_count: isNewBatch ? winnerCount : 0,
+        additional_prize_per_winner: !isNewBatch ? additionalPrize : 0,
+        is_new_month: isNewBatch,
         total_cost: 0, // Will be set via payment flow
         slot_booked_by: 'admin',
       };
@@ -477,14 +518,35 @@ export function ExtendSection({
 
   // ==================== COMPUTED ====================
 
+  // Same computation handleCreate stores, so the preview can never promise a
+  // different window than the one written.
   const extEndDate = (() => {
     if (!startDate || duration < 1) return null;
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + duration);
-    return d;
+    return new Date(toAiringEndIso(startDate, duration));
   })();
 
-  const isNewMonth = extEndDate ? computeIsNewMonth(extEndDate.toISOString()) : false;
+  const extEndDateIso = extEndDate ? extEndDate.toISOString() : null;
+
+  // Resolve the target batch whenever the picked window changes. Ignore any
+  // response that lands after the admin has already moved on.
+  useEffect(() => {
+    if (!isCreateDialogOpen || !extEndDateIso) {
+      setBatchContext(null);
+      return;
+    }
+    let cancelled = false;
+    setIsResolvingBatch(true);
+    fetchBatchContext(extEndDateIso)
+      .then((ctx) => { if (!cancelled) setBatchContext(ctx); })
+      .finally(() => { if (!cancelled) setIsResolvingBatch(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreateDialogOpen, extEndDateIso, submissionId]);
+
+  // Until the server answers, assume the batch is NOT new: that hides the
+  // "fund a new pool" fields rather than flashing them on, and handleCreate
+  // re-resolves authoritatively before anything is written.
+  const isNewMonth = batchContext?.isNewBatch ?? false;
 
   return (
     <div className="w-full">
@@ -812,13 +874,25 @@ export function ExtendSection({
                     End date: <span className="font-bold">{extEndDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                   </p>
                   <p className="font-medium text-gray-700">
-                    Batch: <span className="font-mono font-bold">{extEndDate.toISOString().substring(0, 7)}</span>
+                    Batch: <span className="font-mono font-bold">{batchContext?.periodBatch ?? '—'}</span>
                   </p>
-                  <p className={`font-semibold ${isNewMonth ? 'text-amber-700' : 'text-blue-700'}`}>
-                    {isNewMonth
-                      ? '⚠️ Bulan baru — wajib set reward baru'
-                      : '✓ Bulan sama — opsional tambah prize per winner'}
-                  </p>
+                  {isResolvingBatch ? (
+                    <p className="font-semibold text-gray-500">Mengecek reward batch…</p>
+                  ) : !batchContext ? (
+                    <p className="font-semibold text-gray-500">Batch belum bisa dipastikan</p>
+                  ) : isNewMonth ? (
+                    <p className="font-semibold text-amber-700">
+                      ⚠️ Batch {batchContext.periodBatch} belum punya reward — wajib set reward baru
+                    </p>
+                  ) : (
+                    <p className="font-semibold text-blue-700">
+                      ✓ Menempel ke reward batch {batchContext.periodBatch}
+                      {batchContext.poolPrizePerWinner > 0
+                        ? ` (Rp ${batchContext.poolPrizePerWinner.toLocaleString('id-ID')} × ${batchContext.poolWinnerCount})`
+                        : ''}
+                      {' '}— opsional tambah prize per winner
+                    </p>
+                  )}
                 </div>
               </div>
             )}
