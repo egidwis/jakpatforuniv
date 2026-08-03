@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { ReviewHistoryEntry } from '../components/submissions/types';
+import { toAiringStartIso, toWibYmd } from './airing-window';
 
 // Supabase URL dan anon key akan diambil dari environment variables
 // Anda perlu menambahkan variabel ini di file .env.local
@@ -1093,14 +1094,13 @@ export const updateScheduleDates = async (
   startDate: string,
   endDate: string
 ) => {
-  // Normalize dates: date-only strings → 08:00 UTC (= 15:00 WIB)
+  // Every ad runs 15:00 WIB → 15:00 WIB, so pin both ends to that instant
+  // whatever shape the caller passed. Values that already carried a time used
+  // to pass through untouched, which let a reschedule store a window at the
+  // wrong hour and overlap the survey's own extend.
   const normalize = (ds: string): string => {
-    if (!ds.includes('T')) {
-      const d = new Date(ds);
-      d.setUTCHours(8, 0, 0, 0);
-      return d.toISOString();
-    }
-    return ds;
+    const ymd = ds.includes('T') ? toWibYmd(new Date(ds)) : ds;
+    return toAiringStartIso(ymd);
   };
   const normalizedStart = normalize(startDate);
   const normalizedEnd = normalize(endDate);
@@ -1114,15 +1114,33 @@ export const updateScheduleDates = async (
 
     if (subError) throw subError;
 
-    // 2. Sync to survey_pages if page already exists
-    const { error: pageError } = await supabase
-      .from('survey_pages')
-      .update({ publish_start_date: normalizedStart, publish_end_date: normalizedEnd, updated_at: new Date().toISOString() })
-      .eq('submission_id', submissionId);
+    // 2. Sync to survey_pages — but only when this is the schedule that owns
+    //    the airing window. If the survey has a later schedule, the page's
+    //    publish_* window belongs to cron_activate_extends, and rewriting it
+    //    from the first schedule's period takes a running ad off the air.
+    const { data: otherSchedules, error: otherError } = await supabase
+      .from('form_submissions_extend')
+      .select('id')
+      .eq('submission_id', submissionId)
+      .in('submission_status', ['waiting_payment', 'paid', 'scheduled', 'live'])
+      .limit(1);
 
-    // pageError is non-fatal — page may not exist yet (slot_reserved stage)
-    if (pageError) {
-      console.warn('Could not sync dates to survey_pages (page may not exist yet):', pageError.message);
+    // Fail safe: if the check itself failed, skip the sync rather than risk
+    // clobbering a live window on a guess.
+    const ownsAiringWindow = !otherError && !(otherSchedules && otherSchedules.length > 0);
+
+    if (ownsAiringWindow) {
+      const { error: pageError } = await supabase
+        .from('survey_pages')
+        .update({ publish_start_date: normalizedStart, publish_end_date: normalizedEnd, updated_at: new Date().toISOString() })
+        .eq('submission_id', submissionId);
+
+      // pageError is non-fatal — page may not exist yet (slot_reserved stage)
+      if (pageError) {
+        console.warn('Could not sync dates to survey_pages (page may not exist yet):', pageError.message);
+      }
+    } else {
+      console.info('Skipped survey_pages date sync: another schedule owns the airing window.');
     }
 
     return true;
@@ -1282,9 +1300,58 @@ const getDateString = (date: Date) => {
 };
 
 /**
+ * Extend statuses that occupy a daily slot: everything except 'cancelled'
+ * (never airs) and 'completed' (already aired). Kept as an allow-list rather
+ * than a deny-list so a new status has to be classified deliberately.
+ * Source of truth for the full set: sql/19_create_extend_table.sql.
+ */
+const SLOT_OCCUPYING_EXTEND_STATUSES = ['waiting_payment', 'paid', 'scheduled', 'live'];
+
+/**
+ * One airing window competing for a day's capacity, regardless of whether it
+ * came from form_submissions (the first schedule) or form_submissions_extend
+ * (every schedule after it). Both sources are normalised into this shape so the
+ * expiry rule and the day-counting loop can only ever be written once.
+ */
+type SlotOccupancy = {
+  id: string;
+  submissionId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  paymentStatus: string | null;
+  slotBookedBy: string | null;
+  slotReservedAt: string | null;
+  adminNotes: string | null;
+};
+
+/**
+ * A user-booked slot that is still unpaid after an hour has lapsed and no
+ * longer holds capacity. Admin-booked slots never expire.
+ */
+const holdsSlot = (slot: SlotOccupancy) => {
+  const paymentStatus = slot.paymentStatus || 'pending';
+  const isPaid = ['paid', 'completed'].includes(paymentStatus);
+
+  if (slot.slotBookedBy === 'user' && !isPaid && slot.slotReservedAt) {
+    const reservedAt = new Date(slot.slotReservedAt).getTime();
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    if (reservedAt < oneHourAgo) return false;
+  }
+  return true;
+};
+
+/**
  * Fetch slot availability for calendar components.
  * Consolidates slot-checking logic used by SchedulePaymentView (admin & user flows).
  * Also handles user-booked slots timeout (1 hour), hiding expired slots.
+ *
+ * Counts BOTH the first schedule and every extend. Extends used to be invisible
+ * here, so a date could be sold past MAX_REGULAR_ADS_PER_DAY. Extends carry no
+ * distribution_type or is_extra_ad of their own — both are inherited from the
+ * parent submission, so a kilat extend never eats a regular slot and an extra
+ * ad's extend stays in extraCounts.
  */
 export const fetchSlotAvailability = async (
   excludeSubmissionId?: string,
@@ -1295,34 +1362,61 @@ export const fetchSlotAvailability = async (
   details: Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>>;
 }> => {
   try {
-    const { data: slotsFromSubmissions, error: subError } = await supabase
-      .from('form_submissions')
-      .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status, admin_notes, distribution_type')
-      .not('start_date', 'is', null)
-      .not('submission_status', 'in', '("rejected","spam","in_review","completed")')
-      .eq('distribution_type', distributionType);
+    const [submissionsResult, extendsResult] = await Promise.all([
+      supabase
+        .from('form_submissions')
+        .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status, admin_notes, distribution_type')
+        .not('start_date', 'is', null)
+        .not('submission_status', 'in', '("rejected","spam","in_review","completed")')
+        .eq('distribution_type', distributionType),
+      supabase
+        .from('form_submissions_extend')
+        .select('id, submission_id, start_date, end_date, submission_status, payment_status, slot_booked_by, slot_reserved_at, form_submissions!inner(title, admin_notes, distribution_type)')
+        .not('start_date', 'is', null)
+        .not('end_date', 'is', null)
+        .in('submission_status', SLOT_OCCUPYING_EXTEND_STATUSES)
+        .eq('form_submissions.distribution_type', distributionType),
+    ]);
 
-    if (subError) throw subError;
+    if (submissionsResult.error) throw submissionsResult.error;
+    if (extendsResult.error) throw extendsResult.error;
 
-    // Filter active slots: Check expiration for user-booked slots
-    const activeSlots = (slotsFromSubmissions || []).filter((slot: any) => {
-      // Treat null payment_status as 'pending'
-      const paymentStatus = slot.payment_status || 'pending';
-      const isPaid = ['paid', 'completed'].includes(paymentStatus);
+    const fromSubmissions: SlotOccupancy[] = (submissionsResult.data || []).map((row: any) => ({
+      id: row.id,
+      submissionId: row.id,
+      title: row.title || 'Untitled Ad',
+      startDate: row.start_date,
+      endDate: row.end_date,
+      status: row.submission_status,
+      paymentStatus: row.payment_status,
+      slotBookedBy: row.slot_booked_by,
+      slotReservedAt: row.slot_reserved_at,
+      adminNotes: row.admin_notes,
+    }));
 
-      // If user booked the slot, not paid, and 1 hour has passed, it's expired
-      if (slot.slot_booked_by === 'user' && !isPaid && slot.slot_reserved_at) {
-        const reservedAt = new Date(slot.slot_reserved_at).getTime();
-        const oneHourAgo = Date.now() - 60 * 60 * 1000;
-        if (reservedAt < oneHourAgo) {
-          return false; // exclude this slot as it has expired
-        }
-      }
-      return true; // admin slots or valid user slots are included
+    const fromExtends: SlotOccupancy[] = (extendsResult.data || []).map((row: any) => {
+      // PostgREST returns the embedded parent as an object for a to-one
+      // relationship, but older typings surface it as an array — accept both.
+      const parent = Array.isArray(row.form_submissions) ? row.form_submissions[0] : row.form_submissions;
+      return {
+        id: row.id,
+        submissionId: row.submission_id,
+        title: parent?.title || 'Untitled Ad',
+        startDate: row.start_date,
+        endDate: row.end_date,
+        status: row.submission_status,
+        paymentStatus: row.payment_status,
+        slotBookedBy: row.slot_booked_by,
+        slotReservedAt: row.slot_reserved_at,
+        adminNotes: parent?.admin_notes ?? null,
+      };
     });
 
-    // Also fetch is_extra_ad from survey_pages for these submissions
-    const subIds = activeSlots.map((s: any) => s.id);
+    const activeSlots = [...fromSubmissions, ...fromExtends].filter(holdsSlot);
+
+    // is_extra_ad lives on the page, so it is looked up per submission and
+    // applies to that submission's extends too.
+    const subIds = Array.from(new Set(activeSlots.map((s) => s.submissionId)));
     let extraAdMap: Record<string, boolean> = {};
     if (subIds.length > 0) {
       const { data: pages } = await supabase
@@ -1338,28 +1432,31 @@ export const fetchSlotAvailability = async (
     const extraCounts: Record<string, number> = {};
     const details: Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>> = {};
 
-    activeSlots.forEach((slot: any) => {
-      if (slot.start_date && slot.end_date && slot.id !== excludeSubmissionId) {
-        const current = new Date(slot.start_date);
+    activeSlots.forEach((slot) => {
+      // Exclude by submission so that editing a schedule never counts any of
+      // that survey's own windows against itself.
+      if (slot.startDate && slot.endDate && slot.submissionId !== excludeSubmissionId) {
+        const current = new Date(slot.startDate);
         current.setHours(0, 0, 0, 0);
-        const endDay = new Date(slot.end_date);
+        const endDay = new Date(slot.endDate);
         endDay.setHours(0, 0, 0, 0);
 
-        const isExtra = extraAdMap[slot.id] || (slot.admin_notes || '').includes('[EXTRA_AD]');
+        const isExtra = extraAdMap[slot.submissionId] || (slot.adminNotes || '').includes('[EXTRA_AD]');
         const targetCounts = isExtra ? extraCounts : regularCounts;
 
+        // end-exclusive: the end date is the hand-over day, not an aired day
         while (current < endDay) {
           const dateStr = getDateString(current);
           targetCounts[dateStr] = (targetCounts[dateStr] || 0) + 1;
-          
+
           if (!details[dateStr]) {
             details[dateStr] = [];
           }
           details[dateStr].push({
             id: slot.id,
-            title: slot.title || 'Untitled Ad',
+            title: slot.title,
             isExtra,
-            status: slot.submission_status
+            status: slot.status
           });
 
           current.setDate(current.getDate() + 1);

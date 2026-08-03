@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 // import { Switch } from '@/components/ui/switch'; // Removed unused
 import { BlockEditor } from './BlockEditor';
 import { supabase, updateFormStatus } from '@/utils/supabase';
+import { toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { DEFAULT_AD_BANNER_URL } from '@/utils/constants';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -103,6 +105,10 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
     const isUnpaid = paymentStatus !== undefined && paymentStatus !== 'paid';
 
     const [savedPageId, setSavedPageId] = useState<string | null>(null);
+    // True when the survey has another schedule that owns the airing window.
+    // Treated exactly like preserveSubmissionDates, but derived from the data
+    // instead of relying on the caller to pass the prop.
+    const [hasOtherSchedules, setHasOtherSchedules] = useState(false);
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         slug: '',
@@ -197,6 +203,34 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     }
                 }
 
+                // Does this survey have another schedule that owns the airing
+                // window? If so the page's publish_* dates are managed by
+                // cron_activate_extends and must not be rewritten from the
+                // first schedule's period — doing that takes a running ad off
+                // the air. Resolved here rather than trusted from a prop so
+                // that every caller is protected, not just the ones that
+                // remember to pass preserveSubmissionDates.
+                let hasOther = false;
+                if (submissionId) {
+                    try {
+                        const { data: others } = await supabase
+                            .from('form_submissions_extend')
+                            .select('id')
+                            .eq('submission_id', submissionId)
+                            .in('submission_status', ['waiting_payment', 'paid', 'scheduled', 'live'])
+                            .limit(1);
+                        hasOther = !!(others && others.length > 0);
+                    } catch (e) {
+                        // Fail safe: assume there IS another schedule, so the
+                        // worst case is leaving dates alone rather than
+                        // clobbering a live window.
+                        console.warn('Failed to check for other schedules; preserving dates:', e);
+                        hasOther = true;
+                    }
+                }
+                setHasOtherSchedules(hasOther);
+                const preserveDates = preserveSubmissionDates || hasOther;
+
                 if (initialData) {
                     setFormData({
                         slug: initialData.slug,
@@ -207,10 +241,10 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         custom_fields: initialData.custom_fields || [],
                         // In extend context, keep the page's own (cron-managed) publish dates —
                         // do NOT pre-fill from the extend's window passed via submission*Date.
-                        publish_start_date: preserveSubmissionDates
+                        publish_start_date: preserveDates
                             ? (initialData.publish_start_date || '')
                             : (submissionStartDate ? submissionStartDate : (initialData.publish_start_date ? initialData.publish_start_date : '')),
-                        publish_end_date: preserveSubmissionDates
+                        publish_end_date: preserveDates
                             ? (initialData.publish_end_date || '')
                             : (submissionEndDate ? submissionEndDate : (initialData.publish_end_date ? initialData.publish_end_date : '')),
                         criteria_responden: resolvedCriteria || initialData.criteria_responden || '',
@@ -258,18 +292,17 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 }
             }
 
-            // Ensure schedule dates always have a time component (15:00 WIB = 08:00 UTC).
-            // Date-only strings like "2026-04-13" would be parsed as midnight UTC (07:00 WIB)
-            // by downstream consumers, causing the ad to appear hours before its intended go-live.
-            const ensureTimestamp = (dateStr: string | null): string | null => {
+            // Every ad in this product starts and ends at 15:00 WIB (08:00 UTC).
+            // So pin BOTH shapes of input to that instant, not just date-only
+            // strings: a value that already carries a time used to be passed
+            // through untouched, which is how rows ended up stored at 00:00 UTC
+            // (07:00 WIB) — eight hours early, and overlapping their own extend.
+            const toAiringInstant = (dateStr: string | null): string | null => {
                 if (!dateStr) return null;
-                if (!dateStr.includes('T')) {
-                    // Date-only → assume 15:00 WIB = 08:00 UTC
-                    const d = new Date(dateStr);
-                    d.setUTCHours(8, 0, 0, 0);
-                    return d.toISOString();
-                }
-                return dateStr;
+                // A date-only string is already a WIB calendar day; anything
+                // with a time component is reduced to the WIB day it falls on.
+                const ymd = dateStr.includes('T') ? toWibYmd(new Date(dateStr)) : dateStr;
+                return toAiringStartIso(ymd);
             };
 
             const payload: any = {
@@ -286,13 +319,25 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 redirect_url: formData.redirect_url?.trim() || null,
             };
 
-            if (preserveSubmissionDates) {
-                // Extend context: leave the cron-managed publish_* window untouched, and clear
-                // the banner-update gate so cron_activate_extends() can activate the extend.
+            // Saving a banner is the only thing that clears the reminder — there is
+            // no "mark as done" button anywhere, by design (sql/36 turned the flag
+            // from a gate into a to-do). This must run on EVERY save path, not just
+            // the extend one, or the badge can never be cleared from the Submissions
+            // screen where most admins actually work.
+            //
+            // The default banner does not count as answering it: it is a generic
+            // placeholder carrying no reward figure, so a page still showing it has
+            // not had the new prize communicated. Without this check, opening and
+            // saving an auto-created page would silently dismiss the reminder.
+            if (formData.banner_url && formData.banner_url !== DEFAULT_AD_BANNER_URL) {
                 payload.requires_banner_update = false;
+            }
+
+            if (preserveSubmissionDates || hasOtherSchedules) {
+                // Another schedule owns the airing window; cron manages publish_*.
             } else {
-                payload.publish_start_date = ensureTimestamp(formData.publish_start_date) || null;
-                payload.publish_end_date = ensureTimestamp(formData.publish_end_date) || null;
+                payload.publish_start_date = toAiringInstant(formData.publish_start_date) || null;
+                payload.publish_end_date = toAiringInstant(formData.publish_end_date) || null;
             }
 
             // Only attach submission_id if it exists
@@ -336,13 +381,18 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             // Sync schedule dates to form_submissions & update status.
             // Skipped in extend context (preserveSubmissionDates) so a content/banner edit
             // never overwrites the original period or the cron-managed publish_* window.
-            if (!preserveSubmissionDates && submissionId && formData.publish_start_date) {
-                // Sync dates
+            if (!preserveSubmissionDates && !hasOtherSchedules && submissionId && formData.publish_start_date) {
+                // Sync the SAME normalised instants written to survey_pages above.
+                // Sending the raw form values here is what let form_submissions
+                // drift to 00:00 UTC while its page sat at 08:00 UTC.
+                const syncedStart = toAiringInstant(formData.publish_start_date);
+                const syncedEnd = toAiringInstant(formData.publish_end_date);
+
                 const { error: syncError } = await supabase
                     .from('form_submissions')
                     .update({
-                        start_date: formData.publish_start_date,
-                        end_date: formData.publish_end_date || null,
+                        start_date: syncedStart,
+                        end_date: syncedEnd,
                         updated_at: new Date().toISOString(),
                     })
                     .eq('id', submissionId);
@@ -351,8 +401,8 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 // Update status based on current date vs start_date
                 if (isPublished) {
                     const now = new Date();
-                    const start = new Date(formData.publish_start_date);
-                    const end = formData.publish_end_date ? new Date(formData.publish_end_date) : null;
+                    const start = new Date(syncedStart!);
+                    const end = syncedEnd ? new Date(syncedEnd) : null;
 
                     let newStatus: string;
                     if (end && end < now) {
