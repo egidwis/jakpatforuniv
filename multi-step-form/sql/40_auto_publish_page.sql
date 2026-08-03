@@ -9,17 +9,18 @@
 -- order except one — the banner. So a paid ad can sit dark waiting on a human
 -- for the only part a human is actually needed for.
 --
--- Business decision (2026-08-03): publish on payment, without a banner. A
--- missing banner renders as no banner (SurveyPage.tsx renders it conditionally)
--- and the public page is still gated by its publish window, so nothing leaks
--- early.
+-- Business decision (2026-08-03): publish on payment, with a generic default
+-- banner. The public page is still gated by its publish window, so nothing
+-- leaks early.
 --
--- This is not a new situation for consumers: measured 2026-08-03, 235 of 262
--- published pages already carry no banner, continuously from 13 Mar to 26 Jul.
--- The Jakpat app has been serving banner-less cards for months, so no
--- confirmation from the app team is needed and no placeholder image is
--- warranted — adding one only for auto-created pages would make the feed less
--- consistent, not more.
+-- The default banner was argued against and then overruled, and the reason it
+-- was overruled is the one that matters: measured 2026-08-03, 235 of 262
+-- published pages carry no banner, so on the data alone a placeholder looked
+-- unnecessary. But the Jakpat app renders a banner-less card with its own
+-- default styling, which looks nothing like an ad card — respondents cannot
+-- tell a paid survey from an announcement. The consistency argument is about
+-- what the card looks like in the app, not about how many rows have the column
+-- filled. Hence '/default-ad-banner.jpg' in section 2.
 --
 -- WHY A TRIGGER AND NOT THE WEBHOOK
 -- ---------------------------------
@@ -30,11 +31,14 @@
 --
 -- ⚠️ APPLYING THIS FILE TURNS THE FEATURE ON. Unlike migrations 36-39, which
 -- were corrective, this one changes what happens on every future payment. Do
--- not apply it until:
---   1. the Phase 0 frontend is deployed — without it, saving an auto-created
---      page from the Submissions screen still overwrites its airing window;
---   2. the Jakpat app team has confirmed a card with banner_url = null renders
---      correctly, since /api/surveys will start serving those.
+-- not apply it until the Phase 0 frontend is deployed — without it, saving an
+-- auto-created page from the Submissions screen still overwrites its airing
+-- window.
+--
+-- A second precondition, confirming with the Jakpat app team that a card with
+-- banner_url = null renders correctly, no longer applies: auto-created pages
+-- always carry the default banner, so /api/surveys never serves a null it was
+-- not already serving.
 --
 -- Idempotent: CREATE OR REPLACE / IF NOT EXISTS throughout. ensure_survey_page
 -- is itself idempotent, so a webhook retry cannot produce a second page.
