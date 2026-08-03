@@ -31,6 +31,30 @@ function adTypePriority(p) {
     if (p.submission_id && p.is_extra_ad) return 1;
     return 2;
 }
+/**
+ * Absolute banner URL for the mobile app.
+ *
+ * Three shapes reach this function:
+ *   - a Supabase Storage URL  → rewritten to the /cdn/ proxy path
+ *   - a site-relative path    → made absolute (e.g. the default ad banner,
+ *                               which lives in public/, not in Storage)
+ *   - anything else absolute  → passed through untouched
+ *
+ * The previous inline version assumed every value was a Storage URL and did
+ * `split('/storage/v1/object/public/')[1] || ''`, so any other shape collapsed
+ * to a bare `${baseUrl}/cdn/` — a broken image rather than a missing one. This
+ * mirrors getCdnUrl() in src/utils/supabase.ts, which already passed non-Storage
+ * URLs through; the two are now consistent.
+ */
+function toPublicBannerUrl(bannerUrl, baseUrl) {
+    if (!bannerUrl) return null;
+    const marker = '/storage/v1/object/public/';
+    const idx = bannerUrl.indexOf(marker);
+    if (idx !== -1) return `${baseUrl}/cdn/${bannerUrl.substring(idx + marker.length)}`;
+    if (bannerUrl.startsWith('/')) return `${baseUrl}${bannerUrl}`;
+    return bannerUrl;
+}
+
 function orderBand(p) {
     const placed = p.display_order !== null && p.display_order !== undefined;
     if (placed) return 1;
@@ -137,7 +161,7 @@ export async function onRequestGet(context) {
                 slug: s.slug || s.id,
                 title: s.title,
                 is_new: (new Date() - new Date(s.created_at)) < (7 * 24 * 60 * 60 * 1000),
-                banner_url: s.banner_url ? `${baseUrl}/cdn/${s.banner_url.split('/storage/v1/object/public/')[1] || ''}` : null,
+                banner_url: toPublicBannerUrl(s.banner_url, baseUrl),
                 reward: {
                     amount: (() => {
                         const sub = Array.isArray(s.form_submissions) ? s.form_submissions[0] : s.form_submissions;

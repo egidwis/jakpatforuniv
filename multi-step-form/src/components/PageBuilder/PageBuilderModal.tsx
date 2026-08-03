@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { BlockEditor } from './BlockEditor';
 import { supabase, updateFormStatus } from '@/utils/supabase';
 import { toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { DEFAULT_AD_BANNER_URL } from '@/utils/constants';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -323,7 +324,12 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             // from a gate into a to-do). This must run on EVERY save path, not just
             // the extend one, or the badge can never be cleared from the Submissions
             // screen where most admins actually work.
-            if (formData.banner_url) {
+            //
+            // The default banner does not count as answering it: it is a generic
+            // placeholder carrying no reward figure, so a page still showing it has
+            // not had the new prize communicated. Without this check, opening and
+            // saving an auto-created page would silently dismiss the reminder.
+            if (formData.banner_url && formData.banner_url !== DEFAULT_AD_BANNER_URL) {
                 payload.requires_banner_update = false;
             }
 

@@ -4,6 +4,21 @@ export const KILAT_ADDON_COST = 250000;
 export const KILAT_ADDON_COST_VOUCHER = 200000;
 export const MAX_EXTRA_ADS_PER_DAY = 4;
 
+// Banner cadangan untuk halaman iklan yang belum punya banner sendiri.
+// Alasannya visual, bukan teknis: tanpa banner, aplikasi Jakpat memakai tampilan
+// bawaannya yang sangat berbeda dari kartu iklan, sehingga responden ragu apakah
+// yang dilihatnya iklan survei atau sekadar pengumuman.
+//
+// Path relatif dari root situs (file ada di public/), bukan URL Supabase Storage.
+// Konsumen wajib menanganinya: getCdnUrl() meneruskan URL non-storage apa adanya,
+// dan functions/api/surveys.js melengkapinya jadi absolut untuk aplikasi mobile.
+//
+// Sengaja tidak memuat nominal hadiah, jadi ia tidak pernah basi saat reward
+// batch berubah — itu sebabnya requires_banner_update tetap false saat halaman
+// dibuat otomatis (lihat sql/40).
+// DUPLICATED di sql/40_auto_publish_page.sql — WAJIB diubah bersamaan.
+export const DEFAULT_AD_BANNER_URL = '/default-ad-banner.jpg';
+
 // PPN (Pajak Pertambahan Nilai / Indonesian VAT), dipungut di ATAS subtotal (DPP).
 // PPN_PERCENT dipakai untuk menghitung & label; PPN_RATE disimpan per-invoice agar
 // invoice lama tetap benar bila tarif berubah kelak (11% → 12%).
