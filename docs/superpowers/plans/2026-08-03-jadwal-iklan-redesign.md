@@ -224,7 +224,7 @@ sama sekali.
 |---|---|
 | `can_select_winners` tak lagi menyala 8 jam terlalu cepat di hari terakhir | 2 survei @10:00 WIB; 13 order masih akan melewatinya |
 | `can_select_winners` tak lagi tertahan baris tak-aktif yang berakhir belakangan | 6 batch multi-baris |
-| **`period.start`/`period.end` batch parent bergeser +8 jam** (00:00 UTC → 15:00 WIB) | **266 batch** — perubahan nilai terluas |
+| `period.start`/`period.end` batch parent bergeser +8 jam (00:00 UTC → 15:00 WIB) | 266 batch **teksnya**, tapi 256 sudah lewat dan tanggalnya tidak pernah pindah — inert, lihat "Dampak ke API keluar" |
 | Parent `rejected`/`spam` tak lagi menyumbang hadiah | 0 halaman terbit |
 | Fallback ke `publish_*_date` hilang | 0 halaman terbit |
 | Nominal di halaman publik & feed | **0 berubah hari ini** |
@@ -542,20 +542,44 @@ Di sinilah kontrak pihak ketiga benar-benar berisiko — lebih hati-hati dari Ph
   dikembalikan.
 - Agregasi batch ditulis dua kali dan melayani pihak ketiga yang sama lewat dua mode
   berbeda: RPC SQL untuk Mode 2, `buildBatches()` JS untuk Mode 1. **Task 8B-1 menghapus
-  yang JS.** Efek sampingnya di Mode 1 semuanya koreksi, tapi satu di antaranya luas:
-  `period.start`/`period.end` bergeser +8 jam (00:00 UTC → 15:00 WIB) di **266 batch**.
-  Utang yang harus dilunasi sebelum rilis tenang: cek log 30 hari `/api/respondents` untuk
-  permintaan **tanpa** `page_id`/`slug` — nol berarti Mode 1 tidak dipakai konsumen nyata;
-  tidak nol berarti mereka harus dikabari soal pergeseran itu.
+  yang JS.** Efek sampingnya di Mode 1 semuanya koreksi.
+- **Pergeseran `period.start`/`period.end` +8 jam: tidak perlu dikabarkan.** Angka "266
+  batch" yang sempat dicatat di sini menghitung baris yang **teksnya** beda, bukan yang
+  **perilakunya** beda — dan itu menyesatkan. Terukur 2026-08-04:
+
+  | | |
+  |---|---|
+  | Total batch di halaman terbit | 266 |
+  | **Sudah lewat** (`end_date < NOW()`) | **256** |
+  | Masih berjalan | 10 |
+  | Tanggal **UTC** bergeser karena +8 jam | **0** |
+  | Tanggal **WIB** bergeser karena +8 jam | **0** |
+
+  Pergeserannya 00:00 UTC → 08:00 UTC, alias 07:00 WIB → 15:00 WIB: **tanggalnya tidak
+  pernah pindah, di zona mana pun.** Untuk 256 batch yang sudah lewat, batch itu tertutup
+  sebelum maupun sesudah perubahan — tidak ada keputusan yang bisa berubah karenanya.
+  Cek log 30 hari `/api/respondents` **dicoret**, bukan diparkir: tujuannya cuma memutuskan
+  perlu-tidaknya mengabari, dan itu sudah terjawab di poin berikutnya.
 - **`can_select_winners` TIDAK berubah makna.** Definisinya tetap "batch ini sudah bisa
   diundi karena tidak punya jadwal lain yang aktif". Tapi field itu sinyal KESIAPAN,
   bukan IZIN — batch yang sudah diundi lalu dibuka kembali (jadwal baru ditambahkan)
   akan membuat field ini `true` lagi untuk batch yang sudah pernah diundi. Aman selama
   platform pengundian menyimpan sendiri catatan batch mana yang sudah diundi.
+- **Dikonfirmasi product owner 2026-08-04: `can_select_winners` BELUM FUNGSIONAL di
+  dashboard pengundian.** Ia hanya ditampilkan `true`/`false` dan tidak mempengaruhi proses
+  admin JFU memilih pemenang. Dua akibatnya, dan keduanya penting:
+
+  1. **Bug 8 jam itu tidak pernah menggigit.** Kekhawatiran bahwa responden yang menjawab
+     antara 07:00–15:00 WIB di hari terakhir bisa sudah di luar undian **tidak pernah
+     terjadi** — tidak ada yang mengundi berdasarkan sinyal itu. Angkanya diperbaiki
+     sebelum ada yang mempercayainya.
+  2. **Ketepatannya baru mulai berarti saat mereka mewujudkannya jadi fungsional.** Di
+     titik itulah peringatan "kesiapan, bukan izin" di poin sebelumnya harus sampai ke
+     developer dashboard pengundian — bukan sekarang.
 - Keputusan "batch tetap = bulan" melindungi kontrak ini: `period_batch` yang dikirim ke
   pihak ketiga tetap berformat `YYYY-MM`.
 
-### Perlu dikonfirmasi ke platform pengundian (satu hal, murah)
+### Perlu dikomunikasikan ke developer dashboard pengundian — tapi NANTI
 
 **Apakah mereka menyimpan sendiri catatan batch mana yang sudah diundi?**
 `can_select_winners` adalah sinyal kesiapan ("batch sudah tutup"), bukan izin ("belum
@@ -563,6 +587,11 @@ pernah diundi"). Selama mereka melakukan deduplikasi di sisinya, tidak ada yang 
 diubah di sini. Ini satu-satunya item yang butuh koordinasi eksternal untuk Phase 2 —
 sisanya (perubahan skema, penyatuan tabel) tidak terlihat dari luar selama bentuk JSON
 dijaga.
+
+**Waktunya bukan sekarang.** Field itu belum fungsional di sisi mereka (dikonfirmasi
+2026-08-04), jadi pertanyaan ini belum punya konsekuensi. Ia jadi mendesak tepat pada saat
+mereka mulai memakainya untuk memutuskan sesuatu — itulah pemicu untuk mengangkat obrolan
+ini, bukan tanggal di kalender. **Tidak ada satu pun rilis Phase 2 yang menunggu jawabannya.**
 
 ---
 
@@ -590,5 +619,10 @@ Urutan commit di dalam Task 8B-1:
 Commit 2 **diterapkan ke produksi** sebelum commit 3/5, karena keduanya memanggil fungsi
 yang dibuatnya; dengan urutan ini tidak pernah ada jendela di mana kode memanggil fungsi
 yang belum ada. Body commit 3 memuat tabel "Yang berubah di mata konsumen API" —
-pergeseran 8 jam pada 266 batch akan dipertanyakan orang lain, dan alasannya harus ada di
-riwayat git.
+pergeseran 8 jam itu akan dipertanyakan orang lain, dan alasannya harus ada di riwayat git.
+
+> **Koreksi 2026-08-04, sesudah commit 3 ditulis.** Body commit itu menutup dengan "utang
+> yang belum lunas: cek log 30 hari… tidak nol berarti mereka harus dikabari". Utang itu
+> **sudah lunas dan jawabannya tidak perlu mengabari** — lihat "Dampak ke API keluar".
+> Riwayat git sengaja tidak ditulis ulang: pernyataan di commit itu bersyarat dan benar
+> pada saat ditulis; yang berubah adalah salah satu syaratnya sudah terjawab.
