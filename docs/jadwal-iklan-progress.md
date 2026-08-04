@@ -21,7 +21,7 @@ membaca baris yang sama.
 | Kilat | Jembatan admin iklan→Kilat + slot 08/11/14/17 WIB hari kerja | ✅ `sql/42` | ✅ deployed 2026-08-04 |
 | Kilat — papan jadwal | Toggle Iklan/Kilat di Ads Schedule + tutup lubang Create Page utk Kilat | — | ⬜ **belum deploy** (`a4fc499`) |
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
-| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 selesai, `sql/43` (8C) ditulis, belum diterapkan | 🟡 Task 8C selesai (belum dideploy) |
+| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 + `sql/43` (8C) diterapkan | 🟡 Task 8C selesai (belum dideploy) |
 | Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ |
 | Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ |
 
@@ -164,27 +164,7 @@ insentif batch dua kali untuk jadwal ke-3+, dan bisa menggelapkan iklan yang
 sedang berjalan saat admin melakukan reschedule — checklist ini yang
 membuktikan ketiganya benar sudah tidak terjadi lagi di produksi.
 
-### 2. Terapkan `sql/43` (Task 8C) manual di Supabase SQL Editor ⬅️ belum diterapkan
-
-Kode sudah commit (empat commit terpisah, lihat "Yang sudah selesai" di bawah).
-Migrasinya (`sql/43_survey_winners_archive.sql`) juga sudah commit tapi
-**committing ≠ applying** — belum dijalankan di database. Pre-check-nya sudah
-dijalankan langsung ke produksi (read-only, lewat MCP Supabase) sebelum file
-ditulis: 267 baris `survey_winners`, beku sejak 2026-05-05, nol
-function/view lain yang membacanya. Jalankan bagian 1-3 file itu, lalu
-VERIFIKASI di bagian bawahnya — terutama `SET LOCAL ROLE anon` untuk
-membuktikan aksesnya benar tertutup (`SELECT` biasa di SQL Editor jalan
-sebagai `postgres` dan melewati RLS, tidak membuktikan apa-apa).
-
-**Temuan pre-check yang mengubah isi migrasinya:** kebijakan SELECT publik
-dari `sql/15` (`USING (true)`, terbuka untuk `anon`) **sudah tidak ada** di
-produksi — dicabut manual di luar jalur migrasi tercatat, tidak ada file
-`sql/16`–`42` yang menyentuhnya. `anon` karena itu sudah dapat nol baris hari
-ini (RLS default-deny). `sql/43` mengganti proteksi implisit itu dengan
-kebijakan SELECT bernama untuk admin, dan mencabut kebijakan tulis `FOR ALL`
-yang masih hidup (nol penulis sejak 5 Mei, jadi nol regresi).
-
-### 3. Verifikasi Task 8 yang belum dijalankan
+### 2. Verifikasi Task 8 yang belum dijalankan
 
 Sudah lolos: selisih baris `0`/`0`, uji 15.00 WIB bersih, sebaran status cocok,
 uji mirror hidup mengikuti dan penomoran urut `start_date`. Belum dijalankan
@@ -278,8 +258,30 @@ empat commit terpisah + satu migrasi:
 4. `PublishPageManagement.tsx` — modal "Daftar Pemenang" → "Arsip Pemenang",
    banner beku, buang 4 kolom yang selalu render `—` (CSV 10 → 6 kolom).
 5. `sql/43_survey_winners_archive.sql` — `COMMENT ON TABLE` arsip beku +
-   kebijakan RLS. **Ditulis & di-commit, belum diterapkan ke database** —
-   lihat §2 di atas.
+   kebijakan RLS. **✅ Diterapkan & diverifikasi di produksi 2026-08-04.**
+
+**Hasil verifikasi `sql/43` (2026-08-04):** tersisa **tepat satu** kebijakan
+(`Admin reads survey_winners archive` — SELECT, `{authenticated}`, qual
+`product@jakpat.net`); tidak ada kebijakan untuk `anon` maupun untuk tulis.
+Uji akses empiris lewat `SET LOCAL ROLE` (bukan `SELECT` biasa di SQL Editor,
+yang jalan sebagai `postgres` dan melewati RLS sehingga tidak membuktikan
+apa-apa):
+
+| Peran | Hasil | Diharapkan |
+|---|---|---|
+| `anon` | 0 baris | ✅ |
+| `authenticated` non-admin (`mahasiswa@contoh.ac.id`) | 0 baris | ✅ |
+| `authenticated` admin (`product@jakpat.net`) | 267 baris | ✅ |
+
+267 baris utuh (nol hilang), komentar arsip menempel di `pg_class`.
+
+**Temuan pre-check yang mengubah isi migrasinya:** kebijakan SELECT publik
+dari `sql/15` (`USING (true)`, terbuka untuk `anon`) ternyata **sudah tidak
+ada** di produksi sebelum migrasi ini — dicabut manual di luar jalur migrasi
+tercatat, tidak ada file `sql/16`–`42` yang menyentuhnya. Jadi `anon` memang
+sudah dapat nol baris (RLS default-deny). `sql/43` mengganti proteksi
+implisit itu dengan kebijakan SELECT bernama, dan mencabut kebijakan tulis
+`FOR ALL` yang masih hidup (nol penulis sejak 5 Mei, jadi nol regresi).
 
 Diverifikasi: `tsc -p tsconfig.app.json --noEmit` 79 → 75 (gate yang benar,
 bukan `npx tsc --noEmit` yang hampa — lihat koreksi di §0B). `npx vite build`

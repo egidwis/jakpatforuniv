@@ -187,7 +187,7 @@ pihak ketiga. `survey_winners` yang berhenti terisi adalah serah terima yang dis
 
 - [x] Copot indikator "Select Winners" yang salah dari `PublishPageManagement` (2026-08-04, commit `49f7884`)
 - [x] Ganti nama tombol sesuai fungsinya (menampilkan responden, bukan memilih pemenang) (commit `49f7884`+`f872184`)
-- [x] Tandai `survey_winners` sebagai arsip di skema (komentar) dan di UI modal (`sql/43`, commit `2128084`+`e00ccf3` — **migrasi ditulis, belum diterapkan ke DB**, lihat `docs/jadwal-iklan-progress.md` §2)
+- [x] Tandai `survey_winners` sebagai arsip di skema (komentar) dan di UI modal (`sql/43`, commit `2128084`+`e00ccf3` — **diterapkan & diverifikasi di produksi 2026-08-04**: anon 0 / user biasa 0 / admin 267)
 
 ---
 
