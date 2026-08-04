@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '../utils/supabase';
+import { formatIDR } from '@/utils/currency';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/Dialog";
@@ -22,7 +23,6 @@ type DateRange = typeof DATE_RANGE_OPTIONS[number]['value'];
 type TabKey = 'revenue' | 'respondent' | 'platform' | 'campaign';
 const REVIEW_STATUSES = new Set(['spam', 'approved', 'in_review', 'rejected', 'published', 'drafted', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed']);
 
-const formatIDR = (value: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
 function getStartDate(range: DateRange): string | null {
   if (range === 'all') return null;
   const days = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 365;

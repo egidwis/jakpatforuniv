@@ -2,6 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> ## ✅ SELESAI — di-merge ke `main` 2026-07-06, sudah live
+> Disimpan sebagai catatan sejarah. Jangan dieksekusi ulang. Indeks seluruh
+> rencana ada di [`README.md`](README.md).
+
 **Goal:** Outlook-style visual refresh of the admin Submissions page — inline reading pane, one unified list surface with tabs/filter/sort icons, tidier sidebar — plus a fix for stale "Live" lifecycle chips.
 
 **Architecture:** The existing 4-tab detail content in `SubmissionDetailSheet` gains a `variant` prop so it can render inside either the existing modal `DetailSheet` (narrow screens) or a new non-modal inline `DetailPane` (≥1280px) that sits inside the same card as the list. The desktop list is restructured into one card (toolbar → tab strip → sticky column header → flat divided rows → pagination footer). The sidebar is rewritten as a single markup tree for both collapsed/expanded modes. `deriveLifecycle` gains an `end_date` gate on the legacy live/scheduled path.

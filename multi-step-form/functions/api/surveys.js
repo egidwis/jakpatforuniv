@@ -55,6 +55,29 @@ function toPublicBannerUrl(bannerUrl, baseUrl) {
     return bannerUrl;
 }
 
+/**
+ * Which batch's prize does a listing show when a survey has more than one?
+ * The one whose window is still running; failing that, the most recent.
+ *
+ * MUST stay in sync with pickDisplayBatch() in src/pages/public/SurveyPage.tsx —
+ * the app feed and the page it links to must not quote different prizes.
+ *
+ * Measured 2026-08-04: every published page has exactly ONE batch, so this
+ * function has never yet had a decision to make. It exists so the first
+ * multi-batch page doesn't show whichever row happened to sort first.
+ */
+function pickDisplayBatch(batches) {
+    if (!batches || batches.length === 0) return null;
+    const now = Date.now();
+
+    const running = batches
+        .filter(b => b.end_date && new Date(b.end_date).getTime() > now)
+        .sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
+    if (running.length > 0) return running[0];
+
+    return [...batches].sort((a, b) => String(b.period_batch || '').localeCompare(String(a.period_batch || '')))[0];
+}
+
 function orderBand(p) {
     const placed = p.display_order !== null && p.display_order !== undefined;
     if (placed) return 1;
@@ -151,6 +174,44 @@ export async function onRequestGet(context) {
         // Apply listing order: manual display_order, then type priority, then recency.
         validSurveys.sort(compareDisplayOrder);
 
+        // 2b. Reward comes from the batch aggregate, not from the parent order's raw
+        // columns. Those columns only ever hold what the FIRST schedule funded, so a
+        // researcher who topped up the pool of a later batch saw the extra money reach
+        // the lottery platform while the app kept advertising the old figure — the
+        // respondents being asked to answer were the only ones never told.
+        // get_batch_rewards_bulk (sql/44) is the same function /api/respondents uses,
+        // so app, public page, and lottery platform now quote one number.
+        // Measured 2026-08-04: 0 of 266 surveys change value today. This does not move
+        // anything currently on screen; it makes the NEXT top-up visible.
+        const rewardBySubmission = {};
+        const submissionIds = [...new Set(validSurveys.map(s => s.submission_id).filter(Boolean))];
+
+        const RPC_CHUNK = 200;
+        for (let i = 0; i < submissionIds.length; i += RPC_CHUNK) {
+            const chunk = submissionIds.slice(i, i + RPC_CHUNK);
+            try {
+                const { data: batchData, error: batchError } = await supabase
+                    .rpc('get_batch_rewards_bulk', { p_submission_ids: chunk });
+
+                if (batchError) {
+                    console.error('get_batch_rewards_bulk RPC error:', batchError);
+                    continue;
+                }
+
+                const grouped = {};
+                (batchData || []).forEach(b => {
+                    if (!grouped[b.submission_id]) grouped[b.submission_id] = [];
+                    grouped[b.submission_id].push(b);
+                });
+                Object.entries(grouped).forEach(([sid, batches]) => {
+                    const picked = pickDisplayBatch(batches);
+                    if (picked) rewardBySubmission[sid] = picked;
+                });
+            } catch (rpcErr) {
+                console.error('get_batch_rewards_bulk RPC error:', rpcErr);
+            }
+        }
+
         // 3. Transform Data for Mobile App
         const baseUrl = new URL(context.request.url).origin;
 
@@ -162,17 +223,20 @@ export async function onRequestGet(context) {
                 title: s.title,
                 is_new: (new Date() - new Date(s.created_at)) < (7 * 24 * 60 * 60 * 1000),
                 banner_url: toPublicBannerUrl(s.banner_url, baseUrl),
-                reward: {
-                    amount: (() => {
-                        const sub = Array.isArray(s.form_submissions) ? s.form_submissions[0] : s.form_submissions;
-                        return (sub?.prize_per_winner || 0) * (sub?.winner_count || 0);
-                    })(),
-                    quota: (() => {
-                        const sub = Array.isArray(s.form_submissions) ? s.form_submissions[0] : s.form_submissions;
-                        return sub?.winner_count || 0;
-                    })(),
-                    currency: 'IDR'
-                },
+                reward: (() => {
+                    // Raw columns stay as the fallback, and only as the fallback: if the
+                    // RPC is unavailable the app shows what it showed before rather than
+                    // advertising Rp 0 on a survey that does have a prize.
+                    const batch = rewardBySubmission[s.submission_id];
+                    const sub = Array.isArray(s.form_submissions) ? s.form_submissions[0] : s.form_submissions;
+                    const prize = batch ? batch.prize_per_winner : (sub?.prize_per_winner || 0);
+                    const winners = batch ? batch.winner_count : (sub?.winner_count || 0);
+                    return {
+                        amount: (prize || 0) * (winners || 0),
+                        quota: winners || 0,
+                        currency: 'IDR',
+                    };
+                })(),
                 publish_date: new Date(s.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
                 viewed: s.views_count || 0,
                 url: s.redirect_url || internalUrl,

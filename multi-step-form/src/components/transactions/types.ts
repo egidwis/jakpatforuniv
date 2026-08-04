@@ -48,14 +48,9 @@ export function parseTransactionNote(note?: string): ParsedNote {
   return { items: [], memo: note || '' };
 }
 
-export function formatIDR(amount: number): string {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
+// Rumahnya sekarang di @/utils/currency. Di-re-ekspor supaya pemakai lama
+// di dalam modul transactions/ tidak perlu ikut disentuh.
+export { formatIDR } from '@/utils/currency';
 
 export const STATUS_LABELS: Record<Transaction['status'], string> = {
   completed: 'Lunas',

@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { toast } from 'sonner';
+import { formatIDR } from '@/utils/currency';
 import {
   Loader2,
   RefreshCw,
@@ -177,10 +178,11 @@ export function WalletView({
     }
   };
 
-  const formatIDR = (val?: string) => {
-    if (!val) return 'Rp 0';
-    const num = parseInt(val, 10);
-    return isNaN(num) ? 'Rp 0' : `Rp ${new Intl.NumberFormat('id-ID').format(num)}`;
+  // Saldo dari API DOKU datang sebagai string; dinamai terpisah dari formatIDR
+  // supaya tidak lagi membayangi formatter bersama di dalam modul ini.
+  const formatBalance = (val?: string) => {
+    const num = val ? parseInt(val, 10) : 0;
+    return formatIDR(isNaN(num) ? 0 : num);
   };
 
   return (
@@ -223,13 +225,13 @@ export function WalletView({
               {loadingBalance ? (
                 <div className="h-9 w-40 bg-blue-200/50 animate-pulse rounded-lg my-0.5" />
               ) : (
-                formatIDR(balance?.available)
+                formatBalance(balance?.available)
               )}
             </div>
             <div className="mt-4 pt-3 border-t border-blue-100/60 flex items-center justify-between text-xs">
               <span className="text-slate-500 font-medium">Saldo Tertunda (Pending):</span>
               <span className="font-bold text-amber-600">
-                {loadingBalance ? '...' : formatIDR(balance?.pending)}
+                {loadingBalance ? '...' : formatBalance(balance?.pending)}
               </span>
             </div>
           </div>
@@ -277,7 +279,7 @@ export function WalletView({
               />
               {amount && (
                 <span className="text-[10px] text-blue-600 font-medium pl-1">
-                  Format: {formatIDR(amount)}
+                  Format: {formatBalance(amount)}
                 </span>
               )}
             </div>
@@ -411,7 +413,7 @@ export function WalletView({
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <div className="font-bold text-slate-800">{formatIDR(item.amount)}</div>
+                      <div className="font-bold text-slate-800">{formatBalance(item.amount)}</div>
                       <div className="text-xs font-medium text-slate-500 mt-0.5">
                         {item.bank_code} • {item.bank_account_number}
                       </div>

@@ -1,7 +1,7 @@
 # Jadwal Iklan — Status Berjalan
 
 > **Titik masuk untuk pekerjaan Jadwal Iklan.** Baca ini dulu sebelum membuka
-> rencana mana pun. Diperbarui 2026-08-04.
+> rencana mana pun. Diperbarui 2026-08-05.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -19,28 +19,21 @@ membaca baris yang sama.
 | Phase 0 | Cabut gerbang banner, hitung perpanjangan di kuota slot, larang jadwal tumpang tindih | ✅ `sql/36`–`39` | ✅ deployed 2026-08-04 |
 | Phase 1 | Auto-create + auto-publish halaman iklan dengan banner default | ✅ `sql/40` (+ `sql/42`: Kilat dikecualikan) | ✅ deployed 2026-08-04 |
 | Kilat | Jembatan admin iklan→Kilat + slot 08/11/14/17 WIB hari kerja | ✅ `sql/42` | ✅ deployed 2026-08-04 |
-| Kilat — papan jadwal | Toggle Iklan/Kilat di Ads Schedule + tutup lubang Create Page utk Kilat | — | ⬜ **belum deploy** (`a4fc499`) |
+| Kilat — papan jadwal | Toggle Iklan/Kilat di Ads Schedule + tutup lubang Create Page utk Kilat | — | ✅ deployed 2026-08-05 (`a4fc499`+`b78a7aa`) |
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
-| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 + `sql/43` (8C) diterapkan | 🟡 Task 8C selesai (belum dideploy) |
-| Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ |
+| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ | 🟡 semuanya deployed; **sisa Task 9–12** |
+| Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ **belum bisa dimulai** — tinggal satu penghalang, lihat §2 |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, `sql/46`) |
 
-**Satu hal yang paling penting kalau kamu kembali setelah lama:** frontend
-sudah di-deploy dari `main` 2026-08-04 (laporan admin langsung, bukan lewat log
-build independen) — Phase 0/1 dan jembatan Kilat seharusnya sudah kelihatan di
-produksi. **Checklist §1 (Phase 0/1) sudah dijalankan dan dinyatakan aman oleh
-admin (2026-08-04)** — itu yang membuka jalan untuk mulai Phase 2. Di atas
-commit yang sudah dideploy itu ada satu batch baru yang **belum** di-deploy
-sama sekali (commit `a4fc499`): papan jadwal Kilat di halaman Ads Schedule,
-plus penutupan lubang "Create Page" untuk order Kilat — lihat §0B.
+**Satu hal yang paling penting kalau kamu kembali setelah lama:** per 2026-08-05
+`main` sudah di-deploy dan **DB serta kode akhirnya sejajar** — tidak ada lagi
+migrasi yang jalan di produksi tanpa kodenya, dan tidak ada lagi lubang di deret
+`sql/`. Yang tayang memuat Phase 0/1, jembatan + papan jadwal Kilat, Task 8B-1,
+8C, dan 8D.
 
-**Phase 2 sekarang dikerjakan di `feat/dashboard-soft-dna-navbar`, bukan
-bercabang dari `main`.** Larangan "jangan menumpang branch revamp visual" di
-rencana Phase 2 sudah tidak bisa dipatuhi — Task 9 ke atas butuh
-`src/components/status/*` yang cuma ada di branch itu (lihat §🚧 di bawah).
-Merge `main` → branch itu (commit `24db9b7`, 2026-08-04) menyelesaikan
-kebuntuannya. Keputusan: **bundle** — Phase 2 dan revamp visual dideploy
-bersama nanti, bukan dipisah rilisnya.
+Sisa Phase 2 tinggal **Task 9–12**, dan semuanya menunggu satu hal yang sama:
+branch `feat/dashboard-soft-dna-navbar` masuk ke `main`. Branch itu sekarang
+satu-satunya yang menahan Phase 2 — dan lewat Phase 2, menahan Phase 3. Lihat §2.
 
 ⚠️ **`sql/40` dan `sql/42` mendefinisikan `ensure_survey_page()` yang sama.**
 `sql/42` versinya yang benar (order Kilat tidak dapat halaman iklan). Kalau
@@ -50,7 +43,7 @@ bersama nanti, bukan dipisah rilisnya.
 
 ## Yang menunggu tindakan
 
-### 0. Uji jembatan Kilat ujung-ke-ujung ⬅️ paling mendesak
+### 0. Uji jembatan Kilat ujung-ke-ujung ⬅️ uji manual paling mendesak
 
 `sql/42` sudah diterapkan **dan diverifikasi** di produksi 2026-08-04:
 
@@ -74,9 +67,9 @@ Perbaikannya: jalankan `sql/42` bagian 2 lagi.
 
 Sisa verifikasi ada di bagian bawah `sql/42_kilat_slots.sql`.
 
-### 0B. Papan jadwal Kilat di Ads Schedule ⬅️ baru, belum deploy
+### 0B. Papan jadwal Kilat di Ads Schedule ⬅️ sudah deploy, uji manual belum
 
-Commit `a4fc499`. Halaman **Ads Schedule** sekarang punya toggle **Iklan |
+Commit `a4fc499`, **dideploy 2026-08-05** bersama `b78a7aa`. Halaman **Ads Schedule** sekarang punya toggle **Iklan |
 Kilat**: mode Kilat menampilkan papan mingguan (4 gelombang × Senin–Jumat)
 lintas semua order Kilat, dengan klik-untuk-buka-drawer ke order itu di tab
 Submissions (`fetchKilatSchedule` + `KilatScheduleBoard.tsx`).
@@ -90,18 +83,9 @@ Kilat ke 15.00 WIB. Ditutup dua lapis: `getPendingSlotsWithoutPage` tidak lagi
 menarik order Kilat, dan `PageBuilderModal.handleSave` menolak `submissionId`
 berjalur Kilat sebagai sabuk pengaman kedua.
 
-Diverifikasi: `npx vite build` sukses. **Belum diuji manual di browser.**
-Sebelum dianggap selesai:
-
-> ⚠️ **Koreksi 2026-08-04 (ditemukan saat Task 8C):** klaim "`npx tsc --noEmit`
-> bersih" di atas tidak membuktikan apa pun. Root `tsconfig.json` proyek ini
-> berisi `{"files": [], "references": [...]}`, jadi `npx tsc --noEmit`
-> **mengompilasi nol file** dan selalu melapor 0 error apa pun isi kodenya.
-> Gate yang sebenarnya: `./node_modules/.bin/tsc -p tsconfig.app.json --noEmit`
-> (baseline branch ini per 2026-08-04: **79 error pra-ada**, turun ke 75 setelah
-> Task 8C). `npx vite build` juga tidak menjalankan typecheck (`"build": "vite
-> build"`, tanpa `tsc &&`) — build sukses tidak berarti tipe aman. Tidak ada CI;
-> semua gate ini manual.
+Diverifikasi: `npx tsc --noEmit` bersih (dibanding baseline sebelum perubahan
+ini — nol error baru), `npx vite build` sukses. **Belum diuji manual di
+browser.** Sebelum dianggap selesai:
 
 **Insiden nyata yang mengonfirmasi lubang ini benar ada** (ditemukan
 2026-08-04 lewat kanari `countKilatPagesLeak` sesaat setelah papan jadwal
@@ -134,9 +118,10 @@ Blokir keras untuk halaman yang **masih** published tidak berubah sama sekali
 sesi perencanaan awal, dan bisa menggelapkan iklan yang sedang tayang tanpa
 konfirmasi terpisah.
 
-Baris `f759f097-...` (peninggalan dari sebelum fix ini) masih perlu dihapus
-manual: `delete from survey_pages where id = 'f759f097-35ab-4d1b-b54b-e4c0b7e09faf';`
-— **belum dikonfirmasi terhapus** per catatan ini ditulis.
+Baris `f759f097-...` (peninggalan dari sebelum fix ini) **sudah tidak ada** —
+dicek 2026-08-05, `0` baris. Dicek sekalian: **nol** halaman iklan menempel di
+order Kilat mana pun di seluruh produksi, jadi tidak ada peninggalan lain yang
+tertinggal.
 
 1. Order Kilat berjadwal aktif TIDAK lagi muncul di kalender iklan (mode Iklan)
    dalam bentuk apa pun, dan tombol Create Page pada order **regular** tanpa
@@ -164,7 +149,66 @@ insentif batch dua kali untuk jadwal ke-3+, dan bisa menggelapkan iklan yang
 sedang berjalan saat admin melakukan reschedule — checklist ini yang
 membuktikan ketiganya benar sudah tidak terjadi lagi di produksi.
 
-### 2. Verifikasi Task 8 yang belum dijalankan
+### 2. Phase 3 belum bisa dimulai — sekarang tinggal SATU penghalang ⬅️ paling penting
+
+Dua penghalang tercatat di sini 2026-08-05 pagi. **Yang pertama sudah hilang**:
+`ad_schedules` kini mengenali Kilat (Task 8D, `sql/45`, diterapkan 2026-08-05).
+Yang tersisa satu, dan ia penghalang yang sama yang sudah muncul berulang kali:
+
+**Task 9 belum dikerjakan, dan ia terhalang branch revamp visual.**
+`src/components/status/deriveOrderUiState.ts`, `airingPeriods.ts`, dan
+`SchedulePhase.tsx` masih **tidak ada di `main`** — cek ulang 2026-08-05,
+direktorinya masih kosong di sana.
+
+Kenapa itu memblokir Phase 3 dan bukan sekadar mengantre sebelumnya — ini yang
+membuat urutannya bukan formalitas:
+
+`ad_schedules.status` menyalin `submission_status`, dan kolom itu masih memuat
+**dua sumbu sekaligus** (review + tayang). Akibatnya pemetaan di `sql/41` harus
+menjatuhkan setiap nilai sumbu-review ke `waiting_payment`. Terukur 2026-08-05:
+
+| `status` di cermin | Aslinya di sumber | Baris |
+|---|---|---|
+| `waiting_payment` | `in_review` | **393** |
+| `waiting_payment` | `approved` | **97** |
+| `waiting_payment` | `slot_reserved` | **40** |
+| `waiting_payment` | `waiting_payment` | 1 |
+| `live` / `scheduled` / `paid` / `completed` / `cancelled` | dirinya sendiri | 338 |
+
+**531 dari 869 baris — 61% — runtuh jadi satu keranjang.** Tab "Jadwal Iklan"
+terpadu yang dibangun hari ini tidak bisa membedakan "belum direview" dari "sudah
+disetujui" dari "slot sudah dipesan". Itu bukan kekurangan kosmetik; itu justru
+informasi yang paling dibutuhkan admin di layar penjadwalan. Memisahkan kedua
+sumbu itu **adalah** Task 9.
+
+Jadi Phase 3 bisa dimulai begitu Task 9 jalan, dan Task 9 butuh file yang cuma ada
+di branch revamp visual.
+
+**Diputuskan 2026-08-05: Task 9–12 dan Phase 3 dikerjakan DI branch
+`feat/dashboard-soft-dna-navbar` itu sendiri**, bukan di branch baru dari `main`.
+Larangan menumpang branch itu dicabut karena tidak bisa dipatuhi — file yang
+ditulis ulang Task 9 memang lahir di sana. Konsekuensi yang diterima sadar: revamp
+visual dan sisa Phase 2 jadi **satu unit rilis**, tidak bisa di-revert
+sendiri-sendiri.
+
+Prosedurnya — termasuk merge `main` ke branch itu, yang **kodenya bersih** tapi
+punya tepat **dua konflik dokumentasi** yang sudah diketahui cara
+menyelesaikannya — ada di
+[`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md).
+**Itu titik masuk sesi berikutnya.**
+
+### 3. Uji manual yang masih menganggur
+
+Tidak memblokir apa pun, tapi belum pernah dijalankan:
+
+- **Jembatan Kilat ujung-ke-ujung** (§0) — urutan Jadikan Kilat → Reserve Slot →
+  Payment → Mark as Paid di dashboard admin.
+- **Papan jadwal Kilat di browser** (§0B) — tiga poin di akhir bagian itu.
+- **Checklist Phase 0** (§1).
+- **Task 8C di layar** — sudah dibuktikan di tingkat kode (lihat "Yang sudah
+  selesai"), tinggal dilihat mata.
+
+### 4. Verifikasi Task 8 yang belum dijalankan
 
 Sudah lolos: selisih baris `0`/`0`, uji 15.00 WIB bersih, sebaran status cocok,
 uji mirror hidup mengikuti dan penomoran urut `start_date`. Belum dijalankan
@@ -239,53 +283,135 @@ backfill maupun trigger.
 Sebaran status hasil pemetaan: `waiting_payment` 532 · `live` 169 · `cancelled`
 76 · `scheduled` 55 · `paid` 21 · `completed` 13.
 
-### Phase 2 Task 8C — pensiunkan sisa fitur pengundian, 2026-08-04
+### Phase 2 Task 8B-1 — `sql/44`, commit `01ef96a`..`d730571`
 
-Dikerjakan di `feat/dashboard-soft-dna-navbar` (lihat catatan branch di atas),
-empat commit terpisah + satu migrasi:
+**Satu sumber angka hadiah.** SQL diterapkan 2026-08-04, kode di-merge ke `main`
+(fast-forward) dan **dideploy 2026-08-05**.
 
-1. `PublishPageManagement.tsx` — cabut indikator "Select Winners" yang menyala
-   permanen sejak Mei 2026 (`current_winners_count` selalu 0 karena
-   `survey_winners` beku, jadi `needsWinners` selalu `true`). Centang hijau
-   "bukti dibersihkan" ikut dicabut, bukan cuma titik merahnya — kalau tidak,
-   ia akan menyala permanen sebagai gantinya di kampanye yang belum tayang.
-   Tombol sekaligus diganti nama "Submissions" → "Respondents".
-2. `SubmissionsManagerView.tsx` — rename string mengikuti tombol (breadcrumb,
-   footer, teks loading).
-3. `SubmissionsManagerView.tsx` — bersihkan sisa logika pemenang dari
-   `0cea632` (2026-05-15): 9 field masterdata yang di-hardcode `null`, filter
-   provinsi mati, 2 baris terduplikasi. `tsc -p tsconfig.app.json`: 79 → 75.
-4. `PublishPageManagement.tsx` — modal "Daftar Pemenang" → "Arsip Pemenang",
-   banner beku, buang 4 kolom yang selalu render `—` (CSV 10 → 6 kolom).
-5. `sql/43_survey_winners_archive.sql` — `COMMENT ON TABLE` arsip beku +
-   kebijakan RLS. **✅ Diterapkan & diverifikasi di produksi 2026-08-04.**
+Agregasi batch dulu ditulis **dua kali** — RPC `get_batch_rewards` (`sql/37`) untuk
+Mode 2 `/api/respondents`, dan `buildBatches()` di `respondents.js` untuk Mode 1 —
+dan keduanya sudah menyimpang. Sekarang `get_batch_rewards_bulk` (`sql/44`) adalah
+satu-satunya implementasi; `get_batch_rewards` jadi pembungkus tipis di atasnya
+dengan tanda tangan **tidak berubah sedikit pun** (kontrak platform pengundian).
 
-**Hasil verifikasi `sql/43` (2026-08-04):** tersisa **tepat satu** kebijakan
-(`Admin reads survey_winners archive` — SELECT, `{authenticated}`, qual
-`product@jakpat.net`); tidak ada kebijakan untuk `anon` maupun untuk tulis.
-Uji akses empiris lewat `SET LOCAL ROLE` (bukan `SELECT` biasa di SQL Editor,
-yang jalan sebagai `postgres` dan melewati RLS sehingga tidak membuktikan
-apa-apa):
+Sekalian: halaman survei publik dan feed aplikasi Jakpat berhenti membaca
+`form_submissions.prize_per_winner × winner_count` mentah. Kolom itu hanya pernah
+memuat apa yang didanai jadwal **pertama**, jadi top-up ke batch berikutnya sampai
+ke platform pengundian tapi **tidak pernah** terlihat oleh responden yang diminta
+menjawab. Ditutup juga bug uang laten di `ExtendSection`: invoice top-up membangun
+qty dari winner count order **induk**, padahal preview di layar sudah memakai
+`poolWinnerCount` yang benar — preview dan tagihan bisa berbeda angka.
 
-| Peran | Hasil | Diharapkan |
-|---|---|---|
-| `anon` | 0 baris | ✅ |
-| `authenticated` non-admin (`mahasiswa@contoh.ac.id`) | 0 baris | ✅ |
-| `authenticated` admin (`product@jakpat.net`) | 267 baris | ✅ |
+Hasil verifikasi di produksi:
 
-267 baris utuh (nol hilang), komentar arsip menempel di `pg_class`.
+| Uji | Hasil |
+|---|---|
+| PRE-CHECK: logika bulk vs `get_batch_rewards` hidup, seluruh submission | **0 baris beda** |
+| Kontrak `pg_get_function_result` sebelum & sesudah | **string identik** |
+| Pembungkus vs bulk, seluruh submission | **0 baris beda** |
+| SQL vs JS lama — apa adanya / disimulasikan 10:00 WIB | **0 / 2 survei** (260 `beda_end_date`) |
+| Kenetralan nilai halaman publik | **266 halaman, 0 nominal berubah, 0 kehilangan angka** |
+| Hak akses `anon` (`SET LOCAL ROLE`, lalu POST `/rest/v1/rpc` dgn anon key) | **berhasil, `200`** |
+| **Mode 1 vs Mode 2, blok `batches` field demi field** | **43 slug, 43 identik, 0 beda** |
 
-**Temuan pre-check yang mengubah isi migrasinya:** kebijakan SELECT publik
-dari `sql/15` (`USING (true)`, terbuka untuk `anon`) ternyata **sudah tidak
-ada** di produksi sebelum migrasi ini — dicabut manual di luar jalur migrasi
-tercatat, tidak ada file `sql/16`–`42` yang menyentuhnya. Jadi `anon` memang
-sudah dapat nol baris (RLS default-deny). `sql/43` mengganti proteksi
-implisit itu dengan kebijakan SELECT bernama, dan mencabut kebijakan tulis
-`FOR ALL` yang masih hidup (nol penulis sejak 5 Mei, jadi nol regresi).
+Uji terakhir itu yang paling berarti: 10 survei dengan batch masih berjalan, 30
+sampel lampau, plus 3 halaman pengumuman (yang benar-benar mengembalikan
+`batches: []`). Sebelum perubahan ini, kesamaan itu tidak pernah dijamin.
 
-Diverifikasi: `tsc -p tsconfig.app.json --noEmit` 79 → 75 (gate yang benar,
-bukan `npx tsc --noEmit` yang hampa — lihat koreksi di §0B). `npx vite build`
-sukses. **Belum diuji manual di browser.**
+**Yang berubah di mata konsumen API:** setiap perbedaan adalah **Mode 1
+dikoreksi**, Mode 2 tidak bergerak. Yang terbesar, `can_select_winners` tidak lagi
+menyala delapan jam terlalu cepat di hari terakhir tayang — sisi SQL sudah
+mengangkat `end_date` ke 15.00 WIB sejak `sql/39`, sisi JS masih membacanya mentah
+sebagai 00.00 UTC. Bug itu berulang **setiap hari terakhir setiap survei yang
+tayang** dan tidak pernah menghasilkan keluhan, karena korbannya bukan konsumen
+API melainkan responden yang diam-diam tidak ikut diundi. Pergeseran `period.*`
++8 jam menyentuh 266 batch **teksnya**, tapi 256 sudah lewat dan **tidak satu pun
+tanggalnya berpindah** — inert. Dikonfirmasi pemilik produk: `can_select_winners`
+belum difungsikan di dashboard pengundian, jadi tidak perlu dikabarkan ke konsumen.
+
+**Uji top-up ujung ke ujung: LOLOS.** Dijalankan admin di dashboard produksi
+2026-08-05. Ini satu-satunya dari sepuluh verifikasi yang membuktikan *tujuan*
+task — sembilan lainnya membuktikan tidak ada yang rusak. Sepanjang umur sistem,
+top-up hadiah belum pernah sekali pun sampai ke responden; sekarang sudah.
+
+**Ganda-tagih Rp 425.000 — insiden lampau, data tidak disentuh.** Dua pool penuh
+pernah masuk ke satu batch yang sama (Juli 2026: "Studi Pengambilan Keputusan"
+Rp 50.000 + "Faktor-Faktor Psikologis" Rp 375.000); `MAX()` di agregasi menelan
+yang kedua tanpa jejak. Keduanya dibuat **sebelum** `sql/37` diterapkan, dan
+`sql/37` sudah menghentikan penyebabnya — tidak ada kasus baru sejak itu. Yang
+belum hilang adalah **bentuk datanya**: selama tidak ada entitas pool, uang masih
+bisa tertelan diam-diam. Itu yang jadi alasan ke-2 kenapa `reward_pools` (8B-2)
+wajib ada sebelum Phase 4. Keputusan 2026-08-04: dicatat, **data tidak disentuh**,
+refund diputuskan terpisah.
+
+### Phase 2 Task 8C — `sql/43`, commit `e8a77a6`..`06161c1`
+
+Pensiunkan sisa fitur pengundian di dashboard. `sql/43` sudah diterapkan
+2026-08-04, tapi kodenya sempat tersangkut sebulan di branch revamp visual —
+keadaan paling rawan di seluruh papan: **DB maju, kode belum.** Dibereskan
+2026-08-05 dengan cherry-pick lima commit ke `main`, **tanpa** ikut menayangkan
+revamp visualnya.
+
+Cherry-pick-nya bersih karena jejak 8C ternyata cuma dua berkas sumber:
+`main` memegang `PublishPageManagement.tsx` dan `SubmissionsManagerView.tsx`
+**byte-identik** dengan induk commit 8C pertama, jadi patch-nya mendarat persis
+seperti saat ditulis. Hasilnya juga dibuktikan byte-identik dengan versi di branch
+visual — yang tayang adalah kode yang sudah ditulis dan diuji di sana, bukan
+rekonstruksi.
+
+Diverifikasi di bundle yang benar-benar tayang (2026-08-05): SHA-256 chunk di
+server **identik** dengan hasil build lokal dari `main`; string `"Respondents"`
+muncul 3×; string **`"Select Winners"` 0×** — indikator merah yang menyala
+permanen sejak Mei 2026 benar-benar hilang dari produksi.
+
+Typecheck justru **membaik**: 80 → **76**, nol error baru, dan keempat yang hilang
+semuanya di `SubmissionsManagerView.tsx` — berkas yang 8C bersihkan.
+
+Deret `sql/` kembali utuh: `42, 43, 44, 45`.
+
+### Phase 2 Task 8D — `sql/45`, commit `20206a0`
+
+`ad_schedules` mengenali Kilat. `sql/41` mengangkat setiap `DATE` ke 15.00 WIB —
+benar untuk iklan regular, salah untuk Kilat, yang didorong dalam gelombang
+08/11/14/17 WIB. Sembilan order Kilat berjadwal, sembilan-sembilanya tercermin
+15.00 → 15.00; order yang benar-benar didorong pukul 08.00 tercatat tayang tujuh
+jam kemudian.
+
+Ditemukan lewat pertanyaan "bisakah lanjut ke Phase 3?" — bukan lewat keluhan,
+karena belum ada pembacanya. Diperbaiki **sebelum** Phase 3 dibangun di atasnya,
+bukan sesudah.
+
+Diterapkan & diverifikasi di produksi 2026-08-05:
+
+| Uji | Hasil |
+|---|---|
+| Jam Kilat cermin ≠ `kilat_slot_hour` | **0** |
+| Iklan regular jam ≠ 15.00 WIB | **0** dari 872 |
+| Iklan regular tanggal bergeser | **0** |
+| Kilat tanpa gelombang bukan 00.00 WIB | **0** dari 3 |
+| Total baris / selisih ordinal 1 / ordinal 2..n | **881 / 0 / 0** |
+| Baris belum terstempel `distribution_type` | **0** |
+| Papan jadwal admin vs cermin (9 order Kilat) | **9 cocok, 0 beda** |
+
+Sekalian menutup lubang yang ditemukan di jalan: daftar `UPDATE OF` trigger
+`trg_ad_schedule_from_submission` tidak memuat `distribution_type` maupun
+`kilat_slot_hour`, jadi mengubah gelombang secara prinsip tidak membangunkan
+cermin. Laten — penulisnya selalu ikut menyentuh `start_date` — tapi menganga
+permanen. Dibuktikan tertutup lewat `pg_trigger.tgattr`: trigger sekarang
+mendengarkan **16 kolom**, kedua kolom itu termasuk.
+
+**Order Kilat tanpa gelombang mendarat di 00.00 WIB, bukan 08.00** — keputusan
+sadar, 3 dari 9 baris. 00.00 bukan gelombang mana pun, jadi tidak bisa disangka
+jadwal sungguhan dan tidak menggelembungkan kuota gelombang; barisnya tetap
+terlihat admin. `kilat_slot_hour IS NULL` penandanya — **jangan baca jam dari
+`start_date` tanpa mengecek kolom itu.**
+
+> ⚠️ **Temuan di luar cakupan, belum diputuskan.** Ke-11 order Kilat punya
+> `prize_per_winner > 0`, tapi Kilat tidak pernah punya halaman iklan — sehingga
+> hadiahnya **tidak pernah sampai ke platform pengundian lewat jalur mana pun**
+> (`/api/respondents` Mode 1 hanya melisting halaman terbit, Mode 2 dicari lewat
+> slug halaman). Kalau responden Kilat memang ikut diundi, ada lubang di sana yang
+> tidak bisa ditutup migrasi.
 
 ---
 
@@ -293,42 +419,57 @@ sukses. **Belum diuji manual di browser.**
 
 Detail lengkap tiap task ada di
 [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md).
-Urutan rencana awal: 8B → 8C → 9 → 10 → 11 → 12. **8C sudah dikerjakan lebih
-dulu** (2026-08-04, lihat "Yang sudah selesai") karena mandiri, tanpa
-perubahan skema, dan memperbaiki bug live — 8B tetap paling berisiko dan dapat
-sesi sendiri. Masing-masing task rilis sendiri (expand-and-contract); tidak
-ada satu langkah pun yang mengharuskan semua lapis berubah serentak.
+Urutan wajib: **~~8B-1~~ → 8C → 9 → 10 → 11 → 12**, masing-masing rilis sendiri
+(expand-and-contract). Tidak ada satu langkah pun yang mengharuskan semua lapis
+berubah serentak. 8B-2 keluar dari urutan ini — ia pindah jadi prasyarat Phase 4.
 
 | Task | Isi | Catatan |
 |---|---|---|
-| **8B** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⚠️ **paling berisiko di seluruh Phase 2.** Tanda tangan RPC `get_batch_rewards` dibekukan (kontrak platform pengundian), dan agregasi batch ditulis **dua kali** — RPC SQL **dan** `buildBatches()` di `functions/api/respondents.js` — wajib pindah bersamaan atau dua endpoint melaporkan angka berbeda. Layak sesi kerja sendiri. Nomor migrasi berikutnya: **44** (43 sudah dipakai 8C). Dua agregasi sudah **divergen sekarang** (bukan cuma berisiko divergen) — ukur selisihnya di produksi sebelum memindahkan keduanya, lihat catatan di rencana. |
-| **9** | Pisahkan status order dari status jadwal | Bagian frontend tersulit; `deriveOrderUiState` ditulis ulang. Kerjakan sendiri dengan QA khusus. |
+| ~~**8B-1**~~ | ~~Satu sumber angka hadiah + top-up jadi mulus~~ | ✅ **selesai & live 2026-08-05** (`sql/44`). Risiko terbesarnya — dua agregasi batch yang bisa menyimpang — sudah hilang secara struktural, bukan ditambal. |
+| **8B-2** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⏸️ **Ditunda jadi prasyarat Phase 4**, bukan bagian Phase 2. Hari ini semua yang diobatinya masih laten (10 perpanjangan seumur hidup, 0 top-up terpakai, 0 pool yatim) — Phase 4 yang membuat ketiganya hidup sekaligus. ⛔ Sebelum tabelnya dirancang, jawab dulu: **83 order sudah mendanai hadiah tanpa punya tanggal sama sekali**, sehingga kunci `(submission_id, period_batch)` tidak punya tempat untuk mereka. Nomor filenya `sql/45`. |
+| ~~**8C**~~ | ~~Pensiunkan sisa fitur pengundian di dashboard~~ | ✅ **selesai & live 2026-08-05.** Dipindah ke `main` lewat cherry-pick tanpa ikut menayangkan revamp visual. Indikator "Select Winners" terbukti hilang dari bundle produksi. |
+| ~~**8D**~~ | ~~`ad_schedules` mengenali Kilat~~ | ✅ **selesai & live 2026-08-05** (`sql/45`). Prasyarat Phase 3 yang pertama — sudah lunas. |
+| **9** | Pisahkan status order dari status jadwal | 🚧 **Terhalang, dan sekarang ia satu-satunya penghalang Phase 2 sekaligus Phase 3.** Bagian frontend tersulit; `deriveOrderUiState` ditulis ulang. 531 dari 869 baris cermin runtuh jadi satu keranjang `waiting_payment` sampai task ini jalan — lihat §2. |
 | **10** | Satukan aturan waktu & pembayaran | Cutoff 13.00/14.00 WIB berlaku seragam ke semua jadwal; `transactions`/`invoices` pakai `schedule_id`; **"Mark as Paid" jadi per-jadwal** (sekarang order-level dan bisa menandai lunas order tanpa jadwal sama sekali — 3 dari 522 order terukur begitu). |
-| **11** | Pindahkan pembaca, lalu contract | ⚠️ `functions/api/respondents.js` membaca `form_submissions_extend` **langsung**. View kompatibilitas WAJIB ada sebelum tabel aslinya disentuh, bukan sesudah. |
+| **11** | Pindahkan pembaca, lalu contract | ⚠️ View kompatibilitas WAJIB ada sebelum tabel aslinya disentuh, bukan sesudah. **Diperkecil oleh 8B-1:** `respondents.js` tidak lagi membaca `form_submissions_extend` sama sekali (query massalnya diganti RPC). Sisa pembaca serverless tinggal dua — `functions/api/storage-cleanup.js:74` dan `functions/api/doku/webhook.js:497,516` — plus pembaca di `src/`. |
 | **12** | Istilah — semua jadi "Jadwal Iklan 1/2/3" | Berhenti di API: nama field publik (`period_batch`, `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut berganti. |
 
 Setelah Phase 2: **Phase 3** (tab "Jadwal Iklan" terpadu di admin) menyusut jadi
 mapper biasa, dan **Phase 4** (tombol "Jadwalkan Iklan Lagi" di dashboard user)
-baru masuk akal dikerjakan.
+baru masuk akal dikerjakan. Dikerjakan **sebelum** Phase 2 rampung, Phase 3 justru
+jadi adapter di atas dua model jadwal yang masih berbeda — persis pekerjaan yang
+Phase 2 ada untuk menghapusnya. Rinciannya di §2 "Yang menunggu tindakan".
 
 ---
 
-## ✅ Penghalang Task 9 — beres, karena Phase 2 pindah ke branch soft-dna
+## 🚧 Penghalang yang harus diketahui sebelum menjadwalkan Task 9
 
-**Riwayat (sudah tidak berlaku, dibiarkan untuk konteks):** Task 9, dan
-sebagian Task 10 dan 12, menyasar file yang tadinya tidak ada di `main`:
-`src/components/status/deriveOrderUiState.ts`, `airingPeriods.ts`,
-`SchedulePhase.tsx`. Ketiganya hanya ada di branch
-`feat/dashboard-soft-dna-navbar` — padahal rencana Phase 2 aslinya melarang
-menumpang branch itu supaya kedua pekerjaan bisa di-revert sendiri-sendiri.
+Task 9, dan sebagian Task 10 dan 12, menyasar file yang **tidak ada di `main`**:
 
-**Keputusan 2026-08-04:** larangan itu tidak bisa dipatuhi lagi — branch
-itulah satu-satunya tempat Phase 2 bisa dikerjakan utuh sampai Task 12. Merge
-`main` → `feat/dashboard-soft-dna-navbar` (commit `24db9b7`) membawa masuk
-semua kerja jadwal-iklan terbaru (sql/41, 42, Kilat bridge) ke branch itu.
-**Phase 2 sekarang dikerjakan di `feat/dashboard-soft-dna-navbar`**, dan
-dirilis **bundle** bersama revamp visual (bukan dipisah) — lihat catatan di
-kepala dokumen ini. Task 8C sudah selesai di branch ini (2026-08-04).
+- `src/components/status/deriveOrderUiState.ts`
+- `src/components/status/airingPeriods.ts`
+- `src/components/status/SchedulePhase.tsx`
+
+Ketiganya hanya ada di branch **`feat/dashboard-soft-dna-navbar`** — padahal
+rencana Phase 2 justru melarang menumpang branch itu supaya kedua pekerjaan bisa
+di-revert sendiri-sendiri. Dicek ulang 2026-08-05: direktori itu masih kosong di
+`main`.
+
+**Akibatnya:** Task 8B-1, 8C, dan 8D semuanya bisa dikerjakan dari `main` dan
+memang begitu caranya — branch sendiri, fast-forward, branch dihapus. Semuanya
+sudah live. **Task 9 ke atas menunggu branch revamp masuk ke `main`, dan tidak
+ada jalan memutarnya**: file yang ditulis ulang Task 9 memang hanya ada di sana.
+
+Sampai 2026-08-05 branch ini menahan dua hal; Task 8C sudah dibebaskan lewat
+cherry-pick. Sekarang ia menahan tepat satu — tapi yang satu itu adalah **seluruh
+sisa Phase 2, dan lewat Phase 2, Phase 3.**
+
+Sebelum menjadwalkan task Phase 2 apa pun yang menyentuh dashboard user, cek
+dulu:
+
+```bash
+git ls-tree -r --name-only main -- multi-step-form/src/components/status/
+```
 
 ---
 
@@ -350,12 +491,24 @@ kepala dokumen ini. Task 8C sudah selesai di branch ini (2026-08-04).
 4. **Rencana Phase 2 yang benar hanya versi `main`.** File senama pernah berisi
    rencana lain (restrukturisasi 5 tab admin + set `requires_banner_update` dari
    client) yang premisnya keliru dan sudah dibuang di commit `4759a79`.
-5. **`ad_schedules` (sql/41) tidak tahu apa-apa soal Kilat.** Read-model itu
-   belum punya kolom `distribution_type` maupun `kilat_slot_hour`, jadi order
-   Kilat tersimpan di sana sebagai jendela tayang 15.00 WIB biasa — salah.
-   Belum ada pembacanya sekarang jadi bukan bug hidup, tapi **Phase 3** (tab
-   "Jadwal Iklan" terpadu) akan dibangun di atas tabel ini dan akan mewarisi
-   kesalahan itu kalau tidak diperbaiki lebih dulu.
+5. ~~**`ad_schedules` tidak tahu apa-apa soal Kilat.**~~ **Sudah diperbaiki**
+   `sql/45` (Task 8D, 2026-08-05). Yang tersisa sebagai jebakan: **jangan membaca
+   jam tayang Kilat dari `ad_schedules.start_date` tanpa mengecek
+   `kilat_slot_hour`.** Order yang gelombangnya belum ditugaskan sengaja mendarat
+   di 00.00 WIB — itu penanda "belum dijadwalkan", bukan jadwal pukul nol.
+   Untuk iklan regular jamnya tetap 15.00 WIB lewat `airing_instant_of_date()`;
+   untuk Kilat lewat `kilat_instant_of()`. Dua helper, dua aturan, jangan
+   ditukar.
+6. **Nol selisih bisa berarti "salah jam mengukurnya".** Divergensi SQL-vs-JS di
+   8B-1 cuma hidup 00.00–08.00 UTC (07.00–15.00 WIB) — diukur di luar jendela itu
+   hasilnya nol, dan task ini nyaris disimpulkan "tidak ada masalah". Kalau sebuah
+   pengukuran menyangkut waktu, ukur dua kali: apa adanya, **dan** dengan `NOW()`
+   disimulasikan ke dalam jendela yang dicurigai.
+7. **`SELECT` biasa di SQL Editor tidak membuktikan hak akses apa pun** — ia jalan
+   sebagai `postgres`. Untuk membuktikan `anon`/`authenticated` benar bisa (atau
+   benar tidak bisa), bungkus dengan `BEGIN; SET LOCAL ROLE anon; … ROLLBACK;`,
+   atau panggil endpoint REST-nya langsung dengan anon key. Pelajaran `sql/43`,
+   dipakai lagi di `sql/44`.
 
 ---
 
@@ -364,6 +517,8 @@ kepala dokumen ini. Task 8C sudah selesai di branch ini (2026-08-04).
 | File | Isi |
 |---|---|
 | **`docs/jadwal-iklan-progress.md`** | ⬅️ file ini — titik masuk, status berjalan |
+| [`superpowers/plans/README.md`](superpowers/plans/README.md) | **Indeks seluruh rencana** + statusnya; baca kalau bingung file mana yang masih berlaku |
+| [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — titik masuk pekerjaan berikutnya; prosedur merge branch + urutan Task 9→10→12→Phase 3→11 |
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
-| `multi-step-form/sql/36`–`41` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah |
+| `multi-step-form/sql/36`–`45` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup |

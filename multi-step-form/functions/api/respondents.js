@@ -82,97 +82,56 @@ export async function onRequestGet(context) {
         if (!pageId && !slug) {
             const { data: pages, error: pagesError } = await supabase
                 .from('survey_pages')
-                .select('id, slug, title, publish_start_date, publish_end_date, created_at, submission_id, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden, start_date, end_date, submission_status), page_respondents(count)')
+                .select('id, slug, title, created_at, submission_id, form_submissions!submission_id(criteria_responden), page_respondents(count)')
                 .eq('is_published', true)
                 .order('created_at', { ascending: false });
 
             if (pagesError) throw pagesError;
 
-            // Bulk-fetch all paid extends for batch info
-            const submissionIds = (pages || []).map(p => p.submission_id).filter(Boolean);
-            const extendsMap = {};
+            // Batch rewards come from get_batch_rewards_bulk — the SAME implementation
+            // Mode 2 uses (sql/44). This used to be a second, hand-rolled aggregation
+            // (buildBatches()) fed by a separate extends query, and the two had already
+            // drifted apart: the parent's end date was read raw as midnight UTC instead
+            // of being lifted to 15:00 WIB, so can_select_winners went true eight hours
+            // before the ad stopped collecting respondents, every last day of every
+            // running survey. Two implementations of one answer cannot be kept in
+            // agreement by discipline — so there is now only one.
+            const submissionIds = [...new Set((pages || []).map(p => p.submission_id).filter(Boolean))];
+            const batchesBySubmission = {};
 
-            if (submissionIds.length > 0) {
-                const { data: extData, error: extError } = await supabase
-                    .from('form_submissions_extend')
-                    .select('submission_id, period_batch, prize_per_winner, additional_prize_per_winner, winner_count, submission_status, start_date, end_date')
-                    .in('submission_id', submissionIds)
-                    .eq('payment_status', 'paid');
+            // Chunked so a growing catalogue can never hit PostgREST's default 1000-row
+            // ceiling and silently return a survey with no prize.
+            const RPC_CHUNK = 200;
+            for (let i = 0; i < submissionIds.length; i += RPC_CHUNK) {
+                const chunk = submissionIds.slice(i, i + RPC_CHUNK);
+                try {
+                    const { data: batchData, error: batchError } = await supabase
+                        .rpc('get_batch_rewards_bulk', { p_submission_ids: chunk });
 
-                if (!extError && extData) {
-                    extData.forEach(e => {
-                        if (!extendsMap[e.submission_id]) extendsMap[e.submission_id] = [];
-                        extendsMap[e.submission_id].push(e);
+                    if (batchError) {
+                        // Same posture as Mode 2: log it, leave batches empty, never
+                        // fail the whole listing over the reward block.
+                        console.error('get_batch_rewards_bulk RPC error:', batchError);
+                        continue;
+                    }
+
+                    (batchData || []).forEach(b => {
+                        if (!batchesBySubmission[b.submission_id]) batchesBySubmission[b.submission_id] = [];
+                        batchesBySubmission[b.submission_id].push({
+                            period_batch: b.period_batch,
+                            prize_per_winner: b.prize_per_winner,
+                            winner_count: b.winner_count,
+                            batch_status: b.batch_status,
+                            can_select_winners: b.can_select_winners,
+                            period: {
+                                start: b.start_date || null,
+                                end: b.end_date || null,
+                            },
+                        });
                     });
+                } catch (rpcErr) {
+                    console.error('get_batch_rewards_bulk RPC error:', rpcErr);
                 }
-            }
-
-            // Helper: build batches array from parent submission + extends
-            function buildBatches(sub, extends_list, defaultStartDate, defaultEndDate) {
-                if (!sub) return [];
-                const periods = {};
-                const activeStatuses = ['live', 'scheduled', 'paid', 'waiting_payment'];
-
-                // Parent period
-                const parentStart = sub.start_date || defaultStartDate;
-                const parentEnd = sub.end_date || defaultEndDate;
-                const pp = parentEnd ? parentEnd.substring(0, 7) : null;
-                if (pp) {
-                    periods[pp] = {
-                        base_p: sub.prize_per_winner || 0,
-                        add_p: 0,
-                        wc: sub.winner_count || 0,
-                        statuses: [sub.submission_status || 'live'],
-                        start_date: parentStart || null,
-                        end_date: parentEnd || null
-                    };
-                }
-
-                // Extends
-                (extends_list || []).forEach(e => {
-                    const pb = e.period_batch;
-                    if (!pb) return;
-                    if (!periods[pb]) {
-                        periods[pb] = {
-                            base_p: 0,
-                            add_p: 0,
-                            wc: 0,
-                            statuses: [],
-                            start_date: e.start_date || null,
-                            end_date: e.end_date || null
-                        };
-                    }
-                    periods[pb].base_p = Math.max(periods[pb].base_p, e.prize_per_winner || 0);
-                    periods[pb].add_p += e.additional_prize_per_winner || 0;
-                    periods[pb].wc = Math.max(periods[pb].wc, e.winner_count || 0);
-                    periods[pb].statuses.push(e.submission_status);
-                    if (e.start_date && (!periods[pb].start_date || e.start_date < periods[pb].start_date)) {
-                        periods[pb].start_date = e.start_date;
-                    }
-                    if (e.end_date && (!periods[pb].end_date || e.end_date > periods[pb].end_date)) {
-                        periods[pb].end_date = e.end_date;
-                    }
-                });
-
-                return Object.entries(periods).map(([pb, p]) => {
-                    const hasActiveStatus = p.statuses.some(s => activeStatuses.includes(s));
-                    const now = new Date().getTime();
-                    const endDate = p.end_date ? new Date(p.end_date).getTime() : 0;
-                    const isExpired = endDate > 0 ? endDate < now : false;
-                    const hasActive = hasActiveStatus && !isExpired;
-
-                    return {
-                        period_batch: pb,
-                        prize_per_winner: p.base_p + p.add_p,
-                        winner_count: p.wc,
-                        batch_status: hasActive ? 'active' : 'closed',
-                        can_select_winners: !hasActive,
-                        period: {
-                            start: p.start_date,
-                            end: p.end_date
-                        }
-                    };
-                }).sort((a, b) => a.period_batch.localeCompare(b.period_batch));
             }
 
             const surveys = (pages || []).map(p => {
@@ -188,7 +147,7 @@ export async function onRequestGet(context) {
                     slug: p.slug || p.id,
                     total_respondents: respondentCount,
                     criteria: sub?.criteria_responden || null,
-                    batches: buildBatches(sub, extendsMap[p.submission_id] || [], p.publish_start_date, p.publish_end_date),
+                    batches: batchesBySubmission[p.submission_id] || [],
                 };
             });
 

@@ -2,6 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> ## ✅ SELESAI — di-merge ke `main` 2026-07-06, sudah live
+> Disimpan sebagai catatan sejarah. Jangan dieksekusi ulang. Indeks seluruh
+> rencana ada di [`README.md`](README.md).
+
 **Goal:** Rebuild the admin Transactions page as "Keuangan" with two tabs — a submissions-style compact transaction list (detail in drawer/reading-pane) and a full-page DOKU Wallet view extracted from the current modal.
 
 **Architecture:** Mirror the submissions visual refresh exactly: compact clickable rows + a `TransactionDetailSheet` with `variant: 'sheet' | 'pane'` reusing `data-list/DetailSheet` and `data-list/DetailPane` (inline pane at ≥1280px via `useMediaQuery`, right drawer below). Wallet logic moves verbatim from `DokuWalletModal` into a two-column `WalletView`. No data-layer changes.

@@ -2,7 +2,7 @@ import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type Customer, customerDisplayId } from './types';
 import { CustomerTierChip } from './CustomerTierChip';
-import { formatIDR } from '../transactions/types';
+import { formatIDR } from '@/utils/currency';
 
 interface CustomerListRowProps {
   customer: Customer;
