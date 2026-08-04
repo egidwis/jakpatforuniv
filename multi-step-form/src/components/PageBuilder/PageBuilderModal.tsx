@@ -283,6 +283,21 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
         setLoading(true);
         try {
+            // Defense in depth: Kilat orders are distributed via push notification and
+            // never use survey_pages (sql/42 blocks it at the trigger level). The Ads
+            // Schedule page already filters Kilat out of its "Create Page" list, but
+            // other callers of this modal should not be able to slip one through.
+            if (submissionId) {
+                const { data: sub } = await supabase
+                    .from('form_submissions')
+                    .select('distribution_type')
+                    .eq('id', submissionId)
+                    .maybeSingle();
+                if (sub?.distribution_type === 'kilat') {
+                    throw new Error('Order Kilat didistribusikan lewat push notification dan tidak memakai halaman iklan.');
+                }
+            }
+
             let isPublished = overrideStatus !== undefined ? overrideStatus : formData.is_published;
 
             // Auto-publish: If schedule is set and we're just saving (not explicitly unpublishing), set to Live (unless unpaid)

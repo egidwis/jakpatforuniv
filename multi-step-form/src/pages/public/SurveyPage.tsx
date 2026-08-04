@@ -783,8 +783,6 @@ export function SurveyPage() {
         try {
             const domain = new URL(url).hostname.toLowerCase();
             const embeddableDomains = [
-                'docs.google.com',
-                'forms.gle',
                 'typeform.com',
                 'surveymonkey.com',
                 'forms.office.com',
@@ -792,6 +790,17 @@ export function SurveyPage() {
                 'tally.so',
                 'fillout.com'
             ];
+            
+            // Check Google Forms separately to ensure only /e/ (published) URLs are embedded
+            if (domain.includes('docs.google.com') || domain.includes('forms.gle')) {
+                // Shortlinks (forms.gle) hide the path, and /d/ URLs require permissions if embedded.
+                // Only embed if we are certain it's a published /e/ URL.
+                if (url.includes('/d/e/')) {
+                    return true;
+                }
+                return false;
+            }
+
             return embeddableDomains.some(d => domain.includes(d));
         } catch (e) {
             return false;

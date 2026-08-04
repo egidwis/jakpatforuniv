@@ -21,7 +21,8 @@ import {
 import { supabase, updateScheduleDates, updateFormStatus, createInvoice, createTransaction, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchSlotAvailability } from '../utils/supabase';
 import type { Invoice, Transaction } from '../utils/supabase';
 import { createManualInvoice } from '../utils/payment';
-import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculatePpn } from '../utils/cost-calculator';
+import { calculateAdCostPerDay, calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculatePpn, getKilatAddonCost } from '../utils/cost-calculator';
+import { KilatScheduleStep } from './KilatScheduleStep';
 
 // Max 4 regular ads per day, 4 extra ads per day
 import { MAX_REGULAR_ADS_PER_DAY as MAX_ADS_PER_DAY, MAX_EXTRA_ADS_PER_DAY, PPN_RATE } from '../utils/constants';
@@ -41,6 +42,8 @@ interface SchedulePaymentViewProps {
         prize_per_winner?: number;
         voucher_code?: string;
         phone_number?: string;
+        distribution_type?: 'regular' | 'kilat';
+        kilat_slot_hour?: number | null;
     };
     existingPageSlug?: string;
     initialStep?: 'schedule' | 'payment';
@@ -58,6 +61,10 @@ interface InvoiceItem {
 export function SchedulePaymentView({ submission, existingPageSlug, initialStep = 'schedule', onBack }: SchedulePaymentViewProps) {
     // ==================== STEP NAV ====================
     const [currentStep, setCurrentStep] = useState<'schedule' | 'payment'>(initialStep);
+
+    // JFU Kilat memakai step penjadwalan sendiri (gelombang push, bukan kalender
+    // 14-hari) dan rumus harga sendiri. Step Payment dipakai bersama.
+    const isKilat = submission.distribution_type === 'kilat';
 
     // ==================== SCHEDULE STATE ====================
     const [isLoading, setIsLoading] = useState(false);
@@ -166,6 +173,11 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
     };
 
     const fetchExistingAds = async () => {
+        // Kapasitas Kilat dihitung per-gelombang oleh KilatScheduleStep, bukan
+        // per-hari. Memanggil fetchSlotAvailability() di sini akan mengukur order
+        // Kilat terhadap kuota iklan REGULAR — pool yang sama sekali bukan
+        // miliknya. (Itu memang yang terjadi sebelum cabang ini ada.)
+        if (isKilat) return;
         setIsFetchingAds(true);
         try {
             const { regularCounts, extraCounts, details } = await fetchSlotAvailability(submission.id);
@@ -370,12 +382,16 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
         try {
             await supabase
                 .from('form_submissions')
-                .update({ 
-                    start_date: null, 
-                    end_date: null, 
+                .update({
+                    start_date: null,
+                    end_date: null,
+                    // Gelombang Kilat ikut dilepas. Tanpa ini order Kilat yang
+                    // jadwalnya dibatalkan masih memamerkan "· 11.00 WIB" di
+                    // detail sheet padahal tanggalnya sudah kosong.
+                    kilat_slot_hour: null,
                     slot_booked_by: null,
                     slot_reserved_at: null,
-                    updated_at: new Date().toISOString() 
+                    updated_at: new Date().toISOString()
                 })
                 .eq('id', submission.id);
 
@@ -423,6 +439,42 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                 category: 'Lainnya'
             }]);
             setNote('Testing Voucher JFUTGRX Applied');
+            return;
+        }
+
+        // JFU Kilat dihargai lain sama sekali: base rate 1× (durasi tidak berlaku
+        // — Kilat selesai dalam ~2 jam), ditambah add-on, tanpa diskon voucher.
+        // Rumus ini WAJIB sama dengan salinan otoritatif di
+        // functions/api/doku/create-payment.js; kalau user membayar lewat
+        // link-nya sendiri, server menghitung ulang dan akan menimpa total_cost
+        // yang tidak cocok. Sebelum cabang ini ada, invoice Kilat dari dashboard
+        // admin memakai rumus regular — add-on Rp 200.000 tidak pernah tertagih
+        // dan base rate justru dikali durasi yang tidak berarti.
+        if (isKilat) {
+            const kilatItems: InvoiceItem[] = [{
+                id: Date.now().toString() + '0',
+                name: 'Jakpat for Universities (ads)',
+                qty: 1,
+                price: calculateAdCostPerDay(questionCount),
+                category: 'Jakpat for Universities (ads)'
+            }, {
+                id: Date.now().toString() + '1',
+                name: 'Add-on JFU Kilat',
+                qty: 1,
+                price: getKilatAddonCost(submission.voucher_code),
+                category: 'Lainnya'
+            }];
+            if (prizePerWinner > 0 && winnerCount > 0) {
+                kilatItems.push({
+                    id: Date.now().toString() + '2',
+                    name: "Respondent's Incentive",
+                    qty: winnerCount,
+                    price: prizePerWinner,
+                    category: "Respondent's Incentive"
+                });
+            }
+            setItems(kilatItems);
+            setNote('');
             return;
         }
 
@@ -725,7 +777,25 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
 
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-6">
-                {currentStep === 'schedule' ? (
+                {currentStep === 'schedule' && isKilat ? (
+                    /* ============ SCHEDULE STEP — JFU KILAT ============ */
+                    <KilatScheduleStep
+                        // Remount setelah "Hapus Jadwal": pilihan tanggal/gelombang
+                        // hidup di state KilatScheduleStep, jadi tanpa key ini ia
+                        // masih memamerkan slot yang barusan dilepas.
+                        key={existingAdId || 'kosong'}
+                        submissionId={submission.id}
+                        initialYmd={submission.start_date ? String(submission.start_date).slice(0, 10) : null}
+                        initialHour={submission.kilat_slot_hour ?? null}
+                        isRescheduling={!!existingAdId}
+                        onCancel={onBack}
+                        onScheduled={() => {
+                            setExistingAdId(submission.id);
+                            setCurrentStep('payment');
+                        }}
+                        onRemoveSchedule={handleCancelSchedule}
+                    />
+                ) : currentStep === 'schedule' ? (
                     /* ==================== SCHEDULE STEP ==================== */
                     <div className="max-w-3xl mx-auto space-y-6">
                         {/* Ad Type Toggle */}
@@ -942,9 +1012,19 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
                                     <Calendar className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Reserved Slot</p>
+                                    <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">
+                                        {isKilat ? 'Slot Kilat' : 'Reserved Slot'}
+                                    </p>
                                     <p className="text-[14px] font-semibold text-gray-900">
-                                        {startDate && endDateObj ? `${startDate.toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})} - ${endDateObj.toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})}` : 'Belum ada jadwal'}
+                                        {isKilat
+                                            /* Kilat menempati satu gelombang push, bukan rentang tanggal —
+                                               menampilkannya sebagai "4 Agu - 5 Agu" akan salah baca. */
+                                            ? (startDate
+                                                ? `${startDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}${submission.kilat_slot_hour != null ? ` · ${String(submission.kilat_slot_hour).padStart(2, '0')}.00 WIB` : ' · gelombang belum dipilih'}`
+                                                : 'Belum ada jadwal')
+                                            : (startDate && endDateObj
+                                                ? `${startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} - ${endDateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                                                : 'Belum ada jadwal')}
                                     </p>
                                 </div>
                             </div>

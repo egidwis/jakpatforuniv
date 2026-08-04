@@ -17,7 +17,7 @@
 // duplication is unavoidable: Pages Functions can't import from src/. The
 // client copy only renders estimates; THIS copy decides what gets charged.
 
-const KILAT_ADDON_COST = 250000;
+const KILAT_ADDON_COST = 200000;
 const KILAT_ADDON_COST_VOUCHER = 200000;
 
 // PPN 11% dipungut di ATAS subtotal (DPP). Pembulatan WAJIB identik dengan
@@ -289,6 +289,50 @@ export async function onRequest(context) {
       return json({ error: 'Failed to create DOKU payment', details: dokuData }, 502);
     }
 
+    // Build items breakdown for invoice rendering note JSON
+    const noteQuestionCount = Number(sub.question_count) || 0;
+    const noteDuration = Number(sub.duration) || 0;
+    const noteWinnerCount = Number(sub.winner_count) || 0;
+    const notePrizePerWinner = Number(sub.prize_per_winner) || 0;
+    const noteVoucherCode = sub.voucher_code || undefined;
+    const noteIsKilat = sub.distribution_type === 'kilat';
+
+    const noteItems = [];
+    if (noteIsKilat) {
+      noteItems.push({
+        name: 'Jakpat for Universities (ads)',
+        qty: 1,
+        price: calculateAdCostPerDay(noteQuestionCount),
+        category: 'Jakpat for Universities (ads)',
+      });
+      noteItems.push({
+        name: 'Add-on JFU Kilat',
+        qty: 1,
+        price: noteVoucherCode && noteVoucherCode.toUpperCase() === 'JFUSUHUD' ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST,
+        category: 'Lainnya',
+      });
+    } else {
+      const adCostBase = calculateAdCostPerDay(noteQuestionCount);
+      const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteWinnerCount * notePrizePerWinner, noteDuration);
+      const discountedPerDay = discount > 0 && noteDuration > 0 ? Math.max(0, adCostBase - Math.ceil(discount / noteDuration)) : adCostBase;
+      if (adCostBase > 0 && noteDuration > 0) {
+        noteItems.push({
+          name: 'Jakpat for Universities (ads)',
+          qty: noteDuration,
+          price: discountedPerDay,
+          category: 'Jakpat for Universities (ads)',
+        });
+      }
+    }
+    if (notePrizePerWinner > 0 && noteWinnerCount > 0) {
+      noteItems.push({
+        name: "Respondent's Incentive",
+        qty: noteWinnerCount,
+        price: notePrizePerWinner,
+        category: "Respondent's Incentive",
+      });
+    }
+
     // 5. Persist BOTH rows via service_role (bypasses RLS).
     //    `amount` is the PPN-inclusive grand total; subtotal/ppn_rate/ppn_amount
     //    record the tax breakdown for reconciliation and invoice rendering.
@@ -302,6 +346,7 @@ export async function onRequest(context) {
       ppn_amount: ppn,
       status: 'pending',
       payment_url: paymentUrl,
+      note: JSON.stringify({ items: noteItems }),
     };
     const invoiceRow = {
       form_submission_id: formSubmissionId,

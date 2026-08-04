@@ -325,15 +325,18 @@ function googleFormsProxyPlugin() {
           fetch(targetUrl, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
+            },
+            redirect: 'follow'
           })
             .then(async (fetchRes) => {
               const html = await fetchRes.text();
               res.statusCode = fetchRes.status;
               res.setHeader('Content-Type', 'text/html');
+              res.setHeader('X-Final-Url', fetchRes.url);
               res.setHeader('Access-Control-Allow-Origin', '*');
               res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
               res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+              res.setHeader('Access-Control-Expose-Headers', 'X-Final-Url');
               res.end(html);
             })
             .catch((err) => {

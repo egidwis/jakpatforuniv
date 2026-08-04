@@ -6,6 +6,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './SchedulingPage.css'; // Add custom CSS overrides
 import { getScheduledPages, getPendingSlotsWithoutPage, supabase } from '@/utils/supabase'; // Added supabase
 import { PageBuilderModal } from '@/components/PageBuilder/PageBuilderModal';
+import { KilatScheduleBoard } from '../../components/KilatScheduleBoard';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, ExternalLink, Activity, CalendarClock, ListTodo, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
@@ -356,7 +357,12 @@ const CustomAgendaListView = memo(({ events, currentDate, onSelectEvent }: { eve
     );
 });
 
-export function SchedulingPage() {
+interface SchedulingPageProps {
+    onOpenSubmission: (params: { id: string; createdAt: string }) => void;
+}
+
+export function SchedulingPage({ onOpenSubmission }: SchedulingPageProps) {
+    const [mode, setMode] = useState<'iklan' | 'kilat'>('iklan');
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(false);
     const [view, setView] = useState<View>(Views.AGENDA);
@@ -705,7 +711,27 @@ export function SchedulingPage() {
     return (
         <div className="space-y-6">            {/* Unified Toolbar Container */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
-                
+
+                {/* Mode Toggle: Iklan / Kilat */}
+                <div className="flex bg-slate-200/50 p-1 rounded-lg shrink-0 self-start">
+                    <button
+                        onClick={() => setMode('iklan')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${mode === 'iklan' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                        Iklan
+                    </button>
+                    <button
+                        onClick={() => setMode('kilat')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${mode === 'kilat' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                        Kilat
+                    </button>
+                </div>
+
+                <div className="h-px bg-gray-100 w-full" />
+
+                {mode === 'iklan' && (
+                <>
                 {/* Top Row: Navigation & View */}
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     {/* Left: Month Selector & Navigation */}
@@ -805,9 +831,12 @@ export function SchedulingPage() {
                         </Button>
                     </div>
                 </div>
+                </>
+                )}
             </div>
 
             {/* Calendar & Filters */}
+            {mode === 'iklan' ? (
             <Card className="flex-1 flex flex-col shadow-sm border-slate-200 min-h-[750px] overflow-hidden bg-white">
                 <CardContent className="p-0 flex-1 relative rounded-b-xl">
                     {/* Calendar Container */}
@@ -877,6 +906,9 @@ export function SchedulingPage() {
                     </div>
                 </CardContent>
             </Card>
+            ) : (
+                <KilatScheduleBoard onOpenSubmission={onOpenSubmission} />
+            )}
 
             {isPublishPageModalOpen && selectedEvent && (
                 <PageBuilderModal

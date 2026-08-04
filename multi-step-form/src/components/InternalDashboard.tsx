@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar } from 'lucide-react';
-import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, supabase } from '../utils/supabase';
+import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, convertDistributionType, supabase } from '../utils/supabase';
 import { fetchProfileNames } from '../utils/profileNames';
 import { emailLocalPart } from './customers/types';
 import { useAuth } from '../context/AuthContext';
@@ -40,9 +40,10 @@ const STATUS_FILTER_OPTIONS = [
 interface InternalDashboardProps {
   hideAuth?: boolean;
   onLogout?: () => void;
+  focusSubmission?: { id: string; createdAt: string } | null;
 }
 
-export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashboardProps = {}) {
+export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission }: InternalDashboardProps = {}) {
   const { user, loading: authLoading, signOut } = useAuth();
   const [submissions, setSubmissions] = useState<SurveySubmission[]>([]);
   const [filteredSubmissions, setFilteredSubmissions] = useState<SurveySubmission[]>([]);
@@ -214,6 +215,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           slot_reserved_at: sub.slot_reserved_at,
           admin_notes: sub.admin_notes,
           distribution_type: sub.distribution_type,
+          kilat_slot_hour: sub.kilat_slot_hour,
           has_transactions: false, // Default, will verify below
         }));
 
@@ -297,7 +299,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             return normalizeDate(b.created_at) - normalizeDate(a.created_at);
           });
 
-          const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean }> = {};
+          const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean, latestPaymentId?: string | null }> = {};
 
           if (mergedTx.length > 0) {
             transformed.forEach(sub => {
@@ -316,17 +318,18 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   invoiceCount: subTxs.length,
                   latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null,
                   latestAmount: subTxs[0].amount || 0,
-                  hasEverPaid: hasEverPaid
+                  hasEverPaid: hasEverPaid,
+                  latestPaymentId: subTxs[0].payment_id || null,
                 };
                 sub.payment_status = latestStatus;
               } else {
-                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false };
+                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false, latestPaymentId: null };
                 if (sub.payment_status === 'pending') sub.payment_status = undefined;
               }
             });
           } else {
             transformed.forEach(sub => {
-              paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false };
+              paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false, latestPaymentId: null };
               if (sub.payment_status === 'pending') sub.payment_status = undefined;
             });
           }
@@ -384,6 +387,27 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       setOpenSubmissionId(null);
     }
   }, [openSubmissionId, openSubmission, loading]);
+
+  // Deep-link dari papan jadwal Kilat: arahkan filter ke order ini dulu...
+  useEffect(() => {
+    if (!focusSubmission) return;
+    setCurrentDate(new Date(focusSubmission.createdAt));
+    setSearchQuery(focusSubmission.id);
+    setCurrentPage(1);
+    setStatusFilter('all');
+    setDistTab('kilat');
+  }, [focusSubmission]);
+
+  // ...lalu baru buka drawer-nya SETELAH baris itu benar-benar termuat di
+  // `submissions`. Kalau digabung dengan effect di atas dalam satu tick, guard
+  // "tutup drawer kalau baris tidak ditemukan" (persis di atas effect ini) bisa
+  // menutupnya lagi sebelum fetch sempat selesai.
+  useEffect(() => {
+    if (!focusSubmission) return;
+    if (submissions.some((s) => s.id === focusSubmission.id)) {
+      setOpenSubmissionId(focusSubmission.id);
+    }
+  }, [focusSubmission, submissions]);
 
   // Client tier: fetched async against full Supabase history (not just current-month page)
   const [clientTier, setClientTier] = useState<'vvip' | 'vip' | 'returning' | 'new' | undefined>(undefined);
@@ -496,6 +520,32 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       toast.success(`Payment status marked as ${newStatus}`);
     } catch (error) {
       toast.error('Failed to update payment status');
+    }
+  };
+
+  /**
+   * Jembatan iklan regular ↔ JFU Kilat. Setelah konversi, baris berpindah tab
+   * sendiri — filter distTab membaca distribution_type dari data yang dimuat
+   * ulang, jadi tidak ada state tab yang perlu disentuh di sini.
+   *
+   * Dialog konfirmasinya sudah menjelaskan konsekuensinya (jadwal dilepas, harga
+   * dihitung ulang); yang tersisa di sini hanya menjalankan dan memuat ulang.
+   */
+  const handleConvertDistribution = async (submission: SurveySubmission, target: 'regular' | 'kilat') => {
+    try {
+      const { totalCost } = await convertDistributionType(submission.id, target);
+      // Drawer ditutup: submission yang terbuka sekarang ada di tab lain, dan
+      // membiarkannya terbuka menampilkan aksi milik jalur yang sudah ditinggalkan.
+      setOpenSubmissionId(null);
+      await loadSubmissions();
+      toast.success(
+        target === 'kilat'
+          ? `Dipindahkan ke JFU Kilat — harga jadi Rp ${totalCost.toLocaleString('id-ID')}. Pilih slot Kilat di tab Kilat.`
+          : `Dikembalikan ke iklan regular — harga jadi Rp ${totalCost.toLocaleString('id-ID')}. Reserve slot ulang di tab Regular Ads.`
+      );
+    } catch (error: any) {
+      console.error('Gagal memindahkan jalur distribusi:', error);
+      toast.error(error?.message || 'Gagal memindahkan jalur distribusi');
     }
   };
 
@@ -721,6 +771,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     onOpenPageBuilder: handleOpenPageBuilder,
     onOpenSchedule: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('schedule'); },
     onOpenPayment: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('payment'); },
+    onConvertDistribution: handleConvertDistribution,
     onExtendCreated: loadSubmissions,
   };
 

@@ -21,6 +21,7 @@ export function InternalDashboardWithLayout() {
   const { user, signOut } = useAuth();
 
   const [currentPage, setCurrentPage] = useState<Page>('submissions');
+  const [focusSubmission, setFocusSubmission] = useState<{ id: string; createdAt: string } | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(
     () => localStorage.getItem('admin-sidebar-collapsed') === 'true'
@@ -151,6 +152,11 @@ export function InternalDashboardWithLayout() {
   const handlePageChange = (page: Page) => {
     setCurrentPage(page);
     setIsSidebarOpen(false); // Close sidebar on mobile after navigation
+  };
+
+  const handleOpenSubmissionFromSchedule = (params: { id: string; createdAt: string }) => {
+    setFocusSubmission(params);
+    setCurrentPage('submissions');
   };
 
   const toggleCollapsed = () => {
@@ -485,7 +491,7 @@ export function InternalDashboardWithLayout() {
         {/* Main Content */}
         <main className="flex-1 overflow-auto flex flex-col">
           {currentPage === 'submissions' ? (
-            <InternalDashboard onLogout={handleLogout} hideAuth={true} />
+            <InternalDashboard onLogout={handleLogout} hideAuth={true} focusSubmission={focusSubmission} />
           ) : currentPage === 'transactions' ? (
             <TransactionsPage />
           ) : currentPage === 'analytics' ? (
@@ -506,7 +512,7 @@ export function InternalDashboardWithLayout() {
             </div>
           ) : (
             <div className="container mx-auto p-4 md:p-8 h-full">
-              <SchedulingPage />
+              <SchedulingPage onOpenSubmission={handleOpenSubmissionFromSchedule} />
             </div>
           )}
         </main>

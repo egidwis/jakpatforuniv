@@ -47,7 +47,8 @@ export async function onRequest(context) {
     const response = await fetch(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+      },
+      redirect: 'follow'
     });
 
     const html = await response.text();
@@ -56,9 +57,11 @@ export async function onRequest(context) {
       status: response.status,
       headers: {
         'Content-Type': 'text/html',
+        'X-Final-Url': response.url,
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Expose-Headers': 'X-Final-Url'
       }
     });
 

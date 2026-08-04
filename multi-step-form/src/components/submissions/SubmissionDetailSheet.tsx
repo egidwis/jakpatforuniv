@@ -33,7 +33,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
-import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculateAdCostPerDay } from '../../utils/cost-calculator';
+import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculateAdCostPerDay, calculatePpn, getKilatAddonCost } from '../../utils/cost-calculator';
 import { updateFormDetails, updateSubmissionCriteria } from '../../utils/supabase';
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
@@ -41,7 +41,7 @@ import { deriveLifecycle } from './lifecycle';
 import { LifecycleChip } from './LifecycleChip';
 import { ReviewStatusChip } from './ReviewStatusChip';
 import { ReviewTimeline } from './ReviewTimeline';
-import { ReserveSlotAction, PaymentAction, PageAction, ExtendAction } from './CampaignActions';
+import { ReserveSlotAction, PaymentAction, PageAction, ExtendAction, DistributionAction } from './CampaignActions';
 
 type DetailTab = 'info' | 'review' | 'reservation' | 'payment' | 'page';
 
@@ -66,6 +66,8 @@ interface SubmissionDetailSheetProps {
   onOpenPageBuilder: (submission: SurveySubmission) => void;
   onOpenSchedule: (submission: SurveySubmission) => void;
   onOpenPayment: (submission: SurveySubmission) => void;
+  /** Pindahkan order antara jalur iklan regular dan JFU Kilat. */
+  onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
   onExtendCreated: () => void;
   variant?: 'sheet' | 'pane';
   clientTier?: 'vvip' | 'vip' | 'returning' | 'new';
@@ -99,6 +101,7 @@ export function SubmissionDetailSheet({
   onOpenPageBuilder,
   onOpenSchedule,
   onOpenPayment,
+  onConvertDistribution,
   onExtendCreated,
   variant = 'sheet',
   clientTier,
@@ -208,6 +211,7 @@ export function SubmissionDetailSheet({
           isScheduled={isScheduled}
           lifecycle={lifecycle}
           onOpenSchedule={onOpenSchedule}
+          onConvertDistribution={onConvertDistribution}
         />
       )}
       {activeTab === 'payment' && (
@@ -786,12 +790,34 @@ function ReviewTab({
               <Globe className="w-3 h-3 text-gray-400 shrink-0" />
               <span className="text-[11px] text-gray-500 truncate">{submission.formUrl.replace(/^https?:\/\//, '')}</span>
             </div>
-            <iframe
-              src={submission.formUrl}
-              title={`Preview: ${submission.formTitle}`}
-              className="w-full flex-1 bg-white"
-              sandbox="allow-scripts allow-same-origin allow-forms"
-            />
+            
+            {submission.formUrl.includes('docs.google.com') && !submission.formUrl.includes('/d/e/') ? (
+              <div className="flex-1 bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-4 border shadow-sm">
+                  <ExternalLink className="w-5 h-5 text-gray-400" />
+                </div>
+                <h4 className="text-sm font-medium text-gray-900 mb-1.5">Preview Tidak Tersedia</h4>
+                <p className="text-xs text-gray-500 max-w-[280px] mb-5 leading-relaxed">
+                  Sistem keamanan Google membatasi preview untuk tautan editor. Silakan buka form di tab baru untuk mengecek tampilannya.
+                </p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="bg-white border-gray-300 hover:bg-gray-50"
+                  onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
+                >
+                  Buka Preview di Tab Baru <ExternalLink className="w-3.5 h-3.5 ml-2" />
+                </Button>
+              </div>
+            ) : (
+              <iframe
+                src={submission.formUrl}
+                title={`Preview: ${submission.formTitle}`}
+                className="w-full flex-1 bg-white"
+                sandbox="allow-scripts allow-same-origin allow-forms"
+              />
+            )}
+            
             <p className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-200 bg-white">
               Preview kosong? Situs survei memblokir embed — gunakan tombol "Buka" di atas.
             </p>
@@ -825,6 +851,7 @@ function ReservationTab({
   isScheduled,
   lifecycle,
   onOpenSchedule,
+  onConvertDistribution,
 }: {
   submission: SurveySubmission;
   paymentData: PaymentState;
@@ -832,8 +859,43 @@ function ReservationTab({
   isScheduled: boolean;
   lifecycle: ReturnType<typeof deriveLifecycle>;
   onOpenSchedule: (submission: SurveySubmission) => void;
+  onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
 }) {
   const isExtraAd = existingPage?.is_extra_ad || (submission.admin_notes || '').includes('[EXTRA_AD]');
+  const isKilat = submission.distribution_type === 'kilat';
+
+  const [convertTarget, setConvertTarget] = useState<'regular' | 'kilat' | null>(null);
+  const [isConverting, setIsConverting] = useState(false);
+
+  // Harga jalur tujuan, dihitung untuk DITAMPILKAN di dialog sebelum admin
+  // menekan tombol. Angka finalnya tetap dihitung ulang di server oleh
+  // convertDistributionType() dari data DB yang segar — ini hanya pratinjau,
+  // jadi admin tidak memindahkan order secara buta.
+  const previewIncentive = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
+  const previewKilatSubtotal =
+    calculateAdCostPerDay(submission.questionCount || 0) +
+    getKilatAddonCost(submission.voucher_code) +
+    previewIncentive;
+  const previewRegularAdCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
+  const previewRegularSubtotal =
+    previewRegularAdCost +
+    previewIncentive -
+    calculateDiscount(submission.voucher_code, previewRegularAdCost, previewIncentive, submission.duration || 0);
+  const previewSubtotal = convertTarget === 'kilat' ? previewKilatSubtotal : previewRegularSubtotal;
+  const previewTotal = previewSubtotal + calculatePpn(previewSubtotal);
+
+  const hasPendingInvoice = paymentData.hasInvoices && paymentData.latestStatus === 'pending';
+
+  const handleConfirmConvert = async () => {
+    if (!convertTarget) return;
+    setIsConverting(true);
+    try {
+      await onConvertDistribution(submission, convertTarget);
+      setConvertTarget(null);
+    } finally {
+      setIsConverting(false);
+    }
+  };
 
   return (
     <>
@@ -855,7 +917,11 @@ function ReservationTab({
               <span className="text-gray-400">End</span>
               <span className="font-medium text-gray-900">{formatDate(submission.end_date)}</span>
               <span className="text-gray-400">Type</span>
-              <span className="font-medium text-gray-900">{isExtraAd ? 'Extra Ad' : 'Regular Ad'}</span>
+              <span className="font-medium text-gray-900">
+                {isKilat
+                  ? `Kilat${submission.kilat_slot_hour != null ? ` · ${String(submission.kilat_slot_hour).padStart(2, '0')}.00 WIB` : ' · gelombang belum dipilih'}`
+                  : isExtraAd ? 'Extra Ad' : 'Regular Ad'}
+              </span>
               {submission.slot_booked_by && (
                 <>
                   <span className="text-gray-400">Booked by</span>
@@ -890,6 +956,91 @@ function ReservationTab({
           Membuka halaman Schedule &amp; Payment (fullscreen) — sama seperti flow sebelumnya.
         </p>
       </DetailSheetSection>
+
+      <DetailSheetSection title="Jalur Distribusi">
+        <DistributionAction
+          submission={submission}
+          existingPage={existingPage}
+          isConverting={isConverting}
+          onConvert={(target) => setConvertTarget(target)}
+        />
+        <p className="text-[11px] text-gray-400">
+          {isKilat
+            ? 'Kilat: push notifikasi langsung ke responden, ~2 jam, tanpa halaman iklan.'
+            : 'Untuk user yang sudah submit sebagai iklan biasa tapi ingin pindah ke Kilat.'}
+        </p>
+      </DetailSheetSection>
+
+      <Dialog open={convertTarget !== null} onOpenChange={(open) => { if (!open && !isConverting) setConvertTarget(null); }}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {convertTarget === 'kilat' ? (
+                <><Zap className="w-4 h-4 fill-amber-500 text-amber-500" /> Jadikan JFU Kilat?</>
+              ) : (
+                <><Calendar className="w-4 h-4 text-blue-500" /> Kembalikan ke Iklan Regular?</>
+              )}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {submission.formTitle}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 text-xs">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 space-y-1">
+              <p className="text-gray-600">
+                Jadwal yang sudah dipesan akan <strong>dilepas</strong> — slotnya kembali ke pool, dan
+                slot baru dipilih di step Schedule setelah ini.
+              </p>
+              <p className="text-gray-600">
+                Harga dihitung ulang jadi{' '}
+                <strong className="text-gray-900">Rp {previewTotal.toLocaleString('id-ID')}</strong>{' '}
+                (subtotal Rp {previewSubtotal.toLocaleString('id-ID')} + PPN 11%)
+                {convertTarget === 'kilat'
+                  ? ' — base rate 1× + add-on Kilat, tanpa diskon voucher.'
+                  : ' — base rate × durasi, diskon voucher berlaku lagi.'}
+              </p>
+            </div>
+
+            {/* Peringatan, bukan penghalang. Order lunas dan invoice pending justru
+                kasus yang paling sering perlu dipindah — yang penting admin tahu. */}
+            {lifecycle.isPaid && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-800">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>
+                  Order ini <strong>sudah lunas</strong> dengan harga lama. Selisihnya harus
+                  ditagih atau dikembalikan di luar sistem — konversi ini tidak menyentuh
+                  pembayaran yang sudah masuk.
+                </span>
+              </div>
+            )}
+            {hasPendingInvoice && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-800">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>
+                  Masih ada <strong>invoice pending</strong> berisi harga lama dan link-nya
+                  masih bisa dibayar user. Batalkan invoice itu dulu kalau perlu — konversi
+                  tidak menutupnya.
+                </span>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" disabled={isConverting} onClick={() => setConvertTarget(null)}>
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              disabled={isConverting}
+              onClick={handleConfirmConvert}
+              className={convertTarget === 'kilat' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}
+            >
+              {isConverting ? 'Memindahkan...' : convertTarget === 'kilat' ? 'Ya, jadikan Kilat' : 'Ya, kembalikan ke Regular'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -914,10 +1065,24 @@ function PaymentTab({
   onEditFormDetails: (submission: SurveySubmission) => void;
 }) {
   const [isConfirmPaymentOpen, setIsConfirmPaymentOpen] = useState(false);
-  const adCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
+  const isKilat = submission.distribution_type === 'kilat';
   const incentiveCost = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
-  const discount = calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
-  const finalAdCost = adCost - discount;
+
+  // Kilat: base rate 1× (durasi tidak berlaku — selesai dalam ~2 jam), ditambah
+  // add-on, tanpa diskon voucher. Rumus yang sama dipakai invoice admin dan
+  // functions/api/doku/create-payment.js. Tanpa cabang ini, estimasi di sini
+  // menampilkan harga regular untuk order Kilat — angka yang tidak pernah ditagih.
+  const adCost = isKilat
+    ? calculateAdCostPerDay(submission.questionCount || 0)
+    : calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
+  const kilatAddon = isKilat ? getKilatAddonCost(submission.voucher_code) : 0;
+  const discount = isKilat
+    ? 0
+    : calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
+  const finalAdCost = adCost - discount + kilatAddon;
+  const subtotal = finalAdCost + incentiveCost;
+  const ppn = calculatePpn(subtotal);
+  const grandTotal = subtotal + ppn;
 
   return (
     <>
@@ -934,16 +1099,24 @@ function PaymentTab({
           </Button>
         }
       >
-        {submission.duration && submission.duration > 0 ? (
+        {isKilat || (submission.duration && submission.duration > 0) ? (
           <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 space-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-gray-500">
-                Ad cost <span className="text-[10px] text-gray-400 font-normal">({submission.questionCount} Qs | Rp {new Intl.NumberFormat('id-ID').format(calculateAdCostPerDay(submission.questionCount || 0))} x {submission.duration} {submission.duration === 1 ? 'day' : 'days'})</span>
+                Ad cost <span className="text-[10px] text-gray-400 font-normal">({submission.questionCount} Qs | Rp {new Intl.NumberFormat('id-ID').format(calculateAdCostPerDay(submission.questionCount || 0))}{isKilat ? ' base rate' : ` x ${submission.duration} ${submission.duration === 1 ? 'day' : 'days'}`})</span>
               </span>
               <span className={cn('font-medium text-gray-900', discount > 0 && 'line-through text-gray-400 font-normal')}>
                 Rp {new Intl.NumberFormat('id-ID').format(adCost)}
               </span>
             </div>
+            {kilatAddon > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 flex items-center gap-1">
+                  <Zap className="w-3 h-3 fill-amber-500 text-amber-500" /> Add-on JFU Kilat
+                </span>
+                <span className="font-medium text-amber-600">Rp {new Intl.NumberFormat('id-ID').format(kilatAddon)}</span>
+              </div>
+            )}
             {discount > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-500">Discount ({submission.voucher_code})</span>
@@ -960,12 +1133,48 @@ function PaymentTab({
                 </span>
               </div>
             )}
+            <div className="flex justify-between pt-1 border-t border-gray-200/60 mt-1 text-gray-500">
+              <span>Subtotal (DPP)</span>
+              <span className="font-medium text-gray-900">Rp {new Intl.NumberFormat('id-ID').format(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-gray-500">
+              <span>PPN (11%)</span>
+              <span className="font-medium text-gray-900">Rp {new Intl.NumberFormat('id-ID').format(ppn)}</span>
+            </div>
             <div className="flex justify-between pt-1 border-t border-gray-200 mt-1">
               <span className="text-gray-600 font-medium">Total cost</span>
               <span className="font-bold text-blue-600">
-                Rp {new Intl.NumberFormat('id-ID').format(finalAdCost + incentiveCost)}
+                Rp {new Intl.NumberFormat('id-ID').format(grandTotal)}
               </span>
             </div>
+            {paymentData.latestPaymentId ? (
+              <div className="flex justify-between items-center pt-1.5 border-t border-gray-200/60 mt-1.5 text-[11px]">
+                <span className="text-gray-500">Invoice</span>
+                <a
+                  href={`/invoices/${paymentData.latestPaymentId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                >
+                  <FileText className="w-3 h-3" />
+                  {paymentData.latestPaymentId}
+                  <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
+                </a>
+              </div>
+            ) : paymentData.latestPaymentUrl ? (
+              <div className="flex justify-between items-center pt-1.5 border-t border-gray-200/60 mt-1.5 text-[11px]">
+                <span className="text-gray-500">Link Tagihan</span>
+                <a
+                  href={paymentData.latestPaymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Buka Link Pembayaran
+                </a>
+              </div>
+            ) : null}
           </div>
         ) : (
           <p className="text-xs text-gray-400 italic">Durasi belum diisi — biaya iklan belum bisa dihitung.</p>
@@ -1047,6 +1256,19 @@ function PaymentTab({
             </span>
             <span className="text-gray-400">Invoices</span>
             <span className="font-medium text-gray-900">{paymentData.invoiceCount}</span>
+            {paymentData.latestPaymentId && (
+              <>
+                <span className="text-gray-400">Invoice Link</span>
+                <a
+                  href={`/invoices/${paymentData.latestPaymentId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-blue-600 hover:underline inline-flex items-center gap-1"
+                >
+                  <FileText className="w-3 h-3" /> {paymentData.latestPaymentId} <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </>
+            )}
             {paymentData.hasEverPaid && !lifecycle.isPaid && (
               <>
                 <span className="text-gray-400">Riwayat</span>

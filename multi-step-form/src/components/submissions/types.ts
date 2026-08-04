@@ -42,6 +42,13 @@ export interface SurveySubmission {
   admin_notes?: string;
   submission_status?: string;
   distribution_type?: 'regular' | 'kilat';
+  /**
+   * Gelombang push Kilat dalam jam WIB (8/11/14/17). NULL/undefined pada order
+   * Kilat berarti slotnya belum ditugaskan admin — keadaan yang sah untuk order
+   * yang masuk lewat wizard user, yang memesan per-hari tanpa memilih jam.
+   * Selalu kosong untuk iklan regular.
+   */
+  kilat_slot_hour?: number | null;
   review_history?: ReviewHistoryEntry[];
   invoiceName?: string;
   invoiceEmail?: string;
@@ -55,6 +62,7 @@ export interface PaymentState {
   latestPaymentUrl: string | null;
   latestAmount?: number;
   hasEverPaid?: boolean;
+  latestPaymentId?: string | null;
 }
 
 export interface ExistingPage {

@@ -1,6 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import type { ReviewHistoryEntry } from '../components/submissions/types';
 import { toAiringStartIso, toWibYmd } from './airing-window';
+import {
+  calculateAdCostPerDay,
+  calculateTotalAdCost,
+  calculateIncentiveCost,
+  calculateDiscount,
+  calculatePpn,
+  getKilatAddonCost,
+} from './cost-calculator';
 
 // Supabase URL dan anon key akan diambil dari environment variables
 // Anda perlu menambahkan variabel ini di file .env.local
@@ -1230,6 +1238,9 @@ export const getPendingSlotsWithoutPage = async () => {
       .select('id, title, full_name, start_date, end_date, winner_count, prize_per_winner, submission_status, slot_booked_by, slot_reserved_at, payment_status')
       .not('start_date', 'is', null)
       .in('submission_status', ['slot_reserved', 'waiting_payment', 'paid'])
+      // Kilat orders never get a survey_pages row by design (sql/42 blocks it in the
+      // trigger), so without this filter they'd show up here forever as "no page yet".
+      .neq('distribution_type', 'kilat')
       .order('start_date', { ascending: true });
 
     if (subError) throw subError;
@@ -1471,6 +1482,352 @@ export const fetchSlotAvailability = async (
   }
 };
 
+
+// ─────────────────────────────────────────────────────────────
+// JFU Kilat — slot harian, penjadwalan, dan konversi jalur distribusi
+// ─────────────────────────────────────────────────────────────
+
+/** Tambah n hari ke sebuah YYYY-MM-DD tanpa melewati zona waktu sama sekali. */
+const addDaysToYmd = (ymd: string, days: number): string => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+};
+
+export interface KilatDayAvailability {
+  /** jam WIB (8|11|14|17) -> berapa order sudah mengisi gelombang itu */
+  byHour: Record<number, number>;
+  /** order Kilat di tanggal ini yang slotnya belum ditugaskan admin */
+  unassigned: number;
+  details: Array<{ id: string; title: string; hour: number | null; status: string }>;
+}
+
+/**
+ * Ketersediaan slot Kilat per tanggal, untuk grid penjadwalan admin.
+ *
+ * Kenapa tidak memakai fetchSlotAvailability: fungsi itu menghitung kapasitas
+ * HARIAN sepanjang jendela tayang multi-hari. Kilat bukan itu — satu order
+ * menempati satu gelombang push selama ~2 jam pada satu tanggal, dan kuotanya
+ * per-gelombang, bukan per-hari.
+ *
+ * Perpanjangan (form_submissions_extend) sengaja tidak dihitung: sebuah extend
+ * tidak punya kilat_slot_hour sendiri, jadi ia tidak bisa ditempatkan di
+ * gelombang mana pun. Kilat juga tidak dijual sebagai tayangan yang diperpanjang.
+ *
+ * Aturan kedaluwarsa 1 jam untuk reservasi user yang belum bayar dipakai ulang
+ * dari holdsSlot(), supaya jalur Kilat dan regular tidak pernah berbeda pendapat
+ * soal kapan sebuah reservasi berhenti memegang kapasitas.
+ */
+export const fetchKilatSlotAvailability = async (
+  excludeSubmissionId?: string
+): Promise<Record<string, KilatDayAvailability>> => {
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('id, title, start_date, kilat_slot_hour, submission_status, payment_status, slot_booked_by, slot_reserved_at')
+    .eq('distribution_type', 'kilat')
+    .not('start_date', 'is', null)
+    .not('submission_status', 'in', '("rejected","spam","in_review","completed")');
+
+  if (error) throw error;
+
+  const byDate: Record<string, KilatDayAvailability> = {};
+
+  (data || []).forEach((row: any) => {
+    if (row.id === excludeSubmissionId) return;
+
+    const holds = holdsSlot({
+      id: row.id,
+      submissionId: row.id,
+      title: row.title || 'Untitled Ad',
+      startDate: row.start_date,
+      endDate: row.start_date,
+      status: row.submission_status,
+      paymentStatus: row.payment_status,
+      slotBookedBy: row.slot_booked_by,
+      slotReservedAt: row.slot_reserved_at,
+      adminNotes: null,
+    });
+    if (!holds) return;
+
+    // start_date bertipe DATE, jadi PostgREST mengembalikan 'YYYY-MM-DD' apa
+    // adanya. Kalau suatu saat ia membawa jam, potong ke tanggalnya saja —
+    // jangan lewat new Date(), yang akan menggeser hari di zona non-UTC.
+    const ymd = String(row.start_date).slice(0, 10);
+    if (!byDate[ymd]) {
+      byDate[ymd] = { byHour: {}, unassigned: 0, details: [] };
+    }
+
+    const hour = row.kilat_slot_hour == null ? null : Number(row.kilat_slot_hour);
+    if (hour === null) {
+      byDate[ymd].unassigned += 1;
+    } else {
+      byDate[ymd].byHour[hour] = (byDate[ymd].byHour[hour] || 0) + 1;
+    }
+
+    byDate[ymd].details.push({
+      id: row.id,
+      title: row.title || 'Untitled Ad',
+      hour,
+      status: row.submission_status,
+    });
+  });
+
+  return byDate;
+};
+
+/**
+ * Simpan jadwal Kilat: satu tanggal + satu gelombang push.
+ *
+ * SENGAJA TIDAK lewat updateScheduleDates(). Fungsi itu memaku setiap jendela ke
+ * 15.00 WIB dan menyinkronkan survey_pages.publish_* — dua-duanya benar untuk
+ * iklan regular dan dua-duanya salah untuk Kilat, yang tayang di jamnya sendiri
+ * dan tidak punya halaman sama sekali (lihat guard di sql/42).
+ *
+ * start_date/end_date tetap diisi supaya order Kilat tetap terbaca oleh semua
+ * yang sudah ada (daftar jadwal, pengecekan overlap sql/38, ad_schedules).
+ * Jendela sehari [d, d+1) mengikuti apa yang sudah ditulis StepCheckout untuk
+ * Kilat — jam sebenarnya hidup di kilat_slot_hour.
+ */
+export const updateKilatSchedule = async (
+  submissionId: string,
+  ymd: string,
+  hour: number
+) => {
+  const { error } = await supabase
+    .from('form_submissions')
+    .update({
+      start_date: ymd,
+      end_date: addDaysToYmd(ymd, 1),
+      kilat_slot_hour: hour,
+      slot_booked_by: 'admin',
+      slot_reserved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', submissionId);
+
+  if (error) throw error;
+
+  // Jangan pernah menurunkan status order yang sudah lunas kembali ke
+  // 'slot_reserved' — pola yang sama dipakai handleBookSchedule untuk regular.
+  const { data: fresh } = await supabase
+    .from('form_submissions')
+    .select('payment_status')
+    .eq('id', submissionId)
+    .single();
+
+  if (!fresh || !['paid', 'completed'].includes(fresh.payment_status)) {
+    await updateFormStatus(submissionId, 'slot_reserved');
+  }
+
+  return true;
+};
+
+/**
+ * Pindahkan sebuah order antara jalur iklan regular dan JFU Kilat.
+ *
+ * Ini jembatan admin untuk user yang terlanjur submit sebagai iklan biasa lalu
+ * ingin pindah ke Kilat. Empat hal terjadi sekaligus, dan semuanya harus terjadi
+ * bersama supaya tidak ada keadaan setengah jalan:
+ *
+ *   1. Reservasi lama DILEPAS. Ini inti konversinya — slot iklan regular harus
+ *      kembali ke pool, bukan dipegang order yang sudah pindah jalur. Admin
+ *      memilih slot barunya lewat KilatScheduleStep sesudah ini.
+ *   2. Halaman iklan lama DIHAPUS kalau menuju Kilat. Kilat tidak pernah punya
+ *      halaman (guard di sql/42's ensure_survey_page mencegahnya terbit
+ *      otomatis) — tapi guard itu tidak berlaku surut ke halaman yang sudah ada
+ *      dari saat order ini masih regular. Pola nyata yang pernah terjadi:
+ *      admin meng-unpublish halaman regular yang sudah terlanjur terbit
+ *      (supaya lolos blokir #4 di bawah), lalu konversi — tanpa baris ini,
+ *      halaman yang sudah di-unpublish itu tertinggal yatim piatu selamanya,
+ *      menempel ke order yang sudah bukan pemiliknya (insiden nyata
+ *      2026-08-04, order e9cb5944-...).
+ *   3. Harga DIHITUNG ULANG dengan rumus jalur tujuan. Rumus Kilat identik
+ *      dengan salinan otoritatif di functions/api/doku/create-payment.js: base
+ *      rate 1× (tanpa pengali durasi) + add-on + insentif, TANPA diskon voucher.
+ *   4. Status review hanya diturunkan ke 'approved' kalau order belum lunas.
+ *
+ * `duration` sengaja tidak diubah. Kilat mengabaikannya, dan menimpanya akan
+ * menghapus jejak pesanan asli kalau admin membatalkan konversi.
+ *
+ * Satu-satunya penolakan keras: halaman iklan yang MASIH published. Order itu
+ * sedang tayang di feed aplikasi Jakpat, dan memindahkannya diam-diam ke Kilat
+ * meninggalkan kartu iklan hidup untuk order yang tidak lagi membayarnya. Kalau
+ * halamannya sudah di-unpublish (draft), konversi boleh jalan — dan baris #2
+ * di atas yang membersihkannya, bukan admin secara manual.
+ */
+export const convertDistributionType = async (
+  submissionId: string,
+  target: 'regular' | 'kilat'
+): Promise<{ totalCost: number; subtotal: number; ppn: number }> => {
+  // Baca ulang dari DB — props di dashboard bisa basi beberapa menit.
+  const { data: sub, error: readError } = await supabase
+    .from('form_submissions')
+    .select('question_count, duration, winner_count, prize_per_winner, voucher_code, payment_status, submission_status')
+    .eq('id', submissionId)
+    .single();
+
+  if (readError) throw readError;
+  if (!sub) throw new Error('Order tidak ditemukan.');
+
+  const { data: page } = await supabase
+    .from('survey_pages')
+    .select('is_published')
+    .eq('submission_id', submissionId)
+    .maybeSingle();
+
+  if (page?.is_published) {
+    throw new Error(
+      'Halaman iklan order ini sudah published — tarik atau sembunyikan halamannya dulu sebelum memindahkan jalur distribusi.'
+    );
+  }
+
+  // Kilat tidak pernah punya halaman iklan. Kalau ada baris survey_pages di
+  // sini, ia pasti draft (published sudah diblokir barusan) — sisa dari saat
+  // order ini masih regular. Hapus sebelum menulis distribution_type, supaya
+  // tidak ada jendela di mana order ini sudah 'kilat' tapi masih tercatat
+  // punya halaman.
+  if (target === 'kilat' && page) {
+    const { error: deletePageError } = await supabase
+      .from('survey_pages')
+      .delete()
+      .eq('submission_id', submissionId);
+    if (deletePageError) throw deletePageError;
+  }
+
+  const questionCount = Number(sub.question_count) || 0;
+  const duration = Number(sub.duration) || 0;
+  const winnerCount = Number(sub.winner_count) || 0;
+  const prizePerWinner = Number(sub.prize_per_winner) || 0;
+  const incentiveCost = calculateIncentiveCost(winnerCount, prizePerWinner);
+
+  let subtotal: number;
+  if (target === 'kilat') {
+    subtotal =
+      calculateAdCostPerDay(questionCount) +
+      getKilatAddonCost(sub.voucher_code) +
+      incentiveCost;
+  } else {
+    const adCost = calculateTotalAdCost(questionCount, duration);
+    const discount = calculateDiscount(sub.voucher_code, adCost, incentiveCost, duration);
+    subtotal = adCost + incentiveCost - discount;
+  }
+
+  const ppn = calculatePpn(subtotal);
+  const totalCost = subtotal + ppn;
+
+  const isPaid =
+    ['paid', 'completed'].includes(sub.payment_status || '') ||
+    ['paid', 'scheduled', 'live', 'completed'].includes(sub.submission_status || '');
+
+  const updateData: Record<string, any> = {
+    distribution_type: target,
+    total_cost: totalCost,
+    subtotal,
+    ppn_amount: ppn,
+    // Lepas reservasi lama: slot jalur asal kembali ke pool.
+    start_date: null,
+    end_date: null,
+    kilat_slot_hour: null,
+    slot_booked_by: null,
+    slot_reserved_at: null,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Tanpa jadwal, 'slot_reserved'/'waiting_payment' jadi bohong. Order lunas
+  // tidak pernah diturunkan — statusnya mencatat uang yang sudah masuk.
+  if (!isPaid && ['slot_reserved', 'waiting_payment'].includes(sub.submission_status || '')) {
+    updateData.submission_status = 'approved';
+  }
+
+  const { error: writeError } = await supabase
+    .from('form_submissions')
+    .update(updateData)
+    .eq('id', submissionId);
+
+  if (writeError) throw writeError;
+
+  return { totalCost, subtotal, ppn };
+};
+
+export interface KilatScheduleEntry {
+  id: string;
+  title: string;
+  researcherName: string;
+  hour: number | null;
+  ymd: string;
+  submissionStatus: string;
+  paymentStatus: string | null;
+  createdAt: string;
+}
+
+/**
+ * Semua order Kilat pada rentang tanggal [fromYmd, toYmd] (inklusif), untuk
+ * papan jadwal admin (KilatScheduleBoard). Beda dengan fetchKilatSlotAvailability
+ * di atas: fungsi itu menghitung KAPASITAS (makanya membuang 'completed' dan
+ * tidak dibatasi tanggal); ini menampilkan RIWAYAT satu minggu (makanya
+ * 'completed' ikut, supaya minggu yang sudah lewat tidak kosong melompong).
+ * Jangan menyatukan keduanya — filter yang berbeda ini sengaja; mengubah salah
+ * satu tanpa yang lain akan menggeser diam-diam matematika kuota di
+ * KilatScheduleStep.
+ */
+export const fetchKilatSchedule = async (
+  fromYmd: string,
+  toYmd: string
+): Promise<KilatScheduleEntry[]> => {
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('id, title, full_name, start_date, kilat_slot_hour, submission_status, payment_status, slot_booked_by, slot_reserved_at, created_at')
+    .eq('distribution_type', 'kilat')
+    .gte('start_date', fromYmd)
+    .lte('start_date', toYmd)
+    .not('start_date', 'is', null)
+    .not('submission_status', 'in', '("rejected","spam")');
+
+  if (error) throw error;
+
+  return (data || [])
+    .filter((row: any) => holdsSlot({
+      id: row.id,
+      submissionId: row.id,
+      title: row.title || 'Untitled Ad',
+      startDate: row.start_date,
+      endDate: row.start_date,
+      status: row.submission_status,
+      paymentStatus: row.payment_status,
+      slotBookedBy: row.slot_booked_by,
+      slotReservedAt: row.slot_reserved_at,
+      adminNotes: null,
+    }))
+    .map((row: any) => ({
+      id: row.id,
+      title: row.title || 'Untitled Ad',
+      researcherName: row.full_name || 'Unknown',
+      hour: row.kilat_slot_hour == null ? null : Number(row.kilat_slot_hour),
+      ymd: String(row.start_date).slice(0, 10),
+      submissionStatus: row.submission_status,
+      paymentStatus: row.payment_status,
+      createdAt: row.created_at,
+    }));
+};
+
+/**
+ * Kanari untuk regresi sql/40: order Kilat seharusnya TIDAK PERNAH punya baris
+ * survey_pages (lihat sql/42_kilat_slots.sql). Kalau ini > 0, sql/40 kemungkinan
+ * besar dijalankan ulang sesudah sql/42 dan mengembalikan definisi lama
+ * ensure_survey_page() yang tidak memeriksa distribution_type.
+ */
+export const countKilatPagesLeak = async (): Promise<number> => {
+  const { count, error } = await supabase
+    .from('survey_pages')
+    .select('id, form_submissions!inner(distribution_type)', { count: 'exact', head: true })
+    .eq('form_submissions.distribution_type', 'kilat');
+  if (error) {
+    console.error('Gagal cek kebocoran halaman Kilat:', error);
+    return 0;
+  }
+  return count || 0;
+};
 
 
 /**

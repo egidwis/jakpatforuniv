@@ -1,412 +1,398 @@
-# Jadwal Iklan Redesign: Bug Fix + Admin Tab Restructure
+# Jadwal Iklan — Phase 2: Satukan Model Jadwal (`ad_schedules`)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix the `requires_banner_update` bug that causes extends in new periods to get stuck, restructure the admin SubmissionDetailSheet from 5 tabs (Info / Review / Reservasi / Payment / Page) to 4 tabs (Info / Review / **Jadwal Iklan** / Page), and align terminology between admin and user dashboards.
+> **Status file ini, 2026-08-03:** file ini awalnya berjudul "Jadwal Iklan Redesign: Bug
+> Fix + Admin Tab Restructure" dan berisi rencana lain. Rencana itu **digantikan penuh**
+> setelah penelusuran kode menemukan premisnya keliru di titik terpenting — lihat
+> `~/.claude/plans/composed-doodling-bonbon.md` untuk narasi lengkap koreksinya. File ini
+> ditulis ulang supaya berdiri sendiri sebagai rencana eksekusi Phase 2, tanpa perlu
+> membuka dokumen itu.
 
-**Background:** The user dashboard already models each ad schedule (original + extends) as equal-weight "ScheduleCards" via `buildScheduleCards()` in `airingPeriods.ts`. The admin dashboard currently buries extends in a tiny toggle inside the Page tab, and the Reservasi + Payment tabs only handle the original schedule. This redesign brings parity.
+## Status rilis sejauh ini
 
-**Architecture:**
+| Fase | Isi | Status |
+|---|---|---|
+| Phase 0 | Cabut gerbang banner dari cron, hitung perpanjangan di kuota slot, 3 perbaikan kecil | ✅ **live di produksi** (`sql/36`–`39`, commit `05a2fa1`) |
+| Phase 1 | Auto-create + auto-publish halaman iklan dengan banner default | ✅ **live di produksi** (`sql/40`, commit `7ec7c28`) |
+| Phase 1B | Beri tahu jalur review-manual soal weekend/hari libur admin | ⬜ Backlog, tidak memblokir Phase 2 — beda file (`StepCheckout.tsx`, `airing-window.ts`) |
+| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | ⬜ **Rencana ini** |
+| Phase 3 | Tab "Jadwal Iklan" terpadu di admin | ⬜ Setelah Phase 2 — butuh baris data yang setara, bukan adapter |
 
-```
-BEFORE (5 tabs):
-├── Info
-├── Review
-├── Reservasi  ← only original schedule
-├── Payment    ← only original schedule payment
-└── Page
-    ├── PageAction
-    └── ExtendAction (toggle) ← extends buried here
+**Goal:** Satu baris = satu jendela tayang, **termasuk jadwal pertama**. Saat ini
+`form_submissions` (jadwal pertama) dan `form_submissions_extend` (jadwal ke-2 dst.) adalah
+dua tabel dengan skema, aturan waktu, dan kolom status yang berbeda-beda — itulah akar dari
+tiga bug yang sudah ditambal terpisah di Phase 0 (kuota slot, insentif dobel, jendela
+tertimpa). Setelah `ad_schedules` ada, admin dan user membaca baris yang sama, dan
+restrukturisasi tab di Phase 3 menyusut jadi mapper biasa.
 
-AFTER (4 tabs):
-├── Info
-├── Review
-├── Jadwal Iklan ← NEW: merged Reservasi + Payment + Extends
-│   ├── Original schedule card (info + booking + payment)
-│   ├── Extend #1 card (info + booking + payment)
-│   ├── [+ Buat Jadwal Baru] button
-│   └── Mark as Paid action
-└── Page ← PageAction only, no ExtendAction
-```
+## Kenapa ini tidak bisa dikerjakan sekaligus
 
-**Tech Stack:** React 18 + Vite + Tailwind, Radix primitives, `lucide-react` icons, `sonner` toasts. No test runner in this repo.
+Cakupan pembaca/penulis yang harus ikut pindah:
 
-**Depends on:** No external dependencies. All files modified are within `multi-step-form/src/`.
+| Lapis | Titik sentuh |
+|---|---|
+| SQL | `cron_activate_extends`, `get_page_active_period`, `get_batch_rewards` (`sql/37_batch_pool_context.sql`), trigger `compute_extend_period_batch`, RLS (`sql/21`), kolom PPN (`sql/34`), proteksi kolom bayar (`sql/33`) |
+| Serverless | `functions/api/doku/webhook.js` (percabangan `entity_type`, baris ~488-491), `functions/api/respondents.js`, `functions/api/storage-cleanup.js` |
+| Penulis jadwal | `src/utils/supabase.ts` (`fetchSlotAvailability`, `updateScheduleDates`), `SchedulePaymentView.tsx`, `PageBuilder/PageBuilderModal.tsx`, alur checkout, `ExtendSection.tsx` |
+| Dashboard user | `StatusPage`, `ProgressTracker`, `deriveOrderUiState.ts`, `airingPeriods.ts` (`buildScheduleCards`), `status/SchedulePhase.tsx` |
+| Dashboard admin | `SchedulingPage` (kalender), `PublishPageManagement`, `InternalDashboard`, `SubmissionDetailSheet`, `submissions/CampaignActions.tsx` |
+
+Karena itu pakai pola **expand-and-contract**: tabel baru hidup berdampingan, pembaca
+dipindah satu per satu, tabel lama baru dilepas di akhir. Tidak ada satu langkah pun yang
+mengharuskan semua lapis berubah serentak, dan setiap task di bawah bisa dirilis sendiri.
 
 ## Global Constraints
 
-- **Zero new dependencies.** Everything needed is already installed.
-- `npm run build` must pass after each task.
-- Copy style: English labels for technical items, Indonesian for user-facing text (existing convention).
-- Working directory for all commands: `/Users/jakpat/GarCode/jakpatforuniv/multi-step-form`
+- **Bentuk API keluar tidak boleh berubah.** Dua endpoint publik pihak ketiga:
+  `/api/surveys` (aplikasi Jakpat) dan `/api/respondents` (platform pengundian). Nama,
+  tipe, dan daftar field yang sudah ada **tidak boleh berubah** — nilai dan perilaku di
+  baliknya boleh. Field publik yang dibekukan: `period_batch` (tetap format `YYYY-MM`),
+  `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`.
+- **`distributed_at` TIDAK dibuat.** Pengundian dilakukan platform pihak ketiga; sistem
+  ini tidak pernah tahu kapan sebuah pool benar-benar dibagikan, jadi kolom itu hanya
+  akan jadi tebakan yang terlihat otoritatif. Konsekuensinya dicatat sadar di Task 8B
+  poin 3 — jangan mencoba menutupnya dengan menambah kolom itu kembali.
+- **Jangan normalisasi nilai `jakpat_id` yang tersimpan.** Kalau ada perbaikan duplikat
+  huruf besar/spasi, lewat indeks unik fungsional pada `(page_id, lower(btrim(jakpat_id)))`
+  — bukan menulis ulang datanya. Platform pengundian mencocokkan `jakpat_id` apa adanya.
+- **Kerjakan di branch sendiri, bercabang dari `main`.** Pola yang sama dipakai Phase 0/1
+  (`feat/jadwal-iklan`, sudah di-merge & dihapus). Jangan menumpang branch revamp visual
+  yang sedang berjalan (`feat/dashboard-soft-dna-navbar`) — keduanya tidak berhubungan dan
+  perlu bisa di-revert sendiri-sendiri.
+- `npm run build` harus lolos setelah tiap task. Tidak ada test runner selain
+  `jakpat-id.test.ts` dan `airing-window.test.ts` (dijalankan lewat esbuild+node, lihat
+  CLAUDE.md).
+- Working directory untuk semua perintah: `/Users/jakpat/GarCode/jakpatforuniv/multi-step-form`
 
 ---
 
-## Phase 1: Bug Fix — Banner Gate
+## Task 8: Buat `ad_schedules` + backfill (expand)
 
-### Context
+**File baru:** `multi-step-form/sql/41_ad_schedules.sql`
 
-When an extend is created for a **new month** (`is_new_month = true`), the ad page's banner may need updating (e.g., new prize info). The cron function `cron_activate_extends()` in `sql/20_extend_rpcs.sql` checks:
+Kolom: `id`, `submission_id`, `ordinal` (1 = jadwal pertama), `start_date`, `end_date`,
+`duration`, `status` (siklus tayang saja:
+`waiting_payment|paid|scheduled|live|completed|cancelled`), `payment_status`,
+`prize_per_winner`, `winner_count`, `additional_prize_per_winner`, `is_new_period`,
+`period_batch`, `total_cost`, `subtotal`, `ppn_amount`, `voucher_code`, `slot_booked_by`,
+`slot_reserved_at`, `admin_notes`, `created_at`, `updated_at`. `UNIQUE (submission_id, ordinal)`.
+Pertahankan trigger penghitung `period_batch` yang sudah ada.
 
-```sql
-AND (sp.requires_banner_update IS NULL OR sp.requires_banner_update = false);
-```
+Backfill: `form_submissions` yang punya `start_date` → `ordinal = 1`; lalu
+`form_submissions_extend` diurut `start_date` → `ordinal = 2..n`.
 
-But **no code ever sets `requires_banner_update = true`** when a new-month extend is created. This means either:
-- The extend activates without a banner update (incorrect content shown to respondents)
-- Or if `requires_banner_update` is already `true` from a previous operation, the extend gets **permanently stuck** at `scheduled` status
+**Kunci keamanannya:** selama transisi, trigger dua arah menjaga
+`form_submissions.start_date/end_date/duration/payment_status` tetap mencerminkan baris
+`ordinal = 1`. Semua pembaca lama terus bekerja tanpa diubah, dan migrasi bisa dihentikan
+di titik mana pun tanpa merusak produksi.
 
-### Task 1: Set `requires_banner_update` on new-month extend creation
-
-**Files:**
-- Modify: `src/components/ExtendSection.tsx` (lines 261–269, inside `handleCreate()`)
-
-**Change:**
-
-After the successful insert into `form_submissions_extend` (line 265), add a conditional update to `survey_pages`:
-
-```typescript
-// After: if (error) throw error;
-
-// When the extend enters a new reward batch (different month), the page's
-// banner likely shows stale prize info. Gate the cron from auto-activating
-// until admin updates the banner via PageBuilder (preserveSubmissionDates mode).
-if (isNewMonth) {
-  const { error: bannerError } = await supabase
-    .from('survey_pages')
-    .update({ requires_banner_update: true })
-    .eq('submission_id', submissionId);
-
-  if (bannerError) {
-    console.warn('Failed to set requires_banner_update:', bannerError.message);
-    // Non-fatal: extend is created, admin can still manually clear the flag
-  }
-}
-```
-
-- [ ] **Step 1:** Add the `requires_banner_update` setter in `handleCreate()` after the extend insert succeeds
-- [ ] **Step 2:** Verify `npm run build` passes
-
-### Task 2: Add banner-update indicator in ExtendSection list
-
-**Files:**
-- Modify: `src/components/ExtendSection.tsx` (lines 549–715, the extends list rendering)
-
-**Change:**
-
-The component needs to know whether the page has `requires_banner_update = true`. Currently `ExtendSection` does not fetch `survey_pages` data.
-
-- [ ] **Step 1:** Add state + fetch for banner update status
-
-Add to the component state (after line 117):
-
-```typescript
-const [requiresBannerUpdate, setRequiresBannerUpdate] = useState(false);
-```
-
-Add to `fetchExtends()` (after the extends fetch, ~line 185):
-
-```typescript
-// Check if page needs banner update (for visual indicator)
-const { data: pageData } = await supabase
-  .from('survey_pages')
-  .select('requires_banner_update')
-  .eq('submission_id', submissionId)
-  .maybeSingle();
-
-setRequiresBannerUpdate(pageData?.requires_banner_update === true);
-```
-
-- [ ] **Step 2:** Add visual indicator per extend card
-
-Inside the extend card rendering (after Row 3: Reward info, ~line 595), add a banner warning for new-month extends when `requiresBannerUpdate` is true:
-
-```tsx
-{/* Row 3.5: Banner update warning */}
-{ext.is_new_month && requiresBannerUpdate && !isCancelled && (
-  <div className="flex items-center gap-1 text-amber-600">
-    <AlertCircle className="w-3 h-3" />
-    <span className="text-[9px] font-semibold">Banner perlu update</span>
-  </div>
-)}
-```
-
-- [ ] **Step 3:** Verify `npm run build` passes
-
-### Task 3: Also surface the banner indicator in PublishPageManagement
-
-**Files:**
-- Verify: `src/components/PublishPageManagement.tsx` (lines 772, 866)
-
-**Change:** This file already shows `requires_banner_update` badges. Verify the existing logic works correctly — no code changes expected, just a manual review to confirm the badges appear for pages with the flag set.
-
-- [ ] **Step 1:** Review `PublishPageManagement.tsx` lines 772 and 866 — confirm the badge logic covers the new-month extend scenario
-- [ ] **Step 2:** If the existing "dismiss" button (line 874: `update({ requires_banner_update: false })`) works without requiring PageBuilder, consider whether that's desirable or if it should only be clearable through PageBuilder save. Document the decision.
+- [ ] Tulis skema + trigger dua arah + backfill di `sql/41_ad_schedules.sql`
+- [ ] Pre-check: `SELECT COUNT(*) FROM form_submissions WHERE start_date IS NOT NULL` vs
+      jumlah baris `ad_schedules ordinal=1` setelah backfill — harus sama
+- [ ] Pre-check: jumlah baris `form_submissions_extend` vs `ad_schedules ordinal>1` — harus
+      sama
+- [ ] Uji trigger dua arah: ubah tanggal lewat alur lama (`updateScheduleDates`) → baris
+      `ordinal = 1` di `ad_schedules` ikut berubah
 
 ---
 
-## Phase 2: Admin Tab Restructure — "Jadwal Iklan" Tab
+## Task 8B: Reward pool jadi milik batch, bukan milik jadwal
 
-### Context
+Ketentuan layanan: **user boleh memakai reward yang sama selama reward itu belum
+didistribusikan.** Pemilik pool semestinya batch, tapi model sekarang menaruhnya di
+jadwal pertama (`form_submissions.prize_per_winner`). Ini akar dari tiga masalah yang
+sudah ditambal sendiri-sendiri di Phase 0.
 
-Currently the admin `SubmissionDetailSheet` has 5 tabs. The Reservasi tab only shows the **original** schedule, Payment tab only shows the **original** payment, and extends are hidden in the Page tab's `ExtendAction` toggle.
+**Tabel baru `reward_pools`:** kunci `(submission_id, period_batch)`, berisi
+`prize_per_winner`, `winner_count`, akumulasi top-up, `created_at`. `period_batch` tetap
+diturunkan dari bulan `end_date` — janji "pemenang diumumkan setiap akhir bulan" di
+halaman iklan tetap berlaku.
 
-The restructure merges Reservasi + Payment + Extends into a single **"Jadwal Iklan"** tab that mirrors the user dashboard's `SchedulePhase` — each schedule period (original + extends) rendered as an equal-weight card with its own status, dates, and payment info.
+**Aturan penagihan berhenti jadi turunan kalender, jadi turunan keberadaan pool:**
 
-### Task 4: Create `ScheduleTab` component
-
-**Files:**
-- New: `src/components/submissions/ScheduleTab.tsx`
-
-**Purpose:** Replace `ReservationTab` + `PaymentTab` + `ExtendAction` with a unified tab that renders all schedule periods as cards.
-
-**Data source:** Reuse `buildScheduleCards()` from `src/components/status/airingPeriods.ts` — this is the same function the user dashboard uses, ensuring data consistency.
-
-**Interface:**
-
-```typescript
-interface ScheduleTabProps {
-  submission: SurveySubmission;
-  paymentData: PaymentState;
-  existingPage?: ExistingPage;
-  isScheduled: boolean;
-  lifecycle: ReturnType<typeof deriveLifecycle>;
-  onOpenSchedule: (submission: SurveySubmission) => void;
-  onOpenPayment: (submission: SurveySubmission) => void;
-  onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
-  onEditFormDetails: (submission: SurveySubmission) => void;
-  onExtendCreated: () => void;
-}
-```
-
-**Internal data fetching:**
-
-The tab needs to fetch extends + extend payments (currently done inside ExtendSection). On mount:
-
-1. Fetch `form_submissions_extend` for this `submission.id`
-2. Fetch `transactions` with `entity_type='extend'` for extend payment info
-3. Build `ScheduleCard[]` using `buildScheduleCards()`
-
-**Card rendering per schedule:**
-
-Each card renders 3 blocks (mirroring the user dashboard `SchedulePhase`):
-
-1. **Header**: "Jadwal 1" / "Jadwal 2" + status chip + Booking ID
-2. **Info block**: dates, duration, incentive info, period batch
-3. **Booking & Payment block**: payment status, amount, payment link (copy/open), actions
-
-**Actions per card:**
-
-| Card type | State | Available actions |
-|---|---|---|
-| Original | No schedule | [Reserve Slot] → opens SchedulePaymentView |
-| Original | Reserved, no payment | [Create Payment] → opens SchedulePaymentView |
-| Original | Waiting payment | [Copy Link] [Open Link] |
-| Original | Paid | Status: Paid ✅ |
-| Extend | Waiting payment, no link | [Buat Payment Link] → opens ExtendSection payment dialog |
-| Extend | Waiting payment, has link | [Copy Link] [Open Link] |
-| Extend | `is_new_month` + banner needed | ⚠️ "Banner perlu update" indicator |
-| Extend | Paid | Status: Paid ✅ |
-| Any | Cancelled | Greyed out, no actions |
-
-**Footer actions (below all cards):**
-
-- `[+ Buat Jadwal Baru]` → opens the ExtendSection create dialog (only if `existingPage` exists and `lifecycle.canBuildPage`)
-- "Mark as Paid" section for the overall submission (migrated from current PaymentTab)
-
-**Implementation steps:**
-
-- [ ] **Step 1:** Create `src/components/submissions/ScheduleTab.tsx` with the interface above
-- [ ] **Step 2:** Implement extends + payment data fetching (extract from `ExtendSection.tsx`)
-- [ ] **Step 3:** Implement card rendering using `buildScheduleCards()` output — adapt the admin-specific actions (Reserve Slot, Create Payment Link) that don't exist in the user dashboard version
-- [ ] **Step 4:** Implement the "Buat Jadwal Baru" dialog (extract create dialog from `ExtendSection.tsx`)
-- [ ] **Step 5:** Implement the extend payment link creation dialog (extract payment dialog from `ExtendSection.tsx`)
-- [ ] **Step 6:** Migrate "Mark as Paid" from `PaymentTab` into footer of `ScheduleTab`
-- [ ] **Step 7:** Verify `npm run build` passes
-
-### Task 5: Wire `ScheduleTab` into `SubmissionDetailSheet`
-
-**Files:**
-- Modify: `src/components/submissions/SubmissionDetailSheet.tsx`
-
-**Changes:**
-
-1. **Update tab definition** (line 46–54): Remove `'reservation'` and `'payment'` tabs, add `'schedule'` tab:
-
-```typescript
-type DetailTab = 'info' | 'review' | 'schedule' | 'page';
-
-const TABS: { id: DetailTab; label: string; icon: typeof FileText }[] = [
-  { id: 'info', label: 'Info', icon: Info },
-  { id: 'review', label: 'Review', icon: FileText },
-  { id: 'schedule', label: 'Jadwal Iklan', icon: Calendar },
-  { id: 'page', label: 'Page', icon: Globe },
-];
-```
-
-2. **Update body rendering** (lines 197–231): Replace `ReservationTab` and `PaymentTab` entries with `ScheduleTab`:
-
-```tsx
-{activeTab === 'schedule' && (
-  <ScheduleTab
-    submission={submission}
-    paymentData={paymentData}
-    existingPage={existingPage}
-    isScheduled={isScheduled}
-    lifecycle={lifecycle}
-    onOpenSchedule={onOpenSchedule}
-    onOpenPayment={onOpenPayment}
-    onPaymentStatusChange={onPaymentStatusChange}
-    onEditFormDetails={onEditFormDetails}
-    onExtendCreated={onExtendCreated}
-  />
-)}
-```
-
-3. **Update PageTab** (lines 1073–1143): Remove `ExtendAction` from the Page tab — it now lives in ScheduleTab:
-
-```tsx
-// Remove:
-<ExtendAction
-  submission={submission}
-  existingPage={existingPage}
-  lifecycle={lifecycle}
-  onExtendCreated={onExtendCreated}
-/>
-```
-
-4. **Update default tab logic** (if any): Ensure the default `activeTab` initializer accounts for the new tab ID.
-
-5. **Clean up unused imports**: Remove `ReservationTab` and `PaymentTab` function definitions (~lines 821–1071) and the `ExtendAction` import if no longer used.
-
-- [ ] **Step 1:** Update tab type and TABS constant
-- [ ] **Step 2:** Add `ScheduleTab` import and render in body
-- [ ] **Step 3:** Remove `ExtendAction` from `PageTab`
-- [ ] **Step 4:** Remove dead code: `ReservationTab` and `PaymentTab` function definitions
-- [ ] **Step 5:** Clean up unused imports
-- [ ] **Step 6:** Verify `npm run build` passes
-
-### Task 6: Update mobile card (if applicable)
-
-**Files:**
-- Review: `src/components/SubmissionsTableRow.tsx`
-
-**Change:** The mobile card (`SubmissionsMobileCard`) currently renders `ReserveSlotAction` and `PaymentAction` inline. These should still work since the actions themselves are not being deleted — only the tab wrappers are changing. But verify that the mobile card doesn't reference the old tab IDs.
-
-- [ ] **Step 1:** Review `SubmissionsTableRow.tsx` — confirm no references to `'reservation'` or `'payment'` tab IDs
-- [ ] **Step 2:** Verify mobile card still renders correctly (manual check)
-
----
-
-## Phase 3: Terminology Alignment
-
-### Task 7: Rename "Extend" to "Jadwal Baru" in admin UI
-
-**Files:**
-- Modify: `src/components/submissions/ScheduleTab.tsx` (from Task 4)
-- Modify: `src/components/ExtendSection.tsx` (if still used as extracted dialog)
-
-**Changes:**
-
-Replace admin-facing text:
-| Before | After |
+| Kondisi batch tujuan | Perlakuan |
 |---|---|
-| "Buat Extend Baru" | "Buat Jadwal Baru" |
-| "Extend berhasil dibuat" | "Jadwal baru berhasil dibuat" |
-| "Buat Extend" (dialog title) | "Buat Jadwal Baru" |
-| "Extend Iklan" (invoice item) | "Perpanjangan Iklan" |
-| "Batalkan extend" | "Batalkan jadwal" |
-| "Yakin ingin membatalkan extend ini?" | "Yakin ingin membatalkan jadwal ini?" |
+| Sudah ada pool untuk batch itu | jadwal menempel; insentif **tidak** ditagih. Top-up opsional. |
+| Belum ada pool | wajib pool baru; insentif ditagih. |
 
-- [ ] **Step 1:** Update all user-facing strings in ScheduleTab / ExtendSection dialogs
-- [ ] **Step 2:** Verify `npm run build` passes
+> Sebagian besar nilainya sudah diambil di Phase 0 (`get_schedule_batch_context` RPC,
+> `sql/37`) — bukan alternatif, lanjutannya. Yang tersisa untuk `reward_pools`: pool jadi
+> entitas yang bisa ditunjuk, top-up punya tempat tinggal, dan agregasi `MAX()` ganda di
+> `get_batch_rewards` (poin 4 di bawah) hilang karena angkanya bersumber tunggal.
 
-### Task 8: Verify user dashboard translations are consistent
+Ini menghapus `fetchBatchContext()`/RPC `get_schedule_batch_context` sepenuhnya, termasuk
+pemanggilnya di `ExtendSection.tsx` (`initializePaymentItems`) yang sekarang memutuskan
+item "Respondent's Incentive (New Batch)" darinya.
 
-**Files:**
-- Review: `src/i18n/translations.ts`
+**Tiga lubang tertutup, satu sengaja dibiarkan terbuka:**
 
-**Change:** The user dashboard already uses "Jadwalkan Iklan Lagi" (line 1141) and "Perpanjang jadwal" (line 1142). Verify the admin strings from Task 7 don't conflict or create confusion.
+1. Membatalkan jadwal pertama tidak lagi merusak basis akumulasi jadwal berikutnya —
+   basisnya milik batch.
+2. Ganda-tagih insentif hilang secara struktural (bukan lagi kondisi yang dihitung ulang
+   tiap kali).
+3. **Tetap terbuka — keputusan sadar.** `can_select_winners` masih `NOT has_active` murni
+   hasil inferensi; menambah jadwal baru ke batch yang pemenangnya sudah diundi akan
+   membuka kembali batch itu diam-diam. `distributed_at` tidak dibuat (lihat Global
+   Constraints) karena pengundian ada di pihak ketiga. Mitigasinya di sisi mereka — lihat
+   "Perlu dikonfirmasi" di bawah.
+4. Di `get_batch_rewards` (`sql/37_batch_pool_context.sql`), baris parent difilter
+   `submission_status NOT IN ('rejected','spam')` — tapi order yang dibatalkan **setelah**
+   halamannya terbit tetap menyumbang hadiah yang tidak pernah dibayar. Setelah pool jadi
+   tabel sendiri, angkanya bersumber tunggal dan bug ini hilang bersamanya.
 
-- [ ] **Step 1:** Review translation keys in `translations.ts` for extend-related entries
-- [ ] **Step 2:** Document any inconsistencies between admin hardcoded strings and translation keys
+**Agregasi batch ditulis dua kali dan keduanya harus ikut pindah:** `get_batch_rewards`
+(SQL, dipanggil dari `functions/api/respondents.js:252`) dan reimplementasinya di
+`respondents.js` sekitar baris 157-174 (`buildBatches()`). Kalau hanya satu yang dipindah,
+halaman publik dan dashboard akan menampilkan angka berbeda untuk order yang sama.
+
+- [ ] Buat tabel `reward_pools` + migrasi data dari `form_submissions.prize_per_winner`
+      per `(submission_id, period_batch)`
+- [ ] Tulis ulang `get_batch_rewards` untuk membaca dari `reward_pools`
+- [ ] **Bekukan tanda tangan RPC `get_batch_rewards`** — nama dan daftar kolom kembalian
+      tidak boleh berubah, hanya isinya
+- [ ] Tulis ulang `buildBatches()` di `respondents.js` supaya sumbernya sama dengan RPC
+- [ ] Hapus `fetchBatchContext`/`get_schedule_batch_context` dan pemanggilnya di
+      `ExtendSection.tsx`
+- [ ] Uji: jadwal baru di batch yang **sama** dan belum didistribusikan → invoice tidak
+      memuat item insentif, total hadiah di halaman publik tidak berubah
+- [ ] Uji: jadwal di batch **baru** → insentif ditagih
+- [ ] Uji: bandingkan angka dari `get_batch_rewards` vs render `respondents.js` untuk
+      order yang sama → harus identik
+- [ ] Uji: order yang **dibatalkan setelah halamannya terbit** → tidak lagi menyumbang
+      hadiah
+- [ ] Uji kontrak: panggil `get_batch_rewards` dengan payload sama sebelum & sesudah task
+      ini → daftar kolom dan tipe respons identik, hanya nilai yang boleh berbeda
 
 ---
 
-## Phase 4 (Future): Enable "Jadwalkan Iklan Lagi" in User Dashboard
+## Task 8C: Pensiunkan sisa fitur pengundian di dashboard ini
 
-> **Not in scope for this plan.** Listed here for context and dependency tracking.
+Tidak ada backfill maupun perubahan skema di sini — murni pembersihan, salah satunya
+cukup mendesak. Konteks: pengundian dulu dilakukan dari dashboard admin tapi tidak
+akurat (data diambil manual dari database lain); sejak 2026-05-05 diserahkan ke platform
+pihak ketiga. `survey_winners` yang berhenti terisi adalah serah terima yang disengaja.
 
-This phase would replace the Coming Soon button in `SchedulePhase.tsx` (line 567) with a working modal that:
-1. Shows a slot calendar (reuse `fetchSlotAvailability`)
-2. Lets user pick duration + confirm incentive info
-3. Inserts into `form_submissions_extend` with `slot_booked_by: 'user'`
-4. Redirects to payment
+1. **Indikator pemenang di dashboard sudah salah sejak Mei.**
+   `PublishPageManagement` menghitung `current_winners_count` dari `survey_winners` yang
+   beku, lalu `needsWinners = expectedWinners > 0 && currentWinners < expectedWinners`.
+   Untuk setiap halaman berhadiah sejak Mei, `currentWinners` selalu 0 → indikator merah
+   "Select Winners" menyala permanen. Copot indikatornya.
+2. **Ganti judul tombol "Select Winners".** Layar di baliknya (`SubmissionsManagerView`)
+   tidak menyentuh `survey_winners` sama sekali — hanya menampilkan responden.
+3. **Tandai `survey_winners` sebagai arsip beku** di skema dan di modal "Daftar
+   Pemenang", supaya jelas isinya berhenti di Mei 2026.
+4. **Constraint `UNIQUE(page_id, jakpat_id)` dibiarkan apa adanya** — aturan "satu
+   responden menang sekali" ditegakkan pihak ketiga, dan tabel ini tidak lagi ditulis.
 
-**Depends on:** Phase 1 (banner gate fix) and Phase 2 (admin tab restructure) being complete and stable.
+- [ ] Copot indikator "Select Winners" yang salah dari `PublishPageManagement`
+- [ ] Ganti nama tombol sesuai fungsinya (menampilkan responden, bukan memilih pemenang)
+- [ ] Tandai `survey_winners` sebagai arsip di skema (komentar) dan di UI modal
 
-**Blocked by:** Decision on whether user-created extends need admin approval or can auto-proceed to payment.
+---
+
+## Task 9: Pisahkan status order dari status jadwal
+
+`form_submissions.submission_status` sekarang memuat status review
+(`in_review`/`approved`/`rejected`/`spam`) **dan** status tayang
+(`paid`/`scheduled`/`live`/`completed`) di satu kolom — akar struktural kenapa "status
+jadwal 1" tak bisa dipisahkan dari "status order".
+
+Setelah Task 8: status tayang jadi milik `ad_schedules.status`, dan
+`form_submissions.submission_status` menyusut jadi status review saja. Selama transisi
+kolom lama tetap dicerminkan trigger dari Task 8.
+
+**Ini bagian frontend tersulit dari seluruh Phase 2** — `getCurrentStepIndex` dan
+`deriveOrderUiState` di `src/components/status/deriveOrderUiState.ts` ditulis ulang
+untuk membaca `ad_schedules`. Kerjakan sebagai task tersendiri dengan QA khusus dashboard
+user, jangan digabung dengan task lain.
+
+- [ ] Trigger dua arah: `submission_status` lama tetap sinkron selama transisi
+- [ ] Tulis ulang `getCurrentStepIndex`/`deriveOrderUiState` membaca `ad_schedules`
+- [ ] QA manual dashboard user: bandingkan tampilan order yang sama sebelum/sesudah,
+      tidak boleh ada perubahan yang terlihat
+
+---
+
+## Task 10: Satukan aturan waktu & pembayaran
+
+Konsekuensi langsung dari "semua jadwal setara" — sekarang aturannya berbeda diam-diam:
+
+- Tahan slot 1 jam dan cutoff bayar 13.00/14.00 WIB hanya berlaku untuk jadwal pertama;
+  `buildScheduleCards` menetapkan `deadline: null` untuk perpanjangan. Setelah
+  penyatuan, berlakukan `src/utils/airing-window.ts` seragam ke semua jadwal.
+- `transactions`/`invoices`: `entity_type` + `extend_id` → `schedule_id` yang menunjuk
+  `ad_schedules`. Backfill nilai `'submission'`/`'extend'` lama; pembaca harus toleran
+  dua bentuk selama transisi, termasuk `webhook.js` yang bercabang di baris ~488-491.
+- **"Mark as Paid" jadi per-jadwal.** Sekarang ia order-level
+  (`SubmissionDetailSheet.tsx:~982`) dan dialognya menyatakan menandai *semua*
+  invoice/transaksi terkait lunas. Begitu kartu terlihat setara, admin akan mengira
+  tombolnya per-jadwal — footgun uang, ubah bersamaan dengan tampilan kartu.
+
+  **Alasan kedua (ditemukan saat uji Phase 0):** tombolnya sekarang tidak melihat apakah
+  order punya jadwal sama sekali — order non-auto-approval reguler masuk dengan
+  `start_date`/`end_date` NULL, jadi admin bisa menandainya lunas sebelum ada tanggal
+  ("pembayaran yatim"). Menjadikan tombol per-jadwal menutup ini secara struktural: sebuah
+  jadwal selalu punya tanggal. Terukur 2026-08-03: 3 dari 522 order lunas tanpa jadwal —
+  jarang, jadi tidak perlu penjaga terpisah sebelum task ini; cukup dipastikan Task 10
+  tidak melewatkan kasusnya.
+
+- [ ] Terapkan cutoff waktu seragam dari `airing-window.ts` ke semua jadwal (bukan hanya
+      jadwal pertama)
+- [ ] Tambah `schedule_id` di `transactions`/`invoices`, backfill dari `entity_type`
+- [ ] `webhook.js` toleran kedua bentuk (`entity_type` lama & `schedule_id` baru) selama
+      transisi
+- [ ] "Mark as Paid" jadi per-jadwal; verifikasi tidak ada lagi jalur yang menandai lunas
+      tanpa jadwal
+
+---
+
+## Task 11: Sederhanakan pembaca, lalu contract
+
+Pindahkan pembaca ke `ad_schedules` satu per satu (SQL → serverless → dashboard user →
+dashboard admin). Setelah semuanya pindah dan stabil satu siklus rilis:
+
+- `fetchSlotAvailability` (`src/utils/supabase.ts`) runtuh jadi satu query — perbaikan
+  Phase 0 yang menggabungkan dua sumber jadi tidak perlu lagi;
+- `get_page_active_period` tidak lagi punya dua jalur (parent vs extend);
+- `form_submissions_extend` disisakan sebagai **view** kompatibilitas, baru dihapus
+  setelah satu siklus rilis tanpa keluhan. **`respondents.js` membaca tabel ini
+  langsung** (sekitar baris 96-100) — view wajib ada sebelum tabel aslinya disentuh,
+  bukan sesudah;
+- kolom jadwal di `form_submissions` ditandai deprecated (jangan buru-buru di-drop — ada
+  data historis dan integrasi yang belum tentu terpetakan).
+
+- [ ] Pindahkan `fetchSlotAvailability` ke satu query atas `ad_schedules`
+- [ ] Pindahkan `get_page_active_period` (SQL)
+- [ ] Buat view kompatibilitas `form_submissions_extend`, verifikasi `respondents.js`
+      tetap jalan tanpa perubahan
+- [ ] Tandai kolom jadwal lama di `form_submissions` sebagai deprecated (komentar skema)
+- [ ] Setelah satu siklus rilis tanpa keluhan: hapus tabel `form_submissions_extend` asli
+
+---
+
+## Task 12: Istilah
+
+Setelah modelnya setara, istilahnya menyusul: semua kartu jadi "Jadwal Iklan 1 / 2 / 3",
+tanpa kata "extend" atau "perpanjangan" di UI. Identifier kode ikut (`ExtendSection` →
+`ScheduleSection`, `FormSubmissionExtend` → `AdSchedule`, dst).
+
+**Batas: berhenti di API.** Nama field publik (`period_batch`, `batch_status`,
+`can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut
+diganti — lihat Global Constraints. `entity_type = 'extend'` aman diganti karena internal.
+
+Catatan operasional: nama item invoice ("Extend Iklan (ads)") ikut terkirim ke DOKU dan
+tersimpan di riwayat transaksi. Mengubahnya membuat invoice lama dan baru berbeda istilah
+— wajar, tapi beri tahu finance agar tidak dikira dua produk.
+
+- [ ] Ganti istilah UI (Indonesia) dan identifier kode (Inggris) secara konsisten
+- [ ] Verifikasi tidak ada field API publik yang ikut berganti nama
+- [ ] Beri tahu finance soal nama item invoice yang berubah
 
 ---
 
 ## File Map
 
-### Modified files
-
-| File | Phase | Change |
+### Baru
+| File | Task | Tujuan |
 |---|---|---|
-| [ExtendSection.tsx](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/ExtendSection.tsx) | 1, 3 | Banner gate setter + terminology |
-| [SubmissionDetailSheet.tsx](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/submissions/SubmissionDetailSheet.tsx) | 2 | Tab restructure, remove old tabs |
-| [PublishPageManagement.tsx](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/PublishPageManagement.tsx) | 1 | Review banner indicator (verify only) |
+| `sql/41_ad_schedules.sql` | 8 | Tabel `ad_schedules` + backfill + trigger dua arah |
+| `sql/42_reward_pools.sql` | 8B | Tabel `reward_pools`, tulis ulang `get_batch_rewards` |
 
-### New files
-
-| File | Phase | Purpose |
-|---|---|---|
-| `src/components/submissions/ScheduleTab.tsx` | 2 | Unified "Jadwal Iklan" tab for admin |
-
-### Unchanged (reference only)
-
-| File | Relevance |
+### Dimodifikasi (menurut task)
+| File | Task |
 |---|---|
-| [airingPeriods.ts](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/status/airingPeriods.ts) | `buildScheduleCards()` reused by ScheduleTab |
-| [SchedulePhase.tsx](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/status/SchedulePhase.tsx) | User dashboard reference for card design |
-| [20_extend_rpcs.sql](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/sql/20_extend_rpcs.sql) | Cron logic (no changes needed — SQL is correct, the bug is in the app layer) |
-| [CampaignActions.tsx](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/submissions/CampaignActions.tsx) | `ExtendAction` wrapper — may be deprecated after Phase 2 |
-| [extend-ui.ts](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/utils/extend-ui.ts) | Shared status palette — reused by ScheduleTab |
+| `functions/api/respondents.js` | 8B, 11 |
+| `functions/api/doku/webhook.js` | 10 |
+| `src/components/ExtendSection.tsx` | 8B, 12 |
+| `src/utils/supabase.ts` (`fetchSlotAvailability`, `updateScheduleDates`) | 10, 11 |
+| `src/components/status/deriveOrderUiState.ts` | 9 |
+| `src/components/PublishPageManagement.tsx` | 8C |
+| `src/components/SubmissionsManagerView.tsx` | 8C |
+| `src/components/submissions/SubmissionDetailSheet.tsx` | 10 |
+
+### Referensi (tidak berubah, dipakai untuk memverifikasi kesetaraan)
+| File | Relevansi |
+|---|---|
+| `src/components/status/airingPeriods.ts` | `buildScheduleCards()` — pola kartu yang ditiru Phase 3 |
+| `src/utils/airing-window.ts` | Sumber tunggal aturan waktu WIB, dipakai Task 10 |
+| `sql/37_batch_pool_context.sql` | Versi `get_batch_rewards` saat ini, jadi basis Task 8B |
 
 ---
 
 ## Risk Assessment
 
-| Risk | Likelihood | Mitigation |
+| Risiko | Kemungkinan | Mitigasi |
 |---|---|---|
-| ExtendSection dialogs tightly coupled to component state | Medium | Extract dialog logic into standalone components or hooks before wiring into ScheduleTab |
-| `buildScheduleCards()` depends on `OrderUiState` (user-side) — admin may not have this context | Medium | Admin can construct a minimal `OrderUiState` from existing `deriveLifecycle()` output, or ScheduleTab can call `buildScheduleCards()` with simplified inputs |
-| Removing PaymentTab loses "Mark as Paid" for the overall submission | Low | Migrate "Mark as Paid" into ScheduleTab footer — it applies to the submission level, not per-schedule |
-| Mobile card regression | Low | Mobile card uses `CampaignActions` directly, not tabs — verify it's unaffected |
+| `respondents.js` membaca `form_submissions_extend` langsung, terputus saat tabel diganti | Tinggi kalau urutan salah | View kompatibilitas WAJIB ada sebelum tabel asli disentuh (Task 11) |
+| `get_batch_rewards` berubah bentuk tanpa sengaja | Tinggi dampaknya (kontrak pihak ketiga) | Uji kontrak eksplisit: bandingkan kolom+tipe sebelum/sesudah Task 8B |
+| Dua implementasi agregasi batch (SQL + JS) berbeda hasil | Sedang | Task 8B eksplisit memindah keduanya, uji banding angka |
+| `deriveOrderUiState` regresi tampilan dashboard user | Sedang — ini bagian tersulit | Task 9 dikerjakan sendiri, QA manual sebelum lanjut task lain |
+| Migrasi berhenti di tengah jalan | Rendah (by design) | Expand-and-contract: setiap task rilis sendiri, trigger dua arah menjaga kompatibilitas selama transisi |
 
 ---
 
-## Verification Checklist (per phase)
+## Verifikasi (per task, bukan di akhir)
 
-### Phase 1 (Bug Fix)
-- [ ] Create a new-month extend via admin → verify `survey_pages.requires_banner_update` is `true`
-- [ ] Verify cron does NOT activate the extend until banner is updated
-- [ ] Open PageBuilder in extend mode → save → verify `requires_banner_update` is cleared
-- [ ] Verify cron NOW activates the extend
+- **Task 8:** bandingkan jumlah baris `ad_schedules` dengan `form_submissions`
+  ber-`start_date` + `form_submissions_extend`; nol selisih. Ubah tanggal lewat alur
+  lama → baris `ordinal = 1` ikut berubah.
+- **Task 8B:** buat jadwal kedua yang berakhir di batch yang **sama** dan belum
+  didistribusikan → invoice **tidak** memuat item insentif, total hadiah di halaman
+  publik tidak berubah. Buat jadwal di batch **baru** → insentif ditagih. Bandingkan
+  angka `get_batch_rewards` vs `respondents.js` untuk order yang sama → identik. Uji
+  order yang dibatalkan setelah halamannya terbit → tidak lagi menyumbang hadiah. Uji
+  kontrak: payload sama sebelum/sesudah → kolom & tipe respons identik.
+- **Task 8C:** indikator "Select Winners" tidak lagi menyala permanen di halaman
+  berhadiah pasca-Mei; tombol bernama sesuai fungsinya; modal "Daftar Pemenang"
+  menyatakan dirinya arsip.
+- **Task 9:** bandingkan tampilan dashboard user untuk order yang sama sebelum/sesudah —
+  tidak boleh ada perubahan yang terlihat.
+- **Task 10:** uji pembayaran end-to-end di staging untuk jadwal pertama **dan** jadwal
+  lanjutan, lewat DOKU maupun Mark as Paid. Cutoff waktu seragam untuk semua jadwal.
+- **Task 11:** setelah tiap pembaca dipindah, bandingkan dashboard user sebelum/sesudah —
+  nol perubahan terlihat. `respondents.js` tetap jalan sebelum tabel asli dihapus.
+- **Task 12:** grep untuk "extend"/"perpanjangan" di teks UI — nol hasil. Field API
+  publik tidak berganti nama.
 
-### Phase 2 (Tab Restructure)
-- [ ] Open SubmissionDetailSheet → see 4 tabs (Info, Review, Jadwal Iklan, Page)
-- [ ] "Jadwal Iklan" tab shows original schedule + all extends as cards
-- [ ] Each card shows: status chip, dates, duration, payment status, action buttons
-- [ ] "Buat Jadwal Baru" button opens create dialog → extend is created successfully
-- [ ] Payment link creation from extend card works correctly
-- [ ] "Mark as Paid" works from the Jadwal Iklan tab
-- [ ] Page tab no longer shows ExtendAction toggle
-- [ ] Mobile card view is unaffected
-- [ ] `npm run build` passes
+---
 
-### Phase 3 (Terminology)
-- [ ] No occurrence of "Extend" in admin-facing UI text (developer-facing code comments are fine)
-- [ ] Translations file has no conflicts
+## Dampak ke API keluar (kontrak dengan pihak ketiga)
+
+Di sinilah kontrak pihak ketiga benar-benar berisiko — lebih hati-hati dari Phase 0/1.
+
+- `respondents.js` membaca **`form_submissions_extend` secara langsung**. View
+  kompatibilitas (Task 11) wajib ada sebelum tabelnya disentuh, bukan sesudah.
+- Mode 2 memanggil RPC `get_batch_rewards`. **Bekukan tanda tangan dan daftar kolomnya**
+  — Task 8B hanya boleh mengubah isi fungsinya (membaca `reward_pools`), tidak boleh
+  mengubah kolom yang dikembalikan.
+- Agregasi batch ditulis dua kali dan melayani pihak ketiga yang sama lewat dua mode
+  berbeda: RPC SQL untuk Mode 2, `buildBatches()` JS untuk Mode 1. Kalau hanya satu yang
+  dipindah, dua endpoint akan melaporkan angka berbeda untuk survei yang sama.
+- **`can_select_winners` TIDAK berubah makna.** Definisinya tetap "batch ini sudah bisa
+  diundi karena tidak punya jadwal lain yang aktif". Tapi field itu sinyal KESIAPAN,
+  bukan IZIN — batch yang sudah diundi lalu dibuka kembali (jadwal baru ditambahkan)
+  akan membuat field ini `true` lagi untuk batch yang sudah pernah diundi. Aman selama
+  platform pengundian menyimpan sendiri catatan batch mana yang sudah diundi.
+- Keputusan "batch tetap = bulan" melindungi kontrak ini: `period_batch` yang dikirim ke
+  pihak ketiga tetap berformat `YYYY-MM`.
+
+### Perlu dikonfirmasi ke platform pengundian (satu hal, murah)
+
+**Apakah mereka menyimpan sendiri catatan batch mana yang sudah diundi?**
+`can_select_winners` adalah sinyal kesiapan ("batch sudah tutup"), bukan izin ("belum
+pernah diundi"). Selama mereka melakukan deduplikasi di sisinya, tidak ada yang perlu
+diubah di sini. Ini satu-satunya item yang butuh koordinasi eksternal untuk Phase 2 —
+sisanya (perubahan skema, penyatuan tabel) tidak terlihat dari luar selama bentuk JSON
+dijaga.
+
+---
+
+## Urutan & pemisahan commit
+
+Task 8 → 8B → 8C → 9 → 10 → 11 → 12, masing-masing rilis sendiri (expand-and-contract).
+Jangan menumpang branch revamp visual yang sedang berjalan — bercabang dari `main`,
+seperti pola Phase 0/1 (`feat/jadwal-iklan`).
+
+Task 9 (frontend tersulit) dan Task 8B (kontrak API paling berisiko) masing-masing layak
+sesi kerja sendiri dengan QA terpisah, jangan digabung task lain di commit yang sama.
