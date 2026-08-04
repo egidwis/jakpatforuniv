@@ -319,7 +319,28 @@ export function ExtendSection({
 
   // ==================== PAYMENT LOGIC ====================
 
-  const initializePaymentItems = (ext: FormSubmissionExtend) => {
+  /**
+   * `poolWinnerCount` is the winner count of the pool the top-up lands in,
+   * resolved server-side for THIS schedule's batch — not the parent order's
+   * winner count.
+   *
+   * The distinction is money. A top-up is priced "additional prize × winners of
+   * the batch being topped up", and the preview at the bottom of the create
+   * dialog has always shown exactly that (`batchContext.poolWinnerCount`). The
+   * invoice, however, was built from `currentWinnerCount`, the parent order's
+   * number — so the researcher could be quoted one figure and billed another
+   * whenever a later batch funded a different number of winners.
+   *
+   * It has never actually gone wrong because top-ups are admin-only and have
+   * never been used (10 extends in the system's lifetime,
+   * `additional_prize_per_winner` still 0 on every row as of 2026-08-04). Phase 4
+   * opens this path to researchers, at which point it stops being latent — hence
+   * closing it now, before the traffic arrives.
+   *
+   * Falls back to the parent count only when the RPC gives no answer: that is the
+   * old behaviour, and an invoice with a plausible quantity beats no invoice.
+   */
+  const initializePaymentItems = (ext: FormSubmissionExtend, poolWinnerCount?: number) => {
     const items: InvoiceItem[] = [];
     const costPerDay = calculateAdCostPerDay(questionCount);
 
@@ -347,7 +368,7 @@ export function ExtendSection({
       items.push({
         id: Date.now().toString() + '2',
         name: 'Additional Prize per Winner',
-        qty: currentWinnerCount || 1,
+        qty: poolWinnerCount || currentWinnerCount || 1,
         price: ext.additional_prize_per_winner,
       });
     }
@@ -365,9 +386,24 @@ export function ExtendSection({
     return items;
   };
 
-  const handleOpenPayment = (ext: FormSubmissionExtend) => {
+  const handleOpenPayment = async (ext: FormSubmissionExtend) => {
+    // Only a top-up needs the pool's winner count; a new batch funds its own and
+    // carries it on the row itself. Resolved against this schedule's own end date,
+    // not whatever the create dialog last looked at — that state belongs to a
+    // different schedule by the time an existing row is being invoiced.
+    // No exclusion needed: a top-up row stores winner_count = 0, and the pool
+    // query ignores zeros, so the row cannot mask the schedule that funded it.
+    let poolWinnerCount: number | undefined;
+    if (!ext.is_new_month && ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0 && ext.end_date) {
+      const resolved = await fetchBatchContext(ext.end_date);
+      poolWinnerCount = resolved?.poolWinnerCount || undefined;
+      if (!poolWinnerCount) {
+        toast.warning('Gagal memastikan jumlah pemenang batch — invoice memakai angka order induk. Periksa sebelum dikirim.');
+      }
+    }
+
     setPaymentExtend(ext);
-    setPaymentItems(initializePaymentItems(ext));
+    setPaymentItems(initializePaymentItems(ext, poolWinnerCount));
     setPaymentNote('');
     setIsPaymentDialogOpen(true);
   };
