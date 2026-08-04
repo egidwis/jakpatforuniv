@@ -1,31 +1,36 @@
 # Checklist Uji Mandiri — Phase 0 Jadwal Iklan
 
-Untuk dijalankan **setelah deploy frontend**, sebelum menerapkan `sql/40`.
+Untuk dijalankan **setelah deploy frontend**. Status berjalan ada di
+[`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
 
-**Keadaan saat checklist ini dibuat (2026-08-03):**
+> **⚠️ DIPERBARUI 2026-08-04 — premis asli file ini sudah berubah.**
+> Waktu ditulis, `sql/40` sengaja ditahan dan checklist ini dirancang untuk
+> membuktikan Phase 1 tetap diam. `sql/40` **sudah diterapkan ke produksi**
+> sejak itu, jadi auto-publish memang aktif. §8 dan §10 sudah dikoreksi;
+> §2–§7 tetap berlaku apa adanya.
+
+**Keadaan per 2026-08-04:**
 
 | | Status |
 |---|---|
-| `sql/36`–`sql/39` | ✅ sudah diterapkan ke produksi |
-| Frontend (6 commit di `main`) | ⬜ menunggu deploy Anda |
-| `sql/40` (auto-publish) | ⬜ **belum** — jangan diterapkan sebelum checklist ini lolos |
+| `sql/36`–`sql/39` (Phase 0) | ✅ diterapkan ke produksi |
+| `sql/40` (Phase 1, auto-publish) | ✅ diterapkan ke produksi |
+| `sql/41` (Phase 2 Task 8, `ad_schedules`) | ✅ diterapkan & diverifikasi |
+| Frontend | ⬜ **menunggu deploy** — inilah yang checklist ini uji |
 
-Fitur Phase 1 (auto-publish + banner default) ikut terbawa dalam deploy ini tapi
-**tidak aktif** tanpa `sql/40`. Itu disengaja: kodenya inert, dan menahannya di branch
-terpisah justru menambah kerja merge tanpa manfaat. Bagian §8 memastikan ia benar-benar
-diam.
+Frontend produksi masih di `9ea82ef`, sementara DB sudah di `sql/41`. Jadi tiga bug
+Phase 0 masih hidup di layar walau perbaikannya sudah ada di `main`: kuota slot
+mengabaikan perpanjangan, insentif batch ditagih dua kali untuk jadwal ke-3+, dan
+reschedule menimpa jendela tayang iklan berjalan. Deploy menutup celah itu.
 
 Prioritas: **§2, §3, §5 wajib.** Sisanya kalau sempat.
 
 ---
 
-## 1. Sebelum push
+## 1. Sebelum deploy
 
-- [ ] `git log --oneline -7` di `main` menampilkan 6 commit Jadwal Iklan di atas `e9aac7a`
-- [ ] Sadari `main` lokal membawa **satu commit lama yang belum di-push** (`e9aac7a`,
-      perbaikan judul Google Picker) — ia ikut terkirim
-- [ ] Catat commit produksi saat ini untuk jalan mundur:
-      `git log --oneline -1 origin/main` → `9ea82ef`
+- [ ] `origin/main` ada di `b4ed204` (merge Task 8) — inilah yang di-deploy
+- [ ] Catat commit produksi saat ini untuk jalan mundur: `9ea82ef`
 
 ---
 
@@ -157,14 +162,20 @@ menghalangi pekerjaan normal admin.
 
 ---
 
-## 8. Yang HARUS tetap diam (Phase 1 belum aktif)
+## 8. Phase 1 sekarang AKTIF — pastikan ia bekerja, bukan diam
 
-- [ ] Tandai satu order lunas → **tidak ada** halaman iklan yang terbit otomatis
-      (`sql/40` belum diterapkan; kalau ada yang terbit, berarti migrasi tak sengaja
-      sudah dijalankan — hentikan dan laporkan)
-- [ ] Tidak ada halaman yang tiba-tiba memakai banner default
-- [ ] Halaman iklan yang **sudah** punya banner tetap tampil normal di `/api/surveys`
-      (`toPublicBannerUrl` menyentuh semua banner, jadi ini pantas dicek)
+> Bagian ini dulunya berbunyi kebalikannya ("yang HARUS tetap diam"), ditulis
+> waktu `sql/40` masih ditahan. Sekarang migrasinya sudah diterapkan dan
+> triggernya hidup di DB — **tidak bergantung pada deploy frontend**, jadi ia
+> sudah aktif bahkan sebelum checklist ini dijalankan.
+
+- [ ] Tandai satu order lunas → halaman iklan **terbit otomatis** dengan banner
+      default (inilah perilaku yang diharapkan sekarang)
+- [ ] Halaman yang terbit otomatis itu punya slug wajar dan tidak menabrak slug lain
+- [ ] Halaman iklan yang **sudah** punya banner sendiri tetap tampil normal di
+      `/api/surveys` (`toPublicBannerUrl` menyentuh semua banner, jadi pantas dicek)
+- [ ] Order `rejected`/`spam`, atau yang `survey_url`/tanggal/judulnya kosong,
+      **tidak** menerbitkan halaman — prasyarat itu ada di `ensure_survey_page`
 
 ---
 
@@ -173,18 +184,20 @@ menghalangi pekerjaan normal admin.
 Frontend dan DB dipisah, dan itu memudahkan:
 
 - **Frontend** — deploy ulang dari `9ea82ef`. Aman kapan saja.
-- **DB** — `sql/36`–`sql/39` **jangan** di-rollback. Isinya korektif dan sudah berjalan
-  di produksi sejak sebelum deploy ini; mengembalikannya justru menghidupkan lagi bug
-  yang sudah tertutup.
+- **DB** — `sql/36`–`sql/41` **jangan** di-rollback. Isinya korektif atau aditif dan
+  sudah berjalan di produksi sejak sebelum deploy ini; mengembalikannya justru
+  menghidupkan lagi bug yang sudah tertutup. `sql/41` khususnya tidak punya satu pun
+  konsumen di kode aplikasi, jadi ia diam apa pun yang terjadi di frontend.
 
 ---
 
 ## 10. Diketahui, bukan bug
 
-Sampai `sql/40` diterapkan, jadwal milik submission yang **belum punya halaman iklan**
-akan berstatus `live` padahal tidak ada halaman publik yang tayang. Ini konsekuensi sadar
-dari melepas JOIN `survey_pages` di `sql/36` — statusnya jadi jujur alih-alih membeku di
-`scheduled` selamanya, dan Phase 1 menutupnya sepenuhnya.
+**Sisa dari periode sebelum `sql/40`.** Melepas JOIN `survey_pages` di `sql/36` membuat
+jadwal milik submission tanpa halaman iklan berstatus `live` walau tidak ada halaman
+publik yang tayang — statusnya jadi jujur alih-alih membeku di `scheduled` selamanya.
+`sql/40` menutup celah itu untuk transisi **baru**, tapi baris yang terlanjur ada tidak
+disentuhnya (triggernya hanya bereaksi pada perubahan pembayaran, bukan pada baris lama).
 
 Pantau dengan:
 
@@ -196,12 +209,15 @@ LEFT JOIN survey_pages sp ON sp.submission_id = e.submission_id
 WHERE e.submission_status = 'live' AND sp.id IS NULL;
 ```
 
-Baris yang muncul di sini butuh halaman dibuat manual — atau `sql/40` diterapkan.
+Baris yang muncul di sini butuh halaman dibuat manual, atau `ensure_survey_page()`
+dipanggil langsung untuk submission itu.
 
 ---
 
 ## Setelah checklist lolos
 
-1. Terapkan `sql/40` (jalankan pre-check A dan B di dalam file itu lebih dulu)
-2. Uji auto-publish sesuai bagian "Phase 1" di rencana utama
-3. Baru kerjakan Phase 1B (weekend) — kilat dikecualikan, masih pilot
+1. Catat hasilnya di [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md)
+2. Lanjut Phase 2 Task 8B atau 8C — lihat file progress itu untuk urutan dan
+   penghalangnya
+3. Phase 1B (pemberitahuan weekend) tetap backlog dan tidak memblokir apa pun —
+   kilat dikecualikan, masih pilot
