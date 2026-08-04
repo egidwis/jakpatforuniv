@@ -17,14 +17,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
     Loader2,
-    Check,
     ImageIcon,
     Search,
     Filter,
     ArrowLeft,
     ChevronRight,
     Trash2,
-    FileText,
     AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -36,22 +34,9 @@ interface MergedRespondent {
     proof_url: string | null;
     ewallet_provider: string | null;
     e_wallet_number: string | null;
-    custom_answers: any;
+    custom_answers: any; // page_respondents data, currently unrendered here
     submitted_at: string;
     loi_seconds: number | null;
-    // Masterdata
-    user_id: number | null;
-    ktp_name: string | null;
-    display_name: string | null;
-    email: string | null;
-    city: string | null;
-    province: string | null;
-    ktp_number: string | null;
-    phone_number_gift: string | null;
-    last_redeem_at: string | null;
-    // Computed
-    is_eligible: boolean;
-    ineligible_reasons: string[];
 }
 
 
@@ -85,7 +70,6 @@ export function SubmissionsManagerView({
 
     // Filter states
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterProvince, setFilterProvince] = useState('all');
 
     // Fetch all data
     useEffect(() => {
@@ -111,7 +95,7 @@ export function SubmissionsManagerView({
             setLoadProgress(40);
             setLoadText('Mengambil kriteria survei...');
 
-            // 4. Fetch criteria from form_submissions
+            // 2. Fetch criteria from form_submissions
             const { data: pageData } = await supabase
                 .from('survey_pages')
                 .select('submission_id, form_submissions(criteria_responden)')
@@ -124,35 +108,17 @@ export function SubmissionsManagerView({
 
             setLoadProgress(85);
             setLoadText('Menggabungkan dan menganalisis data...');
-            // 5. Merge and categorize
-            const merged: MergedRespondent[] = (prData || []).map((pr: any) => {
-                const reasons: string[] = [];
-
-                if (!pr.proof_url) reasons.push('Tidak upload bukti (proof)');
-                if (!pr.proof_url) reasons.push('Tidak upload bukti (proof)');
-
-                return {
-                    respondent_id: pr.id,
-                    jakpat_id: pr.jakpat_id,
-                    proof_url: pr.proof_url,
-                    ewallet_provider: pr.ewallet_provider,
-                    e_wallet_number: pr.e_wallet_number,
-                    custom_answers: pr.custom_answers,
-                    submitted_at: pr.created_at,
-                    loi_seconds: pr.loi_seconds,
-                    user_id: null,
-                    ktp_name: null,
-                    display_name: null,
-                    email: null,
-                    city: null,
-                    province: null,
-                    ktp_number: null,
-                    phone_number_gift: null,
-                    last_redeem_at: null,
-                    is_eligible: reasons.length === 0,
-                    ineligible_reasons: reasons,
-                };
-            });
+            // 3. Merge respondent rows
+            const merged: MergedRespondent[] = (prData || []).map((pr: any) => ({
+                respondent_id: pr.id,
+                jakpat_id: pr.jakpat_id,
+                proof_url: pr.proof_url,
+                ewallet_provider: pr.ewallet_provider,
+                e_wallet_number: pr.e_wallet_number,
+                custom_answers: pr.custom_answers,
+                submitted_at: pr.created_at,
+                loi_seconds: pr.loi_seconds,
+            }));
 
             setRespondents(merged);
             setLoadProgress(100);
@@ -196,14 +162,8 @@ export function SubmissionsManagerView({
 
             if (dbError) throw dbError;
 
-            setRespondents(prev => prev.map(r => 
-                r.respondent_id === respondent.respondent_id ? 
-                { 
-                    ...r, 
-                    proof_url: null, 
-                    is_eligible: false, 
-                    ineligible_reasons: [...r.ineligible_reasons.filter(x => !x.includes('bukti')), 'Tidak upload bukti (proof)']
-                } : r
+            setRespondents(prev => prev.map(r =>
+                r.respondent_id === respondent.respondent_id ? { ...r, proof_url: null } : r
             ));
 
             window.dispatchEvent(new Event('proof-storage-changed'));
@@ -242,12 +202,7 @@ export function SubmissionsManagerView({
 
             if (dbError) throw dbError;
 
-            setRespondents(prev => prev.map(r => ({ 
-                ...r, 
-                proof_url: null,
-                is_eligible: false,
-                ineligible_reasons: [...r.ineligible_reasons.filter(x => !x.includes('bukti')), 'Tidak upload bukti (proof)']
-            })));
+            setRespondents(prev => prev.map(r => ({ ...r, proof_url: null })));
 
             window.dispatchEvent(new Event('proof-storage-changed'));
             toast.success(`${respondentsWithProof.length} proof berhasil dihapus`);
@@ -268,19 +223,13 @@ export function SubmissionsManagerView({
                 const matchId = r.jakpat_id.toLowerCase().includes(q);
                 if (!matchId) return false;
             }
-            if (filterProvince !== 'all' && r.province !== filterProvince) return false;
             return true;
         });
 
         return filtered.sort((a, b) => {
             return new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime();
         });
-    }, [respondents, searchQuery, filterProvince]);
-
-    const provinces = useMemo(() => {
-        const provs = new Set(respondents.map(r => r.province).filter(Boolean) as string[]);
-        return Array.from(provs).sort();
-    }, [respondents]);
+    }, [respondents, searchQuery]);
 
     const totalProofCount = respondents.filter(r => r.proof_url).length;
 
