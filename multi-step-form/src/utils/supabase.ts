@@ -1602,23 +1602,34 @@ export const updateKilatSchedule = async (
  * Pindahkan sebuah order antara jalur iklan regular dan JFU Kilat.
  *
  * Ini jembatan admin untuk user yang terlanjur submit sebagai iklan biasa lalu
- * ingin pindah ke Kilat. Tiga hal terjadi sekaligus, dan ketiganya harus terjadi
+ * ingin pindah ke Kilat. Empat hal terjadi sekaligus, dan semuanya harus terjadi
  * bersama supaya tidak ada keadaan setengah jalan:
  *
  *   1. Reservasi lama DILEPAS. Ini inti konversinya — slot iklan regular harus
  *      kembali ke pool, bukan dipegang order yang sudah pindah jalur. Admin
  *      memilih slot barunya lewat KilatScheduleStep sesudah ini.
- *   2. Harga DIHITUNG ULANG dengan rumus jalur tujuan. Rumus Kilat identik
+ *   2. Halaman iklan lama DIHAPUS kalau menuju Kilat. Kilat tidak pernah punya
+ *      halaman (guard di sql/42's ensure_survey_page mencegahnya terbit
+ *      otomatis) — tapi guard itu tidak berlaku surut ke halaman yang sudah ada
+ *      dari saat order ini masih regular. Pola nyata yang pernah terjadi:
+ *      admin meng-unpublish halaman regular yang sudah terlanjur terbit
+ *      (supaya lolos blokir #4 di bawah), lalu konversi — tanpa baris ini,
+ *      halaman yang sudah di-unpublish itu tertinggal yatim piatu selamanya,
+ *      menempel ke order yang sudah bukan pemiliknya (insiden nyata
+ *      2026-08-04, order e9cb5944-...).
+ *   3. Harga DIHITUNG ULANG dengan rumus jalur tujuan. Rumus Kilat identik
  *      dengan salinan otoritatif di functions/api/doku/create-payment.js: base
  *      rate 1× (tanpa pengali durasi) + add-on + insentif, TANPA diskon voucher.
- *   3. Status review hanya diturunkan ke 'approved' kalau order belum lunas.
+ *   4. Status review hanya diturunkan ke 'approved' kalau order belum lunas.
  *
  * `duration` sengaja tidak diubah. Kilat mengabaikannya, dan menimpanya akan
  * menghapus jejak pesanan asli kalau admin membatalkan konversi.
  *
- * Satu-satunya penolakan keras: halaman iklan yang sudah published. Order itu
- * sudah tayang di feed aplikasi Jakpat, dan memindahkannya diam-diam ke Kilat
- * meninggalkan kartu iklan hidup untuk order yang tidak lagi membayarnya.
+ * Satu-satunya penolakan keras: halaman iklan yang MASIH published. Order itu
+ * sedang tayang di feed aplikasi Jakpat, dan memindahkannya diam-diam ke Kilat
+ * meninggalkan kartu iklan hidup untuk order yang tidak lagi membayarnya. Kalau
+ * halamannya sudah di-unpublish (draft), konversi boleh jalan — dan baris #2
+ * di atas yang membersihkannya, bukan admin secara manual.
  */
 export const convertDistributionType = async (
   submissionId: string,
@@ -1644,6 +1655,19 @@ export const convertDistributionType = async (
     throw new Error(
       'Halaman iklan order ini sudah published — tarik atau sembunyikan halamannya dulu sebelum memindahkan jalur distribusi.'
     );
+  }
+
+  // Kilat tidak pernah punya halaman iklan. Kalau ada baris survey_pages di
+  // sini, ia pasti draft (published sudah diblokir barusan) — sisa dari saat
+  // order ini masih regular. Hapus sebelum menulis distribution_type, supaya
+  // tidak ada jendela di mana order ini sudah 'kilat' tapi masih tercatat
+  // punya halaman.
+  if (target === 'kilat' && page) {
+    const { error: deletePageError } = await supabase
+      .from('survey_pages')
+      .delete()
+      .eq('submission_id', submissionId);
+    if (deletePageError) throw deletePageError;
   }
 
   const questionCount = Number(sub.question_count) || 0;
