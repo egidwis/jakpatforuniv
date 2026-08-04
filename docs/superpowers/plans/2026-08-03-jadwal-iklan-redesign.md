@@ -185,9 +185,9 @@ pihak ketiga. `survey_winners` yang berhenti terisi adalah serah terima yang dis
 4. **Constraint `UNIQUE(page_id, jakpat_id)` dibiarkan apa adanya** — aturan "satu
    responden menang sekali" ditegakkan pihak ketiga, dan tabel ini tidak lagi ditulis.
 
-- [ ] Copot indikator "Select Winners" yang salah dari `PublishPageManagement`
-- [ ] Ganti nama tombol sesuai fungsinya (menampilkan responden, bukan memilih pemenang)
-- [ ] Tandai `survey_winners` sebagai arsip di skema (komentar) dan di UI modal
+- [x] Copot indikator "Select Winners" yang salah dari `PublishPageManagement` (2026-08-04, commit `49f7884`)
+- [x] Ganti nama tombol sesuai fungsinya (menampilkan responden, bukan memilih pemenang) (commit `49f7884`+`f872184`)
+- [x] Tandai `survey_winners` sebagai arsip di skema (komentar) dan di UI modal (`sql/43`, commit `2128084`+`e00ccf3` — **migrasi ditulis, belum diterapkan ke DB**, lihat `docs/jadwal-iklan-progress.md` §2)
 
 ---
 
@@ -297,7 +297,7 @@ tersimpan di riwayat transaksi. Mengubahnya membuat invoice lama dan baru berbed
 | File | Task | Tujuan |
 |---|---|---|
 | `sql/41_ad_schedules.sql` | 8 | Tabel `ad_schedules` + backfill + trigger dua arah |
-| `sql/42_reward_pools.sql` | 8B | Tabel `reward_pools`, tulis ulang `get_batch_rewards` |
+| ~~`sql/42_reward_pools.sql`~~ `sql/44_reward_pools.sql` | 8B | Tabel `reward_pools`, tulis ulang `get_batch_rewards`. Nomor dikoreksi 2026-08-04 — `42` sudah dipakai Kilat (`sql/42_kilat_slots.sql`, commit `c554880`) dan `43` sudah dipakai Task 8C (`sql/43_survey_winners_archive.sql`) |
 
 ### Dimodifikasi (menurut task)
 | File | Task |

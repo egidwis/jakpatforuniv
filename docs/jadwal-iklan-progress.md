@@ -21,17 +21,26 @@ membaca baris yang sama.
 | Kilat | Jembatan admin iklan→Kilat + slot 08/11/14/17 WIB hari kerja | ✅ `sql/42` | ✅ deployed 2026-08-04 |
 | Kilat — papan jadwal | Toggle Iklan/Kilat di Ads Schedule + tutup lubang Create Page utk Kilat | — | ⬜ **belum deploy** (`a4fc499`) |
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
-| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 selesai | ⬜ belum ada pembaca |
+| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 selesai, `sql/43` (8C) ditulis, belum diterapkan | 🟡 Task 8C selesai (belum dideploy) |
 | Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ |
 | Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ |
 
 **Satu hal yang paling penting kalau kamu kembali setelah lama:** frontend
 sudah di-deploy dari `main` 2026-08-04 (laporan admin langsung, bukan lewat log
 build independen) — Phase 0/1 dan jembatan Kilat seharusnya sudah kelihatan di
-produksi. **Checklist uji ujung-ke-ujung di §0 di bawah belum dijalankan.** Di
-atas commit yang sudah dideploy itu ada satu batch baru yang **belum**
-di-deploy sama sekali (commit `a4fc499`): papan jadwal Kilat di halaman Ads
-Schedule, plus penutupan lubang "Create Page" untuk order Kilat — lihat §0B.
+produksi. **Checklist §1 (Phase 0/1) sudah dijalankan dan dinyatakan aman oleh
+admin (2026-08-04)** — itu yang membuka jalan untuk mulai Phase 2. Di atas
+commit yang sudah dideploy itu ada satu batch baru yang **belum** di-deploy
+sama sekali (commit `a4fc499`): papan jadwal Kilat di halaman Ads Schedule,
+plus penutupan lubang "Create Page" untuk order Kilat — lihat §0B.
+
+**Phase 2 sekarang dikerjakan di `feat/dashboard-soft-dna-navbar`, bukan
+bercabang dari `main`.** Larangan "jangan menumpang branch revamp visual" di
+rencana Phase 2 sudah tidak bisa dipatuhi — Task 9 ke atas butuh
+`src/components/status/*` yang cuma ada di branch itu (lihat §🚧 di bawah).
+Merge `main` → branch itu (commit `24db9b7`, 2026-08-04) menyelesaikan
+kebuntuannya. Keputusan: **bundle** — Phase 2 dan revamp visual dideploy
+bersama nanti, bukan dipisah rilisnya.
 
 ⚠️ **`sql/40` dan `sql/42` mendefinisikan `ensure_survey_page()` yang sama.**
 `sql/42` versinya yang benar (order Kilat tidak dapat halaman iklan). Kalau
@@ -81,9 +90,18 @@ Kilat ke 15.00 WIB. Ditutup dua lapis: `getPendingSlotsWithoutPage` tidak lagi
 menarik order Kilat, dan `PageBuilderModal.handleSave` menolak `submissionId`
 berjalur Kilat sebagai sabuk pengaman kedua.
 
-Diverifikasi: `npx tsc --noEmit` bersih (dibanding baseline sebelum perubahan
-ini — nol error baru), `npx vite build` sukses. **Belum diuji manual di
-browser.** Sebelum dianggap selesai:
+Diverifikasi: `npx vite build` sukses. **Belum diuji manual di browser.**
+Sebelum dianggap selesai:
+
+> ⚠️ **Koreksi 2026-08-04 (ditemukan saat Task 8C):** klaim "`npx tsc --noEmit`
+> bersih" di atas tidak membuktikan apa pun. Root `tsconfig.json` proyek ini
+> berisi `{"files": [], "references": [...]}`, jadi `npx tsc --noEmit`
+> **mengompilasi nol file** dan selalu melapor 0 error apa pun isi kodenya.
+> Gate yang sebenarnya: `./node_modules/.bin/tsc -p tsconfig.app.json --noEmit`
+> (baseline branch ini per 2026-08-04: **79 error pra-ada**, turun ke 75 setelah
+> Task 8C). `npx vite build` juga tidak menjalankan typecheck (`"build": "vite
+> build"`, tanpa `tsc &&`) — build sukses tidak berarti tipe aman. Tidak ada CI;
+> semua gate ini manual.
 
 **Insiden nyata yang mengonfirmasi lubang ini benar ada** (ditemukan
 2026-08-04 lewat kanari `countKilatPagesLeak` sesaat setelah papan jadwal
@@ -146,7 +164,27 @@ insentif batch dua kali untuk jadwal ke-3+, dan bisa menggelapkan iklan yang
 sedang berjalan saat admin melakukan reschedule — checklist ini yang
 membuktikan ketiganya benar sudah tidak terjadi lagi di produksi.
 
-### 2. Verifikasi Task 8 yang belum dijalankan
+### 2. Terapkan `sql/43` (Task 8C) manual di Supabase SQL Editor ⬅️ belum diterapkan
+
+Kode sudah commit (empat commit terpisah, lihat "Yang sudah selesai" di bawah).
+Migrasinya (`sql/43_survey_winners_archive.sql`) juga sudah commit tapi
+**committing ≠ applying** — belum dijalankan di database. Pre-check-nya sudah
+dijalankan langsung ke produksi (read-only, lewat MCP Supabase) sebelum file
+ditulis: 267 baris `survey_winners`, beku sejak 2026-05-05, nol
+function/view lain yang membacanya. Jalankan bagian 1-3 file itu, lalu
+VERIFIKASI di bagian bawahnya — terutama `SET LOCAL ROLE anon` untuk
+membuktikan aksesnya benar tertutup (`SELECT` biasa di SQL Editor jalan
+sebagai `postgres` dan melewati RLS, tidak membuktikan apa-apa).
+
+**Temuan pre-check yang mengubah isi migrasinya:** kebijakan SELECT publik
+dari `sql/15` (`USING (true)`, terbuka untuk `anon`) **sudah tidak ada** di
+produksi — dicabut manual di luar jalur migrasi tercatat, tidak ada file
+`sql/16`–`42` yang menyentuhnya. `anon` karena itu sudah dapat nol baris hari
+ini (RLS default-deny). `sql/43` mengganti proteksi implisit itu dengan
+kebijakan SELECT bernama untuk admin, dan mencabut kebijakan tulis `FOR ALL`
+yang masih hidup (nol penulis sejak 5 Mei, jadi nol regresi).
+
+### 3. Verifikasi Task 8 yang belum dijalankan
 
 Sudah lolos: selisih baris `0`/`0`, uji 15.00 WIB bersih, sebaran status cocok,
 uji mirror hidup mengikuti dan penomoran urut `start_date`. Belum dijalankan
@@ -221,21 +259,48 @@ backfill maupun trigger.
 Sebaran status hasil pemetaan: `waiting_payment` 532 · `live` 169 · `cancelled`
 76 · `scheduled` 55 · `paid` 21 · `completed` 13.
 
+### Phase 2 Task 8C — pensiunkan sisa fitur pengundian, 2026-08-04
+
+Dikerjakan di `feat/dashboard-soft-dna-navbar` (lihat catatan branch di atas),
+empat commit terpisah + satu migrasi:
+
+1. `PublishPageManagement.tsx` — cabut indikator "Select Winners" yang menyala
+   permanen sejak Mei 2026 (`current_winners_count` selalu 0 karena
+   `survey_winners` beku, jadi `needsWinners` selalu `true`). Centang hijau
+   "bukti dibersihkan" ikut dicabut, bukan cuma titik merahnya — kalau tidak,
+   ia akan menyala permanen sebagai gantinya di kampanye yang belum tayang.
+   Tombol sekaligus diganti nama "Submissions" → "Respondents".
+2. `SubmissionsManagerView.tsx` — rename string mengikuti tombol (breadcrumb,
+   footer, teks loading).
+3. `SubmissionsManagerView.tsx` — bersihkan sisa logika pemenang dari
+   `0cea632` (2026-05-15): 9 field masterdata yang di-hardcode `null`, filter
+   provinsi mati, 2 baris terduplikasi. `tsc -p tsconfig.app.json`: 79 → 75.
+4. `PublishPageManagement.tsx` — modal "Daftar Pemenang" → "Arsip Pemenang",
+   banner beku, buang 4 kolom yang selalu render `—` (CSV 10 → 6 kolom).
+5. `sql/43_survey_winners_archive.sql` — `COMMENT ON TABLE` arsip beku +
+   kebijakan RLS. **Ditulis & di-commit, belum diterapkan ke database** —
+   lihat §2 di atas.
+
+Diverifikasi: `tsc -p tsconfig.app.json --noEmit` 79 → 75 (gate yang benar,
+bukan `npx tsc --noEmit` yang hampa — lihat koreksi di §0B). `npx vite build`
+sukses. **Belum diuji manual di browser.**
+
 ---
 
 ## Yang belum dikerjakan
 
 Detail lengkap tiap task ada di
 [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md).
-Urutan wajib: **8B → 8C → 9 → 10 → 11 → 12**, masing-masing rilis sendiri
-(expand-and-contract). Tidak ada satu langkah pun yang mengharuskan semua lapis
-berubah serentak.
+Urutan rencana awal: 8B → 8C → 9 → 10 → 11 → 12. **8C sudah dikerjakan lebih
+dulu** (2026-08-04, lihat "Yang sudah selesai") karena mandiri, tanpa
+perubahan skema, dan memperbaiki bug live — 8B tetap paling berisiko dan dapat
+sesi sendiri. Masing-masing task rilis sendiri (expand-and-contract); tidak
+ada satu langkah pun yang mengharuskan semua lapis berubah serentak.
 
 | Task | Isi | Catatan |
 |---|---|---|
-| **8B** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⚠️ **paling berisiko di seluruh Phase 2.** Tanda tangan RPC `get_batch_rewards` dibekukan (kontrak platform pengundian), dan agregasi batch ditulis **dua kali** — RPC SQL **dan** `buildBatches()` di `functions/api/respondents.js` — wajib pindah bersamaan atau dua endpoint melaporkan angka berbeda. Layak sesi kerja sendiri. |
-| **8C** | Pensiunkan sisa fitur pengundian di dashboard | Tanpa perubahan skema, mandiri, dan ada **bug live** di dalamnya: indikator merah "Select Winners" di `PublishPageManagement` menyala permanen di tiap halaman berhadiah sejak Mei 2026, karena `survey_winners` sengaja berhenti terisi sejak pengundian diserahkan ke pihak ketiga. Kandidat termudah untuk dikerjakan lebih dulu. |
-| **9** | Pisahkan status order dari status jadwal | 🚧 **Terhalang** — lihat di bawah. Bagian frontend tersulit; `deriveOrderUiState` ditulis ulang. Kerjakan sendiri dengan QA khusus. |
+| **8B** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⚠️ **paling berisiko di seluruh Phase 2.** Tanda tangan RPC `get_batch_rewards` dibekukan (kontrak platform pengundian), dan agregasi batch ditulis **dua kali** — RPC SQL **dan** `buildBatches()` di `functions/api/respondents.js` — wajib pindah bersamaan atau dua endpoint melaporkan angka berbeda. Layak sesi kerja sendiri. Nomor migrasi berikutnya: **44** (43 sudah dipakai 8C). Dua agregasi sudah **divergen sekarang** (bukan cuma berisiko divergen) — ukur selisihnya di produksi sebelum memindahkan keduanya, lihat catatan di rencana. |
+| **9** | Pisahkan status order dari status jadwal | Bagian frontend tersulit; `deriveOrderUiState` ditulis ulang. Kerjakan sendiri dengan QA khusus. |
 | **10** | Satukan aturan waktu & pembayaran | Cutoff 13.00/14.00 WIB berlaku seragam ke semua jadwal; `transactions`/`invoices` pakai `schedule_id`; **"Mark as Paid" jadi per-jadwal** (sekarang order-level dan bisa menandai lunas order tanpa jadwal sama sekali — 3 dari 522 order terukur begitu). |
 | **11** | Pindahkan pembaca, lalu contract | ⚠️ `functions/api/respondents.js` membaca `form_submissions_extend` **langsung**. View kompatibilitas WAJIB ada sebelum tabel aslinya disentuh, bukan sesudah. |
 | **12** | Istilah — semua jadi "Jadwal Iklan 1/2/3" | Berhenti di API: nama field publik (`period_batch`, `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut berganti. |
@@ -246,28 +311,22 @@ baru masuk akal dikerjakan.
 
 ---
 
-## 🚧 Penghalang yang harus diketahui sebelum menjadwalkan Task 9
+## ✅ Penghalang Task 9 — beres, karena Phase 2 pindah ke branch soft-dna
 
-Task 9, dan sebagian Task 10 dan 12, menyasar file yang **tidak ada di `main`**:
+**Riwayat (sudah tidak berlaku, dibiarkan untuk konteks):** Task 9, dan
+sebagian Task 10 dan 12, menyasar file yang tadinya tidak ada di `main`:
+`src/components/status/deriveOrderUiState.ts`, `airingPeriods.ts`,
+`SchedulePhase.tsx`. Ketiganya hanya ada di branch
+`feat/dashboard-soft-dna-navbar` — padahal rencana Phase 2 aslinya melarang
+menumpang branch itu supaya kedua pekerjaan bisa di-revert sendiri-sendiri.
 
-- `src/components/status/deriveOrderUiState.ts`
-- `src/components/status/airingPeriods.ts`
-- `src/components/status/SchedulePhase.tsx`
-
-Ketiganya hanya ada di branch **`feat/dashboard-soft-dna-navbar`** (17 commit di
-depan `main`) — padahal rencana Phase 2 justru melarang menumpang branch itu
-supaya kedua pekerjaan bisa di-revert sendiri-sendiri.
-
-**Akibatnya:** Task 8B dan 8C aman dikerjakan dari `main` sekarang (semua
-sasarannya SQL, serverless, dan dashboard admin). Task 9 ke atas menunggu branch
-revamp masuk ke `main`.
-
-Sebelum menjadwalkan task Phase 2 apa pun yang menyentuh dashboard user, cek
-dulu:
-
-```bash
-git ls-tree -r --name-only main -- multi-step-form/src/components/status/
-```
+**Keputusan 2026-08-04:** larangan itu tidak bisa dipatuhi lagi — branch
+itulah satu-satunya tempat Phase 2 bisa dikerjakan utuh sampai Task 12. Merge
+`main` → `feat/dashboard-soft-dna-navbar` (commit `24db9b7`) membawa masuk
+semua kerja jadwal-iklan terbaru (sql/41, 42, Kilat bridge) ke branch itu.
+**Phase 2 sekarang dikerjakan di `feat/dashboard-soft-dna-navbar`**, dan
+dirilis **bundle** bersama revamp visual (bukan dipisah) — lihat catatan di
+kepala dokumen ini. Task 8C sudah selesai di branch ini (2026-08-04).
 
 ---
 
