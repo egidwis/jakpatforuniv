@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost } from '../utils/cost-calculator';
+import { formatRupiah } from '../utils/currency';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { MobileProgressBar } from './MobileProgressBar';
 import { SidebarHeader } from './SidebarHeader';
@@ -31,11 +32,6 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
     const calculation = calculateTotalCost(effectiveForm);
     setCostCalculation(calculation);
   }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode, ilkomunyBlocked]);
-
-  // Format angka ke format rupiah
-  const formatRupiah = (amount: number) => {
-    return new Intl.NumberFormat('id-ID').format(amount);
-  };
 
   // Define steps for desktop
   const desktopSteps = [

@@ -1,4 +1,5 @@
 import type { FormSubmission } from './supabase';
+import { formatRupiah } from './currency';
 
 // Fungsi untuk mengirim email notifikasi pembayaran berhasil
 export const sendPaymentSuccessEmail = async (formData: FormSubmission) => {
@@ -44,10 +45,6 @@ export const sendPaymentFailedEmail = async (formData: FormSubmission) => {
 
 // Fungsi untuk generate konten email sukses
 const generateSuccessEmailContent = (formData: FormSubmission): string => {
-  const formatRupiah = (amount: number) => {
-    return new Intl.NumberFormat('id-ID').format(amount);
-  };
-
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
       <div style="text-align: center; margin-bottom: 30px;">
@@ -101,10 +98,6 @@ const generateSuccessEmailContent = (formData: FormSubmission): string => {
 
 // Fungsi untuk generate konten email gagal
 const generateFailedEmailContent = (formData: FormSubmission): string => {
-  const formatRupiah = (amount: number) => {
-    return new Intl.NumberFormat('id-ID').format(amount);
-  };
-
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
       <div style="text-align: center; margin-bottom: 30px;">

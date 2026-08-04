@@ -1,7 +1,7 @@
 import { Chip } from '../ui/chip';
 import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
-import { formatIDR } from '../transactions/types';
+import { formatIDR } from '@/utils/currency';
 import { type Customer, formatDate, submissionStatusChip } from './types';
 import { CustomerTierChip } from './CustomerTierChip';
 
