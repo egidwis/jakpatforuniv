@@ -231,6 +231,8 @@ GRANT EXECUTE ON FUNCTION get_batch_rewards(UUID)        TO anon, authenticated,
 -- Sesudah diterapkan, keduanya jadi kode yang sama dan perbandingannya jadi hampa.
 --
 -- HARUS mengembalikan NOL BARIS.
+-- DIJALANKAN 2026-08-04 di produksi, sebelum file ini diterapkan: 0 baris beda,
+-- seluruh submission. Versi massal menjawab identik dengan fungsi yang hidup.
 --
 -- WITH bulk AS (
 --   WITH all_periods AS (
@@ -284,6 +286,16 @@ GRANT EXECUTE ON FUNCTION get_batch_rewards(UUID)        TO anon, authenticated,
 --
 -- SELECT pg_get_function_result('get_batch_rewards(uuid)'::regprocedure)  AS hasil,
 --        pg_get_function_arguments('get_batch_rewards(uuid)'::regprocedure) AS argumen;
+--
+-- Tercatat 2026-08-04, sebelum menerapkan -- inilah string yang harus keluar sama
+-- persis sesudahnya:
+--
+--   argumen : p_submission_id uuid
+--   hasil   : TABLE(period_batch text, prize_per_winner integer,
+--                   winner_count integer, batch_status text,
+--                   can_select_winners boolean,
+--                   start_date timestamp with time zone,
+--                   end_date timestamp with time zone)
 
 
 -- ============================================
@@ -384,8 +396,9 @@ GRANT EXECUTE ON FUNCTION get_batch_rewards(UUID)        TO anon, authenticated,
 --
 -- 4) HALAMAN PUBLIK TIDAK BERGESER NOMINALNYA. Bandingkan angka mentah yang
 --    ditampilkan SurveyPage/surveys.js hari ini dengan agregat batch yang akan
---    menggantikannya. Diukur 2026-08-04: 266 halaman bersurvei, NOL berubah.
---    Harus tetap nol sesudah file ini diterapkan.
+--    menggantikannya. Diukur 2026-08-04 SEBELUM menerapkan (lewat
+--    get_batch_rewards, yang sudah dibuktikan setara oleh PRE-CHECK): 266 halaman
+--    bersurvei, 0 berubah, 0 kehilangan angka. Harus tetap nol sesudahnya.
 --
 -- SELECT COUNT(*) FILTER (WHERE mentah IS DISTINCT FROM agregat) AS berubah,
 --        COUNT(*) AS total
