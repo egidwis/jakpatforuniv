@@ -17,40 +17,44 @@ membaca baris yang sama.
 | Fase | Isi | DB | Frontend |
 |---|---|---|---|
 | Phase 0 | Cabut gerbang banner, hitung perpanjangan di kuota slot, larang jadwal tumpang tindih | ✅ `sql/36`–`39` | ⬜ **belum deploy** |
-| Phase 1 | Auto-create + auto-publish halaman iklan dengan banner default | ✅ `sql/40` | ⬜ **belum deploy** |
+| Phase 1 | Auto-create + auto-publish halaman iklan dengan banner default | ✅ `sql/40` (+ `sql/42`: Kilat dikecualikan) | ⬜ **belum deploy** |
+| Kilat | Jembatan admin iklan→Kilat + slot 08/11/14/17 WIB hari kerja | ✅ `sql/42` | ⬜ **belum deploy** |
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 selesai | ⬜ belum ada pembaca |
 | Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ |
 | Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ |
 
 **Satu hal yang paling penting kalau kamu kembali setelah lama:** DB sudah di
-`sql/41` sementara frontend produksi masih di `9ea82ef`. Tiga bug Phase 0 masih
-hidup di layar walau perbaikannya sudah ada di `main`. Deploy dari `main`
-menutup celah itu — lihat "Yang menunggu tindakan" di bawah.
+`sql/42` sementara frontend produksi masih di `9ea82ef`. Tiga bug Phase 0 masih
+hidup di layar walau perbaikannya sudah ada di `main`, dan seluruh fitur Kilat
+belum kelihatan sama sekali. Deploy dari `main` menutup keduanya — lihat "Yang
+menunggu tindakan" di bawah.
+
+⚠️ **`sql/40` dan `sql/42` mendefinisikan `ensure_survey_page()` yang sama.**
+`sql/42` versinya yang benar (order Kilat tidak dapat halaman iklan). Kalau
+`sql/40` dijalankan ulang kapan pun, jalankan `sql/42` lagi sesudahnya.
 
 ---
 
 ## Yang menunggu tindakan
 
-### 0. Terapkan `sql/42` ⬅️ baru, memblokir fitur Kilat
+### 0. Uji jembatan Kilat setelah deploy ⬅️ baru
 
-`sql/42_kilat_slots.sql` belum diterapkan. Dua isi, keduanya syarat jembatan
-"Jadikan Kilat" di dashboard admin (kode frontend-nya sudah di `main`):
+`sql/42` sudah diterapkan (2026-08-04), frontend-nya ada di `main` commit
+`c554880` tapi **belum deploy** — sama seperti Phase 0/1. Jadi kolom dan guard-nya
+sudah hidup di DB, layarnya belum.
 
-- kolom `form_submissions.kilat_slot_hour` (8/11/14/17, nullable) — tanpa ini
-  penjadwalan Kilat gagal menulis;
-- **`ensure_survey_page()` diganti** supaya `distribution_type = 'kilat'` tidak
-  lagi menerbitkan halaman iklan. Ini mengoreksi perilaku `sql/40` yang sudah
-  hidup di produksi: order Kilat lunas selama ini mendapat kartu iklan di feed
-  aplikasi lengkap dengan banner default dan satu tempat di `display_order` —
-  kapasitas tayang yang tidak dibayar siapa pun.
+Sesudah deploy, uji urutan ini di dashboard admin:
+tab Regular Ads → **Jadikan Kilat** → tab Kilat → Reserve Slot (grid gelombang
+08/11/14/17, hari kerja saja) → Payment → Mark as Paid.
 
-⚠️ Jalankan pre-check di file itu lebih dulu (halaman Kilat yang terlanjur
-terbit). Guard-nya hanya mencegah halaman baru; yang sudah ada tetap tayang, dan
-apa yang harus dilakukan terhadapnya adalah keputusan manusia.
+Yang paling penting dicek: **sesudah order Kilat lunas,
+`SELECT * FROM survey_pages WHERE submission_id = '<uuid>'` harus kosong.** Kalau
+ada isinya, guard Kilat di `ensure_survey_page()` tidak aktif — kemungkinan besar
+`sql/40` dijalankan ulang sesudah `sql/42` dan mengembalikan definisi lama.
+Perbaikannya: jalankan `sql/42` bagian 2 lagi.
 
-Kalau `sql/40` suatu saat dijalankan ulang, jalankan `sql/42` lagi sesudahnya —
-`sql/40` akan mengembalikan definisi fungsi tanpa guard Kilat.
+Sisa verifikasi ada di bagian bawah `sql/42_kilat_slots.sql`.
 
 ### 1. Deploy frontend dari `main` ⬅️ paling mendesak
 
@@ -95,6 +99,26 @@ uji mirror hidup mengikuti dan penomoran urut `start_date`. Belum dijalankan
 - `sql/39` **DITARIK** — tinggal helper `airing_instant_of_date()`, yang justru
   jadi fondasi semua perbandingan waktu berikutnya
 - Perpanjangan kini ikut dihitung di kuota slot (`fetchSlotAvailability`)
+
+### Kilat — `sql/42`, commit `c554880`
+
+Jembatan admin iklan regular → JFU Kilat, plus penjadwalan slot Kilat sendiri
+(gelombang push 08/11/14/17 WIB, 2 order per gelombang, Senin–Jumat) lewat kolom
+baru `form_submissions.kilat_slot_hour`. Diterapkan ke DB 2026-08-04.
+
+Sekalian menutup tiga lubang tagih di sisi admin — jalur user lewat
+`/api/doku/create-payment` sudah benar sejak awal:
+
+- invoice manual admin menagih Kilat dengan rumus regular (add-on Rp 250.000
+  tidak pernah masuk, base rate dikali durasi yang tidak berarti);
+- `ensure_survey_page()` menerbitkan halaman iklan untuk order Kilat yang lunas —
+  kartu di feed aplikasi plus satu tempat di `display_order`, tidak dibayar
+  siapa pun;
+- `SchedulePaymentView` mengukur kapasitas Kilat terhadap pool iklan **regular**.
+
+Jam Kilat sebelumnya tidak pernah tersimpan: `start_date` bertipe `DATE` dan
+`updateScheduleDates()` memaku setiap jadwal ke 15.00 WIB. Karena itu kolom
+terpisah, dan `updateKilatSchedule()` menulis langsung tanpa lewat fungsi itu.
 
 ### Phase 1 — `sql/40`, commit `7ec7c28`
 
