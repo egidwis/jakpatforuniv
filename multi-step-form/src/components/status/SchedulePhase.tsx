@@ -3,10 +3,8 @@ import { Link } from 'react-router-dom';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
     AlertCircle,
-    Banknote,
     CalendarCheck,
     CalendarClock,
-    CalendarDays,
     CalendarRange,
     ChevronDown,
     Clock,
@@ -15,10 +13,8 @@ import {
     ExternalLink,
     FileText,
     Gift,
-    Megaphone,
     Plus,
     RotateCcw,
-    Ticket,
     Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +25,6 @@ import {
     AccordionContent,
     AccordionItem,
 } from '@/components/ui/accordion';
-import { InfoTooltip } from './InfoTooltip';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';

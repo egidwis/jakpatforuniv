@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
-import { AlertCircle, Bot, ChevronDown, ExternalLink, FileText, Link2, Trash2, UserCheck, Users } from 'lucide-react';
+import { AlertCircle, Bot, ChevronDown, FileText, Link2, Trash2, UserCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Accordion,
