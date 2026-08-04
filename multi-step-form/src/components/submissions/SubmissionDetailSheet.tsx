@@ -790,12 +790,34 @@ function ReviewTab({
               <Globe className="w-3 h-3 text-gray-400 shrink-0" />
               <span className="text-[11px] text-gray-500 truncate">{submission.formUrl.replace(/^https?:\/\//, '')}</span>
             </div>
-            <iframe
-              src={submission.formUrl}
-              title={`Preview: ${submission.formTitle}`}
-              className="w-full flex-1 bg-white"
-              sandbox="allow-scripts allow-same-origin allow-forms"
-            />
+            
+            {submission.formUrl.includes('docs.google.com') && !submission.formUrl.includes('/d/e/') ? (
+              <div className="flex-1 bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-4 border shadow-sm">
+                  <ExternalLink className="w-5 h-5 text-gray-400" />
+                </div>
+                <h4 className="text-sm font-medium text-gray-900 mb-1.5">Preview Tidak Tersedia</h4>
+                <p className="text-xs text-gray-500 max-w-[280px] mb-5 leading-relaxed">
+                  Sistem keamanan Google membatasi preview untuk tautan editor. Silakan buka form di tab baru untuk mengecek tampilannya.
+                </p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="bg-white border-gray-300 hover:bg-gray-50"
+                  onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
+                >
+                  Buka Preview di Tab Baru <ExternalLink className="w-3.5 h-3.5 ml-2" />
+                </Button>
+              </div>
+            ) : (
+              <iframe
+                src={submission.formUrl}
+                title={`Preview: ${submission.formTitle}`}
+                className="w-full flex-1 bg-white"
+                sandbox="allow-scripts allow-same-origin allow-forms"
+              />
+            )}
+            
             <p className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-200 bg-white">
               Preview kosong? Situs survei memblokir embed — gunakan tombol "Buka" di atas.
             </p>

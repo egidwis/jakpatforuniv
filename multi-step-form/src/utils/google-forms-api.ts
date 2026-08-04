@@ -176,7 +176,7 @@ export class GoogleFormsApiService {
       }
 
       const formData = result.data;
-      const formUrl = `https://docs.google.com/forms/d/${formId}/viewform`;
+      let formUrl = `https://docs.google.com/forms/d/${formId}/viewform`;
 
       // VERIFIKASI PUBLIK (ANONIM)
       // Mencegah form "Not Published" / "Restricted" lolos karena status kepemilikan
@@ -201,6 +201,13 @@ export class GoogleFormsApiService {
             htmlText = await res.text();
             fetchSuccess = true;
             console.log(`Verifikasi akses publik via internal proxy berhasil, status: ${res.status}`);
+
+            // Coba ekstrak URL publik (/e/) dari header X-Final-Url jika terjadi redirect
+            const finalUrl = res.headers.get('x-final-url');
+            if (finalUrl && finalUrl.includes('/d/e/')) {
+              formUrl = finalUrl;
+              console.log('Sukses menangkap URL publik /e/:', formUrl);
+            }
           } else {
             console.warn(`Internal proxy status: ${res.status}, falling back to corsproxy.io`);
           }
