@@ -25,8 +25,8 @@ membaca baris yang sama.
 
 **Satu hal yang paling penting kalau kamu kembali setelah lama:** DB sudah di
 `sql/41` sementara frontend produksi masih di `9ea82ef`. Tiga bug Phase 0 masih
-hidup di layar walau perbaikannya sudah ada di `main` (`b4ed204`). Deploy dari
-`main` menutup celah itu — lihat "Yang menunggu tindakan" di bawah.
+hidup di layar walau perbaikannya sudah ada di `main`. Deploy dari `main`
+menutup celah itu — lihat "Yang menunggu tindakan" di bawah.
 
 ---
 
@@ -34,7 +34,9 @@ hidup di layar walau perbaikannya sudah ada di `main` (`b4ed204`). Deploy dari
 
 ### 1. Deploy frontend dari `main` ⬅️ paling mendesak
 
-`origin/main` = `b4ed204`. Rollback frontend = `9ea82ef`.
+Deploy dari `origin/main` apa pun HEAD-nya — commit setelah `32e5709` semuanya
+docs atau SQL, artefak build-nya tidak berubah. Isi deploy: 15 file, semuanya
+Phase 0/1, **tidak ada** yang berasal dari Phase 2. Rollback frontend = `9ea82ef`.
 
 Setelah deploy, jalankan
 [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md).

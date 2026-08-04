@@ -29,8 +29,13 @@ Prioritas: **§2, §3, §5 wajib.** Sisanya kalau sempat.
 
 ## 1. Sebelum deploy
 
-- [ ] `origin/main` ada di `b4ed204` (merge Task 8) — inilah yang di-deploy
+- [ ] Deploy dari **`origin/main`**, apa pun HEAD-nya. Commit setelah `32e5709`
+      semuanya docs atau SQL — artefak build-nya tidak berubah, jadi tidak perlu
+      menunggu atau memilih commit tertentu
 - [ ] Catat commit produksi saat ini untuk jalan mundur: `9ea82ef`
+- [ ] Sadari isi deploy ini: 15 file (13 `src/`, 1 `functions/api/surveys.js`,
+      1 aset `public/default-ad-banner.jpg`). Semuanya Phase 0/1 — **tidak ada**
+      yang berasal dari Phase 2
 
 ---
 
