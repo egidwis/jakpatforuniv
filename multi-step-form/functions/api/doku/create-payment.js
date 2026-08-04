@@ -17,7 +17,7 @@
 // duplication is unavoidable: Pages Functions can't import from src/. The
 // client copy only renders estimates; THIS copy decides what gets charged.
 
-const KILAT_ADDON_COST = 250000;
+const KILAT_ADDON_COST = 200000;
 const KILAT_ADDON_COST_VOUCHER = 200000;
 
 // PPN 11% dipungut di ATAS subtotal (DPP). Pembulatan WAJIB identik dengan

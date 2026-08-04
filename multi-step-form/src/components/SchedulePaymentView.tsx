@@ -448,7 +448,7 @@ export function SchedulePaymentView({ submission, existingPageSlug, initialStep 
         // functions/api/doku/create-payment.js; kalau user membayar lewat
         // link-nya sendiri, server menghitung ulang dan akan menimpa total_cost
         // yang tidak cocok. Sebelum cabang ini ada, invoice Kilat dari dashboard
-        // admin memakai rumus regular — add-on Rp 250.000 tidak pernah tertagih
+        // admin memakai rumus regular — add-on Rp 200.000 tidak pernah tertagih
         // dan base rate justru dikali durasi yang tidak berarti.
         if (isKilat) {
             const kilatItems: InvoiceItem[] = [{
