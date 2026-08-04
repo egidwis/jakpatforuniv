@@ -2,6 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> ## ✅ SELESAI — di-merge & deployed 2026-07-06; `sql/27`+`sql/28` diterapkan
+> Disimpan sebagai catatan sejarah. Jangan dieksekusi ulang. Indeks seluruh
+> rencana ada di [`README.md`](README.md).
+
 **Goal:** Render each auth account as one stable customer named from `auth.users` (via `public.profiles`), and confine the per-survey `full_name` (the **Nama Invoice**) to invoice/payment surfaces while keeping it searchable.
 
 **Architecture:** A SECURITY DEFINER RPC (`get_profile_names`) returns `{id, full_name}` from the pre-existing `public.profiles` table, admin-gated on email. The client fetches these names and passes a `Map<auth_user_id, name>` into the pure `aggregateCustomers` (and into the submissions list + survey-card fetches). Customer/researcher name = auth name; the invoice name (`full_name`) becomes a search-only aggregate field (`Customer.invoiceNames`) and is displayed only on transaction/invoice surfaces. The `profiles` public-read RLS policy is tightened to owner-or-admin.

@@ -181,8 +181,21 @@ disetujui" dari "slot sudah dipesan". Itu bukan kekurangan kosmetik; itu justru
 informasi yang paling dibutuhkan admin di layar penjadwalan. Memisahkan kedua
 sumbu itu **adalah** Task 9.
 
-Jadi Phase 3 bisa dimulai begitu Task 9 jalan, dan Task 9 bisa jalan begitu branch
-visual masuk `main`. **Branch itu sekarang satu-satunya yang menahan Phase 2.**
+Jadi Phase 3 bisa dimulai begitu Task 9 jalan, dan Task 9 butuh file yang cuma ada
+di branch revamp visual.
+
+**Diputuskan 2026-08-05: Task 9–12 dan Phase 3 dikerjakan DI branch
+`feat/dashboard-soft-dna-navbar` itu sendiri**, bukan di branch baru dari `main`.
+Larangan menumpang branch itu dicabut karena tidak bisa dipatuhi — file yang
+ditulis ulang Task 9 memang lahir di sana. Konsekuensi yang diterima sadar: revamp
+visual dan sisa Phase 2 jadi **satu unit rilis**, tidak bisa di-revert
+sendiri-sendiri.
+
+Prosedurnya — termasuk merge `main` ke branch itu, yang **kodenya bersih** tapi
+punya tepat **dua konflik dokumentasi** yang sudah diketahui cara
+menyelesaikannya — ada di
+[`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md).
+**Itu titik masuk sesi berikutnya.**
 
 ### 3. Uji manual yang masih menganggur
 
@@ -504,6 +517,8 @@ git ls-tree -r --name-only main -- multi-step-form/src/components/status/
 | File | Isi |
 |---|---|
 | **`docs/jadwal-iklan-progress.md`** | ⬅️ file ini — titik masuk, status berjalan |
+| [`superpowers/plans/README.md`](superpowers/plans/README.md) | **Indeks seluruh rencana** + statusnya; baca kalau bingung file mana yang masih berlaku |
+| [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — titik masuk pekerjaan berikutnya; prosedur merge branch + urutan Task 9→10→12→Phase 3→11 |
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
 | `multi-step-form/sql/36`–`45` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup |

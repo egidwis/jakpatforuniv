@@ -2,6 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> ## 🟡 SEPARUH SELESAI — Task 8, 8B-1, 8C, 8D live; sisa Task 9–12
+>
+> **Per 2026-08-05.** Empat task sudah diterapkan ke produksi dan dideploy; DB dan kode
+> sejajar (`sql/36`–`45` utuh). Sisanya — Task 9, 10, 11, 12 — pindah ke branch
+> `feat/dashboard-soft-dna-navbar` bersama Phase 3; lihat Global Constraints dan
+> [`2026-08-05-phase-3-jadwal-iklan-terpadu.md`](2026-08-05-phase-3-jadwal-iklan-terpadu.md).
+> Status berjalan yang paling mutakhir selalu di
+> [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
+>
+> Task 8B-2 (`reward_pools`, `sql/46`) **keluar dari Phase 2** — ia jadi prasyarat Phase 4.
+
 > **Status file ini, 2026-08-03:** file ini awalnya berjudul "Jadwal Iklan Redesign: Bug
 > Fix + Admin Tab Restructure" dan berisi rencana lain. Rencana itu **digantikan penuh**
 > setelah penelusuran kode menemukan premisnya keliru di titik terpenting — lihat
@@ -76,10 +87,21 @@ mengharuskan semua lapis berubah serentak, dan setiap task di bawah bisa dirilis
 - **Jangan normalisasi nilai `jakpat_id` yang tersimpan.** Kalau ada perbaikan duplikat
   huruf besar/spasi, lewat indeks unik fungsional pada `(page_id, lower(btrim(jakpat_id)))`
   — bukan menulis ulang datanya. Platform pengundian mencocokkan `jakpat_id` apa adanya.
-- **Kerjakan di branch sendiri, bercabang dari `main`.** Pola yang sama dipakai Phase 0/1
-  (`feat/jadwal-iklan`, sudah di-merge & dihapus). Jangan menumpang branch revamp visual
-  yang sedang berjalan (`feat/dashboard-soft-dna-navbar`) — keduanya tidak berhubungan dan
-  perlu bisa di-revert sendiri-sendiri.
+- ~~**Kerjakan di branch sendiri, bercabang dari `main`.**~~ **DICABUT 2026-08-05 untuk
+  Task 9 ke atas — keputusan pemilik produk.** Batasan ini berlaku penuh untuk Task 8,
+  8B-1, 8C, dan 8D, dan keempatnya memang dikerjakan begitu (branch sendiri dari `main`,
+  fast-forward, branch dihapus). Semuanya sudah live.
+
+  Ia berhenti bisa dipatuhi di Task 9: file yang harus ditulis ulang
+  (`deriveOrderUiState.ts`, `airingPeriods.ts`, `status/SchedulePhase.tsx`) **hanya ada di
+  `feat/dashboard-soft-dna-navbar`**. Bukan kebetulan — file-file itu lahir di sana. Jadi
+  pilihannya bukan "patuhi atau langgar", melainkan "kerjakan di branch itu" atau "jangan
+  kerjakan Task 9 sama sekali".
+
+  **Keputusan: Task 9–12 dan Phase 3 dikerjakan DI `feat/dashboard-soft-dna-navbar`.**
+  Konsekuensi yang diterima sadar: revamp visual dan sisa Phase 2 jadi **satu unit rilis**
+  — tidak bisa lagi di-revert sendiri-sendiri. Rencana eksekusinya di
+  [`2026-08-05-phase-3-jadwal-iklan-terpadu.md`](2026-08-05-phase-3-jadwal-iklan-terpadu.md).
 - `npm run build` harus lolos setelah tiap task. Tidak ada test runner selain
   `jakpat-id.test.ts` dan `airing-window.test.ts` (dijalankan lewat esbuild+node, lihat
   CLAUDE.md).

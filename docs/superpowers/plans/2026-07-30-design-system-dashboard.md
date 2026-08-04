@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> ## ⬜ BELUM DIEKSEKUSI — masih berlaku penuh
+> Ditulis 2026-07-30, belum satu task pun dijalankan. **Bersinggungan dengan
+> Phase 3**: keduanya menyentuh dashboard dan keduanya akan hidup di branch
+> `feat/dashboard-soft-dna-navbar`. Baca "Hubungan dengan rencana lain" di
+> [`README.md`](README.md) sebelum mengeksekusi salah satunya.
+
 **Goal:** Mengganti resep "Soft DNA" yang di-copy-paste manual dengan design-token system terpusat (struktur mengikuti referensi "Relate" di DESIGN.md, nilai warna tetap brand JFU), sekaligus membereskan akar masalah cascade `styles.css` legacy.
 
 **Architecture:** Entry CSS dipecah tiga (`base.css` berisi `@tailwind base` + var shadcn untuk admin; `tokens.css` berisi custom properties `--jfu-*`; `utilities.css` berisi `@tailwind components/utilities` yang di-import PALING AKHIR di `main.tsx` sehingga utility Tailwind selalu menang cascade). Token dipetakan ke Tailwind lewat `theme.extend` (warna semantik, type scale ber-tracking negatif, radius 2-tier, shadow). Primitives (`Button`/`Chip`/`Card`) jadi satu-satunya sumber recipe; komponen dashboard & publik di-sweep dari hex hardcoded ke token.

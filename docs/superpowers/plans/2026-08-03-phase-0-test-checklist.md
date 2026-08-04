@@ -1,5 +1,10 @@
 # Checklist Uji Mandiri — Phase 0 Jadwal Iklan
 
+> ## ⬜ BELUM DIJALANKAN — frontend-nya sudah lama tayang
+> Deploy yang jadi prasyarat checklist ini sudah terjadi 2026-08-04. Checklist-nya
+> sendiri belum pernah dijalankan. Tidak memblokir Phase 2 maupun Phase 3. Indeks
+> seluruh rencana ada di [`README.md`](README.md).
+
 Untuk dijalankan **setelah deploy frontend**. Status berjalan ada di
 [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
 
