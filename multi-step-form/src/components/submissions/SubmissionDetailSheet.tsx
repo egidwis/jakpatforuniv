@@ -1075,11 +1075,8 @@ function PaymentTab({
   const adCost = isKilat
     ? calculateAdCostPerDay(submission.questionCount || 0)
     : calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
-  const kilatAddon = isKilat ? getKilatAddonCost(submission.voucher_code) : 0;
-  const discount = isKilat
-    ? 0
-    : calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
-  const finalAdCost = adCost - discount + kilatAddon;
+  const discount = calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
+  const finalAdCost = Math.max(0, adCost - discount + kilatAddon);
   const subtotal = finalAdCost + incentiveCost;
   const ppn = calculatePpn(subtotal);
   const grandTotal = subtotal + ppn;
@@ -1105,7 +1102,7 @@ function PaymentTab({
               <span className="text-gray-500">
                 Ad cost <span className="text-[10px] text-gray-400 font-normal">({submission.questionCount} Qs | Rp {new Intl.NumberFormat('id-ID').format(calculateAdCostPerDay(submission.questionCount || 0))}{isKilat ? ' base rate' : ` x ${submission.duration} ${submission.duration === 1 ? 'day' : 'days'}`})</span>
               </span>
-              <span className={cn('font-medium text-gray-900', discount > 0 && 'line-through text-gray-400 font-normal')}>
+              <span className="font-medium text-gray-900">
                 Rp {new Intl.NumberFormat('id-ID').format(adCost)}
               </span>
             </div>

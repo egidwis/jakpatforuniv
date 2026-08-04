@@ -109,9 +109,6 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
      * setelah review kelar. */
     const showsAutoMethod = !inReview && isAutoReviewed(submission);
 
-    const desc = (submission.description || '').trim();
-    const description = /^form description not available$/i.test(desc) ? '' : desc;
-
     return (
         <Accordion type="single" collapsible defaultValue={active ? 'review' : undefined} className="rounded-xl border border-gray-100 divide-y divide-gray-100">
             <AccordionItem value="review" className="border-b-0 px-3">
@@ -182,16 +179,14 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
                             {submission.survey_url && (
                                 <div className="flex items-center gap-1.5 text-sm min-w-0">
                                     <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                    <span className="truncate text-[#1a1a1a] font-medium">{submission.survey_url.replace(/^https?:\/\//, '')}</span>
                                     <a
                                         href={submission.survey_url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="p-1 rounded-md text-gray-400 hover:text-jfu-primary hover:bg-gray-100 transition-colors shrink-0 flex items-center justify-center cursor-pointer"
-                                        title={t('openLinkInNewTab')}
-                                        aria-label={t('openLinkInNewTab')}
+                                        className="truncate text-blue-600 font-medium hover:text-blue-700 hover:underline transition-colors"
+                                        title={submission.survey_url}
                                     >
-                                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                                        {submission.survey_url.replace(/^https?:\/\//, '')}
                                     </a>
                                 </div>
                             )}
@@ -206,9 +201,6 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
                                 </div>
                             )}
                         </div>
-                        {description && (
-                            <p className="text-sm text-gray-600 leading-relaxed pt-1.5">{description}</p>
-                        )}
                     </div>
                 </AccordionContent>
             </AccordionItem>

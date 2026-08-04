@@ -19,6 +19,7 @@ import {
     Plus,
     RotateCcw,
     Ticket,
+    Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,7 +34,7 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import type { FormSubmission } from '@/utils/supabase';
-import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount } from '@/utils/cost-calculator';
+import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount, calculatePpn, getKilatAddonCost } from '@/utils/cost-calculator';
 import {
     pickDefaultExpandedKey,
     type ScheduleCard,
@@ -146,34 +147,65 @@ interface RowDef {
     value: ReactNode;
 }
 
+const formatDateFullMonth = (d: Date | null) => {
+    if (!d) return '';
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const formatDateRangeClean = (start: Date | null, end: Date | null, fallback?: string) => {
+    if (!start && !end) return fallback || '—';
+    if (start && !end) return formatDateFullMonth(start);
+    if (!start && end) return formatDateFullMonth(end);
+    if (start && end) {
+        if (start.getTime() === end.getTime()) {
+            return formatDateFullMonth(start);
+        }
+        const sDay = start.getDate();
+        const eDay = end.getDate();
+        const sMonth = start.toLocaleDateString('id-ID', { month: 'long' });
+        const eMonth = end.toLocaleDateString('id-ID', { month: 'long' });
+        const sYear = start.getFullYear();
+        const eYear = end.getFullYear();
+
+        if (sYear === eYear && sMonth === eMonth) {
+            return `${sDay} – ${eDay} ${sMonth} ${sYear}`;
+        }
+        if (sYear === eYear) {
+            return `${sDay} ${sMonth} – ${eDay} ${eMonth} ${sYear}`;
+        }
+        return `${formatDateFullMonth(start)} – ${formatDateFullMonth(end)}`;
+    }
+    return fallback || '—';
+};
+
 /**
  * Baris data gaya kuitansi: SATU pasangan label:value per baris di semua
- * viewport. Kolom label FIXED (`9.5rem`, bukan `auto`) dan di-share oleh
- * Info Booking & Detail Pembayaran dalam satu kartu, supaya kolom value kedua
- * section rata kiri.
+ * viewport. Kolom label adaptif di mobile dan fixed 9.5rem di desktop.
  */
 function RowGrid({ rows, muted }: { rows: RowDef[]; muted?: boolean }) {
     if (rows.length === 0) return null;
     return (
-        <dl className="[display:grid] grid-cols-[9.5rem_1fr] gap-x-3 gap-y-1.5 items-center">
+        <dl className="[display:grid] grid-cols-[auto_1fr] sm:grid-cols-[9.5rem_1fr] gap-x-3 gap-y-2.5 items-start">
             {rows.map((row) => (
                 <Fragment key={row.key}>
-                    <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap">
+                    <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap pt-0.5 pr-1">
                         <span className="text-gray-400 shrink-0">{row.icon}</span>
                         {row.label}
                     </dt>
-                    <dd className={`text-sm font-medium min-w-0 ${valueTone(muted)}`}>{row.value}</dd>
+                    <dd className={`text-sm font-medium min-w-0 break-words ${valueTone(muted)}`}>{row.value}</dd>
                 </Fragment>
             ))}
         </dl>
     );
 }
 
-/** Sub-blok Info Booking / Detail Pembayaran dalam satu kartu jadwal. */
-function Section({ label, children }: { label: string; children: ReactNode }) {
+function Section({ label, sublabel, children }: { label: string; sublabel?: ReactNode; children?: ReactNode }) {
     return (
         <div>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1.5">{label}</p>
+            <div className="mb-2.5">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">{label}</p>
+                {sublabel && <p className="text-xs text-gray-400 font-normal mt-0.5">{sublabel}</p>}
+            </div>
             {children}
         </div>
     );
@@ -181,19 +213,18 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 
 function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean }) {
     const { t } = useLanguage();
-    if (info.mode === 'plain' || info.mode === 'new_pool') {
-        const perWinner = info.prizePerWinner || 0;
-        const count = info.winnerCount || 0;
+    if (info.mode === 'plain') {
+        const text = `${info.winnerCount} ${t('winner')} · ${formatRupiah(info.prizePerWinner!)}/${t('winner')}`;
+        return <span className={valueTone(muted)}>{text}</span>;
+    }
+    if (info.mode === 'new_pool') {
+        const text = `${info.winnerCount} ${t('winner')} · ${formatRupiah(info.prizePerWinner!)}/${t('winner')}`;
         return (
-            <span className="inline-flex items-center gap-1.5 flex-wrap">
-                <span className={`font-medium ${valueTone(muted)}`}>
-                    @{formatRupiah(perWinner)}, {count} {t('winner')}
-                </span>
-                {info.mode === 'new_pool' && (
-                    <Badge variant="outline" className="px-1.5 py-0 h-4 text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 rounded-full">
-                        {t('incentiveNewPeriod')}
-                    </Badge>
-                )}
+            <span className="inline-flex items-center gap-1">
+                <span className={valueTone(muted)}>{text}</span>
+                <Badge variant="outline" className="text-[10px] text-amber-700 bg-amber-50 border-amber-200 font-normal py-0">
+                    {t('incentiveNewPeriod')}
+                </Badge>
             </span>
         );
     }
@@ -205,7 +236,7 @@ function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean 
     return <span className="text-xs text-gray-500 font-normal">{t('incentiveNoAdditionNote')}</span>;
 }
 
-const iconCls = 'w-3.5 h-3.5';
+const iconCls = 'w-3.5 h-3.5 text-gray-400 shrink-0';
 const ctaButtonClass = 'max-md:w-full min-h-9 text-xs px-4 justify-center whitespace-nowrap';
 const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 hover:from-jfu-primary hover:to-jfu-light transition-all';
 const ctaSoftRose = 'rounded-full font-semibold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 shadow-sm transition-all gap-1.5';
@@ -214,31 +245,36 @@ const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-700 border 
 function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const { t } = useLanguage();
     const rows: RowDef[] = [];
-    if (card.info.createdAt) {
-        rows.push({ key: 'created', icon: <CalendarDays className={iconCls} />, label: t('submittedOn'), value: formatDateLong(card.info.createdAt) });
-    }
-    const durationText = `${t('duration')}: ${card.info.duration} ${t('days')}`;
-    const airingValue = (
-        <span className="inline-flex items-center gap-1.5 flex-wrap">
-            <span className={`font-medium ${valueTone(muted)}`}>{card.dateRange}</span>
-            {card.dateRange !== '—' && (
-                <>
-                    <span className="text-gray-500 font-normal text-xs">({t('airingStartTimeNote')})</span>
-                    <InfoTooltip content={durationText} />
-                </>
-            )}
-        </span>
-    );
-    rows.push({ key: 'airingDate', icon: <CalendarCheck className={iconCls} />, label: t('airingDateLabel'), value: airingValue });
 
-    if (card.info.periodBatch) {
+    const duration = card?.info?.duration || 1;
+    const totalHours = duration * 24;
+    const formattedRange = formatDateRangeClean(card?.startDate, card?.endDate, card?.dateRange);
+
+    const airingValue = (
+        <div>
+            <div className={`font-semibold text-sm ${valueTone(muted)}`}>{formattedRange}</div>
+            {card?.startDate && (
+                <div className="text-xs text-gray-500 font-normal mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>Mulai <strong className="font-medium text-gray-700">15.00 WIB</strong></span>
+                    <span className="text-gray-300">•</span>
+                    <span>Durasi <strong className="font-medium text-gray-700">{duration} Hari ({totalHours} Jam)</strong></span>
+                </div>
+            )}
+        </div>
+    );
+
+    rows.push({ key: 'airingDate', icon: <CalendarCheck className={iconCls} />, label: t('airingDateLabel'), value: airingValue });
+    if (card?.info?.periodBatch) {
         rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: <span className="font-mono text-xs">{card.info.periodBatch}</span> });
     }
-    if (card.info.incentive) {
+    if (card?.info?.incentive) {
         rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('rewardRespondentLabel'), value: <IncentiveValue info={card.info.incentive} muted={muted} /> });
     }
+
+    const sublabel = card?.info?.createdAt ? `${t('submittedOn')} ${formatDateLong(card.info.createdAt)}` : undefined;
+
     return (
-        <Section label={t('sectionInfo')}>
+        <Section label={t('sectionInfo')} sublabel={sublabel}>
             <RowGrid rows={rows} muted={muted} />
         </Section>
     );
@@ -246,110 +282,97 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
 
 function BookingSection({ card, submission, muted }: { card: ScheduleCard; submission: FormSubmission; muted?: boolean }) {
     const { t } = useLanguage();
-    const b = card.booking;
-    const questionCount = submission.question_count || 0;
+    const b = card?.booking || {};
+    const questionCount = submission?.question_count || 0;
+    const duration = card?.info?.duration || submission?.duration || 0;
+    const isKilat = submission?.distribution_type === 'kilat';
     const costPerDay = calculateAdCostPerDay(questionCount);
-    const duration = card.info.duration || 0;
-    const adCost = calculateTotalAdCost(questionCount, duration);
+    const adCost = isKilat ? costPerDay : calculateTotalAdCost(questionCount, duration);
+    const kilatAddon = isKilat ? getKilatAddonCost(submission?.voucher_code) : 0;
 
-    let adCostValue: ReactNode = null;
-    if (costPerDay > 0) {
-        const formulaText = `${formatRupiah(costPerDay)} / hari (${questionCount} Qs) × ${duration} hari`;
-        adCostValue = (
-            <span className="inline-flex items-center gap-1">
-                <span className={`font-semibold ${valueTone(muted)}`}>{formatRupiah(adCost)}</span>
-                <InfoTooltip content={formulaText} />
-            </span>
-        );
-    } else {
-        adCostValue = <span className={`font-semibold ${valueTone(muted)}`}>{formatRupiah(adCost)}</span>;
-    }
-
-    let totalReward = 0;
-    let rewardTooltipText = '';
-    if (card.info.incentive) {
+    let incentiveCost = 0;
+    let winnerCount = submission?.winner_count || 0;
+    let prizePerWinner = submission?.prize_per_winner || 0;
+    if (card?.info?.incentive) {
         if (card.info.incentive.mode === 'plain' || card.info.incentive.mode === 'new_pool') {
-            const perWinner = card.info.incentive.prizePerWinner || 0;
-            const count = card.info.incentive.winnerCount || 0;
-            totalReward = perWinner * count;
-            rewardTooltipText = `${formatRupiah(perWinner)} × ${count} ${t('winner')}`;
+            prizePerWinner = card.info.incentive.prizePerWinner || 0;
+            winnerCount = card.info.incentive.winnerCount || 0;
+            incentiveCost = prizePerWinner * winnerCount;
         } else if (card.info.incentive.mode === 'accumulated') {
-            totalReward = card.info.incentive.additionalPrize || 0;
-            rewardTooltipText = t('incentiveAccumulated');
+            incentiveCost = card.info.incentive.additionalPrize || 0;
         }
     }
 
-    const rows: RowDef[] = [
-        { key: 'adCost', icon: <Megaphone className={iconCls} />, label: t('adCostLabel'), value: adCostValue },
-        {
-            key: 'totalReward',
-            icon: <Gift className={iconCls} />,
-            label: t('totalRewardLabel'),
-            value: (
-                <span className="inline-flex items-center gap-1">
-                    <span className={`font-semibold ${valueTone(muted)}`}>{formatRupiah(totalReward)}</span>
-                    {rewardTooltipText && <InfoTooltip content={rewardTooltipText} />}
-                </span>
-            ),
-        },
-    ];
+    const voucherCode = card?.info?.voucherCode || submission?.voucher_code;
+    const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration);
 
-    if (card.info.voucherCode) {
-        const discount = calculateDiscount(card.info.voucherCode, adCost, totalReward, duration);
-        const voucherElement = (
-            <span className="inline-flex items-center gap-1.5 flex-wrap">
-                <span className={`font-mono font-bold bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-xs uppercase tracking-wide ${muted ? 'text-gray-400' : 'text-gray-800'}`}>
-                    {card.info.voucherCode}
-                </span>
-                {discount > 0 && (
-                    <span className="text-emerald-600 font-semibold text-xs">
-                        (-{formatRupiah(discount)})
-                    </span>
-                )}
-            </span>
-        );
-        rows.push({ key: 'voucher', icon: <Ticket className={iconCls} />, label: t('voucherCodeRowLabel'), value: voucherElement });
-    }
-
-    const showsPreTax = b.subtotal !== null;
-    rows.push({
-        key: 'totalPayment',
-        icon: <Banknote className="w-3.5 h-3.5 text-jfu-primary" />,
-        label: t('totalPaymentLabel'),
-        value: (
-            <span className="inline-flex items-center gap-1.5 flex-wrap">
-                <span className={`text-base font-bold ${valueTone(muted)}`}>
-                    {formatRupiah(showsPreTax ? b.subtotal! : b.amount || 0)}
-                </span>
-                {showsPreTax && (
-                    <span className="text-xs text-gray-500 font-normal">*{t('priceExcludesTax')}</span>
-                )}
-            </span>
-        ),
-    });
-
-    if (b.invoicePaymentId && b.state !== 'expired') {
-        rows.push({
-            key: 'invoice',
-            icon: <FileText className={iconCls} />,
-            label: b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel'),
-            value: (
-                <a
-                    href={`/invoices/${b.invoicePaymentId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-jfu-primary hover:underline"
-                >
-                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                    {b.isPaidForLabel ? t('viewReceiptLink') : t('viewInvoiceLink')}
-                </a>
-            ),
-        });
-    }
+    const subtotal = Math.max(0, adCost + kilatAddon - discount + incentiveCost);
+    const ppn = calculatePpn(subtotal);
+    const grandTotal = subtotal + ppn;
 
     return (
         <Section label={t('sectionBookingPayment')}>
-            <RowGrid rows={rows} muted={muted} />
+            <div className={`rounded-xl border border-gray-200/80 bg-gray-50/60 p-3.5 space-y-2 text-xs ${muted ? 'opacity-60' : ''}`}>
+                <div className="flex justify-between items-center">
+                    <span className="text-gray-600">
+                        {t('adCostLabel')} <span className="text-[11px] text-gray-400 font-normal">({questionCount} Qs | {formatRupiah(costPerDay)}{isKilat ? ' rate' : ` × ${duration} hari`})</span>
+                    </span>
+                    <span className="font-medium text-gray-900">
+                        {formatRupiah(adCost)}
+                    </span>
+                </div>
+                {kilatAddon > 0 && (
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-600 flex items-center gap-1">
+                            <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> Add-on JFU Kilat
+                        </span>
+                        <span className="font-medium text-amber-600">{formatRupiah(kilatAddon)}</span>
+                    </div>
+                )}
+                {discount > 0 && (
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Diskon ({voucherCode})</span>
+                        <span className="font-medium text-emerald-600">-{formatRupiah(discount)}</span>
+                    </div>
+                )}
+                {incentiveCost > 0 && (
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-600">
+                            {t('totalRewardLabel')} {prizePerWinner > 0 && winnerCount > 0 && <span className="text-[11px] text-gray-400 font-normal">({formatRupiah(prizePerWinner)} × {winnerCount} {t('winner')})</span>}
+                        </span>
+                        <span className="font-medium text-gray-900">{formatRupiah(incentiveCost)}</span>
+                    </div>
+                )}
+
+                <div className="flex justify-between items-center pt-2 border-t border-gray-200/60 mt-1 text-gray-600">
+                    <span>Subtotal (DPP)</span>
+                    <span className="font-medium text-gray-900">{formatRupiah(subtotal)}</span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                    <span>PPN (11%)</span>
+                    <span className="font-medium text-gray-900">{formatRupiah(ppn)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-1 text-sm">
+                    <span className="text-[#1a1a1a] font-semibold">{t('totalPaymentLabel')}</span>
+                    <span className="font-bold text-blue-600">{formatRupiah(grandTotal)}</span>
+                </div>
+
+                {b.invoicePaymentId && b.state !== 'expired' && (
+                    <div className="flex justify-between items-center pt-2 border-t border-gray-200/60 mt-1 text-xs">
+                        <span className="text-gray-500">{b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel')}</span>
+                        <a
+                            href={`/invoices/${b.invoicePaymentId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                        >
+                            <FileText className="w-3.5 h-3.5" />
+                            {b.isPaidForLabel ? t('viewReceiptLink') : t('viewInvoiceLink')}
+                            <ExternalLink className="w-3 h-3 ml-0.5" />
+                        </a>
+                    </div>
+                )}
+            </div>
         </Section>
     );
 }
