@@ -128,7 +128,7 @@ COMMENT ON TABLE ad_schedules IS
 COMMENT ON COLUMN ad_schedules.status IS
   'Airing lifecycle only: waiting_payment | paid | scheduled | live | completed | cancelled. Intentionally unconstrained while this table is a mirror — see file header.';
 COMMENT ON COLUMN ad_schedules.payment_status IS
-  'Copied verbatim from the source row (pending | paid | expired | failed, and ''completed'' on some legacy form_submissions rows). Normalisation is Task 10 work, not a mirror concern.';
+  'Copied verbatim from the source row. Production 2026-08-03 holds only paid | pending | expired across both source tables; the extend CHECK also permits ''failed''. Unconstrained here on purpose — see the file header.';
 COMMENT ON COLUMN ad_schedules.period_batch IS
   'Copied from the source, never recomputed here. Parent rows use TO_CHAR(form_submissions.end_date, ''YYYY-MM'') — the exact expression get_batch_rewards uses; extends copy the value compute_extend_period_batch() already stored. Anything else risks drifting from what the lottery platform is told.';
 COMMENT ON COLUMN ad_schedules.ordinal IS
@@ -201,16 +201,25 @@ $$;
 -- a schedule by construction and always gets a row (section 5). That asymmetry
 -- is deliberate — it is what makes the row-count check in section 6 meaningful.
 --
--- Status mapping. form_submissions carries the review axis and the airing axis
--- in one column, plus a legacy `status` column that deriveLifecycle still reads
--- (src/components/submissions/lifecycle.ts). Both are folded down here:
---   1. rejected/spam           → cancelled   (beats everything; sql/38 already
---                                             treats them as occupying nothing)
---   2. legacy status live/scheduled/completed → that value (those rows were
---                                             never transitioned in
---                                             submission_status)
---   3. submission_status in the airing vocabulary → itself
---   4. in_review/approved/slot_reserved/anything else → waiting_payment
+-- ⚠️ form_submissions.status IS NOT A STATUS. It holds the researcher's
+-- education level — production 2026-08-03: 'Mahasiswa' 220, 'Dosen' 208,
+-- 'Mahasiswa S2 (Master)' 116, 'Pelajar SMA/SMK' 110, …, plus 4 rows of
+-- 'process'. InternalDashboard.tsx:201 maps it to `education`, and the `status`
+-- field that deriveLifecycle reads is submission_status re-aliased
+-- (supabase.ts:1365). Do not fold this column into any airing status.
+--
+-- So submission_status is the only source, carrying both the review axis and
+-- the airing axis:
+--   1. rejected/spam → cancelled  (beats everything; sql/38 already treats them
+--                                  as occupying no window)
+--   2. waiting_payment/paid/scheduled/live/completed → itself
+--   3. in_review/approved/slot_reserved/anything else → waiting_payment
+--
+-- Measured against the 856 dated rows in production 2026-08-03, that yields:
+--   waiting_payment 530 (in_review 393 + approved 96 + slot_reserved 40 + 1)
+--   live 167 · cancelled 75 (spam 70 + rejected 5) · scheduled 55 · paid 21
+--   completed 8
+-- Verification §8(5) should reproduce exactly those numbers.
 --
 -- NOT derived here: 'completed' from an end_date in the past. deriveLifecycle
 -- infers that client-side today; copying the inference would create a second
@@ -245,7 +254,6 @@ BEGIN
     NEW.duration,
     CASE
       WHEN NEW.submission_status IN ('rejected', 'spam') THEN 'cancelled'
-      WHEN NEW.status IN ('live', 'scheduled', 'completed') THEN NEW.status
       WHEN NEW.submission_status IN ('waiting_payment', 'paid', 'scheduled', 'live', 'completed')
         THEN NEW.submission_status
       ELSE 'waiting_payment'
@@ -285,7 +293,7 @@ $$;
 DROP TRIGGER IF EXISTS trg_ad_schedule_from_submission ON form_submissions;
 CREATE TRIGGER trg_ad_schedule_from_submission
   AFTER INSERT OR UPDATE OF
-    start_date, end_date, duration, submission_status, status, payment_status,
+    start_date, end_date, duration, submission_status, payment_status,
     prize_per_winner, winner_count, total_cost, subtotal, ppn_amount,
     voucher_code, slot_booked_by, slot_reserved_at, admin_notes
   ON form_submissions
@@ -412,7 +420,6 @@ SELECT
   fs.duration,
   CASE
     WHEN fs.submission_status IN ('rejected', 'spam') THEN 'cancelled'
-    WHEN fs.status IN ('live', 'scheduled', 'completed') THEN fs.status
     WHEN fs.submission_status IN ('waiting_payment', 'paid', 'scheduled', 'live', 'completed')
       THEN fs.submission_status
     ELSE 'waiting_payment'
@@ -520,14 +527,14 @@ ON CONFLICT ON CONSTRAINT ad_schedules_source_key DO UPDATE SET
 -- WHERE table_schema = 'public' AND table_name = 'ad_schedules';
 --
 -- -- (0c) Every column this file reads off form_submissions must exist — MUST
--- -- return 18 rows. The list was verified against the app's own insert/update
--- -- payloads (StepCheckout.tsx, supabase.ts, sql/33, sql/34), not against the
--- -- live schema.
+-- -- return 17 rows. Confirmed against production 2026-08-03.
+-- -- NOTE `status` is deliberately absent: it holds education level, not a
+-- -- lifecycle value. See section 4.
 -- SELECT column_name, data_type
 -- FROM information_schema.columns
 -- WHERE table_schema = 'public' AND table_name = 'form_submissions'
 --   AND column_name IN (
---     'start_date','end_date','duration','status','submission_status',
+--     'start_date','end_date','duration','submission_status',
 --     'payment_status','prize_per_winner','winner_count','total_cost',
 --     'subtotal','ppn_amount','voucher_code','slot_booked_by',
 --     'slot_reserved_at','admin_notes','created_at','updated_at','auth_user_id'
@@ -567,10 +574,11 @@ ON CONFLICT ON CONSTRAINT ad_schedules_source_key DO UPDATE SET
 -- -- Every status value the mapping in section 4 has to survive. Anything here
 -- -- that is not in the CASE lands on 'waiting_payment' — check that is right
 -- -- for each one before applying.
+-- -- Production 2026-08-03 returned exactly the ten submission_status values and
+-- -- three payment_status values the mapping already covers; the ten extends are
+-- -- all inside the airing vocabulary. Re-run it anyway: a new value appearing
+-- -- here is the one thing that makes this file wrong.
 -- SELECT 'form_submissions.submission_status' AS kolom, submission_status AS nilai, COUNT(*)
--- FROM form_submissions WHERE start_date IS NOT NULL GROUP BY 2
--- UNION ALL
--- SELECT 'form_submissions.status', status, COUNT(*)
 -- FROM form_submissions WHERE start_date IS NOT NULL GROUP BY 2
 -- UNION ALL
 -- SELECT 'form_submissions.payment_status', payment_status, COUNT(*)
@@ -598,6 +606,9 @@ ON CONFLICT ON CONSTRAINT ad_schedules_source_key DO UPDATE SET
 -- 8. VERIFY — run AFTER applying
 -- ============================================
 -- -- (1) Row-count parity. Both differences must be 0.
+-- -- Baseline measured 2026-08-03, before applying: 856 dated first schedules,
+-- -- 10 later schedules — so 866 rows total, of which one survey contributes
+-- -- later schedules with no ordinal 1 (its first schedule has no dates).
 -- SELECT
 --   (SELECT COUNT(*) FROM ad_schedules WHERE ordinal = 1)
 --     - (SELECT COUNT(*) FROM form_submissions WHERE start_date IS NOT NULL) AS selisih_jadwal_pertama,
@@ -641,8 +652,31 @@ ON CONFLICT ON CONSTRAINT ad_schedules_source_key DO UPDATE SET
 -- WHERE a.source_table = 'form_submissions_extend'
 --   AND a.period_batch IS DISTINCT FROM e.period_batch;
 --
--- -- (5) What actually landed in the unconstrained columns.
+-- -- (5) What actually landed in the unconstrained columns. Against the
+-- -- 2026-08-03 baseline the status column must total:
+-- --   waiting_payment 532 · live 169 · cancelled 75 · scheduled 55 · paid 21
+-- --   completed 13
+-- -- (first schedules 530/167/75/55/21/8 plus the ten extends: 5 completed,
+-- --  2 live, 2 waiting_payment, 1 cancelled). Any other value means a new
+-- --  submission_status appeared and section 4 needs a case for it.
 -- SELECT status, payment_status, COUNT(*) FROM ad_schedules GROUP BY 1, 2 ORDER BY 3 DESC;
+--
+-- -- (5b) The two surveys sql/38 flagged as having a first schedule whose window
+-- -- is IDENTICAL to its own extend's ("Studi Pengambilan Keputusan",
+-- -- "Faktor-Faktor Psikologis") now show up as two ad_schedules rows covering
+-- -- the same days. Expected — ad_schedules carries no overlap trigger and this
+-- -- file changes no data. Still a genuine duplicate in the source, still a
+-- -- business decision, still not this migration's job.
+-- SELECT a.submission_id, fs.title, a.ordinal, a.start_date, a.end_date, a.status
+-- FROM ad_schedules a
+-- JOIN form_submissions fs ON fs.id = a.submission_id
+-- WHERE EXISTS (
+--   SELECT 1 FROM ad_schedules b
+--   WHERE b.submission_id = a.submission_id AND b.id <> a.id
+--     AND b.status <> 'cancelled' AND a.status <> 'cancelled'
+--     AND a.start_date < b.end_date AND b.start_date < a.end_date
+-- )
+-- ORDER BY a.submission_id, a.ordinal;
 --
 -- -- (6) Live mirror test. Pick a survey with at least two schedules, nudge the
 -- -- old table, confirm the mirror follows, then put it back.
@@ -652,6 +686,9 @@ ON CONFLICT ON CONSTRAINT ad_schedules_source_key DO UPDATE SET
 -- --   UPDATE form_submissions SET end_date = end_date - 1 WHERE id = '<uuid>';
 -- -- Renumbering: insert a later schedule that STARTS EARLIER than an existing
 -- -- one and confirm the ordinals resort by start_date, not by insertion order.
+-- -- On the 2026-08-03 data there is exactly one survey with two or more later
+-- -- schedules — "Order Request", 3820a94d-eac5-4c16-a1da-b77a13c5fccf, first
+-- -- window 26–27 May. It is finished, so nudging it disturbs nothing live.
 --
 -- -- (7) No regression in the old flow. cron must still run clean.
 -- --   SELECT cron_activate_extends();
