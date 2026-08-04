@@ -1213,6 +1213,9 @@ export const getPendingSlotsWithoutPage = async () => {
       .select('id, title, full_name, start_date, end_date, winner_count, prize_per_winner, submission_status, slot_booked_by, slot_reserved_at, payment_status')
       .not('start_date', 'is', null)
       .in('submission_status', ['slot_reserved', 'waiting_payment', 'paid'])
+      // Kilat orders never get a survey_pages row by design (sql/42 blocks it in the
+      // trigger), so without this filter they'd show up here forever as "no page yet".
+      .neq('distribution_type', 'kilat')
       .order('start_date', { ascending: true });
 
     if (subError) throw subError;
@@ -1696,6 +1699,85 @@ export const convertDistributionType = async (
   if (writeError) throw writeError;
 
   return { totalCost, subtotal, ppn };
+};
+
+export interface KilatScheduleEntry {
+  id: string;
+  title: string;
+  researcherName: string;
+  hour: number | null;
+  ymd: string;
+  submissionStatus: string;
+  paymentStatus: string | null;
+  createdAt: string;
+}
+
+/**
+ * Semua order Kilat pada rentang tanggal [fromYmd, toYmd] (inklusif), untuk
+ * papan jadwal admin (KilatScheduleBoard). Beda dengan fetchKilatSlotAvailability
+ * di atas: fungsi itu menghitung KAPASITAS (makanya membuang 'completed' dan
+ * tidak dibatasi tanggal); ini menampilkan RIWAYAT satu minggu (makanya
+ * 'completed' ikut, supaya minggu yang sudah lewat tidak kosong melompong).
+ * Jangan menyatukan keduanya — filter yang berbeda ini sengaja; mengubah salah
+ * satu tanpa yang lain akan menggeser diam-diam matematika kuota di
+ * KilatScheduleStep.
+ */
+export const fetchKilatSchedule = async (
+  fromYmd: string,
+  toYmd: string
+): Promise<KilatScheduleEntry[]> => {
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('id, title, full_name, start_date, kilat_slot_hour, submission_status, payment_status, slot_booked_by, slot_reserved_at, created_at')
+    .eq('distribution_type', 'kilat')
+    .gte('start_date', fromYmd)
+    .lte('start_date', toYmd)
+    .not('start_date', 'is', null)
+    .not('submission_status', 'in', '("rejected","spam")');
+
+  if (error) throw error;
+
+  return (data || [])
+    .filter((row: any) => holdsSlot({
+      id: row.id,
+      submissionId: row.id,
+      title: row.title || 'Untitled Ad',
+      startDate: row.start_date,
+      endDate: row.start_date,
+      status: row.submission_status,
+      paymentStatus: row.payment_status,
+      slotBookedBy: row.slot_booked_by,
+      slotReservedAt: row.slot_reserved_at,
+      adminNotes: null,
+    }))
+    .map((row: any) => ({
+      id: row.id,
+      title: row.title || 'Untitled Ad',
+      researcherName: row.full_name || 'Unknown',
+      hour: row.kilat_slot_hour == null ? null : Number(row.kilat_slot_hour),
+      ymd: String(row.start_date).slice(0, 10),
+      submissionStatus: row.submission_status,
+      paymentStatus: row.payment_status,
+      createdAt: row.created_at,
+    }));
+};
+
+/**
+ * Kanari untuk regresi sql/40: order Kilat seharusnya TIDAK PERNAH punya baris
+ * survey_pages (lihat sql/42_kilat_slots.sql). Kalau ini > 0, sql/40 kemungkinan
+ * besar dijalankan ulang sesudah sql/42 dan mengembalikan definisi lama
+ * ensure_survey_page() yang tidak memeriksa distribution_type.
+ */
+export const countKilatPagesLeak = async (): Promise<number> => {
+  const { count, error } = await supabase
+    .from('survey_pages')
+    .select('id, form_submissions!inner(distribution_type)', { count: 'exact', head: true })
+    .eq('form_submissions.distribution_type', 'kilat');
+  if (error) {
+    console.error('Gagal cek kebocoran halaman Kilat:', error);
+    return 0;
+  }
+  return count || 0;
 };
 
 

@@ -40,9 +40,10 @@ const STATUS_FILTER_OPTIONS = [
 interface InternalDashboardProps {
   hideAuth?: boolean;
   onLogout?: () => void;
+  focusSubmission?: { id: string; createdAt: string } | null;
 }
 
-export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashboardProps = {}) {
+export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission }: InternalDashboardProps = {}) {
   const { user, loading: authLoading, signOut } = useAuth();
   const [submissions, setSubmissions] = useState<SurveySubmission[]>([]);
   const [filteredSubmissions, setFilteredSubmissions] = useState<SurveySubmission[]>([]);
@@ -386,6 +387,27 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
       setOpenSubmissionId(null);
     }
   }, [openSubmissionId, openSubmission, loading]);
+
+  // Deep-link dari papan jadwal Kilat: arahkan filter ke order ini dulu...
+  useEffect(() => {
+    if (!focusSubmission) return;
+    setCurrentDate(new Date(focusSubmission.createdAt));
+    setSearchQuery(focusSubmission.id);
+    setCurrentPage(1);
+    setStatusFilter('all');
+    setDistTab('kilat');
+  }, [focusSubmission]);
+
+  // ...lalu baru buka drawer-nya SETELAH baris itu benar-benar termuat di
+  // `submissions`. Kalau digabung dengan effect di atas dalam satu tick, guard
+  // "tutup drawer kalau baris tidak ditemukan" (persis di atas effect ini) bisa
+  // menutupnya lagi sebelum fetch sempat selesai.
+  useEffect(() => {
+    if (!focusSubmission) return;
+    if (submissions.some((s) => s.id === focusSubmission.id)) {
+      setOpenSubmissionId(focusSubmission.id);
+    }
+  }, [focusSubmission, submissions]);
 
   // Client tier: fetched async against full Supabase history (not just current-month page)
   const [clientTier, setClientTier] = useState<'vvip' | 'vip' | 'returning' | 'new' | undefined>(undefined);
