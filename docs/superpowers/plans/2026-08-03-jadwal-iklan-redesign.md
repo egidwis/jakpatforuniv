@@ -16,8 +16,8 @@
 | Phase 0 | Cabut gerbang banner dari cron, hitung perpanjangan di kuota slot, 3 perbaikan kecil | ✅ **live di produksi** (`sql/36`–`39`, commit `05a2fa1`) |
 | Phase 1 | Auto-create + auto-publish halaman iklan dengan banner default | ✅ **live di produksi** (`sql/40`, commit `7ec7c28`) |
 | Phase 1B | Beri tahu jalur review-manual soal weekend/hari libur admin | ⬜ Backlog, tidak memblokir Phase 2 — beda file (`StepCheckout.tsx`, `airing-window.ts`) |
-| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 **Rencana ini** — Task 8 ✅, 8B-1 ✅ live, 8C ✅ kode (belum deploy), 9–12 ⬜ |
-| Phase 3 | Tab "Jadwal Iklan" terpadu di admin | ⬜ Setelah Phase 2 — butuh baris data yang setara, bukan adapter |
+| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 **Rencana ini** — Task 8 ✅, 8B-1 ✅ live, 8C ✅, 8D 🟡, 9–12 ⬜ |
+| Phase 3 | Tab "Jadwal Iklan" terpadu di admin | ⬜ Setelah Phase 2 — butuh baris data yang setara, bukan adapter. **Prasyarat: Task 8D** (`ad_schedules` harus mengenali Kilat lebih dulu) |
 | Phase 4 | Aktifkan **"jadwalkan iklan lagi" di dashboard user** | ⬜ Roadmap — lihat di bawah. **Prasyarat: `reward_pools` (Task 8B-2)** |
 | Phase 5 | Aktifkan **Kilat di dashboard user** | ⬜ Roadmap — setelah Phase 4 |
 
@@ -330,7 +330,7 @@ jadi satu implementasi (`get_batch_rewards_bulk`, `sql/44`). Konsekuensinya 8B-2
 mengubah **isi** satu fungsi, bukan dua tempat yang harus dijaga tetap sepakat.
 
 - [ ] **Jawab dulu:** di mana pool tinggal untuk 83 order berhadiah tanpa `start_date`
-- [ ] Buat tabel `reward_pools` (`sql/45`) + migrasi data dari
+- [ ] Buat tabel `reward_pools` (`sql/46`) + migrasi data dari
       `form_submissions.prize_per_winner` per `(submission_id, period_batch)`
 - [ ] Tulis ulang isi `get_batch_rewards_bulk` untuk membaca dari `reward_pools`
 - [ ] **Bekukan tanda tangan RPC `get_batch_rewards`** — nama dan daftar kolom kembalian
@@ -369,6 +369,64 @@ pihak ketiga. `survey_winners` yang berhenti terisi adalah serah terima yang dis
 - [x] Copot indikator "Select Winners" yang salah dari `PublishPageManagement` (2026-08-04, commit `49f7884`)
 - [x] Ganti nama tombol sesuai fungsinya (menampilkan responden, bukan memilih pemenang) (commit `49f7884`+`f872184`)
 - [x] Tandai `survey_winners` sebagai arsip di skema (komentar) dan di UI modal (`sql/43`, commit `2128084`+`e00ccf3` — **diterapkan & diverifikasi di produksi 2026-08-04**: anon 0 / user biasa 0 / admin 267)
+
+---
+
+## Task 8D: `ad_schedules` mengenali Kilat — **prasyarat Phase 3**
+
+> **Ditambahkan 2026-08-05.** Bukan bagian rencana asli; ditemukan saat menjawab
+> "bisakah lanjut ke Phase 3?". Jawabannya tidak, dan ini salah satu dari dua alasannya.
+
+`sql/41` mengangkat setiap `DATE` ke 15.00 WIB lewat `airing_instant_of_date()` — aturan
+yang benar untuk iklan regular. Kilat tidak tayang jam 15.00: ia didorong dalam empat
+gelombang push per hari kerja (08/11/14/17 WIB, `sql/42`), dan jamnya disimpan di kolom
+terpisah `form_submissions.kilat_slot_hour` justru karena `start_date` bertipe `DATE` dan
+`updateScheduleDates()` memaku semuanya ke 15.00.
+
+Cermin tidak pernah diberi tahu soal itu. Terukur 2026-08-05: **9 order Kilat berjadwal,
+semuanya tercermin sebagai jendela 15.00 → 15.00 WIB** — jam yang bukan gelombang Kilat
+sama sekali. Belum ada pembacanya jadi belum jadi bug hidup, tapi **Phase 3 dibangun persis
+di atas tabel ini**; dikerjakan tanpa perbaikan ini, tab "Jadwal Iklan" terpadu lahir
+langsung dengan jam Kilat yang salah di layar admin.
+
+Ditemukan sekalian, dan ditutup di task yang sama: **daftar `UPDATE OF` trigger
+`trg_ad_schedule_from_submission` (`sql/41` baris 302-306) tidak memuat
+`distribution_type` maupun `kilat_slot_hour`.** Hari ini laten — `updateKilatSchedule()`
+selalu ikut menulis `start_date` dan `convertDistributionType()` menulis `start_date: null`,
+jadi trigger tetap menyala lewat kolom lain — tapi ia lubang yang menganga permanen.
+
+**Pemetaan waktu barunya:**
+
+| Order | `start_date` / `end_date` di cermin |
+|---|---|
+| regular | `airing_instant_of_date()` → 15.00 WIB — **tidak berubah sedikit pun** |
+| kilat, gelombang ditugaskan | `kilat_instant_of(tanggal, jam)` → 08/11/14/17 WIB |
+| kilat, gelombang belum ditugaskan | 00.00 WIB pada tanggal itu, `kilat_slot_hour` NULL |
+
+**00.00 WIB untuk yang belum ditugaskan adalah keputusan sadar** (2026-08-05, 3 dari 9
+baris): ia bukan salah satu gelombang, jadi tidak bisa disalahartikan sebagai jadwal
+sungguhan dan tidak pernah menggelembungkan kuota gelombang mana pun; ia sortirnya paling
+atas di hari itu; dan barisnya **tetap terlihat** — order lunas yang menunggu penugasan
+justru yang paling perlu dilihat admin. Alternatif "08.00 (gelombang paling awal)" ditolak
+karena tidak bisa dibedakan dari gelombang 08.00 sungguhan; alternatif "kosongkan
+`start_date`" ditolak karena barisnya lenyap dari setiap pembaca berbasis rentang tanggal.
+`kilat_slot_hour IS NULL` adalah penanda sahnya.
+
+- [ ] `sql/45_ad_schedules_kilat.sql`: helper `kilat_instant_of(DATE, SMALLINT)`, kolom
+      `distribution_type` + `kilat_slot_hour` di `ad_schedules`, dua fungsi sync ditulis
+      ulang, trigger dibuat ulang dengan kedua kolom masuk `UPDATE OF`, backfill ulang
+- [ ] Uji: tiap baris Kilat bergelombang, jam WIB cermin **sama dengan** `kilat_slot_hour`
+- [ ] Uji: iklan regular **nol** bergeser — ulangi §8(3) `sql/41`, jam WIB tetap `15:00`
+- [ ] Uji: ubah `kilat_slot_hour` **tanpa menyentuh kolom lain** di dalam
+      `BEGIN … ROLLBACK` → cermin ikut berubah (sebelum `sql/45` uji ini gagal)
+- [ ] Uji: `fetchKilatSchedule()` (masih baca `form_submissions` langsung, jadi pembanding
+      independen) menunjuk gelombang yang sama dengan isi `ad_schedules`
+
+> **⚠️ Temuan di luar cakupan, butuh keputusan produk.** Ke-11 order Kilat punya
+> `prize_per_winner > 0`, tapi Kilat tidak pernah punya halaman iklan — jadi hadiahnya
+> **tidak pernah sampai ke platform pengundian lewat jalur mana pun**: `/api/respondents`
+> Mode 1 hanya melisting halaman terbit, Mode 2 dicari lewat slug halaman. Kalau responden
+> Kilat memang ikut diundi, ada lubang di sana yang tidak bisa ditutup migrasi.
 
 ---
 
@@ -481,7 +539,8 @@ tersimpan di riwayat transaksi. Mengubahnya membuat invoice lama dan baru berbed
 |---|---|---|
 | `sql/41_ad_schedules.sql` | 8 | Tabel `ad_schedules` + backfill + trigger dua arah |
 | `sql/44_batch_rewards_bulk.sql` | **8B-1** | `get_batch_rewards_bulk(UUID[])`; `get_batch_rewards` jadi pembungkusnya. Tanpa perubahan skema |
-| ~~`sql/42_reward_pools.sql`~~ ~~`sql/44_reward_pools.sql`~~ `sql/45_reward_pools.sql` | **8B-2** (ditunda) | Tabel `reward_pools`, tulis ulang isi agregasi. Nomor dikoreksi dua kali: `42` dipakai Kilat (`sql/42_kilat_slots.sql`, commit `c554880`), `43` dipakai Task 8C (`sql/43_survey_winners_archive.sql`), `44` dipakai 8B-1 |
+| `sql/45_ad_schedules_kilat.sql` | **8D** | `ad_schedules` mengenali gelombang Kilat; helper `kilat_instant_of()`; tutup lubang `UPDATE OF` trigger |
+| ~~`sql/42`~~ ~~`sql/44`~~ ~~`sql/45`~~ `sql/46_reward_pools.sql` | **8B-2** (ditunda) | Tabel `reward_pools`, tulis ulang isi agregasi. Nomornya bergeser tiap kali task lain lebih dulu butuh nomor: `42` dipakai Kilat (`sql/42_kilat_slots.sql`), `43` Task 8C, `44` Task 8B-1, `45` Task 8D. Ia terus tergeser karena memang terus ditunda — bukan kesalahan penomoran |
 
 ### Dimodifikasi (menurut task)
 | File | Task |
