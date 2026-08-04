@@ -16,19 +16,22 @@ membaca baris yang sama.
 
 | Fase | Isi | DB | Frontend |
 |---|---|---|---|
-| Phase 0 | Cabut gerbang banner, hitung perpanjangan di kuota slot, larang jadwal tumpang tindih | ✅ `sql/36`–`39` | ⬜ **belum deploy** |
-| Phase 1 | Auto-create + auto-publish halaman iklan dengan banner default | ✅ `sql/40` (+ `sql/42`: Kilat dikecualikan) | ⬜ **belum deploy** |
-| Kilat | Jembatan admin iklan→Kilat + slot 08/11/14/17 WIB hari kerja | ✅ `sql/42` | ⬜ **belum deploy** |
+| Phase 0 | Cabut gerbang banner, hitung perpanjangan di kuota slot, larang jadwal tumpang tindih | ✅ `sql/36`–`39` | ✅ deployed 2026-08-04 |
+| Phase 1 | Auto-create + auto-publish halaman iklan dengan banner default | ✅ `sql/40` (+ `sql/42`: Kilat dikecualikan) | ✅ deployed 2026-08-04 |
+| Kilat | Jembatan admin iklan→Kilat + slot 08/11/14/17 WIB hari kerja | ✅ `sql/42` | ✅ deployed 2026-08-04 |
+| Kilat — papan jadwal | Toggle Iklan/Kilat di Ads Schedule + tutup lubang Create Page utk Kilat | — | ⬜ **belum deploy** (`a4fc499`) |
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 selesai | ⬜ belum ada pembaca |
 | Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ |
 | Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ |
 
-**Satu hal yang paling penting kalau kamu kembali setelah lama:** DB sudah di
-`sql/42` sementara frontend produksi masih di `9ea82ef`. Tiga bug Phase 0 masih
-hidup di layar walau perbaikannya sudah ada di `main`, dan seluruh fitur Kilat
-belum kelihatan sama sekali. Deploy dari `main` menutup keduanya — lihat "Yang
-menunggu tindakan" di bawah.
+**Satu hal yang paling penting kalau kamu kembali setelah lama:** frontend
+sudah di-deploy dari `main` 2026-08-04 (laporan admin langsung, bukan lewat log
+build independen) — Phase 0/1 dan jembatan Kilat seharusnya sudah kelihatan di
+produksi. **Checklist uji ujung-ke-ujung di §0 di bawah belum dijalankan.** Di
+atas commit yang sudah dideploy itu ada satu batch baru yang **belum**
+di-deploy sama sekali (commit `a4fc499`): papan jadwal Kilat di halaman Ads
+Schedule, plus penutupan lubang "Create Page" untuk order Kilat — lihat §0B.
 
 ⚠️ **`sql/40` dan `sql/42` mendefinisikan `ensure_survey_page()` yang sama.**
 `sql/42` versinya yang benar (order Kilat tidak dapat halaman iklan). Kalau
@@ -38,7 +41,7 @@ menunggu tindakan" di bawah.
 
 ## Yang menunggu tindakan
 
-### 0. Uji jembatan Kilat setelah deploy ⬅️ baru
+### 0. Uji jembatan Kilat ujung-ke-ujung ⬅️ paling mendesak
 
 `sql/42` sudah diterapkan **dan diverifikasi** di produksi 2026-08-04:
 
@@ -49,10 +52,8 @@ menunggu tindakan" di bawah.
 - **nol halaman iklan menempel di order Kilat mana pun**, jadi tidak ada
   peninggalan `sql/40` yang perlu dibereskan.
 
-Frontend-nya ada di `main` commit `c554880` tapi **belum deploy** — sama seperti
-Phase 0/1. Jadi DB sudah siap, layarnya belum.
-
-Sesudah deploy, uji urutan ini di dashboard admin:
+Frontend commit `c554880` sudah **dideploy** 2026-08-04 (laporan admin). Yang
+**belum** dijalankan: urutan uji manual di dashboard admin:
 tab Regular Ads → **Jadikan Kilat** → tab Kilat → Reserve Slot (grid gelombang
 08/11/14/17, hari kerja saja) → Payment → Mark as Paid.
 
@@ -64,22 +65,51 @@ Perbaikannya: jalankan `sql/42` bagian 2 lagi.
 
 Sisa verifikasi ada di bagian bawah `sql/42_kilat_slots.sql`.
 
-### 1. Deploy frontend dari `main` ⬅️ paling mendesak
+### 0B. Papan jadwal Kilat di Ads Schedule ⬅️ baru, belum deploy
 
-Deploy dari `origin/main` apa pun HEAD-nya — commit setelah `32e5709` semuanya
-docs atau SQL, artefak build-nya tidak berubah. Isi deploy: 15 file, semuanya
-Phase 0/1, **tidak ada** yang berasal dari Phase 2. Rollback frontend = `9ea82ef`.
+Commit `a4fc499`. Halaman **Ads Schedule** sekarang punya toggle **Iklan |
+Kilat**: mode Kilat menampilkan papan mingguan (4 gelombang × Senin–Jumat)
+lintas semua order Kilat, dengan klik-untuk-buka-drawer ke order itu di tab
+Submissions (`fetchKilatSchedule` + `KilatScheduleBoard.tsx`).
 
-Setelah deploy, jalankan
+Sekalian menutup lubang nyata yang sebelumnya ada: order Kilat selalu muncul di
+kalender iklan (mode Iklan) sebagai kartu "Page belum dibuat" dengan tombol
+**Create Page** yang masih berfungsi. Mengkliknya insert langsung ke
+`survey_pages` lewat `PageBuilderModal` — melewati guard `sql/42` sepenuhnya
+(guard itu cuma hidup di trigger DB, bukan di jalur ini) dan menimpa jadwal
+Kilat ke 15.00 WIB. Ditutup dua lapis: `getPendingSlotsWithoutPage` tidak lagi
+menarik order Kilat, dan `PageBuilderModal.handleSave` menolak `submissionId`
+berjalur Kilat sebagai sabuk pengaman kedua.
+
+Diverifikasi: `npx tsc --noEmit` bersih (dibanding baseline sebelum perubahan
+ini — nol error baru), `npx vite build` sukses. **Belum diuji manual di
+browser.** Sebelum dianggap selesai:
+
+1. Order Kilat berjadwal aktif TIDAK lagi muncul di kalender iklan (mode Iklan)
+   dalam bentuk apa pun, dan tombol Create Page pada order **regular** tanpa
+   halaman tetap berfungsi seperti biasa.
+2. Mode Kilat: gelombang 08.00 tampil di baris 08.00 (bukan 15.00 seperti
+   kalender iklan); isi satu gelombang sampai 2/2 lalu cocokkan dengan grid di
+   `KilatScheduleStep` (dua layar harus sepakat); order tanpa
+   `kilat_slot_hour` muncul di baris "Tanpa Gelombang"; navigasi ke minggu
+   lampau tetap menampilkan order `completed`; Sabtu/Minggu tidak dirender.
+3. Klik entri dari order yang dibuat **bulan lalu** → pindah ke tab
+   Submissions, sub-tab Kilat, drawer terbuka dan **tetap terbuka** (kasus yang
+   gagal kalau bulan tidak ikut disetel bersama pencarian).
+
+### 1. Jalankan checklist Phase 0
+
+Sekarang deploy sudah terjadi, sisanya tinggal menjalankan
 [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md).
 Bagian **§2, §3, §5 wajib**; sisanya kalau sempat. Checklist itu sudah dikoreksi
 2026-08-04 — §8 dulu menyuruh memastikan Phase 1 *diam*, sekarang kebalikannya
 karena `sql/40` sudah aktif.
 
-Kenapa mendesak: yang tayang sekarang menjual kapasitas slot yang tidak ada
-(perpanjangan tidak terhitung), menagih insentif batch dua kali untuk jadwal
-ke-3+, dan bisa menggelapkan iklan yang sedang berjalan saat admin melakukan
-reschedule.
+Kenapa tetap penting dicek meski sudah deploy: sebelum deploy ini, yang tayang
+menjual kapasitas slot yang tidak ada (perpanjangan tidak terhitung), menagih
+insentif batch dua kali untuk jadwal ke-3+, dan bisa menggelapkan iklan yang
+sedang berjalan saat admin melakukan reschedule — checklist ini yang
+membuktikan ketiganya benar sudah tidak terjadi lagi di produksi.
 
 ### 2. Verifikasi Task 8 yang belum dijalankan
 
@@ -127,6 +157,15 @@ Sekalian menutup tiga lubang tagih di sisi admin — jalur user lewat
 Jam Kilat sebelumnya tidak pernah tersimpan: `start_date` bertipe `DATE` dan
 `updateScheduleDates()` memaku setiap jadwal ke 15.00 WIB. Karena itu kolom
 terpisah, dan `updateKilatSchedule()` menulis langsung tanpa lewat fungsi itu.
+
+### Kilat — papan jadwal di Ads Schedule, commit `a4fc499`
+
+Detail lengkap di §0B di atas. Ringkas: toggle Iklan/Kilat di halaman Ads
+Schedule (`KilatScheduleBoard.tsx` + `fetchKilatSchedule`/
+`countKilatPagesLeak` di `supabase.ts`), deep-link klik-entri → drawer order di
+Submissions, dan penutupan lubang "Create Page" untuk order Kilat di dua lapis
+(`getPendingSlotsWithoutPage` + guard di `PageBuilderModal.handleSave`).
+**Belum dideploy, belum diuji manual di browser** — hanya tsc + build.
 
 ### Phase 1 — `sql/40`, commit `7ec7c28`
 
@@ -215,6 +254,12 @@ git ls-tree -r --name-only main -- multi-step-form/src/components/status/
 4. **Rencana Phase 2 yang benar hanya versi `main`.** File senama pernah berisi
    rencana lain (restrukturisasi 5 tab admin + set `requires_banner_update` dari
    client) yang premisnya keliru dan sudah dibuang di commit `4759a79`.
+5. **`ad_schedules` (sql/41) tidak tahu apa-apa soal Kilat.** Read-model itu
+   belum punya kolom `distribution_type` maupun `kilat_slot_hour`, jadi order
+   Kilat tersimpan di sana sebagai jendela tayang 15.00 WIB biasa — salah.
+   Belum ada pembacanya sekarang jadi bukan bug hidup, tapi **Phase 3** (tab
+   "Jadwal Iklan" terpadu) akan dibangun di atas tabel ini dan akan mewarisi
+   kesalahan itu kalau tidak diperbaiki lebih dulu.
 
 ---
 
