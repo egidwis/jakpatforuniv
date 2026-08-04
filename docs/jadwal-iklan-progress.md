@@ -85,6 +85,23 @@ Diverifikasi: `npx tsc --noEmit` bersih (dibanding baseline sebelum perubahan
 ini — nol error baru), `npx vite build` sukses. **Belum diuji manual di
 browser.** Sebelum dianggap selesai:
 
+**Insiden nyata yang mengonfirmasi lubang ini benar ada** (ditemukan
+2026-08-04 lewat kanari `countKilatPagesLeak` sesaat setelah papan jadwal
+dijalankan admin): satu order Kilat lunas (`e9cb5944-3a24-4093-8621-b36d2a7fe8d9`,
+"JFSUHUD Pariwisata Sunda", `kilat_slot_hour` masih `null`) punya baris
+`survey_pages` (`f759f097-35ab-4d1b-b54b-e4c0b7e09faf`) dengan
+`is_published = false`. Dikonfirmasi lewat `select prosrc ilike '%kilat%' ...`
+bahwa guard `ensure_survey_page()` masih utuh di produksi saat itu — jadi
+BUKAN `sql/40` tertimpa ulang. `is_published = false` juga tidak cocok dengan
+insert trigger sql/40 yang selalu `TRUE` (baris 199). Kesimpulan: dibuat lewat
+tombol **Create Page** manual di Ads Schedule lama (persis lubang yang commit
+ini tutup), disimpan sebagai draft — karena tidak pernah `is_published = true`,
+tidak ada halaman Kilat yang benar-benar sempat live di feed aplikasi.
+Baris `f759f097-...` perlu dihapus manual (`delete from survey_pages where
+id = 'f759f097-35ab-4d1b-b54b-e4c0b7e09faf';`) — **belum dikonfirmasi
+terhapus** per catatan ini ditulis. Insiden ini memastikan risiko lubangnya
+nyata, bukan teoretis — memperkuat urgensi deploy `a4fc499`.
+
 1. Order Kilat berjadwal aktif TIDAK lagi muncul di kalender iklan (mode Iklan)
    dalam bentuk apa pun, dan tombol Create Page pada order **regular** tanpa
    halaman tetap berfungsi seperti biasa.
