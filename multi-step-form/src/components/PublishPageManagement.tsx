@@ -33,8 +33,11 @@ interface PageData {
         winner_count?: number;
     };
     owner_name?: string;
+    // survey_winners froze on 2026-05-05 (sql/43). This count has exactly one
+    // job left: gate the "Arsip Pemenang" button so it appears only for months
+    // that actually hold archived winners. It is NOT a progress indicator —
+    // the drawing itself moved to a third-party platform.
     current_winners_count?: number;
-    has_pending_proofs?: boolean;
     page_respondents?: { count: number }[];
     requires_banner_update?: boolean;
 }
@@ -236,35 +239,6 @@ export function PublishPageManagement() {
                     .select('page_id')
                     .in('page_id', pageIds);
 
-                const pagesNeedingProofsCheck = pagesWithWinners.filter(p => {
-                    const s = p.form_submissions;
-                    const hasRewards = !!s?.prize_per_winner && s.prize_per_winner > 0;
-                    return hasRewards && (s?.winner_count || 0) > 0;
-                }).map(p => p.id);
-
-                let pagesWithProofs = new Set<string>();
-                if (pagesNeedingProofsCheck.length > 0) {
-                    const chunkSize = 10;
-                    for (let i = 0; i < pagesNeedingProofsCheck.length; i += chunkSize) {
-                        const batch = pagesNeedingProofsCheck.slice(i, i + chunkSize);
-                        const promises = batch.map(id =>
-                            supabase
-                                .from('page_respondents')
-                                .select('page_id')
-                                .eq('page_id', id)
-                                .not('proof_url', 'is', null)
-                                .neq('proof_url', '')
-                                .limit(1)
-                        );
-                        const results = await Promise.all(promises);
-                        results.forEach(res => {
-                            if (res.data && res.data.length > 0) {
-                                pagesWithProofs.add(res.data[0].page_id);
-                            }
-                        });
-                    }
-                }
-
                 const winnerCounts: Record<string, number> = {};
                 if (winnersData) {
                     winnersData.forEach(w => {
@@ -276,7 +250,6 @@ export function PublishPageManagement() {
 
                 pagesWithWinners.forEach(p => {
                     p.current_winners_count = winnerCounts[p.id] || 0;
-                    p.has_pending_proofs = pagesWithProofs.has(p.id);
                 });
             }
 
@@ -800,44 +773,14 @@ export function PublishPageManagement() {
                                     <TableCell className="text-right border-y border-r border-gray-200 rounded-r-xl pr-4">
                                         <div className="flex justify-end gap-1.5 items-center pt-0.5">
                                             {page.submission_id && (
-                                                <>
-                                                    {(() => {
-                                                        const s = page.form_submissions;
-                                                        const hasRewards = !!s?.prize_per_winner && s.prize_per_winner > 0;
-                                                        const expectedWinners = hasRewards ? (s?.winner_count || 0) : 0;
-                                                        const currentWinners = page.current_winners_count || 0;
-
-                                                        // Provide visual cue if it needs winners
-                                                        const needsWinners = expectedWinners > 0 && currentWinners < expectedWinners;
-                                                        const isCompleted = expectedWinners > 0 && !needsWinners && !page.has_pending_proofs;
-
-                                                        return (
-                                                            <>
-                                                                {isCompleted && !needsWinners && (
-                                                                    <div title="Semua file bukti telah dibersihkan" className="flex items-center justify-center bg-green-50 text-green-600 rounded-full h-6 w-6 border border-green-200/60 shadow-sm shrink-0">
-                                                                        <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
-                                                                    </div>
-                                                                )}
-                                                                <Button
-                                                                    size="sm"
-                                                                    onClick={() => setActiveSubmissionPage(page)}
-                                                                    title={needsWinners ? "Select Winners" : "View Submissions & Winners"}
-                                                                    className={`h-8 px-4 text-white shadow-sm transition-all duration-300 flex items-center bg-blue-600 hover:bg-blue-700 ${
-                                                                        needsWinners ? "relative pr-7" : ""
-                                                                    }`}
-                                                                >
-                                                                    Submissions
-                                                                    {needsWinners && (
-                                                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-2 w-2">
-                                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
-                                                                        </span>
-                                                                    )}
-                                                                </Button>
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </>
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => setActiveSubmissionPage(page)}
+                                                    title="View respondents & proof files"
+                                                    className="h-8 px-4 text-white shadow-sm transition-all duration-300 flex items-center bg-blue-600 hover:bg-blue-700"
+                                                >
+                                                    Respondents
+                                                </Button>
                                             )}
 
                                             <Button
