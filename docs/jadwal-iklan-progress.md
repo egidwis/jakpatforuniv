@@ -32,6 +32,26 @@ menutup celah itu — lihat "Yang menunggu tindakan" di bawah.
 
 ## Yang menunggu tindakan
 
+### 0. Terapkan `sql/42` ⬅️ baru, memblokir fitur Kilat
+
+`sql/42_kilat_slots.sql` belum diterapkan. Dua isi, keduanya syarat jembatan
+"Jadikan Kilat" di dashboard admin (kode frontend-nya sudah di `main`):
+
+- kolom `form_submissions.kilat_slot_hour` (8/11/14/17, nullable) — tanpa ini
+  penjadwalan Kilat gagal menulis;
+- **`ensure_survey_page()` diganti** supaya `distribution_type = 'kilat'` tidak
+  lagi menerbitkan halaman iklan. Ini mengoreksi perilaku `sql/40` yang sudah
+  hidup di produksi: order Kilat lunas selama ini mendapat kartu iklan di feed
+  aplikasi lengkap dengan banner default dan satu tempat di `display_order` —
+  kapasitas tayang yang tidak dibayar siapa pun.
+
+⚠️ Jalankan pre-check di file itu lebih dulu (halaman Kilat yang terlanjur
+terbit). Guard-nya hanya mencegah halaman baru; yang sudah ada tetap tayang, dan
+apa yang harus dilakukan terhadapnya adalah keputusan manusia.
+
+Kalau `sql/40` suatu saat dijalankan ulang, jalankan `sql/42` lagi sesudahnya —
+`sql/40` akan mengembalikan definisi fungsi tanpa guard Kilat.
+
 ### 1. Deploy frontend dari `main` ⬅️ paling mendesak
 
 Deploy dari `origin/main` apa pun HEAD-nya — commit setelah `32e5709` semuanya

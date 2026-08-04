@@ -134,6 +134,69 @@ export function ReserveSlotAction({
   );
 }
 
+interface DistributionActionProps {
+  submission: SurveySubmission;
+  existingPage?: ExistingPage;
+  isConverting: boolean;
+  onConvert: (target: 'regular' | 'kilat') => void;
+}
+
+/**
+ * Jembatan admin antara jalur iklan regular dan JFU Kilat, untuk user yang
+ * terlanjur submit sebagai iklan biasa lalu ingin pindah.
+ *
+ * Satu-satunya penolakan keras adalah halaman iklan yang sudah published:
+ * order itu sudah tayang di feed aplikasi Jakpat, dan memindahkan jalurnya
+ * meninggalkan kartu iklan hidup untuk order yang tidak lagi membayarnya.
+ * Kondisi lain (sudah lunas, ada invoice pending) hanya diperingatkan di dialog
+ * konfirmasi — itu justru kasus yang paling sering perlu dipindah.
+ */
+export function DistributionAction({
+  submission,
+  existingPage,
+  isConverting,
+  onConvert,
+}: DistributionActionProps) {
+  const isKilat = submission.distribution_type === 'kilat';
+  const isBlocked = !!existingPage?.is_published;
+  const target: 'regular' | 'kilat' = isKilat ? 'regular' : 'kilat';
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="w-full">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isBlocked || isConverting}
+              onClick={() => onConvert(target)}
+              className={`w-full justify-start h-8 text-xs font-medium shadow-sm transition-all ${isBlocked
+                ? 'text-gray-400 border-gray-100 bg-gray-50 cursor-not-allowed'
+                : isKilat
+                  ? 'text-gray-600 hover:text-blue-600 border-gray-200 hover:border-blue-200 bg-white'
+                  : 'text-amber-700 hover:text-amber-800 border-amber-200 hover:border-amber-300 bg-amber-50/60 hover:bg-amber-50'
+                }`}
+            >
+              <Zap className={`w-3.5 h-3.5 mr-2 shrink-0 ${isBlocked ? 'text-gray-400' : isKilat ? 'text-gray-400' : 'fill-amber-500 text-amber-500'}`} />
+              {isConverting ? 'Memindahkan...' : isKilat ? 'Kembalikan ke Iklan Regular' : 'Jadikan Kilat'}
+            </Button>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[260px]">
+          <p className="text-xs">
+            {isBlocked
+              ? 'Halaman iklan sudah published — tarik atau sembunyikan halamannya dulu.'
+              : isKilat
+                ? 'Kembali ke iklan regular. Slot Kilat dilepas dan harga dihitung ulang dengan rumus regular.'
+                : 'Pindahkan ke distribusi Kilat. Slot regular dilepas dan harga dihitung ulang jadi harga Kilat.'}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 interface PaymentActionProps extends ActionBaseProps {
   paymentData: PaymentState;
   onOpenPayment: (submission: SurveySubmission) => void;

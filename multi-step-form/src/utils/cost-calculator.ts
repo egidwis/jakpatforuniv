@@ -39,6 +39,19 @@ export function isManualVerificationVoucher(voucherCode: string | undefined): bo
 }
 
 /**
+ * Add-on JFU Kilat. JFUSUHUD adalah satu-satunya voucher yang menurunkannya —
+ * ia memang dijual sebagai "diskon 10% ATAU upgrade Kilat", bukan keduanya.
+ *
+ * Dipakai di tiga tempat yang harus selalu sepakat: calculateTotalCost (wizard
+ * user), initializeInvoiceItems (invoice manual admin), dan
+ * convertDistributionType (perhitungan ulang saat admin mengubah iklan jadi
+ * Kilat). Sebelum helper ini ada, hanya yang pertama yang benar.
+ */
+export function getKilatAddonCost(voucherCode: string | undefined): number {
+  return voucherCode?.toUpperCase() === 'JFUSUHUD' ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST;
+}
+
+/**
  * Menghitung biaya iklan berdasarkan jumlah pertanyaan dan durasi
  * @param questionCount Jumlah pertanyaan dalam survei
  * @param duration Durasi iklan dalam hari
@@ -296,8 +309,7 @@ export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
     // Kilat: base rate (no duration multiplier) + add-on + incentive
     const adCostBase = calculateAdCostPerDay(formData.questionCount); // 1x only
     const incentiveCost = calculateIncentiveCost(formData.winnerCount, formData.prizePerWinner);
-    const isVoucherKilat = formData.voucherCode?.toUpperCase() === 'JFUSUHUD';
-    const kilatAddon = isVoucherKilat ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST;
+    const kilatAddon = getKilatAddonCost(formData.voucherCode);
     // No discount applied on top of Kilat add-on
     const subtotal = adCostBase + kilatAddon + incentiveCost;
     const ppn = calculatePpn(subtotal);

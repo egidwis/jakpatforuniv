@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar } from 'lucide-react';
-import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, supabase } from '../utils/supabase';
+import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, convertDistributionType, supabase } from '../utils/supabase';
 import { fetchProfileNames } from '../utils/profileNames';
 import { emailLocalPart } from './customers/types';
 import { useAuth } from '../context/AuthContext';
@@ -214,6 +214,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
           slot_reserved_at: sub.slot_reserved_at,
           admin_notes: sub.admin_notes,
           distribution_type: sub.distribution_type,
+          kilat_slot_hour: sub.kilat_slot_hour,
           has_transactions: false, // Default, will verify below
         }));
 
@@ -499,6 +500,32 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     }
   };
 
+  /**
+   * Jembatan iklan regular ↔ JFU Kilat. Setelah konversi, baris berpindah tab
+   * sendiri — filter distTab membaca distribution_type dari data yang dimuat
+   * ulang, jadi tidak ada state tab yang perlu disentuh di sini.
+   *
+   * Dialog konfirmasinya sudah menjelaskan konsekuensinya (jadwal dilepas, harga
+   * dihitung ulang); yang tersisa di sini hanya menjalankan dan memuat ulang.
+   */
+  const handleConvertDistribution = async (submission: SurveySubmission, target: 'regular' | 'kilat') => {
+    try {
+      const { totalCost } = await convertDistributionType(submission.id, target);
+      // Drawer ditutup: submission yang terbuka sekarang ada di tab lain, dan
+      // membiarkannya terbuka menampilkan aksi milik jalur yang sudah ditinggalkan.
+      setOpenSubmissionId(null);
+      await loadSubmissions();
+      toast.success(
+        target === 'kilat'
+          ? `Dipindahkan ke JFU Kilat — harga jadi Rp ${totalCost.toLocaleString('id-ID')}. Pilih slot Kilat di tab Kilat.`
+          : `Dikembalikan ke iklan regular — harga jadi Rp ${totalCost.toLocaleString('id-ID')}. Reserve slot ulang di tab Regular Ads.`
+      );
+    } catch (error: any) {
+      console.error('Gagal memindahkan jalur distribusi:', error);
+      toast.error(error?.message || 'Gagal memindahkan jalur distribusi');
+    }
+  };
+
   const executeStatusUpdate = async (
     submissionId: string,
     newStatus: string,
@@ -721,6 +748,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
     onOpenPageBuilder: handleOpenPageBuilder,
     onOpenSchedule: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('schedule'); },
     onOpenPayment: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('payment'); },
+    onConvertDistribution: handleConvertDistribution,
     onExtendCreated: loadSubmissions,
   };
 
