@@ -155,10 +155,12 @@ di titik mana pun tanpa merusak produksi.
 
 ### Task 8B-1 — satu sumber angka hadiah, dan top-up jadi mulus
 
-> **✅ SELESAI & LIVE.** `sql/44` diterapkan ke produksi 2026-08-04; kode di-merge ke `main`
-> (fast-forward, 7 commit `01ef96a`..`d730571`) dan **dideploy 2026-08-05**. Sembilan dari
-> sepuluh verifikasi lolos di produksi; satu-satunya sisa adalah uji top-up ujung ke ujung,
-> yang butuh transaksi nyata. Detail hasilnya di `docs/jadwal-iklan-progress.md`.
+> **✅ SELESAI & LIVE, SELURUH VERIFIKASI LOLOS.** `sql/44` diterapkan ke produksi
+> 2026-08-04; kode di-merge ke `main` (fast-forward, 7 commit `01ef96a`..`d730571`) dan
+> **dideploy 2026-08-05**. Kesepuluh verifikasi lolos, termasuk uji top-up ujung ke ujung
+> yang dijalankan admin di dashboard produksi hari itu juga — jalur top-up akhirnya terlihat
+> bergerak dari invoice sampai badge di halaman publik, sesuatu yang belum pernah terjadi
+> sepanjang umur sistem. Detail hasilnya di `docs/jadwal-iklan-progress.md`.
 
 Agregasi batch ditulis **dua kali** dan keduanya sudah berbeda:
 
@@ -225,11 +227,11 @@ pernah dipakai; **harus tertutup sebelum Phase 4 membukanya untuk user.**
       Diperkuat 2026-08-05 lewat jalur yang sebenarnya dipakai browser: POST
       `/rest/v1/rpc/get_batch_rewards` dengan **anon key** → `200`, nominal cocok dengan kolom
       mentah pada tiga halaman uji.
-- [ ] Uji top-up ujung ke ujung: invoice pakai qty pool → dibayar → badge "Total Reward" di
+- [x] Uji top-up ujung ke ujung: invoice pakai qty pool → dibayar → badge "Total Reward" di
       halaman publik **naik** → `/api/respondents` ikut naik → `requires_banner_update`
-      menyala — **satu-satunya yang belum dijalankan.** Butuh transaksi nyata di dashboard
-      admin, tidak bisa dibuktikan read-only. Sampai ini jalan, jalur top-up sudah benar
-      **secara pembacaan** tapi belum pernah dilihat bergerak ujung ke ujung.
+      menyala — **dijalankan admin di dashboard produksi 2026-08-05, dilaporkan berhasil.**
+      Ini satu-satunya uji yang membuktikan tujuan task, dan satu-satunya yang tidak bisa
+      dibuktikan read-only.
 
 **Yang berubah di mata konsumen API.** Mode 1 mulai menjawab sama dengan Mode 2; setiap
 perbedaan adalah **Mode 1 dikoreksi**, Mode 2 tidak bergerak. Bentuk respons tidak berubah
