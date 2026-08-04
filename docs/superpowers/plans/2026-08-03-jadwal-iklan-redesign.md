@@ -16,7 +16,7 @@
 | Phase 0 | Cabut gerbang banner dari cron, hitung perpanjangan di kuota slot, 3 perbaikan kecil | ✅ **live di produksi** (`sql/36`–`39`, commit `05a2fa1`) |
 | Phase 1 | Auto-create + auto-publish halaman iklan dengan banner default | ✅ **live di produksi** (`sql/40`, commit `7ec7c28`) |
 | Phase 1B | Beri tahu jalur review-manual soal weekend/hari libur admin | ⬜ Backlog, tidak memblokir Phase 2 — beda file (`StepCheckout.tsx`, `airing-window.ts`) |
-| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | ⬜ **Rencana ini** |
+| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 **Rencana ini** — Task 8 ✅, 8B-1 ✅ live, 8C ✅ kode (belum deploy), 9–12 ⬜ |
 | Phase 3 | Tab "Jadwal Iklan" terpadu di admin | ⬜ Setelah Phase 2 — butuh baris data yang setara, bukan adapter |
 | Phase 4 | Aktifkan **"jadwalkan iklan lagi" di dashboard user** | ⬜ Roadmap — lihat di bawah. **Prasyarat: `reward_pools` (Task 8B-2)** |
 | Phase 5 | Aktifkan **Kilat di dashboard user** | ⬜ Roadmap — setelah Phase 4 |
@@ -155,6 +155,11 @@ di titik mana pun tanpa merusak produksi.
 
 ### Task 8B-1 — satu sumber angka hadiah, dan top-up jadi mulus
 
+> **✅ SELESAI & LIVE.** `sql/44` diterapkan ke produksi 2026-08-04; kode di-merge ke `main`
+> (fast-forward, 7 commit `01ef96a`..`d730571`) dan **dideploy 2026-08-05**. Sembilan dari
+> sepuluh verifikasi lolos di produksi; satu-satunya sisa adalah uji top-up ujung ke ujung,
+> yang butuh transaksi nyata. Detail hasilnya di `docs/jadwal-iklan-progress.md`.
+
 Agregasi batch ditulis **dua kali** dan keduanya sudah berbeda:
 
 | | SQL `get_batch_rewards` (`sql/37`) | JS `buildBatches()` (`respondents.js:111`) |
@@ -193,28 +198,38 @@ benar dari RPC, tapi baris 350 membangun invoice dengan `currentWinnerCount` —
 pemenang order **induk**, bukan pool batch tujuan. Belum pernah meledak karena top-up belum
 pernah dipakai; **harus tertutup sebelum Phase 4 membukanya untuk user.**
 
-- [ ] `sql/44_batch_rewards_bulk.sql`: `get_batch_rewards_bulk(UUID[])` dengan logika
+- [x] `sql/44_batch_rewards_bulk.sql`: `get_batch_rewards_bulk(UUID[])` dengan logika
       `sql/37` **persis** (hanya `submission_id` ditambahkan ke kembalian), lalu
       `get_batch_rewards` jadi pembungkus tipis di atasnya — satu implementasi di seluruh
-      sistem. **Tanpa perubahan skema, tanpa satu baris data tersentuh.**
-- [ ] **Bekukan tanda tangan RPC `get_batch_rewards`** — nama, argumen, dan daftar kolom
+      sistem. **Tanpa perubahan skema, tanpa satu baris data tersentuh.** (commit `7915506`,
+      diterapkan ke produksi 2026-08-04; dikonfirmasi 2026-08-05 `prosrc` `get_batch_rewards`
+      memang memanggil versi bulk)
+- [x] **Bekukan tanda tangan RPC `get_batch_rewards`** — nama, argumen, dan daftar kolom
       kembalian tidak boleh berubah
-- [ ] Mode 1 `respondents.js` memanggil RPC yang sama dengan Mode 2; `buildBatches()`
-      (111-176) dan pengambilan extends massal (92-108) dihapus
-- [ ] `ExtendSection.initializePaymentItems` memakai `poolWinnerCount` untuk qty item
+- [x] Mode 1 `respondents.js` memanggil RPC yang sama dengan Mode 2; `buildBatches()`
+      (111-176) dan pengambilan extends massal (92-108) dihapus (commit `f80b32b`)
+- [x] `ExtendSection.initializePaymentItems` memakai `poolWinnerCount` untuk qty item
       "Additional Prize per Winner" (fallback `currentWinnerCount` hanya bila RPC diam)
-- [ ] `SurveyPage.tsx` + `functions/api/surveys.js` membaca agregat batch, bukan kolom
-      mentah
-- [ ] Uji: `/api/respondents` Mode 1 vs Mode 2 untuk survei yang sama → blok `batches`
-      identik field demi field
-- [ ] Uji kontrak: `pg_get_function_result('get_batch_rewards'::regproc)` sebelum & sesudah
+      (commit `90364ad`)
+- [x] `SurveyPage.tsx` + `functions/api/surveys.js` membaca agregat batch, bukan kolom
+      mentah (commit `de66959`)
+- [x] Uji: `/api/respondents` Mode 1 vs Mode 2 untuk survei yang sama → blok `batches`
+      identik field demi field — **2026-08-05 di produksi: 43 slug diuji (10 batch berjalan
+      + 30 sampel lampau + 3 halaman pengumuman), 43 identik, 0 beda**
+- [x] Uji kontrak: `pg_get_function_result('get_batch_rewards'::regproc)` sebelum & sesudah
       → string identik
-- [ ] Uji value-neutrality: 266 halaman bersurvei → **0** nominal berubah
-- [ ] Uji hak akses `anon` lewat `SET LOCAL ROLE` di dalam `BEGIN…ROLLBACK` (SELECT biasa
-      di SQL Editor jalan sebagai `postgres`, tidak membuktikan apa pun — pelajaran `sql/43`)
+- [x] Uji value-neutrality: 266 halaman bersurvei → **0** nominal berubah (diulang pasca-deploy
+      2026-08-05: tetap 266 / 0 berubah / 0 kehilangan angka)
+- [x] Uji hak akses `anon` lewat `SET LOCAL ROLE` di dalam `BEGIN…ROLLBACK` (SELECT biasa
+      di SQL Editor jalan sebagai `postgres`, tidak membuktikan apa pun — pelajaran `sql/43`).
+      Diperkuat 2026-08-05 lewat jalur yang sebenarnya dipakai browser: POST
+      `/rest/v1/rpc/get_batch_rewards` dengan **anon key** → `200`, nominal cocok dengan kolom
+      mentah pada tiga halaman uji.
 - [ ] Uji top-up ujung ke ujung: invoice pakai qty pool → dibayar → badge "Total Reward" di
       halaman publik **naik** → `/api/respondents` ikut naik → `requires_banner_update`
-      menyala
+      menyala — **satu-satunya yang belum dijalankan.** Butuh transaksi nyata di dashboard
+      admin, tidak bisa dibuktikan read-only. Sampai ini jalan, jalur top-up sudah benar
+      **secara pembacaan** tapi belum pernah dilihat bergerak ujung ke ujung.
 
 **Yang berubah di mata konsumen API.** Mode 1 mulai menjawab sama dengan Mode 2; setiap
 perbedaan adalah **Mode 1 dikoreksi**, Mode 2 tidak bergerak. Bentuk respons tidak berubah
@@ -420,16 +435,18 @@ dashboard admin). Setelah semuanya pindah dan stabil satu siklus rilis:
   Phase 0 yang menggabungkan dua sumber jadi tidak perlu lagi;
 - `get_page_active_period` tidak lagi punya dua jalur (parent vs extend);
 - `form_submissions_extend` disisakan sebagai **view** kompatibilitas, baru dihapus
-  setelah satu siklus rilis tanpa keluhan. **`respondents.js` membaca tabel ini
-  langsung** (sekitar baris 96-100) — view wajib ada sebelum tabel aslinya disentuh,
-  bukan sesudah;
+  setelah satu siklus rilis tanpa keluhan — view wajib ada sebelum tabel aslinya
+  disentuh, bukan sesudah. **Diperkecil oleh 8B-1 (2026-08-05):** `respondents.js`
+  tidak lagi membacanya sama sekali; query massalnya diganti panggilan RPC. Sisa
+  pembaca serverless tinggal `functions/api/storage-cleanup.js:74` dan
+  `functions/api/doku/webhook.js:497,516`;
 - kolom jadwal di `form_submissions` ditandai deprecated (jangan buru-buru di-drop — ada
   data historis dan integrasi yang belum tentu terpetakan).
 
 - [ ] Pindahkan `fetchSlotAvailability` ke satu query atas `ad_schedules`
 - [ ] Pindahkan `get_page_active_period` (SQL)
-- [ ] Buat view kompatibilitas `form_submissions_extend`, verifikasi `respondents.js`
-      tetap jalan tanpa perubahan
+- [ ] Buat view kompatibilitas `form_submissions_extend`, verifikasi `storage-cleanup.js`
+      dan `doku/webhook.js` tetap jalan tanpa perubahan
 - [ ] Tandai kolom jadwal lama di `form_submissions` sebagai deprecated (komentar skema)
 - [ ] Setelah satu siklus rilis tanpa keluhan: hapus tabel `form_submissions_extend` asli
 
