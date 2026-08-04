@@ -1075,8 +1075,11 @@ function PaymentTab({
   const adCost = isKilat
     ? calculateAdCostPerDay(submission.questionCount || 0)
     : calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
-  const discount = calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
-  const finalAdCost = Math.max(0, adCost - discount + kilatAddon);
+  const kilatAddon = isKilat ? getKilatAddonCost(submission.voucher_code) : 0;
+  const discount = isKilat
+    ? 0
+    : calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
+  const finalAdCost = adCost - discount + kilatAddon;
   const subtotal = finalAdCost + incentiveCost;
   const ppn = calculatePpn(subtotal);
   const grandTotal = subtotal + ppn;
