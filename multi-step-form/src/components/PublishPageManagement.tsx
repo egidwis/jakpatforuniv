@@ -95,17 +95,11 @@ export function PublishPageManagement() {
     const [periodWinners, setPeriodWinners] = useState<{
         pageTitle: string;
         pageId: string;
-        rewardAmount: number;
         winners: {
             jakpat_id: string;
-            user_id: number | null;
-            email: string | null;
             respondent_name: string | null;
             ewallet_provider: string | null;
             e_wallet_number: string | null;
-            ktp_number: string | null;
-            city: string | null;
-            province: string | null;
             reward_amount: number | null;
         }[];
     }[]>([]);
@@ -134,7 +128,6 @@ export function PublishPageManagement() {
                 grouped[p.id] = {
                     pageTitle: p.title,
                     pageId: p.id,
-                    rewardAmount: p.form_submissions?.prize_per_winner || 0,
                     winners: [],
                 };
             });
@@ -143,14 +136,9 @@ export function PublishPageManagement() {
                 if (!grouped[w.page_id]) return;
                 grouped[w.page_id].winners.push({
                     jakpat_id: w.jakpat_id,
-                    user_id: null,
-                    email: null,
                     respondent_name: w.respondent_name,
                     ewallet_provider: w.ewallet_provider,
                     e_wallet_number: w.e_wallet_number,
-                    ktp_number: null,
-                    city: null,
-                    province: null,
                     reward_amount: w.reward_amount,
                 });
             });
@@ -167,20 +155,16 @@ export function PublishPageManagement() {
 
     const exportPeriodWinnersCSV = useCallback(() => {
         if (periodWinners.length === 0) return;
-        const headers = ['Judul Page', 'Jakpat ID', 'User ID', 'Email', 'Nama', 'Provider E-Wallet', 'No. E-Wallet', 'NIK/NPWP', 'Lokasi', 'Nominal'];
+        const headers = ['Judul Page', 'Jakpat ID', 'Nama', 'Provider E-Wallet', 'No. E-Wallet', 'Nominal'];
         const rows: string[][] = [];
         periodWinners.forEach(group => {
             group.winners.forEach(w => {
                 rows.push([
                     group.pageTitle,
                     w.jakpat_id,
-                    String(w.user_id ?? ''),
-                    w.email ?? '',
                     w.respondent_name ?? '',
                     w.ewallet_provider ?? '',
                     w.e_wallet_number ?? '',
-                    w.ktp_number ?? '',
-                    [w.city, w.province].filter(Boolean).join(', '),
                     String(w.reward_amount ?? ''),
                 ]);
             });
@@ -454,6 +438,7 @@ export function PublishPageManagement() {
                                 variant="outline"
                                 size="sm"
                                 disabled={periodWinnersLoading}
+                                title="Arsip — data pemenang berhenti 5 Mei 2026"
                                 className="h-9 text-xs font-semibold border-amber-200 text-amber-700 hover:bg-amber-50 bg-white shadow-sm"
                             >
                                 {periodWinnersLoading ? (
@@ -461,7 +446,7 @@ export function PublishPageManagement() {
                                 ) : (
                                     <Trophy className="w-4 h-4 mr-1.5" />
                                 )}
-                                Lihat Pemenang
+                                Arsip Pemenang
                             </Button>
                         )}
                         <Button
@@ -841,7 +826,7 @@ export function PublishPageManagement() {
                         <DialogTitle className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Trophy className="w-5 h-5 text-amber-500" />
-                                <span>Daftar Pemenang — {formatMonth(selectedMonth)}</span>
+                                <span>Arsip Pemenang — {formatMonth(selectedMonth)}</span>
                             </div>
                             <Button
                                 variant="outline"
@@ -855,6 +840,15 @@ export function PublishPageManagement() {
                             </Button>
                         </DialogTitle>
                     </DialogHeader>
+                    <div className="shrink-0 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>
+                            <strong className="font-semibold">Arsip beku.</strong> Pengundian pindah ke platform
+                            pihak ketiga sejak 5 Mei 2026 — tabel <code>survey_winners</code> berhenti terisi sejak
+                            saat itu dan tidak akan bertambah. Daftar di bawah hanya rujukan periode lama;
+                            pemenang yang berlaku ada di platform pihak ketiga.
+                        </span>
+                    </div>
                     <div className="flex-1 overflow-auto space-y-5 pr-1">
                         {periodWinners.length === 0 ? (
                             <div className="text-center text-gray-400 py-12">Tidak ada pemenang ditemukan.</div>
@@ -872,12 +866,8 @@ export function PublishPageManagement() {
                                         <TableHeader>
                                             <TableRow className="text-xs hover:bg-transparent">
                                                 <TableHead className="text-xs font-semibold">Jakpat ID</TableHead>
-                                                <TableHead className="text-xs font-semibold">User ID</TableHead>
-                                                <TableHead className="text-xs font-semibold">Email</TableHead>
                                                 <TableHead className="text-xs font-semibold">Nama</TableHead>
                                                 <TableHead className="text-xs font-semibold">E-Wallet</TableHead>
-                                                <TableHead className="text-xs font-semibold">NIK/NPWP</TableHead>
-                                                <TableHead className="text-xs font-semibold">Lokasi</TableHead>
                                                 <TableHead className="text-xs font-semibold text-right">Nominal</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -885,12 +875,8 @@ export function PublishPageManagement() {
                                             {group.winners.map((w, i) => (
                                                 <TableRow key={`${group.pageId}-${w.jakpat_id}-${i}`} className="hover:bg-gray-50/50">
                                                     <TableCell className="text-xs font-mono">{w.jakpat_id}</TableCell>
-                                                    <TableCell className="text-xs font-mono text-gray-600">{w.user_id ?? '—'}</TableCell>
-                                                    <TableCell className="text-xs text-gray-600 max-w-[160px] truncate" title={w.email || ''}>{w.email || '—'}</TableCell>
                                                     <TableCell className="text-sm font-medium text-gray-900 whitespace-nowrap">{w.respondent_name || '—'}</TableCell>
                                                     <TableCell className="text-xs font-mono text-gray-700">{w.ewallet_provider ? `${w.ewallet_provider} — ${w.e_wallet_number || ''}` : '—'}</TableCell>
-                                                    <TableCell className="text-xs font-mono text-gray-600">{w.ktp_number || '—'}</TableCell>
-                                                    <TableCell className="text-xs text-gray-600 whitespace-nowrap">{[w.city, w.province].filter(Boolean).join(', ') || '—'}</TableCell>
                                                     <TableCell className="text-sm font-semibold text-gray-700 text-right whitespace-nowrap">Rp {(w.reward_amount || 0).toLocaleString('id-ID')}</TableCell>
                                                 </TableRow>
                                             ))}
