@@ -5,6 +5,7 @@ import { Loader2, Download, CheckCircle2, Clock, ExternalLink, ShieldCheck } fro
 import { Button } from '@/components/ui/button';
 import { terbilangCapitalized } from '../utils/terbilang';
 import { formatPaymentChannel } from '../utils/paymentChannel';
+import { calculatePpn } from '../utils/cost-calculator';
 import jakpatLogo from '../assets/Jakpat Navbar Logo.webp';
 
 interface InvoiceItem {
@@ -57,7 +58,6 @@ function shortDocCode(paymentId?: string | null): string {
     const raw = (paymentId || '').trim();
     if (!raw) return 'XXXXXXXX';
 
-    // Strip known leading prefixes (longest first so JFU-INV- wins over JFU-).
     let rest = raw;
     for (const prefix of ['JFU-INV-', 'JFU-', 'sim_doku_', 'sim_']) {
         if (rest.toLowerCase().startsWith(prefix.toLowerCase())) {
@@ -168,18 +168,6 @@ export function InvoicePage() {
     // ---- Derived state -----------------------------------------------------
     const isPaid = ['completed', 'paid'].includes((data.status || '').toLowerCase());
 
-    // PPN breakdown. Invoices created before PPN have ppn_amount = null → render
-    // as total-only (no PPN line, no retroactive change to a settled receipt).
-    const hasPpn = data.ppn_amount != null;
-    const ppnAmount = data.ppn_amount ?? 0;
-    // The pre-tax base: prefer the stored subtotal, else derive it (amount − PPN).
-    const subtotalValue = data.subtotal ?? (data.amount - ppnAmount);
-
-    // Line items are pre-tax. For the self-service fallback (single generic line,
-    // no note), show the DPP when PPN applies so items sum to the subtotal, not
-    // the grand total (which would double-count PPN against the separate line).
-    const fallbackLineTotal = hasPpn ? subtotalValue : data.amount;
-
     // Parse line items from the transaction note (JSON), with a safe fallback.
     let items: InvoiceItem[] = [];
     try {
@@ -187,14 +175,37 @@ export function InvoicePage() {
             const parsed = JSON.parse(data.note);
             items = parsed.items || [];
         } else {
-            items = [{ category: 'Pembayaran', price: fallbackLineTotal, qty: 1 }];
+            items = [{ category: 'Pembayaran', price: data.subtotal ?? data.amount, qty: 1 }];
         }
     } catch (e) {
-        items = [{ category: 'Pembayaran', price: fallbackLineTotal, qty: 1 }];
+        items = [{ category: 'Pembayaran', price: data.subtotal ?? data.amount, qty: 1 }];
     }
     if (items.length === 0) {
-        items = [{ category: 'Pembayaran', price: fallbackLineTotal, qty: 1 }];
+        items = [{ category: 'Pembayaran', price: data.subtotal ?? data.amount, qty: 1 }];
     }
+
+    // Normalize any stale Kilat Add-on item that has 250.000 price to 200.000
+    let itemsWereCorrected = false;
+    items = items.map((item) => {
+        if ((item.name === 'Add-on JFU Kilat' || item.category === 'Add-on JFU Kilat') && item.price === 250000) {
+            itemsWereCorrected = true;
+            return { ...item, price: 200000 };
+        }
+        return item;
+    });
+
+    const itemsSubtotal = items.reduce((sum, item) => sum + (item.price * (item.qty || 1)), 0);
+    const subtotalValue = itemsWereCorrected
+        ? itemsSubtotal
+        : (data.subtotal ?? (data.amount - (data.ppn_amount ?? 0)));
+    const ppnAmount = itemsWereCorrected
+        ? calculatePpn(subtotalValue)
+        : (data.ppn_amount ?? 0);
+    const grandTotal = itemsWereCorrected
+        ? (subtotalValue + ppnAmount)
+        : data.amount;
+
+    const hasPpn = data.ppn_amount != null || itemsWereCorrected;
 
     // ---- Formatters --------------------------------------------------------
     const formatCurrency = (amount: number) =>
@@ -407,10 +418,10 @@ export function InvoicePage() {
                         )}
                         <div className="print-exact w-full sm:w-[320px] bg-slate-900 text-white rounded-xl px-5 py-4 flex justify-between items-center">
                             <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">Total</span>
-                            <span className="font-bold text-2xl tabular">{formatCurrency(data.amount)}</span>
+                            <span className="font-bold text-2xl tabular">{formatCurrency(grandTotal)}</span>
                         </div>
                         <p className="w-full sm:w-[320px] text-right text-xs italic text-gray-500 mt-2.5 leading-relaxed">
-                            Terbilang: {terbilangCapitalized(data.amount)}
+                            Terbilang: {terbilangCapitalized(grandTotal)}
                         </p>
                     </div>
 
