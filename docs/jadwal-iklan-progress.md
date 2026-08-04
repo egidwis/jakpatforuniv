@@ -40,9 +40,17 @@ menunggu tindakan" di bawah.
 
 ### 0. Uji jembatan Kilat setelah deploy ⬅️ baru
 
-`sql/42` sudah diterapkan (2026-08-04), frontend-nya ada di `main` commit
-`c554880` tapi **belum deploy** — sama seperti Phase 0/1. Jadi kolom dan guard-nya
-sudah hidup di DB, layarnya belum.
+`sql/42` sudah diterapkan **dan diverifikasi** di produksi 2026-08-04:
+
+- kolom `kilat_slot_hour` ada;
+- CHECK menolak jam di luar 8/11/14/17 (diuji dengan `= 9`, ditolak `23514`);
+- guard Kilat aktif — `ensure_survey_page()` mengembalikan `NULL` untuk order
+  Kilat yang seluruh prasyarat lainnya lolos;
+- **nol halaman iklan menempel di order Kilat mana pun**, jadi tidak ada
+  peninggalan `sql/40` yang perlu dibereskan.
+
+Frontend-nya ada di `main` commit `c554880` tapi **belum deploy** — sama seperti
+Phase 0/1. Jadi DB sudah siap, layarnya belum.
 
 Sesudah deploy, uji urutan ini di dashboard admin:
 tab Regular Ads → **Jadikan Kilat** → tab Kilat → Reserve Slot (grid gelombang
