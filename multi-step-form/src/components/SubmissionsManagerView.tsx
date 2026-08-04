@@ -73,7 +73,7 @@ export function SubmissionsManagerView({
     const [animationParent] = useAutoAnimate<HTMLTableSectionElement>();
     const [loading, setLoading] = useState(true);
     const [loadProgress, setLoadProgress] = useState(0);
-    const [loadText, setLoadText] = useState('Memuat data submissions...');
+    const [loadText, setLoadText] = useState('Memuat data responden...');
     const [respondents, setRespondents] = useState<MergedRespondent[]>([]);
     const [criteria, setCriteria] = useState<string>('');
     const [previewProof, setPreviewProof] = useState<string | null>(null);
@@ -300,7 +300,7 @@ export function SubmissionsManagerView({
                     <nav className="flex items-center text-sm font-medium text-gray-500 overflow-hidden w-full">
                         <span className="hover:text-blue-600 cursor-pointer hover:underline" onClick={onBack}>Pages</span>
                         <ChevronRight className="w-4 h-4 mx-2 shrink-0 text-gray-400" />
-                        <span className="text-gray-900 font-semibold shrink-0">Submissions</span>
+                        <span className="text-gray-900 font-semibold shrink-0">Respondents</span>
                     </nav>
                 </div>
 
@@ -494,7 +494,7 @@ export function SubmissionsManagerView({
             {!loading && (
                 <div className="px-6 py-3 border-t border-gray-200 bg-white flex justify-between items-center shrink-0 z-10">
                     <div className="text-sm text-gray-500 font-medium">
-                        Total: <span className="text-gray-900 font-bold">{respondents.length}</span> Submissions
+                        Total: <span className="text-gray-900 font-bold">{respondents.length}</span> Respondents
                     </div>
                 </div>
             )}
