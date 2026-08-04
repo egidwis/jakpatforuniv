@@ -49,7 +49,12 @@
 -- Idempotent: CREATE TABLE IF NOT EXISTS, CREATE OR REPLACE FUNCTION,
 -- DROP TRIGGER IF EXISTS, INSERT … ON CONFLICT DO UPDATE. Safe to re-run.
 -- DEPENDS ON sql/39 for airing_instant_of_date(). Apply 39 first.
--- RUN THE PRE-CHECK IN SECTION 6 BEFORE APPLYING.
+-- RUN THE PRE-CHECK IN SECTION 7 BEFORE APPLYING.
+--
+-- APPLIED TO PRODUCTION 2026-08-04. 866 rows backfilled (856 first schedules +
+-- 10 later ones), row-count parity exact, and §8(3) — the 15:00 WIB check that
+-- the rest of Phase 2's time arithmetic rests on — came back clean on both
+-- columns.
 -- ============================================================
 
 
@@ -215,11 +220,13 @@ $$;
 --   2. waiting_payment/paid/scheduled/live/completed → itself
 --   3. in_review/approved/slot_reserved/anything else → waiting_payment
 --
--- Measured against the 856 dated rows in production 2026-08-03, that yields:
+-- Against the 856 dated rows in production 2026-08-03 that yields:
 --   waiting_payment 530 (in_review 393 + approved 96 + slot_reserved 40 + 1)
 --   live 167 · cancelled 75 (spam 70 + rejected 5) · scheduled 55 · paid 21
 --   completed 8
--- Verification §8(5) should reproduce exactly those numbers.
+-- The ten extends add 5 completed, 2 live, 2 waiting_payment, 1 cancelled on
+-- top. §8(5) carries the combined totals and was confirmed against the real
+-- apply on 2026-08-04.
 --
 -- NOT derived here: 'completed' from an end_date in the past. deriveLifecycle
 -- infers that client-side today; copying the inference would create a second
@@ -652,9 +659,9 @@ ON CONFLICT ON CONSTRAINT ad_schedules_source_key DO UPDATE SET
 -- WHERE a.source_table = 'form_submissions_extend'
 --   AND a.period_batch IS DISTINCT FROM e.period_batch;
 --
--- -- (5) What actually landed in the unconstrained columns. Against the
--- -- 2026-08-03 baseline the status column must total:
--- --   waiting_payment 532 · live 169 · cancelled 75 · scheduled 55 · paid 21
+-- -- (5) What actually landed in the unconstrained columns. MEASURED on the
+-- -- 2026-08-04 apply, 866 rows:
+-- --   waiting_payment 532 · live 169 · cancelled 76 · scheduled 55 · paid 21
 -- --   completed 13
 -- -- (first schedules 530/167/75/55/21/8 plus the ten extends: 5 completed,
 -- --  2 live, 2 waiting_payment, 1 cancelled). Any other value means a new
