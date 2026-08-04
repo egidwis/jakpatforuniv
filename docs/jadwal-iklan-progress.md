@@ -93,14 +93,32 @@ dijalankan admin): satu order Kilat lunas (`e9cb5944-3a24-4093-8621-b36d2a7fe8d9
 `is_published = false`. Dikonfirmasi lewat `select prosrc ilike '%kilat%' ...`
 bahwa guard `ensure_survey_page()` masih utuh di produksi saat itu — jadi
 BUKAN `sql/40` tertimpa ulang. `is_published = false` juga tidak cocok dengan
-insert trigger sql/40 yang selalu `TRUE` (baris 199). Kesimpulan: dibuat lewat
-tombol **Create Page** manual di Ads Schedule lama (persis lubang yang commit
-ini tutup), disimpan sebagai draft — karena tidak pernah `is_published = true`,
-tidak ada halaman Kilat yang benar-benar sempat live di feed aplikasi.
-Baris `f759f097-...` perlu dihapus manual (`delete from survey_pages where
-id = 'f759f097-35ab-4d1b-b54b-e4c0b7e09faf';`) — **belum dikonfirmasi
-terhapus** per catatan ini ditulis. Insiden ini memastikan risiko lubangnya
-nyata, bukan teoretis — memperkuat urgensi deploy `a4fc499`.
+insert trigger sql/40 yang selalu `TRUE` (baris 199). **Koreksi setelah dikonfirmasi admin:** dugaan awal (tombol Create Page manual)
+salah. Penyebab sebenarnya: order ini tadinya **iklan regular** dengan halaman
+yang sudah terbit otomatis oleh `sql/40`. Kebijakan berubah dan order perlu
+pindah ke Kilat — admin meng-unpublish halaman itu dulu (untuk lolos blokir
+"halaman sudah published" di `convertDistributionType`), lalu klik **Jadikan
+Kilat**. `is_published = false` + `requires_banner_update = false` cocok
+persis dengan insert `sql/40` (bukan insert manual `PageBuilderModal`), dan
+jeda 14 menit antara `page_created_at` dan `submission_updated_at` cocok
+dengan urutan: order lunas → halaman terbit otomatis → admin unpublish →
+admin konversi. Ini alur admin yang sah untuk kasus khusus (perubahan
+kebijakan), bukan kesalahan — tapi `convertDistributionType` sebelumnya tidak
+pernah membersihkan baris `survey_pages` yang tersisa setelah blokir
+published-nya lolos, jadi baris itu tertinggal yatim piatu selamanya.
+
+**Fix:** commit `b78a7aa` — `convertDistributionType` sekarang menghapus baris
+`survey_pages` yang tersisa (kalau ada) sebagai bagian dari konversi ke Kilat.
+Blokir keras untuk halaman yang **masih** published tidak berubah sama sekali
+— admin tetap harus stop manual dulu, persis alur yang sudah berjalan. Opsi
+"satu klik penuh" (auto-unpublish halaman yang masih live) dipertimbangkan dan
+**sengaja ditolak** — itu akan menghapus blokir keras yang sengaja dipilih di
+sesi perencanaan awal, dan bisa menggelapkan iklan yang sedang tayang tanpa
+konfirmasi terpisah.
+
+Baris `f759f097-...` (peninggalan dari sebelum fix ini) masih perlu dihapus
+manual: `delete from survey_pages where id = 'f759f097-35ab-4d1b-b54b-e4c0b7e09faf';`
+— **belum dikonfirmasi terhapus** per catatan ini ditulis.
 
 1. Order Kilat berjadwal aktif TIDAK lagi muncul di kalender iklan (mode Iklan)
    dalam bentuk apa pun, dan tombol Create Page pada order **regular** tanpa
