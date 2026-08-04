@@ -1058,6 +1058,9 @@ function PaymentTab({
     ? 0
     : calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
   const finalAdCost = adCost - discount + kilatAddon;
+  const subtotal = finalAdCost + incentiveCost;
+  const ppn = calculatePpn(subtotal);
+  const grandTotal = subtotal + ppn;
 
   return (
     <>
@@ -1108,12 +1111,48 @@ function PaymentTab({
                 </span>
               </div>
             )}
+            <div className="flex justify-between pt-1 border-t border-gray-200/60 mt-1 text-gray-500">
+              <span>Subtotal (DPP)</span>
+              <span className="font-medium text-gray-900">Rp {new Intl.NumberFormat('id-ID').format(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-gray-500">
+              <span>PPN (11%)</span>
+              <span className="font-medium text-gray-900">Rp {new Intl.NumberFormat('id-ID').format(ppn)}</span>
+            </div>
             <div className="flex justify-between pt-1 border-t border-gray-200 mt-1">
               <span className="text-gray-600 font-medium">Total cost</span>
               <span className="font-bold text-blue-600">
-                Rp {new Intl.NumberFormat('id-ID').format(finalAdCost + incentiveCost)}
+                Rp {new Intl.NumberFormat('id-ID').format(grandTotal)}
               </span>
             </div>
+            {paymentData.latestPaymentId ? (
+              <div className="flex justify-between items-center pt-1.5 border-t border-gray-200/60 mt-1.5 text-[11px]">
+                <span className="text-gray-500">Invoice</span>
+                <a
+                  href={`/invoices/${paymentData.latestPaymentId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                >
+                  <FileText className="w-3 h-3" />
+                  {paymentData.latestPaymentId}
+                  <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
+                </a>
+              </div>
+            ) : paymentData.latestPaymentUrl ? (
+              <div className="flex justify-between items-center pt-1.5 border-t border-gray-200/60 mt-1.5 text-[11px]">
+                <span className="text-gray-500">Link Tagihan</span>
+                <a
+                  href={paymentData.latestPaymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Buka Link Pembayaran
+                </a>
+              </div>
+            ) : null}
           </div>
         ) : (
           <p className="text-xs text-gray-400 italic">Durasi belum diisi — biaya iklan belum bisa dihitung.</p>
@@ -1195,6 +1234,19 @@ function PaymentTab({
             </span>
             <span className="text-gray-400">Invoices</span>
             <span className="font-medium text-gray-900">{paymentData.invoiceCount}</span>
+            {paymentData.latestPaymentId && (
+              <>
+                <span className="text-gray-400">Invoice Link</span>
+                <a
+                  href={`/invoices/${paymentData.latestPaymentId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-blue-600 hover:underline inline-flex items-center gap-1"
+                >
+                  <FileText className="w-3 h-3" /> {paymentData.latestPaymentId} <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </>
+            )}
             {paymentData.hasEverPaid && !lifecycle.isPaid && (
               <>
                 <span className="text-gray-400">Riwayat</span>

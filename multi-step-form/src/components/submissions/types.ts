@@ -62,6 +62,7 @@ export interface PaymentState {
   latestPaymentUrl: string | null;
   latestAmount?: number;
   hasEverPaid?: boolean;
+  latestPaymentId?: string | null;
 }
 
 export interface ExistingPage {

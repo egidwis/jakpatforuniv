@@ -298,7 +298,7 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
             return normalizeDate(b.created_at) - normalizeDate(a.created_at);
           });
 
-          const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean }> = {};
+          const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean, latestPaymentId?: string | null }> = {};
 
           if (mergedTx.length > 0) {
             transformed.forEach(sub => {
@@ -317,17 +317,18 @@ export function InternalDashboard({ hideAuth = false, onLogout }: InternalDashbo
                   invoiceCount: subTxs.length,
                   latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null,
                   latestAmount: subTxs[0].amount || 0,
-                  hasEverPaid: hasEverPaid
+                  hasEverPaid: hasEverPaid,
+                  latestPaymentId: subTxs[0].payment_id || null,
                 };
                 sub.payment_status = latestStatus;
               } else {
-                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false };
+                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false, latestPaymentId: null };
                 if (sub.payment_status === 'pending') sub.payment_status = undefined;
               }
             });
           } else {
             transformed.forEach(sub => {
-              paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false };
+              paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false, latestPaymentId: null };
               if (sub.payment_status === 'pending') sub.payment_status = undefined;
             });
           }
