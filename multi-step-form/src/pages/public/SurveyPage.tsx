@@ -55,11 +55,61 @@ function normalizeScheduleDate(dateStr: string | null | undefined): Date {
     return d;
 }
 
+/** One row of get_batch_rewards (sql/44). */
+interface BatchReward {
+    period_batch: string | null;
+    prize_per_winner: number;
+    winner_count: number;
+    batch_status: string;
+    can_select_winners: boolean;
+    start_date: string | null;
+    end_date: string | null;
+}
+
+/**
+ * Which batch's prize does this page advertise when a survey has more than one?
+ * The one whose window is still running; failing that, the most recent.
+ *
+ * MUST stay in sync with pickDisplayBatch() in functions/api/surveys.js — the app
+ * feed and the page it links to must not quote different prizes.
+ *
+ * Measured 2026-08-04: every published page has exactly ONE batch, so this
+ * function has never yet had a decision to make. It exists so the first
+ * multi-batch page doesn't show whichever row happened to sort first.
+ */
+function pickDisplayBatch(batches: BatchReward[]): BatchReward | null {
+    if (!batches || batches.length === 0) return null;
+    const now = Date.now();
+
+    const running = batches
+        .filter(b => b.end_date && new Date(b.end_date).getTime() > now)
+        .sort((a, b) => new Date(a.end_date!).getTime() - new Date(b.end_date!).getTime());
+    if (running.length > 0) return running[0];
+
+    return [...batches].sort((a, b) => String(b.period_batch || '').localeCompare(String(a.period_batch || '')))[0];
+}
+
 export function SurveyPage() {
     const { slug } = useParams();
     const [loading, setLoading] = useState(true);
     const [pageData, setPageData] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
+
+    /**
+     * The reward this page advertises, taken from the batch aggregate rather than
+     * from the parent order's raw columns.
+     *
+     * `form_submissions.prize_per_winner × winner_count` only ever holds what the
+     * FIRST schedule funded. A researcher who topped up the pool of a later batch
+     * saw that money reach the lottery platform while this page — the one the
+     * respondents actually read before deciding to answer — kept advertising the
+     * old figure. get_batch_rewards (sql/44) is the same function /api/respondents
+     * uses, so page, app feed, and lottery platform now quote one number.
+     *
+     * Measured 2026-08-04: 0 of 266 published surveys change value today. Nothing
+     * currently on screen moves; the NEXT top-up becomes visible.
+     */
+    const [batchReward, setBatchReward] = useState<{ prize_per_winner: number; winner_count: number } | null>(null);
 
     // Steps: 1 = Info, 2 = Screening (ID + Qs), 3 = Survey & Proof, 4 = Personal Data
     const [currentStep, setCurrentStep] = useState(1);
@@ -170,6 +220,23 @@ export function SurveyPage() {
 
 
             setPageData(data);
+
+            if (data.submission_id) {
+                // Deliberately not awaited: the badge is decoration on a page whose
+                // job is to collect an answer. If the RPC is slow or unavailable the
+                // page still renders — it just falls back to the raw columns, which
+                // is exactly what it displayed before this change.
+                supabase
+                    .rpc('get_batch_rewards', { p_submission_id: data.submission_id })
+                    .then(({ data: batches, error: batchError }) => {
+                        if (batchError) {
+                            console.error('Error loading batch rewards:', batchError);
+                            return;
+                        }
+                        const picked = pickDisplayBatch(batches || []);
+                        if (picked) setBatchReward(picked);
+                    });
+            }
 
             // If this page has a redirect URL, immediately redirect
             if (data.redirect_url) {
@@ -863,9 +930,16 @@ export function SurveyPage() {
                                     ) : (
                                         <span className="bg-purple-100 text-purple-700 text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap">Announcement</span>
                                     )}
-                                    {pageData.submission_id && pageData.form_submissions?.prize_per_winner && pageData.form_submissions?.winner_count && (
-                                        <span className="bg-yellow-100 text-yellow-800 text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap">Total Reward: Rp {(pageData.form_submissions.prize_per_winner * pageData.form_submissions.winner_count).toLocaleString('id-ID')}</span>
-                                    )}
+                                    {/* Batch aggregate when it has arrived, raw columns until then —
+                                        so a slow or failed RPC shows the old number rather than none. */}
+                                    {pageData.submission_id && (() => {
+                                        const prize = batchReward?.prize_per_winner ?? pageData.form_submissions?.prize_per_winner;
+                                        const winners = batchReward?.winner_count ?? pageData.form_submissions?.winner_count;
+                                        if (!prize || !winners) return null;
+                                        return (
+                                            <span className="bg-yellow-100 text-yellow-800 text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap">Total Reward: Rp {(prize * winners).toLocaleString('id-ID')}</span>
+                                        );
+                                    })()}
                                 </div>
                                 <CardTitle className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
                                     {pageData.title}
