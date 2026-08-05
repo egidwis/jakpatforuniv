@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost, getVoucherInfo, isManualVerificationVoucher } from '../utils/cost-calculator';
+import { formatRupiah } from '../utils/currency';
 import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, getOwnProfile, type FormSubmission } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { resolveSubmissionMode, type SubmissionMode } from '../utils/submissionMode';
@@ -128,11 +129,6 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
       setVoucherInfo(getVoucherInfo(formData.voucherCode, formData.duration));
     }
   }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode, ilkomunyBlocked]);
-
-  // Format angka ke format rupiah
-  const formatRupiah = (amount: number) => {
-    return new Intl.NumberFormat('id-ID').format(amount);
-  };
 
   // Fungsi untuk handle perubahan kode voucher
   const handleVoucherChange = (e: React.ChangeEvent<HTMLInputElement>) => {

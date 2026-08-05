@@ -35,9 +35,7 @@ import {
     type ScheduleCard,
     type IncentiveInfo,
 } from './airingPeriods';
-
-const formatRupiah = (amount: number) =>
-    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
+import { formatIDR } from '@/utils/currency';
 
 const formatDateLong = (d: string) =>
     new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -209,11 +207,11 @@ function Section({ label, sublabel, children }: { label: string; sublabel?: Reac
 function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean }) {
     const { t } = useLanguage();
     if (info.mode === 'plain') {
-        const text = `${info.winnerCount} ${t('winner')} · ${formatRupiah(info.prizePerWinner!)}/${t('winner')}`;
+        const text = `${info.winnerCount} ${t('winner')} · ${formatIDR(info.prizePerWinner!)}/${t('winner')}`;
         return <span className={valueTone(muted)}>{text}</span>;
     }
     if (info.mode === 'new_pool') {
-        const text = `${info.winnerCount} ${t('winner')} · ${formatRupiah(info.prizePerWinner!)}/${t('winner')}`;
+        const text = `${info.winnerCount} ${t('winner')} · ${formatIDR(info.prizePerWinner!)}/${t('winner')}`;
         return (
             <span className="inline-flex items-center gap-1">
                 <span className={valueTone(muted)}>{text}</span>
@@ -225,7 +223,7 @@ function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean 
     }
     if (info.mode === 'accumulated') {
         return (
-            <span className={`font-medium ${valueTone(muted)}`}>+{formatRupiah(info.additionalPrize!)}</span>
+            <span className={`font-medium ${valueTone(muted)}`}>+{formatIDR(info.additionalPrize!)}</span>
         );
     }
     return <span className="text-xs text-gray-500 font-normal">{t('incentiveNoAdditionNote')}</span>;
@@ -310,10 +308,10 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
             <div className={`rounded-xl border border-gray-200/80 bg-gray-50/60 p-3.5 space-y-2 text-xs ${muted ? 'opacity-60' : ''}`}>
                 <div className="flex justify-between items-center">
                     <span className="text-gray-600">
-                        {t('adCostLabel')} <span className="text-[11px] text-gray-400 font-normal">({questionCount} Qs | {formatRupiah(costPerDay)}{isKilat ? ' rate' : ` × ${duration} hari`})</span>
+                        {t('adCostLabel')} <span className="text-[11px] text-gray-400 font-normal">({questionCount} Qs | {formatIDR(costPerDay)}{isKilat ? ' rate' : ` × ${duration} hari`})</span>
                     </span>
                     <span className="font-medium text-gray-900">
-                        {formatRupiah(adCost)}
+                        {formatIDR(adCost)}
                     </span>
                 </div>
                 {kilatAddon > 0 && (
@@ -321,35 +319,35 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
                         <span className="text-gray-600 flex items-center gap-1">
                             <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> Add-on JFU Kilat
                         </span>
-                        <span className="font-medium text-amber-600">{formatRupiah(kilatAddon)}</span>
+                        <span className="font-medium text-amber-600">{formatIDR(kilatAddon)}</span>
                     </div>
                 )}
                 {discount > 0 && (
                     <div className="flex justify-between items-center">
                         <span className="text-gray-600">Diskon ({voucherCode})</span>
-                        <span className="font-medium text-emerald-600">-{formatRupiah(discount)}</span>
+                        <span className="font-medium text-emerald-600">-{formatIDR(discount)}</span>
                     </div>
                 )}
                 {incentiveCost > 0 && (
                     <div className="flex justify-between items-center">
                         <span className="text-gray-600">
-                            {t('totalRewardLabel')} {prizePerWinner > 0 && winnerCount > 0 && <span className="text-[11px] text-gray-400 font-normal">({formatRupiah(prizePerWinner)} × {winnerCount} {t('winner')})</span>}
+                            {t('totalRewardLabel')} {prizePerWinner > 0 && winnerCount > 0 && <span className="text-[11px] text-gray-400 font-normal">({formatIDR(prizePerWinner)} × {winnerCount} {t('winner')})</span>}
                         </span>
-                        <span className="font-medium text-gray-900">{formatRupiah(incentiveCost)}</span>
+                        <span className="font-medium text-gray-900">{formatIDR(incentiveCost)}</span>
                     </div>
                 )}
 
                 <div className="flex justify-between items-center pt-2 border-t border-gray-200/60 mt-1 text-gray-600">
                     <span>Subtotal (DPP)</span>
-                    <span className="font-medium text-gray-900">{formatRupiah(subtotal)}</span>
+                    <span className="font-medium text-gray-900">{formatIDR(subtotal)}</span>
                 </div>
                 <div className="flex justify-between items-center text-gray-600">
                     <span>PPN (11%)</span>
-                    <span className="font-medium text-gray-900">{formatRupiah(ppn)}</span>
+                    <span className="font-medium text-gray-900">{formatIDR(ppn)}</span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-1 text-sm">
                     <span className="text-[#1a1a1a] font-semibold">{t('totalPaymentLabel')}</span>
-                    <span className="font-bold text-blue-600">{formatRupiah(grandTotal)}</span>
+                    <span className="font-bold text-blue-600">{formatIDR(grandTotal)}</span>
                 </div>
 
                 {b.invoicePaymentId && b.state !== 'expired' && (

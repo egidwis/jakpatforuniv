@@ -1,5 +1,6 @@
 import type { SurveyFormData } from '../types';
 import { calculateTotalCost } from '../utils/cost-calculator';
+import { formatRupiah } from '../utils/currency';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useMemo } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -26,10 +27,6 @@ export function UnifiedHeader({ formData, onBack }: UnifiedHeaderProps) {
             ilkomunyBlocked
         ]
     );
-
-    const formatRupiah = (amount: number) => {
-        return new Intl.NumberFormat('id-ID').format(amount);
-    };
 
     return (
         // Kartu floating di bawah layar (desktop & mobile) — wrapper fixed
