@@ -71,9 +71,24 @@ bisa dipatuhi: file yang harus ditulis ulang Task 9 —
 rilis**. Tidak bisa lagi di-revert sendiri-sendiri. Sekali branch ini dideploy, keduanya
 tayang bersamaan.
 
-### Langkah pertama, wajib: bawa `main` masuk ke branch
+### ✅ Langkah pertama, wajib: bawa `main` masuk ke branch — SELESAI 2026-08-05
 
-Branch ini tertinggal **17 commit** dari `main` (per 2026-08-05) — termasuk seluruh Task
+> **Sudah dikerjakan.** Merge dijalankan 2026-08-05 sore dan berlangsung persis seperti
+> diperkirakan di bawah: nol konflik kode, dua konflik dokumentasi, keduanya diselesaikan
+> dengan versi `main`. `git log --oneline HEAD..main` sekarang kosong.
+>
+> **Baseline pasca-merge: `tsc -p tsconfig.app.json` = 74 error.** (Sebelum merge: 75 di
+> branch, 76 di `main`. Yang hilang persis satu `TS6133 'isKilat' is declared but its value
+> is never read` — kode mati yang ikut terbersihkan saat `SubmissionDetailSheet.tsx`
+> dipecah.) **74 adalah baseline yang dipakai Task 9 ke atas.** `vite build` hijau, ketiga
+> test harness lolos.
+>
+> Dua pembersihan struktural ikut dituntaskan di sesi yang sama — lihat "Titik sentuh yang
+> berubah" di bawah.
+>
+> Bagian di bawah ini disimpan apa adanya sebagai catatan prosedur.
+
+Branch ini tertinggal **18 commit** dari `main` (per 2026-08-05) — termasuk seluruh Task
 8B-1, 8C, 8D, dan `sql/43`/`44`/`45`. Bekerja di atasnya tanpa menarik `main` dulu berarti
 membangun di atas fondasi yang sudah usang.
 
@@ -116,9 +131,9 @@ cd multi-step-form
 npx vite build
 ```
 
-Baseline `main` per 2026-08-05 = **76**. Branch ini punya baseline sendiri (sebelum merge:
-75 saat terakhir diukur 2026-08-04) — yang penting **tidak bertambah**, bukan angkanya
-sama. Kalau bertambah, adu daftar error-nya baris demi baris sebelum lanjut:
+Baseline branch **pasca-merge = 74** (diukur 2026-08-05, sesudah merge + kedua pembersihan
+di bawah). Yang penting **tidak bertambah**, bukan angkanya sama. Kalau bertambah, adu
+daftar error-nya baris demi baris sebelum lanjut:
 
 ```bash
 ./node_modules/.bin/tsc -p tsconfig.app.json --noEmit 2>&1 | grep "error TS" \
@@ -128,6 +143,29 @@ sama. Kalau bertambah, adu daftar error-nya baris demi baris sebelum lanjut:
 
 > Root `tsconfig.json` isinya `{"files": [], "references": [...]}`, jadi `npx tsc --noEmit`
 > **selalu** lapor 0 dan tidak membuktikan apa pun. Selalu pakai `-p tsconfig.app.json`.
+
+### Titik sentuh yang berubah sesudah merge (2026-08-05)
+
+Dua pembersihan struktural dikerjakan bersamaan dengan merge, supaya Task 9/10 tidak
+membaca kode yang menyesatkan. Alamat lama yang tercatat di rencana Phase 2 **sudah tidak
+berlaku**:
+
+| Yang dicari | Alamat lama | Alamat sekarang |
+|---|---|---|
+| "Mark as Paid" (Task 10) | `SubmissionDetailSheet.tsx:~982` | `submissions/tabs/PaymentTab.tsx` (246 baris) |
+| Tab Reservasi | `SubmissionDetailSheet.tsx:847` | `submissions/tabs/ReservationTab.tsx` |
+| `copyToClipboard`, `formatDate` | lokal di `SubmissionDetailSheet.tsx` | diekspor dari `submissions/types.ts` |
+| formatter uang mana pun | 4 `formatIDR` + 5 `formatRupiah` tersebar | `src/utils/currency.ts` saja |
+
+`SubmissionDetailSheet.tsx` sekarang 330 baris (cangkang saja), turun dari 1365. Kelima tab
+pindah ke `src/components/submissions/tabs/`. Pemecahannya nol perubahan perilaku —
+dibuktikan dengan mengadu isi kedua sisi setelah baris import/export dibuang.
+
+⚠️ Satu perubahan perilaku yang disengaja menyentuh **`SchedulePhase.tsx`**, berkas yang
+Task 9 tulis ulang: fungsi lokal bernama `formatRupiah` di sana ternyata berbadan
+`style: 'currency'` — bentuk `formatIDR`, bukan `formatRupiah`. Seluruh 13 call site
+diganti ke `formatIDR` bersama. Efek nyatanya hanya pembulatan nilai non-bulat, dan kolom
+uang semuanya `bigint`.
 
 ---
 

@@ -22,7 +22,7 @@ membaca baris yang sama.
 | Kilat — papan jadwal | Toggle Iklan/Kilat di Ads Schedule + tutup lubang Create Page utk Kilat | — | ✅ deployed 2026-08-05 (`a4fc499`+`b78a7aa`) |
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ | 🟡 semuanya deployed; **sisa Task 9–12** |
-| Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ **belum bisa dimulai** — tinggal satu penghalang, lihat §2 |
+| Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ **siap dimulai** — penghalang habis 2026-08-05, mulai dari Task 9, lihat §2 |
 | Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, `sql/46`) |
 
 **Satu hal yang paling penting kalau kamu kembali setelah lama:** per 2026-08-05
@@ -31,9 +31,10 @@ migrasi yang jalan di produksi tanpa kodenya, dan tidak ada lagi lubang di deret
 `sql/`. Yang tayang memuat Phase 0/1, jembatan + papan jadwal Kilat, Task 8B-1,
 8C, dan 8D.
 
-Sisa Phase 2 tinggal **Task 9–12**, dan semuanya menunggu satu hal yang sama:
-branch `feat/dashboard-soft-dna-navbar` masuk ke `main`. Branch itu sekarang
-satu-satunya yang menahan Phase 2 — dan lewat Phase 2, menahan Phase 3. Lihat §2.
+Sisa Phase 2 tinggal **Task 9–12**, dan sejak 2026-08-05 sore semuanya **sudah
+bisa jalan**: `feat/dashboard-soft-dna-navbar` sudah menarik `main`, jadi branch
+itu tidak lagi menahan apa pun. Pekerjaan Task 9–12 dan Phase 3 berlangsung DI
+branch itu. Lihat §2.
 
 ⚠️ **`sql/40` dan `sql/42` mendefinisikan `ensure_survey_page()` yang sama.**
 `sql/42` versinya yang benar (order Kilat tidak dapat halaman iklan). Kalau
@@ -149,19 +150,15 @@ insentif batch dua kali untuk jadwal ke-3+, dan bisa menggelapkan iklan yang
 sedang berjalan saat admin melakukan reschedule — checklist ini yang
 membuktikan ketiganya benar sudah tidak terjadi lagi di produksi.
 
-### 2. Phase 3 belum bisa dimulai — sekarang tinggal SATU penghalang ⬅️ paling penting
+### 2. Phase 3 sudah bisa dimulai — penghalangnya habis ✅
 
-Dua penghalang tercatat di sini 2026-08-05 pagi. **Yang pertama sudah hilang**:
-`ad_schedules` kini mengenali Kilat (Task 8D, `sql/45`, diterapkan 2026-08-05).
-Yang tersisa satu, dan ia penghalang yang sama yang sudah muncul berulang kali:
+**Semua penghalang sudah hilang per 2026-08-05 sore.** `ad_schedules` mengenali
+Kilat (Task 8D, `sql/45`), dan `feat/dashboard-soft-dna-navbar` **sudah menarik
+`main`** (merge commit di branch itu, 2026-08-05). Branch tidak lagi tertinggal
+18 commit; `git log --oneline HEAD..main` kosong.
 
-**Task 9 belum dikerjakan, dan ia terhalang branch revamp visual.**
-`src/components/status/deriveOrderUiState.ts`, `airingPeriods.ts`, dan
-`SchedulePhase.tsx` masih **tidak ada di `main`** — cek ulang 2026-08-05,
-direktorinya masih kosong di sana.
-
-Kenapa itu memblokir Phase 3 dan bukan sekadar mengantre sebelumnya — ini yang
-membuat urutannya bukan formalitas:
+Yang tersisa **bukan** penghalang, melainkan urutan kerja biasa: Task 9 harus
+jalan sebelum Phase 3, dan alasannya bukan formalitas:
 
 `ad_schedules.status` menyalin `submission_status`, dan kolom itu masih memuat
 **dua sumbu sekaligus** (review + tayang). Akibatnya pemetaan di `sql/41` harus
@@ -181,8 +178,10 @@ disetujui" dari "slot sudah dipesan". Itu bukan kekurangan kosmetik; itu justru
 informasi yang paling dibutuhkan admin di layar penjadwalan. Memisahkan kedua
 sumbu itu **adalah** Task 9.
 
-Jadi Phase 3 bisa dimulai begitu Task 9 jalan, dan Task 9 butuh file yang cuma ada
-di branch revamp visual.
+Jadi Phase 3 dimulai begitu Task 9 jalan. Task 9 menulis ulang
+`src/components/status/deriveOrderUiState.ts`, `airingPeriods.ts`, dan
+`SchedulePhase.tsx` — ketiganya lahir di branch revamp visual dan tetap hanya ada
+di sana.
 
 **Diputuskan 2026-08-05: Task 9–12 dan Phase 3 dikerjakan DI branch
 `feat/dashboard-soft-dna-navbar` itu sendiri**, bukan di branch baru dari `main`.
@@ -191,11 +190,41 @@ ditulis ulang Task 9 memang lahir di sana. Konsekuensi yang diterima sadar: reva
 visual dan sisa Phase 2 jadi **satu unit rilis**, tidak bisa di-revert
 sendiri-sendiri.
 
-Prosedurnya — termasuk merge `main` ke branch itu, yang **kodenya bersih** tapi
-punya tepat **dua konflik dokumentasi** yang sudah diketahui cara
-menyelesaikannya — ada di
+**Diputuskan 2026-08-05 juga: Phase 3 duluan, design-system dashboard
+belakangan.** Task 1 design-system membalik urutan cascade `styles.css` dan
+menyentuh seluruh app — terlalu berisiko-lebar untuk branch yang sudah memuat
+revamp visual + sisa Phase 2. Konsekuensi diterima: recipe warna/spacing tab
+Phase 3 kemungkinan ditulis ulang belakangan.
+
+#### Yang dikerjakan sesi merge (2026-08-05 sore)
+
+Merge `main` → branch berjalan persis seperti diperkirakan: **nol konflik kode**,
+tepat **dua konflik dokumentasi** (`docs/jadwal-iklan-progress.md` dan
+`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`), keduanya diselesaikan
+dengan mengambil versi `main` — versi branch adalah potret pekerjaan yang sudah
+selesai dan hanya akan menghidupkan kembali informasi kedaluwarsa.
+
+Baseline setelah merge: **`tsc -p tsconfig.app.json` = 74 error** (sebelum merge
+75 di branch, 76 di `main`; yang hilang persis satu `TS6133 isKilat` yang
+dibersihkan bersama pemecahan berkas). `vite build` hijau, ketiga test harness
+lolos. **Angka 74 ini yang jadi baseline Task 9.**
+
+Dua pembersihan struktural ikut dituntaskan supaya Task 9/10 tidak membaca kode
+yang menyesatkan:
+
+- **Formatter uang disatukan** di `src/utils/currency.ts`. Sebelumnya ada empat
+  implementasi `formatIDR` yang tidak sepakat (satu membayangi yang kanonik di
+  dalam modulnya sendiri, satu lagi memakai nama `formatRupiah` padahal
+  bentuknya `formatIDR` — tepat di `SchedulePhase.tsx`) plus lima salinan
+  `formatRupiah`. Sekarang nol formatter uang di luar `utils/currency.ts`.
+- **`SubmissionDetailSheet.tsx` dipecah** 1365 → 330 baris + lima berkas di
+  `submissions/tabs/`. Relevan langsung untuk Task 10: "Mark as Paid" yang harus
+  jadi per-jadwal sekarang ada di `submissions/tabs/PaymentTab.tsx` (246 baris),
+  bukan di baris ~982 dari 1365.
+
+Prosedur lengkap Phase 3 ada di
 [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md).
-**Itu titik masuk sesi berikutnya.**
+**Itu titik masuk sesi berikutnya — mulai dari Task 9.**
 
 ### 3. Uji manual yang masih menganggur
 
@@ -442,33 +471,35 @@ Phase 2 ada untuk menghapusnya. Rinciannya di §2 "Yang menunggu tindakan".
 
 ---
 
-## 🚧 Penghalang yang harus diketahui sebelum menjadwalkan Task 9
+## ✅ Penghalang branch — sudah selesai 2026-08-05
 
-Task 9, dan sebagian Task 10 dan 12, menyasar file yang **tidak ada di `main`**:
+*(Disimpan sebagai catatan sejarah: ini penghalang yang paling sering muncul di
+dokumen ini, dan berguna tahu kenapa ia akhirnya hilang.)*
+
+Task 9, dan sebagian Task 10 dan 12, menyasar file yang tidak ada di `main`:
 
 - `src/components/status/deriveOrderUiState.ts`
 - `src/components/status/airingPeriods.ts`
 - `src/components/status/SchedulePhase.tsx`
 
-Ketiganya hanya ada di branch **`feat/dashboard-soft-dna-navbar`** — padahal
-rencana Phase 2 justru melarang menumpang branch itu supaya kedua pekerjaan bisa
-di-revert sendiri-sendiri. Dicek ulang 2026-08-05: direktori itu masih kosong di
-`main`.
+Ketiganya lahir di branch **`feat/dashboard-soft-dna-navbar`** — padahal rencana
+Phase 2 semula melarang menumpang branch itu supaya kedua pekerjaan bisa
+di-revert sendiri-sendiri. Larangan itu **dicabut** 2026-08-05 karena tidak bisa
+dipatuhi.
 
-**Akibatnya:** Task 8B-1, 8C, dan 8D semuanya bisa dikerjakan dari `main` dan
-memang begitu caranya — branch sendiri, fast-forward, branch dihapus. Semuanya
-sudah live. **Task 9 ke atas menunggu branch revamp masuk ke `main`, dan tidak
-ada jalan memutarnya**: file yang ditulis ulang Task 9 memang hanya ada di sana.
+Task 8B-1, 8C, dan 8D dikerjakan dari `main` lewat branch sendiri lalu
+fast-forward; semuanya live dan bisa di-revert sendiri-sendiri. **Task 9 ke atas
+tidak bisa begitu**, jadi arahnya dibalik: `main` yang di-merge **ke dalam**
+branch revamp, bukan sebaliknya.
 
-Sampai 2026-08-05 branch ini menahan dua hal; Task 8C sudah dibebaskan lewat
-cherry-pick. Sekarang ia menahan tepat satu — tapi yang satu itu adalah **seluruh
-sisa Phase 2, dan lewat Phase 2, Phase 3.**
+Merge itu dijalankan 2026-08-05 sore dan bersih di sisi kode (dua konflik
+dokumentasi saja). Sejak itu branch **tidak lagi tertinggal** dari `main`, dan
+seluruh sisa Phase 2 + Phase 3 berjalan di sana. Rinciannya di §2.
 
-Sebelum menjadwalkan task Phase 2 apa pun yang menyentuh dashboard user, cek
-dulu:
+Kalau perlu memastikan branch masih sejajar sebelum sesi baru:
 
 ```bash
-git ls-tree -r --name-only main -- multi-step-form/src/components/status/
+git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 ```
 
 ---
