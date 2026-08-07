@@ -55,3 +55,34 @@ export const STATUS_TOKENS: Record<LifecycleStage, StatusToken> = {
 }
 
 export const KILAT_TOKEN: StatusToken = { label: "⚡ KILAT", variant: "amber" }
+
+/**
+ * Papan Schedule (Phase 3) membaca `ad_schedules.status`, yang punya satu
+ * keadaan yang tidak dimiliki `LifecycleStage`: order tanpa jendela tayang
+ * sama sekali (`unscheduled`, sql/46). 87 order per 2026-08-08, termasuk order
+ * yang sudah lunas.
+ *
+ * Sengaja DI LUAR `STATUS_TOKENS`, mengikuti pola KILAT_TOKEN di atas.
+ * `STATUS_TOKENS` bertipe `Record<LifecycleStage, StatusToken>`, jadi menambah
+ * anggota ke union itu memaksa cabang baru di `deriveLifecycle` — dan menulis
+ * ulang `deriveLifecycle` adalah Task 9B, bukan pekerjaan papan ini.
+ */
+export const UNSCHEDULED_TOKEN: StatusToken = { label: "Belum Dijadwalkan", variant: "slate" }
+
+/**
+ * `ad_schedules.status` (sumbu tayang, sql/46) -> token chip.
+ *
+ * Presedensnya ada di pemanggil, bukan di sini: sumbu review menang untuk
+ * rejected/spam. Lihat `chipForSchedule()` di ScheduleBoardPage.
+ */
+export const AIRING_STATUS_TOKENS: Record<string, StatusToken> = {
+  unscheduled: UNSCHEDULED_TOKEN,
+  requested: { label: "Diminta", variant: "blue" },
+  slot_reserved: STATUS_TOKENS.reserved,
+  waiting_payment: STATUS_TOKENS.awaiting_payment,
+  paid: STATUS_TOKENS.paid,
+  scheduled: STATUS_TOKENS.page_scheduled,
+  live: STATUS_TOKENS.live,
+  completed: STATUS_TOKENS.completed,
+  cancelled: { label: "Dibatalkan", variant: "slate" },
+}

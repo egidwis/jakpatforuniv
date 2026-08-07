@@ -40,7 +40,7 @@ const STATUS_FILTER_OPTIONS = [
 interface InternalDashboardProps {
   hideAuth?: boolean;
   onLogout?: () => void;
-  focusSubmission?: { id: string; createdAt: string } | null;
+  focusSubmission?: { id: string; createdAt: string; distributionType?: string | null } | null;
 }
 
 export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission }: InternalDashboardProps = {}) {
@@ -388,14 +388,24 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     }
   }, [openSubmissionId, openSubmission, loading]);
 
-  // Deep-link dari papan jadwal Kilat: arahkan filter ke order ini dulu...
+  // Deep-link dari papan jadwal: arahkan filter ke order ini dulu...
+  //
+  // ⚠️ TAB DISTRIBUSI DITURUNKAN DARI ORDER-NYA, TIDAK DIPATOK.
+  // Sampai Phase 3 baris terakhir berbunyi `setDistTab('kilat')` tanpa syarat —
+  // benar selama satu-satunya pengirim adalah KilatScheduleBoard, salah begitu
+  // papan Schedule ikut mengirim order regular. `desktopSubmissions` menyaring
+  // `distribution_type === 'kilat'` saat tab kilat aktif, jadi order regular
+  // mendarat di daftar yang tidak memuat barisnya — drawer terbuka mengambang
+  // di atas daftar kosong. Pengirim lama yang tidak mengirim field ini tetap
+  // dapat perilaku lamanya.
   useEffect(() => {
     if (!focusSubmission) return;
     setCurrentDate(new Date(focusSubmission.createdAt));
     setSearchQuery(focusSubmission.id);
     setCurrentPage(1);
     setStatusFilter('all');
-    setDistTab('kilat');
+    const dist = focusSubmission.distributionType;
+    setDistTab(dist === undefined || dist === null ? 'kilat' : dist === 'kilat' ? 'kilat' : 'regular');
   }, [focusSubmission]);
 
   // ...lalu baru buka drawer-nya SETELAH baris itu benar-benar termuat di

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, Calendar, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, Calendar, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { cn, useMediaQuery } from '@/lib/utils';
@@ -8,13 +8,18 @@ import { TransactionsPage } from './TransactionsPage';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { ConversationsPage } from './ConversationsPage';
 import { SchedulingPage } from '../pages/dashboard/SchedulingPage';
+import { ScheduleBoardPage } from '../pages/dashboard/ScheduleBoardPage';
 import { PublishPageManagement } from './PublishPageManagement';
 import { CustomersPage } from './CustomersPage';
 import MiminAISetup from '../pages/internal-dash/MiminAISetup';
 import { useAuth } from '../context/AuthContext';
 import { getAllChatSessions, supabase } from '../utils/supabase';
 
-type Page = 'submissions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'scheduling' | 'publish-page' | 'mimin-setup';
+// 'ad-schedules' = papan Schedule baru (Phase 3, membaca tabel ad_schedules).
+// 'scheduling' = Page Calendar lama. KEDUANYA HIDUP SEMENTARA, disengaja: satu-
+// satunya cara mengadu papan baru dengan permukaan lama order demi order adalah
+// selagi keduanya masih bisa dibuka. 'scheduling' dipensiunkan sesudah itu.
+type Page = 'submissions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'scheduling' | 'ad-schedules' | 'publish-page' | 'mimin-setup';
 
 export function InternalDashboardWithLayout() {
   // Supabase Auth
@@ -154,7 +159,21 @@ export function InternalDashboardWithLayout() {
     setIsSidebarOpen(false); // Close sidebar on mobile after navigation
   };
 
-  const handleOpenSubmissionFromSchedule = (params: { id: string; createdAt: string }) => {
+  /**
+   * Deep-link dari papan jadwal ke drawer order di Submissions.
+   *
+   * ⚠️ `distributionType` DITAMBAHKAN DI PHASE 3 DAN BUKAN HIASAN.
+   * Handler ini lahir untuk KilatScheduleBoard, jadi InternalDashboard dulu
+   * memaku `setDistTab('kilat')` — asumsinya setiap deep-link adalah order
+   * Kilat. Papan Schedule mengirim order REGULAR juga, dan tanpa nilai ini
+   * mereka mendarat di tab Kilat yang tidak memuat barisnya: drawer-nya
+   * terbuka, mengambang di atas daftar kosong.
+   */
+  const handleOpenSubmissionFromSchedule = (params: {
+    id: string;
+    createdAt: string;
+    distributionType?: string | null;
+  }) => {
     setFocusSubmission(params);
     setCurrentPage('submissions');
   };
@@ -191,8 +210,15 @@ export function InternalDashboardWithLayout() {
           icon: Users,
         },
         {
+          id: 'ad-schedules' as Page,
+          label: 'Schedule',
+          icon: CalendarDays,
+        },
+        // Sementara, sampai ceklis penyerapan di rencana Phase 3 habis dan
+        // papan baru terbukti sepakat dengan yang ini order demi order.
+        {
           id: 'scheduling' as Page,
-          label: 'Ads Schedule',
+          label: 'Page Calendar (lama)',
           icon: Calendar,
         },
         {
@@ -510,11 +536,19 @@ export function InternalDashboardWithLayout() {
             <div className="container mx-auto p-4 md:p-8 h-full">
               <MiminAISetup />
             </div>
-          ) : (
+          ) : currentPage === 'ad-schedules' ? (
+            <div className="container mx-auto p-4 md:p-8 h-full">
+              <ScheduleBoardPage onOpenSubmission={handleOpenSubmissionFromSchedule} />
+            </div>
+          ) : currentPage === 'scheduling' ? (
+            // Cabang ini EKSPLISIT, bukan fall-through. Sebelumnya 'scheduling'
+            // adalah `else` implisit — nilai Page apa pun yang tidak tertangani
+            // ikut merender Page Calendar, dan menghapusnya nanti akan membuat
+            // nilai tak dikenal merender layar kosong tanpa error.
             <div className="container mx-auto p-4 md:p-8 h-full">
               <SchedulingPage onOpenSubmission={handleOpenSubmissionFromSchedule} />
             </div>
-          )}
+          ) : null}
         </main>
       </div>
     </div>

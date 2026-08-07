@@ -1947,3 +1947,126 @@ export const prepareForReschedule = async (submissionId: string) => {
     throw error;
   }
 };
+
+// ─────────────────────────────────────────────────────────────
+// Papan Schedule (Phase 3) — pembaca PERTAMA ad_schedules
+// ─────────────────────────────────────────────────────────────
+// Sampai sql/46, tabel ini cermin satu arah tanpa satu pun pembaca. Fungsi di
+// bawah ini yang mengubahnya. Konsekuensinya: ia hanya boleh MEMBACA. Menulis
+// ke ad_schedules akan hilang diam-diam pada sync berikutnya — sumbernya tetap
+// form_submissions dan form_submissions_extend.
+//
+// Kenapa cermin dan bukan kedua tabel sumber langsung: hanya di sini "satu
+// baris = satu jendela tayang" benar untuk jadwal PERTAMA juga, tanggalnya
+// sudah jadi instant (bukan campuran DATE dan TIMESTAMPTZ), dan sejak sql/46
+// sumbu review terpisah dari sumbu tayang. Ketiganya syarat papan ini.
+
+export interface AdScheduleEntry {
+  id: string;
+  submissionId: string;
+  ordinal: number;
+  isExtension: boolean;
+  /** Instant ISO, atau null untuk order yang belum punya jendela tayang. */
+  startDate: string | null;
+  endDate: string | null;
+  duration: number | null;
+  /** Sumbu tayang (sql/46): unscheduled | requested | slot_reserved | … */
+  status: string;
+  /** Sumbu review (sql/46): in_review | approved | rejected | spam */
+  reviewStatus: string;
+  paymentStatus: string | null;
+  distributionType: string | null;
+  /** Gelombang push Kilat (8/11/14/17 WIB). NULL = regular ATAU Kilat belum ditugaskan. */
+  kilatSlotHour: number | null;
+  totalCost: number;
+  slotBookedBy: string | null;
+  slotReservedAt: string | null;
+  title: string;
+  researcherName: string;
+  /** created_at ORDER-nya, bukan baris jadwalnya — dipakai deep-link ke drawer. */
+  submissionCreatedAt: string;
+  /** Sumbu ketiga, diisi query kedua. 'kilat' = memang tidak pernah punya halaman. */
+  pageStatus: 'none' | 'draft' | 'published' | 'kilat';
+}
+
+/**
+ * Seluruh isi cermin + status halamannya, dalam dua query.
+ *
+ * SENGAJA TANPA PAGINASI DAN TANPA FILTER TANGGAL. 983 baris per 2026-08-08 —
+ * memuatnya sekali membuat navigasi periode, filter, dan hitungan chip berjalan
+ * di klien tanpa bolak-balik ke server. Tinjau ulang di sekitar 5.000 baris;
+ * saat itu batasi ke jendela yang tampil DITAMBAH semua baris tanpa tanggal
+ * (yang terakhir tidak boleh pernah tersaring — justru order itu yang paling
+ * perlu terlihat).
+ */
+export const fetchAdSchedules = async (): Promise<AdScheduleEntry[]> => {
+  const { data, error } = await supabase
+    .from('ad_schedules')
+    .select(`
+      id, submission_id, ordinal, source_table,
+      start_date, end_date, duration,
+      status, review_status, payment_status,
+      distribution_type, kilat_slot_hour, total_cost,
+      slot_booked_by, slot_reserved_at,
+      form_submissions!ad_schedules_submission_id_fkey ( title, full_name, created_at )
+    `)
+    .order('start_date', { ascending: true, nullsFirst: false });
+
+  if (error) throw error;
+
+  const rows = (data || []) as any[];
+
+  // Sumbu halaman lewat SATU query untuk semua submission sekaligus, bukan per
+  // baris. Kilat tidak pernah punya baris survey_pages (guard ensure_survey_page,
+  // sql/42), jadi ia tidak ditanyakan sama sekali — 'belum dibuat' dan 'memang
+  // tidak pernah punya' adalah dua hal yang berbeda di layar.
+  const regularIds = Array.from(
+    new Set(rows.filter((r) => r.distribution_type !== 'kilat').map((r) => r.submission_id))
+  );
+
+  const pageBySubmission = new Map<string, boolean>();
+  if (regularIds.length > 0) {
+    const { data: pages, error: pageError } = await supabase
+      .from('survey_pages')
+      .select('submission_id, is_published')
+      .in('submission_id', regularIds);
+    if (pageError) throw pageError;
+    for (const p of pages || []) {
+      pageBySubmission.set(p.submission_id, !!p.is_published);
+    }
+  }
+
+  return rows.map((row) => {
+    const isKilat = row.distribution_type === 'kilat';
+    const published = pageBySubmission.get(row.submission_id);
+    const pageStatus: AdScheduleEntry['pageStatus'] = isKilat
+      ? 'kilat'
+      : published === undefined
+        ? 'none'
+        : published
+          ? 'published'
+          : 'draft';
+
+    return {
+      id: row.id,
+      submissionId: row.submission_id,
+      ordinal: row.ordinal,
+      isExtension: row.source_table === 'form_submissions_extend',
+      startDate: row.start_date,
+      endDate: row.end_date,
+      duration: row.duration,
+      status: row.status,
+      reviewStatus: row.review_status,
+      paymentStatus: row.payment_status,
+      distributionType: row.distribution_type,
+      kilatSlotHour: row.kilat_slot_hour == null ? null : Number(row.kilat_slot_hour),
+      totalCost: Number(row.total_cost || 0),
+      slotBookedBy: row.slot_booked_by,
+      slotReservedAt: row.slot_reserved_at,
+      title: row.form_submissions?.title || 'Untitled',
+      researcherName: row.form_submissions?.full_name || 'Unknown',
+      submissionCreatedAt: row.form_submissions?.created_at || new Date().toISOString(),
+      pageStatus,
+    };
+  });
+};
