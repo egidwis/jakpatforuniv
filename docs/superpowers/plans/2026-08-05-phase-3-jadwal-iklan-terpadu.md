@@ -1,19 +1,54 @@
-# Phase 3 — Tab "Jadwal Iklan" terpadu di dashboard admin
+# Phase 3 — Papan "Schedule" di dashboard admin
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> ## ⬜ BELUM DIMULAI — ini titik masuk sesi berikutnya
-> Ditulis 2026-08-05 sebagai serah terima. Berisi keadaan yang sudah terverifikasi,
-> keputusan yang sudah diambil, dan **satu pekerjaan yang harus dituntaskan lebih dulu
-> (Task 9)**. Baca [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) dulu
-> untuk status berjalan; file ini hanya soal Phase 3.
+> ## 🟡 SEBAGIAN BESAR SUDAH DIKERJAKAN — 2026-08-08
+> Task 9A (`sql/46`) diterapkan & diverifikasi, papan Schedule jalan, drawer digabung.
+> **Yang tersisa:** adu visual papan baru dengan Page Calendar, lalu pensiunkan yang
+> lama. Status berjalan ada di [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md)
+> §"Yang menunggu tindakan" no. 00 — baca itu dulu.
+>
+> ⚠️ **Bagian di bawah ditulis 2026-08-05 dan sebagian sudah TIDAK BERLAKU.**
+> Koreksinya ada di kotak berikutnya. Jangan mengeksekusi dari file ini tanpa
+> membacanya.
+
+> ### 🔴 Yang berubah sejak file ini ditulis
+>
+> **1. Judulnya sendiri sudah salah.** Bukan "tab Jadwal Iklan terpadu sebagai tempat
+> kerja". Pembagiannya jadi tiga permukaan dengan peran berbeda — keputusan pemilik
+> produk 2026-08-07:
+>
+> | Permukaan | Perannya |
+> |---|---|
+> | **Submissions** | **tempat kerja** — review → jadwal → bayar dalam satu drawer |
+> | **Schedule** | **papan pantau** — nol aksi, hanya baca + deep-link |
+> | **Pages** | kelola halaman (task terpisah, belum dikerjakan) |
+>
+> Alasannya perilaku, bukan simetri model data: rute review manual adalah satu
+> percakapan dengan peneliti dari feedback sampai tagihan.
+>
+> **2. Task 9 dipecah.** 9A (cermin dapat sumbu kedua, `sql/46`) **selesai**;
+> 9B (tulis ulang `deriveOrderUiState`/`airingPeriods` di dashboard **user**) ditunda.
+>
+> **3. "Alihkan `SchedulingPage` lebih kecil" — SALAH, dan sebaliknya juga salah.**
+> `SchedulingPage` bukan "kalender halaman": tanggal yang diplotnya berasal dari
+> `form_submissions.start_date/end_date`, dan perpanjangan **memang** sudah jadi baris
+> sendiri lewat query ketiga ke `form_submissions_extend`. Yang benar-benar tidak bisa
+> dilakukannya: menampilkan order tanpa tanggal, membedakan empat keadaan yang runtuh,
+> dan menyaring apa pun (`const filteredEvents = events;`).
+>
+> **4. Menghapusnya membuang satu kemampuan nyata.** Membuat halaman untuk order yang
+> **belum lunas**, dan prop `paymentStatus` yang mematikan tombol publish di
+> `PageBuilderModal`. Keduanya harus dipindahkan lebih dulu — rinciannya di progress doc.
+>
+> **5. `sql/46` dipakai Task 9A.** `reward_pools` (8B-2) bergeser ke `sql/47`.
 
 ## Context
 
 Phase 3 mengganti cara admin melihat jadwal iklan: dari beberapa permukaan yang
-masing-masing membaca sumbernya sendiri, jadi **satu tab yang membaca satu tabel**
-(`ad_schedules`). Rencana Phase 2 menyebutnya "menyusut jadi mapper biasa" — dan itu
-memang benar, **tapi hanya setelah Task 9.**
+masing-masing membaca sumbernya sendiri, jadi **satu papan pantau yang membaca satu
+tabel** (`ad_schedules`). Rencana Phase 2 menyebutnya "menyusut jadi mapper biasa" —
+dan itu memang benar, **tapi hanya setelah Task 9A.**
 
 Fondasinya sudah siap dan sudah diverifikasi di produksi 2026-08-05:
 

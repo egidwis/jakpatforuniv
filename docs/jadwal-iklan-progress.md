@@ -1,7 +1,7 @@
 # Jadwal Iklan — Status Berjalan
 
 > **Titik masuk untuk pekerjaan Jadwal Iklan.** Baca ini dulu sebelum membuka
-> rencana mana pun. Diperbarui 2026-08-05.
+> rencana mana pun. Diperbarui 2026-08-08.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -21,9 +21,9 @@ membaca baris yang sama.
 | Kilat | Jembatan admin iklan→Kilat + slot 08/11/14/17 WIB hari kerja | ✅ `sql/42` | ✅ deployed 2026-08-04 |
 | Kilat — papan jadwal | Toggle Iklan/Kilat di Ads Schedule + tutup lubang Create Page utk Kilat | — | ✅ deployed 2026-08-05 (`a4fc499`+`b78a7aa`) |
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
-| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ | 🟡 semuanya deployed; **sisa Task 9–12** |
-| Phase 3 | Tab "Jadwal Iklan" terpadu di dashboard admin | ⬜ | ⬜ **siap dimulai** — penghalang habis 2026-08-05, mulai dari Task 9, lihat §2 |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, `sql/46`) |
+| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **sisa Task 9B, 10–12** |
+| **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, **`sql/47`** — `46` dipakai Task 9A) |
 
 **Satu hal yang paling penting kalau kamu kembali setelah lama:** per 2026-08-05
 `main` sudah di-deploy dan **DB serta kode akhirnya sejajar** — tidak ada lagi
@@ -43,6 +43,33 @@ branch itu. Lihat §2.
 ---
 
 ## Yang menunggu tindakan
+
+### 00. Adu papan Schedule dengan Page Calendar, lalu pensiunkan yang lama ⬅️ paling mendesak
+
+Papan **Schedule** sudah jalan di nav, dan **Page Calendar sengaja masih hidup di
+sebelahnya** dengan label "Page Calendar (lama)". Itu bukan kelalaian: satu-satunya
+cara mengadu keduanya order demi order adalah selagi keduanya bisa dibuka, dan
+kesempatan itu hilang begitu yang lama dihapus.
+
+Sisi data sudah diadu dan bersih (lihat §Phase 3 di "Yang sudah selesai"). Yang
+belum: **adu visual**, dan itu butuh mata manusia.
+
+- [ ] Survei yang sama: tanggal, jam, dan status halaman sama persis di kedua layar
+- [ ] Tampilan Kilat di papan baru = `KilatScheduleBoard` lama, entri demi entri
+- [ ] Klik entri dari order **bulan lampau** → drawer terbuka dan **tetap terbuka**
+- [ ] Klik entri **iklan regular** → mendarat di tab Regular, bukan tab Kilat kosong
+      (bug `setDistTab('kilat')` yang ditutup di `d7639df` — inilah ujinya)
+- [ ] Mobile: papan terbaca di 375px, nol scroll horizontal
+
+⚠️ **Menghapus `SchedulingPage` membuang satu kemampuan nyata — jangan dihapus
+sebelum ini dipindahkan.** Dari Page Calendar admin bisa membuat halaman untuk
+order yang **belum lunas** (`getPendingSlotsWithoutPage` memasukkan
+`slot_reserved`/`waiting_payment`). Jalur drawer tidak bisa: `PageAction`
+`disabled={!canBuildPage}` dan `canBuildPage = isPaid || isLegacyActive`.
+Selain itu **hanya `SchedulingPage` yang mengoper prop `paymentStatus`** ke
+`PageBuilderModal` — prop itu yang menyalakan peringatan "belum lunas" dan
+**mematikan tombol publish**. Mount di `InternalDashboard.tsx:1318` tidak
+mengopernya; kalau `SchedulingPage` dihapus begitu saja, penjaga itu hilang diam-diam.
 
 ### 0. Uji jembatan Kilat ujung-ke-ujung ⬅️ uji manual paling mendesak
 
@@ -253,6 +280,61 @@ uji mirror hidup mengikuti dan penomoran urut `start_date`. Belum dijalankan
 ---
 
 ## Yang sudah selesai
+
+### Phase 3 — Task 9A (`sql/46`) + papan Schedule, commit `478d550`..`d7639df` (2026-08-08)
+
+**Pembagian permukaan yang berlaku sekarang** — ini yang paling menentukan untuk
+sesi berikutnya, dan ia **membatalkan** gambaran lama "tab Jadwal Iklan terpadu
+sebagai tempat kerja":
+
+| Permukaan | Perannya |
+|---|---|
+| **Submissions** | **tempat kerja.** Review → jadwal → bayar, semuanya dalam satu drawer |
+| **Schedule** | **papan pantau.** Nol aksi, hanya baca + deep-link ke drawer |
+| **Pages** | kelola halaman (perombakannya task terpisah, belum dikerjakan) |
+
+Alasannya perilaku, bukan model data: rute review manual adalah **satu percakapan**
+dengan peneliti dari feedback sampai tagihan. Memecahnya jadi dua station memutus
+percakapan itu. Rute yang satunya — order auto-approval yang bayar sendiri lewat
+DOKU — tidak pernah lewat percakapan admin sama sekali; di situ pertanyaannya
+"mana yang lunas tapi halamannya belum dibuat", dan itu pertanyaan pantau.
+**Dua rute, dua pintu masuk.**
+
+**`sql/46` (Task 9A)** memberi cermin sumbu kedua:
+
+- kolom `review_status` — sumbu review, milik ORDER, lewat `review_status_of()`
+  (terjemahan harfiah `getDisplayStatus()` di `lifecycle.ts`)
+- `status` jadi sumbu **tayang saja**, lewat `airing_status_of()`, dengan tiga
+  nilai yang selama ini runtuh: `unscheduled` · `requested` · `slot_reserved`
+- **cabang DELETE dibuang** — satu order = satu baris ordinal 1, SELALU
+
+Yang kedua menutup lubang yang baru ketahuan saat mengukur: **87 order tidak ada
+di cermin sama sekali**, karena trigger `sql/41` menghapus barisnya begitu
+`start_date` jadi NULL. Cermin **896 → 983**, ordinal 1 **884 → 971**.
+
+Verifikasi sesudah diterapkan, semuanya **0**: selisih ordinal 1, order tanpa
+baris, selisih perpanjangan, `review_status` salah baris-demi-baris,
+`review_status` NULL, `status` salah baris-demi-baris. **Sidik waktu tidak
+berubah** (896 baris, `a4cf99aa345c397ea148528464b7dc16`) — tidak ada satu detik
+pun yang bergeser.
+
+**Papan Schedule** (`ScheduleBoardPage`) adalah **pembaca pertama** `ad_schedules`
+— sampai `sql/46` tabel itu cermin satu arah tanpa satu pun pembaca di klien,
+edge function, view, maupun fungsi DB. Tiga tampilan: Agenda, Bulan, Kilat
+(`KilatScheduleBoard` kini di-host di sini juga).
+
+Yang bisa dilakukannya dan Page Calendar tidak:
+
+- menampilkan order **tanpa jadwal** — 90 entri, **4 di antaranya sudah LUNAS**
+- membedakan empat keadaan yang dulu runtuh jadi `waiting_payment`
+- perpanjangan sebagai baris berurut `#1`/`#2`/`#3` dengan status tayang
+  masing-masing
+- menyaring sama sekali (Page Calendar: `const filteredEvents = events;`)
+
+**Drawer Submissions** digabung: tab Reservasi + Payment jadi **"Jadwal & Bayar"**,
+karena aksi utama keduanya membuka `SchedulePaymentView` yang sama. `ExtendAction`
+pindah ke sana, dan **pagar `!existingPage` dicabut karena itu bug** (lihat
+§Jebakan no. 8).
 
 ### Phase 0 — `sql/36`–`39`, commit `05a2fa1`
 
@@ -540,6 +622,47 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
    benar tidak bisa), bungkus dengan `BEGIN; SET LOCAL ROLE anon; … ROLLBACK;`,
    atau panggil endpoint REST-nya langsung dengan anon key. Pelajaran `sql/43`,
    dipakai lagi di `sql/44`.
+8. **Pagar `!existingPage` di `ExtendAction` adalah BUG, bukan kebijakan.**
+   Dikonfirmasi pemilik produk 2026-08-07: punya halaman iklan tidak pernah jadi
+   syarat memesan jadwal berikutnya — syaratnya cuma tidak tumpang tindih, dan
+   itu sudah ditegakkan `trg_submission_no_overlap` (`sql/38`) di DB. Akibatnya
+   order regular yang **lunas tapi belum punya halaman** tidak pernah bisa
+   menambah jadwal. Dicabut 2026-08-08 (`456c54b`).
+
+   ⚠️ **Pagar Kilat yang menggantikannya JANGAN ikut dicabut.** Sebelum ini order
+   Kilat terhalang **dua kali tanpa sengaja** — oleh `!existingPage` (Kilat tidak
+   pernah punya baris `survey_pages`, guard `sql/42`) dan oleh pembungkus
+   `!isKilat` di `PageTab`. Keduanya hilang saat aksi itu pindah tab, jadi
+   pagarnya kini eksplisit. Alasannya bukan cuma aturan produk:
+   **`ExtendSection` tidak mengenal Kilat sama sekali** — nol kemunculan
+   `distribution_type`, harganya `calculateAdCostPerDay(questionCount) × durasi`
+   (rumus regular). Untuk Kilat itu berarti add-on Rp 250.000 **tidak tertagih**
+   dan base rate dikali durasi yang tidak punya arti (Kilat selesai ~2 jam).
+   Membukanya butuh `ExtendSection` mengenal jalur distribusi lebih dulu: bukan
+   sekadar rumus harga, tapi **pemilih gelombang alih-alih rentang hari**.
+9. **`sql/40` menciptakan pekerjaan berulang yang tidak punya permukaan** —
+   mengganti banner generik `/default-ad-banner.jpg` dengan banner asli, setiap
+   kali sebuah order lunas.
+
+   ⚠️ **`requires_banner_update` BUKAN penandanya.** Trigger `sql/40` menyetelnya
+   `FALSE` pada setiap halaman yang ia buat (produksi 2026-08-07: `true` hanya
+   pada **1** baris dari 274). Siapa pun yang membangun antrean banner di atas
+   flag itu akan mendapat **tab kosong** lalu menyimpulkan tidak ada pekerjaan.
+   Penandanya harus `banner_url`. Batasi juga ke halaman yang **masih akan
+   tayang** — 243 dari 274 halaman iklan ber-`banner_url` NULL (peninggalan
+   pra-`sql/40`) dan akan membanjiri antrean itu kalau ikut dihitung.
+10. **Angka produksi basi dalam hitungan jam — jangan tulis uji berbasis
+    konstanta.** Order masuk belasan per hari: 954 pada 2026-08-07 jadi **971**
+    pada 2026-08-08. Rencana yang menyebut "sebaran harus tepat sembilan angka
+    ini" sudah salah keesokan harinya. Tulis verifikasi **relasional** — cermin
+    diadu dengan sumbernya, selisih harus nol — dan pakai angka absolut hanya
+    sebagai konteks. Pola yang dipakai `sql/46`.
+11. **Snapshot berbasis `CREATE TEMP TABLE` tidak berguna kalau yang mengukur dan
+    yang menerapkan bukan sesi yang sama.** TEMP table mati bersama koneksinya.
+    Untuk membuktikan "tidak ada waktu yang bergeser" lintas sesi, pakai md5 atas
+    `EXTRACT(EPOCH FROM …)` — bebas sesi **dan** bebas setelan TimeZone (`::text`
+    ikut berubah mengikuti TimeZone sesi; epoch tidak). Pola yang dipakai
+    `sql/46` §6(4)/§7(5).
 
 ---
 
@@ -552,4 +675,4 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — titik masuk pekerjaan berikutnya; prosedur merge branch + urutan Task 9→10→12→Phase 3→11 |
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
-| `multi-step-form/sql/36`–`45` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup |
+| `multi-step-form/sql/36`–`46` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup. `46` = Task 9A (dua sumbu); `reward_pools` bergeser ke `47` |
