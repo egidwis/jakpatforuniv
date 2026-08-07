@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
   FileText,
+  FileSpreadsheet,
   MessageSquare,
   LogOut,
   User,
@@ -50,6 +51,11 @@ export function DashboardLayout() {
       label: 'Ad Order Form',
       path: '/dashboard/submit',
       icon: <FileText className="w-5 h-5" />
+    },
+    {
+      label: 'Form Builder',
+      path: '/dashboard/forms',
+      icon: <FileSpreadsheet className="w-5 h-5" />
     },
     {
       label: 'Track Status',
@@ -146,7 +152,6 @@ export function DashboardLayout() {
                   className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ring-2 transition-all duration-150"
                   style={{
                     backgroundColor: 'rgba(0, 145, 255, 0.1)',
-                    ringColor: isProfileActive ? '#0091ff' : 'transparent',
                     boxShadow: isProfileActive ? '0 0 0 2px #0091ff' : '0 0 0 2px transparent'
                   }}
                 >
