@@ -3,10 +3,14 @@ import { DetailSheetSection } from '../../data-list/DetailSheet';
 import type { SurveySubmission, ExistingPage } from '../types';
 import { formatDate } from '../types';
 import { deriveLifecycle } from '../lifecycle';
-import { PageAction, ExtendAction } from '../CampaignActions';
+import { PageAction } from '../CampaignActions';
 
 // ─────────────────────────────────────────────────────────────
-// Tab: Page — page status + Page Builder entry point + Extend
+// Tab: Page — page status + Page Builder entry point.
+//
+// "Tambah Jadwal" DULU tinggal di sini. Ia pindah ke tab Jadwal & Bayar di
+// Phase 3: menambah jadwal adalah urusan sumbu tayang, dan menaruhnya di tab
+// Page-lah yang melahirkan pagar `!existingPage` yang ternyata bug.
 // ─────────────────────────────────────────────────────────────
 
 export function PageTab({
@@ -14,13 +18,11 @@ export function PageTab({
   existingPage,
   lifecycle,
   onOpenPageBuilder,
-  onExtendCreated,
 }: {
   submission: SurveySubmission;
   existingPage?: ExistingPage;
   lifecycle: ReturnType<typeof deriveLifecycle>;
   onOpenPageBuilder: (submission: SurveySubmission) => void;
-  onExtendCreated: () => void;
 }) {
   const isKilat = submission.distribution_type === 'kilat';
 
@@ -64,12 +66,6 @@ export function PageTab({
             existingPage={existingPage}
             lifecycle={lifecycle}
             onOpenPageBuilder={onOpenPageBuilder}
-          />
-          <ExtendAction
-            submission={submission}
-            existingPage={existingPage}
-            lifecycle={lifecycle}
-            onExtendCreated={onExtendCreated}
           />
         </DetailSheetSection>
       )}

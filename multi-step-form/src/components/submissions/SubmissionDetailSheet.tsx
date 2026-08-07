@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
+  ArrowRight,
   Ban,
-  Calendar,
+  CalendarCheck,
   Check,
-  CreditCard,
   FileText,
   Globe,
   Info,
@@ -24,17 +24,18 @@ import { ReviewStatusChip } from './ReviewStatusChip';
 import { ReviewTimeline } from './ReviewTimeline';
 import { InfoTab } from './tabs/InfoTab';
 import { ReviewTab } from './tabs/ReviewTab';
-import { ReservationTab } from './tabs/ReservationTab';
-import { PaymentTab } from './tabs/PaymentTab';
+import { SchedulePaymentTab } from './tabs/SchedulePaymentTab';
 import { PageTab } from './tabs/PageTab';
 
-type DetailTab = 'info' | 'review' | 'reservation' | 'payment' | 'page';
+// Reservasi + Payment digabung jadi satu tab di Phase 3: aksi utama keduanya
+// membuka SchedulePaymentView yang sama, dan rute review manual memperlakukan
+// keduanya sebagai satu percakapan dengan peneliti.
+type DetailTab = 'info' | 'review' | 'schedule-payment' | 'page';
 
 const TABS: { id: DetailTab; label: string; icon: typeof FileText }[] = [
   { id: 'info', label: 'Info', icon: Info },
   { id: 'review', label: 'Review', icon: FileText },
-  { id: 'reservation', label: 'Reservasi', icon: Calendar },
-  { id: 'payment', label: 'Payment', icon: CreditCard },
+  { id: 'schedule-payment', label: 'Jadwal & Bayar', icon: CalendarCheck },
   { id: 'page', label: 'Page', icon: Globe },
 ];
 
@@ -177,25 +178,19 @@ export function SubmissionDetailSheet({
       {activeTab === 'review' && (
         <ReviewTab submission={submission} onEditFormDetails={onEditFormDetails} />
       )}
-      {activeTab === 'reservation' && (
-        <ReservationTab
+      {activeTab === 'schedule-payment' && (
+        <SchedulePaymentTab
           submission={submission}
           paymentData={paymentData}
           existingPage={existingPage}
           isScheduled={isScheduled}
           lifecycle={lifecycle}
           onOpenSchedule={onOpenSchedule}
-          onConvertDistribution={onConvertDistribution}
-        />
-      )}
-      {activeTab === 'payment' && (
-        <PaymentTab
-          submission={submission}
-          paymentData={paymentData}
-          lifecycle={lifecycle}
           onOpenPayment={onOpenPayment}
           onPaymentStatusChange={onPaymentStatusChange}
           onEditFormDetails={onEditFormDetails}
+          onConvertDistribution={onConvertDistribution}
+          onExtendCreated={onExtendCreated}
         />
       )}
       {activeTab === 'page' && (
@@ -204,7 +199,6 @@ export function SubmissionDetailSheet({
           existingPage={existingPage}
           lifecycle={lifecycle}
           onOpenPageBuilder={onOpenPageBuilder}
-          onExtendCreated={onExtendCreated}
         />
       )}
     </>
@@ -281,14 +275,28 @@ export function SubmissionDetailSheet({
           </div>
         </div>
       ) : (
-        <div className="flex justify-center pt-1">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors px-3 py-1.5 rounded-md hover:bg-blue-50 border border-transparent hover:border-blue-100"
-            onClick={() => onStatusChange(submission.id, 'in_review', reviewNote)}
-          >
-            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
-          </button>
+        <div className="space-y-2 pt-1">
+          {/* Penghubung sesudah approve. Rute review manual adalah SATU
+              percakapan dengan peneliti — dari feedback review sampai tagihan —
+              jadi lanjutannya berpindah TAB, bukan berpindah halaman. */}
+          {displayStatus === 'approved' && !lifecycle.isPaid && (
+            <button
+              type="button"
+              className="w-full inline-flex items-center justify-center gap-1.5 h-9 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              onClick={() => setActiveTab('schedule-payment')}
+            >
+              Lanjut ke Jadwal &amp; Bayar <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors px-3 py-1.5 rounded-md hover:bg-blue-50 border border-transparent hover:border-blue-100"
+              onClick={() => onStatusChange(submission.id, 'in_review', reviewNote)}
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
+            </button>
+          </div>
         </div>
       )}
     </div>

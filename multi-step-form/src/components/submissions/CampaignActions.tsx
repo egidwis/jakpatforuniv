@@ -455,17 +455,41 @@ export function PageAction({
 }
 
 interface ExtendActionProps extends ActionBaseProps {
-  existingPage?: ExistingPage;
   onExtendCreated: () => void;
 }
 
+/**
+ * "Tambah Jadwal" — memesan jendela tayang BERIKUTNYA untuk order yang sama.
+ *
+ * ⚠️ PAGAR `!existingPage` SENGAJA TIDAK ADA DI SINI. Sampai Phase 3 fungsi ini
+ * berbunyi `if (!lifecycle.canBuildPage || !existingPage) return null` — dan
+ * itu BUG, bukan kebijakan (dikonfirmasi pemilik produk 2026-08-07). Punya
+ * halaman iklan tidak pernah jadi syarat memesan jadwal; syaratnya cuma jadwal
+ * itu tidak tumpang tindih, dan itu sudah ditegakkan trg_submission_no_overlap
+ * (sql/38) di DB. Selama pagar itu berdiri, sumbu tayang dipagari sumbu
+ * halaman — kopling yang justru jadi alasan Phase 2 ada.
+ *
+ * ⚠️ KILAT DITUTUP, DAN ALASANNYA DITULIS DI SINI SUPAYA TIDAK IKUT DICABUT.
+ * Dulu order Kilat terhalang dua kali tanpa sengaja: oleh `!existingPage` (Kilat
+ * tidak pernah punya baris survey_pages — guard ensure_survey_page(), sql/42)
+ * dan oleh pembungkus `!isKilat` di PageTab. Keduanya hilang saat aksi ini
+ * pindah ke tab Jadwal & Bayar, jadi pagarnya harus eksplisit.
+ *
+ * Ini bukan sekadar aturan produk. ExtendSection TIDAK MENGENAL Kilat sama
+ * sekali — nol kemunculan `distribution_type` di sana, dan harganya
+ * `calculateAdCostPerDay(questionCount) × durasi`, rumus regular. Untuk Kilat
+ * itu berarti add-on Rp 250.000 tidak tertagih DAN base rate dikali durasi yang
+ * tidak punya arti (Kilat selesai dalam ~2 jam). Membuka ini butuh ExtendSection
+ * mengenal jalur distribusi lebih dulu: bukan cuma rumus harga, tapi pemilih
+ * gelombang alih-alih rentang hari.
+ */
 export function ExtendAction({
   submission,
-  existingPage,
   lifecycle,
   onExtendCreated,
 }: ExtendActionProps) {
-  if (!lifecycle.canBuildPage || !existingPage) return null;
+  if (submission.distribution_type === 'kilat') return null;
+  if (!lifecycle.canBuildPage) return null;
   return (
     <ExtendSection
       submissionId={submission.id}
