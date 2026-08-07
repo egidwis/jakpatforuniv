@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import type { QuestionBlock, QuestionType } from '../../utils/customForms';
 import {
-  CustomForm,
-  QuestionBlock,
-  QuestionType,
   getCustomFormById,
   saveCustomForm
 } from '../../utils/customForms';
@@ -13,7 +11,6 @@ import {
   ArrowLeft,
   Save,
   Globe,
-  Plus,
   Type,
   AlignLeft,
   CircleDot,

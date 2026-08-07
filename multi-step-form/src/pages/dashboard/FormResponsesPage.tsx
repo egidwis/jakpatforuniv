@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import type { CustomForm, CustomFormResponse } from '../../utils/customForms';
 import {
-  CustomForm,
-  CustomFormResponse,
   getCustomFormById,
   getFormResponses,
   exportResponsesToCSV
@@ -23,7 +21,6 @@ import { toast } from 'sonner';
 
 export const FormResponsesPage: React.FC = () => {
   const { formId } = useParams<{ formId: string }>();
-  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [form, setForm] = useState<CustomForm | null>(null);

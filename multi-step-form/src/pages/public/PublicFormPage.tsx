@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import type { CustomForm, QuestionBlock } from '../../utils/customForms';
 import {
-  CustomForm,
-  QuestionBlock,
   getCustomFormBySlugOrId,
   submitFormResponse
 } from '../../utils/customForms';

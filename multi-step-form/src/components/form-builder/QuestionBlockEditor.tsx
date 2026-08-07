@@ -1,5 +1,5 @@
 import React from 'react';
-import { QuestionBlock, QuestionType } from '../../utils/customForms';
+import type { QuestionBlock, QuestionType } from '../../utils/customForms';
 import {
   Type,
   AlignLeft,
