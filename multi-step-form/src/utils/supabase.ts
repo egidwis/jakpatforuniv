@@ -1978,7 +1978,22 @@ export interface AdScheduleEntry {
   distributionType: string | null;
   /** Gelombang push Kilat (8/11/14/17 WIB). NULL = regular ATAU Kilat belum ditugaskan. */
   kilatSlotHour: number | null;
+  /** Yang BENAR-BENAR ditagih untuk jadwal ini. 981 dari 983 baris terisi. */
   totalCost: number;
+  /**
+   * DPP sebelum PPN. ⚠️ NULL pada 909 dari 983 baris — seluruh order pra-`sql/34`
+   * (PPN belum ada saat itu). Jangan pernah menurunkan PPN dengan mengalikan
+   * `totalCost`: untuk baris-baris itu `totalCost` SUDAH final tanpa PPN, dan
+   * hasilnya angka yang tidak pernah ditagih ke siapa pun.
+   */
+  subtotal: number | null;
+  ppnAmount: number | null;
+  voucherCode: string | null;
+  prizePerWinner: number;
+  winnerCount: number;
+  additionalPrizePerWinner: number;
+  /** true = jadwal ini membuka pool hadiah baru, bukan menambah pool berjalan. */
+  isNewPeriod: boolean;
   slotBookedBy: string | null;
   slotReservedAt: string | null;
   title: string;
@@ -1999,18 +2014,26 @@ export interface AdScheduleEntry {
  * (yang terakhir tidak boleh pernah tersaring — justru order itu yang paling
  * perlu terlihat).
  */
-export const fetchAdSchedules = async (): Promise<AdScheduleEntry[]> => {
-  const { data, error } = await supabase
+export const fetchAdSchedules = async (submissionId?: string): Promise<AdScheduleEntry[]> => {
+  let q = supabase
     .from('ad_schedules')
     .select(`
       id, submission_id, ordinal, source_table,
       start_date, end_date, duration,
       status, review_status, payment_status,
-      distribution_type, kilat_slot_hour, total_cost,
+      distribution_type, kilat_slot_hour,
+      total_cost, subtotal, ppn_amount, voucher_code,
+      prize_per_winner, winner_count, additional_prize_per_winner, is_new_period,
       slot_booked_by, slot_reserved_at,
       form_submissions!ad_schedules_submission_id_fkey ( title, full_name, created_at )
-    `)
-    .order('start_date', { ascending: true, nullsFirst: false });
+    `);
+
+  // Dipakai dua permukaan: papan (tanpa argumen, semuanya) dan drawer order
+  // (satu submission). Satu fungsi supaya keduanya tidak bisa menurunkan
+  // "jadwal ke berapa" dan "berapa ditagih" dengan aturan yang berbeda.
+  if (submissionId) q = q.eq('submission_id', submissionId);
+
+  const { data, error } = await q.order('ordinal', { ascending: true });
 
   if (error) throw error;
 
@@ -2061,6 +2084,13 @@ export const fetchAdSchedules = async (): Promise<AdScheduleEntry[]> => {
       distributionType: row.distribution_type,
       kilatSlotHour: row.kilat_slot_hour == null ? null : Number(row.kilat_slot_hour),
       totalCost: Number(row.total_cost || 0),
+      subtotal: row.subtotal == null ? null : Number(row.subtotal),
+      ppnAmount: row.ppn_amount == null ? null : Number(row.ppn_amount),
+      voucherCode: row.voucher_code,
+      prizePerWinner: Number(row.prize_per_winner || 0),
+      winnerCount: Number(row.winner_count || 0),
+      additionalPrizePerWinner: Number(row.additional_prize_per_winner || 0),
+      isNewPeriod: !!row.is_new_period,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
       title: row.form_submissions?.title || 'Untitled',
