@@ -7,6 +7,8 @@ import {
   saveCustomForm
 } from '../../utils/customForms';
 import { QuestionBlockEditor } from '../../components/form-builder/QuestionBlockEditor';
+import { FormAiAssistantDrawer } from '../../components/form-builder/FormAiAssistantDrawer';
+import type { AiAction } from '../../utils/formAiAgent';
 import {
   ArrowLeft,
   Save,
@@ -20,7 +22,8 @@ import {
   Loader2,
   ExternalLink,
   Copy,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { toast } from 'sonner';
@@ -33,6 +36,7 @@ export const FormBuilderPage: React.FC = () => {
   const [loading, setLoading] = useState(!!formId);
   const [saving, setSaving] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
 
   const [title, setTitle] = useState('Untitled Form');
   const [description, setDescription] = useState('');
@@ -184,6 +188,52 @@ export const FormBuilderPage: React.FC = () => {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const handleApplyAiActions = (actions: AiAction[]) => {
+    actions.forEach((act) => {
+      if (act.type === 'SET_TITLE' && act.value) {
+        setTitle(act.value);
+      } else if (act.type === 'SET_DESCRIPTION' && act.value) {
+        setDescription(act.value);
+      } else if (act.type === 'ADD_BLOCK' && act.block) {
+        const newBlock: QuestionBlock = {
+          id: crypto.randomUUID(),
+          type: (act.block.type as QuestionType) || 'short_text',
+          label: act.block.label || 'Question Title',
+          description: act.block.description || '',
+          required: !!act.block.required,
+          options: act.block.options || (act.block.type === 'multiple_choice' || act.block.type === 'checkbox' ? ['Option 1', 'Option 2'] : undefined),
+          maxScale: act.block.maxScale || 5
+        };
+        setBlocks(prev => [...prev, newBlock]);
+      } else if (act.type === 'REMOVE_BLOCK' && typeof act.index === 'number') {
+        setBlocks(prev => prev.filter((_, i) => i !== act.index));
+      } else if (act.type === 'UPDATE_BLOCK' && typeof act.index === 'number' && act.block) {
+        setBlocks(prev => {
+          const next = [...prev];
+          if (next[act.index!]) {
+            next[act.index!] = { ...next[act.index!], ...act.block };
+          }
+          return next;
+        });
+      } else if (act.type === 'REPLACE_ALL') {
+        if (act.value) setTitle(act.value);
+        if (act.description) setDescription(act.description);
+        if (Array.isArray(act.blocks)) {
+          const newBlocks: QuestionBlock[] = act.blocks.map(b => ({
+            id: crypto.randomUUID(),
+            type: (b.type as QuestionType) || 'short_text',
+            label: b.label || 'Question Title',
+            description: b.description || '',
+            required: !!b.required,
+            options: b.options || (b.type === 'multiple_choice' || b.type === 'checkbox' ? ['Option 1', 'Option 2'] : undefined),
+            maxScale: b.maxScale || 5
+          }));
+          setBlocks(newBlocks);
+        }
+      }
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -227,6 +277,17 @@ export const FormBuilderPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Ask AI Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAiDrawerOpen(true)}
+              className="text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800 flex items-center gap-1.5 font-semibold"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              Ask AI <span className="text-[9px] bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-200 px-1 py-0.2 rounded font-bold">Beta</span>
+            </Button>
+
             {formId && (
               <>
                 <Button
@@ -380,6 +441,14 @@ export const FormBuilderPage: React.FC = () => {
           </div>
         </div>
       </main>
+
+      {/* Ask AI Assistant Side Panel */}
+      <FormAiAssistantDrawer
+        isOpen={isAiDrawerOpen}
+        onClose={() => setIsAiDrawerOpen(false)}
+        formState={{ title, description, blocks }}
+        onApplyActions={handleApplyAiActions}
+      />
     </div>
   );
 };
