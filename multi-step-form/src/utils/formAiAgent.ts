@@ -1,9 +1,10 @@
-import type { QuestionBlock, QuestionType } from './customForms';
+import type { QuestionBlock } from './customForms';
 
 export interface AiAction {
   type: 'SET_TITLE' | 'SET_DESCRIPTION' | 'ADD_BLOCK' | 'REMOVE_BLOCK' | 'UPDATE_BLOCK' | 'REPLACE_ALL';
   label?: string;
   value?: string;
+  description?: string;
   block?: Partial<QuestionBlock>;
   blocks?: Partial<QuestionBlock>[];
   index?: number;

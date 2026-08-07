@@ -1,10 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { QuestionBlock } from '../../utils/customForms';
-import {
-  sendFormAiPrompt,
-  ChatMessage,
-  AiAction
-} from '../../utils/formAiAgent';
+import type { ChatMessage, AiAction } from '../../utils/formAiAgent';
+import { sendFormAiPrompt } from '../../utils/formAiAgent';
 import {
   Sparkles,
   X,
