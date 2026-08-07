@@ -90,9 +90,9 @@ export async function getCustomFormById(formId: string): Promise<CustomForm | nu
 export async function getCustomFormBySlugOrId(usernameOrId: string, slug?: string): Promise<CustomForm | null> {
   if (slug) {
     // Lookup by username + slug
-    // First get user_id from customer_profiles where username = usernameOrId
+    // First get user_id from profiles where username = usernameOrId
     const { data: profile } = await supabase
-      .from('customer_profiles')
+      .from('profiles')
       .select('id')
       .eq('username', usernameOrId.toLowerCase())
       .maybeSingle();

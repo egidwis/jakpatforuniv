@@ -1,14 +1,14 @@
 -- Migration 46: Custom Forms and Form Responses
 -- Adds custom form builder support and response logging
 
--- 1. Ensure username column exists in customer_profiles / profiles
+-- 1. Ensure username column exists in public.profiles
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'customer_profiles' AND column_name = 'username'
+    WHERE table_name = 'profiles' AND column_name = 'username'
   ) THEN
-    ALTER TABLE customer_profiles ADD COLUMN username TEXT UNIQUE;
+    ALTER TABLE public.profiles ADD COLUMN username TEXT UNIQUE;
   END IF;
 END $$;
 
