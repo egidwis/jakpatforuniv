@@ -492,16 +492,46 @@ WHERE a.source_table = 'form_submissions_extend'
 --   (SELECT COUNT(*) FROM ad_schedules
 --     WHERE source_table='form_submissions_extend')                    AS ordinal_2n;
 --
--- -- (3) Sebaran yang DIHARAPKAN sesudah migrasi, dihitung dari SUMBER. Simpan
--- -- hasilnya; §7(4) mengadu sebaran cermin dengan angka-angka ini.
+-- -- (3) Sebaran yang DIHARAPKAN sesudah migrasi, dihitung dari SUMBER. CASE-nya
+-- -- ditulis inline supaya bisa dijalankan SEBELUM bagian 1 ada.
 -- -- Potret 2026-08-08: requested 490 · live 172 · cancelled 130 · scheduled 60
 -- -- · slot_reserved 48 · paid 36 · unscheduled 26 · completed 8 · waiting_payment 1
--- SELECT airing_status_of(submission_status, start_date IS NOT NULL) AS status_sesudah, COUNT(*)
--- FROM form_submissions GROUP BY 1 ORDER BY 2 DESC;   -- butuh bagian 1 sudah dijalankan
+-- SELECT CASE
+--          WHEN submission_status IN ('rejected','spam') THEN 'cancelled'
+--          WHEN submission_status IN ('waiting_payment','paid','scheduled','live','completed')
+--            THEN submission_status
+--          WHEN submission_status = 'slot_reserved' THEN 'slot_reserved'
+--          WHEN start_date IS NOT NULL THEN 'requested'
+--          ELSE 'unscheduled'
+--        END AS status_sesudah, COUNT(*)
+-- FROM form_submissions GROUP BY 1 ORDER BY 2 DESC;
+-- -- Sebaran review_status. Potret 2026-08-08:
+-- --   approved 440 · in_review 401 · spam 115 · rejected 15
+-- SELECT CASE WHEN COALESCE(submission_status,'pending') IN
+--               ('approved','slot_reserved','waiting_payment','paid','scheduled','live','completed')
+--             THEN 'approved' ELSE COALESCE(submission_status,'pending') END AS review_sesudah,
+--        COUNT(*)
+-- FROM form_submissions GROUP BY 1 ORDER BY 2 DESC;
 --
--- -- (4) Snapshot waktu untuk §7(5). Baris bertanggal TIDAK BOLEH bergeser.
--- CREATE TEMP TABLE _t46_before AS
--- SELECT source_table, source_id, start_date, end_date FROM ad_schedules;
+-- -- (4) ⚠️ SIDIK WAKTU — CATAT HASILNYA, §7(5) mengadunya.
+-- -- SENGAJA BUKAN TEMP TABLE. Snapshot berbasis TEMP table mati bersama
+-- -- koneksinya, jadi tidak berguna kalau yang menjalankan PRE-CHECK dan yang
+-- -- menerapkan migrasi bukan sesi yang sama — persis keadaan 2026-08-08.
+-- -- Pakai EXTRACT(EPOCH …) dan bukan ::text supaya nilainya tidak berubah
+-- -- mengikuti setelan TimeZone sesi.
+-- -- Dibatasi ke baris BERTANGGAL karena 87 baris yang lahir nanti semuanya
+-- -- bertanggal NULL — jadi angka ini HARUS identik sebelum dan sesudah.
+-- --
+-- -- TERUKUR 2026-08-08 (sebelum migrasi):
+-- --   baris_bertanggal 896
+-- --   sidik_waktu      a4cf99aa345c397ea148528464b7dc16
+-- SELECT COUNT(*) AS baris_bertanggal,
+--        md5(string_agg(
+--          source_table || '|' || source_id || '|' ||
+--          EXTRACT(EPOCH FROM start_date)::text || '|' ||
+--          COALESCE(EXTRACT(EPOCH FROM end_date)::text, '~'),
+--          E'\n' ORDER BY source_table, source_id)) AS sidik_waktu
+-- FROM ad_schedules WHERE start_date IS NOT NULL;
 --
 -- -- (5) Anomali yang seharusnya tidak ada: baris cermin tanpa tanggal sumber.
 -- -- Terukur 0 pada 2026-08-08 (dua di antaranya masih ada pada 2026-08-07 —
@@ -509,6 +539,17 @@ WHERE a.source_table = 'form_submissions_extend'
 -- SELECT COUNT(*) FROM ad_schedules a
 -- JOIN form_submissions fs ON fs.id = a.source_id
 -- WHERE a.source_table='form_submissions' AND fs.start_date IS NULL;
+--
+-- ── HASIL PRE-CHECK 2026-08-08, DIJALANKAN PENUH, SEMUANYA LOLOS ──────────────
+--   (0) airing_instant_of_date, kilat_instant_of, resync_ad_schedule_ordinals,
+--       ad_schedules_source_key, ad_schedules_ordinal_key, kolom
+--       distribution_type + kilat_slot_hour: ADA. review_status: belum (benar).
+--   (1) nol fungsi, nol view. Premis "tanpa pembaca" masih berlaku.
+--   (2) order 971 · cermin 896 · ordinal_1 884 · hilang 87 · ordinal_2n 12
+--       (= extend_total 12) · cermin tanpa tanggal 0
+--       884 + 87 = 971 ✓ — persis order yang punya tanggal, tidak lebih
+--   (5) anomali 0 (dua baris anomali pada 2026-08-07 sudah normal sendiri)
+--   Sesudah migrasi: cermin 896 -> 983, ordinal_1 884 -> 971.
 
 
 -- ============================================
@@ -550,13 +591,20 @@ WHERE a.source_table = 'form_submissions_extend'
 -- -- Sebarannya, untuk diadu dengan PRE-CHECK (3):
 -- SELECT status, COUNT(*) FROM ad_schedules WHERE ordinal = 1 GROUP BY 1 ORDER BY 2 DESC;
 --
--- -- (5) ⚠️ TIDAK ADA WAKTU YANG BERGESER. Butuh _t46_before dari PRE-CHECK (4),
--- -- di SESI YANG SAMA (TEMP table mati saat koneksi tutup). Harus 0 baris.
--- SELECT b.source_table, b.source_id, b.start_date AS sebelum, a.start_date AS sesudah
--- FROM _t46_before b JOIN ad_schedules a
---   ON a.source_table = b.source_table AND a.source_id = b.source_id
--- WHERE a.start_date IS DISTINCT FROM b.start_date
---    OR a.end_date   IS DISTINCT FROM b.end_date;
+-- -- (5) ⚠️ TIDAK ADA WAKTU YANG BERGESER. Query PERSIS SAMA dengan PRE-CHECK (4);
+-- -- kedua kolomnya harus IDENTIK dengan yang tercatat di sana:
+-- --   baris_bertanggal 896 · sidik_waktu a4cf99aa345c397ea148528464b7dc16
+-- -- Satu detik bergeser di satu baris mengubah md5-nya total, jadi uji ini tidak
+-- -- bisa lolos setengah. Kalau baris_bertanggal NAIK tapi md5 berubah, cek dulu
+-- -- apakah ada order baru masuk di antara kedua pengukuran — itu sebab yang sah,
+-- -- dan pembandingnya harus diambil ulang, bukan diabaikan.
+-- SELECT COUNT(*) AS baris_bertanggal,
+--        md5(string_agg(
+--          source_table || '|' || source_id || '|' ||
+--          EXTRACT(EPOCH FROM start_date)::text || '|' ||
+--          COALESCE(EXTRACT(EPOCH FROM end_date)::text, '~'),
+--          E'\n' ORDER BY source_table, source_id)) AS sidik_waktu
+-- FROM ad_schedules WHERE start_date IS NOT NULL;
 -- -- Iklan regular tetap 15.00 WIB (ulangan §7(2) sql/45). Kedua kolom 0.
 -- SELECT COUNT(*) FILTER (WHERE TO_CHAR(a.start_date AT TIME ZONE 'Asia/Jakarta','HH24:MI') <> '15:00') AS jam_salah,
 --        COUNT(*) FILTER (WHERE (a.start_date AT TIME ZONE 'Asia/Jakarta')::DATE <> fs.start_date)      AS tanggal_bergeser
