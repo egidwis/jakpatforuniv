@@ -229,9 +229,41 @@ export function ScheduleBoardPage({
 
   return (
     <div className="p-4 pb-0 md:px-6 md:pt-4 md:pb-0 flex-1 min-h-0 flex flex-col">
+
+      {/* ── Tab DI LUAR kartu, seperti Transaksi | Wallet di Finance ──
+          Ketiganya bukan tiga tampilan dari data yang sama, melainkan tiga
+          permukaan dengan periode dan kendalinya masing-masing. Menaruhnya di
+          luar membuat itu jujur: yang berganti seluruh kartunya, bukan isi tabel
+          di dalam kerangka yang sama. */}
+      <div className="shrink-0 flex items-center border-b border-gray-200 mb-4">
+        {([
+          ['agenda', 'Agenda', CalendarDays],
+          ['ads', 'Iklan', CalendarRange],
+          ['kilat', 'Kilat', Zap],
+        ] as const).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            onClick={() => setView(id)}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2.5 -mb-px text-sm font-semibold border-b-2 transition-colors',
+              view === id
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-gray-500 hover:text-gray-800'
+            )}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden mb-4">
 
-        {/* ── Toolbar baris 1: periode · pencarian · lonceng · muat ulang ── */}
+        {/* ── Toolbar: periode · pencarian · pil pekerjaan · filter · muat ulang.
+            Tidak dirender di tab Kilat: papan itu memuat datanya sendiri, jadi
+            tombol muat ulang di sini tidak akan menyegarkan apa pun yang terlihat
+            — dan tombol yang berbohong lebih buruk daripada tombol yang absen. */}
+        {view !== 'kilat' && (
         <div className="shrink-0 flex flex-wrap items-center gap-3 px-4 py-3">
           {isAgenda && (
             <>
@@ -320,44 +352,8 @@ export function ScheduleBoardPage({
             </div>
           )}
 
-          <Button
-            onClick={() => void load(true)}
-            variant="ghost"
-            size="icon"
-            disabled={isRefreshing || isLoading}
-            className={cn('h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50', !isAgenda && 'ml-auto')}
-            title="Muat ulang"
-          >
-            <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
-          </Button>
-        </div>
-
-        {/* ── Toolbar baris 2: tab tampilan + filter ── */}
-        <div className="shrink-0 flex items-center justify-between gap-2 px-4 border-b border-gray-200 min-h-[44px]">
-          <div className="flex">
-            {([
-              ['agenda', 'Agenda', CalendarDays],
-              ['ads', 'Iklan', CalendarRange],
-              ['kilat', 'Kilat', Zap],
-            ] as const).map(([id, label, Icon]) => (
-              <button
-                key={id}
-                onClick={() => setView(id)}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-2 -mb-px text-sm font-medium border-b-2 transition-colors',
-                  view === id
-                    ? 'border-blue-600 text-blue-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                {label}
-              </button>
-            ))}
-          </div>
-
           {isAgenda && (
-            <div className="flex items-center gap-1.5 pb-1">
+            <div className="flex items-center gap-1.5">
               {activeFilterCount > 0 && (
                 <button
                   onClick={resetFilters}
@@ -452,7 +448,19 @@ export function ScheduleBoardPage({
               </DropdownMenu>
             </div>
           )}
+
+          <Button
+            onClick={() => void load(true)}
+            variant="ghost"
+            size="icon"
+            disabled={isRefreshing || isLoading}
+            className={cn('h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50', !isAgenda && 'ml-auto')}
+            title="Muat ulang"
+          >
+            <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
+          </Button>
         </div>
+        )}
 
         {/* ── Isi — satu wilayah gulung, supaya header kolom & pita hari sticky ── */}
         <div className="flex-1 min-h-0 overflow-y-auto">
