@@ -2012,9 +2012,51 @@ export interface AdScheduleEntry {
 }
 
 /**
+ * Batas panjang URL PostgREST — TERUKUR di produksi 2026-08-08, bukan ditebak:
+ * `submission_id=in.(…)` dengan 600 UUID (≈22 KB) lolos, 700 UUID (≈26 KB)
+ * ditolak gateway dengan **400 Bad Request**. Bukan 414, jadi pesannya tidak
+ * menyebut panjang sama sekali dan mudah dikira query yang salah.
+ *
+ * Papan Schedule menanyakan 954 id sekaligus, jadi ia gagal memuat SEJAK HARI
+ * PERTAMA. Tidak terlihat saat verifikasi karena seluruh pemeriksaan waktu itu
+ * dijalankan lewat SQL langsung ke database — jalur REST tidak pernah dilewati.
+ *
+ * 200 memberi margin 3×. Potongannya dijalankan paralel, jadi ongkosnya tetap
+ * satu putaran jaringan, bukan lima.
+ */
+const IN_FILTER_CHUNK = 200;
+
+/**
+ * `.in('submission_id', ids)` yang tidak bisa meledak karena jumlah id.
+ *
+ * Dipakai di mana pun daftar id-nya tumbuh seiring umur produk. Dua pemanggil
+ * `survey_pages` lain (`getPendingSlotsWithoutPage`, peta `is_extra_ad`) hari ini
+ * masih aman — 64 dan 317 id — karena keduanya disaring status aktif, jadi
+ * daftarnya menyusut lagi saat order selesai. Yang tidak pernah menyusut hanya
+ * pemanggil di bawah ini.
+ */
+const selectSurveyPagesByIds = async <T>(columns: string, ids: string[]): Promise<T[]> => {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += IN_FILTER_CHUNK) {
+    chunks.push(ids.slice(i, i + IN_FILTER_CHUNK));
+  }
+  const batches = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase
+        .from('survey_pages')
+        .select(columns)
+        .in('submission_id', chunk);
+      if (error) throw error;
+      return (data || []) as T[];
+    })
+  );
+  return batches.flat();
+};
+
+/**
  * Seluruh isi cermin + status halamannya, dalam dua query.
  *
- * SENGAJA TANPA PAGINASI DAN TANPA FILTER TANGGAL. 983 baris per 2026-08-08 —
+ * SENGAJA TANPA PAGINASI DAN TANPA FILTER TANGGAL. 985 baris per 2026-08-08 —
  * memuatnya sekali membuat navigasi periode, filter, dan hitungan chip berjalan
  * di klien tanpa bolak-balik ke server. Tinjau ulang di sekitar 5.000 baris;
  * saat itu batasi ke jendela yang tampil DITAMBAH semua baris tanpa tanggal
@@ -2033,18 +2075,28 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
       prize_per_winner, winner_count, additional_prize_per_winner, is_new_period,
       slot_booked_by, slot_reserved_at,
       form_submissions!ad_schedules_submission_id_fkey ( title, full_name, created_at )
-    `);
+    `, { count: 'exact' });
 
   // Dipakai dua permukaan: papan (tanpa argumen, semuanya) dan drawer order
   // (satu submission). Satu fungsi supaya keduanya tidak bisa menurunkan
   // "jadwal ke berapa" dan "berapa ditagih" dengan aturan yang berbeda.
   if (submissionId) q = q.eq('submission_id', submissionId);
 
-  const { data, error } = await q.order('ordinal', { ascending: true });
+  const { data, error, count } = await q.order('ordinal', { ascending: true });
 
   if (error) throw error;
 
   const rows = (data || []) as any[];
+
+  // Kalau PostgREST memotong hasilnya (`db-max-rows`), papan akan tetap tampil
+  // rapi sambil DIAM-DIAM kehilangan jadwal — dan yang paling mungkin hilang
+  // adalah baris paling belakang, yaitu order terbaru. Lebih baik berisik.
+  if (count != null && count > rows.length) {
+    console.warn(
+      `fetchAdSchedules: server hanya mengirim ${rows.length} dari ${count} baris. ` +
+      `Papan Schedule sedang menampilkan data TIDAK LENGKAP — sudah waktunya query ini dipaginasi.`
+    );
+  }
 
   // Sumbu halaman lewat SATU query untuk semua submission sekaligus, bukan per
   // baris. Kilat tidak pernah punya baris survey_pages (guard ensure_survey_page,
@@ -2054,14 +2106,15 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
     new Set(rows.filter((r) => r.distribution_type !== 'kilat').map((r) => r.submission_id))
   );
 
+  // ⚠️ Lewat `selectSurveyPagesByIds`, BUKAN `.in()` langsung: daftar ini memuat
+  // seluruh order regular sepanjang sejarah (954 per 2026-08-08) dan tumbuh terus.
   const pageBySubmission = new Map<string, boolean>();
   if (regularIds.length > 0) {
-    const { data: pages, error: pageError } = await supabase
-      .from('survey_pages')
-      .select('submission_id, is_published')
-      .in('submission_id', regularIds);
-    if (pageError) throw pageError;
-    for (const p of pages || []) {
+    const pages = await selectSurveyPagesByIds<{ submission_id: string; is_published: boolean | null }>(
+      'submission_id, is_published',
+      regularIds
+    );
+    for (const p of pages) {
       pageBySubmission.set(p.submission_id, !!p.is_published);
     }
   }

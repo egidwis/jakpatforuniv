@@ -663,6 +663,25 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
     `EXTRACT(EPOCH FROM …)` — bebas sesi **dan** bebas setelan TimeZone (`::text`
     ikut berubah mengikuti TimeZone sesi; epoch tidak). Pola yang dipakai
     `sql/46` §6(4)/§7(5).
+12. **`.in()` dengan daftar id yang tumbuh akan mati di panjang URL — dan matinya
+    berbunyi `400`, bukan `414`.** PostgREST menaruh filter di query string, jadi
+    `submission_id=in.(…)` berisi 954 UUID = **±35 KB URL**. Terukur di produksi
+    2026-08-08: **600 UUID (≈22 KB) lolos, 700 (≈26 KB) ditolak**. Papan Schedule
+    kena persis di sini dan **gagal memuat sejak hari pertama** — layar kosong,
+    `0 order · 0 jadwal`, pesannya cuma `Bad Request` tanpa menyebut panjang sama
+    sekali. Diperbaiki lewat `selectSurveyPagesByIds()` (potongan 200, paralel).
+
+    ⚠️ **Ini lolos dari seluruh verifikasi karena verifikasinya dijalankan lewat
+    SQL, bukan lewat REST.** Angka-angkanya semua benar — dan tidak satu pun
+    menyentuh jalur yang benar-benar dipakai browser. Sama persis dengan jebakan
+    no. 7, cuma sumbunya beda: di sana yang dilewati **hak akses**, di sini yang
+    dilewati **gateway**. Untuk fitur yang membaca banyak baris, buktikan sekali
+    lewat `curl` ke `/rest/v1/` dengan anon key sebelum menyatakan selesai.
+
+    Aturan turunannya: daftar id yang **tidak pernah menyusut** (seluruh order
+    sepanjang sejarah) wajib dipotong. Daftar yang disaring status aktif boleh
+    utuh — ia menyusut lagi saat order selesai. `getPendingSlotsWithoutPage` (64
+    id) dan peta `is_extra_ad` (317 id) masuk kategori kedua.
 
 ---
 
