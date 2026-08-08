@@ -8,15 +8,15 @@
 > **Agenda · Iklan · Kilat**, drawer digabung, **Page Calendar sudah dipensiunkan**
 > (`824890f`), dan **Task 9B + 12 (copy) menyusul** (`e91f52f`..`433153c`).
 >
-> **Yang tersisa sebelum branch ini layak merge — dua, keduanya butuh manusia:**
+> **Kedua gerbang terakhir sudah lunas, 2026-08-08 malam:**
 >
-> 1. **Adu visual papan Schedule di browser.** Pembandingnya sudah tidak ada di
->    layar; kalau ada yang janggal, rujuk `git show` pada commit sebelum `824890f`.
-> 2. **`SELECT cron_activate_extends();`** — satu-satunya verifikasi Task 8 yang
->    belum jalan, karena ia **menulis**. Catat status 2 jadwal yang sedang berjalan
->    sebelum dan sesudah.
+> 1. ✅ **Adu visual papan Schedule di browser** — pemilik produk: tidak ada isu.
+> 2. ✅ **`SELECT cron_activate_extends();`** dijalankan dengan pengawasan. Sidik
+>    jari `form_submissions_extend` + `survey_pages` **identik** sebelum & sesudah;
+>    cacah status tak bergeser (1 `live`, 1 `scheduled`, 7 `completed`). Rinciannya
+>    di progress doc §4.
 >
-> Sesudah itu: merge ke `main` → deploy → **baru** Task 11 (rencana terpisah), lalu
+> **Branch ini siap merge.** Sesudah itu: deploy → **baru** Task 11 (rencana terpisah), lalu
 > Phase 4. Urutan itu diputuskan 2026-08-08; alasannya di
 > [`README.md`](README.md) §"Urutan rilis yang berlaku".
 >

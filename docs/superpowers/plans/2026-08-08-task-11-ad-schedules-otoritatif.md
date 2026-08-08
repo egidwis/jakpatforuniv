@@ -300,8 +300,11 @@ finance lebih dulu** supaya tidak dikira dua produk.
       `components/ProgressTracker.tsx` sudah dihapus.
 - [x] **Task 12 separuh selesai** — `e91f52f`. Langkah 5 di bawah menyusut jadi
       **identifier kode saja**; seluruh copy yang dibaca manusia sudah bersih.
-- [ ] Adu visual papan Schedule di browser (butuh mata manusia)
-- [ ] `SELECT cron_activate_extends();` dijalankan dengan pengawasan
+- [x] Adu visual papan Schedule di browser — pemilik produk 2026-08-08: tidak ada isu
+- [x] `SELECT cron_activate_extends();` dijalankan dengan pengawasan 2026-08-08 —
+      sidik jari identik sebelum & sesudah, nol perubahan. **Sekalian terukur: cron
+      `activate-extends` sudah 6.250× jalan, 100% `succeeded`, sejak 4 Juni** — jadi
+      basis perbandingan untuk langkah 2 rencana ini sudah mapan, bukan asumsi.
 - [ ] Branch `feat/dashboard-soft-dna-navbar` di-merge ke `main` dan **dideploy**
 - [ ] Branch baru dari `main`
 

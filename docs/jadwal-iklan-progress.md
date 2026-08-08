@@ -296,9 +296,9 @@ Tidak memblokir apa pun, tapi belum pernah dijalankan:
 - **Task 8C di layar** — sudah dibuktikan di tingkat kode (lihat "Yang sudah
   selesai"), tinggal dilihat mata.
 
-### 4. Verifikasi Task 8 — ✅ SELESAI kecuali satu (2026-08-08)
+### 4. Verifikasi Task 8 — ✅ SELESAI SELURUHNYA (2026-08-08)
 
-Dijalankan seluruhnya kecuali `(7)`, semuanya **nol**:
+Semuanya **nol**:
 
 | Periksa | Hasil |
 |---|---|
@@ -322,11 +322,37 @@ datanya melainkan querynya: ia mengadu `start_date` Kilat dengan
 `kilat_instant_of()`. Dengan helper yang benar hasilnya nol. **Dua jalur, dua
 helper — juga saat menulis query verifikasi, bukan cuma saat menulis kode.**
 
-Sisa satu, dan ia **menulis**, jadi sengaja tidak dijalankan sendiri:
+**`(7)` `SELECT cron_activate_extends();` dijalankan dengan pengawasan pemilik produk,
+2026-08-08 malam — nol perubahan, dan hasilnya diprediksi lebih dulu.**
 
-- `(7)` `SELECT cron_activate_extends();` — berguna karena trigger baru ikut menyala
-  tiap kali cron mengubah status perpanjangan. Jalankan saat ada yang mengawasi, dan
-  catat status 2 jadwal yang sedang berjalan sebelum & sesudah.
+Sidik jari diambil sebelum & sesudah atas `form_submissions_extend` (12 baris:
+id · status · payment_status · `updated_at` sebagai epoch) dan atas seluruh
+`survey_pages` milik order berjadwal ganda (jendela terbit + `current_period_batch`).
+**Keduanya identik**: `f36426cd…` dan `c8b631ea…`. Cacah status tak bergeser —
+1 `live`, 1 `scheduled`, 7 `completed`.
+
+Prediksinya ditulis sebelum tombol ditekan, dan itu yang membuat ujinya berarti:
+langkah 1 nol baris (satu-satunya jadwal `scheduled` lunas baru mulai 10 Agu),
+langkah 2 menulis satu baris bernilai **identik** (halaman `untitled-former` sudah
+sinkron), langkah 3 nol baris (yang `live` baru berakhir 10 Agu).
+
+Sekalian terukur: cron `activate-extends` (`*/15 * * * *`) sudah jalan **6.250 kali,
+100% `succeeded`**, sejak 4 Juni. Jadi yang diuji bukan "apakah ia jalan" melainkan
+"apakah aman dipanggil manual" — dan jawabannya ya, ia idempoten.
+
+> **Kenapa fungsi ini penting, karena mudah dikira sepele.** Langkah 2-nya —
+> mengarahkan ulang `survey_pages.publish_start_date/end_date/current_period_batch`
+> ke jadwal yang sedang tayang — adalah **satu-satunya** mekanisme yang membuat
+> "1 halaman iklan, N jadwal" bekerja: halaman itu **jendela yang berpindah**, bukan
+> milik satu jadwal. Tanpanya, peneliti yang membayar jadwal ke-2 tidak akan pernah
+> tayang: `SurveyPage` menggerbang tampilan pada tanggal terbit yang masih menunjuk
+> jendela lama, dan `current_period_batch` yang tertinggal menaruh respondennya di
+> **pool hadiah yang salah**. Uang masuk, tidak ada yang keluar, dan DB berkata
+> "scheduled". Cakupannya sempit — hanya order berjadwal ganda, 12 baris seumur hidup
+> sistem — tapi justru itu yang membuatnya senyap.
+>
+> ⚠️ **Task 11 wajib mempertahankan perilaku ini utuh.** Sesudah
+> `form_submissions_extend` jadi view, langkah 2 harus tetap menemukan barisnya.
 
 ---
 
