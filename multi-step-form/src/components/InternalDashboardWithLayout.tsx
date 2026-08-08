@@ -537,9 +537,10 @@ export function InternalDashboardWithLayout() {
               <MiminAISetup />
             </div>
           ) : currentPage === 'ad-schedules' ? (
-            <div className="container mx-auto p-4 md:p-8 h-full">
-              <ScheduleBoardPage onOpenSubmission={handleOpenSubmissionFromSchedule} />
-            </div>
+            // Tanpa pembungkus `container`: papan ini mengurus paddingnya sendiri,
+            // sama seperti Submissions dan Transaksi. Pembungkus dengan padding
+            // memotong tinggi yang dibutuhkan kartunya untuk menggulung di dalam.
+            <ScheduleBoardPage onOpenSubmission={handleOpenSubmissionFromSchedule} />
           ) : currentPage === 'scheduling' ? (
             // Cabang ini EKSPLISIT, bukan fall-through. Sebelumnya 'scheduling'
             // adalah `else` implisit — nilai Page apa pun yang tidak tertangani

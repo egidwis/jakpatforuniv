@@ -126,30 +126,28 @@ export interface DayGroup {
   entries: AdScheduleEntry[];
 }
 
-/** Awal minggu (Senin) dalam waktu lokal, dipakai untuk navigasi periode. */
-export function mondayOf(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const dow = d.getDay();
-  d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
-  return d;
-}
-
-export function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
 export interface FilterState {
   service: 'all' | string;
   chips: Set<ChipKind>;
   showCancelled: boolean;
+  /**
+   * Order tanpa jendela tayang. MATI secara default: papan ini untuk melihat
+   * jadwal, dan yang belum punya jadwal bukan jadwal.
+   *
+   * ⚠️ Tapi ia tidak boleh hilang sama sekali. Sebagian dari order tanpa tanggal
+   * ini SUDAH LUNAS — 6 dari 37 saat ditulis, dan angkanya bergerak tiap hari,
+   * jadi jangan perlakukan sebagai konstanta. Uangnya sudah masuk dan tidak ada
+   * satu pun layar admin lain yang menampilkannya. Karena itu ia jadi filter yang
+   * bisa dinyalakan lewat pil "belum dijadwalkan", bukan fitur yang dibuang.
+   */
+  showUnscheduled: boolean;
   query: string;
 }
 
 export function matchesFilter(e: AdScheduleEntry, f: FilterState, now: number): boolean {
   const kind = chipKindOf(e, now);
+
+  if (isUnscheduled(e) && !f.showUnscheduled) return false;
 
   if (CANCELLED_CHIPS.includes(kind)) {
     if (!f.showCancelled) return false;

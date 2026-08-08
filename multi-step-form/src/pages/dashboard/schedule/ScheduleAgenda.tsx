@@ -23,6 +23,12 @@ import {
 // satu sisi saja.
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Jangkar DOM sebuah hari, dipakai tombol "Hari ini" untuk melompat. Dibuat
+ * lewat fungsi supaya yang menulis id dan yang mencarinya tidak bisa berbeda.
+ */
+export const dayGroupDomId = (ymd: string) => `sched-day-${ymd}`;
+
 /** Lebar kolom dipusatkan di sini supaya header dan baris tidak bisa bergeser sendiri-sendiri. */
 const COL = {
   time: 'w-[58px] shrink-0',
@@ -211,10 +217,15 @@ export function ScheduleAgenda({
       {/* Blok "Belum Dijadwalkan" berada DI LUAR periode dan selalu di atas:
           order tanpa jendela tayang tidak punya tanggal untuk disaring, dan
           justru itulah pekerjaan yang paling mudah terlupakan. */}
-      {/* Pembungkus <div> ini BUKAN hiasan: ia jadi containing block pita sticky
-          di dalamnya, jadi pita "Belum dijadwalkan" berhenti menempel begitu
-          bloknya habis. Tanpa pembungkus, ia akan menempel sepanjang gulungan dan
-          menimpa pita hari di bawahnya. */}
+      {/* Order tanpa jendela tayang. TIDAK tampil secara default — papan ini untuk
+          melihat jadwal, dan yang belum punya jadwal bukan jadwal. Ia muncul hanya
+          saat pil "belum dijadwalkan" dinyalakan, dan induknya yang memutuskan itu
+          (di sini daftarnya cukup dikosongkan).
+
+          Pembungkus <div> ini BUKAN hiasan: ia jadi containing block pita sticky
+          di dalamnya, jadi pitanya berhenti menempel begitu bloknya habis. Tanpa
+          pembungkus, ia akan menempel sepanjang gulungan dan menimpa pita hari di
+          bawahnya. */}
       {unscheduledEntries.length > 0 && (
         <div>
           <GroupHeader label="⚠ Belum dijadwalkan" count={unscheduledEntries.length} tone="warn" />
@@ -227,7 +238,7 @@ export function ScheduleAgenda({
       )}
 
       {groups.map((group) => (
-        <div key={group.ymd}>
+        <div key={group.ymd} id={dayGroupDomId(group.ymd)} className="scroll-mt-10">
           <GroupHeader
             label={group.label}
             count={group.entries.length}

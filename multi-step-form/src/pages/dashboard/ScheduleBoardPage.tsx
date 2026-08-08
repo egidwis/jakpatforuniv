@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, CalendarClock, CalendarDays, CalendarRange, ChevronLeft, ChevronRight,
-  Clock, ListFilter, Loader2, RefreshCw, Search, X, Zap,
+  AlertTriangle, CalendarClock, CalendarDays, ChevronDown, Clock,
+  ListFilter, Loader2, RefreshCw, Search, X, Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,11 +15,10 @@ import { cn } from '@/lib/utils';
 import { KilatScheduleBoard } from '@/components/KilatScheduleBoard';
 import { fetchAdSchedules, type AdScheduleEntry } from '@/utils/supabase';
 import { toWibYmd } from '@/utils/airing-window';
-import { ScheduleAgenda } from './schedule/ScheduleAgenda';
-import { ScheduleMonth } from './schedule/ScheduleMonth';
+import { ScheduleAgenda, dayGroupDomId } from './schedule/ScheduleAgenda';
 import {
-  CANCELLED_CHIPS, CHIP_ORDER, addDays, chipKindOf, computeAlerts, groupByDay,
-  isUnscheduled, matchesFilter, mondayOf, overlapsWindow, tokenForChip,
+  CANCELLED_CHIPS, CHIP_ORDER, chipKindOf, computeAlerts, groupByDay,
+  isUnscheduled, matchesFilter, overlapsWindow, tokenForChip,
   type ChipKind, type FilterState,
 } from './schedule/scheduleModel';
 
@@ -33,23 +32,24 @@ import {
 // tidak pernah lewat percakapan admin — di situ pertanyaannya "mana yang lunas
 // tapi halamannya belum dibuat", dan itu pertanyaan pantau.
 //
-// Karena tidak ada aksi, tidak ada tulisan. Cermin ad_schedules tetap satu arah
-// dan papan ini tidak pernah mencoba menulisnya.
+// BENTUKNYA MENGIKUTI DUA HALAMAN YANG SUDAH ADA, bukan gaya ketiga:
+//   • kerangka & kolom  → daftar Submissions (satu kartu, header kolom sticky)
+//   • pemilih periode   → tabel Transaksi di Finance (Bulan ▾ Tahun ▾, tanpa
+//                         panah maju-mundur, ada pilihan "Semua Bulan")
 //
-// BENTUKNYA MENGIKUTI DAFTAR SUBMISSIONS: satu kartu berisi toolbar, tab,
-// header kolom, baris, dan footer — bukan tumpukan kartu mengambang. Dua
-// permukaan yang menampilkan order yang sama tidak boleh terlihat seperti dua
-// produk. Yang ditiru bentuknya, bukan isinya: papan ini tidak punya checkbox,
-// tidak punya aksi massal, dan tidak punya paginasi.
+// Tidak ada judul halaman. Dua halaman itu juga tidak punya — navigasi kiri
+// sudah mengatakan halaman apa ini, dan judul kedua cuma memakan tinggi layar
+// yang seharusnya jadi baris data.
 // ─────────────────────────────────────────────────────────────
 
-type BoardView = 'agenda' | 'month' | 'kilat';
+type BoardView = 'agenda' | 'kilat';
 
-const VIEWS: ReadonlyArray<readonly [BoardView, string, typeof CalendarDays]> = [
-  ['agenda', 'Agenda', CalendarDays],
-  ['month', 'Bulan', CalendarRange],
-  ['kilat', 'Kilat', Zap],
-];
+/** Diturunkan, bukan disalin dari Finance — satu daftar nama bulan yang salah ketik sudah cukup. */
+const MONTHS = Array.from({ length: 12 }, (_, i) =>
+  new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(new Date(2000, i, 1))
+);
+
+const ALL_MONTHS = -1;
 
 const SERVICE_LABEL: Record<string, string> = { all: 'Semua layanan', kilat: 'Kilat', regular: 'Regular' };
 const serviceLabel = (s: string) => SERVICE_LABEL[s] ?? s;
@@ -63,10 +63,12 @@ export function ScheduleBoardPage({
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [view, setView] = useState<BoardView>('agenda');
-  const [anchor, setAnchor] = useState<Date>(() => mondayOf(new Date()));
+  const [month, setMonth] = useState<number>(() => new Date().getMonth());
+  const [year, setYear] = useState<number>(() => new Date().getFullYear());
   const [service, setService] = useState<'all' | string>('all');
   const [chips, setChips] = useState<Set<ChipKind>>(() => new Set());
   const [showCancelled, setShowCancelled] = useState(false);
+  const [showUnscheduled, setShowUnscheduled] = useState(false);
   const [query, setQuery] = useState('');
   const [now, setNow] = useState(() => Date.now());
 
@@ -98,9 +100,19 @@ export function ScheduleBoardPage({
     return Array.from(set).sort();
   }, [entries]);
 
+  // Tahun ikut dari data, bukan deret yang dipatok. Order 2027 tidak akan
+  // menghilang hanya karena tidak ada yang ingat menambah angkanya di sini.
+  const years = useMemo(() => {
+    const set = new Set<number>([new Date().getFullYear()]);
+    for (const e of entries) {
+      if (e.startDate) set.add(new Date(e.startDate).getFullYear());
+    }
+    return Array.from(set).sort((a, b) => a - b);
+  }, [entries]);
+
   const filter: FilterState = useMemo(
-    () => ({ service, chips, showCancelled, query }),
-    [service, chips, showCancelled, query]
+    () => ({ service, chips, showCancelled, showUnscheduled, query }),
+    [service, chips, showCancelled, showUnscheduled, query]
   );
 
   const filtered = useMemo(
@@ -132,10 +144,14 @@ export function ScheduleBoardPage({
 
   const alerts = useMemo(() => computeAlerts(entries, now), [entries, now]);
 
-  const windowFrom = view === 'month' ? new Date(anchor.getFullYear(), anchor.getMonth(), 1) : anchor;
-  const windowTo = view === 'month'
-    ? new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0, 23, 59, 59)
-    : addDays(anchor, 6);
+  /** `null` = "Semua Bulan": tidak ada jendela, jadi tidak ada yang disaring keluar. */
+  const monthWindow = useMemo(() => {
+    if (month === ALL_MONTHS) return null;
+    return {
+      from: new Date(year, month, 1),
+      to: new Date(year, month + 1, 0, 23, 59, 59, 999),
+    };
+  }, [month, year]);
 
   const unscheduledEntries = useMemo(
     () => filtered.filter(isUnscheduled),
@@ -143,18 +159,16 @@ export function ScheduleBoardPage({
   );
 
   const dayGroups = useMemo(
-    () => groupByDay(filtered.filter((e) => !isUnscheduled(e) && overlapsWindow(e, windowFrom, windowTo)), todayYmd),
-    [filtered, windowFrom, windowTo, todayYmd]
+    () => groupByDay(
+      filtered.filter((e) =>
+        !isUnscheduled(e) && (!monthWindow || overlapsWindow(e, monthWindow.from, monthWindow.to))
+      ),
+      todayYmd
+    ),
+    [filtered, monthWindow, todayYmd]
   );
 
-  const monthEntries = useMemo(
-    () => filtered.filter((e) => !isUnscheduled(e)),
-    [filtered]
-  );
-
-  const shownCount = view === 'month'
-    ? monthEntries.length
-    : unscheduledEntries.length + dayGroups.reduce((n, g) => n + g.entries.length, 0);
+  const shownCount = unscheduledEntries.length + dayGroups.reduce((n, g) => n + g.entries.length, 0);
 
   const toggleChip = (kind: ChipKind) => {
     setChips((prev) => {
@@ -169,21 +183,28 @@ export function ScheduleBoardPage({
     setChips(new Set());
     setService('all');
     setShowCancelled(false);
+    setShowUnscheduled(false);
   };
 
   const activeFilterCount =
-    chips.size + (service !== 'all' ? 1 : 0) + (showCancelled ? 1 : 0);
+    chips.size + (service !== 'all' ? 1 : 0) + (showCancelled ? 1 : 0) + (showUnscheduled ? 1 : 0);
 
-  const periodLabel = view === 'month'
-    ? anchor.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
-    : `${windowFrom.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} – ${windowTo.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  const periodLabel = month === ALL_MONTHS ? 'Semua bulan' : `${MONTHS[month]} ${year}`;
 
-  const shiftPeriod = (dir: -1 | 1) => {
-    setAnchor((prev) =>
-      view === 'month'
-        ? new Date(prev.getFullYear(), prev.getMonth() + dir, 1)
-        : addDays(prev, dir * 7)
-    );
+  /**
+   * Lompat ke hari ini. Dengan jendela sebulan, membuka papan pada tanggal 20
+   * berarti sembilan belas hari lewat yang harus digulung dulu — tombol ini yang
+   * menggantikan tombol "Hari ini" milik navigasi mingguan yang sudah dibuang.
+   */
+  const jumpToToday = () => {
+    const t = new Date();
+    setMonth(t.getMonth());
+    setYear(t.getFullYear());
+    // Menunggu satu frame supaya baris bulan yang baru sudah terpasang.
+    requestAnimationFrame(() => {
+      document.getElementById(dayGroupDomId(toWibYmd(t)))
+        ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
   };
 
   const openEntry = (e: AdScheduleEntry) =>
@@ -193,96 +214,120 @@ export function ScheduleBoardPage({
       distributionType: e.distributionType,
     });
 
-  const hasPeriodNav = view !== 'kilat';
+  const isAgenda = view === 'agenda';
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      {/* ── Kepala ────────────────────────────────────────── */}
-      <div className="shrink-0 flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Schedule</h1>
-          <p className="text-xs text-gray-500">
-            Papan pantau — klik entri untuk membukanya di Submissions.
-          </p>
-        </div>
+    <div className="p-4 pb-0 md:px-6 md:pt-4 md:pb-0 flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden mb-4">
 
-        {/* Tiga angka pekerjaan yang menunggu. Dihitung atas SELURUH data, bukan
-            periode yang sedang dilihat — pekerjaan minggu lalu tidak boleh
-            hilang hanya karena admin menggeser periode. */}
-        {!isLoading && (
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-red-700">
-              <Clock className="w-3.5 h-3.5" /> <strong>{alerts.lateForPayment}</strong> lewat batas bayar
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-amber-800">
-              <AlertTriangle className="w-3.5 h-3.5" /> <strong>{alerts.paidWithoutPage}</strong> lunas tanpa halaman
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-gray-600">
-              <CalendarClock className="w-3.5 h-3.5" /> <strong>{alerts.unscheduled}</strong> belum dijadwalkan
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* ── Satu permukaan: toolbar, tab, header kolom, baris, footer ───── */}
-      <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden">
-
-        {/* Toolbar baris 1: periode · pencarian · muat ulang */}
-        <div className="shrink-0 flex items-center gap-4 px-4 py-3">
-          {hasPeriodNav && (
+        {/* ── Toolbar baris 1: periode · pencarian · lonceng · muat ulang ── */}
+        <div className="shrink-0 flex flex-wrap items-center gap-3 px-4 py-3">
+          {isAgenda && (
             <>
+              {/* Pemilih periode bergaya Finance: dua select tanpa bingkai,
+                  dipisah garis tipis. Tanpa panah maju-mundur — melompat ke
+                  Desember tidak perlu empat klik. */}
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftPeriod(-1)}>
-                  <ChevronLeft className="h-4 w-4 text-gray-600" />
-                </Button>
-                <h2 className="text-sm font-semibold min-w-[150px] text-center text-gray-700 select-none">
-                  {periodLabel}
-                </h2>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftPeriod(1)}>
-                  <ChevronRight className="h-4 w-4 text-gray-600" />
-                </Button>
+                <div className="relative">
+                  <select
+                    className="h-8 pl-2 pr-7 text-sm font-semibold bg-transparent border-0 rounded-md focus:outline-none focus:ring-0 appearance-none cursor-pointer hover:bg-gray-50 transition-colors text-gray-700"
+                    value={month}
+                    onChange={(e) => setMonth(parseInt(e.target.value))}
+                  >
+                    <option value={ALL_MONTHS}>Semua Bulan</option>
+                    {MONTHS.map((m, i) => (
+                      <option key={m} value={i}>{m}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                </div>
+                <div className="w-px h-4 bg-gray-200" />
+                <div className="relative">
+                  <select
+                    className="h-8 pl-2 pr-7 text-sm font-semibold bg-transparent border-0 rounded-md focus:outline-none focus:ring-0 appearance-none cursor-pointer hover:bg-gray-50 transition-colors text-gray-700 disabled:opacity-40"
+                    value={year}
+                    onChange={(e) => setYear(parseInt(e.target.value))}
+                    disabled={month === ALL_MONTHS}
+                  >
+                    {years.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 px-3 text-xs font-medium text-gray-600"
-                  onClick={() => setAnchor(view === 'month' ? new Date() : mondayOf(new Date()))}
+                  className="h-8 px-2.5 text-xs font-medium text-gray-500 hover:text-blue-700"
+                  onClick={jumpToToday}
+                  title="Lompat ke hari ini"
                 >
                   Hari ini
                 </Button>
               </div>
-              <div className="flex-1 max-w-md relative">
+
+              <div className="flex-1 min-w-[200px] max-w-md relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
-                  type="text"
                   placeholder="Cari judul survei atau peneliti..."
                   className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
-              {query && (
-                <span className="text-xs text-gray-400 whitespace-nowrap">
-                  {shownCount} hasil
-                </span>
-              )}
             </>
           )}
+
+          {/* Tiga angka pekerjaan yang menunggu — SEKALIGUS pintu masuknya.
+              Dihitung atas SELURUH data, bukan periode yang sedang dilihat:
+              pekerjaan bulan lalu tidak boleh hilang karena admin ganti bulan.
+              Pil "belum dijadwalkan" adalah satu-satunya jalan menuju order tanpa
+              tanggal sejak bloknya tidak lagi tampil otomatis — empat di antaranya
+              sudah lunas, dan tidak ada layar lain yang menampilkannya. */}
+          {!isLoading && isAgenda && (
+            <div className="flex flex-wrap items-center gap-2 text-xs ml-auto">
+              <AlertPill
+                icon={Clock}
+                count={alerts.lateForPayment}
+                label="lewat batas bayar"
+                tone="red"
+              />
+              <AlertPill
+                icon={AlertTriangle}
+                count={alerts.paidWithoutPage}
+                label="lunas tanpa halaman"
+                tone="amber"
+              />
+              <AlertPill
+                icon={CalendarClock}
+                count={alerts.unscheduled}
+                label="belum dijadwalkan"
+                tone="slate"
+                active={showUnscheduled}
+                onClick={() => setShowUnscheduled((v) => !v)}
+              />
+            </div>
+          )}
+
           <Button
             onClick={() => void load(true)}
             variant="ghost"
             size="icon"
             disabled={isRefreshing || isLoading}
-            className="ml-auto h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+            className={cn('h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50', !isAgenda && 'ml-auto')}
             title="Muat ulang"
           >
             <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
           </Button>
         </div>
 
-        {/* Toolbar baris 2: tab tampilan + filter */}
+        {/* ── Toolbar baris 2: tab tampilan + filter ── */}
         <div className="shrink-0 flex items-center justify-between gap-2 px-4 border-b border-gray-200 min-h-[44px]">
           <div className="flex">
-            {VIEWS.map(([id, label, Icon]) => (
+            {([
+              ['agenda', 'Agenda', CalendarDays],
+              ['kilat', 'Kilat', Zap],
+            ] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
                 onClick={() => setView(id)}
@@ -299,10 +344,7 @@ export function ScheduleBoardPage({
             ))}
           </div>
 
-          {/* Filter status/layanan dilipat ke satu menu — persis pola Submissions.
-              Cacahnya tidak hilang, ia pindah ke dalam menu di sebelah tiap
-              pilihan, jadi "berapa yang menunggu review" tetap terjawab. */}
-          {view !== 'kilat' && (
+          {isAgenda && (
             <div className="flex items-center gap-1.5 pb-1">
               {activeFilterCount > 0 && (
                 <button
@@ -368,12 +410,21 @@ export function ScheduleBoardPage({
 
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem
+                    checked={showUnscheduled}
+                    onCheckedChange={(v) => setShowUnscheduled(!!v)}
+                    onSelect={(e) => e.preventDefault()}
+                    className="text-sm cursor-pointer"
+                  >
+                    <span className="flex-1">Belum dijadwalkan</span>
+                    <span className="text-xs text-gray-400 tabular-nums">{alerts.unscheduled}</span>
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
                     checked={showCancelled}
                     onCheckedChange={(v) => setShowCancelled(!!v)}
                     onSelect={(e) => e.preventDefault()}
                     className="text-sm cursor-pointer"
                   >
-                    <span className="flex-1">Tampilkan Batal</span>
+                    <span className="flex-1">Batal</span>
                     <span className="text-xs text-gray-400 tabular-nums">{cancelledCount}</span>
                   </DropdownMenuCheckboxItem>
 
@@ -391,7 +442,7 @@ export function ScheduleBoardPage({
           )}
         </div>
 
-        {/* Isi — satu wilayah gulung, supaya header kolom & pita hari bisa sticky */}
+        {/* ── Isi — satu wilayah gulung, supaya header kolom & pita hari sticky ── */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {isLoading ? (
             <>
@@ -411,39 +462,29 @@ export function ScheduleBoardPage({
                 ))}
               </div>
             </>
-          ) : view === 'kilat' ? (
-            <div className="p-4">
-              <KilatScheduleBoard onOpenSubmission={onOpenSubmission} embedded />
-            </div>
-          ) : view === 'month' ? (
-            <div className="p-3">
-              <ScheduleMonth
-                entries={monthEntries}
-                date={anchor}
-                onNavigate={setAnchor}
-                now={now}
-                onOpen={openEntry}
-              />
-            </div>
-          ) : (
+          ) : isAgenda ? (
             <ScheduleAgenda
               groups={dayGroups}
-              unscheduledEntries={unscheduledEntries}
+              unscheduledEntries={showUnscheduled ? unscheduledEntries : []}
               now={now}
               onOpen={openEntry}
             />
+          ) : (
+            <div className="p-4">
+              <KilatScheduleBoard onOpenSubmission={onOpenSubmission} embedded />
+            </div>
           )}
         </div>
 
-        {/* Footer — cacah, bukan paginasi. Papan ini memuat semuanya sekali. */}
+        {/* ── Footer — cacah, bukan paginasi. Papan ini memuat semuanya sekali. ── */}
         <div className="shrink-0 flex items-center justify-between gap-3 border-t border-gray-200 px-4 py-2.5 bg-white text-xs text-gray-400">
           <span>
             {isLoading ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : view === 'kilat' ? (
-              'Gelombang Kilat — 8/11/14/17 WIB, Senin–Jumat'
+            ) : isAgenda ? (
+              <>Menampilkan {shownCount} jadwal · {periodLabel}</>
             ) : (
-              <>Menampilkan {shownCount} jadwal{view === 'agenda' ? ` · ${periodLabel}` : ''}</>
+              'Gelombang Kilat — 8/11/14/17 WIB, 2 order per gelombang, Senin–Jumat'
             )}
           </span>
           {!isLoading && (
@@ -454,5 +495,54 @@ export function ScheduleBoardPage({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Pil pekerjaan-menunggu. Yang punya `onClick` juga jadi sakelar filter — angka
+ * yang tidak bisa diklik hanya membuat admin bertanya "yang mana?" tanpa jawaban.
+ */
+function AlertPill({
+  icon: Icon, count, label, tone, active, onClick,
+}: {
+  icon: typeof Clock;
+  count: number;
+  label: string;
+  tone: 'red' | 'amber' | 'slate';
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const toneClass = {
+    red: 'border-red-200 bg-red-50 text-red-700',
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    slate: 'border-gray-200 bg-gray-50 text-gray-600',
+  }[tone];
+
+  const content = (
+    <>
+      <Icon className="w-3.5 h-3.5" /> <strong>{count}</strong> {label}
+    </>
+  );
+
+  if (!onClick) {
+    return (
+      <span className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5', toneClass)}>
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={active ? 'Sembunyikan order tanpa jadwal' : 'Tampilkan order tanpa jadwal'}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors',
+        active ? 'border-slate-800 bg-slate-800 text-white' : cn(toneClass, 'hover:border-gray-400')
+      )}
+    >
+      {content}
+    </button>
   );
 }
