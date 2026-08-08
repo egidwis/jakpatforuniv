@@ -387,7 +387,7 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
         return (
             <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50">
                 <p className="text-sm text-gray-600 leading-relaxed">
-                    {card.kind === 'extend' ? t('calloutAwaitingInvoiceExtend') : t('calloutAwaitingInvoice')}
+                    {card.kind === 'extend' ? t('calloutAwaitingInvoiceSchedule') : t('calloutAwaitingInvoice')}
                 </p>
             </div>
         );
@@ -412,7 +412,11 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'waiting_payment') {
         const isExternal = card.kind === 'original' ? b.isExternalLink : true;
-        const payLabel = card.kind === 'extend' ? t('payExtension') : t('payNow');
+        /* Satu label untuk semua kartu. Dulu kartu ke-2 dst. berbunyi "Bayar
+           Perpanjangan" — istilah yang tidak punya padanan di layar ini lagi:
+           kartunya sudah bernomor "Jadwal Iklan 2", jadi tombolnya cukup
+           menyebut aksinya. */
+        const payLabel = t('payNow');
         return (
             <div className="rounded-xl border p-3.5 border-amber-200 bg-amber-50/60">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
@@ -468,7 +472,7 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
                     <div className="flex items-start gap-2.5 min-w-0">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                         <p className="text-sm text-[#1a1a1a] leading-relaxed min-w-0">
-                            {card.kind === 'extend' ? t('extendExpiredHint') : t('calloutExpired')}
+                            {card.kind === 'extend' ? t('scheduleExpiredHint') : t('calloutExpired')}
                         </p>
                     </div>
                     {card.kind === 'original' && (
@@ -580,7 +584,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                     <div className="mt-2.5">
                         <Button
                             variant="outline"
-                            onClick={() => toast.info(t('extendScheduleComingSoon'))}
+                            onClick={() => toast.info(t('scheduleAgainComingSoon'))}
                             className="w-full text-xs font-semibold text-gray-500 border-dashed border-gray-300 bg-gray-50/50 hover:bg-gray-100/80 hover:border-gray-400 hover:text-gray-600 rounded-xl min-h-10 px-3.5 gap-2 transition-all shadow-none justify-center"
                         >
                             <Plus className="w-4 h-4 shrink-0 text-gray-400" />
