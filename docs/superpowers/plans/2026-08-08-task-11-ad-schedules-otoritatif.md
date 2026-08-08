@@ -7,6 +7,11 @@
 > dan dideploy** — lihat §"Prasyarat sebelum mulai" di bawah. Status berjalan selalu di
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
 >
+> **Diperbarui 2026-08-08 sore.** Tiga prasyarat sudah lunas (Page Calendar pensiun,
+> Task 9 selesai, copy Task 12 selesai) dan itu **menyusutkan dua langkah rencana ini** —
+> langkah 3 kehilangan dua pemanggil frontend, langkah 5 tinggal identifier kode.
+> Yang mengunci sekarang tinggal **merge + deploy**, bukan lagi pekerjaan kode.
+>
 > Ini rilis yang menyentuh **jalur uang** (webhook DOKU, cron tiap 15 menit). Ia sengaja
 > tidak digabung dengan revamp visual di `feat/dashboard-soft-dna-navbar`.
 
@@ -215,8 +220,11 @@ tanpa satu baris pun diubah.** Itulah gunanya view.
 
 Tanpa tenggat, tanpa risiko: view menahan semuanya. Urut dari yang paling jauh dari uang.
 
-1. `SchedulingPage.tsx:478` — **gratis**, berkas ini memang dipensiunkan di Phase 3
-2. `supabase.ts` — pembaca jadwal pindah ke `fetchAdSchedules()` yang sudah ada
+1. ~~`SchedulingPage.tsx:478`~~ — **sudah hilang**, berkasnya dihapus `824890f`
+2. ~~`supabase.ts` — pembaca jadwal pindah ke `fetchAdSchedules()`~~ — **sudah**, Task 9B.
+   `fetchAdSchedules()` kini melayani tiga permukaan (papan admin, drawer, dashboard
+   peneliti) dan menerima satu id maupun daftar id. `getExtendsBySubmissionIds` tinggal
+   dipakai `ExtendSection.tsx` saja
 3. `PageBuilderModal.tsx`
 4. `storage-cleanup.js`
 5. `get_page_active_period`, `assert_no_schedule_overlap`, `get_batch_rewards_bulk` (SQL)
@@ -242,22 +250,23 @@ per-jadwal. Ubah tombol dan tampilan kartu **dalam commit yang sama**.
 
 ---
 
-## Langkah 5 — istilah: "extend" dibuang (Task 12)
+## Langkah 5 — istilah: sisa "extend" di IDENTIFIER (Task 12 babak dua)
 
-Baru sekarang, karena sebelum ini kata itu adalah nama tabelnya.
+**Menyusut sejak 2026-08-08.** Seluruh copy yang dibaca manusia sudah bersih
+(`e91f52f`) — di layar peneliti maupun admin tidak ada lagi kata "perpanjangan"
+atau "extension". Yang tertinggal justru yang memang harus menunggu file ini:
+nama-nama yang menurunkan namanya dari **nama tabel**.
 
-| Sekarang | Jadi |
-|---|---|
-| tombol/panel `Extend` | **`+ Jadwal Iklan Baru`** |
-| dialog `Buat Extend` | **`Jadwal Iklan Baru`** |
-| toast `Extend berhasil dibuat` | **`Jadwal iklan baru dibuat`** |
-| `ExtendSection.tsx` | `NewSchedulePanel.tsx` |
-| `FormSubmissionExtend` | `AdSchedule` |
-| `Sumber: Perpanjangan` di kartu | **dihapus** — nomor ① ② sudah mengatakannya |
-| `entity_type = 'extend'` | aman diganti, internal |
+| Sekarang | Jadi | Kenapa harus menunggu |
+|---|---|---|
+| `ExtendSection.tsx` | `NewSchedulePanel.tsx` | — |
+| `FormSubmissionExtend` | `AdSchedule` | ⚠️ nama `AdScheduleEntry` **sudah dipakai** untuk baris cermin. Putuskan dulu: keduanya menyatu jadi satu tipe (paling mungkin, karena sesudah langkah 2 mereka memang satu tabel), atau yang lama dapat nama lain |
+| `entity_type = 'extend'` | aman diganti, internal | pembacanya `webhook.js` — pindahkan setelah langkah 3 no. 6 |
+| tombol/panel `Extend` di admin | **`+ Jadwal Iklan Baru`** | tinggal label komponen, copy-nya sudah netral |
 
 **Batas: berhenti di API.** Nama field publik (`period_batch`, `prize_per_winner`,
-`winner_count`, `jakpat_id`, …) **tidak** ikut diganti — Global Constraints rencana Phase 2.
+`winner_count`, `jakpat_id`, …) **tidak** ikut diganti — Global Constraints rencana
+Phase 2. `AdScheduleEntry.periodBatch` sudah mengikuti aturan ini.
 
 ⚠️ Satu yang menyeberang ke luar: `ExtendSection.tsx:350,380` menulis nama item invoice
 `'Extend Iklan (ads)'`, dan itu **terkirim ke DOKU serta tersimpan di riwayat transaksi**.
@@ -281,9 +290,19 @@ finance lebih dulu** supaya tidak dikira dua produk.
 
 ## Prasyarat sebelum mulai
 
-- [ ] Phase 3 mendarat: adu visual papan Schedule vs Page Calendar selesai, Page Calendar
-      dipensiunkan (termasuk memindahkan prop `paymentStatus` ke `PageBuilderModal`)
-- [ ] Branch itu di-merge ke `main` dan dideploy
+- [x] **Page Calendar dipensiunkan** — `824890f` (2026-08-08). ⚠️ Prop `paymentStatus`
+      di `PageBuilderModal` **tidak** dipindahkan: ia sekarang tidak punya pemanggil
+      sama sekali, jadi `isUnpaid` selalu `false` dan ketiga penjaganya diam. Kalau
+      Task 11 menyambungkannya lagi, turunkan dari `deriveLifecycle().isPaid` —
+      **jangan** dari `form_submissions.payment_status` mentah (jebakan no. 3).
+- [x] **Task 9 selesai** — `sql/46` + `433153c`. Menyusutkan langkah 3 rencana ini:
+      pembaca `deriveOrderUiState`/`airingPeriods` sudah pindah, dan
+      `components/ProgressTracker.tsx` sudah dihapus.
+- [x] **Task 12 separuh selesai** — `e91f52f`. Langkah 5 di bawah menyusut jadi
+      **identifier kode saja**; seluruh copy yang dibaca manusia sudah bersih.
+- [ ] Adu visual papan Schedule di browser (butuh mata manusia)
+- [ ] `SELECT cron_activate_extends();` dijalankan dengan pengawasan
+- [ ] Branch `feat/dashboard-soft-dna-navbar` di-merge ke `main` dan **dideploy**
 - [ ] Branch baru dari `main`
 
 ## Setelah selesai

@@ -2,16 +2,23 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> ## 🟡 SEPARUH SELESAI — Task 8, 8B-1, 8C, 8D live; sisa Task 9–12
+> ## 🟡 TINGGAL TASK 10 & 11 — per 2026-08-08
 >
-> **Per 2026-08-05.** Empat task sudah diterapkan ke produksi dan dideploy; DB dan kode
-> sejajar (`sql/36`–`45` utuh). Sisanya — Task 9, 10, 11, 12 — pindah ke branch
-> `feat/dashboard-soft-dna-navbar` bersama Phase 3; lihat Global Constraints dan
-> [`2026-08-05-phase-3-jadwal-iklan-terpadu.md`](2026-08-05-phase-3-jadwal-iklan-terpadu.md).
-> Status berjalan yang paling mutakhir selalu di
+> | Task | Status |
+> |---|---|
+> | 8 · 8B-1 · 8C · 8D | ✅ **live di produksi** sejak 2026-08-05 (`sql/36`–`45`) |
+> | **9** | ✅ **selesai 2026-08-08**, belum tayang. 9A = `sql/46` (cermin dapat sumbu review); 9B = dashboard peneliti membacanya (`433153c`) |
+> | **12** | 🟡 **separuh, sengaja.** Copy ✅ (`e91f52f`). Identifier menunggu Task 11 langkah 5 — selama tabelnya masih bernama `form_submissions_extend`, mengganti nama tipe/berkas cuma memindahkan kebingungan |
+> | **10** | ⬜ belum. Cutoff seragam + `schedule_id` + "Mark as Paid" per-jadwal. **Sebagian besar dilipat ke Task 11 langkah 1b & 4** |
+> | **11** | ⬜ rencananya sendiri: [`2026-08-08-task-11-ad-schedules-otoritatif.md`](2026-08-08-task-11-ad-schedules-otoritatif.md) |
+>
+> Task 9 dan 12 dikerjakan di `feat/dashboard-soft-dna-navbar` bersama Phase 3, jadi
+> keduanya **belum tayang** dan ikut menunggu merge branch itu. Task 10 & 11 sesudahnya,
+> dari branch baru — lihat [`README.md`](README.md) §"Urutan rilis yang berlaku".
+>
+> Task 8B-2 (`reward_pools`, kini `sql/47`) **keluar dari Phase 2** — ia jadi prasyarat
+> Phase 4. Status berjalan yang paling mutakhir selalu di
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
->
-> Task 8B-2 (`reward_pools`, `sql/46`) **keluar dari Phase 2** — ia jadi prasyarat Phase 4.
 
 > **Status file ini, 2026-08-03:** file ini awalnya berjudul "Jadwal Iklan Redesign: Bug
 > Fix + Admin Tab Restructure" dan berisi rencana lain. Rencana itu **digantikan penuh**
@@ -468,10 +475,24 @@ kolom lama tetap dicerminkan trigger dari Task 8.
 untuk membaca `ad_schedules`. Kerjakan sebagai task tersendiri dengan QA khusus dashboard
 user, jangan digabung dengan task lain.
 
-- [ ] Trigger dua arah: `submission_status` lama tetap sinkron selama transisi
-- [ ] Tulis ulang `getCurrentStepIndex`/`deriveOrderUiState` membaca `ad_schedules`
-- [ ] QA manual dashboard user: bandingkan tampilan order yang sama sebelum/sesudah,
-      tidak boleh ada perubahan yang terlihat
+- [x] ~~Trigger dua arah~~ — **tidak diperlukan, dan itu temuan.** 9B hanya MEMBACA;
+      seluruh penulisan tetap ke `form_submissions`, yang triggernya sudah mencerminkan
+      ke `ad_schedules` di transaksi yang sama. Membalik arah cermin itu Task 11, dan
+      menyelundupkannya ke sini akan membuat dua penulis untuk satu baris.
+- [x] Tulis ulang `getCurrentStepIndex`/`deriveOrderUiState` membaca `ad_schedules`
+      — `433153c`. Aturan dua sumbu dipisah ke `status/scheduleAxes.ts`;
+      `components/ProgressTracker.tsx` dihapus (kehabisan pemanggil).
+- [x] QA: **diadu lewat SQL atas seluruh 971 order, bukan dilihat satu-satu.**
+      664 identik, 307 berubah — dan "tidak boleh ada perubahan yang terlihat"
+      ternyata target yang salah: ketiga kelompok yang berubah semuanya order yang
+      selama ini **disuruh bayar padahal belum direview (237), ditandai spam (65),
+      atau ditolak (5)**. Targetnya bukan nol selisih, melainkan nol selisih yang
+      tak bisa dijelaskan.
+
+> ⚠️ **Jebakan yang nyaris membalik urutan cabang.** 156 order ber-`submission_status
+> = 'in_review'` ternyata `payment_status = 'paid'` — sudah tayang, sudah selesai.
+> **Lunas harus dievaluasi sebelum sumbu review**, kalau tidak ke-156 order itu mundur
+> jadi "menunggu review". Dicatat sebagai jebakan no. 14 di progress doc.
 
 ---
 
@@ -548,9 +569,19 @@ Catatan operasional: nama item invoice ("Extend Iklan (ads)") ikut terkirim ke D
 tersimpan di riwayat transaksi. Mengubahnya membuat invoice lama dan baru berbeda istilah
 — wajar, tapi beri tahu finance agar tidak dikira dua produk.
 
-- [ ] Ganti istilah UI (Indonesia) dan identifier kode (Inggris) secara konsisten
-- [ ] Verifikasi tidak ada field API publik yang ikut berganti nama
-- [ ] Beri tahu finance soal nama item invoice yang berubah
+- [x] Ganti istilah UI (Indonesia) — **selesai `e91f52f`.** Lima kunci terjemahan;
+      dua di antaranya dihapus, bukan diganti: `payExtension` (kartunya sudah
+      bernomor, tombolnya cukup menyebut aksinya) dan `extendWaitingPaymentAlert`
+      (nol pemanggil). Nama kuncinya ikut berganti — `TranslationKey` diturunkan dari
+      objek `en` dan `id` dijaga `satisfies`, jadi yang tertinggal dijatuhkan tsc.
+- [x] Verifikasi tidak ada field API publik yang ikut berganti nama — nol.
+- [ ] **Identifier kode (Inggris)** — ditunda ke **Task 11 langkah 5**. Selama tabelnya
+      masih bernama `form_submissions_extend`, mengganti `FormSubmissionExtend` →
+      `AdSchedule` cuma memindahkan kebingungan; dan `AdScheduleEntry` sudah dipakai
+      untuk baris cermin, jadi nama itu belum bebas.
+- [ ] Beri tahu finance soal nama item invoice yang berubah — **belum**, jadi
+      `'Extend Iklan (ads)'` di [`ExtendSection.tsx:350,380`](../../../multi-step-form/src/components/ExtendSection.tsx)
+      sengaja **tidak** disentuh. Ia terkirim ke DOKU dan tersimpan di riwayat transaksi.
 
 ---
 

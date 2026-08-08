@@ -2,11 +2,25 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> ## 🟡 SEBAGIAN BESAR SUDAH DIKERJAKAN — 2026-08-08
-> Task 9A (`sql/46`) diterapkan & diverifikasi, papan Schedule jalan, drawer digabung.
-> **Yang tersisa:** adu visual papan baru dengan Page Calendar, lalu pensiunkan yang
-> lama. Status berjalan ada di [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md)
-> §"Yang menunggu tindakan" no. 00 — baca itu dulu.
+> ## ✅ SELESAI DI BRANCH — 2026-08-08. Sisa: adu visual + deploy.
+>
+> Task 9A (`sql/46`) diterapkan & diverifikasi, papan Schedule jalan bertab
+> **Agenda · Iklan · Kilat**, drawer digabung, **Page Calendar sudah dipensiunkan**
+> (`824890f`), dan **Task 9B + 12 (copy) menyusul** (`e91f52f`..`433153c`).
+>
+> **Yang tersisa sebelum branch ini layak merge — dua, keduanya butuh manusia:**
+>
+> 1. **Adu visual papan Schedule di browser.** Pembandingnya sudah tidak ada di
+>    layar; kalau ada yang janggal, rujuk `git show` pada commit sebelum `824890f`.
+> 2. **`SELECT cron_activate_extends();`** — satu-satunya verifikasi Task 8 yang
+>    belum jalan, karena ia **menulis**. Catat status 2 jadwal yang sedang berjalan
+>    sebelum dan sesudah.
+>
+> Sesudah itu: merge ke `main` → deploy → **baru** Task 11 (rencana terpisah), lalu
+> Phase 4. Urutan itu diputuskan 2026-08-08; alasannya di
+> [`README.md`](README.md) §"Urutan rilis yang berlaku".
+>
+> Status berjalan selalu di [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
 >
 > ⚠️ **Bagian di bawah ditulis 2026-08-05 dan sebagian sudah TIDAK BERLAKU.**
 > Koreksinya ada di kotak berikutnya. Jangan mengeksekusi dari file ini tanpa
@@ -27,8 +41,12 @@
 > Alasannya perilaku, bukan simetri model data: rute review manual adalah satu
 > percakapan dengan peneliti dari feedback sampai tagihan.
 >
-> **2. Task 9 dipecah.** 9A (cermin dapat sumbu kedua, `sql/46`) **selesai**;
-> 9B (tulis ulang `deriveOrderUiState`/`airingPeriods` di dashboard **user**) ditunda.
+> **2. Task 9 dipecah — dan kini keduanya selesai.** 9A (cermin dapat sumbu kedua,
+> `sql/46`) selesai 2026-08-08 pagi; **9B** (tulis ulang `deriveOrderUiState`/
+> `airingPeriods` di dashboard **peneliti**) selesai 2026-08-08 sore, `433153c`.
+> Nol migrasi — RLS `ad_schedules` sudah menampung peneliti sejak `sql/46`. Aturan
+> dua sumbunya tinggal di berkas baru `status/scheduleAxes.ts`, dan
+> `ProgressTracker.tsx` dihapus karena kehabisan pemanggil.
 >
 > **3. "Alihkan `SchedulingPage` lebih kecil" — SALAH, dan sebaliknya juga salah.**
 > `SchedulingPage` bukan "kalender halaman": tanggal yang diplotnya berasal dari
