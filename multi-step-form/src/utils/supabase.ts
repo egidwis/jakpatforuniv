@@ -1158,130 +1158,6 @@ export const updateScheduleDates = async (
   }
 };
 
-/**
- * Get all scheduled pages for the calendar view (SchedulingPage).
- * Replaces: getScheduledAds()
- */
-export const getScheduledPages = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('survey_pages')
-      .select(`
-        *,
-        form_submissions!submission_id (
-          title,
-          full_name,
-          winner_count,
-          prize_per_winner,
-          start_date,
-          end_date,
-          submission_status,
-          slot_booked_by,
-          slot_reserved_at,
-          payment_status
-        )
-      `)
-      .not('submission_id', 'is', null)
-      .order('publish_start_date', { ascending: true });
-
-    if (error) throw error;
-
-    return (data || [])
-      .filter((item: any) => {
-        const sub = item.form_submissions;
-        if (!sub) return false;
-        
-        // Filter out expired user-booked slots
-        const paymentStatus = sub.payment_status || 'pending';
-        const isPaid = ['paid', 'completed'].includes(paymentStatus);
-        
-        if (sub.slot_booked_by === 'user' && !isPaid && sub.slot_reserved_at) {
-          const reservedAt = new Date(sub.slot_reserved_at).getTime();
-          if (Date.now() > reservedAt + 60 * 60 * 1000) {
-            return false; // exclude expired
-          }
-        }
-        return true;
-      })
-      .map((item: any) => ({
-        ...item,
-        form_title: item.form_submissions?.title || 'Unknown Title',
-        researcher_name: item.form_submissions?.full_name || 'Unknown Researcher',
-        winner_count: item.form_submissions?.winner_count || 0,
-        prize_per_winner: item.form_submissions?.prize_per_winner || 0,
-        // Card AD displays the ORIGINAL ad period from form_submissions.
-        // publish_* is the cron-managed ACTIVE airing window (it gets set to the
-        // active extend's window by cron_activate_extends() — see sql/20_extend_rpcs.sql),
-        // so it cannot represent the original period. Fall back to publish_* only when
-        // the submission has no own dates.
-        start_date: item.form_submissions?.start_date || item.publish_start_date,
-        end_date: item.form_submissions?.end_date || item.publish_end_date,
-        submission_status: item.form_submissions?.submission_status,
-        payment_status: item.form_submissions?.payment_status,
-        slot_booked_by: item.form_submissions?.slot_booked_by,
-      }));
-  } catch (error: any) {
-    console.error('Error fetching scheduled pages:', error);
-    return [];
-  }
-};
-
-/**
- * Get slots that have been reserved but don't have a page yet.
- * These are form_submissions with start_date set but no survey_pages record.
- */
-export const getPendingSlotsWithoutPage = async () => {
-  try {
-    // Fetch submissions that have dates but are in pre-page statuses
-    const { data: submissions, error: subError } = await supabase
-      .from('form_submissions')
-      .select('id, title, full_name, start_date, end_date, winner_count, prize_per_winner, submission_status, slot_booked_by, slot_reserved_at, payment_status')
-      .not('start_date', 'is', null)
-      .in('submission_status', ['slot_reserved', 'waiting_payment', 'paid'])
-      // Kilat orders never get a survey_pages row by design (sql/42 blocks it in the
-      // trigger), so without this filter they'd show up here forever as "no page yet".
-      .neq('distribution_type', 'kilat')
-      .order('start_date', { ascending: true });
-
-    if (subError) throw subError;
-    if (!submissions || submissions.length === 0) return [];
-
-    // Filter out submissions that already have a survey_pages record
-    const submissionIds = submissions.map(s => s.id);
-    const { data: existingPages } = await supabase
-      .from('survey_pages')
-      .select('submission_id')
-      .in('submission_id', submissionIds);
-
-    const pageSubmissionIds = new Set((existingPages || []).map((p: any) => p.submission_id));
-
-    return submissions
-      .filter((s: any) => {
-        if (pageSubmissionIds.has(s.id)) return false;
-        
-        // Filter out expired user-booked slots
-        const paymentStatus = s.payment_status || 'pending';
-        const isPaid = ['paid', 'completed'].includes(paymentStatus);
-        
-        if (s.slot_booked_by === 'user' && !isPaid && s.slot_reserved_at) {
-          const reservedAt = new Date(s.slot_reserved_at).getTime();
-          if (Date.now() > reservedAt + 60 * 60 * 1000) {
-            return false; // exclude expired
-          }
-        }
-        return true;
-      })
-      .map((item: any) => ({
-        ...item,
-        form_title: item.title || 'Unknown Title',
-        researcher_name: item.full_name || 'Unknown Researcher',
-        form_submission_id: item.id,
-      }));
-  } catch (error: any) {
-    console.error('Error fetching pending slots without page:', error);
-    return [];
-  }
-};
 
 /**
  * Get scheduled page for a specific submission.
@@ -2038,11 +1914,11 @@ const IN_FILTER_CHUNK = 200;
 /**
  * `.in('submission_id', ids)` yang tidak bisa meledak karena jumlah id.
  *
- * Dipakai di mana pun daftar id-nya tumbuh seiring umur produk. Dua pemanggil
- * `survey_pages` lain (`getPendingSlotsWithoutPage`, peta `is_extra_ad`) hari ini
- * masih aman — 64 dan 317 id — karena keduanya disaring status aktif, jadi
- * daftarnya menyusut lagi saat order selesai. Yang tidak pernah menyusut hanya
- * pemanggil di bawah ini.
+ * Dipakai di mana pun daftar id-nya tumbuh seiring umur produk. Satu-satunya
+ * pemanggil `survey_pages` lain yang tersisa (peta `is_extra_ad` di
+ * `fetchSlotAvailability`) hari ini masih aman — 317 id — karena ia disaring
+ * status aktif, jadi daftarnya menyusut lagi saat order selesai. Yang tidak
+ * pernah menyusut hanya pemanggil di bawah ini.
  */
 const selectSurveyPagesByIds = async <T>(columns: string, ids: string[]): Promise<T[]> => {
   const chunks: string[][] = [];

@@ -48,6 +48,24 @@ interface PageBuilderModalProps {
     submissionWinnerCount?: number;
     submissionCriteria?: string;
     isExtraAd?: boolean; // Whether this page is an Extra Ad (set via SchedulePaymentView)
+    /**
+     * ⚠️ TIDAK ADA PEMANGGIL YANG MENGOPER INI SEJAK 2026-08-08.
+     *
+     * Satu-satunya yang pernah mengopernya adalah Page Calendar (`SchedulingPage`),
+     * yang dipensiunkan bersama Phase 3. Selama tidak diisi, `isUnpaid` selalu
+     * `false` dan ketiga penjaganya (peringatan kuning, tombol publish mati,
+     * auto-publish ditahan) tidak berbuat apa-apa. Jangan membacanya sebagai
+     * "publish order belum lunas sudah dijaga" — hari ini tidak.
+     *
+     * Sengaja tidak ikut dihapus: penjaganya benar dan murah, dan permukaan
+     * berikutnya yang membiarkan admin membuat halaman untuk order belum lunas
+     * tinggal mengisinya.
+     *
+     * ⚠️ Kalau menyambungkannya lagi, JANGAN oper `form_submissions.payment_status`
+     * mentah-mentah. Sebagian order dibayar di luar sistem dan kolomnya tetap
+     * `pending` selamanya — tombol publish mereka akan mati padahal iklannya sudah
+     * dibayar dan tayang. Turunkan dari `deriveLifecycle().isPaid`.
+     */
     paymentStatus?: string; // e.g. 'pending', 'paid', 'expired'
     // When true, the page is being edited in an extend context (e.g. banner refresh for a new
     // reward batch). Date editing is disabled and dates are NOT synced, so the original period

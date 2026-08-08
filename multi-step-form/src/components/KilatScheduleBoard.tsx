@@ -27,8 +27,11 @@ interface KilatScheduleBoardProps {
      * dilepas — kartu di dalam kartu membuat batas ganda yang tidak berarti apa
      * pun. Navigasi minggunya tetap ikut: gelombang Kilat Senin–Jumat adalah
      * periode yang berbeda dari periode papan induknya, jadi ia harus punya
-     * kendali sendiri. Default `false` supaya pemakaian berdiri sendiri
-     * (Page Calendar) tidak berubah.
+     * kendali sendiri.
+     *
+     * Sejak Page Calendar dipensiunkan (2026-08-08) hanya papan Schedule yang
+     * memakainya, jadi `embedded` selalu `true` di praktiknya. Default `false`
+     * dipertahankan supaya komponen ini tetap bisa berdiri sendiri.
      */
     embedded?: boolean;
 }

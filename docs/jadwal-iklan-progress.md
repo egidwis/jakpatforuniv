@@ -44,23 +44,43 @@ branch itu. Lihat §2.
 
 ## Yang menunggu tindakan
 
-### 00. Adu papan Schedule dengan Page Calendar, lalu pensiunkan yang lama ⬅️ paling mendesak
+### 00. Page Calendar sudah dipensiunkan ✅ (2026-08-08) — sisa: adu visual di browser
 
-Papan **Schedule** sudah jalan di nav, dan **Page Calendar sengaja masih hidup di
-sebelahnya** dengan label "Page Calendar (lama)". Itu bukan kelalaian: satu-satunya
-cara mengadu keduanya order demi order adalah selagi keduanya bisa dibuka, dan
-kesempatan itu hilang begitu yang lama dihapus.
+**`SchedulingPage.tsx` + `SchedulingPage.css` dihapus** atas keputusan pemilik produk
+2026-08-08: papan Schedule dinilai sudah lebih dari cukup. Ikut terhapus karena
+kehilangan seluruh pemanggilnya: `getScheduledPages()` dan
+`getPendingSlotsWithoutPage()` di `supabase.ts` (124 baris). `react-big-calendar` +
+`moment` **tidak lagi diimpor di mana pun** — kandidat pencabutan dependensi, tapi
+dibiarkan dulu karena mencabut paket di tengah branch tidak sepadan risikonya.
 
-Sisi data sudah diadu dan bersih (lihat §Phase 3 di "Yang sudah selesai"). Yang
-belum: **adu visual**, dan itu butuh mata manusia.
+⚠️ **Satu kemampuan hilang, dan ini catatannya supaya tidak dikira bug nanti.**
+Dari Page Calendar admin bisa membuat halaman iklan untuk order yang **belum lunas**;
+jalur drawer tidak bisa (`canBuildPage = isPaid || isLegacyActive`). Terukur saat
+penghapusan: **10 order** ada di keadaan itu (9 `slot_reserved` + 1
+`waiting_payment` yang benar-benar belum bayar). Sisanya yang tampak "belum lunas"
+ternyata sudah — 10 dari 19 `slot_reserved` ber-`payment_status` lunas, dan
+8 order `paid` tanpa halaman semuanya tetap terlayani drawer.
 
-Papan barunya kini bertab **Agenda · Iklan · Kilat** (bentuk final per 2026-08-08,
-commit `08a2cd4`..`e808189`), jadi checklistnya menyesuaikan:
+⚠️ **Penjaga `paymentStatus` di `PageBuilderModal` kini TIDAK PUNYA PEMANGGIL.**
+`SchedulingPage` satu-satunya yang mengopernya. Selama tidak diisi, `isUnpaid`
+selalu `false` dan ketiga penjaganya (peringatan kuning, tombol publish mati,
+auto-publish ditahan) diam. Sengaja tidak dihapus — penjaganya benar dan murah —
+tapi **jangan dibaca sebagai "publish order belum lunas sudah dijaga"**. Kalau
+disambungkan lagi: turunkan dari `deriveLifecycle().isPaid`, **jangan** dari
+`form_submissions.payment_status` mentah (lihat §Jebakan no. 3).
 
-- [ ] **Agenda** — survei yang sama: tanggal, jam, dan status halaman sama persis
-      dengan Page Calendar
-- [ ] **Kilat** — entri demi entri sama dengan tab Kilat di Page Calendar (papannya
-      memang komponen yang sama, tapi kini dirender `embedded`)
+Yang tersisa: **adu visual di browser**, dan itu butuh mata manusia. Pembandingnya
+sudah tidak ada di layar, jadi kalau ada yang janggal, rujuk `git show` pada commit
+sebelum penghapusan.
+
+Papan barunya bertab **Agenda · Iklan · Kilat** (bentuk final per 2026-08-08,
+commit `08a2cd4`..`e808189`):
+
+- [ ] **Agenda** — tanggal, jam, dan status halaman masuk akal untuk survei yang
+      dikenal. Sisi data sudah diadu relasional dan nol (§4), jadi yang diuji di
+      sini murni penyajiannya
+- [ ] **Kilat** — kisinya rapi: 5 kolom sama lebar, judul terpotong satu baris,
+      tidak ada sel yang melebar sendiri (regresi `1fr` — §Jebakan no. 13)
 - [ ] **Iklan** — papan kapasitas baru, **tidak punya pembanding**. Yang bisa diadu
       cuma angkanya: cocokkan `n/4` sebuah hari dengan kalender pemesanan di wizard
       (`StepSchedule`) untuk tanggal yang sama. Kalau berbeda, `occupiesSlot()` dan
@@ -276,18 +296,37 @@ Tidak memblokir apa pun, tapi belum pernah dijalankan:
 - **Task 8C di layar** — sudah dibuktikan di tingkat kode (lihat "Yang sudah
   selesai"), tinggal dilihat mata.
 
-### 4. Verifikasi Task 8 yang belum dijalankan
+### 4. Verifikasi Task 8 — ✅ SELESAI kecuali satu (2026-08-08)
 
-Sudah lolos: selisih baris `0`/`0`, uji 15.00 WIB bersih, sebaran status cocok,
-uji mirror hidup mengikuti dan penomoran urut `start_date`. Belum dijalankan
-(§8 di `sql/41_ad_schedules.sql`):
+Dijalankan seluruhnya kecuali `(7)`, semuanya **nol**:
 
-- `(2a)`/`(2b)` ordinal ganda & lubang di rentang `2..n`
-- `(4a)`/`(4b)` `period_batch` cocok dengan sumber lama
-- `(7)` `SELECT cron_activate_extends();` — paling berguna dari sisanya, karena
-  trigger baru ikut menyala tiap kali cron mengubah status perpanjangan
-- Cek sinkron menyeluruh: bandingkan **seluruh** 856 jadwal pertama dengan
-  sumbernya (query ada di §8)
+| Periksa | Hasil |
+|---|---|
+| `(2a)` ordinal ganda dalam satu order | **0** |
+| `(2b)` lubang di deret `1..n` | **0** |
+| ordinal tidak mulai dari 1 | **0** |
+| `(4b)` `period_batch` perpanjangan vs sumber | **0** |
+| sinkron menyeluruh jadwal pertama (973 baris) — tanggal, durasi, biaya | **0** |
+| sinkron menyeluruh perpanjangan — tanggal, durasi | **0** |
+| baris cermin yatim (sumbernya sudah hilang) | **0** |
+| order tanpa baris cermin | **0** |
+
+`(4a)` tidak berlaku: **`form_submissions` tidak punya kolom `period_batch`** —
+kolom itu hanya ada di `form_submissions_extend` dan `ad_schedules`. Jadwal pertama
+selalu batch 1 secara definisi.
+
+⚠️ **Cara mengukurnya sempat salah, dan salahnya persis jebakan no. 5.** Pengukuran
+pertama melaporkan **16 baris menyimpang** — semuanya Kilat. Yang menyimpang bukan
+datanya melainkan querynya: ia mengadu `start_date` Kilat dengan
+`airing_instant_of_date()` (aturan regular, 15.00 WIB). Kilat memakai
+`kilat_instant_of()`. Dengan helper yang benar hasilnya nol. **Dua jalur, dua
+helper — juga saat menulis query verifikasi, bukan cuma saat menulis kode.**
+
+Sisa satu, dan ia **menulis**, jadi sengaja tidak dijalankan sendiri:
+
+- `(7)` `SELECT cron_activate_extends();` — berguna karena trigger baru ikut menyala
+  tiap kali cron mengubah status perpanjangan. Jalankan saat ada yang mengawasi, dan
+  catat status 2 jadwal yang sedang berjalan sebelum & sesudah.
 
 ---
 

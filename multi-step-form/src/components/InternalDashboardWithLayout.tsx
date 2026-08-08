@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, Calendar, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { cn, useMediaQuery } from '@/lib/utils';
@@ -7,7 +7,6 @@ import { InternalDashboard } from './InternalDashboard';
 import { TransactionsPage } from './TransactionsPage';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { ConversationsPage } from './ConversationsPage';
-import { SchedulingPage } from '../pages/dashboard/SchedulingPage';
 import { ScheduleBoardPage } from '../pages/dashboard/ScheduleBoardPage';
 import { PublishPageManagement } from './PublishPageManagement';
 import { CustomersPage } from './CustomersPage';
@@ -15,11 +14,10 @@ import MiminAISetup from '../pages/internal-dash/MiminAISetup';
 import { useAuth } from '../context/AuthContext';
 import { getAllChatSessions, supabase } from '../utils/supabase';
 
-// 'ad-schedules' = papan Schedule baru (Phase 3, membaca tabel ad_schedules).
-// 'scheduling' = Page Calendar lama. KEDUANYA HIDUP SEMENTARA, disengaja: satu-
-// satunya cara mengadu papan baru dengan permukaan lama order demi order adalah
-// selagi keduanya masih bisa dibuka. 'scheduling' dipensiunkan sesudah itu.
-type Page = 'submissions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'scheduling' | 'ad-schedules' | 'publish-page' | 'mimin-setup';
+// 'ad-schedules' = papan Schedule (Phase 3, membaca tabel ad_schedules). Ia
+// menggantikan 'scheduling' (Page Calendar), yang dipensiunkan 2026-08-08 setelah
+// hidup berdampingan sebagai pembanding.
+type Page = 'submissions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'ad-schedules' | 'publish-page' | 'mimin-setup';
 
 export function InternalDashboardWithLayout() {
   // Supabase Auth
@@ -213,13 +211,6 @@ export function InternalDashboardWithLayout() {
           id: 'ad-schedules' as Page,
           label: 'Schedule',
           icon: CalendarDays,
-        },
-        // Sementara, sampai ceklis penyerapan di rencana Phase 3 habis dan
-        // papan baru terbukti sepakat dengan yang ini order demi order.
-        {
-          id: 'scheduling' as Page,
-          label: 'Page Calendar (lama)',
-          icon: Calendar,
         },
         {
           id: 'publish-page' as Page,
@@ -541,14 +532,6 @@ export function InternalDashboardWithLayout() {
             // sama seperti Submissions dan Transaksi. Pembungkus dengan padding
             // memotong tinggi yang dibutuhkan kartunya untuk menggulung di dalam.
             <ScheduleBoardPage onOpenSubmission={handleOpenSubmissionFromSchedule} />
-          ) : currentPage === 'scheduling' ? (
-            // Cabang ini EKSPLISIT, bukan fall-through. Sebelumnya 'scheduling'
-            // adalah `else` implisit — nilai Page apa pun yang tidak tertangani
-            // ikut merender Page Calendar, dan menghapusnya nanti akan membuat
-            // nilai tak dikenal merender layar kosong tanpa error.
-            <div className="container mx-auto p-4 md:p-8 h-full">
-              <SchedulingPage onOpenSubmission={handleOpenSubmissionFromSchedule} />
-            </div>
           ) : null}
         </main>
       </div>
