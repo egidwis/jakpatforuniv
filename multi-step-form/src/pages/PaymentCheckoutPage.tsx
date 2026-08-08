@@ -7,8 +7,7 @@ import { toast } from 'sonner';
 import { CreditCard, AlertTriangle, Clock, ArrowRight, RefreshCcw, CheckCircle, ArrowLeft } from 'lucide-react';
 import type { FormSubmission } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
-import { paymentCutoffInstant, toWibYmd } from '../utils/airing-window';
-import { normalizeScheduleDate } from '../components/ProgressTracker';
+import { normalizeScheduleDate, paymentCutoffInstant, toWibYmd } from '../utils/airing-window';
 
 export function PaymentCheckoutPage() {
   const { submissionId } = useParams<{ submissionId: string }>();

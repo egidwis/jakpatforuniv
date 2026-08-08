@@ -1,11 +1,14 @@
-import type { FormSubmission, FormSubmissionExtend } from '@/utils/supabase';
+import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
 import {
-    getCurrentStepIndex,
-    computeEffectiveExtendStatus,
-    normalizeScheduleDate,
-    type ExtendPaymentInfo,
-    type EffectiveExtendStatus,
-} from '@/components/ProgressTracker';
+    effectiveAiringOf,
+    firstScheduleOf,
+    isSchedulePaid,
+    laterSchedulesOf,
+    orderStepOf,
+    scheduleFromSubmission,
+    type EffectiveAiring,
+    type SchedulePaymentMap,
+} from './scheduleAxes';
 import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
 import { isManualVerificationVoucher } from '@/utils/cost-calculator';
 
@@ -37,7 +40,11 @@ export type OrderGroup = 'butuh-aksi' | 'berjalan' | 'selesai';
 export interface OrderUiState {
     /** Step efektif setelah koreksi expired (-1 = revisi) */
     currentStep: number;
-    eff: EffectiveExtendStatus;
+    eff: EffectiveAiring;
+    /** Jadwal pertama (ordinal 1) — sumbu review & administrasi order. */
+    first: AdScheduleEntry;
+    /** Jadwal ke-2 dst., urut ordinal. */
+    later: AdScheduleEntry[];
     isExpired: boolean;
     isUserBooked: boolean;
     isPaid: boolean;
@@ -107,29 +114,35 @@ export function isAutoReviewed(submission: FormSubmission): boolean {
 
 const PAYMENT_WINDOW_MS = 3600_000; // 1 jam sejak slot_reserved_at
 
+/**
+ * @param schedules Baris `ad_schedules` milik order ini, ordinal 1 lebih dulu.
+ *   Boleh kosong — lihat `scheduleFromSubmission`.
+ * @param payments  Pembayaran per jadwal, dikunci `sourceId` (= `extend_id`
+ *   untuk jadwal ke-2 dst., = id submission untuk jadwal pertama).
+ */
 export function deriveOrderUiState(
     submission: FormSubmission,
-    extendsList: FormSubmissionExtend[] = [],
-    extendPayments: Record<string, ExtendPaymentInfo> = {},
+    schedules: AdScheduleEntry[] = [],
+    payments: SchedulePaymentMap = {},
     paymentLink: string | null = null
 ): OrderUiState {
-    const eff = computeEffectiveExtendStatus(submission, extendsList, extendPayments);
-    const rawStep = getCurrentStepIndex(submission) === -1 ? -1 : eff.effectiveStep;
+    const now = new Date();
+    const first = firstScheduleOf(schedules) ?? scheduleFromSubmission(submission);
+    const later = laterSchedulesOf(schedules);
 
-    const isUserBooked = submission.slot_booked_by === 'user';
-    const isPaymentExpired = submission.payment_status === 'expired';
-    const isPaid =
-        submission.payment_status === 'paid' ||
-        ['paid', 'scheduled', 'live', 'completed'].includes(
-            (submission.submission_status || '').toLowerCase()
-        );
+    const eff = effectiveAiringOf(first, later, payments, now);
+    const rawStep = orderStepOf(first, now) === -1 ? -1 : eff.effectiveStep;
+
+    const isUserBooked = first.slotBookedBy === 'user';
+    const isPaymentExpired = first.paymentStatus === 'expired';
+    const isPaid = isSchedulePaid(first);
     const isExpired =
         rawStep !== -1 &&
         !isPaid &&
         (isPaymentExpired ||
             (isUserBooked &&
-                !!submission.slot_reserved_at &&
-                Date.now() > new Date(submission.slot_reserved_at).getTime() + PAYMENT_WINDOW_MS));
+                !!first.slotReservedAt &&
+                now.getTime() > new Date(first.slotReservedAt).getTime() + PAYMENT_WINDOW_MS));
 
     // Slot kedaluwarsa → UI mundur ke step slot, apa pun kata DB
     const currentStep = isExpired ? 1 : rawStep;
@@ -145,9 +158,10 @@ export function deriveOrderUiState(
     // itu admin tidak sempat membangun halaman iklan untuk tayang 15.00.
     // Berlaku untuk SEMUA slot, termasuk yang dibooking admin (yang selama ini
     // tidak punya deadline sama sekali karena invoicenya berjatuh tempo 7 hari).
-    const startYmd = submission.start_date
-        ? toWibYmd(normalizeScheduleDate(submission.start_date))
-        : null;
+    // Tanggal cermin sudah berupa instant yang benar — 15.00 WIB untuk iklan
+    // regular, gelombangnya sendiri untuk Kilat — jadi tidak ada lagi jam yang
+    // disintesis di sini.
+    const startYmd = first.startDate ? toWibYmd(new Date(first.startDate)) : null;
     const isTooLateToday =
         currentStep === 2 &&
         !isExpired &&
@@ -175,14 +189,14 @@ export function deriveOrderUiState(
             ? 'slot'
             : 'cutoff';
 
-    const hasExtendAwaitingPayment = eff.waitingPaymentExtends.length > 0;
+    const hasLaterScheduleAwaitingPayment = eff.waitingPayment.length > 0;
 
     let callout: OrderCalloutState;
     if (currentStep === -1) {
         callout = 'revision';
     } else if (isExpired) {
         callout = 'expired';
-    } else if (hasExtendAwaitingPayment) {
+    } else if (hasLaterScheduleAwaitingPayment) {
         callout = 'extend_payment';
     } else if (currentStep === 0) {
         // Selalu manual: step 0 hanya tercapai kalau auto-approval DITOLAK
@@ -198,13 +212,14 @@ export function deriveOrderUiState(
     } else if (currentStep === 4) {
         callout = 'completed';
     } else {
-        // Step 3 (publishing): bedakan sudah live vs menunggu jadwal mulai
-        const now = new Date();
-        const start = eff.activeStartDate ? normalizeScheduleDate(eff.activeStartDate) : null;
-        const end = eff.activeEndDate ? normalizeScheduleDate(eff.activeEndDate) : null;
+        // Step 3 (publishing): bedakan sudah live vs menunggu jadwal mulai.
+        // Sumbu tayang yang dipakai adalah milik JADWAL yang sedang berlaku
+        // (bisa jadwal ke-2 dst.), bukan status order — itulah gunanya
+        // memisahkan kedua sumbu.
+        const active = eff.activeSchedule ?? first;
         const isLive =
-            (submission.submission_status || '').toLowerCase() === 'live' ||
-            !!(start && end && start <= now && end >= now);
+            (active.status || '').toLowerCase() === 'live' ||
+            !!(eff.activeStart && eff.activeEnd && eff.activeStart <= now && eff.activeEnd >= now);
         callout = isLive ? 'live' : 'ready_to_launch';
     }
 
@@ -225,6 +240,8 @@ export function deriveOrderUiState(
     return {
         currentStep,
         eff,
+        first,
+        later,
         isExpired,
         isUserBooked,
         isPaid,
@@ -244,12 +261,26 @@ export function deriveOrderUiState(
  * Format kompak, data apa adanya — bot dilarang mengarang di luar ini.
  */
 export function describeOrderForChat(submission: FormSubmission, ui: OrderUiState): string {
-    const fmt = (d: string | null | undefined) =>
+    const fmt = (d: Date | string | null | undefined) => {
+        if (!d) return null;
+        const date = d instanceof Date ? d : new Date(d);
+        if (isNaN(date.getTime())) return null;
+        return date.toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            timeZone: 'Asia/Jakarta',
+        });
+    };
+    /** Jam tayang sebenarnya, dari instant cermin. Kilat didorong bergelombang
+     * (08/11/14/17 WIB), jadi "15.00" yang dulu ditulis lurus di sini adalah
+     * kalimat yang salah untuk sebagian order — dan Mimin mengulanginya ke user. */
+    const fmtWibTime = (d: Date | null) =>
         d
-            ? normalizeScheduleDate(d).toLocaleDateString('id-ID', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
+            ? d.toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Asia/Jakarta',
             })
             : null;
 
@@ -261,7 +292,7 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
         awaiting_invoice: 'slot sudah dipesan, menunggu admin menerbitkan tagihan (maksimal 1 hari kerja)',
         expired: 'pembayaran kedaluwarsa sehingga slot dilepas; user perlu memilih jadwal baru dari halaman Order Saya (tidak perlu submit ulang)',
         too_late_today: 'batas pembayaran 14.00 WIB untuk jadwal hari ini sudah lewat sehingga iklan tidak bisa tayang hari ini (halaman iklan disiapkan admin pukul 14.00-15.00); user perlu memilih jadwal baru dari halaman Order Saya (tidak perlu submit ulang)',
-        extend_payment: 'perpanjangan durasi menunggu pembayaran',
+        extend_payment: 'ada jadwal iklan berikutnya yang menunggu pembayaran',
         ready_to_launch: 'pembayaran diterima, menunggu jadwal tayang',
         live: 'sedang tayang (diiklankan ke responden Jakpat)',
         completed: 'masa tayang selesai',
@@ -271,14 +302,18 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
     lines.push(`Order "${submission.title}" (layanan ${submission.distribution_type === 'kilat' ? 'Kilat' : 'Regular'})`);
     lines.push(`- Status: ${statusText[ui.callout]}`);
 
-    const start = fmt(ui.eff.activeStartDate);
-    const end = fmt(ui.eff.activeEndDate);
+    const start = fmt(ui.eff.activeStart);
+    const end = fmt(ui.eff.activeEnd);
+    const startTime = fmtWibTime(ui.eff.activeStart);
     if (start && end) {
-        lines.push(`- Jadwal tayang: ${start} (mulai 15:00 WIB) sampai ${end}`);
+        lines.push(`- Jadwal tayang: ${start} (mulai ${startTime} WIB) sampai ${end}`);
     } else if (start) {
-        lines.push(`- Jadwal tayang mulai: ${start} (15:00 WIB)`);
+        lines.push(`- Jadwal tayang mulai: ${start} (${startTime} WIB)`);
     } else {
         lines.push(`- Jadwal tayang: belum ditentukan`);
+    }
+    if (ui.later.length > 0) {
+        lines.push(`- Order ini punya ${ui.later.length + 1} jadwal iklan; yang disebut di atas adalah jadwal yang sedang berlaku`);
     }
 
     if (ui.callout === 'payment' && ui.paymentDeadline) {

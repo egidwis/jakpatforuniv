@@ -5,7 +5,7 @@ import { HelpCircle, Send, Bot } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
-import { supabase, getOrCreateChatSession, getChatMessages, saveChatMessage, getFormSubmissionsByUser, getExtendsBySubmissionIds, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
+import { supabase, getOrCreateChatSession, getChatMessages, saveChatMessage, getFormSubmissionsByUser, fetchAdSchedules, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
 import { deriveOrderUiState, describeOrderForChat } from '@/components/status/deriveOrderUiState';
 import {
     Accordion,
@@ -50,8 +50,8 @@ export function ChatPage() {
             a: "Jakpat memiliki standar privasi yang melarang pengumpulan maupun penyebaran informasi pribadi responden. Karena itu, pertanyaan sensitif seperti nomor telepon, email, alamat lengkap, atau data personal lainnya tidak diperbolehkan untuk dimasukkan dalam survei."
         },
         {
-            q: "Bisa extend durasi iklan/survei?",
-            a: "Bisa. Durasi iklan dapat diperpanjang dengan membayar biaya iklan tambahan tanpa perlu memberikan insentif ulang kepada responden. Namun, jika iklan dihentikan cukup lama dan kemudian dijalankan kembali, hal tersebut akan dianggap sebagai iklan baru sehingga perlu menyediakan insentif responden kembali."
+            q: "Bisa menambah jadwal iklan untuk survei yang sama?",
+            a: "Bisa. Kamu bisa menjadwalkan iklan lagi dengan membayar biaya iklan tambahan, tanpa perlu memberikan insentif ulang kepada responden selama jadwal barunya masih menyambung. Namun, jika iklan dihentikan cukup lama dan kemudian dijalankan kembali, hal tersebut akan dianggap sebagai iklan baru sehingga perlu menyediakan insentif responden kembali."
         },
         {
             q: "Boleh menggunakan platform selain Google Form?",
@@ -93,7 +93,7 @@ export function ChatPage() {
     // Order milik user, untuk disuntikkan sebagai ORDER CONTEXT ke system
     // prompt — tanpa ini Mimin buta terhadap order dan tidak bisa menjawab
     // "kapan survei saya tayang?".
-    const [userOrders, setUserOrders] = useState<Array<{ submission: FormSubmission; extends_: FormSubmissionExtend[] }>>([]);
+    const [userOrders, setUserOrders] = useState<Array<{ submission: FormSubmission; schedules: AdScheduleEntry[] }>>([]);
 
     // Initial load for persistence
     useEffect(() => {
@@ -136,10 +136,10 @@ export function ChatPage() {
                     const subs = await getFormSubmissionsByUser(user.id, user.email);
                     const recent = subs.slice(0, 3);
                     const ids = recent.map((s) => s.id).filter((id): id is string => !!id);
-                    const allExtends = ids.length > 0 ? await getExtendsBySubmissionIds(ids) : [];
+                    const allSchedules = await fetchAdSchedules(ids);
                     setUserOrders(recent.map((submission) => ({
                         submission,
-                        extends_: allExtends.filter((e) => e.submission_id === submission.id),
+                        schedules: allSchedules.filter((s) => s.submissionId === submission.id),
                     })));
                 } catch (err) {
                     console.error('Error fetching orders for chat context:', err);
@@ -157,9 +157,9 @@ export function ChatPage() {
     }, [messages]);
 
     const orderStates = useMemo(
-        () => userOrders.map(({ submission, extends_ }) => ({
+        () => userOrders.map(({ submission, schedules }) => ({
             submission,
-            ui: deriveOrderUiState(submission, extends_),
+            ui: deriveOrderUiState(submission, schedules),
         })),
         [userOrders]
     );

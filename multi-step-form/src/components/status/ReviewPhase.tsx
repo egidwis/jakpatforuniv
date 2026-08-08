@@ -10,12 +10,29 @@ import {
 import { InfoTooltip } from './InfoTooltip';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
-import type { FormSubmission } from '@/utils/supabase';
-import { getCurrentStepIndex } from '@/components/ProgressTracker';
+import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
 import { isAutoReviewed } from './deriveOrderUiState';
+
+/**
+ * Keadaan review sebuah order — sumbu sendiri sejak `sql/46`, tidak lagi
+ * disimpulkan dari langkah stepper.
+ *
+ * Bedanya nyata: dulu chip ini dibaca dari `getCurrentStepIndex`, yang
+ * mencampur review dengan tayang. Order yang **ditolak** tapi terlanjur punya
+ * tanggal jatuh ke langkah 2 dan chipnya menyala hijau "Disetujui" — 70 order
+ * ada di keadaan itu per 2026-08-08 (65 spam, 5 rejected).
+ */
+export type ReviewState = 'rejected' | 'pending' | 'approved';
+
+export function reviewStateOf(first: AdScheduleEntry): ReviewState {
+    if (['rejected', 'spam'].includes(first.reviewStatus)) return 'rejected';
+    return first.reviewStatus === 'approved' ? 'approved' : 'pending';
+}
 
 interface ReviewPhaseProps {
     submission: FormSubmission;
+    /** Jadwal pertama (ordinal 1) — pembawa sumbu review order ini. */
+    first: AdScheduleEntry;
     onDelete: () => void;
     /** Fase ① sedang berjalan (`getActiveDashboardPhase(ui.currentStep) === 1`)
      * — kartu default terbuka. Kalau tidak (sudah lewat/belum sampai), default
@@ -31,9 +48,9 @@ const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-j
  * `useLanguage()` di dalam fungsi ini) karena fungsi ini bukan komponen
  * React — pemanggil (StatusPage) yang sudah berada dalam render komponen
  * menyediakan `t`. */
-export function getReviewChip(submission: FormSubmission, t: (key: TranslationKey) => string) {
-    const step = getCurrentStepIndex(submission);
-    if (step === -1) {
+export function getReviewChip(first: AdScheduleEntry, t: (key: TranslationKey) => string) {
+    const state = reviewStateOf(first);
+    if (state === 'rejected') {
         return (
             <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-rose-50 border-rose-200 text-rose-600">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
@@ -41,7 +58,7 @@ export function getReviewChip(submission: FormSubmission, t: (key: TranslationKe
             </span>
         );
     }
-    if (step === 0) {
+    if (state === 'pending') {
         return (
             <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-gray-50 border-gray-200 text-gray-600">
                 <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
@@ -99,11 +116,11 @@ function ReviewMethodChip({ auto }: { auto: boolean }) {
  * link/ringkasan survei + chip status review (dulu ada di header Fase),
  * expand untuk detail lengkap + banner status.
  */
-export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) {
+export function ReviewPhase({ submission, first, onDelete, active }: ReviewPhaseProps) {
     const { t } = useLanguage();
-    const step = getCurrentStepIndex(submission);
-    const rejected = step === -1;
-    const inReview = step === 0;
+    const state = reviewStateOf(first);
+    const rejected = state === 'rejected';
+    const inReview = state === 'pending';
     /** Selama masih di step 0 metodenya PASTI manual — `isAutoReviewed` cuma
      * label retrospektif untuk order yang sudah lolos, jadi baru dipercaya
      * setelah review kelar. */
@@ -118,7 +135,7 @@ export function ReviewPhase({ submission, onDelete, active }: ReviewPhaseProps) 
                             <ReviewMethodChip auto={showsAutoMethod} />
                         </span>
                         <span className="flex-1 min-w-2" />
-                        {getReviewChip(submission, t)}
+                        {getReviewChip(first, t)}
                     </AccordionPrimitive.Trigger>
                     <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
                 </AccordionPrimitive.Header>

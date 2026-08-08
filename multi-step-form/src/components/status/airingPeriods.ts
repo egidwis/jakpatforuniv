@@ -1,10 +1,11 @@
-import type { FormSubmission, FormSubmissionExtend } from '@/utils/supabase';
+import type { AdScheduleEntry } from '@/utils/supabase';
 import type { TranslationKey } from '@/i18n/translations';
 import {
-    getCurrentStepIndex,
-    normalizeScheduleDate,
-    type ExtendPaymentInfo,
-} from '@/components/ProgressTracker';
+    orderStepOf,
+    scheduleEnd,
+    scheduleStart,
+    type SchedulePaymentMap,
+} from './scheduleAxes';
 import type { OrderUiState } from './deriveOrderUiState';
 
 type TFn = (key: TranslationKey) => string;
@@ -40,7 +41,7 @@ export interface IncentiveInfo {
  * ada lagi konsep "langkah" abstrak, tiap fakta membawa rumahnya sendiri.
  */
 export interface ScheduleCard {
-    key: string; // 'original' | extend.id
+    key: string; // 'original' untuk jadwal pertama, `sourceId` untuk sisanya
     kind: 'original' | 'extend';
     label: string;
     /** 1, 2, 3, ... — dipakai di trigger accordion sebagai "#1" dkk, supaya
@@ -83,47 +84,56 @@ export interface ScheduleCard {
 const fmtShort = (d: Date | null) =>
     d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '—';
 
-function buildIncentive(ext: FormSubmissionExtend | undefined, submission: FormSubmission): IncentiveInfo | null {
-    if (ext) {
-        if (ext.is_new_month && ext.prize_per_winner && ext.prize_per_winner > 0) {
-            return { mode: 'new_pool', winnerCount: ext.winner_count, prizePerWinner: ext.prize_per_winner };
+function buildIncentive(s: AdScheduleEntry): IncentiveInfo | null {
+    if (s.ordinal > 1) {
+        if (s.isNewPeriod && s.prizePerWinner > 0) {
+            return { mode: 'new_pool', winnerCount: s.winnerCount, prizePerWinner: s.prizePerWinner };
         }
-        if (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0) {
-            return { mode: 'accumulated', additionalPrize: ext.additional_prize_per_winner };
+        if (s.additionalPrizePerWinner > 0) {
+            return { mode: 'accumulated', additionalPrize: s.additionalPrizePerWinner };
         }
         return { mode: 'none_same_period' };
     }
-    if (submission.winner_count && submission.prize_per_winner) {
-        return { mode: 'plain', winnerCount: submission.winner_count, prizePerWinner: submission.prize_per_winner };
+    if (s.winnerCount && s.prizePerWinner) {
+        return { mode: 'plain', winnerCount: s.winnerCount, prizePerWinner: s.prizePerWinner };
     }
     return null;
 }
 
+/** DPP hanya punya arti kalau PPN memang pernah dihitung untuk jadwal ini —
+ *  order pra-`sql/34` menyimpan harga bersih di `totalCost` tanpa pajak. */
+const subtotalOf = (s: AdScheduleEntry) => (s.ppnAmount != null ? s.subtotal ?? null : null);
+
 /**
- * Susun daftar jadwal iklan (asli + tiap perpanjangan) sebagai unit setara.
- * Jadwal asli terbit sejak order masuk (step >= 0), termasuk selagi menunggu
+ * Susun daftar jadwal iklan sebagai unit setara, langsung dari baris
+ * `ad_schedules` — baris yang sama persis dengan yang dilihat admin di papan
+ * Schedule. Sebelum Task 9B kartu ini dirakit dari dua tabel dengan tipe waktu
+ * dan kosakata status berbeda, jadi "Jadwal Iklan 2" di layar peneliti dan di
+ * layar admin adalah dua hitungan yang kebetulan bertemu.
+ *
+ * Jadwal pertama terbit sejak order masuk (step >= 0), termasuk selagi menunggu
  * review: Booking ID, tanggal submit, hadiah, dan seluruh angka biaya sudah
  * final sejak checkout, jadi tidak ada alasan menahannya. Yang belum ada di
  * step 0 cuma jadwal tayang & tagihan. Hanya order yang ditolak (step -1) yang
  * tidak punya kartu sama sekali.
  */
 export function buildScheduleCards(
-    submission: FormSubmission,
     ui: OrderUiState,
-    extendsList: FormSubmissionExtend[],
-    payments: Record<string, ExtendPaymentInfo>,
+    payments: SchedulePaymentMap,
     invoiceId: string | null,
     t: TFn
 ): ScheduleCard[] {
     const now = new Date();
     const cards: ScheduleCard[] = [];
-    const rawStep = getCurrentStepIndex(submission);
-    const totalPeriods = 1 + extendsList.length;
+    const first = ui.first;
+    const later = ui.later;
+    const rawStep = orderStepOf(first, now);
+    const totalPeriods = 1 + later.length;
 
     if (rawStep >= 0 || ui.isExpired) {
         const step = ui.isExpired ? 1 : rawStep;
-        const oStart = submission.start_date ? normalizeScheduleDate(submission.start_date) : null;
-        const oEnd = submission.end_date ? normalizeScheduleDate(submission.end_date) : null;
+        const oStart = scheduleStart(first);
+        const oEnd = scheduleEnd(first);
 
         let bookingState: BookingState;
         if (ui.isExpired) bookingState = 'expired';
@@ -142,7 +152,7 @@ export function buildScheduleCards(
             if (step === 4) pubState = 'completed';
             else {
                 const isLive =
-                    (submission.submission_status || '').toLowerCase() === 'live' ||
+                    (first.status || '').toLowerCase() === 'live' ||
                     !!(oStart && oEnd && oStart <= now && oEnd >= now);
                 pubState = isLive ? 'live' : 'scheduled';
             }
@@ -157,17 +167,19 @@ export function buildScheduleCards(
             startDate: oStart,
             endDate: oEnd,
             info: {
-                id: submission.id || '',
-                createdAt: submission.created_at || null,
-                duration: submission.duration,
-                periodBatch: null,
-                incentive: buildIncentive(undefined, submission),
-                voucherCode: submission.voucher_code || null,
+                // `sourceId` dan bukan `first.id`: yang sudah beredar di WhatsApp
+                // dan email peneliti adalah id ORDER, bukan id baris cermin.
+                id: first.sourceId,
+                createdAt: first.createdAt,
+                duration: first.duration ?? 0,
+                periodBatch: first.periodBatch,
+                incentive: buildIncentive(first),
+                voucherCode: first.voucherCode,
             },
             booking: {
                 state: bookingState,
-                amount: submission.total_cost,
-                subtotal: typeof submission.ppn_amount === 'number' ? submission.subtotal ?? null : null,
+                amount: first.totalCost,
+                subtotal: subtotalOf(first),
                 payUrl: bookingState === 'waiting_payment' ? ui.finalPaymentLink : null,
                 isExternalLink: !!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard'),
                 deadline: ui.paymentDeadline,
@@ -185,28 +197,22 @@ export function buildScheduleCards(
         });
     }
 
-    const sorted = [...extendsList].sort((a, b) => {
-        const as = a.start_date
-            ? normalizeScheduleDate(a.start_date).getTime()
-            : a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bs = b.start_date
-            ? normalizeScheduleDate(b.start_date).getTime()
-            : b.created_at ? new Date(b.created_at).getTime() : 0;
-        return as - bs;
-    });
-
-    sorted.forEach((ext, i) => {
-        const pay = ext.id ? payments[ext.id] || null : null;
-        const status = (ext.submission_status || 'waiting_payment').toLowerCase();
-        const start = ext.start_date ? normalizeScheduleDate(ext.start_date) : null;
-        const end = ext.end_date ? normalizeScheduleDate(ext.end_date) : null;
+    // Nomor urutnya datang dari `ordinal` cermin, bukan dari posisi di array:
+    // `resync_ad_schedule_ordinals()` sudah menomori ulang tiap kali sebuah
+    // jadwal disisipkan dengan tanggal lebih awal, jadi inilah nomor yang sama
+    // dengan yang dilihat admin di papan Schedule.
+    later.forEach((s) => {
+        const pay = payments[s.sourceId] || null;
+        const status = (s.status || 'waiting_payment').toLowerCase();
+        const start = scheduleStart(s);
+        const end = scheduleEnd(s);
 
         let bookingState: BookingState;
         if (status === 'cancelled') bookingState = 'cancelled';
         else if (status === 'waiting_payment') {
             if (pay?.status === 'expired') bookingState = 'expired';
             else if (pay?.status === 'pending' && pay.paymentUrl) bookingState = 'waiting_payment';
-            else bookingState = 'awaiting_invoice'; // admin belum menerbitkan tagihan perpanjangan
+            else bookingState = 'awaiting_invoice'; // admin belum menerbitkan tagihannya
         } else {
             bookingState = 'paid';
         }
@@ -221,25 +227,25 @@ export function buildScheduleCards(
         }
 
         cards.push({
-            key: ext.id || `ext-${i}`,
+            key: s.sourceId,
             kind: 'extend',
-            label: `${t('airingPeriodLabel')} ${i + 2}`,
-            ordinal: i + 2,
+            label: `${t('airingPeriodLabel')} ${s.ordinal}`,
+            ordinal: s.ordinal,
             dateRange: start || end ? `${fmtShort(start)}–${fmtShort(end)}` : '—',
             startDate: start,
             endDate: end,
             info: {
-                id: ext.id || '',
-                createdAt: ext.created_at || null,
-                duration: ext.duration,
-                periodBatch: ext.period_batch || null,
-                incentive: buildIncentive(ext, submission),
-                voucherCode: ext.voucher_code || null,
+                id: s.sourceId,
+                createdAt: s.createdAt,
+                duration: s.duration ?? 0,
+                periodBatch: s.periodBatch,
+                incentive: buildIncentive(s),
+                voucherCode: s.voucherCode,
             },
             booking: {
                 state: bookingState,
-                amount: pay?.amount || ext.total_cost,
-                subtotal: typeof ext.ppn_amount === 'number' ? ext.subtotal ?? null : null,
+                amount: pay?.amount || s.totalCost,
+                subtotal: subtotalOf(s),
                 payUrl: bookingState === 'waiting_payment' ? pay?.paymentUrl || null : null,
                 isExternalLink: true,
                 deadline: null,

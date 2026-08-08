@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, getExtendsBySubmissionIds, getSurveyPagesBySubmissionIds, deleteFormSubmission, prepareForReschedule, type FormSubmission, type FormSubmissionExtend } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, deleteFormSubmission, prepareForReschedule, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
 import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { type ExtendPaymentInfo } from '@/components/ProgressTracker';
+import { type SchedulePaymentMap } from '@/components/status/scheduleAxes';
 import { Phase } from '@/components/status/PhaseRail';
 import { ReviewPhase } from '@/components/status/ReviewPhase';
 import { SchedulePhase } from '@/components/status/SchedulePhase';
@@ -38,9 +38,12 @@ export function StatusPage() {
     // Store payment links for each submission: { submissionId: paymentUrl }
     const [paymentLinks, setPaymentLinks] = useState<Record<string, string | null>>({});
     const [invoiceIds, setInvoiceIds] = useState<Record<string, string | null>>({});
-    // Duration extensions per submission + their payment info (keyed by extend id)
-    const [extendsBySubmission, setExtendsBySubmission] = useState<Record<string, FormSubmissionExtend[]>>({});
-    const [extendPayments, setExtendPayments] = useState<Record<string, Record<string, ExtendPaymentInfo>>>({});
+    // Jadwal iklan per order, langsung dari cermin `ad_schedules` — baris yang
+    // sama dengan yang dibaca papan Schedule admin (Task 9B).
+    const [schedulesBySubmission, setSchedulesBySubmission] = useState<Record<string, AdScheduleEntry[]>>({});
+    // Pembayaran per JADWAL, dikunci `sourceId` (= `transactions.extend_id`
+    // untuk jadwal ke-2 dst.), bersarang per order.
+    const [schedulePayments, setSchedulePayments] = useState<Record<string, SchedulePaymentMap>>({});
     // Halaman iklan per submission (slug + views) — blok order-level di bawah list jadwal
     const [surveyPages, setSurveyPages] = useState<Record<string, { views: number; slug: string | null }>>({});
     const [searchParams, setSearchParams] = useSearchParams();
@@ -111,13 +114,12 @@ export function StatusPage() {
             // Fetch payment links for each submission
             const links: Record<string, string | null> = {};
             const invIds: Record<string, string | null> = {};
-            const extPayments: Record<string, Record<string, ExtendPaymentInfo>> = {};
+            const schedPayments: Record<string, SchedulePaymentMap> = {};
 
-            // Batch-load all duration extensions for the user's submissions (readonly)
             const allSubmissionIds = data.map((s) => s.id).filter((id): id is string => !!id);
 
-            // Run the per-submission transaction loop and the batched extends fetch together
-            const [, allExtends, pagesMap] = await Promise.all([
+            // Loop transaksi per order + dua pengambilan massal, sekaligus
+            const [, allSchedules, pagesMap] = await Promise.all([
                 // Use Promise.all for parallel fetching to prevent blocking
                 Promise.all(data.map(async (submission) => {
                     if (submission.id) {
@@ -138,11 +140,14 @@ export function StatusPage() {
                                 }
                             }
 
-                            // Build extend payment map (newest tx per extend wins — ordered desc)
-                            const exMap: Record<string, ExtendPaymentInfo> = {};
+                            // Peta pembayaran per jadwal, dikunci `sourceId`.
+                            // `extend_id` MEMANG `sourceId` jadwal ke-2 dst. —
+                            // itu kunci yang sama yang dipakai cermin, jadi
+                            // tidak ada penerjemahan di sini.
+                            const payMap: SchedulePaymentMap = {};
                             extendTx.forEach((tx) => {
-                                if (tx.extend_id && !exMap[tx.extend_id]) {
-                                    exMap[tx.extend_id] = {
+                                if (tx.extend_id && !payMap[tx.extend_id]) {
+                                    payMap[tx.extend_id] = {
                                         paymentUrl: tx.payment_url || null,
                                         paymentId: tx.payment_id || null,
                                         status: tx.status || null,
@@ -150,7 +155,7 @@ export function StatusPage() {
                                     };
                                 }
                             });
-                            extPayments[submission.id] = exMap;
+                            schedPayments[submission.id] = payMap;
                         } catch (e) {
                             console.error(`Error fetching transactions for ${submission.id}:`, e);
                         }
@@ -179,19 +184,18 @@ export function StatusPage() {
                         }
                     }
                 })),
-                getExtendsBySubmissionIds(allSubmissionIds),
+                fetchAdSchedules(allSubmissionIds),
                 getSurveyPagesBySubmissionIds(allSubmissionIds),
             ]);
 
-            // Group extends by their parent submission
-            const bySub: Record<string, FormSubmissionExtend[]> = {};
-            allExtends.forEach((e) => {
-                if (!bySub[e.submission_id]) bySub[e.submission_id] = [];
-                bySub[e.submission_id].push(e);
+            const bySub: Record<string, AdScheduleEntry[]> = {};
+            allSchedules.forEach((s) => {
+                if (!bySub[s.submissionId]) bySub[s.submissionId] = [];
+                bySub[s.submissionId].push(s);
             });
 
-            setExtendsBySubmission(bySub);
-            setExtendPayments(extPayments);
+            setSchedulesBySubmission(bySub);
+            setSchedulePayments(schedPayments);
             setPaymentLinks(links);
             setInvoiceIds(invIds);
             setSurveyPages(pagesMap);
@@ -290,10 +294,10 @@ export function StatusPage() {
 
     // Satu sumber kebenaran state UI per order (chips, callout, sort)
     const withUiState = submissions.map((submission) => {
-        const exts = extendsBySubmission[submission.id!] || [];
-        const pays = extendPayments[submission.id!] || {};
-        const ui = deriveOrderUiState(submission, exts, pays, paymentLinks[submission.id!] || null);
-        return { submission, exts, pays, ui };
+        const scheds = schedulesBySubmission[submission.id!] || [];
+        const pays = schedulePayments[submission.id!] || {};
+        const ui = deriveOrderUiState(submission, scheds, pays, paymentLinks[submission.id!] || null);
+        return { submission, pays, ui };
     });
 
     const needsActionCount = withUiState.filter((o) => o.ui.needsAction).length;
@@ -442,8 +446,8 @@ export function StatusPage() {
                             <p className="text-sm text-gray-400 text-center py-10">{t('noOrdersInFilter')}</p>
                         ) : (
                             <div className="space-y-4">
-                                {filtered.map(({ submission, exts, pays, ui }) => {
-                                    const cards = buildScheduleCards(submission, ui, exts, pays, invoiceIds[submission.id!] || null, t);
+                                {filtered.map(({ submission, pays, ui }) => {
+                                    const cards = buildScheduleCards(ui, pays, invoiceIds[submission.id!] || null, t);
                                     const pageInfo = submission.id ? surveyPages[submission.id] : undefined;
                                     const activePhase = getActiveDashboardPhase(ui.currentStep);
                                     const reachedPhase = activePhase ?? 3;
@@ -475,6 +479,7 @@ export function StatusPage() {
                                                 <Phase number={1} title={t('phaseReviewTitle')} active={reachedPhase >= 1} lineActive={reachedPhase >= 2}>
                                                     <ReviewPhase
                                                         submission={submission}
+                                                        first={ui.first}
                                                         onDelete={() => handleDeleteSubmission(submission.id!)}
                                                         active={activePhase === 1}
                                                     />

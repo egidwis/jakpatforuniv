@@ -1877,12 +1877,25 @@ export interface AdScheduleEntry {
   additionalPrizePerWinner: number;
   /** true = jadwal ini membuka pool hadiah baru, bukan menambah pool berjalan. */
   isNewPeriod: boolean;
+  /**
+   * Bulan pool hadiah (`YYYY-MM`). NULL untuk jadwal tanpa tanggal, dan NULL
+   * untuk seluruh jadwal pertama — di sana pool-nya memang belum pernah
+   * dinamai. ⚠️ Nama field kontrak publik (`period_batch`); jangan ikut
+   * diganti saat istilah "extend" dibuang, lihat Global Constraints Phase 2.
+   */
+  periodBatch: string | null;
   slotBookedBy: string | null;
   slotReservedAt: string | null;
   title: string;
   researcherName: string;
   /** created_at ORDER-nya, bukan baris jadwalnya — dipakai deep-link ke drawer. */
   submissionCreatedAt: string;
+  /**
+   * created_at JADWAL ini. Untuk ordinal 1 ia identik dengan milik ordernya
+   * (diverifikasi 2026-08-08: 0 dari 973 baris berbeda); untuk jadwal ke-2 dst.
+   * ia tanggal jadwal itu dibuat, dan itulah yang tampil di kartu peneliti.
+   */
+  createdAt: string | null;
   /** Sumbu ketiga, diisi query kedua. 'kilat' = memang tidak pernah punya halaman. */
   pageStatus: 'none' | 'draft' | 'published' | 'kilat';
   /**
@@ -1948,7 +1961,14 @@ const selectSurveyPagesByIds = async <T>(columns: string, ids: string[]): Promis
  * (yang terakhir tidak boleh pernah tersaring — justru order itu yang paling
  * perlu terlihat).
  */
-export const fetchAdSchedules = async (submissionId?: string): Promise<AdScheduleEntry[]> => {
+export const fetchAdSchedules = async (
+  target?: string | string[]
+): Promise<AdScheduleEntry[]> => {
+  // Daftar kosong berarti "tidak ada yang ditanyakan", BUKAN "tanyakan
+  // semuanya". Tanpa cabang ini `.in('submission_id', [])` dihilangkan dan
+  // dashboard peneliti akan meminta seluruh isi tabel.
+  if (Array.isArray(target) && target.length === 0) return [];
+
   let q = supabase
     .from('ad_schedules')
     .select(`
@@ -1957,15 +1977,23 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
       status, review_status, payment_status,
       distribution_type, kilat_slot_hour,
       total_cost, subtotal, ppn_amount, voucher_code,
-      prize_per_winner, winner_count, additional_prize_per_winner, is_new_period,
-      slot_booked_by, slot_reserved_at,
+      prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
+      slot_booked_by, slot_reserved_at, created_at,
       form_submissions!ad_schedules_submission_id_fkey ( title, full_name, created_at )
     `, { count: 'exact' });
 
-  // Dipakai dua permukaan: papan (tanpa argumen, semuanya) dan drawer order
-  // (satu submission). Satu fungsi supaya keduanya tidak bisa menurunkan
-  // "jadwal ke berapa" dan "berapa ditagih" dengan aturan yang berbeda.
-  if (submissionId) q = q.eq('submission_id', submissionId);
+  // Dipakai tiga permukaan: papan admin (tanpa argumen, semuanya), drawer order
+  // (satu submission), dan dashboard peneliti (daftar order miliknya sendiri).
+  // Satu fungsi supaya ketiganya tidak bisa menurunkan "jadwal ke berapa" dan
+  // "berapa ditagih" dengan aturan yang berbeda.
+  //
+  // Daftar peneliti tidak dipotong: RLS `Owner or admin can view ad_schedules`
+  // sudah membatasinya ke order miliknya, dan order per peneliti dihitung
+  // belasan — jauh di bawah ambang URL yang menjatuhkan papan admin (lihat
+  // `IN_FILTER_CHUNK`). Kalau suatu saat ada akun dengan ratusan order, lewatkan
+  // saja ke pola potongan yang sama.
+  if (Array.isArray(target)) q = q.in('submission_id', target);
+  else if (target) q = q.eq('submission_id', target);
 
   const { data, error, count } = await q.order('ordinal', { ascending: true });
 
@@ -2039,11 +2067,13 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
       winnerCount: Number(row.winner_count || 0),
       additionalPrizePerWinner: Number(row.additional_prize_per_winner || 0),
       isNewPeriod: !!row.is_new_period,
+      periodBatch: row.period_batch || null,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
       title: row.form_submissions?.title || 'Untitled',
       researcherName: row.form_submissions?.full_name || 'Unknown',
       submissionCreatedAt: row.form_submissions?.created_at || new Date().toISOString(),
+      createdAt: row.created_at || null,
       pageStatus,
       isExtraAd: page?.isExtraAd ?? false,
     };

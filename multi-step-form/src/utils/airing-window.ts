@@ -64,11 +64,34 @@ function wibInstant(ymd: string, hourWib: number): Date {
 }
 
 /**
+ * Angkat string tanggal jadi instant tayang.
+ *
+ * String date-only ("2026-04-13") diurai JS sebagai tengah malam UTC = 07.00
+ * WIB — delapan jam sebelum iklan benar-benar tayang. Fungsi ini mendeteksi
+ * bentuk itu dan menetapkannya ke 08:00 UTC (= 15.00 WIB); nilai yang sudah
+ * memuat jam dibiarkan apa adanya.
+ *
+ * ⚠️ **Hanya untuk kolom `DATE` di `form_submissions`.** Sejak Task 9B seluruh
+ * dashboard peneliti membaca instant dari `ad_schedules`, yang sudah Kilat-aware
+ * (gelombang 08/11/14/17 WIB). Memakai fungsi ini di atas jadwal Kilat akan
+ * mengembalikan 15.00 untuk iklan yang sebenarnya didorong pukul 08.00.
+ * Sebelumnya bernama sama di `components/ProgressTracker.tsx`, yang dipensiunkan
+ * bersama Task 9B.
+ */
+export function normalizeScheduleDate(dateStr: string | null | undefined): Date {
+    if (!dateStr || typeof dateStr !== 'string') return new Date();
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return new Date();
+    if (!dateStr.includes('T')) d.setUTCHours(AIRING_HOUR_WIB - WIB_UTC_OFFSET_HOURS, 0, 0, 0);
+    return d;
+}
+
+/**
  * Tanggal mulai tayang: selalu 15.00 WIB = 08:00 UTC.
  *
  * Nilai ini sengaja identik dengan yang disintesis `normalizeScheduleDate`
- * untuk string date-only (lihat ProgressTracker.tsx) — supaya jalur wizard dan
- * jalur dashboard tidak pernah berbeda pendapat soal kapan iklan mulai.
+ * di atas — supaya jalur wizard dan jalur dashboard tidak pernah berbeda
+ * pendapat soal kapan iklan mulai.
  */
 export function toAiringStartIso(ymd: string): string {
     return wibInstant(ymd, AIRING_HOUR_WIB).toISOString();

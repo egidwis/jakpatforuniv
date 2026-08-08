@@ -4,6 +4,7 @@ import {
   nowWib,
   isBookingClosedForDate,
   isPaymentTooLateForDate,
+  normalizeScheduleDate,
   paymentCutoffInstant,
   toAiringStartIso,
   toAiringEndIso,
@@ -91,17 +92,19 @@ check('cutoff bayar selalu 07:00Z (14.00 WIB)', paymentCutoffInstant(TODAY).toIS
 check('end = start + n×24 jam', toAiringEndIso(TODAY, 7), '2026-08-12T08:00:00.000Z');
 check('end kilat = start + 24 jam', toAiringEndIso(TODAY, 1), '2026-08-06T08:00:00.000Z');
 
-// `normalizeScheduleDate` (ProgressTracker) menyintesis 08:00 UTC untuk string
-// date-only. Nilai kita harus persis sama supaya wizard & dashboard sepakat.
-const normalizeScheduleDateEquivalent = (ymd: string) => {
-  const d = new Date(ymd);
-  d.setUTCHours(8, 0, 0, 0);
-  return d.toISOString();
-};
+// `normalizeScheduleDate` menyintesis 08:00 UTC untuk string date-only. Sejak
+// Task 9B ia tinggal di modul ini juga, jadi uji ini memanggil fungsi yang
+// sebenarnya alih-alih menyalin ulang rumusnya — dulu keduanya bisa menyimpang
+// tanpa satu pun uji gagal.
 check(
   'start cocok dengan normalizeScheduleDate untuk tanggal yang sama',
   toAiringStartIso(TODAY),
-  normalizeScheduleDateEquivalent(TODAY),
+  normalizeScheduleDate(TODAY).toISOString(),
+);
+check(
+  'normalizeScheduleDate membiarkan nilai yang sudah berjam apa adanya',
+  normalizeScheduleDate('2026-08-05T01:00:00.000Z').toISOString(),
+  '2026-08-05T01:00:00.000Z',
 );
 
 check('toWibYmd konsisten dengan nowWib', toWibYmd(INSTANT), nowWib(INSTANT).ymd);
