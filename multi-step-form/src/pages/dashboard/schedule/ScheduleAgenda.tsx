@@ -60,7 +60,7 @@ function EntryRow({
             {entry.ordinal > 1 && (
               <span
                 className="shrink-0 text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1"
-                title="Jadwal perpanjangan — nomor urut jendela tayang order ini"
+                title="Jadwal iklan ke-berapa dari order ini"
               >
                 #{entry.ordinal}
               </span>

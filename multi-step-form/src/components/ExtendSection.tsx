@@ -305,7 +305,7 @@ export function ExtendSection({
 
       if (error) throw error;
 
-      toast.success('Extend berhasil dibuat');
+      toast.success('Jadwal iklan baru dibuat');
       setIsCreateDialogOpen(false);
       fetchExtends();
       onExtendCreated?.();
@@ -543,7 +543,7 @@ export function ExtendSection({
         .from('form_submissions_extend')
         .update({ submission_status: 'cancelled', payment_status: 'failed' })
         .eq('id', extId);
-      toast.success('Extend dibatalkan');
+      toast.success('Jadwal iklan dibatalkan');
       fetchExtends();
     } catch (err: any) {
       toast.error(err.message || 'Gagal membatalkan extend');
@@ -594,7 +594,7 @@ export function ExtendSection({
         <div className="flex items-center gap-1.5">
           <CalendarPlus className="w-3.5 h-3.5 text-violet-600 shrink-0" />
           <span className="text-xs font-medium text-violet-700 tracking-wide">
-            Extend
+            Jadwal Iklan Baru
           </span>
           {extends_.length > 0 && (
             <Badge variant="outline" className="px-1 py-0 h-4 text-[9px] bg-violet-100 text-violet-700 border-violet-300 rounded-full font-bold">
@@ -620,7 +620,7 @@ export function ExtendSection({
             onClick={handleOpenCreate}
           >
             <CalendarPlus className="w-3 h-3 mr-1.5" />
-            Buat Extend Baru
+            + Jadwal Iklan Baru
           </Button>
 
           {/* Extends List */}
@@ -630,7 +630,7 @@ export function ExtendSection({
             </div>
           ) : extends_.length === 0 ? (
             <div className="text-[10px] text-gray-400 italic text-center py-2">
-              Belum ada extend
+              Belum ada jadwal tambahan
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -821,9 +821,9 @@ export function ExtendSection({
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle className="text-lg">Buat Extend</DialogTitle>
+            <DialogTitle className="text-lg">Jadwal Iklan Baru</DialogTitle>
             <DialogDescription className="text-sm text-gray-500">
-              Extend iklan "<span className="font-medium text-gray-700">{submissionTitle}</span>"
+              Jadwal iklan baru untuk "<span className="font-medium text-gray-700">{submissionTitle}</span>"
             </DialogDescription>
           </DialogHeader>
 

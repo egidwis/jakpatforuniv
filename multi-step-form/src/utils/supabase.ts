@@ -1966,6 +1966,13 @@ export interface AdScheduleEntry {
   submissionId: string;
   ordinal: number;
   isExtension: boolean;
+  /**
+   * Baris SUMBER-nya: id `form_submissions` untuk ordinal 1, id
+   * `form_submissions_extend` untuk sisanya. Inilah kunci yang dipakai
+   * `transactions.extend_id` / `invoices.extend_id`, jadi ia yang menautkan
+   * sebuah jadwal ke pembayarannya sendiri.
+   */
+  sourceId: string;
   /** Instant ISO, atau null untuk order yang belum punya jendela tayang. */
   startDate: string | null;
   endDate: string | null;
@@ -2018,7 +2025,7 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
   let q = supabase
     .from('ad_schedules')
     .select(`
-      id, submission_id, ordinal, source_table,
+      id, submission_id, ordinal, source_table, source_id,
       start_date, end_date, duration,
       status, review_status, payment_status,
       distribution_type, kilat_slot_hour,
@@ -2075,6 +2082,7 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
       submissionId: row.submission_id,
       ordinal: row.ordinal,
       isExtension: row.source_table === 'form_submissions_extend',
+      sourceId: row.source_id,
       startDate: row.start_date,
       endDate: row.end_date,
       duration: row.duration,
@@ -2099,4 +2107,71 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
       pageStatus,
     };
   });
+};
+
+/** Pembayaran milik SATU jadwal, bukan satu order. */
+export interface SchedulePayment {
+  /** Status transaksi terbaru untuk jadwal ini. */
+  status: string | null;
+  paymentId: string | null;
+  paymentUrl: string | null;
+  amount: number;
+  /** Berapa kali dicoba bayar. 76 jadwal di produksi punya lebih dari satu. */
+  attempts: number;
+  hasEverPaid: boolean;
+}
+
+/**
+ * Peta jadwal -> pembayarannya, untuk satu order.
+ *
+ * ⚠️ INI YANG MEMBUAT PEMBAYARAN BOLEH MASUK KE DALAM KARTU JADWAL.
+ * `transactions` sudah membedakan pemiliknya sejak lama lewat `entity_type` +
+ * `extend_id` — 617 baris 'submission' dan 10 baris 'extend' per 2026-08-08,
+ * `entity_type` konsisten 100%. Jadi menautkan pembayaran ke jadwal bukan
+ * kemampuan baru; ia sudah ada dan belum pernah dipakai di layar admin.
+ *
+ * Kuncinya `sourceId`, bukan `submissionId`: sebuah order berjadwal banyak
+ * punya beberapa transaksi, dan memakai `submissionId` akan menempelkan
+ * pembayaran jadwal #2 ke kartu jadwal #1.
+ *
+ * Task 11 akan menggantikan pencocokan ini dengan kolom `schedule_id` yang
+ * eksplisit; sampai saat itu bentuk lama inilah satu-satunya penautnya.
+ */
+export const fetchSchedulePayments = async (
+  submissionId: string,
+  schedules: AdScheduleEntry[],
+): Promise<Map<string, SchedulePayment>> => {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('payment_id, payment_url, amount, status, entity_type, extend_id, created_at')
+    .eq('form_submission_id', submissionId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  const bySource = new Map<string, any[]>();
+  for (const tx of data || []) {
+    // entity_type 'extend' -> milik baris form_submissions_extend tertentu.
+    // Selain itu -> jadwal pertama, yang source_id-nya adalah id submission.
+    const key = tx.entity_type === 'extend' && tx.extend_id ? tx.extend_id : submissionId;
+    const list = bySource.get(key);
+    if (list) list.push(tx);
+    else bySource.set(key, [tx]);
+  }
+
+  const out = new Map<string, SchedulePayment>();
+  for (const s of schedules) {
+    const txs = bySource.get(s.sourceId);
+    if (!txs || txs.length === 0) continue;
+    const unpaid = txs.find((t) => !['paid', 'completed'].includes(t.status));
+    out.set(s.id, {
+      status: txs[0].status,
+      paymentId: txs[0].payment_id || null,
+      paymentUrl: unpaid?.payment_url || txs[0].payment_url || null,
+      amount: Number(txs[0].amount || 0),
+      attempts: txs.length,
+      hasEverPaid: txs.some((t) => ['paid', 'completed'].includes(t.status)),
+    });
+  }
+  return out;
 };

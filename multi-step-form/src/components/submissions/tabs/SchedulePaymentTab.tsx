@@ -1,29 +1,27 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Copy, ExternalLink, FileText, Loader2, PenLine } from 'lucide-react';
+import { Check, Loader2, PenLine } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
-import { fetchAdSchedules, type AdScheduleEntry } from '@/utils/supabase';
+import {
+  fetchAdSchedules, fetchSchedulePayments,
+  type AdScheduleEntry, type SchedulePayment,
+} from '@/utils/supabase';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
-import { copyToClipboard } from '../types';
 import { deriveLifecycle } from '../lifecycle';
-import { ReserveSlotAction, PaymentAction, ExtendAction } from '../CampaignActions';
+import { ExtendAction } from '../CampaignActions';
 import { ScheduleCardList } from './ScheduleCardList';
 import { DistributionSection } from './DistributionSection';
 
 // ─────────────────────────────────────────────────────────────
-// Tab: Jadwal & Bayar — gabungan tab Reservasi + tab Payment.
+// Tab: Jadwal & Bayar.
 //
-// SUBJEKNYA JADWAL, BUKAN ORDER. Isinya daftar kartu, satu per jendela tayang,
-// karena itulah satuan yang punya tanggal, biaya, dan status pembayaran sendiri.
-// Alasan lengkapnya di kepala ScheduleCardList.tsx.
+// SUBJEKNYA JADWAL, dan PEMBAYARAN ADA DI DALAM KARTU JADWAL — keduanya satu
+// kesatuan, karena yang dibayar adalah jendela tayang tertentu, bukan "order".
 //
-// Yang tinggal DI LUAR kartu hanya yang benar-benar milik ORDER:
-//   * tagihan & aksi — sampai Task 10, invoice belum bisa dikaitkan ke jadwal
-//     tertentu (`transactions`/`invoices` belum punya `schedule_id`), dan
-//     "Mark as Paid" melunasi SELURUH invoice order sekaligus. Menaruhnya di
-//     dalam kartu akan menjanjikan presisi per-jadwal yang belum ada;
-//   * jalur distribusi — properti order, bukan properti jendela tayang.
+// Yang tersisa di luar kartu tinggal dua, dan keduanya memang milik ORDER:
+// jalur distribusi, dan tombol menambah jadwal. Blok "Tagihan & Aksi" yang
+// sempat berdiri sendiri di sini sudah dibubarkan ke dalam kartu.
 // ─────────────────────────────────────────────────────────────
 
 export function SchedulePaymentTab({
@@ -52,6 +50,7 @@ export function SchedulePaymentTab({
 }) {
   const [isConfirmPaymentOpen, setIsConfirmPaymentOpen] = useState(false);
   const [schedules, setSchedules] = useState<AdScheduleEntry[]>([]);
+  const [payments, setPayments] = useState<Map<string, SchedulePayment>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -60,45 +59,43 @@ export function SchedulePaymentTab({
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    fetchAdSchedules(submissionId)
-      .then((rows) => { if (!cancelled) setSchedules(rows); })
-      .catch((e) => { console.error('Gagal memuat jadwal order:', e); })
-      .finally(() => { if (!cancelled) setIsLoading(false); });
+    (async () => {
+      try {
+        const rows = await fetchAdSchedules(submissionId);
+        const pay = await fetchSchedulePayments(submissionId, rows);
+        if (!cancelled) { setSchedules(rows); setPayments(pay); }
+      } catch (e) {
+        console.error('Gagal memuat jadwal order:', e);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [submissionId, reloadKey]);
 
-  // Perpanjangan baru melahirkan baris cermin lewat trigger, jadi daftar di atas
-  // harus ikut dimuat ulang — bukan hanya daftar order di belakang drawer.
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // Jadwal baru melahirkan baris cermin lewat trigger, jadi daftar di atas harus
+  // ikut dimuat ulang — bukan hanya daftar order di belakang drawer.
   const handleExtendCreated = useCallback(() => {
-    setReloadKey((k) => k + 1);
+    reload();
     onExtendCreated();
-  }, [onExtendCreated]);
+  }, [reload, onExtendCreated]);
+
+  // ⚠️ `updatePaymentStatus` masih melunasi SELURUH invoice order (menyaring
+  // `form_submission_id` saja). Untuk order berjadwal SATU itu tidak berbeda —
+  // "semua tagihan order" persis sama dengan "tagihan jadwal ini" — jadi
+  // tombolnya boleh masuk kartu. Untuk order berjadwal banyak ia akan berbohong,
+  // jadi tombolnya pindah ke luar beserta peringatan cakupannya. Penyempitan ke
+  // `schedule_id` ada di Task 11.
+  const isSingleSchedule = schedules.length === 1;
+  const canMarkPaidInCard = isSingleSchedule && !lifecycle.isPaid;
 
   return (
     <>
-      <DetailSheetSection title="Jadwal">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-          </div>
-        ) : (
-          <ScheduleCardList entries={schedules} submission={submission} />
-        )}
-
-        <ExtendAction
-          submission={submission}
-          lifecycle={lifecycle}
-          onExtendCreated={handleExtendCreated}
-        />
-      </DetailSheetSection>
-
       <DetailSheetSection
-        title="Tagihan & Aksi"
+        title="Jadwal"
         action={
-          // Dulu tombol ini menempel di kepala "Detail Form & Biaya". Blok itu
-          // hilang bersama penyusunan ulang, tapi affordance-nya tidak boleh
-          // ikut hilang: mengubah durasi/hadiah adalah cara admin memperbaiki
-          // angka yang salah SEBELUM menagih.
           <Button
             variant="ghost"
             size="sm"
@@ -109,74 +106,47 @@ export function SchedulePaymentTab({
           </Button>
         }
       >
-        <ReserveSlotAction
-          submission={submission}
-          paymentData={paymentData}
-          existingPage={existingPage}
-          isScheduled={lifecycle.hasValidSchedule}
-          lifecycle={lifecycle}
-          onOpenSchedule={onOpenSchedule}
-        />
-        <PaymentAction
-          submission={submission}
-          paymentData={paymentData}
-          lifecycle={lifecycle}
-          onOpenPayment={onOpenPayment}
-        />
-
-        {(paymentData.latestPaymentId || paymentData.latestPaymentUrl) && (
-          <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 space-y-1.5 text-[11px]">
-            {paymentData.latestPaymentId && (
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-400">
-                  Invoice terakhir
-                  {paymentData.invoiceCount > 1 && ` (dari ${paymentData.invoiceCount})`}
-                </span>
-                <a
-                  href={`/invoices/${paymentData.latestPaymentId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-blue-600 hover:underline inline-flex items-center gap-1 truncate"
-                >
-                  <FileText className="w-3 h-3 shrink-0" />
-                  <span className="truncate">{paymentData.latestPaymentId}</span>
-                  <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                </a>
-              </div>
-            )}
-            {paymentData.latestPaymentUrl && !lifecycle.isPaid && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full h-7 text-[11px] justify-start text-amber-700 border-amber-200 bg-amber-50/60 hover:bg-amber-100"
-                onClick={() => copyToClipboard(paymentData.latestPaymentUrl!, 'Payment link copied!')}
-              >
-                <Copy className="w-3 h-3 mr-1.5" /> Copy payment link untuk researcher
-              </Button>
-            )}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
           </div>
+        ) : (
+          <ScheduleCardList
+            entries={schedules}
+            payments={payments}
+            submission={submission}
+            onOpenSchedule={() => onOpenSchedule(submission)}
+            onOpenPayment={() => onOpenPayment(submission)}
+            onMarkPaid={canMarkPaidInCard ? () => setIsConfirmPaymentOpen(true) : null}
+          />
         )}
 
-        {!lifecycle.isPaid && (
-          <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2.5 space-y-2">
-            <p className="text-[11px] text-emerald-800 leading-snug">
-              Pembayaran diterima di luar sistem (transfer manual)? Tandai submission ini sebagai lunas.
+        <ExtendAction
+          submission={submission}
+          lifecycle={lifecycle}
+          onExtendCreated={handleExtendCreated}
+        />
+
+        {!isSingleSchedule && !lifecycle.isPaid && schedules.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 space-y-2">
+            <p className="text-[11px] text-amber-900 leading-snug">
+              Order ini punya <strong>{schedules.length} jadwal</strong>. Tombol di bawah melunasi
+              <strong> seluruh</strong> tagihan order sekaligus — belum bisa per jadwal, jadi ia
+              sengaja tidak ditaruh di dalam kartu.
             </p>
-            {schedules.length > 1 && (
-              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 leading-snug">
-                ⚠️ Order ini punya <strong>{schedules.length} jadwal</strong>. Tombol ini melunasi
-                <strong> seluruh</strong> invoice order — belum bisa per jadwal.
-              </p>
-            )}
             <Button
               size="sm"
               className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={() => setIsConfirmPaymentOpen(true)}
             >
-              <Check className="w-3.5 h-3.5 mr-1.5" /> Mark as Paid
+              <Check className="w-3.5 h-3.5 mr-1.5" /> Tandai seluruh order lunas
             </Button>
           </div>
         )}
+
+        {/* Order tanpa satu pun jadwal tetap butuh jalan masuk ke Mark as Paid —
+            tapi itu persis "pembayaran yatim" yang Task 10 ada untuk menutup,
+            jadi tidak diberi jalan pintas baru di sini. */}
       </DetailSheetSection>
 
       <DistributionSection
@@ -218,6 +188,7 @@ export function SchedulePaymentTab({
               onClick={() => {
                 onPaymentStatusChange(submission.id, 'paid');
                 setIsConfirmPaymentOpen(false);
+                reload();
               }}
             >
               Ya, Tandai Lunas
