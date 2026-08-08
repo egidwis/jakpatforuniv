@@ -672,7 +672,8 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 |---|---|
 | **`docs/jadwal-iklan-progress.md`** | ⬅️ file ini — titik masuk, status berjalan |
 | [`superpowers/plans/README.md`](superpowers/plans/README.md) | **Indeks seluruh rencana** + statusnya; baca kalau bingung file mana yang masih berlaku |
-| [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — titik masuk pekerjaan berikutnya; prosedur merge branch + urutan Task 9→10→12→Phase 3→11 |
+| [`superpowers/plans/2026-08-08-task-11-ad-schedules-otoritatif.md`](superpowers/plans/2026-08-08-task-11-ad-schedules-otoritatif.md) | **Rencana Task 11** — `ad_schedules` jadi otoritatif, `form_submissions_extend` pensiun, `booking_id` lahir. Disetujui 2026-08-08, **terkunci sampai Phase 3 mendarat di `main`** |
+| [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — judulnya sudah basi; baca kotak koreksi di kepalanya sebelum mengeksekusi apa pun dari sana |
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
 | `multi-step-form/sql/36`–`46` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup. `46` = Task 9A (dua sumbu); `reward_pools` bergeser ke `47` |

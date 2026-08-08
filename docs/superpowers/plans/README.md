@@ -13,7 +13,8 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 
 | Rencana | Status | Ringkas |
 |---|---|---|
-| [2026-08-05-phase-3-jadwal-iklan-terpadu](2026-08-05-phase-3-jadwal-iklan-terpadu.md) | 🟡 **merge selesai — mulai dari Task 9** | Tab "Jadwal Iklan" terpadu di admin. Langkah merge branch ✅ 2026-08-05 (baseline pasca-merge: 74 error tsc). Sisa: urutan Task 9→10→12→Phase 3→11 dan tiga keputusan bentuk di awal |
+| [2026-08-08-task-11-ad-schedules-otoritatif](2026-08-08-task-11-ad-schedules-otoritatif.md) | ⬜ **disetujui, terkunci prasyarat** | `ad_schedules` jadi otoritatif; `form_submissions_extend` jadi view lalu pensiun. Menambah `booking_id` (kode jadwal yang dikutip peneliti) dan `schedule_id` di invoices/transactions. **Jalur uang — rilis sendiri, sesudah Phase 3 mendarat di `main`** |
+| [2026-08-05-phase-3-jadwal-iklan-terpadu](2026-08-05-phase-3-jadwal-iklan-terpadu.md) | 🟡 **papan jalan — sisa: pensiunkan Page Calendar** | Judulnya sudah basi (baca kotak koreksi di kepalanya). Task 9A ✅ `sql/46`, papan Schedule ✅, drawer digabung ✅. Sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
 | [2026-08-03-jadwal-iklan-redesign](2026-08-03-jadwal-iklan-redesign.md) | 🟡 **separuh** — Task 8/8B-1/8C/8D live, sisa 9–12 | Rencana Phase 2 lengkap. Detail per task ada di sini; Phase 3 merujuk balik ke file ini |
 | [2026-08-03-phase-0-test-checklist](2026-08-03-phase-0-test-checklist.md) | ⬜ **belum dijalankan** | Checklist uji manual pasca-deploy Phase 0. §2/§3/§5 wajib. Tidak memblokir apa pun, tapi belum pernah dijalankan |
 | [2026-07-30-design-system-dashboard](2026-07-30-design-system-dashboard.md) | ⬜ **belum dieksekusi** | Design-token system terpusat + perbaikan cascade `styles.css` legacy. Masih berlaku penuh |
