@@ -21,7 +21,7 @@ membaca baris yang sama.
 | Kilat | Jembatan admin iklan→Kilat + slot 08/11/14/17 WIB hari kerja | ✅ `sql/42` | ✅ deployed 2026-08-04 |
 | Kilat — papan jadwal | Toggle Iklan/Kilat di Ads Schedule + tutup lubang Create Page utk Kilat | — | ✅ deployed 2026-08-05 (`a4fc499`+`b78a7aa`) |
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
-| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **sisa Task 9B, 10–12** |
+| **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
 | Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, **`sql/47`** — `46` dipakai Task 9A) |
 
@@ -332,6 +332,71 @@ Sisa satu, dan ia **menulis**, jadi sengaja tidak dijalankan sendiri:
 
 ## Yang sudah selesai
 
+### Phase 2 Task 9B + 12 — dashboard peneliti, commit `e91f52f`..`433153c` (2026-08-08)
+
+Nol migrasi. Seluruhnya frontend, dan **RLS-nya sudah siap sejak `sql/46`**:
+policy `Owner or admin can view ad_schedules` predikatnya persis sama dengan
+`getFormSubmissionsByUser` (`auth_user_id = uid` ATAU `auth_user_id IS NULL AND
+email = jwt email`), jadi tidak ada order yang bisa tampil di daftar peneliti tapi
+kehilangan jadwalnya.
+
+Aturan dua sumbu tinggal di satu berkas baru,
+[`status/scheduleAxes.ts`](../multi-step-form/src/components/status/scheduleAxes.ts);
+`deriveOrderUiState`, `buildScheduleCards`, dan `ReviewPhase` semuanya lewat sana.
+
+**Algoritma lama dan baru diadu berdampingan lewat SQL atas seluruh 971 order**
+— pola yang sama yang membuktikan 8B-1 dan 8D. 664 identik, 307 berubah, dan
+ketiga kelompoknya perbaikan:
+
+| Jumlah | Dulu | Kini | Isinya |
+|---|---|---|---|
+| 237 | menunggu bayar | **menunggu review** | `in_review` yang memilih tanggal saat checkout, lalu ditagih sebelum sempat direview |
+| 65 | menunggu bayar | **perlu revisi** | ditandai **spam**, tetap disuruh bayar |
+| 5 | menunggu bayar | **perlu revisi** | **ditolak**, tetap disuruh bayar |
+
+Dua jebakan yang baru ketahuan justru saat mengadu — keduanya sudah dikunci di
+kode, dan urutan cabang di `orderStepOf` tidak boleh dibalik karenanya:
+
+- **Lunas mengalahkan review.** 156 order ber-`submission_status = 'in_review'`
+  tapi `payment_status = 'paid'` — sudah tayang, sudah selesai, hanya kolomnya
+  tidak pernah dimajukan. Menaruh sumbu review di atas akan memundurkan ke-156
+  order itu jadi "menunggu review" di layar penelitinya sendiri.
+- **Tanpa tanggal = belum memilih jadwal**, apa pun kata sumbu tayang. 4 order
+  `slot_reserved` tidak punya tanggal sama sekali (kejanggalan yang sudah dicatat
+  `sql/46`); menyuruh mereka membayar sesuatu tanpa jendela tayang adalah jalan buntu.
+
+**Ikut terbetulkan tanpa diminta: Kilat.** Tanggal cermin sudah instant yang benar
+(gelombang 08/11/14/17 WIB), jadi `normalizeScheduleDate` yang memaksa 15.00 tidak
+dipakai lagi di jalur ini — dan Mimin AI berhenti memberi tahu peneliti Kilat bahwa
+iklannya mulai pukul 15.00.
+
+Paritas kolom sebelum menukar sumber, semuanya **0 selisih**:
+
+| Cakupan | Hasil |
+|---|---|
+| ordinal 1 — 974 baris × 12 kolom vs `form_submissions` | **0** |
+| ordinal 2+ — 12 baris × 16 kolom vs `form_submissions_extend` | **0** |
+
+Karena itu kartu jadwal ke-2 dst. tidak berubah sedikit pun. Nomor kartunya kini
+dari `ad_schedules.ordinal` (yang dinomori ulang `resync_ad_schedule_ordinals()`),
+bukan dari posisi array — jadi "Jadwal Iklan 2" di layar peneliti dan di papan admin
+akhirnya baris yang sama.
+
+**`components/ProgressTracker.tsx` dihapus.** `getCurrentStepIndex` dan
+`computeEffectiveExtendStatus` kehilangan seluruh pemanggilnya. Sisanya,
+`normalizeScheduleDate`, pindah ke `utils/airing-window.ts` tempat aturan waktu WIB
+memang tinggal; ujinya berhenti menyalin ulang rumus itu dan kini memanggil fungsi
+sungguhan — dulu keduanya bisa menyimpang tanpa satu pun uji gagal.
+
+**Task 12 baru separuh, dan batasnya disengaja.** Yang dibaca peneliti sudah bersih
+(lima kunci terjemahan; dua di antaranya dihapus karena `payExtension` tidak lagi
+punya alasan ada dan `extendWaitingPaymentAlert` nol pemanggil). Yang **belum**:
+identifier kode (`ExtendSection`, `FormSubmissionExtend`, `entity_type='extend'`) —
+selama tabelnya masih bernama itu, menggantinya cuma memindahkan kebingungan; ia
+milik Task 11 langkah 5. Dan nama item invoice `'Extend Iklan (ads)'`
+([`ExtendSection.tsx:350,380`](../multi-step-form/src/components/ExtendSection.tsx))
+yang terkirim ke DOKU — menunggu finance diberi tahu.
+
 ### Phase 3 — Task 9A (`sql/46`) + papan Schedule, commit `478d550`..`d7639df` (2026-08-08)
 
 **Pembagian permukaan yang berlaku sekarang** — ini yang paling menentukan untuk
@@ -591,10 +656,10 @@ berubah serentak. 8B-2 keluar dari urutan ini — ia pindah jadi prasyarat Phase
 | **8B-2** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⏸️ **Ditunda jadi prasyarat Phase 4**, bukan bagian Phase 2. Hari ini semua yang diobatinya masih laten (10 perpanjangan seumur hidup, 0 top-up terpakai, 0 pool yatim) — Phase 4 yang membuat ketiganya hidup sekaligus. ⛔ Sebelum tabelnya dirancang, jawab dulu: **83 order sudah mendanai hadiah tanpa punya tanggal sama sekali**, sehingga kunci `(submission_id, period_batch)` tidak punya tempat untuk mereka. Nomor filenya `sql/45`. |
 | ~~**8C**~~ | ~~Pensiunkan sisa fitur pengundian di dashboard~~ | ✅ **selesai & live 2026-08-05.** Dipindah ke `main` lewat cherry-pick tanpa ikut menayangkan revamp visual. Indikator "Select Winners" terbukti hilang dari bundle produksi. |
 | ~~**8D**~~ | ~~`ad_schedules` mengenali Kilat~~ | ✅ **selesai & live 2026-08-05** (`sql/45`). Prasyarat Phase 3 yang pertama — sudah lunas. |
-| **9** | Pisahkan status order dari status jadwal | 🚧 **Terhalang, dan sekarang ia satu-satunya penghalang Phase 2 sekaligus Phase 3.** Bagian frontend tersulit; `deriveOrderUiState` ditulis ulang. 531 dari 869 baris cermin runtuh jadi satu keranjang `waiting_payment` sampai task ini jalan — lihat §2. |
+| ~~**9**~~ | ~~Pisahkan status order dari status jadwal~~ | ✅ **selesai 2026-08-08.** 9A = `sql/46` (cermin dapat sumbu kedua), 9B = dashboard peneliti membacanya. Diadu atas seluruh 971 order: 664 identik, 307 berubah, semuanya perbaikan. **Belum tayang** — ikut branch ini. |
 | **10** | Satukan aturan waktu & pembayaran | Cutoff 13.00/14.00 WIB berlaku seragam ke semua jadwal; `transactions`/`invoices` pakai `schedule_id`; **"Mark as Paid" jadi per-jadwal** (sekarang order-level dan bisa menandai lunas order tanpa jadwal sama sekali — 3 dari 522 order terukur begitu). |
 | **11** | Pindahkan pembaca, lalu contract | ⚠️ View kompatibilitas WAJIB ada sebelum tabel aslinya disentuh, bukan sesudah. **Diperkecil oleh 8B-1:** `respondents.js` tidak lagi membaca `form_submissions_extend` sama sekali (query massalnya diganti RPC). Sisa pembaca serverless tinggal dua — `functions/api/storage-cleanup.js:74` dan `functions/api/doku/webhook.js:497,516` — plus pembaca di `src/`. |
-| **12** | Istilah — semua jadi "Jadwal Iklan 1/2/3" | Berhenti di API: nama field publik (`period_batch`, `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut berganti. |
+| **12** | Istilah — semua jadi "Jadwal Iklan 1/2/3" | 🟡 **Separuh, sengaja.** Copy yang dibaca peneliti & admin ✅ selesai 2026-08-08. Sisa: identifier kode (`ExtendSection`, `FormSubmissionExtend`, `entity_type='extend'`) — menunggu Task 11 langkah 5, karena selama tabelnya masih bernama itu penggantian cuma memindahkan kebingungan. Plus nama item invoice `'Extend Iklan (ads)'` yang menunggu finance. Berhenti di API: nama field publik (`period_batch`, `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut berganti. |
 
 Setelah Phase 2: **Phase 3** (tab "Jadwal Iklan" terpadu di admin) menyusut jadi
 mapper biasa, dan **Phase 4** (tombol "Jadwalkan Iklan Lagi" di dashboard user)
@@ -745,6 +810,34 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
     - `styles.css` memuat `.grid { display:grid; gap:1.5rem }` SESUDAH Tailwind,
       jadi tiap `gap-2` di elemen ber-`class="grid"` diam-diam jadi 24px. Dodge:
       tulis **`[display:grid]`**, bukan `grid` (lihat juga jebakan `.flex`).
+14. **Sumbu review tidak boleh dievaluasi lebih dulu dari "sudah lunas".**
+    Kedengarannya terbalik — review kan datang pertama — tapi datanya tidak
+    mengikuti urutan itu. Terukur 2026-08-08: **156 order ber-`submission_status
+    = 'in_review'` tapi `payment_status = 'paid'`**, sudah tayang dan sudah
+    selesai; kolom statusnya tidak pernah dimajukan siapa pun. Menaruh cabang
+    review di atas cabang lunas memundurkan ke-156 order itu jadi "menunggu
+    review" di dashboard penelitinya sendiri.
+
+    Urutan yang benar ada di `orderStepOf`
+    ([`status/scheduleAxes.ts`](../multi-step-form/src/components/status/scheduleAxes.ts)):
+    ditolak-dan-belum-pernah-bayar → **lunas** → review → tanpa tanggal → sisanya.
+    Jangan dibalik tanpa mengadu ulang kedua algoritma atas seluruh tabel.
+
+    Aturan turunannya, dan ini yang menemukan jebakan ini: **sebelum menukar
+    sumber sebuah turunan, jalankan turunan lama dan baru berdampingan lewat SQL
+    atas SELURUH baris, lalu jelaskan setiap selisih satu per satu.** "Nol
+    selisih" bukan targetnya — targetnya "tidak ada selisih yang tidak bisa
+    kujelaskan". Pola yang sama membuktikan 8B-1, 8D, dan 9B.
+15. **Satu `normalizeScheduleDate` per berkas adalah utang, bukan kemudahan.**
+    Sampai Task 9B ada **lima** salinan fungsi bernama sama di pohon ini, dan
+    ujinya di `airing-window.test.ts` menyalin ulang rumusnya lagi sebagai
+    "equivalent" — jadi salinan mana pun boleh menyimpang tanpa satu uji pun
+    gagal. Yang di `ProgressTracker.tsx` sudah dipindahkan ke
+    `utils/airing-window.ts` dan ujinya kini memanggil fungsi sungguhan. **Empat
+    sisanya masih ada** (`PageBuilder/PageBuilderModal.tsx`,
+    `pages/public/SurveyPage.tsx`, `pages/public/SurveyListingPage.tsx`,
+    `utils/adOrdering.ts`) — dan semuanya memaksa 15.00 WIB, jadi **semuanya
+    salah untuk Kilat**.
 
 ---
 
