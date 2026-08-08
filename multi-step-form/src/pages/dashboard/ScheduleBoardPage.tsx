@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { AlertPill } from '@/components/ui/alert-pill';
 import { KilatScheduleBoard } from '@/components/KilatScheduleBoard';
 import { fetchAdSchedules, type AdScheduleEntry } from '@/utils/supabase';
 import { toWibYmd } from '@/utils/airing-window';
@@ -348,6 +349,7 @@ export function ScheduleBoardPage({
                 tone="slate"
                 active={showUnscheduled}
                 onClick={() => setShowUnscheduled((v) => !v)}
+                title={showUnscheduled ? 'Sembunyikan order tanpa jadwal' : 'Tampilkan order tanpa jadwal'}
               />
             </div>
           )}
@@ -524,54 +526,5 @@ export function ScheduleBoardPage({
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * Pil pekerjaan-menunggu. Yang punya `onClick` juga jadi sakelar filter — angka
- * yang tidak bisa diklik hanya membuat admin bertanya "yang mana?" tanpa jawaban.
- */
-function AlertPill({
-  icon: Icon, count, label, tone, active, onClick,
-}: {
-  icon: typeof Clock;
-  count: number;
-  label: string;
-  tone: 'red' | 'amber' | 'slate';
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  const toneClass = {
-    red: 'border-red-200 bg-red-50 text-red-700',
-    amber: 'border-amber-200 bg-amber-50 text-amber-800',
-    slate: 'border-gray-200 bg-gray-50 text-gray-600',
-  }[tone];
-
-  const content = (
-    <>
-      <Icon className="w-3.5 h-3.5" /> <strong>{count}</strong> {label}
-    </>
-  );
-
-  if (!onClick) {
-    return (
-      <span className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5', toneClass)}>
-        {content}
-      </span>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={active ? 'Sembunyikan order tanpa jadwal' : 'Tampilkan order tanpa jadwal'}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors',
-        active ? 'border-slate-800 bg-slate-800 text-white' : cn(toneClass, 'hover:border-gray-400')
-      )}
-    >
-      {content}
-    </button>
   );
 }

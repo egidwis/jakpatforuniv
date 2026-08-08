@@ -17,8 +17,19 @@ interface DetailSheetProps {
   chips?: React.ReactNode
   /** Pinned strip between header and scrollable body (e.g. a tab bar) */
   nav?: React.ReactNode
+  /**
+   * Drawer width. `md` (default) is the original `sm:max-w-xl` every existing
+   * caller was written against — new sizes are additive so none of them shift.
+   * `lg` exists for bodies that carry a table rather than a form.
+   */
+  size?: "md" | "lg"
   children: React.ReactNode
   footer?: React.ReactNode
+}
+
+const SIZE_CLASS: Record<NonNullable<DetailSheetProps["size"]>, string> = {
+  md: "sm:max-w-xl",
+  lg: "sm:max-w-3xl",
 }
 
 /**
@@ -32,6 +43,7 @@ export function DetailSheet({
   subtitle,
   chips,
   nav,
+  size = "md",
   children,
   footer,
 }: DetailSheetProps) {
@@ -39,7 +51,7 @@ export function DetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-xl"
+        className={cn("flex w-full flex-col gap-0 p-0", SIZE_CLASS[size])}
       >
         <div className="shrink-0 border-b px-5 py-4 pr-12">
           <SheetTitle className="truncate text-base font-semibold">
