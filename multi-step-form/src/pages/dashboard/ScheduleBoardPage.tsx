@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Clock,
-  Loader2, RefreshCw, Search,
+  AlertTriangle, CalendarClock, CalendarDays, CalendarRange, ChevronLeft, ChevronRight,
+  Clock, ListFilter, Loader2, RefreshCw, Search, X, Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 import { KilatScheduleBoard } from '@/components/KilatScheduleBoard';
 import { fetchAdSchedules, type AdScheduleEntry } from '@/utils/supabase';
 import { toWibYmd } from '@/utils/airing-window';
@@ -30,15 +35,24 @@ import {
 //
 // Karena tidak ada aksi, tidak ada tulisan. Cermin ad_schedules tetap satu arah
 // dan papan ini tidak pernah mencoba menulisnya.
+//
+// BENTUKNYA MENGIKUTI DAFTAR SUBMISSIONS: satu kartu berisi toolbar, tab,
+// header kolom, baris, dan footer — bukan tumpukan kartu mengambang. Dua
+// permukaan yang menampilkan order yang sama tidak boleh terlihat seperti dua
+// produk. Yang ditiru bentuknya, bukan isinya: papan ini tidak punya checkbox,
+// tidak punya aksi massal, dan tidak punya paginasi.
 // ─────────────────────────────────────────────────────────────
 
 type BoardView = 'agenda' | 'month' | 'kilat';
 
-const VIEW_LABEL: Record<BoardView, string> = {
-  agenda: 'Agenda',
-  month: 'Bulan',
-  kilat: 'Kilat',
-};
+const VIEWS: ReadonlyArray<readonly [BoardView, string, typeof CalendarDays]> = [
+  ['agenda', 'Agenda', CalendarDays],
+  ['month', 'Bulan', CalendarRange],
+  ['kilat', 'Kilat', Zap],
+];
+
+const SERVICE_LABEL: Record<string, string> = { all: 'Semua layanan', kilat: 'Kilat', regular: 'Regular' };
+const serviceLabel = (s: string) => SERVICE_LABEL[s] ?? s;
 
 export function ScheduleBoardPage({
   onOpenSubmission,
@@ -138,6 +152,10 @@ export function ScheduleBoardPage({
     [filtered]
   );
 
+  const shownCount = view === 'month'
+    ? monthEntries.length
+    : unscheduledEntries.length + dayGroups.reduce((n, g) => n + g.entries.length, 0);
+
   const toggleChip = (kind: ChipKind) => {
     setChips((prev) => {
       const next = new Set(prev);
@@ -146,6 +164,15 @@ export function ScheduleBoardPage({
       return next;
     });
   };
+
+  const resetFilters = () => {
+    setChips(new Set());
+    setService('all');
+    setShowCancelled(false);
+  };
+
+  const activeFilterCount =
+    chips.size + (service !== 'all' ? 1 : 0) + (showCancelled ? 1 : 0);
 
   const periodLabel = view === 'month'
     ? anchor.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
@@ -166,190 +193,266 @@ export function ScheduleBoardPage({
       distributionType: e.distributionType,
     });
 
+  const hasPeriodNav = view !== 'kilat';
+
   return (
-    <div className="space-y-4">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       {/* ── Kepala ────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="shrink-0 flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-lg font-bold text-slate-900">Schedule</h1>
-          <p className="text-xs text-slate-500">
+          <h1 className="text-lg font-bold text-gray-900">Schedule</h1>
+          <p className="text-xs text-gray-500">
             Papan pantau — klik entri untuk membukanya di Submissions.
-            {!isLoading && (
-              <span className="ml-1 text-slate-400">
-                {new Set(entries.map((e) => e.submissionId)).size} order · {entries.length} jadwal
-              </span>
-            )}
           </p>
         </div>
-        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => void load(true)} disabled={isRefreshing}>
-          <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin' : ''}`} /> Muat ulang
-        </Button>
+
+        {/* Tiga angka pekerjaan yang menunggu. Dihitung atas SELURUH data, bukan
+            periode yang sedang dilihat — pekerjaan minggu lalu tidak boleh
+            hilang hanya karena admin menggeser periode. */}
+        {!isLoading && (
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-red-700">
+              <Clock className="w-3.5 h-3.5" /> <strong>{alerts.lateForPayment}</strong> lewat batas bayar
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-amber-800">
+              <AlertTriangle className="w-3.5 h-3.5" /> <strong>{alerts.paidWithoutPage}</strong> lunas tanpa halaman
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-gray-600">
+              <CalendarClock className="w-3.5 h-3.5" /> <strong>{alerts.unscheduled}</strong> belum dijadwalkan
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* ── Tiga angka pekerjaan yang menunggu ─────────────── */}
-      {!isLoading && (
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-red-700">
-            <Clock className="w-3.5 h-3.5" /> <strong>{alerts.lateForPayment}</strong> lewat batas bayar
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-amber-800">
-            <AlertTriangle className="w-3.5 h-3.5" /> <strong>{alerts.paidWithoutPage}</strong> lunas tanpa halaman
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-slate-600">
-            <CalendarClock className="w-3.5 h-3.5" /> <strong>{alerts.unscheduled}</strong> belum dijadwalkan
-          </span>
-        </div>
-      )}
+      {/* ── Satu permukaan: toolbar, tab, header kolom, baris, footer ───── */}
+      <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden">
 
-      {/* ── Kendali ───────────────────────────────────────── */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardContent className="p-3 space-y-2.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-              {(Object.keys(VIEW_LABEL) as BoardView[]).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setView(v)}
-                  className={`px-3 h-7 rounded-md text-xs font-semibold transition-colors ${
-                    view === v ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {VIEW_LABEL[v]}
-                </button>
-              ))}
-            </div>
-
-            {view !== 'kilat' && (
-              <>
-                <div className="inline-flex items-center gap-1 ml-auto">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => shiftPeriod(-1)}>
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <span className="text-xs font-semibold text-slate-700 min-w-[150px] text-center select-none">
-                    {periodLabel}
-                  </span>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => shiftPeriod(1)}>
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => setAnchor(view === 'month' ? new Date() : mondayOf(new Date()))}
-                  >
-                    Hari ini
-                  </Button>
-                </div>
-
-                <div className="relative w-full sm:w-56">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                  <Input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Cari judul / peneliti…"
-                    className="h-7 pl-8 text-xs"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-
-          {view !== 'kilat' && (
+        {/* Toolbar baris 1: periode · pencarian · muat ulang */}
+        <div className="shrink-0 flex items-center gap-4 px-4 py-3">
+          {hasPeriodNav && (
             <>
-              {services.length > 1 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-14">Layanan</span>
-                  {(['all', ...services] as const).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setService(s)}
-                      className={`px-2.5 h-6 rounded-full text-[11px] font-medium border transition-colors capitalize ${
-                        service === s
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
-                      }`}
-                    >
-                      {s === 'all' ? 'Semua' : s}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-14">Status</span>
-                {CHIP_ORDER.map((kind) => {
-                  const count = chipCounts.get(kind) || 0;
-                  if (count === 0 && !chips.has(kind)) return null;
-                  const token = tokenForChip(kind);
-                  const active = chips.has(kind);
-                  return (
-                    <button
-                      key={kind}
-                      type="button"
-                      onClick={() => toggleChip(kind)}
-                      className={`px-2.5 h-6 rounded-full text-[11px] font-medium border transition-colors ${
-                        active
-                          ? 'bg-slate-800 text-white border-slate-800'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
-                      }`}
-                    >
-                      {token.label} <span className="opacity-60 tabular-nums">{count}</span>
-                    </button>
-                  );
-                })}
-                <label className="ml-2 inline-flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showCancelled}
-                    onChange={(e) => setShowCancelled(e.target.checked)}
-                    className="h-3 w-3 accent-slate-600"
-                  />
-                  tampilkan Batal <span className="tabular-nums opacity-60">{cancelledCount}</span>
-                </label>
-                {chips.size > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setChips(new Set())}
-                    className="text-[11px] text-blue-600 hover:underline ml-1"
-                  >
-                    reset
-                  </button>
-                )}
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftPeriod(-1)}>
+                  <ChevronLeft className="h-4 w-4 text-gray-600" />
+                </Button>
+                <h2 className="text-sm font-semibold min-w-[150px] text-center text-gray-700 select-none">
+                  {periodLabel}
+                </h2>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftPeriod(1)}>
+                  <ChevronRight className="h-4 w-4 text-gray-600" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-3 text-xs font-medium text-gray-600"
+                  onClick={() => setAnchor(view === 'month' ? new Date() : mondayOf(new Date()))}
+                >
+                  Hari ini
+                </Button>
               </div>
+              <div className="flex-1 max-w-md relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Cari judul survei atau peneliti..."
+                  className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              {query && (
+                <span className="text-xs text-gray-400 whitespace-nowrap">
+                  {shownCount} hasil
+                </span>
+              )}
             </>
           )}
-        </CardContent>
-      </Card>
-
-      {/* ── Isi ───────────────────────────────────────────── */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          <Button
+            onClick={() => void load(true)}
+            variant="ghost"
+            size="icon"
+            disabled={isRefreshing || isLoading}
+            className="ml-auto h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+            title="Muat ulang"
+          >
+            <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
+          </Button>
         </div>
-      ) : view === 'kilat' ? (
-        <KilatScheduleBoard onOpenSubmission={onOpenSubmission} />
-      ) : view === 'month' ? (
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-3">
-            <ScheduleMonth
-              entries={monthEntries}
-              date={anchor}
-              onNavigate={setAnchor}
+
+        {/* Toolbar baris 2: tab tampilan + filter */}
+        <div className="shrink-0 flex items-center justify-between gap-2 px-4 border-b border-gray-200 min-h-[44px]">
+          <div className="flex">
+            {VIEWS.map(([id, label, Icon]) => (
+              <button
+                key={id}
+                onClick={() => setView(id)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-2 -mb-px text-sm font-medium border-b-2 transition-colors',
+                  view === id
+                    ? 'border-blue-600 text-blue-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                )}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filter status/layanan dilipat ke satu menu — persis pola Submissions.
+              Cacahnya tidak hilang, ia pindah ke dalam menu di sebelah tiap
+              pilihan, jadi "berapa yang menunggu review" tetap terjawab. */}
+          {view !== 'kilat' && (
+            <div className="flex items-center gap-1.5 pb-1">
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={resetFilters}
+                  className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-xs font-medium pl-2.5 pr-1.5 py-1"
+                  title="Bersihkan semua filter"
+                >
+                  {activeFilterCount === 1 && service !== 'all'
+                    ? serviceLabel(service)
+                    : activeFilterCount === 1 && chips.size === 1
+                      ? tokenForChip(Array.from(chips)[0]).label
+                      : `${activeFilterCount} filter`}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                    title="Filter layanan & status"
+                  >
+                    <ListFilter className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60 max-h-[70vh] overflow-y-auto">
+                  {services.length > 1 && (
+                    <>
+                      <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-gray-400">
+                        Layanan
+                      </DropdownMenuLabel>
+                      <DropdownMenuRadioGroup value={service} onValueChange={setService}>
+                        {(['all', ...services] as const).map((s) => (
+                          <DropdownMenuRadioItem key={s} value={s} className="text-sm capitalize cursor-pointer">
+                            {serviceLabel(s)}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+
+                  <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-gray-400">
+                    Status
+                  </DropdownMenuLabel>
+                  {CHIP_ORDER.map((kind) => {
+                    const count = chipCounts.get(kind) || 0;
+                    if (count === 0 && !chips.has(kind)) return null;
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={kind}
+                        checked={chips.has(kind)}
+                        onCheckedChange={() => toggleChip(kind)}
+                        onSelect={(e) => e.preventDefault()}
+                        className="text-sm cursor-pointer"
+                      >
+                        <span className="flex-1">{tokenForChip(kind).label}</span>
+                        <span className="text-xs text-gray-400 tabular-nums">{count}</span>
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={showCancelled}
+                    onCheckedChange={(v) => setShowCancelled(!!v)}
+                    onSelect={(e) => e.preventDefault()}
+                    className="text-sm cursor-pointer"
+                  >
+                    <span className="flex-1">Tampilkan Batal</span>
+                    <span className="text-xs text-gray-400 tabular-nums">{cancelledCount}</span>
+                  </DropdownMenuCheckboxItem>
+
+                  {activeFilterCount > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={resetFilters} className="text-sm text-blue-600 cursor-pointer">
+                        Bersihkan filter
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
+
+        {/* Isi — satu wilayah gulung, supaya header kolom & pita hari bisa sticky */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {isLoading ? (
+            <>
+              <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 h-10" />
+              <div className="divide-y divide-gray-100">
+                {Array(8).fill(0).map((_, i) => (
+                  <div key={`skeleton-schedule-${i}`} className="flex items-center gap-3 px-4 py-3">
+                    <div className="w-[58px] h-3 bg-gray-200 animate-pulse rounded shrink-0" />
+                    <div className="w-[84px] h-4 bg-gray-100 animate-pulse rounded shrink-0 hidden lg:block" />
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="h-4 w-3/5 bg-gray-200 animate-pulse rounded" />
+                      <div className="h-2.5 w-2/5 bg-gray-100 animate-pulse rounded" />
+                    </div>
+                    <div className="w-[132px] h-3 bg-gray-100 animate-pulse rounded shrink-0 hidden md:block" />
+                    <div className="h-5 w-20 bg-gray-100 animate-pulse rounded-full shrink-0" />
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : view === 'kilat' ? (
+            <div className="p-4">
+              <KilatScheduleBoard onOpenSubmission={onOpenSubmission} embedded />
+            </div>
+          ) : view === 'month' ? (
+            <div className="p-3">
+              <ScheduleMonth
+                entries={monthEntries}
+                date={anchor}
+                onNavigate={setAnchor}
+                now={now}
+                onOpen={openEntry}
+              />
+            </div>
+          ) : (
+            <ScheduleAgenda
+              groups={dayGroups}
+              unscheduledEntries={unscheduledEntries}
               now={now}
               onOpen={openEntry}
             />
-          </CardContent>
-        </Card>
-      ) : (
-        <ScheduleAgenda
-          groups={dayGroups}
-          unscheduledEntries={unscheduledEntries}
-          now={now}
-          onOpen={openEntry}
-        />
-      )}
+          )}
+        </div>
+
+        {/* Footer — cacah, bukan paginasi. Papan ini memuat semuanya sekali. */}
+        <div className="shrink-0 flex items-center justify-between gap-3 border-t border-gray-200 px-4 py-2.5 bg-white text-xs text-gray-400">
+          <span>
+            {isLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : view === 'kilat' ? (
+              'Gelombang Kilat — 8/11/14/17 WIB, Senin–Jumat'
+            ) : (
+              <>Menampilkan {shownCount} jadwal{view === 'agenda' ? ` · ${periodLabel}` : ''}</>
+            )}
+          </span>
+          {!isLoading && (
+            <span className="tabular-nums">
+              {new Set(entries.map((e) => e.submissionId)).size} order · {entries.length} jadwal
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { ChevronRight, Zap } from 'lucide-react';
 import { Chip } from '@/components/ui/chip';
+import { cn } from '@/lib/utils';
 import type { AdScheduleEntry } from '@/utils/supabase';
 import {
   chipKindOf, tokenForChip, PAGE_LABEL, formatWibTime, formatWibShort,
@@ -7,14 +8,30 @@ import {
 } from './scheduleModel';
 
 // ─────────────────────────────────────────────────────────────
-// Agenda: daftar per hari. Tampilan default papan, karena pertanyaan yang
-// paling sering dibawa admin ke sini ("apa yang tayang minggu ini, mana yang
-// macet") dijawab daftar, bukan kotak-kotak bulan.
+// Agenda — daftar per hari, dengan BENTUK TABEL YANG SAMA seperti daftar
+// Submissions: kolom tetap, header sticky, baris rata tanpa bingkai sendiri.
+//
+// Sebelumnya tiap entri adalah kotak ber-border dengan jarak antar kotak, jadi
+// dua permukaan yang menampilkan order yang sama terlihat seperti dua produk.
+// Kolomnya kini sejajar: Submissions punya Submitted · ID · Survey · Status,
+// papan ini punya Jam · ID · Survei · Periode · Status · Halaman — ID-nya
+// identik (8 hex pertama order), jadi admin bisa mengadu dua layar tanpa
+// menerjemahkan apa pun.
 //
 // Satu komponen melayani desktop DAN mobile lewat kelas responsif, bukan dua
 // pohon terpisah — supaya kolom yang ditambahkan nanti tidak bisa muncul di
 // satu sisi saja.
 // ─────────────────────────────────────────────────────────────
+
+/** Lebar kolom dipusatkan di sini supaya header dan baris tidak bisa bergeser sendiri-sendiri. */
+const COL = {
+  time: 'w-[58px] shrink-0',
+  id: 'w-[84px] shrink-0 hidden lg:block',
+  survey: 'flex-1 min-w-0',
+  period: 'w-[132px] shrink-0 hidden md:block',
+  status: 'w-[116px] shrink-0 flex justify-end',
+  page: 'w-[52px] shrink-0 hidden sm:block text-right',
+};
 
 function ProgressBar({ entry, now }: { entry: AdScheduleEntry; now: number }) {
   if (!entry.startDate || !entry.endDate) return null;
@@ -23,8 +40,8 @@ function ProgressBar({ entry, now }: { entry: AdScheduleEntry; now: number }) {
   if (end <= start) return null;
   const pct = Math.max(0, Math.min(100, ((now - start) / (end - start)) * 100));
   return (
-    <div className="h-1 w-full rounded-full bg-slate-200 overflow-hidden" aria-hidden="true">
-      <div className="h-full rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+    <div className="mt-1 h-0.5 w-full rounded-full bg-slate-200 overflow-hidden" aria-hidden="true">
+      <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -42,59 +59,129 @@ function EntryRow({
   const unscheduled = isUnscheduled(entry);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onOpen(entry)}
-      className="w-full text-left rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40 transition-colors px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(entry);
+        }
+      }}
+      className="group flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-gray-50"
     >
-      <div className="flex items-start gap-3">
-        {/* Jam — selalu dari cermin, tidak pernah dari jam perangkat. */}
-        <span className="shrink-0 w-14 pt-0.5 text-xs font-bold tabular-nums text-slate-700">
-          {unscheduled ? '—' : formatWibTime(entry.startDate!)}
-          {isKilat && <Zap className="inline w-3 h-3 ml-0.5 fill-amber-500 text-amber-500" />}
-        </span>
-
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="truncate text-sm font-semibold text-slate-900">{entry.title}</span>
-            {entry.ordinal > 1 && (
-              <span
-                className="shrink-0 text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1"
-                title="Jadwal iklan ke-berapa dari order ini"
-              >
-                #{entry.ordinal}
-              </span>
-            )}
-          </div>
-          <div className="text-[11px] text-slate-500 truncate">
-            {entry.researcherName}
-            {entry.startDate && entry.endDate && !unscheduled && (
-              <>
-                {' · '}
-                {formatWibShort(entry.startDate)} – {formatWibShort(entry.endDate)}
-                {entry.duration ? ` · ${entry.duration} hari` : ''}
-              </>
-            )}
-          </div>
-          {kind === 'live' && <ProgressBar entry={entry} now={now} />}
-        </div>
-
-        <div className="shrink-0 flex items-center gap-2">
-          <Chip variant={token.variant} size="sm" dot={token.dot} pulse={token.pulse}>
-            {token.label}
-          </Chip>
-          <span
-            className={`hidden sm:inline text-[10px] font-medium w-12 text-right ${
-              entry.pageStatus === 'none' ? 'text-amber-600' : 'text-slate-400'
-            }`}
-            title={entry.pageStatus === 'kilat' ? 'Kilat tidak pernah punya halaman iklan' : 'Status halaman iklan'}
-          >
-            {PAGE_LABEL[entry.pageStatus]}
-          </span>
-          <ChevronRight className="w-4 h-4 text-slate-300" />
-        </div>
+      {/* Jam — selalu dari cermin, tidak pernah dari jam perangkat. */}
+      <div className={cn(COL.time, 'text-xs font-bold tabular-nums text-gray-900')}>
+        {unscheduled ? <span className="text-gray-300">—</span> : formatWibTime(entry.startDate!)}
+        {isKilat && <Zap className="inline w-3 h-3 ml-0.5 -mt-0.5 fill-amber-500 text-amber-500" />}
       </div>
-    </button>
+
+      {/* ID order — bentuk yang sama persis dengan kolom ID di Submissions. */}
+      <span className={cn(COL.id, 'font-mono text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 truncate')}>
+        #{entry.submissionId.slice(0, 8)}
+      </span>
+
+      {/* Survei + peneliti */}
+      <div className={cn(COL.survey, 'flex flex-col leading-tight')}>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="truncate text-sm font-semibold text-gray-900" title={entry.title}>
+            {entry.title}
+          </span>
+          {entry.ordinal > 1 && (
+            <span
+              className="shrink-0 text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1"
+              title="Jadwal iklan ke-berapa dari order ini"
+            >
+              #{entry.ordinal}
+            </span>
+          )}
+        </div>
+        <span className="text-[11px] text-gray-500 truncate mt-0.5">
+          {entry.researcherName}
+          {/* Periode ikut di subtitle hanya saat kolomnya tersembunyi (mobile). */}
+          {!unscheduled && entry.startDate && entry.endDate && (
+            <span className="md:hidden">
+              {' · '}{formatWibShort(entry.startDate)} – {formatWibShort(entry.endDate)}
+            </span>
+          )}
+        </span>
+      </div>
+
+      {/* Periode + bilah kemajuan untuk yang sedang tayang */}
+      <div className={cn(COL.period, 'text-[11px] leading-tight')}>
+        {unscheduled || !entry.startDate ? (
+          <span className="text-gray-300">—</span>
+        ) : (
+          <>
+            <span className="text-gray-700 font-medium">
+              {formatWibShort(entry.startDate)}
+              {entry.endDate ? ` – ${formatWibShort(entry.endDate)}` : ''}
+            </span>
+            <span className="block text-gray-400">{entry.duration ? `${entry.duration} hari` : ''}</span>
+            {kind === 'live' && <ProgressBar entry={entry} now={now} />}
+          </>
+        )}
+      </div>
+
+      <div className={COL.status}>
+        <Chip variant={token.variant} size="sm" dot={token.dot} pulse={token.pulse}>
+          {token.label}
+        </Chip>
+      </div>
+
+      <span
+        className={cn(
+          COL.page,
+          'text-[10px] font-medium',
+          entry.pageStatus === 'none' ? 'text-amber-600' : 'text-gray-400'
+        )}
+        title={entry.pageStatus === 'kilat' ? 'Kilat tidak pernah punya halaman iklan' : 'Status halaman iklan'}
+      >
+        {PAGE_LABEL[entry.pageStatus]}
+      </span>
+
+      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" />
+    </div>
+  );
+}
+
+/**
+ * Pita pemisah hari. Sticky di bawah header kolom (top-10) supaya saat menggulung
+ * panjang, admin tidak pernah kehilangan jawaban atas "ini hari apa".
+ */
+function GroupHeader({
+  label, count, tone, badge,
+}: {
+  label: string;
+  count: number;
+  tone: 'day' | 'warn';
+  badge?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'sticky top-10 z-[9] flex items-center gap-2 px-4 h-8 border-b',
+        tone === 'warn'
+          ? 'bg-amber-50/95 border-amber-200 text-amber-800'
+          : 'bg-gray-50/95 border-gray-200 text-gray-600'
+      )}
+    >
+      <span className="text-[11px] font-bold uppercase tracking-wider">{label}</span>
+      <span
+        className={cn(
+          'rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+          tone === 'warn' ? 'bg-amber-200/70 text-amber-900' : 'bg-gray-200/80 text-gray-600'
+        )}
+      >
+        {count}
+      </span>
+      {badge && (
+        <span className="rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-bold">
+          {badge}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -109,51 +196,57 @@ export function ScheduleAgenda({
   const isEmpty = groups.length === 0 && unscheduledEntries.length === 0;
 
   return (
-    <div className="space-y-5">
+    <>
+      {/* Header kolom — sticky di puncak wilayah gulung, sama seperti Submissions. */}
+      <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+        <span className={COL.time}>Jam</span>
+        <span className={COL.id}>ID</span>
+        <span className={COL.survey}>Survei</span>
+        <span className={COL.period}>Periode</span>
+        <span className={cn(COL.status, 'text-right')}>Status</span>
+        <span className={COL.page}>Hlm</span>
+        <span className="w-4 shrink-0" aria-hidden="true" />
+      </div>
+
       {/* Blok "Belum Dijadwalkan" berada DI LUAR periode dan selalu di atas:
           order tanpa jendela tayang tidak punya tanggal untuk disaring, dan
           justru itulah pekerjaan yang paling mudah terlupakan. */}
+      {/* Pembungkus <div> ini BUKAN hiasan: ia jadi containing block pita sticky
+          di dalamnya, jadi pita "Belum dijadwalkan" berhenti menempel begitu
+          bloknya habis. Tanpa pembungkus, ia akan menempel sepanjang gulungan dan
+          menimpa pita hari di bawahnya. */}
       {unscheduledEntries.length > 0 && (
-        <section className="space-y-2">
-          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
-            ⚠ Belum Dijadwalkan
-            <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[10px] font-bold">
-              {unscheduledEntries.length}
-            </span>
-          </h3>
-          <div className="space-y-1.5">
+        <div>
+          <GroupHeader label="⚠ Belum dijadwalkan" count={unscheduledEntries.length} tone="warn" />
+          <div className="divide-y divide-gray-100">
             {unscheduledEntries.map((e) => (
               <EntryRow key={e.id} entry={e} now={now} onOpen={onOpen} />
             ))}
           </div>
-        </section>
+        </div>
       )}
 
       {groups.map((group) => (
-        <section key={group.ymd} className="space-y-2">
-          <h3 className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <span className="h-px flex-1 bg-slate-200" />
-            {group.label}
-            {group.isToday && (
-              <span className="rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-bold">
-                hari ini
-              </span>
-            )}
-            <span className="h-px flex-1 bg-slate-200" />
-          </h3>
-          <div className="space-y-1.5">
+        <div key={group.ymd}>
+          <GroupHeader
+            label={group.label}
+            count={group.entries.length}
+            tone="day"
+            badge={group.isToday ? 'hari ini' : undefined}
+          />
+          <div className="divide-y divide-gray-100">
             {group.entries.map((e) => (
               <EntryRow key={e.id} entry={e} now={now} onOpen={onOpen} />
             ))}
           </div>
-        </section>
+        </div>
       ))}
 
       {isEmpty && (
-        <p className="text-center text-sm text-slate-400 py-16">
+        <p className="text-center text-sm text-gray-400 py-20">
           Tidak ada jadwal pada periode ini dengan filter yang dipilih.
         </p>
       )}
-    </div>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Zap, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,9 +22,35 @@ import { toLocalYmd } from '../utils/airing-window';
 
 interface KilatScheduleBoardProps {
     onOpenSubmission: (params: { id: string; createdAt: string }) => void;
+    /**
+     * Dirender DI DALAM kartu lain (papan Schedule), jadi kartu luarnya sendiri
+     * dilepas — kartu di dalam kartu membuat batas ganda yang tidak berarti apa
+     * pun. Navigasi minggunya tetap ikut: gelombang Kilat Senin–Jumat adalah
+     * periode yang berbeda dari periode papan induknya, jadi ia harus punya
+     * kendali sendiri. Default `false` supaya pemakaian berdiri sendiri
+     * (Page Calendar) tidak berubah.
+     */
+    embedded?: boolean;
 }
 
 const formatHour = (h: number) => `${String(h).padStart(2, '0')}.00`;
+
+/**
+ * Kartu pembungkus kisi gelombang — dilepas saat papan ini dirender DI DALAM
+ * kartu lain, karena kartu di dalam kartu cuma menghasilkan batas ganda.
+ *
+ * Didefinisikan di tingkat modul, bukan di dalam komponennya: komponen yang
+ * lahir ulang tiap render akan me-remount seluruh kisi dan membuang posisi
+ * gulung horizontalnya setiap kali data masuk.
+ */
+function BoardShell({ embedded, children }: { embedded: boolean; children: ReactNode }) {
+    if (embedded) return <div>{children}</div>;
+    return (
+        <Card className="shadow-sm border-slate-200 bg-white">
+            <CardContent className="p-4">{children}</CardContent>
+        </Card>
+    );
+}
 
 /** Senin dari minggu kalender yang memuat `date`. Bukan "5 hari kerja ke depan" — ini dijangkarkan ke batas minggu supaya navigasi ←/→ punya arti. */
 function mondayOf(date: Date): Date {
@@ -58,7 +84,7 @@ function statusMeta(entry: KilatScheduleEntry): { label: string; dotClass: strin
     return { label: 'Menunggu bayar', dotClass: 'bg-amber-500' };
 }
 
-export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps) {
+export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: KilatScheduleBoardProps) {
     const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
     const [entries, setEntries] = useState<KilatScheduleEntry[]>([]);
     const [isFetching, setIsFetching] = useState(true);
@@ -185,8 +211,7 @@ export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps
                 {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
             </div>
 
-            <Card className="shadow-sm border-slate-200 bg-white">
-                <CardContent className="p-4">
+            <BoardShell embedded={embedded}>
                     {isFetching ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
@@ -262,8 +287,7 @@ export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps
                             </div>
                         </div>
                     )}
-                </CardContent>
-            </Card>
+            </BoardShell>
 
             {/* Order Kilat dari wizard user yang belum ditugaskan gelombangnya oleh admin. */}
             {!isFetching && hasUnassigned && (
