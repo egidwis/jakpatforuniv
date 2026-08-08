@@ -54,12 +54,24 @@ kesempatan itu hilang begitu yang lama dihapus.
 Sisi data sudah diadu dan bersih (lihat §Phase 3 di "Yang sudah selesai"). Yang
 belum: **adu visual**, dan itu butuh mata manusia.
 
-- [ ] Survei yang sama: tanggal, jam, dan status halaman sama persis di kedua layar
-- [ ] Tampilan Kilat di papan baru = `KilatScheduleBoard` lama, entri demi entri
+Papan barunya kini bertab **Agenda · Iklan · Kilat** (bentuk final per 2026-08-08,
+commit `08a2cd4`..`e808189`), jadi checklistnya menyesuaikan:
+
+- [ ] **Agenda** — survei yang sama: tanggal, jam, dan status halaman sama persis
+      dengan Page Calendar
+- [ ] **Kilat** — entri demi entri sama dengan tab Kilat di Page Calendar (papannya
+      memang komponen yang sama, tapi kini dirender `embedded`)
+- [ ] **Iklan** — papan kapasitas baru, **tidak punya pembanding**. Yang bisa diadu
+      cuma angkanya: cocokkan `n/4` sebuah hari dengan kalender pemesanan di wizard
+      (`StepSchedule`) untuk tanggal yang sama. Kalau berbeda, `occupiesSlot()` dan
+      `fetchSlotAvailability` sudah menyimpang
 - [ ] Klik entri dari order **bulan lampau** → drawer terbuka dan **tetap terbuka**
 - [ ] Klik entri **iklan regular** → mendarat di tab Regular, bukan tab Kilat kosong
       (bug `setDistTab('kilat')` yang ditutup di `d7639df` — inilah ujinya)
-- [ ] Mobile: papan terbaca di 375px, nol scroll horizontal
+- [ ] Pil **belum dijadwalkan** dinyalakan → 37 order tanpa tanggal muncul, dan yang
+      berstatus lunas benar-benar ada di sana
+- [ ] Mobile: papan terbaca di 375px, nol scroll horizontal pada tab Agenda
+      (tab Iklan & Kilat memang menggulung mendatar — kisinya `min-w-[900px]`/`720px`)
 
 ⚠️ **Menghapus `SchedulingPage` membuang satu kemampuan nyata — jangan dihapus
 sebelum ini dipindahkan.** Dari Page Calendar admin bisa membuat halaman untuk
