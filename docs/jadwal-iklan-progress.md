@@ -682,6 +682,18 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
     sepanjang sejarah) wajib dipotong. Daftar yang disaring status aktif boleh
     utuh — ia menyusut lagi saat order selesai. `getPendingSlotsWithoutPage` (64
     id) dan peta `is_extra_ad` (317 id) masuk kategori kedua.
+13. **`grid-cols-[…1fr]` + judul panjang = kisi berantakan, dan `.grid` warisan
+    membunuh `gap-*`.** Dua jebakan yang selalu muncul bersamaan, dan bersama itu
+    pula yang merusak papan Kilat sampai tidak terbaca:
+
+    - `1fr` sama dengan `minmax(auto, 1fr)`. Isi yang lebih lebar dari jatahnya
+      **melebarkan** trek-nya, jadi satu judul survei panjang cukup untuk membuat
+      kolom hari tidak lagi sama lebar. Selalu **`minmax(0,1fr)`**.
+    - `truncate` pada anak flex tidak menyala tanpa **`min-w-0`** pada anak itu —
+      `min-width` bawaannya `auto`, jadi ia menolak menyusut di bawah isinya.
+    - `styles.css` memuat `.grid { display:grid; gap:1.5rem }` SESUDAH Tailwind,
+      jadi tiap `gap-2` di elemen ber-`class="grid"` diam-diam jadi 24px. Dodge:
+      tulis **`[display:grid]`**, bukan `grid` (lihat juga jebakan `.flex`).
 
 ---
 

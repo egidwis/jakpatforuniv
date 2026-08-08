@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, CalendarClock, CalendarDays, ChevronDown, Clock,
+  AlertTriangle, CalendarClock, CalendarDays, CalendarRange, ChevronDown, Clock,
   ListFilter, Loader2, RefreshCw, Search, X, Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { KilatScheduleBoard } from '@/components/KilatScheduleBoard';
 import { fetchAdSchedules, type AdScheduleEntry } from '@/utils/supabase';
 import { toWibYmd } from '@/utils/airing-window';
 import { ScheduleAgenda, dayGroupDomId } from './schedule/ScheduleAgenda';
+import { AdsWeekBoard } from './schedule/AdsWeekBoard';
 import {
   CANCELLED_CHIPS, CHIP_ORDER, chipKindOf, computeAlerts, groupByDay,
   isUnscheduled, matchesFilter, overlapsWindow, tokenForChip,
@@ -42,7 +43,17 @@ import {
 // yang seharusnya jadi baris data.
 // ─────────────────────────────────────────────────────────────
 
-type BoardView = 'agenda' | 'kilat';
+/**
+ * Tiga permukaan, tiga pertanyaan yang berbeda:
+ *   agenda → "apa yang tayang hari ini / minggu ini"  (daftar per hari)
+ *   iklan  → "hari mana yang sudah penuh"             (kapasitas reguler, 4+4/hari)
+ *   kilat  → "gelombang mana yang sudah penuh"        (kapasitas Kilat, 2/gelombang)
+ *
+ * Dua yang terakhir TIDAK bisa digantikan filter layanan di Agenda: filter
+ * menyaring baris, sedangkan yang dicari di sana adalah kuota — angka yang tidak
+ * pernah muncul sebagai baris.
+ */
+type BoardView = 'agenda' | 'ads' | 'kilat';
 
 /** Diturunkan, bukan disalin dari Finance — satu daftar nama bulan yang salah ketik sudah cukup. */
 const MONTHS = Array.from({ length: 12 }, (_, i) =>
@@ -326,6 +337,7 @@ export function ScheduleBoardPage({
           <div className="flex">
             {([
               ['agenda', 'Agenda', CalendarDays],
+              ['ads', 'Iklan', CalendarRange],
               ['kilat', 'Kilat', Zap],
             ] as const).map(([id, label, Icon]) => (
               <button
@@ -469,6 +481,13 @@ export function ScheduleBoardPage({
               now={now}
               onOpen={openEntry}
             />
+          ) : view === 'ads' ? (
+            <div className="p-4">
+              {/* Sengaja `entries`, bukan `filtered`: papan kapasitas harus
+                  menghitung SEMUA yang menahan slot. Menyaringnya dengan filter
+                  status akan menghasilkan "2/4" pada hari yang sebenarnya penuh. */}
+              <AdsWeekBoard entries={entries} now={now} onOpen={openEntry} />
+            </div>
           ) : (
             <div className="p-4">
               <KilatScheduleBoard onOpenSubmission={onOpenSubmission} embedded />
@@ -483,6 +502,8 @@ export function ScheduleBoardPage({
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : isAgenda ? (
               <>Menampilkan {shownCount} jadwal · {periodLabel}</>
+            ) : view === 'ads' ? (
+              'Iklan reguler — tayang 15.00 WIB, 4 reguler + 4 tambahan per hari'
             ) : (
               'Gelombang Kilat — 8/11/14/17 WIB, 2 order per gelombang, Senin–Jumat'
             )}

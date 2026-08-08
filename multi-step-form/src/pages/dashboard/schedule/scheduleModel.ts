@@ -91,6 +91,26 @@ export function tokenForChip(kind: ChipKind): StatusToken {
   return STATUS_TOKENS[kind];
 }
 
+/**
+ * Apakah jadwal ini MEMAKAN kuota harian.
+ *
+ * Aturannya disamakan dengan `fetchSlotAvailability` (supabase.ts) — kalau papan
+ * kapasitas dan wizard penjadwalan memakai aturan berbeda, admin akan melihat
+ * "2/4" sementara peneliti ditolak karena harinya penuh.
+ *
+ * Bedanya satu, dan sengaja: hold user yang sudah kedaluwarsa TIDAK dihitung.
+ * Slotnya memang sudah dilepas; menghitungnya membuat hari terlihat lebih penuh
+ * daripada yang sebenarnya bisa dijual.
+ */
+export function occupiesSlot(e: AdScheduleEntry, now: number): boolean {
+  if (!e.startDate || !e.endDate) return false;
+  const kind = chipKindOf(e, now);
+  return !(
+    kind === 'rejected' || kind === 'spam' || kind === 'in_review' ||
+    kind === 'completed' || kind === 'reserved_expired'
+  );
+}
+
 export { UNSCHEDULED_TOKEN };
 
 /** Urutan chip di baris filter — dari paling awal ke paling akhir siklus. */

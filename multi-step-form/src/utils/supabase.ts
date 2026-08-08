@@ -2009,6 +2009,15 @@ export interface AdScheduleEntry {
   submissionCreatedAt: string;
   /** Sumbu ketiga, diisi query kedua. 'kilat' = memang tidak pernah punya halaman. */
   pageStatus: 'none' | 'draft' | 'published' | 'kilat';
+  /**
+   * Iklan tambahan — kuotanya KOLAM SENDIRI (`MAX_EXTRA_ADS_PER_DAY`), terpisah
+   * dari kuota reguler. Ikut dari `survey_pages.is_extra_ad`, jadi ia gratis:
+   * query halaman memang sudah dijalankan untuk `pageStatus`.
+   *
+   * Menggabungkannya ke satu kuota akan membuat hari dengan 4 reguler + 2
+   * tambahan terbaca "6/4" — panik yang tidak berdasar.
+   */
+  isExtraAd: boolean;
 }
 
 /**
@@ -2108,25 +2117,27 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
 
   // ⚠️ Lewat `selectSurveyPagesByIds`, BUKAN `.in()` langsung: daftar ini memuat
   // seluruh order regular sepanjang sejarah (954 per 2026-08-08) dan tumbuh terus.
-  const pageBySubmission = new Map<string, boolean>();
+  const pageBySubmission = new Map<string, { published: boolean; isExtraAd: boolean }>();
   if (regularIds.length > 0) {
-    const pages = await selectSurveyPagesByIds<{ submission_id: string; is_published: boolean | null }>(
-      'submission_id, is_published',
-      regularIds
-    );
+    const pages = await selectSurveyPagesByIds<{
+      submission_id: string; is_published: boolean | null; is_extra_ad: boolean | null;
+    }>('submission_id, is_published, is_extra_ad', regularIds);
     for (const p of pages) {
-      pageBySubmission.set(p.submission_id, !!p.is_published);
+      pageBySubmission.set(p.submission_id, {
+        published: !!p.is_published,
+        isExtraAd: !!p.is_extra_ad,
+      });
     }
   }
 
   return rows.map((row) => {
     const isKilat = row.distribution_type === 'kilat';
-    const published = pageBySubmission.get(row.submission_id);
+    const page = pageBySubmission.get(row.submission_id);
     const pageStatus: AdScheduleEntry['pageStatus'] = isKilat
       ? 'kilat'
-      : published === undefined
+      : page === undefined
         ? 'none'
-        : published
+        : page.published
           ? 'published'
           : 'draft';
 
@@ -2158,6 +2169,7 @@ export const fetchAdSchedules = async (submissionId?: string): Promise<AdSchedul
       researcherName: row.form_submissions?.full_name || 'Unknown',
       submissionCreatedAt: row.form_submissions?.created_at || new Date().toISOString(),
       pageStatus,
+      isExtraAd: page?.isExtraAd ?? false,
     };
   });
 };
