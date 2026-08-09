@@ -112,7 +112,7 @@ export function MobileProgressBar({
         <div className="mobile-cost-breakdown">
           <div className="mobile-cost-formula">
             <span>{formData.questionCount} pertanyaan × {formData.duration} (hari)</span>
-            <span>+ Insentif responden</span>
+            <span>+ Reward responden</span>
           </div>
 
           <div className="mobile-cost-items">
@@ -121,7 +121,7 @@ export function MobileProgressBar({
               <span>Rp {formatRupiah(costCalculation.adCost)}</span>
             </div>
             <div className="mobile-cost-row">
-              <span>Incentive</span>
+              <span>Total Reward</span>
               <span>Rp {formatRupiah(costCalculation.incentiveCost)}</span>
             </div>
             {costCalculation.discount > 0 && (

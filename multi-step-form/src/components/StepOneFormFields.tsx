@@ -40,6 +40,7 @@ interface StepOneFormFieldsProps {
   updateFormData: (data: Partial<SurveyFormData>) => void;
   onSubmit: () => void;
   isGoogleImport?: boolean;
+  onSwitchToGoogle?: () => void;
 }
 
 interface FormErrors {
@@ -100,7 +101,8 @@ export function StepOneFormFields({
   formData,
   updateFormData,
   onSubmit,
-  isGoogleImport = false
+  isGoogleImport = false,
+  onSwitchToGoogle
 }: StepOneFormFieldsProps) {
   const { t } = useLanguage();
   const prevQuestionCountRef = useRef(formData.questionCount);
@@ -247,273 +249,284 @@ export function StepOneFormFields({
   const durationHasError = (errors.duration && attemptedSubmit) || durationOutOfRange;
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
-      {isGoogleImport && (
-        <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-          <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-          {t('successImportedFromGoogleDrive')}
-        </p>
-      )}
+    <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
+      {/* CARD 1 — INFORMASI & KONFIGURASI SURVEI */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
+        {isGoogleImport && (
+          <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+            {t('successImportedFromGoogleDrive')}
+          </p>
+        )}
 
-      {/* SEKSI 1 — INFORMASI SURVEY */}
-      <SectionLabel>{t('surveyInformation')}</SectionLabel>
+        {/* SEKSI 1 — INFORMASI SURVEY */}
+        <SectionLabel>{t('surveyInformation')}</SectionLabel>
 
-      <div className={fieldRowListClass}>
-        <FieldRow
-          icon={Link2}
-          label={isGoogleImport ? t('googleFormLink') : t('surveyLinkLabel')}
-          htmlFor="surveyUrl"
-          required
-          error={attemptedSubmit ? errors.surveyUrl : undefined}
-          hint={isGoogleImport ? t('surveyTitleFromGoogleDrive') : undefined}
-        >
-          <textarea
-            id="surveyUrl"
-            ref={surveyUrlRef}
-            rows={1}
-            className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[24px]`}
-            placeholder={isGoogleImport ? t('googleFormLinkPlaceholder') : t('surveyLinkPlaceholder')}
-            value={formData.surveyUrl}
-            onChange={(e) => {
-              if (!isGoogleImport) {
-                updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
-                if (attemptedSubmit && errors.surveyUrl) {
-                  setErrors({ ...errors, surveyUrl: undefined });
-                }
-              }
-            }}
+        <div className={fieldRowListClass}>
+          <FieldRow
+            icon={Link2}
+            label={isGoogleImport ? t('googleFormLink') : t('surveyLinkLabel')}
+            htmlFor="surveyUrl"
+            required
+            error={attemptedSubmit ? errors.surveyUrl : undefined}
             readOnly={isGoogleImport}
-          />
-        </FieldRow>
-
-        <FieldRow
-          icon={Type}
-          label={t('surveyTitle')}
-          htmlFor="title"
-          required
-          error={attemptedSubmit ? errors.title : undefined}
-        >
-          <textarea
-            id="title"
-            ref={titleRef}
-            rows={1}
-            maxLength={100}
-            className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[24px]`}
-            placeholder={t('surveyTitlePlaceholder')}
-            value={formData.title}
-            onChange={(e) => {
-              if (!isGoogleImport) {
-                updateFormData({ title: e.target.value });
-                if (attemptedSubmit && errors.title) {
-                  setErrors({ ...errors, title: undefined });
+          >
+            <textarea
+              id="surveyUrl"
+              ref={surveyUrlRef}
+              rows={1}
+              className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[24px]`}
+              placeholder={isGoogleImport ? t('googleFormLinkPlaceholder') : t('surveyLinkPlaceholder')}
+              value={formData.surveyUrl}
+              onChange={(e) => {
+                if (!isGoogleImport) {
+                  updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
+                  if (attemptedSubmit && errors.surveyUrl) {
+                    setErrors({ ...errors, surveyUrl: undefined });
+                  }
                 }
-              }
-            }}
-            readOnly={isGoogleImport}
-          />
-        </FieldRow>
+              }}
+              readOnly={isGoogleImport}
+            />
+          </FieldRow>
 
-        <FieldRow
-          icon={Hash}
-          label={t('questionCount')}
-          htmlFor="questionCount"
-          required
-          compact
-          error={attemptedSubmit ? errors.questionCount : undefined}
-        >
-          <input
-            id="questionCount"
-            type="number"
-            className={fieldInputClass}
-            placeholder={t('questionCountPlaceholder')}
-            value={formData.questionCount || ''}
-            onChange={(e) => {
-              if (!isGoogleImport) {
-                updateFormData({ questionCount: parseInt(e.target.value) || 0 });
-                if (attemptedSubmit && errors.questionCount) {
-                  setErrors({ ...errors, questionCount: undefined });
+          <FieldRow
+            icon={Type}
+            label={t('surveyTitle')}
+            htmlFor="title"
+            required
+            error={attemptedSubmit ? errors.title : undefined}
+            readOnly={isGoogleImport}
+          >
+            <textarea
+              id="title"
+              ref={titleRef}
+              rows={1}
+              maxLength={100}
+              className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[24px]`}
+              placeholder={t('surveyTitlePlaceholder')}
+              value={formData.title}
+              onChange={(e) => {
+                if (!isGoogleImport) {
+                  updateFormData({ title: e.target.value });
+                  if (attemptedSubmit && errors.title) {
+                    setErrors({ ...errors, title: undefined });
+                  }
                 }
-              }
-            }}
+              }}
+              readOnly={isGoogleImport}
+            />
+          </FieldRow>
+
+          <FieldRow
+            icon={Hash}
+            label={t('questionCount')}
+            htmlFor="questionCount"
+            required
+            compact
+            error={attemptedSubmit ? errors.questionCount : undefined}
             readOnly={isGoogleImport}
-            min={1}
-          />
-          <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">items</span>
-        </FieldRow>
-      </div>
+          >
+            <input
+              id="questionCount"
+              type="number"
+              className={fieldInputClass}
+              placeholder={t('questionCountPlaceholder')}
+              value={formData.questionCount || ''}
+              onChange={(e) => {
+                if (!isGoogleImport) {
+                  updateFormData({ questionCount: parseInt(e.target.value) || 0 });
+                  if (attemptedSubmit && errors.questionCount) {
+                    setErrors({ ...errors, questionCount: undefined });
+                  }
+                }
+              }}
+              readOnly={isGoogleImport}
+              min={1}
+            />
+            <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">items</span>
+          </FieldRow>
+        </div>
 
-      {/* SEKSI 2 — KONFIGURASI IKLAN */}
-      <div className="mt-6">
-        <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
-      </div>
+        {/* SEKSI 2 — KONFIGURASI IKLAN */}
+        <div className="mt-6">
+          <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
+        </div>
 
-      <div className={fieldRowListClass}>
-        <FieldRow
-          icon={CalendarDays}
-          label={t('surveyDurationLabel')}
-          htmlFor="duration"
-          required
-          compact
-          error={
-            durationHasError
-              ? formData.duration > 30
-                ? t('errorDurationMax')
-                : t('errorDurationZero')
-              : undefined
-          }
-        >
-          <input
-            id="duration"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className={fieldInputClass}
-            placeholder={t('surveyDurationPlaceholder')}
-            value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
-            onChange={(e) => {
-              const val = e.target.value;
-              const intVal = parseInt(val);
-              updateFormData({ duration: isNaN(intVal) ? 0 : intVal });
-              if (attemptedSubmit && errors.duration) {
-                setErrors({ ...errors, duration: undefined });
-              }
-            }}
-          />
-          <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">{t('days')}</span>
-        </FieldRow>
+        <div className={fieldRowListClass}>
+          <FieldRow
+            icon={CalendarDays}
+            label={t('surveyDurationLabel')}
+            htmlFor="duration"
+            required
+            compact
+            error={
+              durationHasError
+                ? formData.duration > 30
+                  ? t('errorDurationMax')
+                  : t('errorDurationZero')
+                : undefined
+            }
+          >
+            <input
+              id="duration"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={fieldInputClass}
+              placeholder={t('surveyDurationPlaceholder')}
+              value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
+              onChange={(e) => {
+                const val = e.target.value;
+                const intVal = parseInt(val);
+                updateFormData({ duration: isNaN(intVal) ? 0 : intVal });
+                if (attemptedSubmit && errors.duration) {
+                  setErrors({ ...errors, duration: undefined });
+                }
+              }}
+            />
+            <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">{t('days')}</span>
+          </FieldRow>
 
-        <FieldBlock
-          icon={Users}
-          label={t('respondentCriteriaLabel')}
-          htmlFor="criteriaResponden"
-          required
-          counter={`${formData.criteriaResponden?.length || 0}/300`}
-          error={attemptedSubmit ? errors.criteriaResponden : undefined}
-          // Panduan ini SENGAJA tetap terlihat, tidak jadi tooltip: ia mengoreksi
-          // ekspektasi keliru ("kriteria = penargetan") tepat saat user mengetik,
-          // dan yang salah paham justru tidak akan membuka tooltip.
-          hint={
-            <span className="flex items-start gap-1.5 text-gray-500">
-              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
-              <span>
-                {t('respondentCriteriaHelp')
-                  .split('*')
-                  .map((part, index) =>
-                    index % 2 === 1 ? (
-                      <strong key={index} className="font-semibold text-gray-600">{part}</strong>
-                    ) : (
-                      part
-                    )
-                  )}
+          <FieldBlock
+            icon={Users}
+            label={t('respondentCriteriaLabel')}
+            htmlFor="criteriaResponden"
+            required
+            counter={`${formData.criteriaResponden?.length || 0}/300`}
+            error={attemptedSubmit ? errors.criteriaResponden : undefined}
+            hint={
+              <span className="flex items-start gap-1.5 text-gray-500">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
+                <span>
+                  {t('respondentCriteriaHelp')
+                    .split('*')
+                    .map((part, index) =>
+                      index % 2 === 1 ? (
+                        <strong key={index} className="font-semibold text-gray-600">{part}</strong>
+                      ) : (
+                        part
+                      )
+                    )}
+                </span>
               </span>
-            </span>
-          }
-        >
-          <textarea
-            id="criteriaResponden"
-            ref={criteriaRespondenRef}
-            rows={2}
-            className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[60px]`}
-            placeholder={t('respondentCriteriaPlaceholder')}
-            value={formData.criteriaResponden}
-            onChange={(e) => {
-              updateFormData({ criteriaResponden: e.target.value });
-              if (attemptedSubmit && errors.criteriaResponden) {
-                setErrors({ ...errors, criteriaResponden: undefined });
-              }
-            }}
-            maxLength={300}
-          />
-        </FieldBlock>
-      </div>
+            }
+          >
+            <textarea
+              id="criteriaResponden"
+              ref={criteriaRespondenRef}
+              rows={2}
+              className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[60px]`}
+              placeholder={t('respondentCriteriaPlaceholder')}
+              value={formData.criteriaResponden}
+              onChange={(e) => {
+                updateFormData({ criteriaResponden: e.target.value });
+                if (attemptedSubmit && errors.criteriaResponden) {
+                  setErrors({ ...errors, criteriaResponden: undefined });
+                }
+              }}
+              maxLength={300}
+            />
+          </FieldBlock>
+        </div>
 
-      {/* SEKSI 3 — PENGATURAN INSENTIF */}
-      <div className="mt-6">
-        <SectionLabel>{t('incentiveSettings')}</SectionLabel>
-      </div>
-
-      <div className={fieldRowListClass}>
-        <FieldRow
-          icon={Gift}
-          label={t('prizePerWinnerLabel')}
-          htmlFor="prizePerWinner"
-          required
-          compact
-          labelWidth="w-[150px] md:w-[320px]"
-          error={
-            formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
-              ? t('errorMinPrize')
-              : undefined
-          }
-          hint={
-            formData.prizePerWinner >= 25000 && formData.questionCount > 0 ? (
-              <>
-                {t('recommendation')}: Rp{' '}
-                {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}
-                {t('perWinner')}
-              </>
-            ) : undefined
-          }
-        >
-          <span className="mr-1.5 shrink-0 text-sm text-gray-400">Rp</span>
-          <input
-            id="prizePerWinner"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className={fieldInputClass}
-            placeholder={t('prizePerWinnerPlaceholder')}
-            value={formData.prizePerWinner}
-            onChange={(e) => {
-              updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
-              if (attemptedSubmit && errors.prizePerWinner) {
-                setErrors({ ...errors, prizePerWinner: undefined });
-              }
-            }}
-          />
-        </FieldRow>
-
-        <FieldRow
-          icon={Trophy}
-          label={t('winnerCountLabel')}
-          htmlFor="winnerCount"
-          required
-          compact
-          labelWidth="w-[150px] md:w-[320px]"
-          tooltip={winnerTooltip}
-          error={
-            formData.winnerCount > 0 && formData.winnerCount < 2 ? t('errorMinWinners') : undefined
-          }
-        >
-          <input
-            id="winnerCount"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className={fieldInputClass}
-            placeholder={t('winnerCountPlaceholder')}
-            value={formData.winnerCount}
-            onChange={(e) => {
-              const val = parseInt(e.target.value) || 0;
-              updateFormData({ winnerCount: Math.min(val, 5) });
-              if (attemptedSubmit && errors.winnerCount) {
-                setErrors({ ...errors, winnerCount: undefined });
-              }
-            }}
-          />
-        </FieldRow>
-
-        {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
-            <span className="text-sm text-gray-600">{t('totalIncentiveRequired')}</span>
-            <span className="text-sm font-bold tabular-nums text-[#1a1a1a]">
-              Rp {(formData.winnerCount * formData.prizePerWinner).toLocaleString('id-ID')}
-            </span>
+        {/* Switch to Google Form — jika mode manual */}
+        {!isGoogleImport && onSwitchToGoogle && (
+          <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-center gap-x-1 text-xs md:text-sm text-gray-500">
+            <span>{t('troubleFillingManual')}</span>
+            <button
+              type="button"
+              onClick={onSwitchToGoogle}
+              className="font-semibold text-jfu-primary hover:underline"
+            >
+              {t('importFromGoogleForm')}
+            </button>
           </div>
         )}
       </div>
 
-      <div className="mt-6 flex justify-end">
+      {/* CARD 2 — PENGATURAN INSENTIF */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
+        {/* SEKSI 3 — PENGATURAN INSENTIF */}
+        <SectionLabel>{t('incentiveSettings')}</SectionLabel>
+
+        <div className={fieldRowListClass}>
+          <FieldRow
+            icon={Gift}
+            label={t('prizePerWinnerLabel')}
+            htmlFor="prizePerWinner"
+            required
+            compact
+            labelWidth="w-[150px] md:w-[320px]"
+            error={
+              formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
+                ? t('errorMinPrize')
+                : undefined
+            }
+            hint={
+              formData.prizePerWinner >= 25000 && formData.questionCount > 0 ? (
+                <span className="flex items-center gap-1.5 text-gray-500">
+                  <Info className="w-3.5 h-3.5 shrink-0 text-gray-400" aria-hidden="true" />
+                  <span>
+                    {t('recommendation')}: Rp{' '}
+                    {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}
+                    {t('perWinner')}
+                  </span>
+                </span>
+              ) : undefined
+            }
+          >
+            <span className="mr-1.5 shrink-0 text-sm text-gray-400">Rp</span>
+            <input
+              id="prizePerWinner"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={fieldInputClass}
+              placeholder={t('prizePerWinnerPlaceholder')}
+              value={formData.prizePerWinner}
+              onChange={(e) => {
+                updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
+                if (attemptedSubmit && errors.prizePerWinner) {
+                  setErrors({ ...errors, prizePerWinner: undefined });
+                }
+              }}
+            />
+          </FieldRow>
+
+          <FieldRow
+            icon={Trophy}
+            label={t('winnerCountLabel')}
+            htmlFor="winnerCount"
+            required
+            compact
+            labelWidth="w-[150px] md:w-[320px]"
+            tooltip={winnerTooltip}
+            error={
+              formData.winnerCount > 0 && formData.winnerCount < 2 ? t('errorMinWinners') : undefined
+            }
+          >
+            <input
+              id="winnerCount"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={fieldInputClass}
+              placeholder={t('winnerCountPlaceholder')}
+              value={formData.winnerCount}
+              onChange={(e) => {
+                const val = parseInt(e.target.value) || 0;
+                updateFormData({ winnerCount: Math.min(val, 5) });
+                if (attemptedSubmit && errors.winnerCount) {
+                  setErrors({ ...errors, winnerCount: undefined });
+                }
+              }}
+            />
+          </FieldRow>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
         <button
           type="submit"
           className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark"

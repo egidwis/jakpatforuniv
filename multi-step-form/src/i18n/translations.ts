@@ -164,10 +164,10 @@ export const translations = {
     prizePerWinnerPlaceholder: "Min. Rp 25,000",
     winnerCountLabel: "Number of Winners",
     winnerCountPlaceholder: "2-5 winners",
-    incentiveDistributionInfo: "Jakpat will distribute incentives to respondents automatically",
+    incentiveDistributionInfo: "Jakpat will distribute rewards to respondents automatically",
     maxWinnerWarning: "Currently, we prioritize surveys with a maximum of 5 winners. For more information, please",
     contactAdmin: "contact admin",
-    totalIncentiveRequired: "Total Incentive Required",
+    totalIncentiveRequired: "Total Reward Required",
     recommendation: "Recommendation",
     perWinner: "/winner",
     respondentCriteriaPlaceholder: "Example: Age 18-35 years, Jakarta Domicile, Active Student",
@@ -182,7 +182,7 @@ export const translations = {
 
     // Step Three - Slot Reservation
     slotReservationTitle: "Ad Slot Reservation",
-    slotReservationInfo: "Choose the start date for your survey ad. Ads on the <strong>Auto-Approval</strong> track will be processed immediately without manual admin review.",
+    slotReservationInfo: "Select your ad start date. All ads start airing at 15:00 WIB (same-day orders close at 13:00 WIB).",
     slotStartDateLabel: "Ad Start Date",
     slotDurationLabel: "Ad Duration",
     slotFixedTimeTitle: "Ad goes live at 15:00 WIB",
@@ -327,8 +327,8 @@ export const translations = {
     // Section Titles - StepOne
     surveyInformation: "Survey Information",
     surveyConfiguration: "Ad Configuration",
-    incentiveSettings: "Incentive Settings",
-    surveyConfigurationDescription: "Define respondent criteria and incentives for your survey",
+    incentiveSettings: "Reward Settings",
+    surveyConfigurationDescription: "Define respondent criteria and rewards for your survey",
 
     // Section Titles - StepThree
     personalData: "Personal Data",
@@ -390,7 +390,7 @@ export const translations = {
     orderOverviewTitle: 'Order Overview',
     surveyAndTarget: 'Survey & Target',
     questionsAndDuration: 'Questions & Duration',
-    respondentIncentiveLabel: 'Respondent Incentive',
+    respondentIncentiveLabel: 'Respondent Reward',
     releaseSchedule: 'Release Schedule',
     ordererData: 'Orderer Info',
     institutionAndProfile: 'Institution & Profile',
@@ -689,10 +689,10 @@ export const translations = {
     prizePerWinnerPlaceholder: "Min. Rp 25.000",
     winnerCountLabel: "Jumlah Pemenang",
     winnerCountPlaceholder: "2-5 pemenang",
-    incentiveDistributionInfo: "Jakpat akan mendistribusikan insentif ke responden secara otomatis",
+    incentiveDistributionInfo: "Jakpat akan mendistribusikan reward ke responden secara otomatis",
     maxWinnerWarning: "Saat ini kami memprioritaskan survei dengan jumlah pemenang maksimal 5 orang. Untuk informasi lebih lanjut, silakan",
     contactAdmin: "hubungi admin",
-    totalIncentiveRequired: "Total Insentif yang Dibutuhkan",
+    totalIncentiveRequired: "Total Reward yang Dibutuhkan",
     recommendation: "Rekomendasi",
     perWinner: "/pemenang",
     respondentCriteriaPlaceholder: "Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif",
@@ -706,7 +706,7 @@ export const translations = {
 
     // Step Three - Slot Reservation
     slotReservationTitle: "Reservasi Slot Iklan",
-    slotReservationInfo: "Pilih tanggal mulai iklan survei Anda. Iklan dengan jalur <strong>Auto-Approval</strong> akan langsung diproses tanpa review manual oleh admin.",
+    slotReservationInfo: "Pilih tanggal mulai iklan Anda. Semua iklan mulai tayang pukul 15.00 WIB (pemesanan hari yang sama ditutup pukul 13.00 WIB).",
     slotStartDateLabel: "Tanggal Mulai Iklan",
     slotDurationLabel: "Durasi Iklan",
     slotFixedTimeTitle: "Iklan mulai tayang pukul 15.00 WIB",
@@ -852,8 +852,8 @@ export const translations = {
     // Section Titles - StepOne
     surveyInformation: "Informasi Survey",
     surveyConfiguration: "Konfigurasi Iklan",
-    incentiveSettings: "Pengaturan Insentif",
-    surveyConfigurationDescription: "Tentukan kriteria responden dan insentif untuk survey Anda",
+    incentiveSettings: "Pengaturan Reward",
+    surveyConfigurationDescription: "Tentukan kriteria responden dan reward untuk survey Anda",
 
     // Section Titles - StepThree
     personalData: "Data diri",
@@ -980,7 +980,7 @@ export const translations = {
     orderOverviewTitle: 'Ringkasan Pesanan',
     surveyAndTarget: 'Survei & Target',
     questionsAndDuration: 'Pertanyaan & Durasi',
-    respondentIncentiveLabel: 'Insentif Responden',
+    respondentIncentiveLabel: 'Reward Responden',
     releaseSchedule: 'Jadwal Rilis',
     ordererData: 'Info Pemesan',
     institutionAndProfile: 'Institusi & Profil',

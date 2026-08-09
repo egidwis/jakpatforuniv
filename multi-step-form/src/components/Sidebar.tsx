@@ -87,7 +87,7 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
         </div>
         <div className="text-sm text-gray-600 mt-1">
           {formData.questionCount} {t('perQuestion')}
-          {costCalculation.incentiveCost > 0 && ' + Insentif responden'}
+          {costCalculation.incentiveCost > 0 && ' + Reward responden'}
         </div>
       </div>
     </div>

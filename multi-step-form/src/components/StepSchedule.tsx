@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { Calendar, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { fetchSlotAvailability } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
+import { SectionLabel } from './SurveyFieldRow';
 
 
 import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from '../utils/constants';
@@ -25,75 +26,65 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
   const [selectedDate, setSelectedDate] = useState<Date | null>(
     formData.startDate ? new Date(formData.startDate) : null
   );
-  const [selectedTime, setSelectedTime] = useState<string>(
-    formData.startTime || "15:00"
-  );
-  const [isFetchingAds, setIsFetchingAds] = useState(false);
-  const [regularCountsByDate, setRegularCountsByDate] = useState<Record<string, number>>({});
-  const [slotDetails, setSlotDetails] = useState<Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>>>({});
-  const calendarRef = useRef<HTMLDivElement>(null);
+  const [selectedTime, setSelectedTime] = useState<string>(formData.startTime || "15:00");
 
+  const [regularCountsByDate, setRegularCountsByDate] = useState<Record<string, number>>({});
+  const [slotDetails, setSlotDetails] = useState<Record<string, any[]>>({});
+  const [isFetchingAds, setIsFetchingAds] = useState(false);
+
+  const calendarRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
 
+  // Focus management on step load
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const clickedOutsideCalendar = calendarRef.current && !calendarRef.current.contains(event.target as Node);
-      const clickedOutsideNav = navRef.current && !navRef.current.contains(event.target as Node);
-      if (clickedOutsideCalendar && clickedOutsideNav) {
-        setSelectedDate(null);
-      }
-    }
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    calendarRef.current?.focus();
   }, []);
 
+  // Fetch slot availability from database (form_submissions table)
   useEffect(() => {
-    loadAvailability();
+    async function loadSlotCounts() {
+      setIsFetchingAds(true);
+      try {
+        const { regularCounts, details } = await fetchSlotAvailability(undefined, mode);
+        setRegularCountsByDate(regularCounts);
+        if (details) setSlotDetails(details);
+      } catch (err) {
+        console.error('Failed to fetch slot counts:', err);
+      } finally {
+        setIsFetchingAds(false);
+      }
+    }
+    loadSlotCounts();
   }, []);
 
-  const loadAvailability = async () => {
-    setIsFetchingAds(true);
-    try {
-      const { regularCounts, details } = await fetchSlotAvailability(undefined, mode);
-      setRegularCountsByDate(regularCounts);
-      if (details) {
-        setSlotDetails(details);
-      }
-    } catch (error) {
-      toast.error(t('slotErrorLoad'));
-    } finally {
-      setIsFetchingAds(false);
-    }
-  };
-
-  // Generate next 15 days — satu lebih banyak dari 14 yang dulu, supaya saat
-  // tanggal hari ini sudah lewat batas pemesanan 13.00 WIB user tetap punya
-  // 14 tanggal yang benar-benar bisa dipilih.
-  const availableDates = [];
+  // Compute available dates from today
+  const availableDates: Date[] = [];
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 14; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
     availableDates.push(d);
   }
 
-  // Iklan tayang 15.00 WIB dan halaman iklannya dibangun admin pada 14.00–15.00,
-  // jadi pemesanan untuk hari yang sama ditutup pukul 13.00 WIB.
-  const isDateClosed = (date: Date) => isBookingClosedForDate(getDateString(date));
-  const isTodayClosed = availableDates.length > 0 && isDateClosed(availableDates[0]);
+  // Double Check if date booking is closed (e.g. today after 13:00 WIB)
+  const isDateClosed = (d: Date) => {
+    return isBookingClosedForDate(getDateString(d));
+  };
 
-  const validateCapacityForRange = (startDay: Date, duration: number): boolean => {
-    const current = new Date(startDay);
-    current.setHours(0, 0, 0, 0);
+  // Safe Check range capacity
+  const validateCapacityForRange = (startDate: Date, durationDays: number): boolean => {
     const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
-    for (let i = 0; i < duration; i++) {
-      const dateStr = getDateString(current);
+    const startIdx = availableDates.findIndex(d => getDateString(d) === getDateString(startDate));
+    if (startIdx === -1) return true;
+
+    for (let i = 0; i < durationDays; i++) {
+      const checkDate = availableDates[startIdx + i];
+      if (!checkDate) continue;
+      const dateStr = getDateString(checkDate);
       const count = regularCountsByDate[dateStr] || 0;
       if (count >= maxAdsPerDay) {
         return false;
       }
-      current.setDate(current.getDate() + 1);
     }
     return true;
   };
@@ -104,15 +95,12 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
       return;
     }
 
-    // Batas pemesanan bisa terlewat sambil halaman ini terbuka — cek ulang
-    // sebelum melanjutkan, jangan hanya mengandalkan tile yang disabled.
     if (isDateClosed(selectedDate)) {
       toast.error(t('slotErrorPastCutoff'));
       setSelectedDate(null);
       return;
     }
 
-    // Capacity Validation
     const effectiveDuration = mode === 'kilat' ? 1 : (formData.duration || 1);
     if (!validateCapacityForRange(selectedDate, effectiveDuration)) {
       toast.error(t('slotErrorFull'));
@@ -124,168 +112,129 @@ export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mod
       startTime: selectedTime,
     });
 
-    // Auto-calculate endDate here or let StepFour calculate it? 
-    // Usually StepFour/Dashboard does it based on start time UTC, but let's safely set it if needed.
-
     nextStep();
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="max-w-3xl mx-auto space-y-3.5 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
-              <Calendar size={18} />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{mode === 'kilat' ? t('kilatScheduleTitle') : t('slotReservationTitle')}</h3>
-          </div>
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
+        <div className="flex items-center justify-between">
+          <SectionLabel>{mode === 'kilat' ? t('kilatScheduleTitle') : t('slotReservationTitle')}</SectionLabel>
           {isFetchingAds && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
         </div>
 
-        <div className="p-6">
-          <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-sm mb-6">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span dangerouslySetInnerHTML={{ __html: t('slotReservationInfo') }} />
-          </div>
+        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-sm">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span dangerouslySetInnerHTML={{ __html: t('slotReservationInfo') }} />
+        </div>
 
-          <div className="space-y-4">
-            <label className="text-sm font-medium text-gray-700">{t('slotStartDateLabel')}</label>
-            <div ref={calendarRef} className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 py-1">
-              {availableDates.map((date, i) => {
-                const dateStr = getDateString(date);
-                const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
-                const baseCount = regularCountsByDate[dateStr] || 0;
-                const isFull = baseCount >= maxAdsPerDay;
-                const isClosed = isBookingClosedForDate(dateStr);
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-gray-700">{t('slotStartDateLabel')}</label>
+          <div ref={calendarRef} className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 py-1">
+            {availableDates.map((date, i) => {
+              const dateStr = getDateString(date);
+              const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
+              const baseCount = regularCountsByDate[dateStr] || 0;
+              const isFull = baseCount >= maxAdsPerDay;
+              const isClosed = isBookingClosedForDate(dateStr);
 
-                const selectedIndex = selectedDate ? availableDates.findIndex(d => getDateString(d) === getDateString(selectedDate)) : -1;
-                const effectiveDuration = mode === 'kilat' ? 1 : (formData.duration || 1);
-                const isSelectedInRange = selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + effectiveDuration;
-                
-                const displayCount = isSelectedInRange ? baseCount + 1 : baseCount;
+              const selectedIndex = selectedDate ? availableDates.findIndex(d => getDateString(d) === getDateString(selectedDate)) : -1;
+              const effectiveDuration = mode === 'kilat' ? 1 : (formData.duration || 1);
+              const isSelectedInRange = selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + effectiveDuration;
+              
+              const displayCount = isSelectedInRange ? baseCount + 1 : baseCount;
 
-                let statusColors = 'bg-white border-slate-200 hover:border-blue-400 shadow-sm';
-                let textColor = 'text-slate-800';
-                
-                if (isSelectedInRange) {
-                  if (displayCount > maxAdsPerDay) {
-                    statusColors = 'bg-red-50 border-red-500 ring-1 ring-red-500 shadow-md';
-                    textColor = 'text-red-900';
-                  } else {
-                    statusColors = mode === 'kilat' ? 'bg-amber-50 border-amber-500 ring-1 ring-amber-500 shadow-md' : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
-                    textColor = mode === 'kilat' ? 'text-amber-900' : 'text-blue-900';
-                  }
-                } else if (isClosed) {
-                  // Beda dari `isFull`: slotnya mungkin masih kosong, yang habis
-                  // waktunya. Digarisbawahi supaya tidak terbaca "penuh".
-                  statusColors = 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed';
-                  textColor = 'text-slate-500';
-                } else if (isFull) {
-                  statusColors = 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed';
+              let statusColors = 'bg-white border-slate-200 hover:border-blue-400 shadow-sm';
+              let textColor = 'text-slate-800';
+              
+              if (isSelectedInRange) {
+                if (displayCount > maxAdsPerDay) {
+                  statusColors = 'bg-red-50 border-red-500 ring-1 ring-red-500 shadow-md';
+                  textColor = 'text-red-900';
+                } else {
+                  statusColors = mode === 'kilat' ? 'bg-amber-50 border-amber-500 ring-1 ring-amber-500 shadow-md' : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
+                  textColor = mode === 'kilat' ? 'text-amber-900' : 'text-blue-900';
                 }
+              } else if (isClosed) {
+                statusColors = 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed';
+                textColor = 'text-slate-500';
+              } else if (isFull) {
+                statusColors = 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed';
+              }
 
-                const dotColor = displayCount > maxAdsPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
+              const dotColor = displayCount > maxAdsPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
 
-                const detailsForDate = (slotDetails[dateStr] || []).filter(ad => !ad.isExtra);
-
-                return (
-                  <button
-                    key={dateStr}
-                    type="button"
-                    disabled={isFull || isClosed}
-                    onClick={() => {
-                      setSelectedDate(date);
-                      setSelectedTime("15:00");
-                    }}
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
-                  >
-                    <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                      {date.toLocaleDateString('id-ID', { weekday: 'short' })}
-                    </span>
-                    <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
-                      {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                    </span>
-                    {isClosed ? (
-                      <div className="flex items-center gap-1 mt-auto bg-slate-200/60 px-1.5 py-0.5 rounded-full border border-slate-200">
-                        <span className="text-[10px] font-semibold text-slate-500">{t('slotClosedTodayLabel')}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
-                        <div className={`w-1 h-1 rounded-full ${dotColor}`} />
-                        <span className={`text-[10px] font-semibold ${displayCount > maxAdsPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
-                          {displayCount}/{maxAdsPerDay}
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {isTodayClosed && (
-              <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 text-xs leading-relaxed">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
-                <span>{t('slotClosedTodayNote')}</span>
-              </div>
-            )}
+              return (
+                <button
+                  key={dateStr}
+                  type="button"
+                  disabled={isFull || isClosed}
+                  onClick={() => {
+                    setSelectedDate(date);
+                    setSelectedTime("15:00");
+                  }}
+                  className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
+                >
+                  <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+                    {date.toLocaleDateString('id-ID', { weekday: 'short' })}
+                  </span>
+                  <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
+                    {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                  </span>
+                  {isClosed ? (
+                    <div className="flex items-center gap-1 mt-auto bg-slate-200/60 px-1.5 py-0.5 rounded-full border border-slate-200">
+                      <span className="text-[10px] font-semibold text-slate-500">{t('slotClosedTodayLabel')}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
+                      <div className={`w-1 h-1 rounded-full ${dotColor}`} />
+                      <span className={`text-[10px] font-semibold ${displayCount > maxAdsPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
+                        {displayCount}/{maxAdsPerDay}
+                      </span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          {/* Fixed 15:00 WIB info banner */}
-          <div className="flex items-center gap-3 mt-6 p-3 bg-blue-50/70 border border-blue-100 rounded-xl">
-            <Clock className="w-4 h-4 text-blue-500 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-blue-800">{t('slotFixedTimeTitle')}</p>
-              <p className="text-xs text-blue-600 mt-0.5">{t('slotFixedTimeDesc')}</p>
-            </div>
-          </div>
-
-          {selectedDate && (() => {
-            const duration = mode === 'kilat' ? 1 : (formData.duration || 1);
-            // Lewat helper WIB, bukan setHours lokal — user di luar WIB harus
-            // melihat instant yang sama dengan yang nanti tersimpan di DB.
-            const ymd = getDateString(selectedDate);
-            const startObj = new Date(toAiringStartIso(ymd));
-            const endObj = new Date(toAiringEndIso(ymd, duration));
-            const fmtDate = (d: Date) =>
-              d.toLocaleDateString('id-ID', { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'Asia/Jakarta' });
-            return (
-              <div className="mt-6 space-y-2 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Schedule Summary</p>
-                <div className="flex flex-row gap-2 mt-1">
-                  <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
-                    <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">Start Date</span>
-                    <span className="font-bold text-gray-900 text-sm">{fmtDate(startObj)} 15.00 WIB</span>
-                  </div>
-                  <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
-                    <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">{t('slotDurationLabel')}</span>
-                    <span className="font-bold text-gray-900 text-sm">{mode === 'kilat' ? t('kilatDuration') : `${duration} ${t('days')}`}</span>
-                  </div>
-                  <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
-                    <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">End Date</span>
-                    <span className="font-bold text-gray-900 text-sm">{fmtDate(endObj)} 15.00 WIB</span>
-                  </div>
+        {selectedDate && (() => {
+          const duration = mode === 'kilat' ? 1 : (formData.duration || 1);
+          const ymd = getDateString(selectedDate);
+          const startObj = new Date(toAiringStartIso(ymd));
+          const endObj = new Date(toAiringEndIso(ymd, duration));
+          const fmtDate = (d: Date) =>
+            d.toLocaleDateString('id-ID', { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'Asia/Jakarta' });
+          return (
+            <div className="space-y-2 p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Schedule Summary</p>
+              <div className="flex flex-row gap-2 mt-1">
+                <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
+                  <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">Start Date</span>
+                  <span className="font-bold text-gray-900 text-sm">{fmtDate(startObj)} 15.00 WIB</span>
+                </div>
+                <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
+                  <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">{t('slotDurationLabel')}</span>
+                  <span className="font-bold text-gray-900 text-sm">{mode === 'kilat' ? t('kilatDuration') : `${duration} ${t('days')}`}</span>
+                </div>
+                <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
+                  <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">End Date</span>
+                  <span className="font-bold text-gray-900 text-sm">{fmtDate(endObj)} 15.00 WIB</span>
                 </div>
               </div>
-            );
-          })()}
-        </div>
+            </div>
+          );
+        })()}
       </div>
 
-      {/* Navigation Buttons */}
-      <div ref={navRef} className="flex justify-between items-center pt-4">
-        <button
-          type="button"
-          className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
-          onClick={prevStep}
-        >
-          ← {mode === 'kilat' ? t('kilatUndoButton') : t('backButton')}
-        </button>
+      {/* Submit Button */}
+      <div ref={navRef} className="flex justify-end">
         <button
           onClick={handleNext}
           disabled={!selectedDate || isFetchingAds}
-          className="px-6 py-2.5 rounded-xl text-white font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' }}
+          className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Review & Payment →
         </button>

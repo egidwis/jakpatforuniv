@@ -46,11 +46,11 @@ export function AdsFlowCard({ step, children }: AdsFlowCardProps) {
 
   const shellClass = hasCap
     ? '-mt-8 -mx-6 md:mt-0 md:mx-auto w-auto md:w-full max-w-none md:max-w-xl rounded-none md:rounded-2xl border-0 md:border md:border-gray-200 bg-white shadow-none md:shadow-sm overflow-hidden'
-    : 'mx-auto w-full max-w-xl rounded-none md:rounded-2xl border-0 md:border md:border-gray-200 bg-white shadow-none md:shadow-sm overflow-hidden';
+    : 'mx-auto w-full max-w-xl';
 
   const bodyClass = hasCap
     ? 'bg-white px-4 md:px-5 py-4 md:py-5'
-    : 'bg-white px-0 md:px-5 py-0 md:py-5';
+    : 'w-full';
 
   return (
     <div className={shellClass}>

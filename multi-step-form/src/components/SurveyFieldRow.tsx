@@ -51,11 +51,11 @@ export const fieldRowListClass = 'mt-2 flex flex-col gap-2';
 /** Lebar kolom label dibagi rata di semua baris (compact & default) supaya nilai sebaris X. */
 const FIELD_LABEL_WIDTH = 'w-[150px] shrink-0 md:w-[165px]';
 
-function rowShell(hasError?: boolean) {
+function rowShell(hasError?: boolean, readOnly?: boolean) {
   return (
     'rounded-xl border px-4 py-3 transition-colors ' +
-    (hasError ? 'border-rose-200' : 'border-gray-200') +
-    ' focus-within:border-jfu-primary/50 focus-within:ring-1 focus-within:ring-jfu-primary/15'
+    (hasError ? 'border-rose-200 ' : readOnly ? 'border-gray-200 bg-gray-50/80 ' : 'border-gray-200 ') +
+    (readOnly ? 'cursor-not-allowed ' : 'focus-within:border-jfu-primary/50 focus-within:ring-1 focus-within:ring-jfu-primary/15')
   );
 }
 
@@ -105,33 +105,13 @@ interface FieldRowProps {
   label: string;
   htmlFor?: string;
   required?: boolean;
-  /**
-   * `label | input` di SEMUA lebar. Untuk field pendek/numerik (jumlah
-   * pertanyaan, durasi, hadiah, pemenang). Tanpa ini baris menumpuk di bawah
-   * `md` — wajib untuk field teks panjang seperti URL, yang tidak terbaca
-   * dalam ~150px di layar 360px.
-   */
   compact?: boolean;
-  /**
-   * Override lebar kolom label default (150px) — dipakai field `compact`
-   * dengan label 2-baris (mis. "Durasi survey iklan (hari)") supaya kolom
-   * nilai rata-kanan tidak menyisakan jarak kosong lebar di tengah baris.
-   * Hanya berlaku sendiri per baris — TIDAK ikut menyamakan koordinat X
-   * dengan baris `compact` lain yang masih pakai `FIELD_LABEL_WIDTH` default.
-   */
   labelWidth?: string;
-  /**
-   * Override padding-kiri sel nilai (default `pl-4`) — menggeser titik mulai
-   * konten sedikit lebih jauh dari divider. Dipakai field `compact` rata-kiri
-   * yang terasa terlalu mepet ke garis pembatas (mis. Durasi, Hadiah,
-   * Jumlah Pemenang — dikembalikan dari rata-kanan karena caret `text-align:
-   * right` pada input kosong tetap salah tempat di beberapa browser walau
-   * sudah `type="text"`, bukan bug `type="number"` seperti dugaan awal).
-   */
   valueInset?: string;
   error?: string;
   hint?: ReactNode;
   tooltip?: ReactNode;
+  readOnly?: boolean;
   children: ReactNode;
 }
 
@@ -146,12 +126,13 @@ export function FieldRow({
   error,
   hint,
   tooltip,
+  readOnly,
   children,
 }: FieldRowProps) {
   if (compact) {
     return (
       <div>
-        <div className={rowShell(!!error)}>
+        <div className={rowShell(!!error, readOnly)}>
           <div className="flex items-center gap-3">
             <label htmlFor={htmlFor} className={`flex items-center gap-2 min-w-0 shrink-0 ${labelWidth ?? FIELD_LABEL_WIDTH}`}>
               <LabelContent icon={icon} label={label} required={required} tooltip={tooltip} />
@@ -168,7 +149,7 @@ export function FieldRow({
 
   return (
     <div>
-      <div className={rowShell(!!error)}>
+      <div className={rowShell(!!error, readOnly)}>
         <div className="flex [flex-direction:column] gap-1.5 md:[flex-direction:row] md:items-start md:gap-3">
           <label htmlFor={htmlFor} className={`flex items-center md:items-start gap-2 min-w-0 [width:100%] md:[width:165px] md:shrink-0 md:pt-0.5 ${labelWidth ?? ''}`}>
             <LabelContent icon={icon} label={label} required={required} tooltip={tooltip} />
@@ -190,10 +171,9 @@ interface FieldBlockProps {
   required?: boolean;
   error?: string;
   hint?: ReactNode;
-  /** Penghitung karakter, mis. "128/500". Sengaja di luar area input supaya
-   *  tidak menutupi teks seperti badge absolut di desain lama. */
   counter?: string;
   tooltip?: ReactNode;
+  readOnly?: boolean;
   children: ReactNode;
 }
 
@@ -210,11 +190,12 @@ export function FieldBlock({
   hint,
   counter,
   tooltip,
+  readOnly,
   children,
 }: FieldBlockProps) {
   return (
     <div>
-      <div className={rowShell(!!error)}>
+      <div className={rowShell(!!error, readOnly)}>
         <label htmlFor={htmlFor} className="flex items-center gap-2">
           <LabelContent icon={icon} label={label} required={required} tooltip={tooltip} />
         </label>

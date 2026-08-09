@@ -236,19 +236,8 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             updateFormData={updateFormData}
             onSubmit={handleSubmit}
             isGoogleImport={false}
+            onSwitchToGoogle={handleSwitchToGoogle}
           />
-
-          {/* Switch to Google Form — mengikuti pola link di StepOneGoogleForm */}
-          <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-center gap-x-1 text-xs md:text-sm text-gray-500">
-            <span>{t('troubleFillingManual')}</span>
-            <button
-              type="button"
-              onClick={handleSwitchToGoogle}
-              className="font-semibold text-jfu-primary hover:underline"
-            >
-              {t('importFromGoogleForm')}
-            </button>
-          </div>
         </AdsFlowCard>
 
         {profileSheet}

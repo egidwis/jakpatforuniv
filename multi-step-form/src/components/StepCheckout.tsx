@@ -12,6 +12,7 @@ import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY, SURVEY_DRAFT_KEY, LEGAC
 import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } from '../utils/airing-window';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
+import { SectionLabel } from './SurveyFieldRow';
 import { Switch } from './ui/switch';
 import {
   Ticket,
@@ -435,10 +436,8 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
   };
 
   return (
-    <div className="max-w-3xl mx-auto">
-      {/* Title removed/minimized per design */}
-
-      <div className="space-y-8">
+    <div className="max-w-xl mx-auto space-y-3.5">
+      <div className="space-y-3.5">
         {/* Warning Banner for Personal Data Detection */}
         {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
           <div className="p-4 rounded-xl bg-amber-100/50 border border-amber-200/60 flex flex-col gap-2 mb-6">
@@ -481,17 +480,9 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         )}
 
         {/* SECTION: SURVEY OVERVIEW (ORDER REQUEST) */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 mb-4 hover:shadow-md">
-          {/* Card Header */}
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600">
-                <FileText size={18} />
-              </div>
-              <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">{t('orderOverviewTitle')}</h3>
-            </div>
-            
-            {/* Elegant Header Status Badge for JFU Kilat */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
+          <div className="flex items-center justify-between">
+            <SectionLabel>{t('orderOverviewTitle')}</SectionLabel>
             {formData.isKilatUpgrade && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs">
                 <Zap size={11} className="fill-white" />
@@ -500,7 +491,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
             )}
           </div>
 
-          <div className="p-6">
+          <div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
               {/* Left Column: Survey Information & Target */}
@@ -614,14 +605,9 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         </div>
 
         {/* SECTION: INVOICE DETAILS */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
-                <User size={18} />
-              </div>
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('invoiceDetailTitle')}</h3>
-            </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionLabel>{t('invoiceDetailTitle')}</SectionLabel>
             <div className="flex items-center gap-2.5 select-none">
               <span className="text-xs font-medium text-gray-600">{t('sameAsAccount')}</span>
               <Switch
@@ -632,7 +618,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
             </div>
           </div>
 
-          <div className="p-6 space-y-4">
+          <div className="space-y-4">
             <p className="text-xs text-gray-400 -mt-1">{t('invoiceContactHelp')}</p>
 
             {useAccountData ? (
@@ -905,14 +891,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         </div>
 
         {/* ACTION BUTTONS */}
-        <div className="flex justify-between items-center pt-4 pb-12">
-          <button
-            type="button"
-            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
-            onClick={prevStep}
-          >
-            ← {t('backButton')}
-          </button>
+        <div className="flex justify-end items-center pt-1 pb-12">
           <button
             type="button"
             onClick={handleSubmit}
