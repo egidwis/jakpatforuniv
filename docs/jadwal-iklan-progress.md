@@ -1,7 +1,11 @@
 # Jadwal Iklan — Status Berjalan
 
 > **Titik masuk untuk pekerjaan Jadwal Iklan.** Baca ini dulu sebelum membuka
-> rencana mana pun. Diperbarui 2026-08-08.
+> rencana mana pun. Diperbarui 2026-08-09.
+>
+> ⛔ **Merge `feat/dashboard-soft-dna-navbar` → `main` DITAHAN (2026-08-09).**
+> Pemilik produk masih memeriksa beberapa hal. Jangan merge tanpa aba-aba
+> eksplisit — seluruh urutan rilis di bawah menunggu di belakangnya.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -435,6 +439,15 @@ sebagai tempat kerja":
 | **Schedule** | **papan pantau.** Nol aksi, hanya baca + deep-link ke drawer |
 | **Pages** | kelola halaman (perombakannya task terpisah, belum dikerjakan) |
 
+**Sejak 2026-08-09 "tempat kerja" itu benar-benar utuh.** Menjadwalkan dan menagih
+dulu melempar admin ke halaman penuh `SchedulePaymentView` (breadcrumb
+`Submissions › Schedule`) — daftar order hilang, drawer tertutup. Keduanya kini
+sub-tampilan **di dalam** drawer, dan berlaku untuk **semua ordinal**; sebelumnya
+jadwal ke-2 dst. tidak punya jalur menyunting sama sekali. `SchedulePaymentView.tsx`
+dan `ExtendSection.tsx` dihapus. Yang masih mengambil alih layar tinggal
+`PageBuilderModal` — sengaja, karena ia editor dokumen dengan rail pratinjau 360px,
+bukan formulir; pembagian yang sama sudah dipakai drawer papan Schedule.
+
 Alasannya perilaku, bukan model data: rute review manual adalah **satu percakapan**
 dengan peneliti dari feedback sampai tagihan. Memecahnya jadi dua station memutus
 percakapan itu. Rute yang satunya — order auto-approval yang bayar sendiri lewat
@@ -672,7 +685,7 @@ terlihat admin. `kilat_slot_hour IS NULL` penandanya — **jangan baca jam dari
 
 Detail lengkap tiap task ada di
 [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md).
-Urutan wajib: **~~8B-1~~ → 8C → 9 → 10 → 11 → 12**, masing-masing rilis sendiri
+Urutan wajib: **~~8B-1~~ → 8C → 9 → 10 → 11 → 12 → 13**, masing-masing rilis sendiri
 (expand-and-contract). Tidak ada satu langkah pun yang mengharuskan semua lapis
 berubah serentak. 8B-2 keluar dari urutan ini — ia pindah jadi prasyarat Phase 4.
 
@@ -686,6 +699,7 @@ berubah serentak. 8B-2 keluar dari urutan ini — ia pindah jadi prasyarat Phase
 | **10** | Satukan aturan waktu & pembayaran | Cutoff 13.00/14.00 WIB berlaku seragam ke semua jadwal; `transactions`/`invoices` pakai `schedule_id`; **"Mark as Paid" jadi per-jadwal** (sekarang order-level dan bisa menandai lunas order tanpa jadwal sama sekali — 3 dari 522 order terukur begitu). |
 | **11** | Pindahkan pembaca, lalu contract | ⚠️ View kompatibilitas WAJIB ada sebelum tabel aslinya disentuh, bukan sesudah. **Diperkecil oleh 8B-1:** `respondents.js` tidak lagi membaca `form_submissions_extend` sama sekali (query massalnya diganti RPC). Sisa pembaca serverless tinggal dua — `functions/api/storage-cleanup.js:74` dan `functions/api/doku/webhook.js:497,516` — plus pembaca di `src/`. |
 | **12** | Istilah — semua jadi "Jadwal Iklan 1/2/3" | 🟡 **Separuh, sengaja.** Copy yang dibaca peneliti & admin ✅ selesai 2026-08-08. Sisa: identifier kode (`ExtendSection`, `FormSubmissionExtend`, `entity_type='extend'`) — menunggu Task 11 langkah 5, karena selama tabelnya masih bernama itu penggantian cuma memindahkan kebingungan. Plus nama item invoice `'Extend Iklan (ads)'` yang menunggu finance. Berhenti di API: nama field publik (`period_batch`, `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut berganti. |
+| **13** | Tagihan fleksibel per jadwal | ⬜ **Disetujui 2026-08-09, terkunci di belakang Task 11.** Satu jadwal boleh punya beberapa invoice: tagihan susulan jadi **piutang yang terlihat** dan **tidak pernah menghentikan iklan yang sedang tayang**. Plus **batal reservasi per jadwal** dan **`is_extra_ad` pindah ke `ad_schedules`** (hari ini ia sifat ORDER — lihat jebakan no. 17). Sumber kebenaran uang pindah dari `ad_schedules.total_cost` ke invoice, yang sekalian membunuh `hasEverPaid`. Rencana lengkap: [`2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md`](superpowers/plans/2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) |
 
 Setelah Phase 2: **Phase 3** (tab "Jadwal Iklan" terpadu di admin) menyusut jadi
 mapper biasa, dan **Phase 4** (tombol "Jadwalkan Iklan Lagi" di dashboard user)
@@ -864,6 +878,67 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
     `pages/public/SurveyPage.tsx`, `pages/public/SurveyListingPage.tsx`,
     `utils/adOrdering.ts`) — dan semuanya memaksa 15.00 WIB, jadi **semuanya
     salah untuk Kilat**.
+16. **Jangan menaikkan `ad_schedules.total_cost` untuk menagih tambahan.** Ada
+    yang akan mengembalikannya: `functions/api/doku/create-payment.js:183-203`
+    menghitung ulang harga dari input pricing, membandingkannya dengan
+    `total_cost`, dan kalau berbeda ia **menimpa kolomnya** dengan hitungannya
+    sendiri. Jadi satu percobaan bayar self-service menurunkan angka itu balik,
+    diam-diam, di jalur uang. Arti kolom itu adalah **harga saat dipesan**, bukan
+    "yang ditagih" — yang ditagih hanya bisa dijawab oleh `invoices`.
+    Konsekuensi turunannya: `hasEverPaid` (`supabase.ts:2212`) memakai
+    `.some(paid)`, jadi **satu** invoice lunas sudah cukup membuat kartu jadwal
+    mengumumkan "Lunas". Selama satu jadwal cuma punya satu tagihan itu tidak
+    kelihatan; begitu ada tagihan kedua, ia menyembunyikan tagihan terbuka.
+17. **`is_extra_ad` adalah sifat ORDER, bukan sifat jadwal.** Ia hidup di
+    `survey_pages` — satu baris per order — dan `fetchSlotAvailability`
+    (`supabase.ts:1368`) melakukan lookup per `submissionId`, sehingga setiap
+    jadwal mewarisi flag induknya. Task 11 langkah 1c malah menambahkan
+    `UNIQUE (submission_id)` yang mengunci sifat itu. Siapa pun yang mengira
+    "jadwal #1 reguler, #2 extra" bisa diungkapkan hari ini salah baca. Sumber
+    keduanya: penanda legacy `[EXTRA_AD]` di `form_submissions.admin_notes`,
+    yang masih dibaca di tiga tempat. Task 13 yang memindahkannya.
+
+    ⚠️ Konsekuensi praktisnya: **jangan menawarkan pilihan Reguler/Tambahan di
+    formulir jadwal** sebelum flag itu punya rumah di `ad_schedules`. Sebuah
+    toggle sempat ditulis di `ScheduleForm` pada 2026-08-09 dan dicabut hari itu
+    juga — ia memindahkan kolam kuota yang dibaca kalender tanpa menyimpan apa
+    pun, jadi admin memesan ke kuota tambahan sementara jadwalnya tetap dihitung
+    reguler, dan kolam reguler kelebihan jual.
+
+18. **Kolom Tailwind responsif tidak berlaku di dalam panel sempit.**
+    `grid-cols-4 sm:grid-cols-7` mengukur **viewport**, bukan lebar kontainer —
+    di layar desktop ia jadi 7 kolom walau hidup di drawer 480px, lalu menggulung
+    mendatar. Kalender slot karena itu menerima jumlah kolom sebagai **prop**
+    (`SlotCalendar`), bukan lewat breakpoint. Lebar tersempit yang harus diuji
+    adalah **`DetailPane` 520px** (dipakai pada ≥1280px), bukan sheet 576px.
+
+19. **Dari tiga kalender pemesanan, hanya satu yang menghormati batas pesan
+    13.00 WIB.** `SchedulePaymentView` dan `ExtendSection` tidak pernah mengimpor
+    `airing-window` sama sekali, jadi keduanya mengizinkan admin memesan slot yang
+    aturannya sudah tutup; hanya `RescheduleDialog` yang memanggil
+    `isBookingClosedForDate`. Tertutup 2026-08-09 dengan menyatukan ketiganya ke
+    `components/schedule/SlotCalendar.tsx`. **Jangan menyalin kalender keempat** —
+    aturan yang lupa ikut tersalin tidak akan terlihat sampai ada yang tayang di
+    hari yang salah.
+
+20. **Kalender slot pernah berbohong dua kali sekaligus, dan keduanya membuat hari
+    tampak lebih kosong dari kenyataan.** Ditemukan & ditutup 2026-08-09.
+
+    a. **`excludeSubmissionId` membuang SELURUH jendela milik order itu**, bukan
+       hanya jadwal yang sedang dipindah. Order berjadwal banyak jadi tidak
+       melihat jadwalnya sendiri: hari yang sudah dipakai jadwal #2 tampil `0/4`
+       saat admin memindahkan jadwal #1 ke sana, dan penolakannya baru muncul dari
+       `trg_submission_no_overlap` (sql/38) setelah tombol simpan ditekan.
+       `fetchSlotAvailability` kini punya `excludeSourceId` — cocokkan dengan
+       `AdScheduleEntry.sourceId`, dan **pakai itu**, bukan yang per-order.
+
+    b. **Tile hari ke-2 dst. tidak menghitung iklan yang sedang dipesan.** Iklan
+       7 hari memakai tujuh slot; kalender hanya menaikkan angka di tanggal mulai,
+       jadi rentang yang akan melewati kuota tidak terlihat sampai ditolak.
+       `SlotCalendar` sekarang menampilkan `terpakai + 1` di setiap hari yang
+       tertutup pilihan, dan memerahkannya kalau lewat kuota. ⚠️ Yang **mengunci**
+       tile tetap angka yang benar-benar terpakai — kalau tidak, hari yang baru
+       saja dipilih akan mengunci dirinya sendiri.
 
 ---
 
@@ -874,6 +949,7 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | **`docs/jadwal-iklan-progress.md`** | ⬅️ file ini — titik masuk, status berjalan |
 | [`superpowers/plans/README.md`](superpowers/plans/README.md) | **Indeks seluruh rencana** + statusnya; baca kalau bingung file mana yang masih berlaku |
 | [`superpowers/plans/2026-08-08-task-11-ad-schedules-otoritatif.md`](superpowers/plans/2026-08-08-task-11-ad-schedules-otoritatif.md) | **Rencana Task 11** — `ad_schedules` jadi otoritatif, `form_submissions_extend` pensiun, `booking_id` lahir. Disetujui 2026-08-08, **terkunci sampai Phase 3 mendarat di `main`** |
+| [`superpowers/plans/2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md`](superpowers/plans/2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) | **Rencana Task 13** — multi-invoice per jadwal (tagihan susulan jadi piutang), batal reservasi per jadwal, Extra Ad jadi sifat jadwal. Disetujui 2026-08-09, **terkunci sampai Task 11 mendarat & dideploy** (butuh `schedule_id`) |
 | [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — judulnya sudah basi; baca kotak koreksi di kepalanya sebelum mengeksekusi apa pun dari sana |
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |

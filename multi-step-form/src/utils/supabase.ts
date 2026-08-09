@@ -1279,7 +1279,19 @@ const holdsSlot = (slot: SlotOccupancy) => {
  */
 export const fetchSlotAvailability = async (
   excludeSubmissionId?: string,
-  distributionType: 'regular' | 'kilat' = 'regular'
+  distributionType: 'regular' | 'kilat' = 'regular',
+  /**
+   * Kecualikan SATU jadwal, bukan seluruh order.
+   *
+   * ⚠️ Ini yang biasanya dimaksud saat menjadwalkan ulang. `excludeSubmissionId`
+   * membuang SEMUA jendela milik order itu, jadi kalender berhenti melihat
+   * jadwal ke-2 order yang sama — hari yang sebenarnya sudah dipakai tampil
+   * kosong, dan admin baru tahu saat `trg_submission_no_overlap` (sql/38)
+   * menolak simpanannya. Cocokkan dengan `AdScheduleEntry.sourceId`: id
+   * `form_submissions` untuk ordinal 1, id `form_submissions_extend` untuk
+   * sisanya — persis kunci yang dipakai `SlotOccupancy.id`.
+   */
+  excludeSourceId?: string
 ): Promise<{
   regularCounts: Record<string, number>;
   extraCounts: Record<string, number>;
@@ -1357,9 +1369,12 @@ export const fetchSlotAvailability = async (
     const details: Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>> = {};
 
     activeSlots.forEach((slot) => {
-      // Exclude by submission so that editing a schedule never counts any of
-      // that survey's own windows against itself.
-      if (slot.startDate && slot.endDate && slot.submissionId !== excludeSubmissionId) {
+      // Pengecualian sengaja punya dua tingkat: per jadwal (yang sedang
+      // dipindah) dan — untuk pemanggil lama — per order.
+      const isExcluded =
+        (excludeSourceId !== undefined && slot.id === excludeSourceId) ||
+        (excludeSubmissionId !== undefined && slot.submissionId === excludeSubmissionId);
+      if (slot.startDate && slot.endDate && !isExcluded) {
         const current = new Date(slot.startDate);
         current.setHours(0, 0, 0, 0);
         const endDay = new Date(slot.endDate);

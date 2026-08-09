@@ -96,8 +96,8 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
     };
 
     // /api/doku/checkout is admin-gated by functions/api/doku/_middleware.js;
-    // callers (SchedulePaymentView, ExtendSection) only exist in the internal
-    // dashboard, so an admin session is always present here.
+    // satu-satunya pemanggil (InvoiceForm) hanya hidup di dashboard internal,
+    // jadi sesi admin selalu ada di sini.
     const { data: { session } } = await supabase.auth.getSession();
     const fetchResponse = await fetch(`${origin}/api/doku/checkout`, {
       method: 'POST',

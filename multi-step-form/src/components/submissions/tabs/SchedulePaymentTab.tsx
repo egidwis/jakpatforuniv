@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Loader2, PenLine } from 'lucide-react';
+import { Check, Loader2, PenLine, CalendarPlus } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
-  fetchAdSchedules, fetchSchedulePayments,
+  fetchAdSchedules, fetchSchedulePayments, supabase,
   type AdScheduleEntry, type SchedulePayment,
 } from '@/utils/supabase';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
-import { ExtendAction } from '../CampaignActions';
 import { ScheduleCardList } from './ScheduleCardList';
 import { DistributionSection } from './DistributionSection';
 
@@ -20,8 +20,12 @@ import { DistributionSection } from './DistributionSection';
 // kesatuan, karena yang dibayar adalah jendela tayang tertentu, bukan "order".
 //
 // Yang tersisa di luar kartu tinggal dua, dan keduanya memang milik ORDER:
-// jalur distribusi, dan tombol menambah jadwal. Blok "Tagihan & Aksi" yang
-// sempat berdiri sendiri di sini sudah dibubarkan ke dalam kartu.
+// jalur distribusi, dan tombol menambah jadwal.
+//
+// Aksi per jadwal (atur jadwal, buat tagihan) TIDAK dirender di sini — ia
+// dilempar ke atas supaya drawer bisa menggantikan seluruh isinya dengan
+// sub-tampilan. Sebelumnya keduanya melempar admin ke halaman penuh
+// SchedulePaymentView, dan jadwal ke-2 dst. sama sekali tidak kebagian.
 // ─────────────────────────────────────────────────────────────
 
 export function SchedulePaymentTab({
@@ -29,30 +33,45 @@ export function SchedulePaymentTab({
   paymentData,
   existingPage,
   lifecycle,
-  onOpenSchedule,
-  onOpenPayment,
+  onEditSchedule,
+  onCreateInvoice,
+  onCreateSchedule,
   onPaymentStatusChange,
   onEditFormDetails,
   onConvertDistribution,
   onExtendCreated,
+  reloadKey = 0,
+  initialSubView = null,
+  onInitialSubViewConsumed,
 }: {
   submission: SurveySubmission;
   paymentData: PaymentState;
   existingPage?: ExistingPage;
   isScheduled: boolean;
   lifecycle: ReturnType<typeof deriveLifecycle>;
-  onOpenSchedule: (submission: SurveySubmission) => void;
-  onOpenPayment: (submission: SurveySubmission) => void;
+  onEditSchedule: (entry: AdScheduleEntry) => void;
+  onCreateInvoice: (entry: AdScheduleEntry) => void;
+  /**
+   * `isExtraAd` = status iklan tambahan ORDER ini, bukan pilihan admin. Jadwal
+   * baru mewarisinya (flag-nya hidup di `survey_pages`, satu baris per order),
+   * jadi kalender harus membaca kolam yang benar sejak awal.
+   */
+  onCreateSchedule: (isExtraAd: boolean) => void;
   onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
   onExtendCreated: () => void;
+  /** Dinaikkan drawer setiap sub-tampilan selesai menulis. */
+  reloadKey?: number;
+  /** Niat dari pemanggil luar; diresolusi di sini karena jadwalnya ada di sini. */
+  initialSubView?: 'schedule' | 'payment' | null;
+  onInitialSubViewConsumed?: () => void;
 }) {
   const [isConfirmPaymentOpen, setIsConfirmPaymentOpen] = useState(false);
   const [schedules, setSchedules] = useState<AdScheduleEntry[]>([]);
   const [payments, setPayments] = useState<Map<string, SchedulePayment>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [localReloadKey, setLocalReloadKey] = useState(0);
 
   const submissionId = submission.id;
 
@@ -71,15 +90,54 @@ export function SchedulePaymentTab({
       }
     })();
     return () => { cancelled = true; };
-  }, [submissionId, reloadKey]);
+  }, [submissionId, localReloadKey, reloadKey]);
 
-  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+  const reload = useCallback(() => setLocalReloadKey((k) => k + 1), []);
 
-  // Jadwal baru melahirkan baris cermin lewat trigger, jadi daftar di atas harus
-  // ikut dimuat ulang — bukan hanya daftar order di belakang drawer.
-  const handleExtendCreated = useCallback(() => {
-    reload();
-    onExtendCreated();
+  /**
+   * "Reserve Slot" / "Buat tagihan" dari luar drawer hanya menyebut ORDER-nya,
+   * bukan jadwal mana — jadwalnya baru diketahui setelah daftar termuat. Jadwal
+   * pertama yang dipilih; order tanpa jadwal sama sekali langsung dibawa ke
+   * pembuatan jadwal baru.
+   */
+  useEffect(() => {
+    if (!initialSubView || isLoading) return;
+    const target = schedules[0];
+    if (!target) {
+      if (initialSubView === 'schedule') onCreateSchedule(false);
+    } else if (initialSubView === 'payment') {
+      onCreateInvoice(target);
+    } else {
+      onEditSchedule(target);
+    }
+    onInitialSubViewConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSubView, isLoading, schedules]);
+
+  /**
+   * Batalkan jadwal perpanjangan.
+   *
+   * ⚠️ SENGAJA SAMA PERSIS dengan tombol lama di ExtendSection — status jadi
+   * `cancelled`, `payment_status` jadi `failed`, tidak lebih. Ia TIDAK
+   * melewatkan transaksi pending jadi `expired` dan TIDAK melepas
+   * `slot_booked_by`; keduanya memang belum pernah dilakukan. Memperbaikinya di
+   * rilis ini berarti menyelundupkan kemampuan baru ke dalam pemindahan
+   * permukaan — versi benarnya adalah Task 13 Langkah 3.
+   */
+  const handleCancelSchedule = useCallback(async (entry: AdScheduleEntry) => {
+    if (!confirm('Yakin ingin membatalkan jadwal iklan ini?')) return;
+    try {
+      const { error } = await supabase
+        .from('form_submissions_extend')
+        .update({ submission_status: 'cancelled', payment_status: 'failed' })
+        .eq('id', entry.sourceId);
+      if (error) throw error;
+      toast.success('Jadwal iklan dibatalkan');
+      reload();
+      onExtendCreated();
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal membatalkan jadwal');
+    }
   }, [reload, onExtendCreated]);
 
   // ⚠️ `updatePaymentStatus` masih melunasi SELURUH invoice order (menyaring
@@ -90,6 +148,32 @@ export function SchedulePaymentTab({
   // `schedule_id` ada di Task 11.
   const isSingleSchedule = schedules.length === 1;
   const canMarkPaidInCard = isSingleSchedule && !lifecycle.isPaid;
+
+  /**
+   * "Jadwal Iklan Baru" — memesan jendela tayang BERIKUTNYA untuk order yang sama.
+   *
+   * ⚠️ PAGAR `!existingPage` SENGAJA TIDAK ADA DI SINI. Sampai Phase 3 syaratnya
+   * berbunyi `canBuildPage && existingPage` — dan itu BUG, bukan kebijakan
+   * (dikonfirmasi pemilik produk 2026-08-07). Punya halaman iklan tidak pernah
+   * jadi syarat memesan jadwal; syaratnya cuma jadwal itu tidak tumpang tindih,
+   * dan itu sudah ditegakkan trg_submission_no_overlap (sql/38) di DB. Selama
+   * pagar itu berdiri, sumbu tayang dipagari sumbu halaman — kopling yang justru
+   * jadi alasan Phase 2 ada.
+   *
+   * ⚠️ KILAT DITUTUP, DAN ALASANNYA DITULIS DI SINI SUPAYA TIDAK IKUT DICABUT.
+   * Dulu order Kilat terhalang dua kali tanpa sengaja: oleh `!existingPage`
+   * (Kilat tidak pernah punya baris survey_pages — guard ensure_survey_page(),
+   * sql/42) dan oleh pembungkus `!isKilat` di PageTab. Keduanya hilang saat aksi
+   * ini pindah ke tab Jadwal & Bayar, jadi pagarnya harus eksplisit.
+   *
+   * Ini bukan sekadar aturan produk. Formulir jadwal baru TIDAK MENGENAL Kilat
+   * sama sekali — harganya `calculateAdCostPerDay(questionCount) × durasi`, rumus
+   * regular. Untuk Kilat itu berarti add-on Rp 250.000 tidak tertagih DAN base
+   * rate dikali durasi yang tidak punya arti (Kilat selesai dalam ~2 jam).
+   * Membuka ini butuh formulir itu mengenal jalur distribusi lebih dulu: bukan
+   * cuma rumus harga, tapi pemilih gelombang alih-alih rentang hari.
+   */
+  const canAddSchedule = submission.distribution_type !== 'kilat' && lifecycle.canBuildPage;
 
   return (
     <>
@@ -115,17 +199,23 @@ export function SchedulePaymentTab({
             entries={schedules}
             payments={payments}
             submission={submission}
-            onOpenSchedule={() => onOpenSchedule(submission)}
-            onOpenPayment={() => onOpenPayment(submission)}
+            onEditSchedule={onEditSchedule}
+            onCreateInvoice={onCreateInvoice}
             onMarkPaid={canMarkPaidInCard ? () => setIsConfirmPaymentOpen(true) : null}
+            onCancel={(entry) => void handleCancelSchedule(entry)}
           />
         )}
 
-        <ExtendAction
-          submission={submission}
-          lifecycle={lifecycle}
-          onExtendCreated={handleExtendCreated}
-        />
+        {canAddSchedule && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-center h-8 text-xs font-medium text-violet-600 hover:text-violet-700 border-violet-200 hover:border-violet-300 bg-white hover:bg-violet-50"
+            onClick={() => onCreateSchedule(schedules[0]?.isExtraAd ?? false)}
+          >
+            <CalendarPlus className="w-3.5 h-3.5 mr-1.5" /> Jadwal Iklan Baru
+          </Button>
+        )}
 
         {!isSingleSchedule && !lifecycle.isPaid && schedules.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 space-y-2">

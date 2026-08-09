@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   CalendarClock, Check, ChevronDown, Copy, CreditCard, ExternalLink,
-  FileText, Sparkles, Zap,
+  FileText, Sparkles, Trash2, Zap,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Chip } from '../../ui/chip';
@@ -65,9 +65,11 @@ function dateRangeOf(e: AdScheduleEntry): string {
 }
 
 interface CardActions {
-  onOpenSchedule: () => void;
-  onOpenPayment: () => void;
+  onEditSchedule: (entry: AdScheduleEntry) => void;
+  onCreateInvoice: (entry: AdScheduleEntry) => void;
   onMarkPaid: (() => void) | null;
+  /** null = jadwal ini tidak boleh dibatalkan dari sini. */
+  onCancel: ((entry: AdScheduleEntry) => void) | null;
 }
 
 function PaymentBanner({
@@ -78,11 +80,15 @@ function PaymentBanner({
   state: CardState;
   actions: CardActions;
 }) {
-  // Aksi jadwal & tagihan membuka SchedulePaymentView, dan layar itu menyunting
-  // jadwal PERTAMA order ini. Untuk jadwal ke-2 dst. tombolnya tidak dirender —
-  // menampilkannya berarti menjanjikan sesuatu yang akan menyunting baris lain.
-  const canEditHere = entry.ordinal === 1;
-
+  // Sejak jadwal & tagihan pindah ke sub-tampilan drawer, setiap aksi berlingkup
+  // SATU jadwal — jadi tidak ada lagi pagar ordinal di sini. Pagar lamanya ada
+  // semata karena SchedulePaymentView selalu menyunting jadwal pertama.
+  //
+  // ⚠️ PEMBAGIAN PERANNYA: banner menjelaskan KEADAAN dan hanya memuat aksi yang
+  // khas keadaan itu (tandai lunas, salin link bayar, kuitansi). Dua aksi tetap —
+  // "Jadwalkan ulang" dan "Buat tagihan" — hidup di baris aksi di dasar kartu,
+  // SATU tempat saja. Sempat ada di kedua tempat, dan admin jadi harus menebak
+  // tombol mana yang benar.
   if (state === 'cancelled') return null;
 
   if (state === 'paid') {
@@ -110,15 +116,10 @@ function PaymentBanner({
 
   if (state === 'choose_schedule') {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 space-y-2">
+      <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
         <p className="text-[11px] text-amber-900 inline-flex items-center gap-1.5">
           <CalendarClock className="w-3.5 h-3.5 shrink-0" /> Slot belum dipilih.
         </p>
-        {canEditHere && (
-          <Button size="sm" variant="outline" className="w-full h-7 text-[11px] border-amber-300 bg-white hover:bg-amber-50" onClick={actions.onOpenSchedule}>
-            <CalendarClock className="w-3 h-3 mr-1.5" /> Pilih Jadwal
-          </Button>
-        )}
       </div>
     );
   }
@@ -129,18 +130,11 @@ function PaymentBanner({
         <p className="text-[11px] text-slate-600 inline-flex items-center gap-1.5">
           <CreditCard className="w-3.5 h-3.5 shrink-0" /> Belum ada tagihan untuk jadwal ini.
         </p>
-        <div className="flex gap-2">
-          {canEditHere && (
-            <Button size="sm" variant="outline" className="flex-1 h-7 text-[11px]" onClick={actions.onOpenPayment}>
-              <CreditCard className="w-3 h-3 mr-1.5" /> Buat Tagihan
-            </Button>
-          )}
-          {actions.onMarkPaid && (
-            <Button size="sm" className="flex-1 h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white" onClick={actions.onMarkPaid}>
-              <Check className="w-3 h-3 mr-1.5" /> Tandai Lunas
-            </Button>
-          )}
-        </div>
+        {actions.onMarkPaid && (
+          <Button size="sm" className="w-full h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white" onClick={actions.onMarkPaid}>
+            <Check className="w-3 h-3 mr-1.5" /> Tandai Lunas
+          </Button>
+        )}
       </div>
     );
   }
@@ -297,6 +291,45 @@ function ScheduleCard({
           )}
         </div>
       )}
+
+      {/* Aksi jadwal — berlaku untuk SEMUA ordinal sejak keduanya jadi
+          sub-tampilan drawer yang berlingkup satu jadwal. */}
+      {state !== 'cancelled' && (
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-200">
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 h-7 text-[11px] bg-white"
+            onClick={() => actions.onEditSchedule(entry)}
+          >
+            <CalendarClock className="w-3 h-3 mr-1.5" />
+            {isUnscheduled(entry) ? 'Pilih jadwal' : 'Jadwalkan ulang'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 h-7 text-[11px] bg-white"
+            onClick={() => actions.onCreateInvoice(entry)}
+          >
+            <CreditCard className="w-3 h-3 mr-1.5" /> Buat tagihan
+          </Button>
+          {/* ⚠️ Syarat pembatalan SENGAJA sama persis dengan tombol lama di
+              ExtendSection: hanya jadwal perpanjangan, hanya selama belum ada
+              tagihan yang menempel. Melonggarkannya berarti menyelundupkan
+              kemampuan baru ke dalam pemindahan permukaan — itu Task 13. */}
+          {actions.onCancel && entry.isExtension && !payment && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 w-7 p-0 shrink-0 bg-white text-slate-400 hover:text-red-600 hover:border-red-200"
+              title="Batalkan jadwal ini"
+              onClick={() => actions.onCancel!(entry)}
+            >
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -326,13 +359,23 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, payments, submission, onOpenSchedule, onOpenPayment, onMarkPaid,
+  entries, payments, submission, onEditSchedule, onCreateInvoice, onMarkPaid, onCancel,
 }: {
   entries: AdScheduleEntry[];
   payments: Map<string, SchedulePayment>;
   submission: { questionCount?: number | null; distribution_type?: string | null };
-  onOpenSchedule: () => void;
-  onOpenPayment: () => void;
+  onEditSchedule: (entry: AdScheduleEntry) => void;
+  onCreateInvoice: (entry: AdScheduleEntry) => void;
+  /**
+   * null = jadwal ini tidak boleh dibatalkan dari sini.
+   *
+   * ⚠️ Syaratnya SENGAJA sama persis dengan tombol lama di ExtendSection:
+   * hanya jadwal perpanjangan, hanya selama belum ada tagihan. Ini bukan
+   * kemampuan baru — cuma pindah rumah. Versi benarnya (melewatkan transaksi
+   * pending jadi `expired`, melepas `slot_booked_by`, berlaku semua ordinal)
+   * adalah Task 13 Langkah 3.
+   */
+  onCancel: ((entry: AdScheduleEntry) => void) | null;
   /**
    * null = tombolnya tidak boleh dirender di dalam kartu.
    *
@@ -389,7 +432,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onOpenSchedule, onOpenPayment, onMarkPaid }}
+          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onCancel }}
         />
       ))}
     </div>

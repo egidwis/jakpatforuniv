@@ -15,7 +15,11 @@
 > Ini rilis yang menyentuh **jalur uang** (webhook DOKU, cron tiap 15 menit). Ia sengaja
 > tidak digabung dengan revamp visual di `feat/dashboard-soft-dna-navbar`.
 
-Baseline gate: **74** error (`./node_modules/.bin/tsc -p tsconfig.app.json --noEmit`).
+Baseline gate: **75** error — `npm run typecheck` (= `tsc -b`) dari `multi-step-form/`.
+⚠️ Angka **74** yang tercatat di sini sampai 2026-08-09 meleset satu, dan perintahnya
+(`tsc -p tsconfig.app.json --noEmit`) bukan gerbang yang dipakai proyek ini. `npx tsc
+--noEmit` polos melaporkan **0** karena `tsconfig.json` hanya referensi proyek — memakainya
+berarti tidak menguji apa pun. Diukur ulang dengan `git stash -u` lalu bandingkan.
 Branch: **baru**, dari `main` sesudah Phase 3 mendarat — bukan `feat/dashboard-soft-dna-navbar`.
 
 ## Context
@@ -157,7 +161,7 @@ sudah dipatuhi.
 - [ ] Setiap transaksi/invoice yang punya `extend_id` dapat `schedule_id`; nol yatim
 - [ ] `schedule_id` NULL hanya pada baris yang jadwalnya memang tidak ada di cermin —
       hitung dan catat angkanya, jangan diasumsikan nol
-- [ ] Gate tetap 74; nol perubahan frontend di langkah ini
+- [ ] Gate tetap 75 (`npm run typecheck`); nol perubahan frontend di langkah ini
 
 ---
 

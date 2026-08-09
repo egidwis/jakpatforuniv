@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
+  ArrowLeft,
   ArrowRight,
   Ban,
   CalendarCheck,
+  CalendarClock,
   Check,
+  CreditCard,
   FileText,
   Globe,
   Info,
+  Loader2,
   Mail,
   MessageCircle,
   RotateCcw,
@@ -26,10 +30,13 @@ import { InfoTab } from './tabs/InfoTab';
 import { ReviewTab } from './tabs/ReviewTab';
 import { SchedulePaymentTab } from './tabs/SchedulePaymentTab';
 import { PageTab } from './tabs/PageTab';
+import { ScheduleForm } from '@/components/schedule/ScheduleForm';
+import { InvoiceForm } from '@/components/schedule/InvoiceForm';
+import type { AdScheduleEntry } from '@/utils/supabase';
 
-// Reservasi + Payment digabung jadi satu tab di Phase 3: aksi utama keduanya
-// membuka SchedulePaymentView yang sama, dan rute review manual memperlakukan
-// keduanya sebagai satu percakapan dengan peneliti.
+// Reservasi + Payment digabung jadi satu tab di Phase 3, dan sejak aksinya jadi
+// sub-tampilan drawer keduanya benar-benar satu tempat kerja: rute review manual
+// adalah SATU percakapan dengan peneliti, dari feedback sampai tagihan.
 type DetailTab = 'info' | 'review' | 'schedule-payment' | 'page';
 
 const TABS: { id: DetailTab; label: string; icon: typeof FileText }[] = [
@@ -38,6 +45,18 @@ const TABS: { id: DetailTab; label: string; icon: typeof FileText }[] = [
   { id: 'schedule-payment', label: 'Jadwal & Bayar', icon: CalendarCheck },
   { id: 'page', label: 'Page', icon: Globe },
 ];
+
+/**
+ * Sub-tampilan menguasai seluruh drawer: bar tab diganti bar kembali, badan
+ * diganti formulir, footer diganti aksi utamanya. Judul survei di kepala drawer
+ * tetap terlihat, jadi konteksnya tidak pernah hilang — itu bedanya dengan
+ * halaman penuh yang dulu menelan seluruh layar.
+ */
+type SubView =
+  | { kind: 'edit'; entry: AdScheduleEntry }
+  | { kind: 'invoice'; entry: AdScheduleEntry }
+  | { kind: 'create'; isExtraAd: boolean }
+  | null;
 
 interface SubmissionDetailSheetProps {
   submission: SurveySubmission | null;
@@ -50,8 +69,14 @@ interface SubmissionDetailSheetProps {
   onEditFormDetails: (submission: SurveySubmission) => void;
   onEditCriteria: (submission: SurveySubmission) => void;
   onOpenPageBuilder: (submission: SurveySubmission) => void;
-  onOpenSchedule: (submission: SurveySubmission) => void;
-  onOpenPayment: (submission: SurveySubmission) => void;
+  /**
+   * Sub-tampilan yang harus terbuka begitu drawer muncul — dipakai pemanggil
+   * luar (baris tabel, kartu mobile) yang dulu melempar ke halaman penuh.
+   * Ia hanya niat; jadwal mana yang disunting baru bisa dipilih setelah daftar
+   * jadwal termuat, jadi resolusinya terjadi di dalam.
+   */
+  initialSubView?: 'schedule' | 'payment' | null;
+  onInitialSubViewConsumed?: () => void;
   /** Pindahkan order antara jalur iklan regular dan JFU Kilat. */
   onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
   onExtendCreated: () => void;
@@ -61,8 +86,10 @@ interface SubmissionDetailSheetProps {
 
 /**
  * Right-side drawer with all submission detail & actions, organised in 4 tabs.
- * Tabs are entry points: heavy actions still launch the existing flows
- * (SchedulePaymentView fullscreen, PageBuilderModal, edit modals).
+ *
+ * Menjadwalkan dan menagih terjadi DI DALAM drawer ini sebagai sub-tampilan —
+ * keduanya dulu melempar admin ke halaman penuh. Yang masih mengambil alih layar
+ * tinggal PageBuilderModal (editor dokumen, bukan formulir) dan modal edit.
  */
 export function SubmissionDetailSheet({
   submission,
@@ -75,8 +102,8 @@ export function SubmissionDetailSheet({
   onEditFormDetails,
   onEditCriteria,
   onOpenPageBuilder,
-  onOpenSchedule,
-  onOpenPayment,
+  initialSubView = null,
+  onInitialSubViewConsumed,
   onConvertDistribution,
   onExtendCreated,
   variant = 'sheet',
@@ -85,6 +112,9 @@ export function SubmissionDetailSheet({
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [reviewNote, setReviewNote] = useState('');
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+  const [subView, setSubView] = useState<SubView>(null);
+  const [scheduleReloadKey, setScheduleReloadKey] = useState(0);
+  const [footerEl, setFooterEl] = useState<HTMLDivElement | null>(null);
 
   // Reset to the Info tab whenever a different submission is opened
   const submissionId = submission?.id;
@@ -92,7 +122,21 @@ export function SubmissionDetailSheet({
     setActiveTab('info');
     setReviewNote('');
     setIsHistoryExpanded(false);
+    setSubView(null);
   }, [submissionId]);
+
+  // Niat dari luar (baris tabel, kartu mobile) mendarat di tab yang benar; jadwal
+  // mana yang disunting diresolusi SchedulePaymentTab setelah daftarnya termuat.
+  useEffect(() => {
+    if (initialSubView) setActiveTab('schedule-payment');
+  }, [initialSubView]);
+
+  const closeSubView = () => setSubView(null);
+  const finishSubView = () => {
+    setSubView(null);
+    setScheduleReloadKey((k) => k + 1);
+    onExtendCreated();
+  };
 
   if (!submission) return null;
 
@@ -185,12 +229,16 @@ export function SubmissionDetailSheet({
           existingPage={existingPage}
           isScheduled={isScheduled}
           lifecycle={lifecycle}
-          onOpenSchedule={onOpenSchedule}
-          onOpenPayment={onOpenPayment}
+          onEditSchedule={(entry) => setSubView({ kind: 'edit', entry })}
+          onCreateInvoice={(entry) => setSubView({ kind: 'invoice', entry })}
+          onCreateSchedule={(isExtraAd) => setSubView({ kind: 'create', isExtraAd })}
           onPaymentStatusChange={onPaymentStatusChange}
           onEditFormDetails={onEditFormDetails}
           onConvertDistribution={onConvertDistribution}
           onExtendCreated={onExtendCreated}
+          reloadKey={scheduleReloadKey}
+          initialSubView={initialSubView}
+          onInitialSubViewConsumed={onInitialSubViewConsumed}
         />
       )}
       {activeTab === 'page' && (
@@ -203,6 +251,94 @@ export function SubmissionDetailSheet({
       )}
     </>
   );
+
+  // ── Sub-tampilan ────────────────────────────────────────────────
+  // Tombol utamanya dipaku di footer drawer, bukan hanyut di ujung badan yang
+  // panjang — penting di ponsel. Formulir mem-portal aksinya ke elemen footer
+  // ini; `useState` untuk node-nya (bukan `useRef`) supaya render pertama yang
+  // melahirkan elemen langsung disusul render yang mengisinya.
+  let subViewNav: React.ReactNode = null;
+  let subViewBody: React.ReactNode = null;
+
+  if (subView) {
+    const heading =
+      subView.kind === 'create' ? 'Jadwal iklan baru'
+        : subView.kind === 'edit'
+          ? `Atur jadwal${subView.entry.ordinal > 1 ? ` #${subView.entry.ordinal}` : ''}`
+          : `Buat tagihan · jadwal #${subView.entry.ordinal}`;
+
+    subViewNav = (
+      <div className="flex items-center gap-2 py-2">
+        <button
+          type="button"
+          onClick={closeSubView}
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Kembali
+        </button>
+        <span className="min-w-0 truncate text-xs font-semibold text-gray-900">
+          {heading}
+        </span>
+      </div>
+    );
+
+    subViewBody = subView.kind === 'invoice' ? (
+      <InvoiceForm
+        entry={subView.entry}
+        submission={submission}
+        onCancel={closeSubView}
+        onDone={finishSubView}
+        actionsSlot={footerEl}
+        renderActions={({ canSave, isSaving, save, cancel }) => (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="flex-1 h-9" onClick={cancel} disabled={isSaving}>
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              className="flex-[2] h-9 bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={save}
+              disabled={isSaving || !canSave}
+            >
+              {isSaving
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Membuat…</>
+                : <><CreditCard className="w-3.5 h-3.5 mr-1.5" />Buat link pembayaran</>}
+            </Button>
+          </div>
+        )}
+      />
+    ) : (
+      <ScheduleForm
+        mode={subView.kind === 'create' ? 'create' : 'edit'}
+        submissionId={submission.id}
+        entry={subView.kind === 'edit' ? subView.entry : undefined}
+        isExtraAd={subView.kind === 'create' ? subView.isExtraAd : undefined}
+        currentPrizePerWinner={submission.prize_per_winner || 0}
+        currentWinnerCount={submission.winnerCount || 0}
+        columns={4}
+        onCancel={closeSubView}
+        onDone={finishSubView}
+        actionsSlot={footerEl}
+        renderActions={({ canSave, isSaving, save, cancel, label }) => (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="flex-1 h-9" onClick={cancel} disabled={isSaving}>
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              className="flex-[2] h-9 bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={save}
+              disabled={isSaving || !canSave}
+            >
+              {isSaving
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Menyimpan…</>
+                : <><CalendarClock className="w-3.5 h-3.5 mr-1.5" />{label}</>}
+            </Button>
+          </div>
+        )}
+      />
+    );
+  }
 
   const { displayStatus } = lifecycle;
   const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
@@ -306,17 +442,26 @@ export function SubmissionDetailSheet({
     <span className="truncate">{submission.formTitle}</span>
   );
 
+  // Sub-tampilan menguasai bar tab, badan, dan footer sekaligus. Footer-nya
+  // dirender sebagai wadah kosong yang di-portal-i formulir — itulah kenapa ia
+  // tetap dirender meski wadahnya belum berisi apa pun.
+  const shellNav = subView ? subViewNav : tabBar;
+  const shellBody = subView ? subViewBody : body;
+  const shellFooter = subView
+    ? <div ref={setFooterEl} />
+    : footer;
+
   if (variant === 'pane') {
     return (
       <DetailPane
         title={title}
         subtitle={subtitle}
         chips={chips}
-        nav={tabBar}
-        footer={footer}
+        nav={shellNav}
+        footer={shellFooter}
         onClose={() => onOpenChange(false)}
       >
-        {body}
+        {shellBody}
       </DetailPane>
     );
   }
@@ -328,10 +473,10 @@ export function SubmissionDetailSheet({
       title={title}
       subtitle={subtitle}
       chips={chips}
-      nav={tabBar}
-      footer={footer}
+      nav={shellNav}
+      footer={shellFooter}
     >
-      {body}
+      {shellBody}
     </DetailSheet>
   );
 }

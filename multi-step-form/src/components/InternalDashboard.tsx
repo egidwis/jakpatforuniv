@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Checkbox } from './ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { cn, useMediaQuery } from '@/lib/utils';
-import { SchedulePaymentView } from './SchedulePaymentView';
 import { EditCriteriaModal } from './EditCriteriaModal';
 import { EditFormDetailsModal } from './EditFormDetailsModal';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -67,8 +66,11 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
   const [passwordInput, setPasswordInput] = useState('');
 
   // Schedule & Payment View State
-  const [activeScheduleSubmission, setActiveScheduleSubmission] = useState<SurveySubmission | null>(null);
-  const [scheduleInitialStep, setScheduleInitialStep] = useState<'schedule' | 'payment'>('schedule');
+  // Niat "buka jadwal / buka tagihan" dari baris tabel & kartu mobile. Dulu ini
+  // menukar SELURUH halaman dengan SchedulePaymentView; sekarang ia cuma membuka
+  // drawer pada sub-tampilan yang tepat, jadi daftar order di belakangnya tidak
+  // ikut hilang.
+  const [pendingSubView, setPendingSubView] = useState<'schedule' | 'payment' | null>(null);
 
   const [paymentStates, setPaymentStates] = useState<Record<string, PaymentState>>({});
 
@@ -591,7 +593,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     }
   };
 
-  // Modals replaced by SchedulePaymentView
 
   const handleOpenEditCriteriaModal = (submission: SurveySubmission) => {
     setSelectedSubmissionForCriteria(submission);
@@ -743,23 +744,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     );
   }
 
-  // Fullscreen Schedule & Payment View
-  if (activeScheduleSubmission) {
-    return (
-      <div className={hideAuth ? 'h-full flex flex-col' : 'min-h-screen flex flex-col bg-background'}>
-        <SchedulePaymentView
-          submission={activeScheduleSubmission}
-          existingPageSlug={existingPages[activeScheduleSubmission.id]?.slug}
-          initialStep={scheduleInitialStep}
-          onBack={() => {
-            setActiveScheduleSubmission(null);
-            loadSubmissions(); // Refresh data
-          }}
-        />
-      </div>
-    );
-  }
-
   // Selection helpers for the current page of rows (desktop-scoped: Regular/Kilat tab split)
   const pageIds = desktopSubmissions.map((s) => s.id);
   const pageAllSelected = rowSelection.allSelected(pageIds);
@@ -779,8 +763,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     onEditFormDetails: handleOpenEditFormDetailsModal,
     onEditCriteria: handleOpenEditCriteriaModal,
     onOpenPageBuilder: handleOpenPageBuilder,
-    onOpenSchedule: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('schedule'); },
-    onOpenPayment: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('payment'); },
+    initialSubView: pendingSubView,
+    onInitialSubViewConsumed: () => setPendingSubView(null),
     onConvertDistribution: handleConvertDistribution,
     onExtendCreated: loadSubmissions,
   };
@@ -1292,12 +1276,12 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                   onEditCriteria={handleOpenEditCriteriaModal}
                   onOpenPageBuilder={handleOpenPageBuilder}
                   onOpenSchedule={(sub) => {
-                    setActiveScheduleSubmission(sub);
-                    setScheduleInitialStep('schedule');
+                    setOpenSubmissionId(sub.id);
+                    setPendingSubView('schedule');
                   }}
                   onOpenPayment={(sub) => {
-                    setActiveScheduleSubmission(sub);
-                    setScheduleInitialStep('payment');
+                    setOpenSubmissionId(sub.id);
+                    setPendingSubView('payment');
                   }}
                   onExtendCreated={loadSubmissions}
                 />
@@ -1307,7 +1291,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
         </div>
       </div >
 
-      {/* Modals removed and replaced by SchedulePaymentView */}
 
       <EditCriteriaModal
         isOpen={isEditCriteriaModalOpen}

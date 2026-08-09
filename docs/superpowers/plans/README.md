@@ -3,7 +3,7 @@
 Folder ini berisi rencana implementasi yang ditulis sebelum eksekusi. Sebagian sudah
 selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sekali.
 
-**Diperbarui 2026-08-08.**
+**Diperbarui 2026-08-09.**
 
 > Rencana **bukan** status berjalan. Untuk "di mana posisi kita sekarang", baca
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — itu titik masuk resmi
@@ -13,6 +13,7 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 
 | Rencana | Status | Ringkas |
 |---|---|---|
+| [2026-08-09-task-13-tagihan-fleksibel-per-jadwal](2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) | ⬜ **disetujui; terkunci di belakang Task 11** | Satu jadwal boleh punya **beberapa invoice** — tagihan susulan jadi piutang yang terlihat dan tidak pernah menghentikan iklan yang sedang tayang. Plus **batal reservasi per jadwal** (status `cancelled` sudah ada di DB, tinggal dipakai) dan **Extra Ad jadi sifat jadwal**, bukan sifat order. **Jalur uang — rilis sendiri.** Butuh `schedule_id` dari Task 11 langkah 1b |
 | [2026-08-08-task-11-ad-schedules-otoritatif](2026-08-08-task-11-ad-schedules-otoritatif.md) | ⬜ **disetujui; kini terkunci HANYA oleh merge + deploy** | `ad_schedules` jadi otoritatif; `form_submissions_extend` jadi view lalu pensiun. Menambah `booking_id` (kode jadwal yang dikutip peneliti) dan `schedule_id` di invoices/transactions. **Jalur uang — rilis sendiri.** Menyusut 2026-08-08: langkah 3 kehilangan dua pemanggil, langkah 5 tinggal identifier |
 | [2026-08-05-phase-3-jadwal-iklan-terpadu](2026-08-05-phase-3-jadwal-iklan-terpadu.md) | ✅ **selesai di branch — sisa: adu visual + deploy** | Judulnya sudah basi (baca kotak koreksi di kepalanya). Task 9A+9B ✅, papan Schedule bertab ✅, drawer digabung ✅, Page Calendar pensiun ✅ |
 | [2026-08-03-jadwal-iklan-redesign](2026-08-03-jadwal-iklan-redesign.md) | 🟡 **tinggal Task 10 & 11** | Rencana Phase 2 lengkap. Task 8/8B-1/8C/8D live; 9 ✅ dan 12 🟡 selesai di branch, belum tayang |
@@ -22,19 +23,28 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 | [2026-07-04-finance-page-revamp](2026-07-04-finance-page-revamp.md) | ✅ selesai 2026-07-06 | Halaman Transactions jadi "Keuangan" |
 | [2026-07-03-submissions-visual-refresh](2026-07-03-submissions-visual-refresh.md) | ✅ selesai 2026-07-06 | Refresh visual halaman Submissions admin |
 
-## Urutan rilis yang berlaku (diputuskan 2026-08-08)
+## Urutan rilis yang berlaku (diputuskan 2026-08-08, diperluas 2026-08-09)
 
-**Deploy sekarang → Task 11 → Phase 4.** Bukan satu deploy besar sesudah Phase 4.
+**Deploy → Task 11 → Task 13 → Phase 4.** Bukan satu deploy besar sesudah Phase 4.
 
 ```
 [1] merge feat/dashboard-soft-dna-navbar → main → DEPLOY
       isinya: revamp visual + Phase 2 Task 9 & 12(copy) + Phase 3 penuh
       gerbang: adu visual di browser · cron_activate_extends() diawasi
+      ⛔ DITAHAN 2026-08-09 — pemilik produk masih memeriksa beberapa hal
+         sebelum merge. Jangan merge tanpa aba-aba eksplisit.
 [2] Task 11        branch baru dari main · JALUR UANG, rilis sendiri
-[3] Phase 4        setelah keputusan pool hadiah turun
+[3] Task 13        tagihan fleksibel per jadwal · JALUR UANG, rilis sendiri
+[4] Phase 4        setelah keputusan pool hadiah turun
 ```
 
-Tiga alasan, dan yang ketiga yang menentukan:
+**Kenapa Task 13 duduk di [3] dan bukan sesudah Phase 4.** Ia memakai `schedule_id` yang
+Task 11 lahirkan, jadi ia tidak bisa lebih awal. Dan ia menyentuh jalur uang yang sama —
+dua rilis uang berturut-turut lebih mudah ditelusuri daripada satu rilis uang yang
+diselingi fitur user-facing. Task 13 juga menyelesaikan sisa Task 10 yang sengaja
+ditinggalkan sebagai peringatan sementara di Phase 3 ("Tandai Lunas" order-level).
+
+Tiga alasan urutan dasarnya, dan yang ketiga yang menentukan:
 
 1. **Phase 4 tidak diblokir kode, melainkan keputusan produk yang belum ada** — di mana
    pool hadiah tinggal untuk **83 order** yang sudah mendanai hadiah tanpa punya tanggal
