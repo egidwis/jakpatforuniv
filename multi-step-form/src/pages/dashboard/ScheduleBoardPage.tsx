@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   AlertTriangle, CalendarClock, CalendarDays, CalendarRange, ChevronDown, Clock,
-  ListFilter, Loader2, RefreshCw, Search, X, Zap,
+  Image as ImageIcon, ListFilter, Loader2, RefreshCw, Search, X, Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,15 +14,17 @@ import {
 import { cn } from '@/lib/utils';
 import { AlertPill } from '@/components/ui/alert-pill';
 import { KilatScheduleBoard } from '@/components/KilatScheduleBoard';
-import { fetchAdSchedules, type AdScheduleEntry } from '@/utils/supabase';
+import { fetchAdSchedules, supabase, type AdScheduleEntry } from '@/utils/supabase';
 import { toWibYmd } from '@/utils/airing-window';
 import { ScheduleAgenda, dayGroupDomId } from './schedule/ScheduleAgenda';
 import { AdsWeekBoard } from './schedule/AdsWeekBoard';
+import { ScheduleEntryDrawer } from './schedule/ScheduleEntryDrawer';
 import {
-  CANCELLED_CHIPS, CHIP_ORDER, chipKindOf, computeAlerts, groupByDay,
-  isUnscheduled, matchesFilter, overlapsWindow, tokenForChip,
+  CANCELLED_CHIPS, CHIP_ORDER, chipKindOf, computeAlerts, groupByDay, holdStateOf,
+  isUnscheduled, matchesFilter, tokenForChip,
   type ChipKind, type FilterState,
 } from './schedule/scheduleModel';
+import { PageBuilderModal } from '@/components/PageBuilder/PageBuilderModal';
 
 // ─────────────────────────────────────────────────────────────
 // Papan Schedule — PAPAN PANTAU, BUKAN TEMPAT KERJA.
@@ -81,8 +83,16 @@ export function ScheduleBoardPage({
   const [chips, setChips] = useState<Set<ChipKind>>(() => new Set());
   const [showCancelled, setShowCancelled] = useState(false);
   const [showUnscheduled, setShowUnscheduled] = useState(false);
+  const [showLapsed, setShowLapsed] = useState(false);
+  const [showPlaceholderBanner, setShowPlaceholderBanner] = useState(false);
   const [query, setQuery] = useState('');
   const [now, setNow] = useState(() => Date.now());
+
+  const [openEntryId, setOpenEntryId] = useState<string | null>(null);
+  const [builderFor, setBuilderFor] = useState<{ entry: AdScheduleEntry; pageId: string | null } | null>(null);
+  const [builderData, setBuilderData] = useState<any>(null);
+  /** Lompat-otomatis ke hari ini SEKALI saja — lihat efeknya di bawah. */
+  const didAutoJump = useRef(false);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
@@ -123,8 +133,8 @@ export function ScheduleBoardPage({
   }, [entries]);
 
   const filter: FilterState = useMemo(
-    () => ({ service, chips, showCancelled, showUnscheduled, query }),
-    [service, chips, showCancelled, showUnscheduled, query]
+    () => ({ service, chips, showCancelled, showUnscheduled, showLapsed, showPlaceholderBanner, query }),
+    [service, chips, showCancelled, showUnscheduled, showLapsed, showPlaceholderBanner, query]
   );
 
   const filtered = useMemo(
@@ -156,12 +166,20 @@ export function ScheduleBoardPage({
 
   const alerts = useMemo(() => computeAlerts(entries, now), [entries, now]);
 
-  /** `null` = "Semua Bulan": tidak ada jendela, jadi tidak ada yang disaring keluar. */
+  /**
+   * `null` = "Semua Bulan": tidak ada jendela, jadi tidak ada hari yang dipotong.
+   *
+   * Sekarang berbentuk YMD, bukan Date: yang dipotong adalah HARI HASIL PEMEKARAN
+   * (lihat `groupByDay`), bukan lagi entri utuh lewat `overlapsWindow`. Itu yang
+   * membuat tampilan "Agustus" berhenti memunculkan pita hari Juli.
+   */
   const monthWindow = useMemo(() => {
     if (month === ALL_MONTHS) return null;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const lastDay = new Date(year, month + 1, 0).getDate();
     return {
-      from: new Date(year, month, 1),
-      to: new Date(year, month + 1, 0, 23, 59, 59, 999),
+      fromYmd: `${year}-${pad(month + 1)}-01`,
+      toYmd: `${year}-${pad(month + 1)}-${pad(lastDay)}`,
     };
   }, [month, year]);
 
@@ -170,17 +188,38 @@ export function ScheduleBoardPage({
     [filtered]
   );
 
-  const dayGroups = useMemo(
-    () => groupByDay(
-      filtered.filter((e) =>
-        !isUnscheduled(e) && (!monthWindow || overlapsWindow(e, monthWindow.from, monthWindow.to))
-      ),
-      todayYmd
-    ),
-    [filtered, monthWindow, todayYmd]
+  /**
+   * Jadwal yang tahanan slotnya gugur — di luar daftar hari, karena slotnya sudah
+   * TIDAK ditahan lagi dan menghitungnya di sana membuat hari terlihat lebih penuh
+   * daripada yang bisa dijual. Tidak dipotong periode: pekerjaan yang tertinggal
+   * di bulan lalu tidak boleh hilang karena admin menggeser bulan.
+   */
+  const lapsedEntries = useMemo(
+    () => (showLapsed
+      ? filtered.filter((e) => !isUnscheduled(e) && holdStateOf(e, now) === 'lapsed')
+      : []),
+    [filtered, showLapsed, now]
   );
 
-  const shownCount = unscheduledEntries.length + dayGroups.reduce((n, g) => n + g.entries.length, 0);
+  const dayGroups = useMemo(
+    () => groupByDay(
+      filtered.filter((e) => !isUnscheduled(e) && holdStateOf(e, now) === 'held'),
+      todayYmd,
+      monthWindow
+    ),
+    [filtered, monthWindow, todayYmd, now]
+  );
+
+  /** Jadwal unik vs hari tayang: dua angka berbeda sejak daftar memekar per hari. */
+  const shownScheduleCount = useMemo(() => {
+    const ids = new Set<string>();
+    unscheduledEntries.forEach((e) => ids.add(e.id));
+    lapsedEntries.forEach((e) => ids.add(e.id));
+    dayGroups.forEach((g) => g.entries.forEach((d) => ids.add(d.entry.id)));
+    return ids.size;
+  }, [unscheduledEntries, lapsedEntries, dayGroups]);
+
+  const airingDayCount = dayGroups.reduce((n, g) => n + g.entries.length, 0);
 
   const toggleChip = (kind: ChipKind) => {
     setChips((prev) => {
@@ -196,10 +235,13 @@ export function ScheduleBoardPage({
     setService('all');
     setShowCancelled(false);
     setShowUnscheduled(false);
+    setShowLapsed(false);
+    setShowPlaceholderBanner(false);
   };
 
   const activeFilterCount =
-    chips.size + (service !== 'all' ? 1 : 0) + (showCancelled ? 1 : 0) + (showUnscheduled ? 1 : 0);
+    chips.size + (service !== 'all' ? 1 : 0) + (showCancelled ? 1 : 0) +
+    (showUnscheduled ? 1 : 0) + (showLapsed ? 1 : 0) + (showPlaceholderBanner ? 1 : 0);
 
   const periodLabel = month === ALL_MONTHS ? 'Semua bulan' : `${MONTHS[month]} ${year}`;
 
@@ -208,23 +250,82 @@ export function ScheduleBoardPage({
    * berarti sembilan belas hari lewat yang harus digulung dulu — tombol ini yang
    * menggantikan tombol "Hari ini" milik navigasi mingguan yang sudah dibuang.
    */
+  /**
+   * Gulung ke pita hari ini. Kalau hari ini tidak punya jadwal, jangkarnya tidak
+   * ada — jatuh ke hari TERJADWAL TERDEKAT BERIKUTNYA alih-alih diam di puncak
+   * daftar. Kalau tidak ada juga, tidak melakukan apa-apa: menggulung ke tempat
+   * acak lebih membingungkan daripada tidak menggulung.
+   */
+  const scrollToTodayAnchor = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const ymd = toWibYmd(new Date());
+    const target =
+      document.getElementById(dayGroupDomId(ymd)) ??
+      (() => {
+        const next = dayGroups.find((g) => g.ymd >= ymd);
+        return next ? document.getElementById(dayGroupDomId(next.ymd)) : null;
+      })();
+    target?.scrollIntoView({ block: 'start', behavior });
+  }, [dayGroups]);
+
   const jumpToToday = () => {
     const t = new Date();
     setMonth(t.getMonth());
     setYear(t.getFullYear());
     // Menunggu satu frame supaya baris bulan yang baru sudah terpasang.
-    requestAnimationFrame(() => {
-      document.getElementById(dayGroupDomId(toWibYmd(t)))
-        ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    });
+    requestAnimationFrame(() => scrollToTodayAnchor());
   };
 
-  const openEntry = (e: AdScheduleEntry) =>
+  /**
+   * Lompat otomatis SEKALI saat papan pertama terisi.
+   *
+   * Tiga pagar, dan ketiganya perlu:
+   *   1. `didAutoJump` — bukan tiap `load(true)`. Menggulung balik layar admin
+   *      setiap kali tombol muat ulang ditekan adalah gangguan, bukan bantuan.
+   *   2. hanya kalau periode yang dilihat memang bulan berjalan — admin yang
+   *      memilih Desember tidak boleh dilempar kembali ke Agustus.
+   *   3. sesudah muat selesai DAN ada pita hari — jangkarnya baru ada setelah
+   *      `dayGroups` dirender.
+   */
+  useEffect(() => {
+    if (didAutoJump.current || isLoading || dayGroups.length === 0) return;
+    const t = new Date();
+    if (month !== t.getMonth() || year !== t.getFullYear()) return;
+    didAutoJump.current = true;
+    requestAnimationFrame(() => scrollToTodayAnchor('auto'));
+  }, [isLoading, dayGroups, month, year, scrollToTodayAnchor]);
+
+  const openEntry = (e: AdScheduleEntry) => setOpenEntryId(e.id);
+
+  /** Drawer memegang id, bukan snapshot — supaya ia ikut segar tiap papan dimuat ulang. */
+  const openEntryData = useMemo(
+    () => entries.find((e) => e.id === openEntryId) ?? null,
+    [entries, openEntryId]
+  );
+
+  const jumpToSubmission = (e: AdScheduleEntry) => {
+    setOpenEntryId(null);
     onOpenSubmission({
       id: e.submissionId,
       createdAt: e.submissionCreatedAt,
       distributionType: e.distributionType,
     });
+  };
+
+  /**
+   * Page Builder dibuka dengan drawer DITUTUP LEBIH DULU — dua lapis Radix
+   * (Sheet lalu Dialog) berebut jebakan fokus. Pola yang sama sudah dipakai
+   * halaman Pages.
+   */
+  const openPageBuilder = async (e: AdScheduleEntry, page: { id: string } | null) => {
+    setOpenEntryId(null);
+    if (page) {
+      const { data } = await supabase.from('survey_pages').select('*').eq('id', page.id).maybeSingle();
+      setBuilderData(data ?? null);
+    } else {
+      setBuilderData(null);
+    }
+    setBuilderFor({ entry: e, pageId: page?.id ?? null });
+  };
 
   const isAgenda = view === 'agenda';
 
@@ -330,17 +431,32 @@ export function ScheduleBoardPage({
               sudah lunas, dan tidak ada layar lain yang menampilkannya. */}
           {!isLoading && isAgenda && (
             <div className="flex flex-wrap items-center gap-2 text-xs ml-auto">
+              {/* Bisa diklik: inilah SATU-SATUNYA jalan menuju jadwal yang sudah
+                  gugur sejak daftar hari berhenti memuatnya — dan justru itu yang
+                  paling bisa diselamatkan lewat reschedule. */}
               <AlertPill
                 icon={Clock}
                 count={alerts.lateForPayment}
                 label="lewat batas bayar"
                 tone="red"
+                active={showLapsed}
+                onClick={() => setShowLapsed((v) => !v)}
+                title={showLapsed ? 'Sembunyikan jadwal yang gugur' : 'Tampilkan jadwal yang gugur'}
               />
               <AlertPill
                 icon={AlertTriangle}
                 count={alerts.paidWithoutPage}
                 label="lunas tanpa halaman"
                 tone="amber"
+              />
+              <AlertPill
+                icon={ImageIcon}
+                count={alerts.placeholderBanner}
+                label="banner default"
+                tone="amber"
+                active={showPlaceholderBanner}
+                onClick={() => setShowPlaceholderBanner((v) => !v)}
+                title="Halaman sudah terbit tapi masih memakai banner bawaan"
               />
               <AlertPill
                 icon={CalendarClock}
@@ -429,6 +545,24 @@ export function ScheduleBoardPage({
                     <span className="text-xs text-gray-400 tabular-nums">{alerts.unscheduled}</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
+                    checked={showLapsed}
+                    onCheckedChange={(v) => setShowLapsed(!!v)}
+                    onSelect={(e) => e.preventDefault()}
+                    className="text-sm cursor-pointer"
+                  >
+                    <span className="flex-1">Batas bayar terlewat</span>
+                    <span className="text-xs text-gray-400 tabular-nums">{alerts.lateForPayment}</span>
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={showPlaceholderBanner}
+                    onCheckedChange={(v) => setShowPlaceholderBanner(!!v)}
+                    onSelect={(e) => e.preventDefault()}
+                    className="text-sm cursor-pointer"
+                  >
+                    <span className="flex-1">Banner masih bawaan</span>
+                    <span className="text-xs text-gray-400 tabular-nums">{alerts.placeholderBanner}</span>
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
                     checked={showCancelled}
                     onCheckedChange={(v) => setShowCancelled(!!v)}
                     onSelect={(e) => e.preventDefault()}
@@ -488,6 +622,7 @@ export function ScheduleBoardPage({
             <ScheduleAgenda
               groups={dayGroups}
               unscheduledEntries={showUnscheduled ? unscheduledEntries : []}
+              lapsedEntries={lapsedEntries}
               now={now}
               onOpen={openEntry}
             />
@@ -511,7 +646,9 @@ export function ScheduleBoardPage({
             {isLoading ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : isAgenda ? (
-              <>Menampilkan {shownCount} jadwal · {periodLabel}</>
+              <>
+                Menampilkan {shownScheduleCount} jadwal · {airingDayCount} hari tayang · {periodLabel}
+              </>
             ) : view === 'ads' ? (
               'Iklan reguler — tayang 15.00 WIB, 4 reguler + 4 tambahan per hari'
             ) : (
@@ -525,6 +662,34 @@ export function ScheduleBoardPage({
           )}
         </div>
       </div>
+
+      <ScheduleEntryDrawer
+        entry={openEntryData}
+        open={!!openEntryData}
+        onClose={() => setOpenEntryId(null)}
+        onChanged={() => void load(true)}
+        onOpenPageBuilder={openPageBuilder}
+        onOpenSubmission={jumpToSubmission}
+      />
+
+      {builderFor && (
+        <PageBuilderModal
+          isOpen
+          onClose={() => { setBuilderFor(null); setBuilderData(null); }}
+          onSuccess={() => {
+            setBuilderFor(null);
+            setBuilderData(null);
+            void load(true);
+          }}
+          submissionId={builderFor.entry.submissionId}
+          submissionTitle={builderFor.entry.title}
+          initialData={builderData || undefined}
+          // Jendela publish jadwal ke-2 dst. dimiliki `cron_activate_extends`,
+          // jadi Page Builder tidak boleh menyinkronkan tanggal dari sini.
+          preserveSubmissionDates={builderFor.entry.ordinal > 1}
+          isExtraAd={builderFor.entry.isExtraAd}
+        />
+      )}
     </div>
   );
 }

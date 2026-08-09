@@ -144,6 +144,11 @@ export function scheduleFromSubmission(submission: FormSubmission): AdScheduleEn
         submissionCreatedAt: submission.created_at || new Date().toISOString(),
         pageStatus: 'none',
         isExtraAd: false,
+        // Jalur cadangan ini tidak menanyakan `survey_pages` sama sekali, jadi ia
+        // tidak tahu banner apa yang dipakai. `false` = "tidak ada yang perlu
+        // dilaporkan", bukan "sudah diganti" — dan itu jawaban yang benar di sini:
+        // penanda banner cuma dirender di papan admin, yang selalu membaca cermin.
+        pageBannerIsPlaceholder: false,
     };
 }
 

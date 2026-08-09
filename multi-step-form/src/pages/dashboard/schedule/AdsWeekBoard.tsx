@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { MAX_EXTRA_ADS_PER_DAY, MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
 import { toWibYmd } from '@/utils/airing-window';
 import type { AdScheduleEntry } from '@/utils/supabase';
-import { chipKindOf, occupiesSlot, tokenForChip, type ChipKind } from './scheduleModel';
+import { agendaChipOf, airingDaysOf, occupiesSlot, tokenForChip, type ChipKind } from './scheduleModel';
 
 // ─────────────────────────────────────────────────────────────
 // Papan kapasitas IKLAN REGULER — kembaran papan Kilat, untuk jalur yang satunya.
@@ -81,23 +81,20 @@ export function AdsWeekBoard({
     const map = new Map<string, Occupancy[]>();
     for (const e of entries) {
       if (e.distributionType === 'kilat') continue;
+      // ⚠️ Saringan `occupiesSlot` TETAP milik papan ini dan tidak ikut pindah ke
+      // `airingDaysOf`. Papan kapasitas menjawab "siapa yang menahan kuota";
+      // Agenda menjawab "apa yang tayang". Dua pertanyaan berbeda di atas
+      // pemekaran hari yang sama.
       if (!occupiesSlot(e, now)) continue;
 
-      const startYmd = toWibYmd(new Date(e.startDate!));
-      const endYmd = toWibYmd(new Date(e.endDate!));
       const pool = e.isExtraAd ? 'extra' : 'regular';
-
-      const cursor = new Date(e.startDate!);
-      for (let guard = 0; guard < 400; guard += 1) {
-        const ymd = toWibYmd(cursor);
-        if (ymd >= endYmd) break;
+      airingDaysOf(e).forEach((ymd, i) => {
         const key = `${ymd}|${pool}`;
+        const item: Occupancy = { entry: e, isStart: i === 0 };
         const list = map.get(key);
-        const item: Occupancy = { entry: e, isStart: ymd === startYmd };
         if (list) list.push(item);
         else map.set(key, [item]);
-        cursor.setDate(cursor.getDate() + 1);
-      }
+      });
     }
     return map;
   }, [entries, now]);
@@ -216,7 +213,11 @@ export function AdsWeekBoard({
 
                     <div className="flex flex-col gap-1 min-w-0">
                       {list.map(({ entry, isStart }) => {
-                        const kind = chipKindOf(entry, now);
+                        // Titik status ikut sumbu waktu, sama dengan Agenda —
+                        // dua papan bertanggal tidak boleh memberi warna berbeda
+                        // untuk order yang sama. Kuota di atasnya tetap dihitung
+                        // `occupiesSlot()`/`chipKindOf`, dan itu memang beda soal.
+                        const kind = agendaChipOf(entry, now);
                         return (
                           <button
                             key={`${entry.id}-${ymd}`}

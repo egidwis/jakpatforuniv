@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { ReviewHistoryEntry } from '../components/submissions/types';
-import { toAiringStartIso, toWibYmd } from './airing-window';
+import { toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
+import { isPlaceholderBannerUrl } from './page-banner';
 import {
   calculateAdCostPerDay,
   calculateTotalAdCost,
@@ -1158,6 +1159,42 @@ export const updateScheduleDates = async (
   }
 };
 
+/**
+ * Pindahkan jendela tayang sebuah jadwal KE-2 DST. (`form_submissions_extend`).
+ *
+ * Kembaran `updateScheduleDates` untuk tabel yang satunya, dan sengaja dipisah
+ * alih-alih diberi cabang: keduanya berbeda di dua hal yang tidak boleh
+ * tertukar.
+ *
+ *   1. TIPE KOLOMNYA BEDA. `form_submissions.start_date` adalah `DATE`;
+ *      `form_submissions_extend.start_date` adalah `TIMESTAMPTZ`. Karena itu di
+ *      sini kita menulis instant penuh 15.00 WIB lewat `toAiringStartIso` /
+ *      `toAiringEndIso`, bukan tanggal telanjang.
+ *   2. TIDAK MENYENTUH `survey_pages`. Jendela publish sebuah perpanjangan
+ *      dikelola `cron_activate_extends`; menulisnya dari sini akan menurunkan
+ *      iklan yang sedang tayang, atau menaikkan yang belum waktunya.
+ *
+ * `trg_extend_no_overlap` (sql/38) tetap penjaga terakhirnya — jadwal yang
+ * bertabrakan ditolak di database, bukan hanya di kalender klien.
+ */
+export const updateExtendScheduleDates = async (
+  extendId: string,
+  startYmd: string,
+  durationDays: number
+) => {
+  const { error } = await supabase
+    .from('form_submissions_extend')
+    .update({
+      start_date: toAiringStartIso(startYmd),
+      end_date: toAiringEndIso(startYmd, durationDays),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', extendId);
+
+  if (error) throw error;
+  return true;
+};
+
 
 /**
  * Get scheduled page for a specific submission.
@@ -1907,6 +1944,21 @@ export interface AdScheduleEntry {
    * tambahan terbaca "6/4" — panik yang tidak berdasar.
    */
   isExtraAd: boolean;
+  /**
+   * Halamannya masih memakai banner bawaan.
+   *
+   * Auto-publish (sql/40) menaikkan SETIAP iklan lunas dengan
+   * `/default-ad-banner.jpg`, jadi ini sisa pekerjaan manusia nomor satu — dan
+   * sampai sekarang tidak ada satu layar pun yang menampilkannya bersebelahan
+   * dengan tanggal tayang. Ikut dari query halaman yang memang sudah jalan,
+   * jadi gratis seperti `isExtraAd`.
+   *
+   * ⚠️ BUKAN `requires_banner_update`. Flag itu berarti "info hadiah basi", dan
+   * sql/40 sengaja menyetelnya FALSE untuk halaman baru — dua keadaan berbeda.
+   * `false` untuk Kilat dan untuk order yang belum punya halaman: keduanya bukan
+   * "banner belum diganti", melainkan "belum ada banner untuk diganti".
+   */
+  pageBannerIsPlaceholder: boolean;
 }
 
 /**
@@ -2021,15 +2073,26 @@ export const fetchAdSchedules = async (
 
   // ⚠️ Lewat `selectSurveyPagesByIds`, BUKAN `.in()` langsung: daftar ini memuat
   // seluruh order regular sepanjang sejarah (954 per 2026-08-08) dan tumbuh terus.
-  const pageBySubmission = new Map<string, { published: boolean; isExtraAd: boolean }>();
+  //
+  // `banner_url` menumpang select yang sama — SATU kolom tambahan, nol query
+  // tambahan. Query kedua di atas ~954 order regular adalah harga yang tidak
+  // perlu dibayar untuk menjawab "banner mana yang masih bawaan".
+  const pageBySubmission = new Map<
+    string,
+    { published: boolean; isExtraAd: boolean; placeholderBanner: boolean }
+  >();
   if (regularIds.length > 0) {
     const pages = await selectSurveyPagesByIds<{
-      submission_id: string; is_published: boolean | null; is_extra_ad: boolean | null;
-    }>('submission_id, is_published, is_extra_ad', regularIds);
+      submission_id: string;
+      is_published: boolean | null;
+      is_extra_ad: boolean | null;
+      banner_url: string | null;
+    }>('submission_id, is_published, is_extra_ad, banner_url', regularIds);
     for (const p of pages) {
       pageBySubmission.set(p.submission_id, {
         published: !!p.is_published,
         isExtraAd: !!p.is_extra_ad,
+        placeholderBanner: isPlaceholderBannerUrl(p.banner_url),
       });
     }
   }
@@ -2076,6 +2139,11 @@ export const fetchAdSchedules = async (
       createdAt: row.created_at || null,
       pageStatus,
       isExtraAd: page?.isExtraAd ?? false,
+      // Hanya bermakna untuk halaman yang BENAR-BENAR ada. Kilat dan order tanpa
+      // halaman keduanya false — lihat komentar di AdScheduleEntry.
+      pageBannerIsPlaceholder: pageStatus === 'none' || pageStatus === 'kilat'
+        ? false
+        : (page?.placeholderBanner ?? false),
     };
   });
 };

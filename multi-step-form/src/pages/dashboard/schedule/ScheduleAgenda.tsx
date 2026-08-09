@@ -3,8 +3,8 @@ import { Chip } from '@/components/ui/chip';
 import { cn } from '@/lib/utils';
 import type { AdScheduleEntry } from '@/utils/supabase';
 import {
-  chipKindOf, tokenForChip, PAGE_LABEL, formatWibTime, formatWibShort,
-  isUnscheduled, type DayGroup,
+  agendaChipOf, tokenForChip, PAGE_LABEL, formatWibTime, formatWibShort,
+  isUnscheduled, needsBannerSwap, type DayEntry, type DayGroup,
 } from './scheduleModel';
 
 // ─────────────────────────────────────────────────────────────
@@ -52,17 +52,31 @@ function ProgressBar({ entry, now }: { entry: AdScheduleEntry; now: number }) {
   );
 }
 
+/**
+ * Satu baris = satu jadwal PADA SATU HARI tayangnya.
+ *
+ * ⚠️ HARI LANJUTAN TIDAK DIRENDER LEBIH RENDAH DARIPADA HARI PERTAMA. Tinggi,
+ * kolom, bobot huruf, dan chip statusnya identik — karena datanya memang
+ * identik: tidak ada satu pun sumbu keadaan yang membedakan hari ke-1 dari hari
+ * ke-3 sebuah jadwal. `dayIndex` cuma posisi dalam rentang, dan setiap baris
+ * memakainya setara ("hari 1/4", "hari 2/4", …). Keputusan pemilik produk
+ * 2026-08-09; jangan diubah jadi baris sekunder/ramping tanpa membicarakannya.
+ */
 function EntryRow({
-  entry, now, onOpen,
+  item, now, onOpen,
 }: {
-  entry: AdScheduleEntry;
+  item: DayEntry;
   now: number;
   onOpen: (e: AdScheduleEntry) => void;
 }) {
-  const kind = chipKindOf(entry, now);
+  const { entry, dayIndex, dayCount } = item;
+  // `agendaChipOf`, BUKAN `chipKindOf` — chip harus sepakat dengan pita hari
+  // yang menaungi barisnya. Alasan lengkapnya di scheduleModel.ts.
+  const kind = agendaChipOf(entry, now);
   const token = tokenForChip(kind);
   const isKilat = entry.distributionType === 'kilat';
   const unscheduled = isUnscheduled(entry);
+  const bannerTodo = needsBannerSwap(entry);
 
   return (
     <div
@@ -103,12 +117,24 @@ function EntryRow({
             </span>
           )}
         </div>
-        <span className="text-[11px] text-gray-500 truncate mt-0.5">
-          {entry.researcherName}
-          {/* Periode ikut di subtitle hanya saat kolomnya tersembunyi (mobile). */}
-          {!unscheduled && entry.startDate && entry.endDate && (
-            <span className="md:hidden">
-              {' · '}{formatWibShort(entry.startDate)} – {formatWibShort(entry.endDate)}
+        <span className="text-[11px] text-gray-500 truncate mt-0.5 flex items-center gap-1.5">
+          <span className="truncate">
+            {entry.researcherName}
+            {/* Periode ikut di subtitle hanya saat kolomnya tersembunyi (mobile). */}
+            {!unscheduled && entry.startDate && entry.endDate && (
+              <span className="md:hidden">
+                {' · '}{formatWibShort(entry.startDate)} – {formatWibShort(entry.endDate)}
+              </span>
+            )}
+          </span>
+          {/* Bentuk yang sama persis dengan katalog Pages — satu pekerjaan, satu
+              tampilannya, di papan mana pun ia muncul. */}
+          {bannerTodo && (
+            <span
+              className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700"
+              title="Halaman sudah terbit tapi masih memakai banner bawaan — ganti lewat drawer"
+            >
+              ⚠ banner
             </span>
           )}
         </span>
@@ -124,7 +150,19 @@ function EntryRow({
               {formatWibShort(entry.startDate)}
               {entry.endDate ? ` – ${formatWibShort(entry.endDate)}` : ''}
             </span>
-            <span className="block text-gray-400">{entry.duration ? `${entry.duration} hari` : ''}</span>
+            {/* Posisi dalam rentang, bukan peringkat. Jadwal sehari tidak
+                menampilkannya sama sekali — "hari 1/1" cuma derau.
+
+                ⚠️ Panjangnya DITURUNKAN DARI JENDELA (`dayCount`), bukan dari
+                kolom `duration`. Keduanya tidak selalu sepakat di produksi:
+                order #8462698a bertanggal 1–2 Agu (satu hari) tapi kolomnya
+                berbunyi 3. Kolom itu dicetak tepat di sebelah rentangnya, jadi
+                memakainya berarti memajang dua angka yang saling menyangkal —
+                dan `dayCount` yang menang, karena ia juga yang menentukan kuota
+                hari di tab Iklan. */}
+            <span className="block text-gray-400">
+              {dayCount > 1 ? `hari ${dayIndex}/${dayCount}` : `${dayCount} hari`}
+            </span>
             {kind === 'live' && <ProgressBar entry={entry} now={now} />}
           </>
         )}
@@ -136,15 +174,24 @@ function EntryRow({
         </Chip>
       </div>
 
+      {/* Nada keempat kolom ini: 'terbit' yang masih memakai banner bawaan.
+          Halamannya benar, isinya belum — jadi ia tidak boleh terbaca setenang
+          'terbit' biasa, tapi juga bukan '⚠ blm' yang berarti halamannya belum ada. */}
       <span
         className={cn(
           COL.page,
           'text-[10px] font-medium',
-          entry.pageStatus === 'none' ? 'text-amber-600' : 'text-gray-400'
+          entry.pageStatus === 'none' || bannerTodo ? 'text-amber-600' : 'text-gray-400'
         )}
-        title={entry.pageStatus === 'kilat' ? 'Kilat tidak pernah punya halaman iklan' : 'Status halaman iklan'}
+        title={
+          entry.pageStatus === 'kilat'
+            ? 'Kilat tidak pernah punya halaman iklan'
+            : bannerTodo
+              ? 'Halaman terbit, tapi banner masih bawaan'
+              : 'Status halaman iklan'
+        }
       >
-        {PAGE_LABEL[entry.pageStatus]}
+        {PAGE_LABEL[entry.pageStatus]}{bannerTodo ? ' ⚠' : ''}
       </span>
 
       <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" />
@@ -156,34 +203,51 @@ function EntryRow({
  * Pita pemisah hari. Sticky di bawah header kolom (top-10) supaya saat menggulung
  * panjang, admin tidak pernah kehilangan jawaban atas "ini hari apa".
  */
+/**
+ * Tone `today` ADA KARENA PITA HARI INI DULU TIDAK BISA DITEMUKAN.
+ *
+ * Sebelumnya ia identik dengan pita hari lain — `bg-gray-50/95` yang sama —
+ * dan satu-satunya penanda adalah badge biru kecil di ujungnya. Di antara
+ * puluhan pita abu yang serupa itu praktis tak terlihat, dan sesudah pemekaran
+ * per hari daftarnya jauh lebih panjang lagi.
+ *
+ * Yang diwarnai hanya PEMISAHNYA, bukan baris-baris di bawahnya: yang dicari
+ * mata adalah batas harinya, dan mewarnai barisnya justru mengaburkan chip
+ * status di dalam tiap baris.
+ */
 function GroupHeader({
   label, count, tone, badge,
 }: {
   label: string;
   count: number;
-  tone: 'day' | 'warn';
+  tone: 'day' | 'warn' | 'today';
   badge?: string;
 }) {
+  const toneClass = {
+    warn: 'bg-amber-50/95 border-amber-200 text-amber-800',
+    today: 'bg-blue-600/95 border-blue-700 text-white border-l-4 border-l-blue-300 shadow-sm',
+    day: 'bg-gray-50/95 border-gray-200 text-gray-600',
+  }[tone];
+
+  const countClass = {
+    warn: 'bg-amber-200/70 text-amber-900',
+    today: 'bg-white/25 text-white',
+    day: 'bg-gray-200/80 text-gray-600',
+  }[tone];
+
   return (
-    <div
-      className={cn(
-        'sticky top-10 z-[9] flex items-center gap-2 px-4 h-8 border-b',
-        tone === 'warn'
-          ? 'bg-amber-50/95 border-amber-200 text-amber-800'
-          : 'bg-gray-50/95 border-gray-200 text-gray-600'
-      )}
-    >
+    <div className={cn('sticky top-10 z-[9] flex items-center gap-2 px-4 h-8 border-b', toneClass)}>
       <span className="text-[11px] font-bold uppercase tracking-wider">{label}</span>
-      <span
-        className={cn(
-          'rounded-full px-1.5 text-[10px] font-bold tabular-nums',
-          tone === 'warn' ? 'bg-amber-200/70 text-amber-900' : 'bg-gray-200/80 text-gray-600'
-        )}
-      >
+      <span className={cn('rounded-full px-1.5 text-[10px] font-bold tabular-nums', countClass)}>
         {count}
       </span>
       {badge && (
-        <span className="rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-bold">
+        <span
+          className={cn(
+            'rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+            tone === 'today' ? 'bg-white text-blue-700' : 'bg-blue-100 text-blue-700'
+          )}
+        >
           {badge}
         </span>
       )}
@@ -191,15 +255,26 @@ function GroupHeader({
   );
 }
 
+/** Entri tanpa hari (blok "belum dijadwalkan" / "gugur") dibungkus jadi DayEntry sehari. */
+const asSingleDay = (e: AdScheduleEntry): DayEntry => ({ entry: e, dayIndex: 1, dayCount: 1 });
+
 export function ScheduleAgenda({
-  groups, unscheduledEntries, now, onOpen,
+  groups, unscheduledEntries, lapsedEntries, now, onOpen,
 }: {
   groups: DayGroup[];
   unscheduledEntries: AdScheduleEntry[];
+  /**
+   * Jadwal yang tahanan slotnya gugur. Tidak ikut daftar hari — slotnya sudah
+   * dilepas, jadi menghitungnya di sana membuat hari terlihat lebih penuh
+   * daripada yang bisa dijual. Tapi ia tetap butuh jalan masuk: dari sinilah
+   * admin membuka drawer dan menjadwalkannya ulang.
+   */
+  lapsedEntries: AdScheduleEntry[];
   now: number;
   onOpen: (e: AdScheduleEntry) => void;
 }) {
-  const isEmpty = groups.length === 0 && unscheduledEntries.length === 0;
+  const isEmpty =
+    groups.length === 0 && unscheduledEntries.length === 0 && lapsedEntries.length === 0;
 
   return (
     <>
@@ -231,7 +306,18 @@ export function ScheduleAgenda({
           <GroupHeader label="⚠ Belum dijadwalkan" count={unscheduledEntries.length} tone="warn" />
           <div className="divide-y divide-gray-100">
             {unscheduledEntries.map((e) => (
-              <EntryRow key={e.id} entry={e} now={now} onOpen={onOpen} />
+              <EntryRow key={e.id} item={asSingleDay(e)} now={now} onOpen={onOpen} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {lapsedEntries.length > 0 && (
+        <div>
+          <GroupHeader label="⚠ Batas bayar terlewat" count={lapsedEntries.length} tone="warn" />
+          <div className="divide-y divide-gray-100">
+            {lapsedEntries.map((e) => (
+              <EntryRow key={e.id} item={asSingleDay(e)} now={now} onOpen={onOpen} />
             ))}
           </div>
         </div>
@@ -242,12 +328,19 @@ export function ScheduleAgenda({
           <GroupHeader
             label={group.label}
             count={group.entries.length}
-            tone="day"
+            tone={group.isToday ? 'today' : 'day'}
             badge={group.isToday ? 'hari ini' : undefined}
           />
           <div className="divide-y divide-gray-100">
-            {group.entries.map((e) => (
-              <EntryRow key={e.id} entry={e} now={now} onOpen={onOpen} />
+            {/* Kunci gabungan: satu jadwal muncul di beberapa hari, jadi `entry.id`
+                saja tidak unik lagi di seluruh daftar. */}
+            {group.entries.map((item) => (
+              <EntryRow
+                key={`${item.entry.id}-${group.ymd}`}
+                item={item}
+                now={now}
+                onOpen={onOpen}
+              />
             ))}
           </div>
         </div>

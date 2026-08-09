@@ -1,4 +1,4 @@
-import { DEFAULT_AD_BANNER_URL } from '@/utils/constants';
+import { isPlaceholderBannerUrl } from '@/utils/page-banner';
 import { STATUS_TOKENS, type StatusToken } from '@/lib/status-tokens';
 import { isLive, normalizeScheduleDate } from '@/utils/adOrdering';
 
@@ -76,11 +76,14 @@ export function pageTypeOf(p: PageData): PageType {
  *
  * Announcement dibuat manual dan tidak pernah memakai banner iklan default, jadi
  * menandainya cuma menambah bising.
+ *
+ * Uji URL-nya sendiri tinggal di `utils/page-banner.ts` — papan Schedule membaca
+ * aturan yang sama dari sana, tanpa ikut mewarisi pagar `submission_id` yang
+ * hanya berlaku untuk katalog halaman ini.
  */
 export function usesPlaceholderBanner(p: PageData): boolean {
     if (!p.submission_id) return false;
-    const url = (p.banner_url ?? '').trim();
-    return url === '' || url === DEFAULT_AD_BANNER_URL;
+    return isPlaceholderBannerUrl(p.banner_url);
 }
 
 /**

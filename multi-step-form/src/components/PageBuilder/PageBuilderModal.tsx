@@ -8,12 +8,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { BlockEditor } from './BlockEditor';
 import { supabase, updateFormStatus } from '@/utils/supabase';
 import { toAiringStartIso, toWibYmd } from '@/utils/airing-window';
-import { DEFAULT_AD_BANNER_URL } from '@/utils/constants';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Eye, Save, Trash2, Plus, Upload, Check, Trophy, Users, Calendar, StopCircle, ExternalLink } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
+import { Loader2, Eye, Save, Trash2, Plus, Trophy, Users, Calendar, StopCircle, ExternalLink } from 'lucide-react';
+import { BannerPicker } from './BannerPicker';
+import { bannerSavePatch } from '@/utils/page-banner';
 
 /**
  * Normalize a schedule date string for accurate time comparison & display.
@@ -142,59 +142,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
         redirect_url: '',
     });
 
-    const [uploadingBanner, setUploadingBanner] = useState(false);
-    const [recentBanners, setRecentBanners] = useState<string[]>([]);
-    const [bannerTab, setBannerTab] = useState<'upload' | 'link' | 'library'>('upload');
-
-    const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setUploadingBanner(true);
-        try {
-            const options = {
-                maxSizeMB: 0.5,
-                maxWidthOrHeight: 1280,
-                useWebWorker: true,
-            };
-            const compressedFile = await imageCompression(file, options);
-            const fileName = `banners/${Date.now()}-${file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9.-]/g, '')}`;
-
-            const { error: uploadError } = await supabase.storage
-                .from('page-uploads')
-                .upload(fileName, compressedFile);
-
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('page-uploads')
-                .getPublicUrl(fileName);
-
-            setFormData(prev => ({ ...prev, banner_url: publicUrl }));
-            toast.success('Banner uploaded successfully');
-        } catch (error: any) {
-            console.error('Upload failed:', error);
-            toast.error('Upload failed: ' + error.message);
-        } finally {
-            setUploadingBanner(false);
-        }
-    };
-
-    const fetchRecentBanners = async () => {
-        const { data } = await supabase
-            .from('survey_pages')
-            .select('banner_url')
-            .not('banner_url', 'is', null)
-            .neq('banner_url', '')
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-        if (data) {
-            // Deduplicate
-            const uniqueBanners = Array.from(new Set(data.map(d => d.banner_url).filter(Boolean)));
-            setRecentBanners(uniqueBanners);
-        }
-    };
+    // Unggah, galeri "recent", dan ketiga tab-nya kini milik <BannerPicker/>.
 
     useEffect(() => {
         if (isOpen) {
@@ -289,7 +237,6 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             };
 
             initFormData();
-            fetchRecentBanners();
         }
     }, [isOpen, initialData, submissionTitle, submissionStartDate, submissionEndDate, submissionCriteria, submissionId, preserveSubmissionDates]);
 
@@ -341,7 +288,8 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             const payload: any = {
                 slug: formData.slug,
                 title: formData.title,
-                banner_url: formData.banner_url,
+                // banner_url + aturan pembersih requires_banner_update, satu tempat.
+                ...bannerSavePatch(formData.banner_url),
                 is_published: isPublished,
 
                 blocks: formData.blocks,
@@ -351,20 +299,6 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 is_extra_ad: isExtraAd ?? initialData?.is_extra_ad ?? false,
                 redirect_url: formData.redirect_url?.trim() || null,
             };
-
-            // Saving a banner is the only thing that clears the reminder — there is
-            // no "mark as done" button anywhere, by design (sql/36 turned the flag
-            // from a gate into a to-do). This must run on EVERY save path, not just
-            // the extend one, or the badge can never be cleared from the Submissions
-            // screen where most admins actually work.
-            //
-            // The default banner does not count as answering it: it is a generic
-            // placeholder carrying no reward figure, so a page still showing it has
-            // not had the new prize communicated. Without this check, opening and
-            // saving an auto-created page would silently dismiss the reminder.
-            if (formData.banner_url && formData.banner_url !== DEFAULT_AD_BANNER_URL) {
-                payload.requires_banner_update = false;
-            }
 
             if (preserveSubmissionDates || hasOtherSchedules) {
                 // Another schedule owns the airing window; cron manages publish_*.
@@ -770,97 +704,11 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         {/* Banner Image */}
                         <div className="space-y-2">
                             <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Featured Banner</Label>
-                            <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm relative overflow-hidden group">
-                                {!formData.banner_url ? (
-                                    <div className="flex flex-col gap-2.5">
-                                        <div className="flex bg-gray-100 p-1 rounded-md w-full">
-                                            <button
-                                                onClick={() => setBannerTab('upload')}
-                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                            >
-                                                UPLOAD
-                                            </button>
-                                            <button
-                                                onClick={() => setBannerTab('library')}
-                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'library' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                            >
-                                                RECENT
-                                            </button>
-                                            <button
-                                                onClick={() => setBannerTab('link')}
-                                                className={`flex-1 flex items-center justify-center px-2 py-1 text-[10px] font-bold rounded transition-all ${bannerTab === 'link' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                            >
-                                                URL
-                                            </button>
-                                        </div>
-
-                                        {bannerTab === 'upload' && (
-                                            <div className="border border-dashed border-gray-300 rounded-md p-3 transition-colors hover:bg-gray-50 hover:border-blue-400 cursor-pointer relative bg-white flex flex-col items-center justify-center min-h-[80px]">
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={handleBannerUpload}
-                                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-                                                    disabled={uploadingBanner}
-                                                />
-                                                {uploadingBanner ? (
-                                                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-                                                ) : (
-                                                    <div className="flex flex-col items-center text-center">
-                                                        <Upload className="w-4 h-4 text-gray-400 mb-1" />
-                                                        <span className="text-[11px] font-medium text-gray-600">Click to Upload</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {bannerTab === 'library' && (
-                                            <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1">
-                                                {recentBanners.map((url, i) => (
-                                                    <div
-                                                        key={i}
-                                                        onClick={() => setFormData(prev => ({ ...prev, banner_url: url }))}
-                                                        className={`relative aspect-video rounded-md overflow-hidden cursor-pointer border transition-all ${formData.banner_url === url ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'}`}
-                                                    >
-                                                        <img src={url} alt={`Banner ${i}`} className="w-full h-full object-cover" />
-                                                        {formData.banner_url === url && (
-                                                            <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
-                                                                <div className="bg-blue-500 rounded-full p-0.5 shadow-sm">
-                                                                    <Check className="w-3 h-3 text-white" />
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                                {recentBanners.length === 0 && (
-                                                    <div className="col-span-2 text-center py-4 text-xs text-gray-500">
-                                                        No recent banners.
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {bannerTab === 'link' && (
-                                            <Input
-                                                value={formData.banner_url}
-                                                onChange={(e) => setFormData({ ...formData, banner_url: e.target.value })}
-                                                placeholder="https://example.com/image.jpg"
-                                                className="h-8 text-xs"
-                                            />
-                                        )}
-                                    </div>
-                                ) : (
-                                    <>
-                                        <img src={formData.banner_url} alt="Preview" className="w-full aspect-video object-cover rounded-md" />
-                                        <button
-                                            onClick={() => setFormData(prev => ({ ...prev, banner_url: '' }))}
-                                            className="absolute top-3 right-3 bg-black/60 hover:bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-all shadow-sm backdrop-blur-sm"
-                                        >
-                                            <Trash2 className="w-3 h-3" />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
+                            <BannerPicker
+                                value={formData.banner_url}
+                                onChange={(url) => setFormData(prev => ({ ...prev, banner_url: url }))}
+                                active={isOpen}
+                            />
                         </div>
 
                         {/* Campaign Summary Card (read-only from submission props) */}
