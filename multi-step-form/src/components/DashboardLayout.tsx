@@ -90,7 +90,7 @@ export function DashboardLayout() {
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-20 md:hidden"
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
@@ -98,8 +98,8 @@ export function DashboardLayout() {
       {/* Desktop Sidebar & Mobile Drawer */}
       <aside
         className={`
-          fixed md:sticky top-0 z-30 h-screen w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700
-          transition-transform duration-300 ease-in-out flex flex-col justify-between
+          fixed top-0 left-0 h-screen w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 z-50
+          transition-transform duration-200 flex flex-col justify-between
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
       >
@@ -211,7 +211,7 @@ export function DashboardLayout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0 overflow-y-auto h-screen md:pl-64">
+      <main className="flex-1 min-w-0 md:pl-64">
         {profileIncomplete && location.pathname !== '/dashboard/profile' && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-center">
             <span className="text-xs text-amber-800">
