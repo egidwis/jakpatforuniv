@@ -150,18 +150,20 @@ export const PublicFormPage: React.FC = () => {
     return false;
   };
 
-  // Render Piped Text dynamically (e.g. ${q:1} or ${q:block_id})
+  // Render Piped Text dynamically (e.g. @q1, @answerq1, or ${q:1})
   const renderPipedText = (text: string | undefined): string => {
     if (!text || !form) return '';
-    return text.replace(/\$\{q:([a-zA-Z0-9_-]+)\}/g, (_, targetId) => {
-      let targetBlock = form.schema.find(b => b.id === targetId);
-      if (!targetBlock && !isNaN(Number(targetId))) {
-        const idx = Number(targetId) - 1;
+    return text.replace(/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/gi, (match) => {
+      const numMatch = match.match(/\d+/);
+      const qNumStr = numMatch ? numMatch[0] : '';
+      let targetBlock = form.schema.find(b => b.id === qNumStr);
+      if (!targetBlock && !isNaN(Number(qNumStr))) {
+        const idx = Number(qNumStr) - 1;
         targetBlock = form.schema[idx];
       }
-      if (!targetBlock) return '';
+      if (!targetBlock) return match;
       const val = answers[targetBlock.id];
-      if (val === undefined || val === null) return '';
+      if (val === undefined || val === null || val === '') return '';
       if (Array.isArray(val)) return val.join(', ');
       return String(val);
     });
