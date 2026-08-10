@@ -85,6 +85,7 @@ export interface InvoiceFormProps {
     id: string;
     researcherName?: string | null;
     researcherEmail?: string | null;
+    title?: string | null;
     phone_number?: string | null;
     questionCount?: number | null;
     duration?: number | null;
@@ -336,6 +337,22 @@ export function InvoiceForm({
         ...attribution,
       };
       await createTransaction(transactionData);
+
+      // Hanya jadwal pertama (bukan perpanjangan) yang berarti "pesanan disetujui,
+      // tagihan siap" — perpanjangan tidak pernah melalui review manual.
+      if (!entry.isExtension && submission.researcherEmail) {
+        fetch('/api/send-invoice-ready-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: submission.researcherName || 'Kak',
+            email: submission.researcherEmail,
+            title: submission.title || undefined,
+            invoiceUrl: paymentResponse.invoice_url,
+            amount: grandTotal,
+          }),
+        }).catch((err) => console.error('Failed to send invoice-ready email:', err));
+      }
 
       // Hanya jalur perpanjangan yang menyimpan totalnya sendiri. Jadwal pertama
       // sengaja tidak — lihat catatan `total_cost` di kepala berkas.

@@ -3,13 +3,9 @@ import { toast } from 'sonner';
 import type { SurveyFormData, CostCalculation } from '../types';
 import { calculateTotalCost, getVoucherInfo, isManualVerificationVoucher } from '../utils/cost-calculator';
 import { formatRupiah } from '../utils/currency';
-import { saveFormSubmission, deleteFormSubmission, updateFormSubmissionById, getFormSubmissionById, getOwnProfile, type FormSubmission } from '../utils/supabase';
+import { getOwnProfile } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
-import { resolveSubmissionMode, type SubmissionMode } from '../utils/submissionMode';
-import { sendToGoogleSheetsBackground } from '../utils/sheets-service';
-import { fetchSlotAvailability } from '../utils/supabase';
-import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY, SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
-import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } from '../utils/airing-window';
+import { isAutoApprovalPath } from '../utils/review-path';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { SectionLabel } from './SurveyFieldRow';
@@ -20,29 +16,37 @@ import {
   CheckCircle,
   AlertTriangle,
   FileText,
-  Clock,
   Gift,
   Target,
   Info,
   CreditCard,
   Send,
+  ArrowRight,
   ExternalLink,
   CalendarCheck,
-  User,
-  Mail,
-  Phone,
-  Zap
+  Zap,
+  Lock
 } from 'lucide-react';
 
 interface StepCheckoutProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
-  prevStep: () => void;
+  /** Lanjut ke langkah Jadwal — hanya jalur otomatis yang memakainya. */
+  nextStep: () => void;
+  /** Menulis order (jalur manual, dan jalur Kilat yang jadwalnya sudah dipilih). */
+  onSubmitOrder: () => Promise<boolean>;
   onUpgradeKilat?: () => void;
   onUndoKilat?: () => void;
 }
 
-export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKilat, onUndoKilat }: StepCheckoutProps) {
+/**
+ * Langkah 2 — Ringkasan. Dulu ia langkah terakhir ("Review & Pembayaran"),
+ * sesudah Jadwal; sekarang ia mendahului Jadwal dan menjadi SATU-SATUNYA titik
+ * percabangan otomatis vs manual. Layar ini murni klien: tidak ada baris
+ * database yang lahir di sini kecuali pada jalur yang memang berakhir di sini
+ * (manual, dan Kilat yang jadwalnya sudah terpilih di langkah tersendiri).
+ */
+export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder, onUpgradeKilat, onUndoKilat }: StepCheckoutProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
 
@@ -59,18 +63,35 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
   // ILKOMUNY sudah pernah dipakai akun ini (redemption lunas ATAU submission aktif)
   // → voucher tak berlaku (diskon tak diterapkan, pesan ditampilkan).
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
-  const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
+
+  // Persetujuan S&K ikut di formData, bukan state lokal: pada jalur otomatis
+  // order baru ditulis satu langkah kemudian, setelah layar ini unmount.
+  const isTermsAccepted = formData.termsAccepted === true;
 
   // Detail Invoice: default diambil dari data akun (profil + auth); toggle OFF
   // untuk mengisi kontak invoice custom khusus order ini (tidak mengubah profil).
   const [useAccountData, setUseAccountData] = useState(false);
   const [accountDefaults, setAccountDefaults] = useState<{ fullName: string; email: string; phoneNumber: string } | null>(null);
 
-  // Derive auto approval status
-  const isManualForm = formData.isManualEntry || (formData.surveyUrl && !formData.surveyUrl.includes('docs.google.com/forms'));
-  const isAutoApproval = !isManualForm && !formData.hasPersonalDataQuestions && !isManualVerificationVoucher(formData.voucherCode);
+  // Predikat yang SAMA dengan yang dipakai MultiStepForm untuk merutekan step —
+  // sengaja bukan salinan lokal, karena keduanya kini menentukan hal yang sama.
+  const isAutoApproval = isAutoApprovalPath(formData);
+
+  /*
+   * Yang menentukan tujuan tombol bukan jenis produknya, melainkan apakah
+   * tanggalnya SUDAH ADA.
+   *
+   * Kilat memilih tanggal di langkah tersendiri, jadi biasanya ia sampai ke
+   * sini sudah bertanggal dan langsung mengunci. Tapi tanggal juga bisa hilang
+   * belakangan — draft yang dibuka lagi keesokan harinya kehilangan tanggal
+   * yang sudah lewat batas. Kalau syaratnya ditulis sebagai "bukan Kilat",
+   * order Kilat tanpa tanggal akan menekan tombol bayar dan selalu ditolak,
+   * tanpa jalan kembali ke pemilih Kilat.
+   */
+  const hasSchedule = !!formData.startDate;
+  const needsSchedule = isAutoApproval && !hasSchedule;
 
   // Email invoice berbeda dari email login → invoice terkirim ke email custom
   const isEmailMismatch = user?.email && formData.email && formData.email.trim().toLowerCase() !== user.email.toLowerCase();
@@ -136,300 +157,57 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
     updateFormData({ voucherCode: e.target.value });
   };
 
-  // Fungsi untuk menyimpan data ke Supabase dan membuat pembayaran
-  const handleSubmit = async () => {
-    // Guard: prevent double-submit using ref (synchronous, immune to React batching)
-    if (isSubmittingRef.current) {
-      console.log('Submit already in progress, ignoring duplicate click');
+  /**
+   * Validasi yang harus dijawab SEBELUM user beranjak dari layar ini.
+   *
+   * `submitOrder()` memeriksa hal yang sama sekali lagi sebelum menulis, tapi
+   * pemeriksaan di sini yang menyelamatkan pengalaman: tanpanya, jalur otomatis
+   * baru menyadari nomor telepon kosong setelah user memilih tanggal — di layar
+   * yang bahkan tidak punya kolom itu.
+   */
+  const validateBeforeLeaving = (): boolean => {
+    if (!isTermsAccepted) {
+      toast.error(t('errorTermsRequired'));
+      return false;
+    }
+    if (!formData.title || !formData.description || !formData.questionCount || !formData.duration) {
+      toast.error(t('errorCompleteAllSurveyData'));
+      return false;
+    }
+    if (!formData.fullName || !formData.fullName.trim()) {
+      toast.error(t('errorFullNameEmpty'));
+      return false;
+    }
+    if (!formData.email || !formData.email.trim() || !formData.email.includes('@') || !formData.email.includes('.')) {
+      toast.error(t('errorEmailInvalid'));
+      return false;
+    }
+    if (!formData.phoneNumber || formData.phoneNumber.trim().length < 10) {
+      toast.error(t('errorPhoneMinLength'));
+      return false;
+    }
+    return true;
+  };
+
+  const handlePrimaryAction = async () => {
+    // Guard double-submit lewat ref (sinkron, kebal batching React)
+    if (isSubmittingRef.current) return;
+    if (!validateBeforeLeaving()) return;
+
+    // Jalur otomatis tanpa tanggal: belum ada apa pun yang ditulis — lanjut
+    // memilih jadwal, dan order baru lahir saat slot dikunci di sana. Kilat
+    // dikembalikan ke pemilihnya sendiri, bukan ke kalender reguler, karena
+    // kuota keduanya terpisah.
+    if (needsSchedule) {
+      if (formData.isKilatUpgrade) onUpgradeKilat?.();
+      else nextStep();
       return;
     }
+
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-
-    try {
-      // Validasi data
-      if (!isTermsAccepted) {
-        toast.error(t('errorTermsRequired'));
-        isSubmittingRef.current = false;
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!formData.title || !formData.description || !formData.questionCount || !formData.duration) {
-        toast.error(t('errorCompleteAllSurveyData'));
-        isSubmittingRef.current = false;
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Validasi kontak invoice (eks validasi StepTwo — biodata kini dari profil)
-      if (!formData.fullName || !formData.fullName.trim()) {
-        toast.error(t('errorFullNameEmpty'));
-        isSubmittingRef.current = false;
-        setIsSubmitting(false);
-        return;
-      }
-      if (!formData.email || !formData.email.trim() || !formData.email.includes('@') || !formData.email.includes('.')) {
-        toast.error(t('errorEmailInvalid'));
-        isSubmittingRef.current = false;
-        setIsSubmitting(false);
-        return;
-      }
-      if (!formData.phoneNumber || formData.phoneNumber.trim().length < 10) {
-        toast.error(t('errorPhoneMinLength'));
-        isSubmittingRef.current = false;
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Cek apakah form diisi secara manual
-      // (isManualForm and isAutoApproval is calculated at component level)
-
-      // Jika auto approval, pastikan sudah pilih jadwal
-      if (isAutoApproval) {
-        if (!formData.startDate || !formData.startTime) {
-          toast.error('Gagal melanjutkan: Tanggal dan waktu mulai iklan belum dipilih. Silahkan kembali ke step sebelumnya.');
-          isSubmittingRef.current = false;
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      // Tampilkan loading toast
-      const loadingMessage = isAutoApproval ? 'Mengecek slot & menyimpan data...' : 'Menyimpan data...';
-      const loadingToast = toast.loading(loadingMessage);
-
-      let calculatedStartDate = null;
-      let calculatedEndDate = null;
-
-      // StepSchedule menyimpan startDate sebagai YYYY-MM-DD, tapi draft lama /
-      // hasil reschedule bisa membawa ISO penuh — potong supaya perbandingan
-      // tanggal di helper selalu apple-to-apple.
-      const startYmd = formData.startDate ? String(formData.startDate).slice(0, 10) : '';
-
-      // Batas pemesanan hari-H (13.00 WIB) bisa terlewat sementara user duduk
-      // di step Checkout. Cek terakhir sebelum INSERT, sebelum tanggal apa pun
-      // dimaterialisasi — supaya tidak ada order lahir dengan start_date yang
-      // sudah lewat batas.
-      if (startYmd && isBookingClosedForDate(startYmd)) {
-        toast.dismiss(loadingToast);
-        toast.error(t('slotErrorPastCutoff'));
-        isSubmittingRef.current = false;
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Double-check availability for auto-approval
-      if (isAutoApproval && formData.startDate && formData.startTime) {
-        try {
-          const startDay = new Date(formData.startDate);
-
-          if (formData.isKilatUpgrade) {
-            // Kilat: check single day against kilat slot pool
-            const { regularCounts: kilatCounts } = await fetchSlotAvailability(undefined, 'kilat');
-            const dateStr = toLocalYmd(startDay);
-            if ((kilatCounts[dateStr] || 0) >= MAX_KILAT_ADS_PER_DAY) {
-              toast.dismiss(loadingToast);
-              toast.error('Ups! Slot Kilat pada tanggal yang Anda pilih telah penuh. Silakan kembali memilih tanggal lain.');
-              isSubmittingRef.current = false;
-              setIsSubmitting(false);
-              return;
-            }
-          } else {
-            // Regular: validate capacity across duration
-            const { regularCounts } = await fetchSlotAvailability();
-            let isAvailable = true;
-            const current = new Date(startDay);
-            current.setHours(0, 0, 0, 0);
-
-            for (let i = 0; i < formData.duration; i++) {
-              const dateStr = toLocalYmd(current);
-              const count = regularCounts[dateStr] || 0;
-              if (count >= MAX_REGULAR_ADS_PER_DAY) {
-                isAvailable = false;
-                break;
-              }
-              current.setDate(current.getDate() + 1);
-            }
-
-            if (!isAvailable) {
-              toast.dismiss(loadingToast);
-              toast.error('Ups! Slot pada rentang tanggal yang Anda pilih telah penuh. Silakan kembali mengatur ulang tanggal di step Jadwal.');
-              isSubmittingRef.current = false;
-              setIsSubmitting(false);
-              return;
-            }
-          }
-
-          // Jam tayang dikunci 15.00 WIB lewat helper, bukan setHours device —
-          // dulu user di luar WIB menyimpan instant yang meleset sejam.
-          calculatedStartDate = toAiringStartIso(startYmd);
-          calculatedEndDate = toAiringEndIso(startYmd, formData.isKilatUpgrade ? 1 : formData.duration);
-
-        } catch (error) {
-          toast.dismiss(loadingToast);
-          toast.error('Gagal mengecek ketersediaan slot. Coba lagi.');
-          isSubmittingRef.current = false;
-          setIsSubmitting(false);
-          return;
-        }
-      } else if (formData.isKilatUpgrade && formData.startDate && formData.startTime) {
-        // Kilat + non-autoApproval (manual/sensitive): save chosen schedule as kilat slot reservation
-        calculatedStartDate = toAiringStartIso(startYmd);
-        calculatedEndDate = toAiringEndIso(startYmd, 1);
-      }
-
-      // Raw reschedule intent carried in the form draft (may be stale — an
-      // abandoned reschedule can leave this behind and leak into a new survey).
-      const rescheduleIntent = {
-        isReschedule: (formData as any).isReschedule === true,
-        submissionIdToReplace: (formData as any).submissionIdToReplace as string | undefined,
-      };
-
-      // Siapkan data untuk disimpan ke Supabase
-      const submissionData: FormSubmission = {
-        survey_url: formData.surveyUrl,
-        title: formData.title,
-        description: formData.description,
-        question_count: formData.questionCount,
-        criteria_responden: formData.criteriaResponden,
-        duration: formData.duration,
-        start_date: calculatedStartDate,
-        end_date: calculatedEndDate,
-        full_name: formData.fullName,
-        email: formData.email,
-        phone_number: formData.phoneNumber,
-        university: formData.university,
-        department: formData.department,
-        status: formData.status || 'pending',
-        submission_status: isAutoApproval ? 'waiting_payment' : 'in_review', // waiting_payment for user payment, in_review for manual
-        referral_source: formData.referralSource === 'Lainnya' && formData.referralSourceOther
-          ? `Lainnya: ${formData.referralSourceOther}`
-          : formData.referralSource,
-        winner_count: formData.winnerCount,
-        prize_per_winner: formData.prizePerWinner,
-        // ILKOMUNY yang sudah dipakai: simpan tanpa voucher agar recompute admin
-        // (SchedulePaymentView) tidak menerapkan ulang diskonnya. costCalculation
-        // sudah dihitung tanpa diskon (lihat effect di atas).
-        voucher_code: ilkomunyBlocked ? '' : formData.voucherCode,
-        total_cost: costCalculation.totalCost,
-        subtotal: costCalculation.subtotal,
-        ppn_amount: costCalculation.ppn,
-        payment_status: 'pending',
-        submission_method: isManualForm ? 'manual' : 'google_import',
-        detected_keywords: formData.detectedKeywords || [],
-        auth_user_id: user?.id,
-        distribution_type: formData.isKilatUpgrade ? 'kilat' : 'regular',
-        ...(isAutoApproval || formData.isKilatUpgrade ? {
-          slot_booked_by: 'user',
-          slot_reserved_at: new Date().toISOString()
-        } : {})
-      };
-
-      // Simpan data ke Supabase dengan penanganan error yang lebih baik
-      let savedData;
-      try {
-        // Resolve whether this is a genuine reschedule (update the same survey)
-        // or a new submission. Guards against stale reschedule intent leaking
-        // from an abandoned draft and overwriting a *different* survey in place.
-        let mode: SubmissionMode = { mode: 'create' };
-        if (rescheduleIntent.isReschedule && rescheduleIntent.submissionIdToReplace) {
-          let existingSurveyUrl: string | null = null;
-          try {
-            const existing = await getFormSubmissionById(rescheduleIntent.submissionIdToReplace);
-            existingSurveyUrl = existing?.survey_url ?? null;
-          } catch (e) {
-            console.warn('Could not load reschedule target; treating as new submission:', e);
-          }
-          mode = resolveSubmissionMode(rescheduleIntent, submissionData.survey_url, existingSurveyUrl);
-          if (mode.mode === 'create') {
-            console.warn('Reschedule intent did not match the target survey — creating a new submission instead of overwriting.');
-          }
-        }
-
-        if (mode.mode === 'reschedule') {
-          // Genuine reschedule: update existing submission instead of creating new
-          console.log('Rescheduling submission:', mode.submissionId);
-          savedData = await updateFormSubmissionById(mode.submissionId, submissionData);
-          console.log('Submission updated successfully:', savedData);
-        } else {
-          // New submission: create new record
-          savedData = await saveFormSubmission(submissionData);
-          console.log('New submission saved:', savedData);
-        }
-
-        // Kirim data ke Google Sheets secara background hanya untuk Google Forms
-        // Manual forms akan dikirim di bagian isManualForm
-        if (savedData && savedData.id && !isManualForm) {
-          console.log('Mengirim data Google Form ke Google Sheets untuk form ID:', savedData.id);
-          sendToGoogleSheetsBackground(savedData.id, 'google_form_submission');
-        }
-      } catch (saveError: any) {
-        console.error('Error saat menyimpan data:', saveError);
-        toast.dismiss(loadingToast);
-        toast.error(t('errorSavingData'));
-        isSubmittingRef.current = false;
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Kirim email notifikasi ke user (Async - tidak memblokir flow utama)
-      try {
-        fetch('/api/send-submission-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formData.fullName || 'Kak',
-            email: formData.email
-          })
-        }).then(res => res.json())
-          .catch(err => console.error('Failed to send email:', err));
-      } catch (e) { }
-
-      if (!isAutoApproval) {
-        // MANUAL ATAU SENSITIVE DATA
-        const reasonForReview = formData.hasPersonalDataQuestions
-          ? 'contains personal data questions'
-          : isManualVerificationVoucher(formData.voucherCode)
-            ? `voucher ${formData.voucherCode?.toUpperCase()} used`
-            : 'manual form entry';
-        console.log(`Form needs admin review (${reasonForReview}), redirect ke halaman submit-success`);
-
-        if (savedData && savedData.id && isManualForm) {
-          sendToGoogleSheetsBackground(savedData.id, 'manual_form_submission');
-        }
-
-        toast.dismiss(loadingToast);
-
-        if (formData.hasPersonalDataQuestions) {
-          toast.success('Form Anda telah dikirim untuk review admin. Kami akan menghubungi Anda segera.');
-        } else {
-          toast.success(t('successFormSubmitted'));
-        }
-
-        setTimeout(() => {
-          localStorage.removeItem(SURVEY_DRAFT_KEY);
-          localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
-          window.open(`${window.location.origin}/dashboard?status=survey_submitted`, '_self');
-        }, 1500);
-
-      } else {
-        // AUTO APPROVAL (SLOT RESERVED)
-        console.log('Slot berhasil di-booking, redirect ke halaman Payment Verification');
-
-        toast.dismiss(loadingToast);
-        toast.success('Slot berhasil diamankan. Silahkan selesaikan pembayaran.');
-
-        setTimeout(() => {
-          localStorage.removeItem(SURVEY_DRAFT_KEY);
-          localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
-          // Navigate to new local PaymentCheckoutPage
-          window.open(`${window.location.origin}/dashboard/payment/${savedData.id}`, '_self');
-        }, 1500);
-      }
-    } catch (error: any) {
-      console.error('Error saat menyimpan data:', error);
-      toast.error(t('errorSavingDataGeneric'));
+    const ok = await onSubmitOrder();
+    if (!ok) {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
@@ -438,6 +216,13 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
   return (
     <div className="max-w-xl mx-auto space-y-3.5">
       <div className="space-y-3.5">
+        {/* Judul layar — membuka dengan menegaskan bahwa belum ada uang yang
+            berpindah, karena itu kecemasan utama di titik ini. */}
+        <div className="pb-1">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">{t('summaryTitle')}</h2>
+          <p className="text-sm text-gray-500 mt-1 leading-relaxed">{t('summarySubtitle')}</p>
+        </div>
+
         {/* Warning Banner for Personal Data Detection */}
         {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
           <div className="p-4 rounded-xl bg-amber-100/50 border border-amber-200/60 flex flex-col gap-2 mb-6">
@@ -469,10 +254,14 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
               </div>
               <div className="flex-1">
                 <h4 className="text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
-                  Verifikasi Voucher Promo
+                  {t('voucherManualVerifyTitle')}
                 </h4>
+                {/* Versi lama banner ini tidak pernah menyebut jadwal sama
+                    sekali, padahal justru itu konsekuensi terbesarnya: pemakai
+                    voucher ini tidak akan melihat pemilih tanggal hari ini. */}
                 <p className="text-sm text-blue-800 leading-relaxed">
-                  Penggunaan voucher <strong>{formData.voucherCode?.toUpperCase()}</strong> memerlukan verifikasi manual oleh admin. Form Anda akan dikirimkan untuk direview dan Anda belum perlu melakukan pembayaran sekarang. Admin akan segera memproses pesanan Anda.
+                  {t('voucherManualVerifyBody1')} <strong>{formData.voucherCode?.toUpperCase()}</strong>{' '}
+                  {t('voucherManualVerifyBody2')}
                 </p>
               </div>
             </div>
@@ -480,7 +269,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         )}
 
         {/* SECTION: SURVEY OVERVIEW (ORDER REQUEST) */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-3.5">
           <div className="flex items-center justify-between">
             <SectionLabel>{t('orderOverviewTitle')}</SectionLabel>
             {formData.isKilatUpgrade && (
@@ -491,116 +280,97 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
             )}
           </div>
 
-          <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Left Column: Survey Information & Target */}
-              <div className="space-y-4">
-                <div>
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">{t('surveyAndTarget')}</div>
-                  <div className="text-base font-bold text-gray-900 mb-1">{formData.title}</div>
+          <div className="space-y-3">
+            {/* Title & Link */}
+            <div>
+              <div className="text-base md:text-lg font-bold text-gray-900 leading-snug">{formData.title}</div>
+              {formData.surveyUrl && (
+                <div className="mt-1 flex items-center gap-1.5 max-w-full">
+                  <ExternalLink size={12} className="text-blue-600 shrink-0" />
                   <a 
                     href={formData.surveyUrl} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 hover:underline text-xs break-all"
+                    className="text-blue-600 hover:text-blue-700 hover:underline text-xs truncate max-w-full block"
+                    title={formData.surveyUrl}
                   >
-                    <ExternalLink size={12} className="shrink-0" />
                     {formData.surveyUrl}
                   </a>
                 </div>
-                
-                <div className="flex items-start gap-2.5 text-xs text-gray-700 bg-gray-50/80 p-3 rounded-lg border border-gray-200/50 shadow-xs max-w-full">
-                  <Target size={14} className="text-rose-500 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-gray-600 mb-0.5">Kriteria Responden</div>
-                    <span className="leading-relaxed">{formData.criteriaResponden}</span>
-                  </div>
+              )}
+            </div>
+
+            {/* Spec & Reward Bar (Option 2: Compact Inline Meta) */}
+            <div className="flex flex-wrap items-center gap-y-1.5 gap-x-2 text-xs font-medium text-gray-700 bg-gray-50/80 px-3.5 py-2.5 rounded-xl border border-gray-200/60 shadow-2xs">
+              <span className="flex items-center gap-1">
+                <FileText size={13} className="text-gray-400 shrink-0" />
+                <span>{formData.questionCount} Qs</span>
+              </span>
+              <span className="text-gray-300">•</span>
+              <span className="flex items-center gap-1">
+                <span>{formData.isKilatUpgrade ? t('kilatDuration') : `${formData.duration} ${t('days')}`}</span>
+              </span>
+              <span className="text-gray-300">•</span>
+              <span className="flex items-center gap-1">
+                <Gift size={13} className="text-gray-400 shrink-0" />
+                <span>{formData.winnerCount} {t('winner')}</span>
+              </span>
+              <span className="text-gray-300">•</span>
+              <span className="font-semibold text-gray-800">@ Rp {formatRupiah(formData.prizePerWinner)}</span>
+            </div>
+
+            {/* Release Schedule (If Auto Approval) */}
+            {isAutoApproval && formData.startDate && (
+              <div className="flex items-center gap-2 text-xs text-blue-800 bg-blue-50/80 px-3.5 py-2 rounded-xl border border-blue-100">
+                <CalendarCheck size={14} className="text-blue-500 shrink-0" />
+                <div>
+                  <span className="font-semibold">{t('releaseSchedule')}: </span>
+                  <span>
+                    {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {
+                      (() => {
+                        const ed = new Date(formData.startDate);
+                        ed.setDate(ed.getDate() + (formData.duration || 1));
+                        return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+                      })()
+                    } (15:00 WIB)
+                  </span>
                 </div>
               </div>
+            )}
 
-              {/* Right Column: Specification */}
-              <div className="space-y-4">
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Spesifikasi Survei</div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Qs & Duration */}
-                  <div className="flex gap-2.5 items-start">
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center shrink-0">
-                      <FileText size={14} className="text-gray-500" />
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-medium text-gray-400 uppercase">{t('questionsAndDuration')}</div>
-                      <div className="text-xs font-semibold text-gray-900 mt-0.5">
-                        {formData.questionCount} Qs • {formData.isKilatUpgrade ? t('kilatDuration') : `${formData.duration} ${t('days')}`}
-                      </div>
-                    </div>
+            {/* Kriteria Responden */}
+            {formData.criteriaResponden && (
+              <div className="flex items-start gap-2 text-xs text-gray-700 bg-gray-50/80 p-3 rounded-xl border border-gray-200/60 shadow-2xs">
+                <Target size={14} className="text-rose-500 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-gray-900">Kriteria Responden: </span>
+                  <span className="text-gray-600 leading-relaxed">{formData.criteriaResponden}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Mode JFU Kilat Active Banner */}
+            {formData.isKilatUpgrade && (
+              <div className="border-t border-dashed border-gray-150 pt-3 mt-2 w-full flex flex-col gap-1">
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-2 text-xs text-amber-800 font-bold">
+                    <Zap size={14} className="fill-amber-500 text-amber-500 shrink-0" />
+                    <span>{t('kilatModeActive')}</span>
                   </div>
-
-                  {/* Incentive */}
-                  <div className="flex gap-2.5 items-start">
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center shrink-0">
-                      <Gift size={14} className="text-gray-500" />
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-medium text-gray-400 uppercase">{t('respondentIncentiveLabel')}</div>
-                      <div className="text-xs font-semibold text-gray-900 mt-0.5">
-                        {formData.winnerCount} {t('winner')}
-                      </div>
-                      <div className="text-[10px] text-gray-500 mt-0.5">@ Rp {formatRupiah(formData.prizePerWinner)}</div>
-                    </div>
-                  </div>
-
-                  {/* Release Schedule (If Auto Approval) */}
-                  {isAutoApproval && formData.startDate && (
-                    <div className="flex gap-2.5 items-start sm:col-span-2">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
-                        <CalendarCheck size={14} className="text-blue-500" />
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-medium text-blue-500 uppercase">{t('releaseSchedule')}</div>
-                        <div className="text-xs font-bold text-blue-900 mt-0.5">
-                          {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {
-                            (() => {
-                              const ed = new Date(formData.startDate);
-                              ed.setDate(ed.getDate() + (formData.duration || 1));
-                              return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-                            })()
-                          } (15:00 WIB)
-                        </div>
-                      </div>
-                    </div>
+                  {onUndoKilat && (
+                    <button
+                      onClick={onUndoKilat}
+                      className="text-xs font-semibold text-gray-400 hover:text-gray-600 hover:underline transition-all whitespace-nowrap"
+                    >
+                      {t('kilatUndoButton')}
+                    </button>
                   )}
                 </div>
-
-              </div>
-
-              {/* Mode JFU Kilat Active Banner (Simplified footer) */}
-              {formData.isKilatUpgrade && (
-                <div className="md:col-span-2 border-t border-dashed border-gray-150 pt-4 mt-2 w-full flex flex-col gap-1">
-                  {/* Line 1: Title & Undo Button */}
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2 text-xs text-amber-800 font-bold">
-                      <Zap size={14} className="fill-amber-500 text-amber-500 shrink-0" />
-                      <span>{t('kilatModeActive')}</span>
-                    </div>
-                    {onUndoKilat && (
-                      <button
-                        onClick={onUndoKilat}
-                        className="text-xs font-semibold text-gray-400 hover:text-gray-600 hover:underline transition-all whitespace-nowrap"
-                      >
-                        {t('kilatUndoButton')}
-                      </button>
-                    )}
-                  </div>
-                  {/* Line 2: Details */}
-                  <div className="pl-[22px] text-[11px] text-amber-600 leading-relaxed">
-                    {t('kilatBenefitFast')} &bull; {t('kilatBenefitNoPage')}
-                  </div>
+                <div className="pl-[22px] text-[11px] text-amber-600 leading-relaxed">
+                  {t('kilatBenefitFast')} &bull; {t('kilatBenefitNoPage')}
                 </div>
-              )}
-
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -621,66 +391,96 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
           <div className="space-y-4">
             <p className="text-xs text-gray-400 -mt-1">{t('invoiceContactHelp')}</p>
 
-            {useAccountData ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><User size={12} /> {t('invoiceNameLabel')}</div>
-                  <div className="text-sm font-medium text-gray-900">{formData.fullName || '—'}</div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Mail size={12} /> {t('invoiceEmailLabel')}</div>
-                  <div className="text-sm font-medium text-gray-900 break-all">{formData.email || '—'}</div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1"><Phone size={12} /> {t('invoicePhoneLabel')}</div>
-                  <div className="text-sm font-medium text-gray-900">{formData.phoneNumber || '—'}</div>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5 md:col-span-2">
-                  <label htmlFor="invoiceFullName" className="text-sm font-medium text-gray-700">{t('invoiceNameLabel')} <span className="text-red-500">*</span></label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5 md:col-span-2">
+                <label htmlFor="invoiceFullName" className="text-sm font-medium text-gray-700">
+                  {t('invoiceNameLabel')} <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
                   <input
                     id="invoiceFullName"
                     type="text"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
+                    disabled={useAccountData}
+                    readOnly={useAccountData}
+                    className={`w-full px-4 py-2.5 rounded-xl border transition-all duration-200 text-sm ${
+                      useAccountData 
+                        ? 'bg-gray-50/80 border-gray-200 text-gray-700 cursor-not-allowed pr-10 font-medium' 
+                        : 'bg-white border-gray-200 hover:border-gray-300 text-gray-900'
+                    }`}
                     placeholder={t('invoiceNamePlaceholder')}
                     value={formData.fullName}
                     onChange={(e) => updateFormData({ fullName: e.target.value })}
                   />
+                  {useAccountData && (
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                      <Lock size={14} />
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-1.5">
-                  <label htmlFor="invoiceEmail" className="text-sm font-medium text-gray-700">{t('invoiceEmailLabel')} <span className="text-red-500">*</span></label>
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="invoiceEmail" className="text-sm font-medium text-gray-700">
+                  {t('invoiceEmailLabel')} <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
                   <input
                     id="invoiceEmail"
                     type="email"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
+                    disabled={useAccountData}
+                    readOnly={useAccountData}
+                    className={`w-full px-4 py-2.5 rounded-xl border transition-all duration-200 text-sm ${
+                      useAccountData 
+                        ? 'bg-gray-50/80 border-gray-200 text-gray-700 cursor-not-allowed pr-10 font-medium' 
+                        : 'bg-white border-gray-200 hover:border-gray-300 text-gray-900'
+                    }`}
                     placeholder={t('invoiceEmailPlaceholder')}
                     value={formData.email}
                     onChange={(e) => updateFormData({ email: e.target.value })}
                   />
-                  {isEmailMismatch && (
-                    <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg mt-1.5">
-                      <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                      <p className="text-xs text-amber-700">
-                        {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
-                      </p>
+                  {useAccountData && (
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                      <Lock size={14} />
                     </div>
                   )}
                 </div>
-                <div className="space-y-1.5">
-                  <label htmlFor="invoicePhoneNumber" className="text-sm font-medium text-gray-700">{t('invoicePhoneLabel')} <span className="text-red-500">*</span></label>
+                {!useAccountData && isEmailMismatch && (
+                  <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg mt-1.5">
+                    <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-700">
+                      {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="invoicePhoneNumber" className="text-sm font-medium text-gray-700">
+                  {t('invoicePhoneLabel')} <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
                   <input
                     id="invoicePhoneNumber"
                     type="tel"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 transition-all duration-200"
+                    disabled={useAccountData}
+                    readOnly={useAccountData}
+                    className={`w-full px-4 py-2.5 rounded-xl border transition-all duration-200 text-sm ${
+                      useAccountData 
+                        ? 'bg-gray-50/80 border-gray-200 text-gray-700 cursor-not-allowed pr-10 font-medium' 
+                        : 'bg-white border-gray-200 hover:border-gray-300 text-gray-900'
+                    }`}
                     placeholder={t('invoicePhonePlaceholder')}
                     value={formData.phoneNumber}
                     onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
                   />
+                  {useAccountData && (
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                      <Lock size={14} />
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
 
             {/* Divider line */}
             <hr className="border-gray-100 my-5" />
@@ -857,7 +657,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                 id="terms-checkbox"
                 type="checkbox"
                 checked={isTermsAccepted}
-                onChange={(e) => setIsTermsAccepted(e.target.checked)}
+                onChange={(e) => updateFormData({ termsAccepted: e.target.checked })}
                 className="h-4 w-4 rounded border-gray-300 cursor-pointer"
                 style={{ accentColor: '#0091ff' }}
               />
@@ -890,14 +690,16 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
           </div>
         </div>
 
-        {/* ACTION BUTTONS */}
-        <div className="flex justify-end items-center pt-1 pb-12">
+        {/* ACTION — satu tombol, tiga takdir. Tiap takdir menyebutkan apa yang
+            terjadi berikutnya persis di bawah tombolnya, supaya tidak ada
+            langkah yang datang tanpa diumumkan. */}
+        <div className="pt-1 pb-12 space-y-2.5">
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={handlePrimaryAction}
             disabled={isSubmitting}
             className={`
-            px-8 py-3 rounded-xl text-white font-bold text-base shadow-lg transition-all duration-200 flex items-center gap-2
+            w-full px-8 py-3.5 rounded-xl text-white font-bold text-base shadow-lg transition-all duration-200 flex items-center justify-center gap-2
             ${isSubmitting
                 ? 'opacity-60 cursor-not-allowed pointer-events-none'
                 : 'hover:shadow-xl hover:-translate-y-0.5'
@@ -915,20 +717,34 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Memproses...
+                {t('processing')}
               </>
             ) : !isAutoApproval ? (
               <>
                 <Send size={18} />
-                {t('submitForReview')}
+                {t('summaryCtaReview')}
+              </>
+            ) : needsSchedule ? (
+              <>
+                <CalendarCheck size={18} />
+                {t('summaryCtaSchedule')}
+                <ArrowRight size={18} className="opacity-80" />
               </>
             ) : (
               <>
                 <CreditCard size={18} />
-                {t('proceedPayment')}
+                {t('summaryCtaPay')}
               </>
             )}
           </button>
+
+          <p className="text-xs text-gray-500 text-center leading-relaxed px-2">
+            {!isAutoApproval
+              ? t('summaryHintReview')
+              : needsSchedule
+                ? t('summaryHintSchedule')
+                : t('summaryHintPay')}
+          </p>
         </div>
       </div>
     </div >

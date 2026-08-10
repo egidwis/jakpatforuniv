@@ -1,21 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { getFormSubmissionsByUser, getOwnProfile } from '../utils/supabase';
 import { expandReferralSource } from '../constants/biodata';
 import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
 import { isAutoApprovalPath as computeIsAutoApprovalPath } from '../utils/review-path';
+import { isBookingClosedForDate } from '../utils/airing-window';
+import { calculateTotalCost } from '../utils/cost-calculator';
+import { submitOrder, orderSubmitErrorKey } from '../utils/submitOrder';
+import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
+import { useLanguage } from '../i18n/LanguageContext';
 import type { SurveyFormData } from '../types';
 import { StepSurveyDetails } from './StepSurveyDetails';
 import { StepSchedule } from './StepSchedule';
 import { StepCheckout } from './StepCheckout';
 import { UnifiedHeader } from './UnifiedHeader';
-
-// Fungsi untuk mendapatkan tanggal hari ini dalam format YYYY-MM-DD
-const getTodayDate = () => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-};
 
 // Fungsi untuk mendapatkan tanggal berdasarkan durasi dari hari ini
 const getEndDateFromDuration = (duration: number) => {
@@ -26,9 +26,12 @@ const getEndDateFromDuration = (duration: number) => {
 
 const STORAGE_KEY = SURVEY_DRAFT_KEY;
 
-// Baca draft dengan migrasi dari skema step lama (1 Survei, 2 Biodata,
-// 3 Jadwal, 4 Review, 5 Kilat) ke skema baru tanpa biodata (1 Survei,
-// 2 Jadwal, 3 Review, 4 Kilat). Draft lama dipetakan lalu dipindah ke kunci v2.
+// Baca draft dengan migrasi dari skema step paling lama (1 Survei, 2 Biodata,
+// 3 Jadwal, 4 Review, 5 Kilat) ke kunci v2. Urutan v2 sendiri sejak itu dibalik
+// menjadi 1 Survei, 2 Ringkasan, 3 Jadwal, 4 Kilat — draft v2 lama TIDAK perlu
+// dipetakan ulang: step 2 dan 3 hanya bertukar peran, dan keduanya sama-sama
+// layar yang aman untuk didarati (Ringkasan tinggal dibaca, Jadwal tinggal
+// dipilih). Yang wajib dijaga cuma tanggalnya — lihat guard di bawah.
 const readDraft = (): { formData?: Partial<SurveyFormData>; currentStep?: number } | null => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -88,6 +91,7 @@ const defaultFormData: SurveyFormData = {
 export function MultiStepForm() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   // Initialize state from localStorage if available
   const [currentStep, setCurrentStep] = useState<number>(() => {
@@ -98,15 +102,24 @@ export function MultiStepForm() {
 
   const [formData, setFormData] = useState<SurveyFormData>(() => {
     const draft = readDraft();
-    if (draft?.formData) {
-      // Merge with default to ensure all fields exist
-      // Always reset startDate/endDate to prevent stale cached dates
-      const merged = { ...defaultFormData, ...draft.formData };
+    if (!draft?.formData) return defaultFormData;
+
+    const merged = { ...defaultFormData, ...draft.formData };
+
+    // Tanggal dari draft DIPERTAHANKAN selama masih sah. Versi sebelumnya
+    // mengosongkannya tanpa syarat setiap mount — padahal `currentStep` ikut
+    // dipulihkan, sehingga user yang me-reload halaman mendarat di layar
+    // lanjutan dengan field tanggal wajib yang kosong, lalu ditolak validasi
+    // dengan toast "Tanggal dan waktu mulai iklan belum dipilih". Yang perlu
+    // dibuang hanya tanggal yang sudah basi: hari yang lewat, atau hari-H yang
+    // sudah menembus batas pemesanan 13.00 WIB.
+    const ymd = merged.startDate ? String(merged.startDate).slice(0, 10) : '';
+    if (!ymd || isBookingClosedForDate(ymd)) {
       merged.startDate = '';
       merged.endDate = '';
-      return merged;
+      merged.startTime = '';
     }
-    return defaultFormData;
+    return merged;
   });
 
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
@@ -122,8 +135,16 @@ export function MultiStepForm() {
     setStep1BackHandler(() => handler);
   }, []);
 
+  // ILKOMUNY yang sudah dipakai akun ini → diskonnya tidak berlaku lagi.
+  const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
+
+  // Order sudah tersimpan → draft sengaja dibuang dan tidak boleh ditulis
+  // ulang oleh efek penyimpanan di bawah saat render terakhir sebelum unmount.
+  const isFinalizedRef = useRef(false);
+
   // Save to localStorage whenever state changes
   useEffect(() => {
+    if (isFinalizedRef.current) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       formData,
       currentStep
@@ -202,32 +223,25 @@ export function MultiStepForm() {
   }, [currentStep]);
 
 
-  const isAutoApprovalPath = computeIsAutoApprovalPath(formData);
+  /*
+   * Skema step: 1 = Detail Survei, 2 = Ringkasan, 3 = Jadwal Tayang,
+   * 4 = Jadwal Kilat.
+   *
+   * Ringkasan sengaja mendahului Jadwal. Percabangan otomatis/manual jadi
+   * berada di SATU titik — akhir Ringkasan — bukan tersebar di dua tempat
+   * seperti dulu (step 1 melompat, step 3 mundur). Efek sampingnya yang paling
+   * berharga: pengguna voucher verifikasi-manual tidak pernah lagi memilih
+   * slot yang kemudian dibatalkan diam-diam, dan ketersediaan slot dicek pada
+   * momen paling segar sebelum pembayaran.
+   */
 
-  // Skema step: 1 = Detail Survei, 2 = Jadwal (hanya auto-approval),
-  // 3 = Review & Pembayaran, 4 = Jadwal Kilat.
-
-  // Fungsi untuk pindah ke step berikutnya
   const nextStep = () => {
-    setCurrentStep(prev => {
-      // Non-auto-approval melewati step Jadwal: langsung ke Review
-      if (prev === 1 && !isAutoApprovalPath) {
-        return 3;
-      }
-      return Math.min(prev + 1, 3);
-    });
+    setCurrentStep(prev => Math.min(prev + 1, 3));
     window.scrollTo(0, 0);
   };
 
-  // Fungsi untuk kembali ke step sebelumnya
   const prevStep = () => {
-    setCurrentStep(prev => {
-      // Dari Review, non-auto-approval kembali langsung ke Detail Survei
-      if (prev === 3 && !isAutoApprovalPath) {
-        return 1;
-      }
-      return Math.max(prev - 1, 1);
-    });
+    setCurrentStep(prev => Math.max(prev - 1, 1));
     window.scrollTo(0, 0);
   };
 
@@ -239,6 +253,56 @@ export function MultiStepForm() {
       setFormData(prev => ({ ...prev, ...newData, endDate }));
     } else {
       setFormData(prev => ({ ...prev, ...newData }));
+    }
+  };
+
+  /**
+   * Titik tunggal tempat order lahir, untuk KEDUA jalur.
+   *
+   * Jalur otomatis memanggilnya dari langkah Jadwal (saat slot dikunci); jalur
+   * manual dari Ringkasan. Aturannya sendiri hidup di `submitOrder()` — di sini
+   * hanya perkara toast, membersihkan draft, dan ke mana user diantar.
+   */
+  const submitOrderAndRoute = async (overrides?: Partial<SurveyFormData>): Promise<boolean> => {
+    const merged = { ...formData, ...overrides };
+    const auto = computeIsAutoApprovalPath(merged);
+    const effective = ilkomunyBlocked ? { ...merged, voucherCode: '' } : merged;
+
+    const loadingToast = toast.loading(auto ? t('lockingSlotLoading') : t('sendingForReviewLoading'));
+    try {
+      const saved = await submitOrder({
+        formData: merged,
+        cost: calculateTotalCost(effective),
+        isAutoApproval: auto,
+        ilkomunyBlocked,
+        authUserId: user?.id,
+      });
+      toast.dismiss(loadingToast);
+
+      // Email "terima kasih, akan kami review" HANYA untuk jalur manual. Dulu
+      // ia dikirim ke semua orang, termasuk jalur otomatis — yang tidak pernah
+      // direview dan tidak akan pernah menerima email lanjutan yang dijanjikan.
+      if (!auto) {
+        fetch('/api/send-submission-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: merged.fullName || 'Kak', email: merged.email }),
+        }).catch(err => console.error('Failed to send email:', err));
+      }
+
+      isFinalizedRef.current = true;
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
+
+      toast.success(auto ? t('slotLockedSuccess') : t('successFormSubmitted'));
+      navigate(auto ? `/dashboard/payment/${saved.id}` : '/dashboard?status=survey_submitted', {
+        replace: true,
+      });
+      return true;
+    } catch (error) {
+      toast.dismiss(loadingToast);
+      toast.error(t(orderSubmitErrorKey(error)));
+      return false;
     }
   };
 
@@ -266,10 +330,11 @@ export function MultiStepForm() {
   };
 
   // Dipakai StepSchedule (mode kilat) DAN UnifiedHeader — satu fungsi supaya
-  // logika undo-kilat tidak duplikat di dua tempat.
+  // logika undo-kilat tidak duplikat di dua tempat. Kembalinya ke Ringkasan,
+  // yang kini step 2.
   const handleKilatBack = () => {
     undoKilatUpgrade();
-    setCurrentStep(3);
+    setCurrentStep(2);
     window.scrollTo(0, 0);
   };
 
@@ -326,21 +391,21 @@ export function MultiStepForm() {
         )}
 
         {currentStep === 2 && (
-          <StepSchedule
+          <StepCheckout
             formData={formData}
             updateFormData={updateFormData}
             nextStep={nextStep}
-            prevStep={prevStep}
+            onSubmitOrder={submitOrderAndRoute}
+            onUpgradeKilat={goToKilatSchedule}
+            onUndoKilat={undoKilatUpgrade}
           />
         )}
 
         {currentStep === 3 && (
-          <StepCheckout
+          <StepSchedule
             formData={formData}
             updateFormData={updateFormData}
-            prevStep={prevStep}
-            onUpgradeKilat={goToKilatSchedule}
-            onUndoKilat={undoKilatUpgrade}
+            onConfirm={(ymd) => submitOrderAndRoute({ startDate: ymd, startTime: '15:00' })}
           />
         )}
 
@@ -348,17 +413,22 @@ export function MultiStepForm() {
           <StepSchedule
             formData={formData}
             updateFormData={updateFormData}
-            nextStep={() => {
+            mode="kilat"
+            onConfirm={async (ymd) => {
+              // Kilat memilih tanggalnya lebih dulu, lalu kembali ke Ringkasan
+              // untuk konfirmasi akhir — di sana CTA-nya langsung mengunci &
+              // membayar, karena jadwalnya sudah ada.
               updateFormData({
                 isKilatUpgrade: true,
-                kilatStartDate: formData.startDate,
-                kilatStartTime: formData.startTime,
+                startDate: ymd,
+                startTime: '15:00',
+                kilatStartDate: ymd,
+                kilatStartTime: '15:00',
               });
-              setCurrentStep(3);
+              setCurrentStep(2);
               window.scrollTo(0, 0);
+              return true;
             }}
-            prevStep={handleKilatBack}
-            mode="kilat"
           />
         )}
       </div>

@@ -6,6 +6,7 @@ import {
     scheduleStart,
     type SchedulePaymentMap,
 } from './scheduleAxes';
+import { airingDaysOf } from '@/pages/dashboard/schedule/scheduleModel';
 import type { OrderUiState } from './deriveOrderUiState';
 
 type TFn = (key: TranslationKey) => string;
@@ -53,7 +54,20 @@ export interface ScheduleCard {
     info: {
         id: string;
         createdAt: string | null;
+        /** Kolom `duration` APA ADANYA. Dipakai untuk UANG saja (harga memang
+         * dihitung dari durasi yang dipesan). JANGAN dipakai menjawab "berapa hari
+         * iklan ini tayang" — pakai `airingDays`. */
         duration: number;
+        /** Panjang tayang SEBENARNYA, diturunkan dari start→end (akhir-eksklusif,
+         * lewat `airingDaysOf`).
+         *
+         * Kolom `duration` tidak dijamin sepakat dengan jendelanya: terukur 18 dari
+         * 992 baris `ad_schedules` di produksi (2026-08-09) meleset, satu di antaranya
+         * tayang 18 hari tetapi kolomnya berbunyi 1. Merender kolom itu di sebelah
+         * rentang tanggal memajang dua angka yang saling menyangkal — dan yang salah
+         * adalah kolomnya, karena kuota harian & papan kapasitas semuanya menghitung
+         * dari jendela. */
+        airingDays: number;
         periodBatch: string | null;
         incentive: IncentiveInfo | null;
         voucherCode: string | null;
@@ -172,6 +186,7 @@ export function buildScheduleCards(
                 id: first.sourceId,
                 createdAt: first.createdAt,
                 duration: first.duration ?? 0,
+                airingDays: airingDaysOf(first).length,
                 periodBatch: first.periodBatch,
                 incentive: buildIncentive(first),
                 voucherCode: first.voucherCode,
@@ -238,6 +253,7 @@ export function buildScheduleCards(
                 id: s.sourceId,
                 createdAt: s.createdAt,
                 duration: s.duration ?? 0,
+                airingDays: airingDaysOf(s).length,
                 periodBatch: s.periodBatch,
                 incentive: buildIncentive(s),
                 voucherCode: s.voucherCode,

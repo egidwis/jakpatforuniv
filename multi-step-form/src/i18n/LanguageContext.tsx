@@ -7,7 +7,14 @@ import type { Language, TranslationKey } from './translations';
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: TranslationKey) => string;
+  /**
+   * `vars` mengisi placeholder `{nama}` di dalam string terjemahan.
+   *
+   * Ditambahkan supaya kalimat panjang tidak perlu dipecah jadi potongan
+   * "bagian1 / bagian2 / bagian3" — pola itu memaksa urutan kata Inggris ke
+   * bahasa lain dan membuat copy hampir mustahil disunting tanpa membaca JSX-nya.
+   */
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
@@ -37,7 +44,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   // Memoized so its reference is stable across renders (only changes when the
   // active language changes), letting React.memo'd consumers skip re-renders.
   const t = useCallback(
-    (key: TranslationKey): string => translations[language][key] || key,
+    (key: TranslationKey, vars?: Record<string, string | number>): string => {
+      const raw = translations[language][key] || key;
+      if (!vars) return raw;
+      return raw.replace(/\{(\w+)\}/g, (match, name) =>
+        Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : match
+      );
+    },
     [language]
   );
 

@@ -239,7 +239,12 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const { t } = useLanguage();
     const rows: RowDef[] = [];
 
-    const duration = card?.info?.duration || 1;
+    // Panjang tayang diturunkan dari rentang tanggalnya (akhir-eksklusif), BUKAN dari
+    // kolom `duration` — keduanya bisa berbeda, dan yang salah adalah kolomnya. Baris
+    // ini bersebelahan langsung dengan `formattedRange`, jadi memakai kolom mentah
+    // berarti memajang dua angka yang saling menyangkal di satu baris.
+    // Cadangan ke `duration` hanya untuk jadwal yang belum bertanggal sama sekali.
+    const duration = card?.info?.airingDays || card?.info?.duration || 1;
     const totalHours = duration * 24;
     const formattedRange = formatDateRangeClean(card?.startDate, card?.endDate, card?.dateRange);
 

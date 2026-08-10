@@ -184,7 +184,7 @@ export function occupiesSlot(e: AdScheduleEntry, now: number): boolean {
  * Jadwal tanpa tanggal mengembalikan daftar kosong, bukan melempar — papan
  * memutuskan sendiri apa yang dilakukan terhadapnya (lihat `isUnscheduled`).
  */
-export function airingDaysOf(e: AdScheduleEntry): string[] {
+export function airingDaysOf(e: { startDate: string | null; endDate: string | null }): string[] {
   if (!e.startDate || !e.endDate) return [];
 
   const endYmd = toWibYmd(new Date(e.endDate));
@@ -205,6 +205,25 @@ export function airingDaysOf(e: AdScheduleEntry): string[] {
   // menghilangkannya dari papan sama sekali.
   if (days.length === 0) days.push(toWibYmd(new Date(e.startDate)));
   return days;
+}
+
+/**
+ * Berapa HARI sebuah iklan benar-benar tayang, diturunkan dari jendelanya.
+ *
+ * Pembungkus tipis `airingDaysOf` untuk pemanggil yang cuma butuh angkanya dan
+ * memegang tanggal mentah (mis. baris `form_submissions`), bukan `AdScheduleEntry`.
+ * Mengembalikan `null` bila jendelanya belum lengkap, supaya pemanggil bisa memilih
+ * cadangannya sendiri alih-alih menerima angka 0 yang menyesatkan.
+ *
+ * Dipakai sebagai pengganti kolom `duration` di SETIAP tempat yang menjawab
+ * "berapa hari iklan ini tayang". Kolomnya sendiri boleh tetap dipakai untuk uang.
+ */
+export function airingDayCount(
+  startDate: string | null | undefined,
+  endDate: string | null | undefined
+): number | null {
+  if (!startDate || !endDate) return null;
+  return airingDaysOf({ startDate, endDate }).length || null;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, deleteFormSubmission, prepareForReschedule, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, dismissRejectedSubmission, prepareForReschedule, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
 import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
@@ -14,6 +14,14 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { type SchedulePaymentMap } from '@/components/status/scheduleAxes';
@@ -108,7 +116,13 @@ export function StatusPage() {
             return;
         }
         try {
-            const data = await getFormSubmissionsByUser(user.id, user.email);
+            const fetched = await getFormSubmissionsByUser(user.id, user.email);
+            // Order yang sudah disingkirkan pemiliknya (lihat dismissRejectedSubmission)
+            // ditandai `cancelled` dan disaring di sini, bukan dihapus dari database —
+            // datanya tetap ada untuk penelusuran saat user menghubungi bantuan.
+            // Di tabel ini `cancelled` HANYA berarti itu; pembatalan oleh admin hidup
+            // di `form_submissions_extend`.
+            const data = fetched.filter((s) => s.submission_status !== 'cancelled');
             setSubmissions(data);
 
             // Fetch payment links for each submission
@@ -226,16 +240,27 @@ export function StatusPage() {
         setRefreshing(false);
     };
 
-    const handleDeleteSubmission = async (id: string) => {
-        if (confirm(t('deleteSubmissionConfirm'))) {
-            try {
-                await deleteFormSubmission(id);
-                setSubmissions(prev => prev.filter(s => s.id !== id));
-                toast.success(t('deleteSubmissionSuccess'));
-            } catch (error) {
-                console.error('Failed to delete submission:', error);
-                toast.error(t('deleteSubmissionError'));
-            }
+    /** Order yang sedang dikonfirmasi untuk disingkirkan (null = dialog tertutup). */
+    const [pendingDismiss, setPendingDismiss] = useState<FormSubmission | null>(null);
+    const [isDismissing, setIsDismissing] = useState(false);
+
+    const confirmDismissSubmission = async () => {
+        const target = pendingDismiss;
+        if (!target?.id) return;
+        setIsDismissing(true);
+        try {
+            await dismissRejectedSubmission(target.id);
+            setSubmissions(prev => prev.filter(s => s.id !== target.id));
+            setPendingDismiss(null);
+            toast.success(t('deleteSubmissionSuccess'));
+        } catch (error) {
+            // Dulu kegagalan di sini tak pernah terlihat: baris tetap dibuang dari
+            // state dan toast sukses tetap tampil, sehingga order "hidup lagi" saat
+            // refresh. Sekarang daftar TIDAK disentuh kalau server menolak.
+            console.error('Failed to dismiss submission:', error);
+            toast.error(t('deleteSubmissionError'));
+        } finally {
+            setIsDismissing(false);
         }
     };
 
@@ -270,14 +295,20 @@ export function StatusPage() {
                 voucherCode: submission.voucher_code || '',
                 detectedKeywords: submission.detected_keywords || [],
                 isManualEntry: submission.submission_method === 'manual',
+                // Order ini sudah pernah disetujui S&K-nya saat dipesan. Jadwal
+                // ulang mendarat langsung di langkah Jadwal — melewati Ringkasan,
+                // satu-satunya tempat kotak centang itu ada — jadi tanpa baris
+                // ini penguncian slot akan ditolak dan user terjebak.
+                termsAccepted: true,
                 isReschedule: true,
                 submissionIdToReplace: submission.id,
             };
 
-            // Save to localStorage (step 2 = Jadwal pada skema step baru)
+            // Step 3 = Jadwal sejak urutan flow dibalik (1 Detail, 2 Ringkasan,
+            // 3 Jadwal). Salah angka di sini = user mendarat di layar yang salah.
             localStorage.setItem(SURVEY_DRAFT_KEY, JSON.stringify({
                 formData: recoveredData,
-                currentStep: 2
+                currentStep: 3
             }));
 
             toast.dismiss(loadingToast);
@@ -480,7 +511,7 @@ export function StatusPage() {
                                                     <ReviewPhase
                                                         submission={submission}
                                                         first={ui.first}
-                                                        onDelete={() => handleDeleteSubmission(submission.id!)}
+                                                        onDelete={() => setPendingDismiss(submission)}
                                                         active={activePhase === 1}
                                                     />
                                                 </Phase>
@@ -530,6 +561,39 @@ export function StatusPage() {
             >
                 <ArrowUp className="w-5 h-5" />
             </button>
+
+            {/* Konfirmasi menyingkirkan order yang ditolak. Menggantikan window.confirm()
+                polos — dialog ini menyebut judul surveinya supaya tidak salah sasaran,
+                dan menegaskan bahwa datanya disimpan (bukan dihapus permanen). */}
+            <Dialog open={pendingDismiss !== null} onOpenChange={(open) => { if (!open && !isDismissing) setPendingDismiss(null); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t('dismissSubmissionTitle')}</DialogTitle>
+                        <DialogDescription className="pt-1 leading-relaxed">
+                            {t('dismissSubmissionDescPart1')}{' '}
+                            <strong className="font-semibold text-gray-900">{pendingDismiss?.title || t('untitledSurvey')}</strong>{' '}
+                            {t('dismissSubmissionDescPart2')}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => setPendingDismiss(null)}
+                            disabled={isDismissing}
+                            className="max-md:w-full rounded-full"
+                        >
+                            {t('cancel')}
+                        </Button>
+                        <Button
+                            onClick={confirmDismissSubmission}
+                            disabled={isDismissing}
+                            className="max-md:w-full rounded-full bg-rose-600 text-white hover:bg-rose-700"
+                        >
+                            {isDismissing ? t('dismissSubmissionLoading') : t('dismissSubmissionConfirm')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

@@ -759,18 +759,80 @@ export const updateFormStatus = async (
   }
 };
 
-// Fungsi untuk menghapus form submission
+/**
+ * Menghapus form submission secara PERMANEN.
+ *
+ * ⚠️ Untuk user biasa ini SELALU gagal, dan itu memang disengaja: `form_submissions`
+ * punya RLS aktif tanpa satu pun policy DELETE (hanya INSERT/SELECT/UPDATE), jadi
+ * PostgREST mengembalikan sukses dengan NOL baris terhapus — bukan error. Dulu
+ * pemanggilnya menganggap itu berhasil, membuang baris dari state, lalu menampilkan
+ * toast sukses; order muncul lagi begitu halaman di-refresh.
+ *
+ * Karena itu `.select('id')` di bawah wajib: ia memaksa PostgREST mengembalikan baris
+ * yang benar-benar terhapus, sehingga "tidak ada yang terhapus" bisa dibedakan dari
+ * "berhasil" dan dilempar sebagai error. JANGAN hapus `.select()` itu.
+ *
+ * Untuk menyingkirkan order dari daftar user, pakai `dismissRejectedSubmission()` —
+ * ia menyimpan datanya (bisa ditelusuri saat ada keluhan), bukan menghapusnya.
+ */
 export const deleteFormSubmission = async (id: string) => {
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('form_submissions')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('id');
 
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(
+        `Tidak ada baris yang terhapus untuk submission ${id} — kemungkinan besar ditolak RLS (tidak ada policy DELETE).`
+      );
+    }
     return true;
   } catch (error: any) {
     console.error('Error deleting form submission:', error);
+    throw error;
+  }
+};
+
+/**
+ * Menyingkirkan order yang DITOLAK review dari daftar user, tanpa menghapus datanya.
+ *
+ * Dipakai tombol "Hapus" di kartu order (ReviewPhase hanya menampilkannya untuk
+ * status `rejected`/`spam`). Soft-delete dipilih ketimbang DELETE sungguhan karena:
+ *   - `survey_pages`, `invoices`, dan `transactions` TIDAK punya foreign key ke
+ *     `form_submissions`, jadi penghapusan keras akan meninggalkan baris yatim;
+ *   - riwayat order tetap perlu ada saat user menghubungi bantuan;
+ *   - user memang cuma ingin membersihkan tampilan, bukan melenyapkan bukti.
+ *
+ * `submission_status = 'cancelled'` aman dipakai sebagai penanda di tabel ini: nol
+ * baris `form_submissions` memakainya (dicek di produksi 2026-08-09) dan tidak ada
+ * kode lain yang menulisnya — pembatalan oleh admin hidup di `form_submissions_extend`
+ * (lihat SchedulePaymentTab). Trigger `guard_payment_columns()` juga sudah
+ * mengizinkan transisi non-admin menuju `cancelled` selama order belum lunas.
+ *
+ * Penyaring `.in(...)` menjaga agar hanya order yang benar-benar ditolak bisa
+ * disingkirkan — order berbayar tidak akan pernah ikut terbawa meski dipanggil keliru.
+ */
+export const dismissRejectedSubmission = async (id: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .update({ submission_status: 'cancelled' })
+      .eq('id', id)
+      .in('submission_status', ['rejected', 'spam'])
+      .select('id');
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(
+        `Order ${id} tidak bisa disingkirkan — statusnya bukan rejected/spam, atau ditolak RLS.`
+      );
+    }
+    return true;
+  } catch (error: any) {
+    console.error('Error dismissing rejected submission:', error);
     throw error;
   }
 };
@@ -1823,6 +1885,52 @@ export const releaseExpiredSlot = async (submissionId: string) => {
     console.error("Failed to release expired slot:", error);
     throw error;
   }
+};
+
+/**
+ * Kunci ulang slot untuk order yang SUDAH ada, tanpa membuat baris baru.
+ *
+ * Ini pasangan dari `releaseExpiredSlot`: dipakai saat jendela pembayaran habis
+ * dan user memilih tanggal lain langsung di halaman pembayaran. Sebelumnya
+ * pemulihan itu harus lewat `prepareForReschedule` + draft localStorage +
+ * lempar balik ke wizard — jalur yang dulu memicu insiden survei tertimpa,
+ * karena niat reschedule bisa tertinggal di draft dan mengenai order lain.
+ * Di sini id-nya eksplisit, jadi tidak ada yang bisa salah sasaran.
+ *
+ * `guard_payment_columns()` mengizinkan transisi non-admin antar
+ * slot_reserved / approved / waiting_payment, dan payment_status → 'pending'.
+ * Filter `payment_status` di bawah menutup lomba dengan webhook DOKU: order
+ * yang ternyata sudah lunas tidak boleh dijadwalkan ulang diam-diam.
+ */
+export const rebookSlotForSubmission = async (
+  submissionId: string,
+  startYmd: string,
+  durationDays: number
+) => {
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .update({
+      start_date: toAiringStartIso(startYmd),
+      end_date: toAiringEndIso(startYmd, Math.max(durationDays, 1)),
+      slot_booked_by: 'user',
+      slot_reserved_at: new Date().toISOString(),
+      submission_status: 'waiting_payment',
+      payment_status: 'pending',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', submissionId)
+    .not('payment_status', 'in', '("paid","completed")')
+    .select('id');
+
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    // Nol baris di PostgREST tidak memunculkan error — inilah cara "berhasil
+    // palsu" lahir. Dilempar supaya UI tidak bisa menampilkan sukses semu.
+    throw new Error(
+      `Slot untuk ${submissionId} tidak bisa dikunci ulang — kemungkinan sudah lunas atau ditolak RLS.`
+    );
+  }
+  return true;
 };
 
 /**

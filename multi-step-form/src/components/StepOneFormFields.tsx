@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { SurveyFormData } from '../types';
 import {
   CalendarDays,
@@ -15,6 +15,8 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useLanguage } from '../i18n/LanguageContext';
 import { isAutoApprovalPath } from '../utils/review-path';
+import { useSlotAvailability } from '../hooks/useSlotAvailability';
+import { isBookingClosedForDate, toLocalYmd } from '../utils/airing-window';
 import {
   FieldBlock,
   FieldRow,
@@ -248,6 +250,33 @@ export function StepOneFormFields({
     formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30);
   const durationHasError = (errors.duration && attemptedSubmit) || durationOutOfRange;
 
+  /*
+   * Antisipasi tembok "slot penuh" di ujung flow.
+   *
+   * Sejak Ringkasan mendahului Jadwal, ketersediaan slot baru terlihat setelah
+   * user selesai mengisi semuanya — kalau durasinya panjang dan kalendernya
+   * padat, penolakan datang di saat paling menyakitkan. Angka di bawah
+   * memindahkan kabar itu ke tempat penyebabnya: kolom durasi.
+   *
+   * Hanya untuk jalur impor Google Form; entri manual tidak pernah melewati
+   * langkah Jadwal, jadi menampilkannya di sana justru menyesatkan.
+   */
+  const availability = useSlotAvailability('regular');
+  const openStartDays = useMemo(() => {
+    if (!isGoogleImport || availability.isLoading) return null;
+    const days = Math.max(formData.duration || 1, 1);
+    if (days > 30) return null;
+    const today = new Date();
+    let open = 0;
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const ymd = toLocalYmd(d);
+      if (!isBookingClosedForDate(ymd) && availability.isRangeAvailable(ymd, days)) open++;
+    }
+    return open;
+  }, [isGoogleImport, availability.isLoading, availability.isRangeAvailable, formData.duration]);
+
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
       {/* CARD 1 — INFORMASI & KONFIGURASI SURVEI */}
@@ -367,6 +396,28 @@ export function StepOneFormFields({
                   : t('errorDurationZero')
                 : undefined
             }
+            /* Jangkar historis, bukan janji — angkanya membantu memilih durasi
+               tanpa pernah menjadi target yang bisa ditagih. */
+            hint={
+              <span className="flex flex-col gap-1">
+                <span className="flex items-start gap-1.5 text-gray-500">
+                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
+                  <span>{t('surveyDurationHint')}</span>
+                </span>
+                {openStartDays !== null && (
+                  <span
+                    className={`pl-5 font-medium ${openStartDays <= 2 ? 'text-amber-600' : 'text-gray-600'}`}
+                  >
+                    {openStartDays === 0
+                      ? t('slotOutlookNone', { days: `${Math.max(formData.duration || 1, 1)} ${t('days').toLowerCase()}` })
+                      : t('slotOutlook', {
+                          days: `${Math.max(formData.duration || 1, 1)} ${t('days').toLowerCase()}`,
+                          open: openStartDays,
+                        })}
+                  </span>
+                )}
+              </span>
+            }
           >
             <input
               id="duration"
@@ -463,17 +514,22 @@ export function StepOneFormFields({
                 ? t('errorMinPrize')
                 : undefined
             }
+            /* Menjelaskan PERAN hadiah, bukan cuma nominalnya — itu yang
+               membuat angka rekomendasi di bawahnya masuk akal. */
             hint={
-              formData.prizePerWinner >= 25000 && formData.questionCount > 0 ? (
-                <span className="flex items-center gap-1.5 text-gray-500">
-                  <Info className="w-3.5 h-3.5 shrink-0 text-gray-400" aria-hidden="true" />
-                  <span>
+              <span className="flex flex-col gap-1 text-gray-500">
+                <span className="flex items-start gap-1.5">
+                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
+                  <span>{t('prizePerWinnerHint')}</span>
+                </span>
+                {formData.prizePerWinner >= 25000 && formData.questionCount > 0 && (
+                  <span className="pl-5 font-medium text-gray-600">
                     {t('recommendation')}: Rp{' '}
                     {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}
                     {t('perWinner')}
                   </span>
-                </span>
-              ) : undefined
+                )}
+              </span>
             }
           >
             <span className="mr-1.5 shrink-0 text-sm text-gray-400">Rp</span>
@@ -531,7 +587,7 @@ export function StepOneFormFields({
           type="submit"
           className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark"
         >
-          {t('continue')}
+          {t('continueToSummary')}
           <span aria-hidden="true">→</span>
         </button>
       </div>
