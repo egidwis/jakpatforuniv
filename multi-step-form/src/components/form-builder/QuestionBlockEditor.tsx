@@ -62,6 +62,31 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   const [showLogicBuilder, setShowLogicBuilder] = useState(false);
   const ruleCount = block.logicRules?.length || 0;
 
+  const labelInputRef = useRef<HTMLInputElement>(null);
+
+  const insertTokenAtCursor = (token: string) => {
+    const input = labelInputRef.current;
+    const currentText = block.label || '';
+    if (!input) {
+      onChange({ ...block, label: currentText + ' ' + token });
+      return;
+    }
+    const start = input.selectionStart ?? currentText.length;
+    const end = input.selectionEnd ?? currentText.length;
+    const before = currentText.substring(0, start);
+    const after = currentText.substring(end);
+    const updated = `${before}${before.endsWith(' ') || !before ? '' : ' '}${token}${after.startsWith(' ') || !after ? '' : ' '}${after}`;
+    onChange({ ...block, label: updated });
+
+    setTimeout(() => {
+      if (input) {
+        input.focus();
+        const newPos = start + token.length + 2;
+        input.setSelectionRange(newPos, newPos);
+      }
+    }, 50);
+  };
+
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange({ ...block, label: e.target.value });
   };
@@ -179,7 +204,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                         const cleaned = (block.label || '').replace(/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/gi, '').trim();
                         onChange({ ...block, label: cleaned });
                       } else {
-                        onChange({ ...block, label: block.label + ' ' + e.target.value });
+                        insertTokenAtCursor(e.target.value);
                       }
                       e.target.value = '';
                     }}
@@ -200,6 +225,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
             </div>
 
             <input
+              ref={labelInputRef}
               type="text"
               value={block.label}
               onChange={handleLabelChange}
