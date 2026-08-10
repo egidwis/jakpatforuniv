@@ -63,31 +63,38 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   const ruleCount = block.logicRules?.length || 0;
 
   const labelInputRef = useRef<HTMLInputElement>(null);
+  const savedSelectionRef = useRef<number | null>(null);
+
+  const handleTrackCursor = (e: React.SyntheticEvent<HTMLInputElement>) => {
+    const target = e.currentTarget;
+    if (target.selectionStart !== null) {
+      savedSelectionRef.current = target.selectionStart;
+    }
+  };
 
   const insertTokenAtCursor = (token: string) => {
     const input = labelInputRef.current;
     const currentText = block.label || '';
-    if (!input) {
-      onChange({ ...block, label: currentText + ' ' + token });
-      return;
-    }
-    const start = input.selectionStart ?? currentText.length;
-    const end = input.selectionEnd ?? currentText.length;
-    const before = currentText.substring(0, start);
-    const after = currentText.substring(end);
+    const cursorIndex = savedSelectionRef.current ?? input?.selectionStart ?? currentText.length;
+
+    const before = currentText.substring(0, cursorIndex);
+    const after = currentText.substring(cursorIndex);
     const updated = `${before}${before.endsWith(' ') || !before ? '' : ' '}${token}${after.startsWith(' ') || !after ? '' : ' '}${after}`;
+
     onChange({ ...block, label: updated });
 
     setTimeout(() => {
       if (input) {
         input.focus();
-        const newPos = start + token.length + 2;
+        const newPos = cursorIndex + token.length + 2;
         input.setSelectionRange(newPos, newPos);
+        savedSelectionRef.current = newPos;
       }
     }, 50);
   };
 
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleTrackCursor(e);
     onChange({ ...block, label: e.target.value });
   };
 
@@ -229,6 +236,9 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               type="text"
               value={block.label}
               onChange={handleLabelChange}
+              onSelect={handleTrackCursor}
+              onClick={handleTrackCursor}
+              onKeyUp={handleTrackCursor}
               placeholder="Tuliskan pertanyaan Anda... (Gunakan @q1 untuk Piped Text)"
               className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-1"
             />
