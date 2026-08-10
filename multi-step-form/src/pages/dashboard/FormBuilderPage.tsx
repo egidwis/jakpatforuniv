@@ -244,9 +244,9 @@ export const FormBuilderPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 overflow-hidden">
+    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Top Navbar Editor */}
-      <header className="shrink-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 shadow-sm z-10">
+      <header className="shrink-0 sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 shadow-sm z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Button
@@ -345,8 +345,8 @@ export const FormBuilderPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Body Area with Side-by-Side Flex Layout (No Overlay) */}
-      <div className="flex-1 flex overflow-hidden relative">
+      {/* Body Area with Side-by-Side Flex Layout (Full Height Side Panel) */}
+      <div className="flex-1 flex overflow-hidden min-h-[calc(100vh-57px)] relative">
         {/* Editor Main Canvas */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-24">
           <div className="max-w-3xl mx-auto space-y-6">
@@ -450,9 +450,9 @@ export const FormBuilderPage: React.FC = () => {
           </div>
         </main>
 
-        {/* Compact Side-by-Side Ask AI Assistant Side Panel (No Overlay Backdrop) */}
+        {/* Compact Side-by-Side Ask AI Assistant Side Panel (Full Height) */}
         {isAiDrawerOpen && (
-          <aside className="w-[340px] sm:w-[350px] shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col h-full shadow-sm z-20 transition-all duration-200">
+          <aside className="w-[340px] sm:w-[350px] shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col min-h-full shadow-sm z-20 transition-all duration-200">
             <FormAiAssistantDrawer
               isOpen={isAiDrawerOpen}
               onClose={() => setIsAiDrawerOpen(false)}
