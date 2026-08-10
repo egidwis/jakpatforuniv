@@ -244,10 +244,10 @@ export const FormBuilderPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Top Navbar Editor */}
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 shadow-sm">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Button
               variant="ghost"
@@ -281,8 +281,12 @@ export const FormBuilderPage: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setIsAiDrawerOpen(true)}
-              className="text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800 flex items-center gap-1.5 font-semibold"
+              onClick={() => setIsAiDrawerOpen(!isAiDrawerOpen)}
+              className={`text-xs flex items-center gap-1.5 font-semibold transition-all ${
+                isAiDrawerOpen
+                  ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/50 dark:text-purple-200'
+                  : 'text-purple-700 bg-purple-50 hover:bg-purple-100 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800'
+              }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
               Ask AI <span className="text-[9px] bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-200 px-1 py-0.2 rounded font-bold">Beta</span>
@@ -341,114 +345,123 @@ export const FormBuilderPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Editor Body */}
-      <main className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6 mt-4">
-        {/* Form Header Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border-t-8 border-t-blue-600 border-x border-b border-gray-200 dark:border-gray-700 p-6 shadow-sm space-y-4">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Judul Form / Survei..."
-            className="w-full text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-2"
-          />
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Deskripsi atau instruksi untuk responden (opsional)..."
-            rows={2}
-            className="w-full text-sm text-gray-600 dark:text-gray-300 bg-transparent border-b border-dashed border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none resize-none"
-          />
-        </div>
+      {/* Body Area with Side-by-Side Panel Layout */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Editor Main Canvas */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-24">
+          <div className="max-w-3xl mx-auto space-y-6">
+            {/* Form Header Card */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border-t-8 border-t-blue-600 border-x border-b border-gray-200 dark:border-gray-700 p-6 shadow-sm space-y-4">
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Judul Form / Survei..."
+                className="w-full text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-2"
+              />
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Deskripsi atau instruksi untuk responden (opsional)..."
+                rows={2}
+                className="w-full text-sm text-gray-600 dark:text-gray-300 bg-transparent border-b border-dashed border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none resize-none"
+              />
+            </div>
 
-        {/* Question Blocks List */}
-        <div className="space-y-4">
-          {blocks.map((block, idx) => (
-            <QuestionBlockEditor
-              key={block.id}
-              block={block}
-              index={idx}
-              totalBlocks={blocks.length}
-              onChange={(updated) => handleUpdateBlock(idx, updated)}
-              onDelete={() => handleDeleteBlock(idx)}
-              onDuplicate={() => handleDuplicateBlock(idx)}
-              onMoveUp={() => handleMoveUp(idx)}
-              onMoveDown={() => handleMoveDown(idx)}
-            />
-          ))}
-        </div>
+            {/* Question Blocks List */}
+            <div className="space-y-4">
+              {blocks.map((block, idx) => (
+                <QuestionBlockEditor
+                  key={block.id}
+                  block={block}
+                  index={idx}
+                  totalBlocks={blocks.length}
+                  onChange={(updated) => handleUpdateBlock(idx, updated)}
+                  onDelete={() => handleDeleteBlock(idx)}
+                  onDuplicate={() => handleDuplicateBlock(idx)}
+                  onMoveUp={() => handleMoveUp(idx)}
+                  onMoveDown={() => handleMoveDown(idx)}
+                />
+              ))}
+            </div>
 
-        {/* Add Question Floating Toolbar */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 shadow-md sticky bottom-6 z-20">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 text-center">
-            Tambah Pertanyaan:
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => handleAddQuestion('short_text')}
-              className="text-xs text-gray-700 dark:text-gray-200 hover:border-blue-500 hover:text-blue-600"
-            >
-              <Type className="w-3.5 h-3.5 mr-1 text-blue-500" /> Short Text
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => handleAddQuestion('long_text')}
-              className="text-xs text-gray-700 dark:text-gray-200 hover:border-indigo-500 hover:text-indigo-600"
-            >
-              <AlignLeft className="w-3.5 h-3.5 mr-1 text-indigo-500" /> Long Text
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => handleAddQuestion('multiple_choice')}
-              className="text-xs text-gray-700 dark:text-gray-200 hover:border-emerald-500 hover:text-emerald-600"
-            >
-              <CircleDot className="w-3.5 h-3.5 mr-1 text-emerald-500" /> Multiple Choice
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => handleAddQuestion('checkbox')}
-              className="text-xs text-gray-700 dark:text-gray-200 hover:border-purple-500 hover:text-purple-600"
-            >
-              <CheckSquare className="w-3.5 h-3.5 mr-1 text-purple-500" /> Checkboxes
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => handleAddQuestion('rating')}
-              className="text-xs text-gray-700 dark:text-gray-200 hover:border-amber-500 hover:text-amber-600"
-            >
-              <Star className="w-3.5 h-3.5 mr-1 text-amber-500" /> Rating
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => handleAddQuestion('date')}
-              className="text-xs text-gray-700 dark:text-gray-200 hover:border-rose-500 hover:text-rose-600"
-            >
-              <Calendar className="w-3.5 h-3.5 mr-1 text-rose-500" /> Date
-            </Button>
+            {/* Add Question Floating Toolbar */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 shadow-md sticky bottom-6 z-20">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 text-center">
+                Tambah Pertanyaan:
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAddQuestion('short_text')}
+                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-blue-500 hover:text-blue-600"
+                >
+                  <Type className="w-3.5 h-3.5 mr-1 text-blue-500" /> Short Text
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAddQuestion('long_text')}
+                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-indigo-500 hover:text-indigo-600"
+                >
+                  <AlignLeft className="w-3.5 h-3.5 mr-1 text-indigo-500" /> Long Text
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAddQuestion('multiple_choice')}
+                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-emerald-500 hover:text-emerald-600"
+                >
+                  <CircleDot className="w-3.5 h-3.5 mr-1 text-emerald-500" /> Multiple Choice
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAddQuestion('checkbox')}
+                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-purple-500 hover:text-purple-600"
+                >
+                  <CheckSquare className="w-3.5 h-3.5 mr-1 text-purple-500" /> Checkboxes
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAddQuestion('rating')}
+                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-amber-500 hover:text-amber-600"
+                >
+                  <Star className="w-3.5 h-3.5 mr-1 text-amber-500" /> Rating
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAddQuestion('date')}
+                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-rose-500 hover:text-rose-600"
+                >
+                  <Calendar className="w-3.5 h-3.5 mr-1 text-rose-500" /> Date
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
 
-      {/* Ask AI Assistant Side Panel */}
-      <FormAiAssistantDrawer
-        isOpen={isAiDrawerOpen}
-        onClose={() => setIsAiDrawerOpen(false)}
-        formState={{ title, description, blocks }}
-        onApplyActions={handleApplyAiActions}
-      />
+        {/* Side-by-Side Ask AI Assistant Panel */}
+        {isAiDrawerOpen && (
+          <aside className="w-full md:w-[380px] lg:w-[420px] shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col h-[calc(100vh-57px)] sticky top-[57px] shadow-sm transition-all duration-300">
+            <FormAiAssistantDrawer
+              isOpen={isAiDrawerOpen}
+              onClose={() => setIsAiDrawerOpen(false)}
+              formState={{ title, description, blocks }}
+              onApplyActions={handleApplyAiActions}
+            />
+          </aside>
+        )}
+      </div>
     </div>
   );
 };
