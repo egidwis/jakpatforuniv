@@ -23,7 +23,7 @@ import {
   ExternalLink,
   Copy,
   CheckCircle2,
-  FileText
+  FileText,
   Sparkles,
   Cloud
 } from 'lucide-react';
