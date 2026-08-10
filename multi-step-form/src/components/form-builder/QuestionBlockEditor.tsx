@@ -13,7 +13,9 @@ import {
   ChevronDown,
   Plus,
   X,
-  Zap
+  X,
+  Zap,
+  FileText
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { QuestionLogicBuilder } from './QuestionLogicBuilder';
@@ -36,7 +38,8 @@ const QUESTION_TYPE_ICONS: Record<QuestionType, React.ReactNode> = {
   multiple_choice: <CircleDot className="w-4 h-4 text-emerald-500" />,
   checkbox: <CheckSquare className="w-4 h-4 text-purple-500" />,
   rating: <Star className="w-4 h-4 text-amber-500" />,
-  date: <Calendar className="w-4 h-4 text-rose-500" />
+  date: <Calendar className="w-4 h-4 text-rose-500" />,
+  page_break: <FileText className="w-4 h-4 text-indigo-500" />
 };
 
 const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
@@ -45,7 +48,8 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   multiple_choice: 'Multiple Choice',
   checkbox: 'Checkboxes',
   rating: 'Rating / Scale',
-  date: 'Date'
+  date: 'Date',
+  page_break: 'Page Break'
 };
 
 export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
@@ -61,6 +65,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
 }) => {
   const [showLogicBuilder, setShowLogicBuilder] = useState(false);
   const ruleCount = block.logicRules?.length || 0;
+  const pageNum = allBlocks.slice(0, index).filter(b => b.type === 'page_break').length + 1;
 
   const labelInputRef = useRef<HTMLInputElement>(null);
   const savedSelectionRef = useRef<number | null>(null);
@@ -131,6 +136,59 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
     onChange({ ...block, required: e.target.checked });
   };
 
+  if (block.type === 'page_break') {
+    return (
+      <div className="relative my-6 group">
+        <div className="absolute inset-0 flex items-center" aria-hidden="true">
+          <div className="w-full border-t-2 border-dashed border-indigo-300 dark:border-indigo-800" />
+        </div>
+        <div className="relative flex justify-center">
+          <div className="bg-indigo-600 dark:bg-indigo-700 text-white rounded-full px-5 py-2 text-xs font-bold shadow-md flex items-center gap-3 border border-indigo-500">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <FileText className="w-4 h-4 text-indigo-200" />
+              <span>HALAMAN {pageNum + 1}</span>
+            </div>
+            <input
+              type="text"
+              value={block.label}
+              onChange={(e) => onChange({ ...block, label: e.target.value })}
+              placeholder="Judul Bagian / Halaman (Opsional)..."
+              className="bg-indigo-700 dark:bg-indigo-800 text-white placeholder-indigo-300/80 px-3 py-0.5 rounded-full text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-white border border-indigo-500/80 w-48 sm:w-64"
+            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={index === 0}
+                onClick={onMoveUp}
+                className="p-1 hover:bg-indigo-800 rounded-full transition-colors text-indigo-200 hover:text-white disabled:opacity-30"
+                title="Pindah ke Atas"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={index === totalBlocks - 1}
+                onClick={onMoveDown}
+                className="p-1 hover:bg-indigo-800 rounded-full transition-colors text-indigo-200 hover:text-white disabled:opacity-30"
+                title="Pindah ke Bawah"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="p-1 hover:bg-rose-600 rounded-full transition-colors text-indigo-200 hover:text-white"
+                title="Hapus Pemisah Halaman"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm space-y-4 hover:shadow-md transition-shadow">
       {/* Block Top Control Header */}
@@ -138,6 +196,9 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center">
             {index + 1}
+          </span>
+          <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/60">
+            Hal {pageNum}
           </span>
           <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/60 px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-600">
             {QUESTION_TYPE_ICONS[block.type]}

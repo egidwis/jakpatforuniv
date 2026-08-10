@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Copy,
   CheckCircle2,
+  FileText
   Sparkles,
   Cloud
 } from 'lucide-react';
@@ -521,6 +522,15 @@ export const FormBuilderPage: React.FC = () => {
                   className="text-xs text-gray-700 dark:text-gray-200 hover:border-rose-500 hover:text-rose-600"
                 >
                   <Calendar className="w-3.5 h-3.5 mr-1 text-rose-500" /> Date
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAddQuestion('page_break')}
+                  className="text-xs text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold"
+                >
+                  <FileText className="w-3.5 h-3.5 mr-1 text-indigo-600 dark:text-indigo-400" /> + Page Break
                 </Button>
               </div>
             </div>

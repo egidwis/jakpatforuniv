@@ -11,7 +11,10 @@ import {
   Loader2,
   AlertCircle,
   Star,
-  Check
+  Check,
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import jfuIcon from '../../assets/jfu-icon.png';
@@ -69,9 +72,9 @@ export const PublicFormPage: React.FC = () => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
     if (fieldErrors[questionId]) {
       setFieldErrors(prev => {
-        const copy = { ...prev };
-        delete copy[questionId];
-        return copy;
+        const updated = { ...prev };
+        delete updated[questionId];
+        return updated;
       });
     }
   };
@@ -87,47 +90,6 @@ export const PublicFormPage: React.FC = () => {
     handleInputChange(questionId, updated);
   };
 
-  const validateForm = (): boolean => {
-    if (!form) return false;
-    const errors: Record<string, string> = {};
-
-    visibleBlocks.forEach(q => {
-      if (q.required) {
-        const val = answers[q.id];
-        if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
-          errors[q.id] = 'Pertanyaan ini wajib diisi.';
-        }
-      }
-    });
-
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form) return;
-
-    if (!validateForm()) {
-      const firstErrKey = Object.keys(fieldErrors)[0];
-      if (firstErrKey) {
-        const elem = document.getElementById(`question-${firstErrKey}`);
-        elem?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      await submitFormResponse(form.id, answers);
-      setSubmitted(true);
-    } catch (err) {
-      alert('Gagal mengirimkan jawaban. Silakan coba lagi.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   // Logic Rules Evaluator
   const evaluateRuleCondition = (rule: any, currentAnswers: Record<string, any>): boolean => {
     const val = currentAnswers[rule.sourceBlockId];
@@ -139,11 +101,11 @@ export const PublicFormPage: React.FC = () => {
     }
     if (rule.operator === 'equals') {
       if (Array.isArray(val)) return val.includes(rule.value);
-      return String(val || '').trim().toLowerCase() === String(rule.value || '').trim().toLowerCase();
+      return String(val || '') === String(rule.value || '');
     }
     if (rule.operator === 'not_equals') {
       if (Array.isArray(val)) return !val.includes(rule.value);
-      return String(val || '').trim().toLowerCase() !== String(rule.value || '').trim().toLowerCase();
+      return String(val || '') !== String(rule.value || '');
     }
     if (rule.operator === 'contains') {
       if (Array.isArray(val)) return val.some(v => String(v).toLowerCase().includes(String(rule.value || '').toLowerCase()));
@@ -251,6 +213,108 @@ export const PublicFormPage: React.FC = () => {
     return result;
   }, [form, answers]);
 
+  // Group visible blocks into pages separated by page_break blocks
+  const formPages = useMemo(() => {
+    if (!visibleBlocks || visibleBlocks.length === 0) return [];
+    const result: { pageIndex: number; pageTitle?: string; blocks: QuestionBlock[] }[] = [];
+    let currentBlocks: QuestionBlock[] = [];
+    let currentTitle: string | undefined = undefined;
+
+    for (const b of visibleBlocks) {
+      if (b.type === 'page_break') {
+        if (currentBlocks.length > 0 || result.length === 0) {
+          result.push({
+            pageIndex: result.length,
+            pageTitle: currentTitle,
+            blocks: currentBlocks
+          });
+          currentBlocks = [];
+        }
+        currentTitle = b.label || undefined;
+      } else {
+        currentBlocks.push(b);
+      }
+    }
+
+    if (currentBlocks.length > 0 || result.length === 0) {
+      result.push({
+        pageIndex: result.length,
+        pageTitle: currentTitle,
+        blocks: currentBlocks
+      });
+    }
+
+    return result;
+  }, [visibleBlocks]);
+
+  const activePageIndex = Math.min(currentPageIndex, Math.max(0, formPages.length - 1));
+  const currentPage = formPages[activePageIndex] || { pageIndex: 0, blocks: [] };
+
+  // Calculate overall question index offset for active page
+  const questionNumberOffset = useMemo(() => {
+    const allNonBreakBlocks = visibleBlocks.filter(b => b.type !== 'page_break');
+    const firstBlockOfPage = currentPage.blocks[0];
+    if (!firstBlockOfPage) return 0;
+    const pageFirstIdx = allNonBreakBlocks.findIndex(b => b.id === firstBlockOfPage.id);
+    return pageFirstIdx !== -1 ? pageFirstIdx : 0;
+  }, [visibleBlocks, currentPage]);
+
+  const validatePageBlocks = (blocks: QuestionBlock[]): boolean => {
+    const errors: Record<string, string> = {};
+    let firstErrId: string | null = null;
+
+    for (const q of blocks.filter(b => b.type !== 'page_break')) {
+      if (q.required) {
+        const val = answers[q.id];
+        let isEmpty = false;
+        if (val === undefined || val === null || val === '') isEmpty = true;
+        if (Array.isArray(val) && val.length === 0) isEmpty = true;
+        if (isEmpty) {
+          errors[q.id] = 'Pertanyaan ini wajib diisi.';
+          if (!firstErrId) firstErrId = q.id;
+        }
+      }
+    }
+
+    setFieldErrors(errors);
+
+    if (firstErrId) {
+      const elem = document.getElementById(`question-${firstErrId}`);
+      elem?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return false;
+    }
+    return true;
+  };
+
+  const handleNextPage = () => {
+    if (validatePageBlocks(currentPage.blocks)) {
+      setCurrentPageIndex(prev => prev + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handlePrevPage = () => {
+    setCurrentPageIndex(prev => Math.max(0, prev - 1));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form) return;
+
+    if (!validatePageBlocks(currentPage.blocks)) return;
+
+    try {
+      setSubmitting(true);
+      await submitFormResponse(form.id, answers);
+      setSubmitted(true);
+    } catch (err) {
+      alert('Gagal mengirimkan jawaban. Silakan coba lagi.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center p-4">
@@ -300,7 +364,8 @@ export const PublicFormPage: React.FC = () => {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto space-y-6 pt-6 px-4">
+      <div className="max-w-2xl mx-auto space-y-5 pt-6 px-4">
+        {/* Header Title Card */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-xs overflow-hidden">
           <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
           <div className="p-6 sm:p-8 space-y-4">
@@ -323,9 +388,29 @@ export const PublicFormPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Question Form Body */}
+        {/* Multi-step Page Progress Bar */}
+        {formPages.length > 1 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 p-4 shadow-xs space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-gray-700 dark:text-gray-200">
+              <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                📄 Halaman {activePageIndex + 1} dari {formPages.length}
+                {currentPage.pageTitle && <span className="text-gray-400 dark:text-gray-500 font-medium">• {currentPage.pageTitle}</span>}
+              </span>
+              <span>{Math.round(((activePageIndex + 1) / formPages.length) * 100)}% Selesai</span>
+            </div>
+            <div className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300 rounded-full"
+                style={{ width: `${((activePageIndex + 1) / formPages.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Question Form Body for Active Page */}
         <form onSubmit={handleSubmit} className="space-y-5">
-          {visibleBlocks.map((q: QuestionBlock, idx: number) => {
+          {currentPage.blocks.map((q: QuestionBlock, idx: number) => {
+            const overallNum = questionNumberOffset + idx + 1;
             const hasError = !!fieldErrors[q.id];
             return (
               <div
@@ -339,7 +424,7 @@ export const PublicFormPage: React.FC = () => {
               >
                 <div className="flex items-start gap-3">
                   <span className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-100 dark:border-indigo-800 shrink-0 mt-0.5">
-                    {idx + 1}
+                    {overallNum}
                   </span>
                   <div className="space-y-1">
                     <label className="text-base font-bold text-gray-900 dark:text-white block leading-snug">
@@ -489,20 +574,42 @@ export const PublicFormPage: React.FC = () => {
             );
           })}
 
-          <div className="pt-4 flex justify-end">
-            <Button
-              type="submit"
-              disabled={submitting}
-              className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-9 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Mengirim...
-                </>
-              ) : (
-                'Kirim Jawaban'
-              )}
-            </Button>
+          {/* Navigation Controls: Kembali, Lanjut, Kirim */}
+          <div className="pt-6 flex items-center justify-between gap-3">
+            {activePageIndex > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handlePrevPage}
+                className="px-6 py-3 rounded-xl font-bold border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-750 flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" /> Kembali
+              </Button>
+            ) : <div />}
+
+            {activePageIndex < formPages.length - 1 ? (
+              <Button
+                type="button"
+                onClick={handleNextPage}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-md shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center gap-2"
+              >
+                Lanjut <ArrowRight className="w-4 h-4" />
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-9 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Mengirim...
+                  </>
+                ) : (
+                  'Kirim Jawaban'
+                )}
+              </Button>
+            )}
           </div>
         </form>
 

@@ -6,7 +6,8 @@ export type QuestionType =
   | 'multiple_choice'
   | 'checkbox'
   | 'rating'
-  | 'date';
+  | 'date'
+  | 'page_break';
 
 export type LogicOperator = 'equals' | 'not_equals' | 'contains' | 'is_answered' | 'is_empty';
 export type LogicAction = 'show' | 'hide' | 'jump_to';
