@@ -14,6 +14,7 @@ import {
   Check
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import jfuIcon from '../../assets/jfu-icon.png';
 
 export const PublicFormPage: React.FC = () => {
   const { formId, username, slug } = useParams<{ formId?: string; username?: string; slug?: string }>();
@@ -488,12 +489,11 @@ export const PublicFormPage: React.FC = () => {
             );
           })}
 
-          <div className="pt-4 flex items-center justify-between">
-            <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">Powered by Jakpat for Univ</span>
+          <div className="pt-4 flex justify-end">
             <Button
               type="submit"
               disabled={submitting}
-              className="bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-9 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               {submitting ? (
                 <>
@@ -505,6 +505,35 @@ export const PublicFormPage: React.FC = () => {
             </Button>
           </div>
         </form>
+
+        {/* SurveyMonkey-style Authentic Powered By Footer */}
+        <div className="pt-14 pb-8 text-center space-y-2 border-t border-gray-200/60 dark:border-gray-800/80 mt-12">
+          <p className="text-[11px] font-semibold tracking-wider text-gray-400 dark:text-gray-500 uppercase">
+            Powered by
+          </p>
+          <div>
+            <a
+              href="https://jakpatforuniv.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-gray-900 dark:text-white font-extrabold text-lg sm:text-xl hover:opacity-85 transition-opacity group"
+            >
+              <img src={jfuIcon} alt="Jakpat for Univ Icon" className="w-6.5 h-6.5 object-contain group-hover:scale-105 transition-transform" />
+              <span className="tracking-tight font-sans">Jakpat for Univ</span>
+            </a>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 pt-0.5">
+            Buat survei dan kuesioner akademik dengan mudah.{' '}
+            <a
+              href="https://jakpatforuniv.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-indigo-600 dark:text-indigo-400 font-semibold underline hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+            >
+              Daftar gratis.
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );
