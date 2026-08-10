@@ -283,7 +283,7 @@ export const FormListPage: React.FC = () => {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        window.open(`/f/${form.id}`, '_blank');
+                        window.open(`/f/${form.slug || form.id}?preview=true`, '_blank');
                       }}
                       className="h-7 w-7 p-0 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                       title="Preview Form"

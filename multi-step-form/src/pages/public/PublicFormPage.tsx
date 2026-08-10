@@ -46,10 +46,13 @@ export const PublicFormPage: React.FC = () => {
         fetchedForm = await getCustomFormBySlugOrId(formId);
       }
 
+      const searchParams = new URLSearchParams(window.location.search);
+      const isPreviewMode = searchParams.get('preview') === 'true' || searchParams.get('mode') === 'preview';
+
       if (!fetchedForm) {
-        setErrorMsg('Form tidak ditemukan atau tidak dipublikasikan.');
-      } else if (fetchedForm.status !== 'published') {
-        setErrorMsg('Form ini saat ini dalam status draf dan belum dipublikasikan.');
+        setErrorMsg('Form tidak ditemukan.');
+      } else if (fetchedForm.status !== 'published' && !isPreviewMode) {
+        setErrorMsg('Form ini saat ini dalam status draf dan belum dipublikasikan. Tambahkan ?preview=true pada link atau buka via tombol Preview di Dashboard untuk melihat draf.');
       } else {
         setForm(fetchedForm);
       }
@@ -284,8 +287,16 @@ export const PublicFormPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-10 px-4">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-10">
+      {/* Draft Preview Banner */}
+      {form.status === 'draft' && (
+        <div className="bg-amber-500 text-white text-xs font-bold py-2.5 px-4 text-center sticky top-0 z-50 shadow-md flex items-center justify-center gap-2">
+          <span>👁️ MODE PRATINJAU DRAF</span>
+          <span className="font-normal opacity-90 hidden sm:inline">— Anda sedang melihat draf survei.</span>
+        </div>
+      )}
+
+      <div className="max-w-2xl mx-auto space-y-6 pt-6 px-4">
         {/* Header Title Card */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border-t-8 border-t-blue-600 border-x border-b border-gray-200 dark:border-gray-700 p-6 sm:p-8 shadow-sm space-y-3">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white leading-tight">
