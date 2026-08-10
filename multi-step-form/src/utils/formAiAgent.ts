@@ -33,15 +33,17 @@ Format respon Anda HARUS berupa objek JSON valid dengan dua kunci utama:
 Jenis perintah aksi ("actions") yang didukung:
 - { "type": "SET_TITLE", "value": "Judul Baru" }
 - { "type": "SET_DESCRIPTION", "value": "Deskripsi baru..." }
-- { "type": "ADD_BLOCK", "block": { "type": "short_text"|"long_text"|"multiple_choice"|"checkbox"|"rating"|"date", "label": "Judul Pertanyaan", "description": "Petunjuk", "required": true, "options": ["Opsi 1", "Opsi 2"], "maxScale": 5, "logicRules": [{ "id": "rule_1", "sourceBlockId": "target_id", "operator": "equals"|"not_equals"|"contains"|"is_answered"|"is_empty", "value": "Nilai", "action": "show"|"hide"|"jump_to"|"carry_forward", "targetBlockId": "target_id" }] } }
+- { "type": "ADD_BLOCK", "index": 6, "block": { "type": "short_text"|"long_text"|"multiple_choice"|"checkbox"|"rating"|"date"|"page_break", "label": "Judul Pertanyaan", "description": "Petunjuk", "required": true, "options": ["Opsi 1", "Opsi 2"], "maxScale": 5, "logicRules": [{ "id": "rule_1", "sourceBlockId": "target_id", "operator": "equals"|"not_equals"|"contains"|"is_answered"|"is_empty", "value": "Nilai", "action": "show"|"hide"|"jump_to"|"carry_forward", "targetBlockId": "target_id" }] } }
 - { "type": "UPDATE_BLOCK", "index": 0, "block": { "label": "Judul Baru", "options": ["Opsi A", "Opsi B", "Lainnya"] } }
 - { "type": "REMOVE_BLOCK", "index": 0 }
 - { "type": "REPLACE_ALL", "value": "Judul", "description": "Deskripsi", "blocks": [ ... list of question blocks ... ] }
 
 Aturan Penting:
-- Tipe pertanyaan yang tersedia HANYA: 'short_text', 'long_text', 'multiple_choice', 'checkbox', 'rating', 'date'.
+- Tipe pertanyaan yang tersedia HANYA: 'short_text', 'long_text', 'multiple_choice', 'checkbox', 'rating', 'date', 'page_break'.
 - Untuk 'multiple_choice' dan 'checkbox', selalu sertakan array 'options'. Jika pengguna meminta opsi "Lainnya", sertakan "Lainnya" di dalam array options.
 - Jika pengguna meminta alur kuis/survei bersyarat (kondisional), tambahkan array "logicRules" pada block pertanyaan yang bersangkutan.
+- PENTING soal posisi (ADD_BLOCK): daftar pertanyaan pada [SYSTEM CONTEXT] berindeks mulai dari 0 (pertanyaan pertama = index 0). Field "index" pada ADD_BLOCK menentukan DI MANA block baru disisipkan dalam array (menggeser sisanya ke bawah) — jika tidak diisi, block akan ditambahkan di paling akhir. Jika pengguna minta menyisipkan sesuatu "di antara pertanyaan N dan N+1" atau "setelah pertanyaan ke-N", gunakan "index": N (karena pertanyaan ke-N ada di array index N-1, jadi block baru harus menempati posisi N agar berada tepat setelahnya).
+- Saat pengguna minta menambahkan "page break"/"pemisah halaman" di antara dua pertanyaan tertentu, gunakan ADD_BLOCK dengan block type "page_break" dan index yang sesuai — JANGAN gunakan REPLACE_ALL hanya untuk menyisipkan satu pemisah halaman.
 - Kembalikan HANYA JSON valid tanpa teks di luar objek JSON.
 `;
 

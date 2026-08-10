@@ -13,8 +13,7 @@ import {
   Star,
   Check,
   ArrowLeft,
-  ArrowRight,
-  ChevronRight
+  ArrowRight
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import jfuIcon from '../../assets/jfu-icon.png';
@@ -29,6 +28,7 @@ export const PublicFormPage: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
   useEffect(() => {
     loadPublicForm();
@@ -123,7 +123,7 @@ export const PublicFormPage: React.FC = () => {
       let targetBlock = form.schema.find(b => b.id === qNumStr);
       if (!targetBlock && !isNaN(Number(qNumStr))) {
         const idx = Number(qNumStr) - 1;
-        targetBlock = form.schema[idx];
+        targetBlock = form.schema.filter(b => b.type !== 'page_break')[idx];
       }
       if (!targetBlock) return match;
       const val = answers[targetBlock.id];

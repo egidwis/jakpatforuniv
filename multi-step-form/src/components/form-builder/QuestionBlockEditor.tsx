@@ -65,6 +65,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   const [showLogicBuilder, setShowLogicBuilder] = useState(false);
   const ruleCount = block.logicRules?.length || 0;
   const pageNum = allBlocks.slice(0, index).filter(b => b.type === 'page_break').length + 1;
+  const questionNum = allBlocks.slice(0, index).filter(b => b.type !== 'page_break').length + 1;
 
   const labelInputRef = useRef<HTMLInputElement>(null);
   const savedSelectionRef = useRef<number | null>(null);
@@ -189,34 +190,34 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm space-y-4 hover:shadow-md transition-shadow">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 shadow-sm space-y-2.5 hover:shadow-md transition-shadow">
       {/* Block Top Control Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-700 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center">
-            {index + 1}
+      <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-700 pb-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="w-5 h-5 shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold text-[10px] flex items-center justify-center">
+            {questionNum}
           </span>
-          <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/60">
+          <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/60 shrink-0">
             Hal {pageNum}
           </span>
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/60 px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-600">
+          <span className="flex items-center gap-1 text-[11px] font-semibold text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/60 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-600 truncate">
             {QUESTION_TYPE_ICONS[block.type]}
             {QUESTION_TYPE_LABELS[block.type]}
           </span>
         </div>
 
         {/* Action icons: Move Up/Down, Duplicate, Delete */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 shrink-0">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             disabled={index === 0}
             onClick={onMoveUp}
-            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30"
+            className="h-6 w-6 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30"
             title="Pindah ke Atas"
           >
-            <ChevronUp className="w-4 h-4" />
+            <ChevronUp className="w-3.5 h-3.5" />
           </Button>
           <Button
             type="button"
@@ -224,39 +225,39 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
             size="sm"
             disabled={index === totalBlocks - 1}
             onClick={onMoveDown}
-            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30"
+            className="h-6 w-6 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30"
             title="Pindah ke Bawah"
           >
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-3.5 h-3.5" />
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={onDuplicate}
-            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            className="h-6 w-6 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             title="Duplikat Pertanyaan"
           >
-            <Copy className="w-4 h-4" />
+            <Copy className="w-3.5 h-3.5" />
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={onDelete}
-            className="h-8 w-8 p-0 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+            className="h-6 w-6 p-0 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20"
             title="Hapus Pertanyaan"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </Button>
         </div>
       </div>
 
       {/* Main Question Fields */}
-      <div className="space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           {/* Question Text */}
-          <div className="md:col-span-2 space-y-1.5">
+          <div className="md:col-span-2 space-y-1">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                 Pertanyaan
@@ -280,7 +281,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                     {/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/i.test(block.label || '') && (
                       <option value="__REMOVE_ALL__">🧹 Hapus Semua Piped Text</option>
                     )}
-                    {allBlocks.filter((_, idx) => idx < index).map((b, idx) => (
+                    {allBlocks.slice(0, index).filter(b => b.type !== 'page_break').map((b, idx) => (
                       <option key={b.id} value={`@q${idx + 1}`}>
                         @q{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)}
                       </option>
@@ -300,7 +301,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               onClick={handleTrackCursor}
               onKeyUp={handleTrackCursor}
               placeholder="Tuliskan pertanyaan Anda... (Gunakan @q1 untuk Piped Text)"
-              className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none pb-1 transition-all"
+              className="w-full text-sm font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none pb-0.5 transition-all"
             />
 
             {/* Piped text human-readable badges with remove button */}
@@ -312,7 +313,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   const qNumStr = numMatch ? numMatch[0] : '';
                   let targetB = allBlocks.find(b => b.id === qNumStr);
                   if (!targetB && !isNaN(Number(qNumStr))) {
-                    targetB = allBlocks[Number(qNumStr) - 1];
+                    targetB = allBlocks.filter(b => b.type !== 'page_break')[Number(qNumStr) - 1];
                   }
                   const refLabel = targetB ? `@${qNumStr}. ${targetB.label || 'Pertanyaan ' + qNumStr}` : `@${qNumStr}`;
                   return (
@@ -346,7 +347,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
             <select
               value={block.type}
               onChange={handleTypeChange}
-              className="w-full text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-2 font-medium text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-1.5 px-2 font-medium text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {Object.entries(QUESTION_TYPE_LABELS).map(([typeKey, typeName]) => (
                 <option key={typeKey} value={typeKey}>
@@ -364,18 +365,18 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
             value={block.description || ''}
             onChange={handleDescChange}
             placeholder="Help text or description (optional)..."
-            className="w-full text-xs text-gray-500 dark:text-gray-400 bg-transparent border-b border-dashed border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:outline-none pb-1"
+            className="w-full text-[11px] text-gray-500 dark:text-gray-400 bg-transparent border-b border-dashed border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:outline-none pb-0.5"
           />
         </div>
 
         {/* Type-Specific Options Editor */}
         {(block.type === 'multiple_choice' || block.type === 'checkbox') && (
-          <div className="pt-2 space-y-3">
+          <div className="pt-1 space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
+              <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
                 Options Source:
               </label>
-              {allBlocks.filter((_, idx) => idx < index).length > 0 && (
+              {allBlocks.slice(0, index).filter(b => b.type !== 'page_break').length > 0 && (
                 <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700/60 p-0.5 rounded-lg text-xs">
                   <button
                     type="button"
@@ -391,7 +392,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const prevBlocks = allBlocks.filter((_, idx) => idx < index);
+                      const prevBlocks = allBlocks.slice(0, index).filter(b => b.type !== 'page_break');
                       const defaultPrev = prevBlocks[prevBlocks.length - 1]?.id;
                       onChange({ ...block, carryForwardFromBlockId: defaultPrev });
                     }}
@@ -419,7 +420,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   onChange={(e) => onChange({ ...block, carryForwardFromBlockId: e.target.value })}
                   className="w-full text-xs bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-700 rounded-lg p-2 font-semibold text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {allBlocks.filter((_, idx) => idx < index).map((b, idx) => (
+                  {allBlocks.slice(0, index).filter(b => b.type !== 'page_break').map((b, idx) => (
                     <option key={b.id} value={b.id}>
                       @{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)}
                     </option>
@@ -431,10 +432,10 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               </div>
             ) : (
               /* Standard Manual Options List */
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {(block.options || []).map((option, optIdx) => (
-                  <div key={optIdx} className="flex items-center gap-2">
-                    <span className="text-gray-400">
+                  <div key={optIdx} className="flex items-center gap-1.5">
+                    <span className="text-gray-400 shrink-0">
                       {block.type === 'multiple_choice' ? (
                         <CircleDot className="w-3.5 h-3.5" />
                       ) : (
@@ -446,7 +447,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                       value={option}
                       onChange={(e) => handleOptionChange(optIdx, e.target.value)}
                       placeholder={`Option ${optIdx + 1}`}
-                      className="flex-1 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
+                      className="flex-1 text-xs bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
                     />
                     {(block.options || []).length > 1 && (
                       <Button
@@ -454,7 +455,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={() => handleRemoveOption(optIdx)}
-                        className="h-7 w-7 p-0 text-gray-400 hover:text-rose-500"
+                        className="h-6 w-6 p-0 text-gray-400 hover:text-rose-500 shrink-0"
                       >
                         <X className="w-3.5 h-3.5" />
                       </Button>
@@ -466,9 +467,9 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={handleAddOption}
-                  className="text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400"
+                  className="h-6 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400"
                 >
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Option
+                  <Plus className="w-3 h-3 mr-1" /> Add Option
                 </Button>
               </div>
             )}
@@ -477,14 +478,14 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
 
         {/* Rating Scale Config */}
         {block.type === 'rating' && (
-          <div className="pt-2 flex items-center gap-3">
-            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+          <div className="pt-1 flex items-center gap-2">
+            <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Scale Range:
             </label>
             <select
               value={block.maxScale || 5}
               onChange={(e) => onChange({ ...block, maxScale: Number(e.target.value) })}
-              className="text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-1.5 font-medium"
+              className="text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-1 px-1.5 font-medium"
             >
               <option value={5}>1 to 5 Stars</option>
               <option value={10}>1 to 10 Scale</option>
@@ -494,13 +495,13 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
       </div>
 
       {/* Footer controls: Logic Toggle & Required Toggle */}
-      <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
+      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={() => setShowLogicBuilder(!showLogicBuilder)}
-          className={`h-7 text-xs font-semibold flex items-center gap-1.5 transition-all ${
+          className={`h-6 text-[11px] font-semibold flex items-center gap-1.5 transition-all ${
             showLogicBuilder || ruleCount > 0
               ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
               : 'text-gray-600 border-gray-200 dark:text-gray-300 dark:border-gray-700 hover:bg-gray-50'

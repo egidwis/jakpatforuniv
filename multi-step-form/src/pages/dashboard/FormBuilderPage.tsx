@@ -245,16 +245,32 @@ export const FormBuilderPage: React.FC = () => {
       } else if (act.type === 'SET_DESCRIPTION' && act.value) {
         setDescription(act.value);
       } else if (act.type === 'ADD_BLOCK' && act.block) {
-        const newBlock: QuestionBlock = {
-          id: crypto.randomUUID(),
-          type: (act.block.type as QuestionType) || 'short_text',
-          label: act.block.label || 'Question Title',
-          description: act.block.description || '',
-          required: !!act.block.required,
-          options: act.block.options || (act.block.type === 'multiple_choice' || act.block.type === 'checkbox' ? ['Option 1', 'Option 2'] : undefined),
-          maxScale: act.block.maxScale || 5
-        };
-        setBlocks(prev => [...prev, newBlock]);
+        const blockType = (act.block.type as QuestionType) || 'short_text';
+        const newBlock: QuestionBlock = blockType === 'page_break'
+          ? {
+              id: crypto.randomUUID(),
+              type: 'page_break',
+              label: act.block.label || '',
+              description: '',
+              required: false
+            }
+          : {
+              id: crypto.randomUUID(),
+              type: blockType,
+              label: act.block.label || 'Question Title',
+              description: act.block.description || '',
+              required: !!act.block.required,
+              options: act.block.options || (blockType === 'multiple_choice' || blockType === 'checkbox' ? ['Option 1', 'Option 2'] : undefined),
+              maxScale: act.block.maxScale || 5
+            };
+        setBlocks(prev => {
+          const next = [...prev];
+          const insertAt = typeof act.index === 'number'
+            ? Math.max(0, Math.min(act.index, next.length))
+            : next.length;
+          next.splice(insertAt, 0, newBlock);
+          return next;
+        });
       } else if (act.type === 'REMOVE_BLOCK' && typeof act.index === 'number') {
         setBlocks(prev => prev.filter((_, i) => i !== act.index));
       } else if (act.type === 'UPDATE_BLOCK' && typeof act.index === 'number' && act.block) {
@@ -446,7 +462,7 @@ export const FormBuilderPage: React.FC = () => {
             </div>
 
             {/* Question Blocks List */}
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               {blocks.map((block, idx) => (
                 <QuestionBlockEditor
                   key={block.id}
@@ -464,74 +480,44 @@ export const FormBuilderPage: React.FC = () => {
             </div>
 
             {/* Add Question Floating Glass Toolbar */}
-            <div className="backdrop-blur-md bg-white/95 dark:bg-gray-800/95 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 p-4 shadow-xl sticky bottom-6 z-20">
-              <p className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2.5 text-center">
-                Tambah Pertanyaan:
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <Button
+            <div className="backdrop-blur-md bg-white/95 dark:bg-gray-800/95 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 px-3 py-2.5 shadow-xl sticky bottom-6 z-20">
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mr-1 shrink-0">
+                  Tambah:
+                </span>
+                {[
+                  { type: 'short_text' as QuestionType, label: 'Short Text', icon: Type, hoverClass: 'hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20' },
+                  { type: 'long_text' as QuestionType, label: 'Long Text', icon: AlignLeft, hoverClass: 'hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20' },
+                  { type: 'multiple_choice' as QuestionType, label: 'Multiple Choice', icon: CircleDot, hoverClass: 'hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20' },
+                  { type: 'checkbox' as QuestionType, label: 'Checkboxes', icon: CheckSquare, hoverClass: 'hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20' },
+                  { type: 'rating' as QuestionType, label: 'Rating', icon: Star, hoverClass: 'hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20' },
+                  { type: 'date' as QuestionType, label: 'Date', icon: Calendar, hoverClass: 'hover:border-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20' }
+                ].map(({ type, label, icon: Icon, hoverClass }) => (
+                  <button
+                    key={type}
+                    type="button"
+                    title={label}
+                    onClick={() => handleAddQuestion(type)}
+                    className={`group relative w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 transition-colors ${hoverClass}`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 text-white text-[10px] font-medium px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      {label}
+                    </span>
+                  </button>
+                ))}
+                <span className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
+                <button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddQuestion('short_text')}
-                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-blue-500 hover:text-blue-600"
-                >
-                  <Type className="w-3.5 h-3.5 mr-1 text-blue-500" /> Short Text
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddQuestion('long_text')}
-                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-indigo-500 hover:text-indigo-600"
-                >
-                  <AlignLeft className="w-3.5 h-3.5 mr-1 text-indigo-500" /> Long Text
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddQuestion('multiple_choice')}
-                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-emerald-500 hover:text-emerald-600"
-                >
-                  <CircleDot className="w-3.5 h-3.5 mr-1 text-emerald-500" /> Multiple Choice
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddQuestion('checkbox')}
-                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-purple-500 hover:text-purple-600"
-                >
-                  <CheckSquare className="w-3.5 h-3.5 mr-1 text-purple-500" /> Checkboxes
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddQuestion('rating')}
-                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-amber-500 hover:text-amber-600"
-                >
-                  <Star className="w-3.5 h-3.5 mr-1 text-amber-500" /> Rating
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddQuestion('date')}
-                  className="text-xs text-gray-700 dark:text-gray-200 hover:border-rose-500 hover:text-rose-600"
-                >
-                  <Calendar className="w-3.5 h-3.5 mr-1 text-rose-500" /> Date
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
+                  title="Page Break"
                   onClick={() => handleAddQuestion('page_break')}
-                  className="text-xs text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold"
+                  className="group relative w-9 h-9 flex items-center justify-center rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
                 >
-                  <FileText className="w-3.5 h-3.5 mr-1 text-indigo-600 dark:text-indigo-400" /> + Page Break
-                </Button>
+                  <FileText className="w-4 h-4" />
+                  <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 text-white text-[10px] font-medium px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    Page Break
+                  </span>
+                </button>
               </div>
             </div>
           </div>
