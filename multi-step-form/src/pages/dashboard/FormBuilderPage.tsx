@@ -310,7 +310,7 @@ export const FormBuilderPage: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.open(`/f/${formSlug || formId}?preview=true`, '_blank')}
+                  onClick={() => window.open(`/f/${formId}?preview=true`, '_blank')}
                   className="text-xs text-gray-700 dark:text-gray-200 hidden sm:flex items-center gap-1.5"
                 >
                   <ExternalLink className="w-3.5 h-3.5" /> Preview
