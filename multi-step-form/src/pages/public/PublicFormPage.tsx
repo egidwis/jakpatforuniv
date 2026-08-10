@@ -302,7 +302,19 @@ export const PublicFormPage: React.FC = () => {
     e.preventDefault();
     if (!form) return;
 
+    // If not on the last page, pressing Enter/submit should advance to next page instead
+    if (activePageIndex < formPages.length - 1) {
+      handleNextPage();
+      return;
+    }
+
     if (!validatePageBlocks(currentPage.blocks)) return;
+
+    // Draft preview: don't actually submit, just show confirmation
+    if (form.status === 'draft') {
+      alert('✅ Pratinjau berhasil! Jawaban Anda valid. Publikasikan form ini terlebih dahulu agar responden dapat mengirim jawaban.');
+      return;
+    }
 
     try {
       setSubmitting(true);
