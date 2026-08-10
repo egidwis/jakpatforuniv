@@ -506,31 +506,31 @@ export const PublicFormPage: React.FC = () => {
           </div>
         </form>
 
-        {/* SurveyMonkey-style Authentic Powered By Footer */}
-        <div className="pt-14 pb-8 text-center space-y-2 border-t border-gray-200/60 dark:border-gray-800/80 mt-12">
-          <p className="text-[11px] font-semibold tracking-wider text-gray-400 dark:text-gray-500 uppercase">
+        {/* Minimalist Powered By Footer */}
+        <div className="pt-8 pb-6 text-center space-y-1.5 border-t border-gray-200/60 dark:border-gray-800/80 mt-10">
+          <p className="text-[10px] font-bold tracking-wider text-gray-400 dark:text-gray-500 uppercase">
             Powered by
           </p>
-          <div>
+          <div className="flex items-center justify-center">
             <a
               href="https://jakpatforuniv.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-gray-900 dark:text-white font-extrabold text-lg sm:text-xl hover:opacity-85 transition-opacity group"
+              className="inline-flex items-center gap-1.5 text-gray-900 dark:text-white font-bold text-sm hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors group"
             >
-              <img src={jfuIcon} alt="Jakpat for Univ Icon" className="w-6.5 h-6.5 object-contain group-hover:scale-105 transition-transform" />
+              <img src={jfuIcon} alt="Jakpat for Univ Icon" className="w-5 h-5 object-contain group-hover:scale-110 transition-transform" />
               <span className="tracking-tight font-sans">Jakpat for Univ</span>
             </a>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 pt-0.5">
-            Buat survei dan kuesioner akademik dengan mudah.{' '}
+          <p className="text-[11px] text-gray-400 dark:text-gray-500">
+            Buat survei akademik dengan mudah.{' '}
             <a
               href="https://jakpatforuniv.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-indigo-600 dark:text-indigo-400 font-semibold underline hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+              className="text-indigo-600 dark:text-indigo-400 font-medium underline hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
             >
-              Daftar gratis.
+              Daftar gratis
             </a>
           </p>
         </div>
