@@ -298,15 +298,8 @@ export const PublicFormPage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!form) return;
-
-    // If not on the last page, pressing Enter/submit should advance to next page instead
-    if (activePageIndex < formPages.length - 1) {
-      handleNextPage();
-      return;
-    }
 
     if (!validatePageBlocks(currentPage.blocks)) return;
 
@@ -420,16 +413,7 @@ export const PublicFormPage: React.FC = () => {
         )}
 
         {/* Question Form Body for Active Page */}
-        <form
-          onSubmit={handleSubmit}
-          onKeyDown={(e) => {
-            // Prevent Enter key from auto-submitting the form (except in textareas)
-            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-              e.preventDefault();
-            }
-          }}
-          className="space-y-5"
-        >
+        <div className="space-y-5">
           {currentPage.blocks.map((q: QuestionBlock, idx: number) => {
             const overallNum = questionNumberOffset + idx + 1;
             const hasError = !!fieldErrors[q.id];
@@ -618,8 +602,9 @@ export const PublicFormPage: React.FC = () => {
               </Button>
             ) : (
               <Button
-                type="submit"
+                type="button"
                 disabled={submitting}
+                onClick={handleSubmit}
                 className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-9 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
                 {submitting ? (
@@ -632,7 +617,7 @@ export const PublicFormPage: React.FC = () => {
               </Button>
             )}
           </div>
-        </form>
+        </div>
 
         {/* Minimalist Powered By Footer */}
         <div className="pt-8 pb-6 text-center space-y-1.5 border-t border-gray-200/60 dark:border-gray-800/80 mt-10">
