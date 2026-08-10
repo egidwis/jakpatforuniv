@@ -4,17 +4,18 @@ import { formatRupiah } from '../utils/currency';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useMemo, useState } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface UnifiedHeaderProps {
     formData: SurveyFormData;
-    onBack?: () => void;
+    onCancelConfirmed: () => void;
 }
 
-export function UnifiedHeader({ formData, onBack }: UnifiedHeaderProps) {
+export function UnifiedHeader({ formData, onCancelConfirmed }: UnifiedHeaderProps) {
     const { t } = useLanguage();
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
 
     // ILKOMUNY yang sudah dipakai akun ini → jangan tampilkan harga diskon.
     const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
@@ -31,9 +32,10 @@ export function UnifiedHeader({ formData, onBack }: UnifiedHeaderProps) {
     );
 
     return (
-        // Kartu floating di bawah layar (desktop & mobile) — wrapper fixed
-        // pointer-events-none supaya area di kiri/kanan kartu tetap bisa
-        // di-scroll/diklik; safe-area untuk home indicator iOS.
+        <>
+        {/* Kartu floating di bawah layar (desktop & mobile) — wrapper fixed
+            pointer-events-none supaya area di kiri/kanan kartu tetap bisa
+            di-scroll/diklik; safe-area untuk home indicator iOS. */}
         <div className="fixed bottom-0 inset-x-0 z-30 pointer-events-none pb-[env(safe-area-inset-bottom)]">
             <div className="max-w-4xl mx-auto px-4 md:px-6">
                 <div className="pointer-events-auto w-full mb-3 md:mb-4 rounded-2xl border border-jfu-primary/[0.12] bg-white/95 backdrop-blur shadow-[0_8px_30px_rgba(25,118,210,0.18)] transition-all">
@@ -45,11 +47,11 @@ export function UnifiedHeader({ formData, onBack }: UnifiedHeaderProps) {
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="mr-0 -ml-2 text-gray-500 hover:text-jfu-primary hover:bg-jfu-primary/5"
-                                    onClick={() => onBack?.()}
-                                    title={t('backButton')}
+                                    className="mr-0 -ml-2 text-gray-500 hover:text-red-600 hover:bg-red-50"
+                                    onClick={() => setIsCancelDialogOpen(true)}
+                                    title="Batalkan Pesanan"
                                 >
-                                    <ArrowLeft className="w-5 h-5" />
+                                    <X className="w-5 h-5" />
                                 </Button>
 
                                 <span className="text-sm md:text-base font-bold text-gray-900">
@@ -152,5 +154,40 @@ export function UnifiedHeader({ formData, onBack }: UnifiedHeaderProps) {
                 </div>
             </div>
         </div>
+
+        {/* Dialog konfirmasi Cancel — sengaja DI LUAR wrapper pointer-events-none
+            di atas, dengan alasan yang sama seperti StepSurveyDetails.tsx:
+            elemen bertumpuk yang mewarisi pointer-events-none jadi tidak bisa
+            diklik sama sekali. */}
+        {isCancelDialogOpen && (
+            <div className="modal-overlay">
+                <div className="modal-dialog">
+                    <div className="modal-header">
+                        <AlertTriangle size={24} className="modal-icon-warning" />
+                        <h3 className="modal-title">Batalkan Pesanan?</h3>
+                    </div>
+                    <div className="modal-body">
+                        <p>
+                            Semua data yang sudah Anda isi akan hilang dan tidak bisa dikembalikan. Yakin ingin membatalkan pesanan ini dan kembali ke halaman utama?
+                        </p>
+                    </div>
+                    <div className="modal-footer">
+                        <button
+                            onClick={() => setIsCancelDialogOpen(false)}
+                            className="modal-button modal-button-cancel"
+                        >
+                            Tidak, Lanjutkan Mengisi
+                        </button>
+                        <button
+                            onClick={onCancelConfirmed}
+                            className="modal-button modal-button-confirm"
+                        >
+                            Ya, Batalkan Pesanan
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 }

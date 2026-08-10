@@ -21,6 +21,7 @@ import {
   Info,
   CreditCard,
   Send,
+  ArrowLeft,
   ArrowRight,
   ExternalLink,
   CalendarCheck,
@@ -35,6 +36,7 @@ interface StepCheckoutProps {
   nextStep: () => void;
   /** Menulis order (jalur manual, dan jalur Kilat yang jadwalnya sudah dipilih). */
   onSubmitOrder: () => Promise<boolean>;
+  onBack: () => void;
   onUpgradeKilat?: () => void;
   onUndoKilat?: () => void;
 }
@@ -46,7 +48,7 @@ interface StepCheckoutProps {
  * database yang lahir di sini kecuali pada jalur yang memang berakhir di sini
  * (manual, dan Kilat yang jadwalnya sudah terpilih di langkah tersendiri).
  */
-export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder, onUpgradeKilat, onUndoKilat }: StepCheckoutProps) {
+export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder, onBack, onUpgradeKilat, onUndoKilat }: StepCheckoutProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
 
@@ -694,24 +696,34 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
             terjadi berikutnya persis di bawah tombolnya, supaya tidak ada
             langkah yang datang tanpa diumumkan. */}
         <div className="pt-1 pb-12 space-y-2.5">
-          <button
-            type="button"
-            onClick={handlePrimaryAction}
-            disabled={isSubmitting}
-            className={`
-            w-full px-8 py-3.5 rounded-xl text-white font-bold text-base shadow-lg transition-all duration-200 flex items-center justify-center gap-2
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={isSubmitting}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-3.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-60 disabled:pointer-events-none"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {t('backButton')}
+            </button>
+            <button
+              type="button"
+              onClick={handlePrimaryAction}
+              disabled={isSubmitting}
+              className={`
+            flex-1 px-8 py-3.5 rounded-xl text-white font-bold text-base shadow-lg transition-all duration-200 flex items-center justify-center gap-2
             ${isSubmitting
-                ? 'opacity-60 cursor-not-allowed pointer-events-none'
-                : 'hover:shadow-xl hover:-translate-y-0.5'
-              }
+                  ? 'opacity-60 cursor-not-allowed pointer-events-none'
+                  : 'hover:shadow-xl hover:-translate-y-0.5'
+                }
             ${!isAutoApproval
-                ? 'bg-amber-500 hover:bg-amber-600'
-                : 'shadow-lg hover:shadow-xl'
-              }
+                  ? 'bg-amber-500 hover:bg-amber-600'
+                  : 'shadow-lg hover:shadow-xl'
+                }
           `}
-            style={isAutoApproval ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
-          >
-            {isSubmitting ? (
+              style={isAutoApproval ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
+            >
+              {isSubmitting ? (
               <>
                 <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -736,7 +748,8 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
                 {t('summaryCtaPay')}
               </>
             )}
-          </button>
+            </button>
+          </div>
 
           <p className="text-xs text-gray-500 text-center leading-relaxed px-2">
             {!isAutoApproval

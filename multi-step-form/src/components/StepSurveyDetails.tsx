@@ -15,14 +15,11 @@ interface StepSurveyDetailsProps {
   updateFormData: (data: Partial<SurveyFormData>) => void;
   nextStep: () => void;
   onHeaderVisibilityChange?: (isVisible: boolean) => void;
-  /** Menaikkan fungsi "kembali ke pilih-metode" ke MultiStepForm supaya
-   *  UnifiedHeader (floating bar) bisa memicunya lewat tombol ←. */
-  onBackHandlerChange?: (handler: (() => void) | undefined) => void;
 }
 
 type FlowState = 'method-selection' | 'google-form' | 'manual' | 'form-fields';
 
-export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeaderVisibilityChange, onBackHandlerChange }: StepSurveyDetailsProps) {
+export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeaderVisibilityChange }: StepSurveyDetailsProps) {
   const { t } = useLanguage();
 
   // Initialize flowState based on existing formData
@@ -71,17 +68,6 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
       onHeaderVisibilityChange(shouldShowHeader);
     }
   }, [flowState, onHeaderVisibilityChange]);
-
-  // Notify parent about the "back to method selection" handler — only
-  // meaningful while UnifiedHeader is visible (manual/form-fields above).
-  useEffect(() => {
-    onBackHandlerChange?.(
-      flowState === 'manual' || flowState === 'form-fields'
-        ? handleBackToMethodSelection
-        : undefined
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowState, onBackHandlerChange]);
 
   // Check if form has data
   const hasFilledData = formData.title || formData.description || formData.questionCount > 0;
@@ -235,6 +221,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             formData={formData}
             updateFormData={updateFormData}
             onSubmit={handleSubmit}
+            onBack={handleBackToMethodSelection}
             isGoogleImport={false}
             onSwitchToGoogle={handleSwitchToGoogle}
           />
@@ -287,6 +274,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             formData={formData}
             updateFormData={updateFormData}
             onSubmit={handleSubmit}
+            onBack={handleBackToMethodSelection}
             isGoogleImport={true}
           />
         </AdsFlowCard>

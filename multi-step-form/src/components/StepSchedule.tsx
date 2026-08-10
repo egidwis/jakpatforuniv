@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { Loader2, AlertCircle, Lock } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Lock } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { SectionLabel } from './SurveyFieldRow';
 import { SchedulePicker } from './SchedulePicker';
@@ -17,6 +17,7 @@ interface StepScheduleProps {
    * false berarti gagal — tombol dipulihkan supaya user bisa mencoba lagi.
    */
   onConfirm: (ymd: string) => Promise<boolean> | boolean;
+  onBack: () => void;
   mode?: 'regular' | 'kilat';
 }
 
@@ -29,7 +30,7 @@ interface StepScheduleProps {
  * satu layar; secara alamat mereka terpisah karena Fase B punya dua pintu masuk
  * "kembali setelah pergi" yang tidak bisa dilayani state wizard.
  */
-export function StepSchedule({ formData, updateFormData, onConfirm, mode = 'regular' }: StepScheduleProps) {
+export function StepSchedule({ formData, updateFormData, onConfirm, onBack, mode = 'regular' }: StepScheduleProps) {
   const { t } = useLanguage();
   const availability = useSlotAvailability(mode);
 
@@ -102,24 +103,35 @@ export function StepSchedule({ formData, updateFormData, onConfirm, mode = 'regu
       </div>
 
       <div className="space-y-2 pb-4">
-        <button
-          onClick={handleConfirm}
-          disabled={!selected || availability.isLoading || isConfirming}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 text-base font-bold text-white shadow-lg transition-all hover:bg-blue-700 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-        >
-          {isConfirming ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              {t('lockingSlotLoading')}
-            </>
-          ) : (
-            <>
-              <Lock size={18} />
-              {mode === 'kilat' ? t('scheduleConfirmKilatCta') : t('scheduleLockCta')}
-              <span aria-hidden="true">→</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={isConfirming}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-3.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            {t('backButton')}
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!selected || availability.isLoading || isConfirming}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 text-base font-bold text-white shadow-lg transition-all hover:bg-blue-700 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+          >
+            {isConfirming ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                {t('lockingSlotLoading')}
+              </>
+            ) : (
+              <>
+                <Lock size={18} />
+                {mode === 'kilat' ? t('scheduleConfirmKilatCta') : t('scheduleLockCta')}
+                <span aria-hidden="true">→</span>
+              </>
+            )}
+          </button>
+        </div>
 
         {/* Countdown dideklarasikan SEBELUM terjadi — layar berikutnya membuka
             timer, dan itu tidak boleh terasa seperti kejutan. */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -123,17 +123,6 @@ export function MultiStepForm() {
   });
 
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
-  // Handler "kembali ke pilih-metode" milik StepSurveyDetails, dinaikkan ke sini
-  // supaya UnifiedHeader (floating bar) bisa memicu mundur saat currentStep === 1.
-  const [step1BackHandler, setStep1BackHandler] = useState<(() => void) | undefined>(undefined);
-  // useCallback supaya identitas stabil antar render — kalau prop ini berubah
-  // referensi tiap render, useEffect di StepSurveyDetails yang men-depend
-  // padanya akan terus menyala ulang dan memicu setState tanpa henti.
-  const handleStep1BackHandlerChange = useCallback((handler: (() => void) | undefined) => {
-    // `handler` adalah FUNGSI — setState harus dibungkus lagi, kalau tidak
-    // React mengiranya updater function dan langsung memanggilnya.
-    setStep1BackHandler(() => handler);
-  }, []);
 
   // ILKOMUNY yang sudah dipakai akun ini → diskonnya tidak berlaku lagi.
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
@@ -338,10 +327,12 @@ export function MultiStepForm() {
     window.scrollTo(0, 0);
   };
 
-  const unifiedHeaderOnBack =
-    currentStep === 1 ? step1BackHandler :
-    currentStep === 4 ? handleKilatBack :
-    prevStep;
+  const cancelOrder = () => {
+    isFinalizedRef.current = true;
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
+    navigate('/dashboard', { replace: true });
+  };
 
   return (
     <div className="multi-step-form">
@@ -351,7 +342,7 @@ export function MultiStepForm() {
       {isHeaderVisible && (
         <UnifiedHeader
           formData={formData}
-          onBack={unifiedHeaderOnBack}
+          onCancelConfirmed={cancelOrder}
         />
       )}
 
@@ -386,7 +377,6 @@ export function MultiStepForm() {
             updateFormData={updateFormData}
             nextStep={nextStep}
             onHeaderVisibilityChange={setIsHeaderVisible}
-            onBackHandlerChange={handleStep1BackHandlerChange}
           />
         )}
 
@@ -396,6 +386,7 @@ export function MultiStepForm() {
             updateFormData={updateFormData}
             nextStep={nextStep}
             onSubmitOrder={submitOrderAndRoute}
+            onBack={prevStep}
             onUpgradeKilat={goToKilatSchedule}
             onUndoKilat={undoKilatUpgrade}
           />
@@ -406,6 +397,7 @@ export function MultiStepForm() {
             formData={formData}
             updateFormData={updateFormData}
             onConfirm={(ymd) => submitOrderAndRoute({ startDate: ymd, startTime: '15:00' })}
+            onBack={prevStep}
           />
         )}
 
@@ -414,6 +406,7 @@ export function MultiStepForm() {
             formData={formData}
             updateFormData={updateFormData}
             mode="kilat"
+            onBack={handleKilatBack}
             onConfirm={async (ymd) => {
               // Kilat memilih tanggalnya lebih dulu, lalu kembali ke Ringkasan
               // untuk konfirmasi akhir — di sana CTA-nya langsung mengunci &

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { SurveyFormData } from '../types';
 import {
+  ArrowLeft,
   CalendarDays,
   CheckCircle,
   Gift,
@@ -41,6 +42,7 @@ interface StepOneFormFieldsProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   onSubmit: () => void;
+  onBack: () => void;
   isGoogleImport?: boolean;
   onSwitchToGoogle?: () => void;
 }
@@ -103,6 +105,7 @@ export function StepOneFormFields({
   formData,
   updateFormData,
   onSubmit,
+  onBack,
   isGoogleImport = false,
   onSwitchToGoogle
 }: StepOneFormFieldsProps) {
@@ -582,10 +585,18 @@ export function StepOneFormFields({
         </div>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          {t('backButton')}
+        </button>
         <button
           type="submit"
-          className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark"
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark"
         >
           {t('continueToSummary')}
           <span aria-hidden="true">→</span>
