@@ -164,22 +164,23 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
       <div className="space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Question Text */}
-          <div className="md:col-span-2 space-y-1">
+          <div className="md:col-span-2 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                 Pertanyaan
               </span>
               {index > 0 && (
-                <div className="relative group">
+                <div className="flex items-center gap-1 text-[11px]">
+                  <span className="text-indigo-500 font-semibold hidden sm:inline">✨ Sisipkan Jawaban:</span>
                   <select
                     onChange={(e) => {
                       if (!e.target.value) return;
                       onChange({ ...block, label: block.label + ' ' + e.target.value });
                       e.target.value = '';
                     }}
-                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 rounded-md px-1.5 py-0.5 cursor-pointer focus:outline-none"
+                    className="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-full px-2.5 py-0.5 text-[11px] font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all shadow-2xs"
                   >
-                    <option value="">+ Piped Text</option>
+                    <option value="">+ Piped Text (@ Jawaban)</option>
                     {allBlocks.filter((_, idx) => idx < index).map((b, idx) => (
                       <option key={b.id} value={`\${q:${idx + 1}}`}>
                         @{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)} ({`\${q:${idx + 1}}`})
@@ -194,9 +195,16 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               type="text"
               value={block.label}
               onChange={handleLabelChange}
-              placeholder="Tuliskan pertanyaan Anda... (Gunakan ${q:1} untuk Piped Text)"
+              placeholder="Tuliskan pertanyaan Anda..."
               className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-1"
             />
+
+            {/* Piped text hint badge when tag detected */}
+            {/\$\{q:([a-zA-Z0-9_-]+)\}/.test(block.label || '') && (
+              <div className="flex items-center gap-1.5 text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
+                <span>✨ <strong>Piped Text Aktif:</strong> Kode <code>${'{q:...}'}</code> akan otomatis diganti dengan jawaban responden saat survei diisi.</span>
+              </div>
+            )}
           </div>
 
           {/* Question Type Selector */}
