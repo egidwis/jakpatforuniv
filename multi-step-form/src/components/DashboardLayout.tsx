@@ -8,9 +8,7 @@ import {
   MessageSquare,
   LogOut,
   User,
-  ChevronRight,
-  Menu,
-  X
+  ChevronRight
 } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -76,17 +74,6 @@ export function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col md:flex-row">
-      {/* Mobile Top Navbar */}
-      <div className="md:hidden bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-2">
-          <img src={jfuIcon} alt="JFU Icon" className="w-8 h-8 object-contain" />
-          <span className="font-bold text-gray-900 dark:text-white">Dashboard</span>
-        </div>
-        <Button variant="ghost" size="icon" onClick={toggleSidebar}>
-          {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </Button>
-      </div>
-
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div
