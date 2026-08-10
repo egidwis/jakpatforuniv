@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch and test files
+scratch/
+test_*.js
+test_*.cjs
+hit_doku*.js
+hit_doku*.cjs
+jakpat-homepage-deploy/
+
