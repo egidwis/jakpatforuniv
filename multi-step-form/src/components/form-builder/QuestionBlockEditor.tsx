@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { QuestionBlock, QuestionType } from '../../utils/customForms';
 import {
   Type,
@@ -12,14 +12,17 @@ import {
   ChevronUp,
   ChevronDown,
   Plus,
-  X
+  X,
+  Zap
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { QuestionLogicBuilder } from './QuestionLogicBuilder';
 
 interface QuestionBlockEditorProps {
   block: QuestionBlock;
   index: number;
   totalBlocks: number;
+  allBlocks?: QuestionBlock[];
   onChange: (updatedBlock: QuestionBlock) => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -49,12 +52,16 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   block,
   index,
   totalBlocks,
+  allBlocks = [],
   onChange,
   onDelete,
   onDuplicate,
   onMoveUp,
   onMoveDown
 }) => {
+  const [showLogicBuilder, setShowLogicBuilder] = useState(false);
+  const ruleCount = block.logicRules?.length || 0;
+
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange({ ...block, label: e.target.value });
   };
@@ -63,119 +70,107 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
     onChange({ ...block, description: e.target.value });
   };
 
-  const handleRequiredToggle = () => {
-    onChange({ ...block, required: !block.required });
-  };
-
   const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newType = e.target.value as QuestionType;
-    let newOptions = block.options;
-
-    if ((newType === 'multiple_choice' || newType === 'checkbox') && (!newOptions || !newOptions.length)) {
-      newOptions = ['Option 1', 'Option 2'];
+    let defaultOptions = block.options;
+    if ((newType === 'multiple_choice' || newType === 'checkbox') && (!defaultOptions || defaultOptions.length === 0)) {
+      defaultOptions = ['Option 1', 'Option 2'];
     }
-
-    onChange({
-      ...block,
-      type: newType,
-      options: newOptions,
-      minScale: newType === 'rating' ? 1 : undefined,
-      maxScale: newType === 'rating' ? (block.maxScale || 5) : undefined
-    });
+    onChange({ ...block, type: newType, options: defaultOptions });
   };
 
-  // Option management for Multiple Choice / Checkbox
-  const handleOptionChange = (optionIndex: number, value: string) => {
-    const updatedOptions = [...(block.options || [])];
-    updatedOptions[optionIndex] = value;
-    onChange({ ...block, options: updatedOptions });
+  const handleOptionChange = (optIndex: number, val: string) => {
+    const updatedOpts = [...(block.options || [])];
+    updatedOpts[optIndex] = val;
+    onChange({ ...block, options: updatedOpts });
   };
 
   const handleAddOption = () => {
-    const options = block.options || [];
-    onChange({
-      ...block,
-      options: [...options, `Option ${options.length + 1}`]
-    });
+    const opts = block.options || [];
+    onChange({ ...block, options: [...opts, `Option ${opts.length + 1}`] });
   };
 
-  const handleRemoveOption = (optionIndex: number) => {
-    const options = (block.options || []).filter((_, i) => i !== optionIndex);
-    onChange({ ...block, options });
+  const handleRemoveOption = (optIndex: number) => {
+    const opts = block.options || [];
+    onChange({ ...block, options: opts.filter((_, idx) => idx !== optIndex) });
+  };
+
+  const handleRequiredToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...block, required: e.target.checked });
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow group relative">
-      {/* Header controls: Question Number & Reorder/Action Buttons */}
-      <div className="flex items-center justify-between mb-4 border-b pb-3 border-gray-100 dark:border-gray-700">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm space-y-4 hover:shadow-md transition-shadow">
+      {/* Block Top Control Header */}
+      <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-700 pb-3">
         <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center">
+          <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center">
             {index + 1}
           </span>
-          <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-700/60 px-2.5 py-1 rounded-md text-xs font-medium text-gray-700 dark:text-gray-300">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/60 px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-600">
             {QUESTION_TYPE_ICONS[block.type]}
-            <span>{QUESTION_TYPE_LABELS[block.type]}</span>
-          </div>
+            {QUESTION_TYPE_LABELS[block.type]}
+          </span>
         </div>
 
-        {/* Action Controls */}
+        {/* Action icons: Move Up/Down, Duplicate, Delete */}
         <div className="flex items-center gap-1">
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={onMoveUp}
             disabled={index === 0}
-            className="h-8 w-8 p-0"
-            title="Move Up"
+            onClick={onMoveUp}
+            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30"
+            title="Pindah ke Atas"
           >
-            <ChevronUp className="w-4 h-4 text-gray-500" />
+            <ChevronUp className="w-4 h-4" />
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={onMoveDown}
             disabled={index === totalBlocks - 1}
-            className="h-8 w-8 p-0"
-            title="Move Down"
+            onClick={onMoveDown}
+            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30"
+            title="Pindah ke Bawah"
           >
-            <ChevronDown className="w-4 h-4 text-gray-500" />
+            <ChevronDown className="w-4 h-4" />
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={onDuplicate}
-            className="h-8 w-8 p-0"
-            title="Duplicate Question"
+            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            title="Duplikat Pertanyaan"
           >
-            <Copy className="w-4 h-4 text-gray-500" />
+            <Copy className="w-4 h-4" />
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={onDelete}
-            className="h-8 w-8 p-0 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20"
-            title="Delete Question"
+            className="h-8 w-8 p-0 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+            title="Hapus Pertanyaan"
           >
-            <Trash2 className="w-4 h-4 text-gray-500 hover:text-rose-600" />
+            <Trash2 className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      {/* Main Question Inputs */}
+      {/* Main Question Fields */}
       <div className="space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          {/* Question Label */}
-          <div className="md:col-span-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Question Text */}
+          <div className="md:col-span-2">
             <input
               type="text"
               value={block.label}
               onChange={handleLabelChange}
-              placeholder="Question Title / Prompt..."
-              className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:outline-none pb-1.5"
+              placeholder="Tuliskan pertanyaan Anda..."
+              className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-1"
             />
           </div>
 
@@ -271,8 +266,28 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
         )}
       </div>
 
-      {/* Footer controls: Required Toggle */}
-      <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-end gap-2">
+      {/* Footer controls: Logic Toggle & Required Toggle */}
+      <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setShowLogicBuilder(!showLogicBuilder)}
+          className={`h-7 text-xs font-semibold flex items-center gap-1.5 transition-all ${
+            showLogicBuilder || ruleCount > 0
+              ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
+              : 'text-gray-600 border-gray-200 dark:text-gray-300 dark:border-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <Zap className={`w-3.5 h-3.5 ${ruleCount > 0 ? 'fill-amber-500 text-amber-500' : 'text-gray-500'}`} />
+          <span>Logic</span>
+          {ruleCount > 0 && (
+            <span className="bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+              {ruleCount}
+            </span>
+          )}
+        </Button>
+
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -285,6 +300,16 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
           </span>
         </label>
       </div>
+
+      {/* Inline Question Logic Builder */}
+      {showLogicBuilder && (
+        <QuestionLogicBuilder
+          block={block}
+          blockIndex={index}
+          allBlocks={allBlocks}
+          onChangeRules={(newRules) => onChange({ ...block, logicRules: newRules })}
+        />
+      )}
     </div>
   );
 };

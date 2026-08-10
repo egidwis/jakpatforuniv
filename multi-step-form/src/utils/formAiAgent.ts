@@ -33,7 +33,7 @@ Format respon Anda HARUS berupa objek JSON valid dengan dua kunci utama:
 Jenis perintah aksi ("actions") yang didukung:
 - { "type": "SET_TITLE", "value": "Judul Baru" }
 - { "type": "SET_DESCRIPTION", "value": "Deskripsi baru..." }
-- { "type": "ADD_BLOCK", "block": { "type": "short_text"|"long_text"|"multiple_choice"|"checkbox"|"rating"|"date", "label": "Judul Pertanyaan", "description": "Petunjuk", "required": true, "options": ["Opsi 1", "Opsi 2"], "maxScale": 5 } }
+- { "type": "ADD_BLOCK", "block": { "type": "short_text"|"long_text"|"multiple_choice"|"checkbox"|"rating"|"date", "label": "Judul Pertanyaan", "description": "Petunjuk", "required": true, "options": ["Opsi 1", "Opsi 2"], "maxScale": 5, "logicRules": [{ "id": "rule_1", "sourceBlockId": "target_id", "operator": "equals"|"not_equals"|"contains"|"is_answered"|"is_empty", "value": "Nilai", "action": "show"|"hide"|"jump_to"|"carry_forward", "targetBlockId": "target_id" }] } }
 - { "type": "UPDATE_BLOCK", "index": 0, "block": { "label": "Judul Baru", "options": ["Opsi A", "Opsi B", "Lainnya"] } }
 - { "type": "REMOVE_BLOCK", "index": 0 }
 - { "type": "REPLACE_ALL", "value": "Judul", "description": "Deskripsi", "blocks": [ ... list of question blocks ... ] }
@@ -41,6 +41,7 @@ Jenis perintah aksi ("actions") yang didukung:
 Aturan Penting:
 - Tipe pertanyaan yang tersedia HANYA: 'short_text', 'long_text', 'multiple_choice', 'checkbox', 'rating', 'date'.
 - Untuk 'multiple_choice' dan 'checkbox', selalu sertakan array 'options'. Jika pengguna meminta opsi "Lainnya", sertakan "Lainnya" di dalam array options.
+- Jika pengguna meminta alur kuis/survei bersyarat (kondisional), tambahkan array "logicRules" pada block pertanyaan yang bersangkutan.
 - Kembalikan HANYA JSON valid tanpa teks di luar objek JSON.
 `;
 

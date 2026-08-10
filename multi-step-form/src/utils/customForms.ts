@@ -8,6 +8,18 @@ export type QuestionType =
   | 'rating'
   | 'date';
 
+export type LogicOperator = 'equals' | 'not_equals' | 'contains' | 'is_answered' | 'is_empty';
+export type LogicAction = 'show' | 'hide' | 'jump_to' | 'carry_forward';
+
+export interface LogicRule {
+  id: string;
+  sourceBlockId: string; // Pertanyaan acuan
+  operator: LogicOperator;
+  value?: string; // Nilai opsi atau teks pembanding
+  action: LogicAction; // Aksi logic: show, hide, jump_to, carry_forward
+  targetBlockId?: string; // Pertanyaan tujuan atau 'submit'
+}
+
 export interface QuestionBlock {
   id: string;
   type: QuestionType;
@@ -17,6 +29,7 @@ export interface QuestionBlock {
   options?: string[];
   minScale?: number;
   maxScale?: number;
+  logicRules?: LogicRule[];
 }
 
 export interface CustomForm {

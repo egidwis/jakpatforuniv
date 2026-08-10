@@ -376,6 +376,7 @@ export const FormBuilderPage: React.FC = () => {
                   block={block}
                   index={idx}
                   totalBlocks={blocks.length}
+                  allBlocks={blocks}
                   onChange={(updated) => handleUpdateBlock(idx, updated)}
                   onDelete={() => handleDeleteBlock(idx)}
                   onDuplicate={() => handleDuplicateBlock(idx)}

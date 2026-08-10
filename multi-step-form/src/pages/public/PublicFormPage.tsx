@@ -86,7 +86,7 @@ export const PublicFormPage: React.FC = () => {
     if (!form) return false;
     const errors: Record<string, string> = {};
 
-    form.schema.forEach(q => {
+    visibleBlocks.forEach(q => {
       if (q.required) {
         const val = answers[q.id];
         if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
@@ -104,7 +104,6 @@ export const PublicFormPage: React.FC = () => {
     if (!form) return;
 
     if (!validateForm()) {
-      // Scroll to first error
       const firstErrKey = Object.keys(fieldErrors)[0];
       if (firstErrKey) {
         const elem = document.getElementById(`question-${firstErrKey}`);
@@ -123,6 +122,101 @@ export const PublicFormPage: React.FC = () => {
       setSubmitting(false);
     }
   };
+
+  // Logic Rules Evaluator
+  const evaluateRuleCondition = (rule: any, currentAnswers: Record<string, any>): boolean => {
+    const val = currentAnswers[rule.sourceBlockId];
+    if (rule.operator === 'is_answered') {
+      return val !== undefined && val !== null && val !== '' && (!Array.isArray(val) || val.length > 0);
+    }
+    if (rule.operator === 'is_empty') {
+      return val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0);
+    }
+    if (rule.operator === 'equals') {
+      if (Array.isArray(val)) return val.includes(rule.value);
+      return String(val || '').trim().toLowerCase() === String(rule.value || '').trim().toLowerCase();
+    }
+    if (rule.operator === 'not_equals') {
+      if (Array.isArray(val)) return !val.includes(rule.value);
+      return String(val || '').trim().toLowerCase() !== String(rule.value || '').trim().toLowerCase();
+    }
+    if (rule.operator === 'contains') {
+      if (Array.isArray(val)) return val.some(v => String(v).toLowerCase().includes(String(rule.value || '').toLowerCase()));
+      return String(val || '').toLowerCase().includes(String(rule.value || '').toLowerCase());
+    }
+    return false;
+  };
+
+  // Compute processed & visible question blocks based on active logic rules
+  const visibleBlocks = useMemo(() => {
+    if (!form) return [];
+
+    const blocks = form.schema;
+    const result: QuestionBlock[] = [];
+    let skipUntilBlockId: string | null = null;
+
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+
+      // If a previous skip logic jumped over this block
+      if (skipUntilBlockId) {
+        if (skipUntilBlockId === 'submit') {
+          break; // Stop rendering remaining questions
+        }
+        if (b.id === skipUntilBlockId) {
+          skipUntilBlockId = null; // Reached jump target
+        } else {
+          continue; // Skip this block
+        }
+      }
+
+      // Check Display Logic / Hide Rules attached to this block
+      const rules = b.logicRules || [];
+      const showRules = rules.filter(r => r.action === 'show');
+      const hideRules = rules.filter(r => r.action === 'hide');
+
+      let isVisible = true;
+      if (showRules.length > 0) {
+        isVisible = showRules.some(r => evaluateRuleCondition(r, answers));
+      }
+      if (hideRules.length > 0 && hideRules.some(r => evaluateRuleCondition(r, answers))) {
+        isVisible = false;
+      }
+
+      if (!isVisible) continue;
+
+      // Carry Forward Logic: Dynamic Options
+      const carryRule = rules.find(r => r.action === 'carry_forward');
+      let effectiveOptions = b.options;
+      if (carryRule) {
+        const sourceId = carryRule.targetBlockId || carryRule.sourceBlockId;
+        const sourceVal = answers[sourceId];
+        if (Array.isArray(sourceVal) && sourceVal.length > 0) {
+          effectiveOptions = sourceVal;
+        } else if (typeof sourceVal === 'string' && sourceVal.trim()) {
+          effectiveOptions = [sourceVal];
+        }
+      }
+
+      const processedBlock: QuestionBlock = {
+        ...b,
+        options: effectiveOptions
+      };
+
+      result.push(processedBlock);
+
+      // Check Skip Logic / Jump To Rules attached to this block
+      const jumpRules = rules.filter(r => r.action === 'jump_to');
+      for (const jRule of jumpRules) {
+        if (evaluateRuleCondition(jRule, answers) && jRule.targetBlockId) {
+          skipUntilBlockId = jRule.targetBlockId;
+          break;
+        }
+      }
+    }
+
+    return result;
+  }, [form, answers]);
 
   if (loading) {
     return (
@@ -184,7 +278,7 @@ export const PublicFormPage: React.FC = () => {
 
         {/* Question Form Body */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {form.schema.map((q: QuestionBlock, idx: number) => {
+          {visibleBlocks.map((q: QuestionBlock, idx: number) => {
             const hasError = !!fieldErrors[q.id];
             return (
               <div
