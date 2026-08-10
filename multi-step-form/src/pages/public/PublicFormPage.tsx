@@ -185,12 +185,10 @@ export const PublicFormPage: React.FC = () => {
 
       if (!isVisible) continue;
 
-      // Carry Forward Logic: Dynamic Options
-      const carryRule = rules.find(r => r.action === 'carry_forward');
+      // Carry Forward Logic: Dynamic Options from explicit carryForwardFromBlockId
       let effectiveOptions = b.options;
-      if (carryRule) {
-        const sourceId = carryRule.targetBlockId || carryRule.sourceBlockId;
-        const sourceVal = answers[sourceId];
+      if (b.carryForwardFromBlockId) {
+        const sourceVal = answers[b.carryForwardFromBlockId];
         if (Array.isArray(sourceVal) && sourceVal.length > 0) {
           effectiveOptions = sourceVal;
         } else if (typeof sourceVal === 'string' && sourceVal.trim()) {

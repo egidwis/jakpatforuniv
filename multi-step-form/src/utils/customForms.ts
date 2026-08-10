@@ -9,14 +9,14 @@ export type QuestionType =
   | 'date';
 
 export type LogicOperator = 'equals' | 'not_equals' | 'contains' | 'is_answered' | 'is_empty';
-export type LogicAction = 'show' | 'hide' | 'jump_to' | 'carry_forward';
+export type LogicAction = 'show' | 'hide' | 'jump_to';
 
 export interface LogicRule {
   id: string;
   sourceBlockId: string; // Pertanyaan acuan
   operator: LogicOperator;
   value?: string; // Nilai opsi atau teks pembanding
-  action: LogicAction; // Aksi logic: show, hide, jump_to, carry_forward
+  action: LogicAction; // Aksi logic: show, hide, jump_to
   targetBlockId?: string; // Pertanyaan tujuan atau 'submit'
 }
 
@@ -29,6 +29,7 @@ export interface QuestionBlock {
   options?: string[];
   minScale?: number;
   maxScale?: number;
+  carryForwardFromBlockId?: string; // ID pertanyaan acuan untuk carry forward opsi
   logicRules?: LogicRule[];
 }
 

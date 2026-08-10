@@ -136,7 +136,7 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
       {/* Header */}
       <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-2 mx-auto">
-          <h2 className="font-bold text-sm text-gray-900 dark:text-white">Ask AI</h2>
+          <h2 className="font-bold text-sm text-gray-900 dark:text-white">Ask JFU AI</h2>
           <span className="text-[10px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-600">
             Beta
           </span>
@@ -249,11 +249,10 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
                 className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
               >
                 <div
-                  className={`max-w-[90%] rounded-2xl p-3.5 text-xs leading-relaxed ${
-                    isUser
+                  className={`max-w-[90%] rounded-2xl p-3.5 text-xs leading-relaxed ${isUser
                       ? 'bg-blue-600 text-white rounded-br-none shadow-sm'
                       : 'bg-gray-100 dark:bg-gray-700/80 text-gray-800 dark:text-gray-200 rounded-bl-none border border-gray-200/60 dark:border-gray-600'
-                  }`}
+                    }`}
                 >
                   <p className="whitespace-pre-line">{m.text}</p>
 

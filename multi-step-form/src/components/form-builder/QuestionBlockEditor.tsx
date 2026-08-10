@@ -203,48 +203,108 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
 
         {/* Type-Specific Options Editor */}
         {(block.type === 'multiple_choice' || block.type === 'checkbox') && (
-          <div className="pt-2 space-y-2">
-            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
-              Options:
-            </label>
-            {(block.options || []).map((option, optIdx) => (
-              <div key={optIdx} className="flex items-center gap-2">
-                <span className="text-gray-400">
-                  {block.type === 'multiple_choice' ? (
-                    <CircleDot className="w-3.5 h-3.5" />
-                  ) : (
-                    <CheckSquare className="w-3.5 h-3.5" />
-                  )}
-                </span>
-                <input
-                  type="text"
-                  value={option}
-                  onChange={(e) => handleOptionChange(optIdx, e.target.value)}
-                  placeholder={`Option ${optIdx + 1}`}
-                  className="flex-1 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
-                />
-                {(block.options || []).length > 1 && (
-                  <Button
+          <div className="pt-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
+                Options Source:
+              </label>
+              {allBlocks.filter((_, idx) => idx < index).length > 0 && (
+                <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700/60 p-0.5 rounded-lg text-xs">
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveOption(optIdx)}
-                    className="h-7 w-7 p-0 text-gray-400 hover:text-rose-500"
+                    onClick={() => onChange({ ...block, carryForwardFromBlockId: undefined })}
+                    className={`px-2.5 py-0.5 rounded-md font-medium transition-all ${
+                      !block.carryForwardFromBlockId
+                        ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs font-semibold'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
+                    }`}
                   >
-                    <X className="w-3.5 h-3.5" />
-                  </Button>
-                )}
+                    Manual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prevBlocks = allBlocks.filter((_, idx) => idx < index);
+                      const defaultPrev = prevBlocks[prevBlocks.length - 1]?.id;
+                      onChange({ ...block, carryForwardFromBlockId: defaultPrev });
+                    }}
+                    className={`px-2.5 py-0.5 rounded-md font-semibold transition-all ${
+                      block.carryForwardFromBlockId
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
+                    }`}
+                  >
+                    ⚡ Carry Forward
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {block.carryForwardFromBlockId ? (
+              <div className="bg-blue-50/70 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-blue-900 dark:text-blue-200">
+                    Bawa opsi yang dipilih responden dari:
+                  </span>
+                </div>
+                <select
+                  value={block.carryForwardFromBlockId}
+                  onChange={(e) => onChange({ ...block, carryForwardFromBlockId: e.target.value })}
+                  className="w-full text-xs bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-700 rounded-lg p-2 font-semibold text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {allBlocks.filter((_, idx) => idx < index).map((b, idx) => (
+                    <option key={b.id} value={b.id}>
+                      @{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-blue-700 dark:text-blue-300 italic leading-relaxed">
+                  Opsi pilihan pada pertanyaan ini akan otomatis membawa opsi-opsi yang dicentang oleh responden pada pertanyaan acuan di atas.
+                </p>
               </div>
-            ))}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleAddOption}
-              className="text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" /> Add Option
-            </Button>
+            ) : (
+              /* Standard Manual Options List */
+              <div className="space-y-2">
+                {(block.options || []).map((option, optIdx) => (
+                  <div key={optIdx} className="flex items-center gap-2">
+                    <span className="text-gray-400">
+                      {block.type === 'multiple_choice' ? (
+                        <CircleDot className="w-3.5 h-3.5" />
+                      ) : (
+                        <CheckSquare className="w-3.5 h-3.5" />
+                      )}
+                    </span>
+                    <input
+                      type="text"
+                      value={option}
+                      onChange={(e) => handleOptionChange(optIdx, e.target.value)}
+                      placeholder={`Option ${optIdx + 1}`}
+                      className="flex-1 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
+                    />
+                    {(block.options || []).length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveOption(optIdx)}
+                        className="h-7 w-7 p-0 text-gray-400 hover:text-rose-500"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddOption}
+                  className="text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Option
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
