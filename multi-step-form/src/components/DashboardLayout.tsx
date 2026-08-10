@@ -53,14 +53,15 @@ export function DashboardLayout() {
       icon: <FileText className="w-5 h-5" />
     },
     {
-      label: 'Form Builder',
-      path: '/dashboard/forms',
-      icon: <FileSpreadsheet className="w-5 h-5" />
-    },
-    {
       label: 'Track Status',
       path: '/dashboard/status',
       icon: <LayoutDashboard className="w-5 h-5" />
+    },
+    {
+      label: 'JFU Form',
+      path: '/dashboard/forms',
+      icon: <FileSpreadsheet className="w-5 h-5 text-blue-600 dark:text-blue-400" />,
+      badge: 'BETA'
     },
     {
       label: 'Support',
@@ -73,24 +74,36 @@ export function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col md:flex-row">
-
+      {/* Mobile Top Navbar */}
+      <div className="md:hidden bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+        <div className="flex items-center gap-2">
+          <img src={jfuIcon} alt="JFU Icon" className="w-8 h-8 object-contain" />
+          <span className="font-bold text-gray-900 dark:text-white">Dashboard</span>
+        </div>
+        <Button variant="ghost" size="icon" onClick={toggleSidebar}>
+          {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </Button>
+      </div>
 
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 bg-black/50 z-20 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <aside className={`
-        fixed top-0 left-0 h-screen w-64 bg-white dark:bg-gray-800 border-r z-50 transition-transform duration-200
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
-        {/* Sidebar content unchanged... */}
+      {/* Desktop Sidebar & Mobile Drawer */}
+      <aside
+        className={`
+          fixed md:sticky top-0 z-30 h-screen w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700
+          transition-transform duration-300 ease-in-out flex flex-col justify-between
+          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+      >
         <div className="flex flex-col h-full">
-          <div className="p-6 border-b">
+          {/* Logo Branding */}
+          <div className="p-6 border-b border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-3">
               <img src={jfuIcon} alt="JFU Icon" className="w-10 h-10 object-contain flex-shrink-0" />
               <div>
@@ -108,17 +121,24 @@ export function DashboardLayout() {
                 key={item.path}
                 to={item.path}
                 className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+                  flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                   ${location.pathname.startsWith(item.path)
-                    ? 'dark:bg-blue-900/20 dark:text-blue-400'
+                    ? 'dark:bg-blue-900/20 dark:text-blue-400 font-semibold'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                   }
                 `}
-                style={location.pathname.startsWith(item.path) ? { backgroundColor: 'rgba(0, 145, 255, 0.05)', color: '#0091ff' } : {}}
+                style={location.pathname.startsWith(item.path) ? { backgroundColor: 'rgba(0, 145, 255, 0.06)', color: '#0091ff' } : {}}
                 onClick={() => setIsSidebarOpen(false)}
               >
-                {item.icon}
-                {item.label}
+                <div className="flex items-center gap-3 min-w-0">
+                  {item.icon}
+                  <span className="truncate">{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span className="text-[9px] font-black bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-1.5 py-0.5 rounded-full shadow-xs uppercase tracking-wider">
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
