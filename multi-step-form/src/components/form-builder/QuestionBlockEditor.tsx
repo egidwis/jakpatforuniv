@@ -175,12 +175,20 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   <select
                     onChange={(e) => {
                       if (!e.target.value) return;
-                      onChange({ ...block, label: block.label + ' ' + e.target.value });
+                      if (e.target.value === '__REMOVE_ALL__') {
+                        const cleaned = (block.label || '').replace(/\$\{q:([a-zA-Z0-9_-]+)\}/g, '').trim();
+                        onChange({ ...block, label: cleaned });
+                      } else {
+                        onChange({ ...block, label: block.label + ' ' + e.target.value });
+                      }
                       e.target.value = '';
                     }}
                     className="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-full px-2.5 py-0.5 text-[11px] font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all shadow-2xs"
                   >
                     <option value="">+ Piped Text (@ Jawaban)</option>
+                    {/\$\{q:([a-zA-Z0-9_-]+)\}/.test(block.label || '') && (
+                      <option value="__REMOVE_ALL__">🧹 Hapus Semua Piped Text</option>
+                    )}
                     {allBlocks.filter((_, idx) => idx < index).map((b, idx) => (
                       <option key={b.id} value={`\${q:${idx + 1}}`}>
                         @{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)} ({`\${q:${idx + 1}}`})
@@ -199,7 +207,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-1"
             />
 
-            {/* Piped text human-readable badges when tag detected */}
+            {/* Piped text human-readable badges with remove button */}
             {/\$\{q:([a-zA-Z0-9_-]+)\}/.test(block.label || '') && (
               <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/40 p-2 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
                 <span className="font-semibold text-indigo-700 dark:text-indigo-300">✨ Piped Variables:</span>
@@ -213,9 +221,20 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   return (
                     <span
                       key={tIdx}
-                      className="inline-flex items-center gap-1 bg-white dark:bg-gray-800 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-700 shadow-2xs"
+                      className="inline-flex items-center gap-1.5 bg-white dark:bg-gray-800 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-700 shadow-2xs"
                     >
-                      <code>{token}</code> → <span className="underline decoration-indigo-300">{refLabel}</span>
+                      <span><code>{token}</code> → <span className="underline decoration-indigo-300">{refLabel}</span></span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cleaned = (block.label || '').replace(token, '').trim();
+                          onChange({ ...block, label: cleaned });
+                        }}
+                        className="p-0.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/40 rounded-full transition-colors"
+                        title="Hapus variabel ini"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </span>
                   );
                 })}
