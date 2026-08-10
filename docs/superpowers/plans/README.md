@@ -3,7 +3,7 @@
 Folder ini berisi rencana implementasi yang ditulis sebelum eksekusi. Sebagian sudah
 selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sekali.
 
-**Diperbarui 2026-08-09.**
+**Diperbarui 2026-08-10.**
 
 > Rencana **bukan** status berjalan. Untuk "di mana posisi kita sekarang", baca
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — itu titik masuk resmi
@@ -13,6 +13,7 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 
 | Rencana | Status | Ringkas |
 |---|---|---|
+| [2026-08-09-order-flow-reorder](2026-08-09-order-flow-reorder.md) | ✅ **committed di branch 2026-08-10, belum di-merge** · 🔴 **`sql/48` sudah jalan di prod & sedang membakar email** | Wizard order user dibalik: Detail → Ringkasan → Jadwal & Bayar (dulu Jadwal sebelum Review); layar jadwal+countdown digabung, kedaluwarsa pulih di tempat; P0 kebocoran data anon (`sql/47`); dua email transisi via pg_cron/pg_net (`sql/48`). Verifikasi 6 skenario baru lewat code-trace, klik manual di browser masih PR. **Baca kotak koreksi 2026-08-10 di kepalanya** — tiga hal menyimpang dari badan dokumen |
 | [2026-08-09-task-13-tagihan-fleksibel-per-jadwal](2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) | ⬜ **disetujui; terkunci di belakang Task 11** | Satu jadwal boleh punya **beberapa invoice** — tagihan susulan jadi piutang yang terlihat dan tidak pernah menghentikan iklan yang sedang tayang. Plus **batal reservasi per jadwal** (status `cancelled` sudah ada di DB, tinggal dipakai) dan **Extra Ad jadi sifat jadwal**, bukan sifat order. **Jalur uang — rilis sendiri.** Butuh `schedule_id` dari Task 11 langkah 1b |
 | [2026-08-08-task-11-ad-schedules-otoritatif](2026-08-08-task-11-ad-schedules-otoritatif.md) | ⬜ **disetujui; kini terkunci HANYA oleh merge + deploy** | `ad_schedules` jadi otoritatif; `form_submissions_extend` jadi view lalu pensiun. Menambah `booking_id` (kode jadwal yang dikutip peneliti) dan `schedule_id` di invoices/transactions. **Jalur uang — rilis sendiri.** Menyusut 2026-08-08: langkah 3 kehilangan dua pemanggil, langkah 5 tinggal identifier |
 | [2026-08-05-phase-3-jadwal-iklan-terpadu](2026-08-05-phase-3-jadwal-iklan-terpadu.md) | ✅ **selesai di branch — sisa: adu visual + deploy** | Judulnya sudah basi (baca kotak koreksi di kepalanya). Task 9A+9B ✅, papan Schedule bertab ✅, drawer digabung ✅, Page Calendar pensiun ✅ |
@@ -30,9 +31,18 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 ```
 [1] merge feat/dashboard-soft-dna-navbar → main → DEPLOY
       isinya: revamp visual + Phase 2 Task 9 & 12(copy) + Phase 3 penuh
+              + reorder flow order user (2026-08-09-order-flow-reorder, ✅ 2026-08-10)
+              + P0 kebocoran data anon (sql/47) + email transisi (sql/48, pg_cron/pg_net)
       gerbang: adu visual di browser · cron_activate_extends() diawasi
+               · 6 skenario order-flow diklik manual (baru diverifikasi via code-trace)
+      🔴 DEPLOY INI SEKARANG PUNYA TENGGAT, bukan cuma antrean. sql/47+48 sudah
+         jalan di prod tanpa kodenya; cron notify-primary-ads-live MEMBAKAR
+         penanda live_notified_at tiap 15 menit (3 order sudah hilang emailnya,
+         405 = route belum ada). Rem cron-nya atau deploy — progress doc §00A.
       ⛔ DITAHAN 2026-08-09 — pemilik produk masih memeriksa beberapa hal
          sebelum merge. Jangan merge tanpa aba-aba eksplisit.
+      sesudah deploy: net._http_response harus 200 (bukan 405/401), lalu
+         pulihkan live_notified_at 3 order terbakar — §00A
 [2] Task 11        branch baru dari main · JALUR UANG, rilis sendiri
 [3] Task 13        tagihan fleksibel per jadwal · JALUR UANG, rilis sendiri
 [4] Phase 4        setelah keputusan pool hadiah turun

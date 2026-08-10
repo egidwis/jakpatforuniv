@@ -1,7 +1,7 @@
 # Jadwal Iklan — Status Berjalan
 
 > **Titik masuk untuk pekerjaan Jadwal Iklan.** Baca ini dulu sebelum membuka
-> rencana mana pun. Diperbarui 2026-08-09.
+> rencana mana pun. Diperbarui 2026-08-10.
 >
 > ⛔ **Merge `feat/dashboard-soft-dna-navbar` → `main` DITAHAN (2026-08-09).**
 > Pemilik produk masih memeriksa beberapa hal. Jangan merge tanpa aba-aba
@@ -27,13 +27,20 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, **`sql/47`** — `46` dipakai Task 9A) |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, **`sql/49`** — `46` dipakai Task 9A, `47`/`48` dipakai order-flow reorder 2026-08-10) |
 
-**Satu hal yang paling penting kalau kamu kembali setelah lama:** per 2026-08-05
-`main` sudah di-deploy dan **DB serta kode akhirnya sejajar** — tidak ada lagi
-migrasi yang jalan di produksi tanpa kodenya, dan tidak ada lagi lubang di deret
-`sql/`. Yang tayang memuat Phase 0/1, jembatan + papan jadwal Kilat, Task 8B-1,
-8C, dan 8D.
+🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
+Baca §00A sebelum melakukan apa pun. `sql/47` dan `sql/48` **sudah diterapkan ke
+produksi 2026-08-10**, tapi kode yang menemaninya masih tertahan di branch. Ini
+persis keadaan yang dokumen ini sebut "paling rawan di seluruh papan" (§Task 8C),
+dan kali ini ia **tidak diam** — cron `notify-primary-ads-live` menandai order
+sebagai "sudah dinotifikasi" padahal endpoint-nya belum ada, jadi setiap order
+yang mulai tayang sebelum deploy kehilangan emailnya secara permanen.
+
+**Kalau kamu kembali setelah lama:** per 2026-08-05 `main` sudah di-deploy dan
+DB serta kode sempat sejajar — tidak ada lubang di deret `sql/`. Yang tayang
+memuat Phase 0/1, jembatan + papan jadwal Kilat, Task 8B-1, 8C, dan 8D.
+**Kesejajaran itu putus lagi 2026-08-10** oleh `sql/47`+`48` (lihat §00A).
 
 Sisa Phase 2 tinggal **Task 9–12**, dan sejak 2026-08-05 sore semuanya **sudah
 bisa jalan**: `feat/dashboard-soft-dna-navbar` sudah menarik `main`, jadi branch
@@ -47,6 +54,111 @@ branch itu. Lihat §2.
 ---
 
 ## Yang menunggu tindakan
+
+### 00A. 🔴 `sql/48` sudah jalan di prod tanpa endpoint-nya — email "iklan mulai tayang" TERBAKAR
+
+**Ditemukan 2026-08-10 saat audit pra-merge. Ini gerbang deploy paling mendesak
+di halaman ini, dan ia punya tenggat jam, bukan hari.**
+
+`sql/48` menjadwalkan cron `notify-primary-ads-live` tiap 15 menit. Fungsinya
+mem-`POST` ke `https://submit.jakpatforuniv.com/api/notify-ad-live` lewat pg_net,
+lalu **langsung** menyetel `live_notified_at = now()` — tanpa menunggu respons,
+karena pg_net async (ini memang desainnya, tertulis di kepala `sql/48`).
+
+Masalahnya: **endpoint itu belum ada di produksi.** `functions/api/notify-ad-live.js`
+lahir di commit `e7584b4` dan masih tertahan di branch. Terukur di
+`net._http_response`:
+
+| Waktu | Request | Status |
+|---|---|---|
+| 2026-08-10 02:15 UTC (09.15 WIB) | 3 POST | **405** ×3 |
+
+`405 Method Not Allowed` = Cloudflare Pages tidak punya route itu. Nol email
+terkirim. Tapi ketiga ordernya sudah ditandai `live_notified_at`, dan guard
+fungsinya adalah `live_notified_at is null` — jadi **ketiga order itu tidak akan
+pernah dikirimi email itu lagi**, deploy atau tidak:
+
+- `0cdd8ab4-…` "booked by Alanda" (8–11 Agu)
+- `f9b73a58-…` "JAK2693 Survey Wisata di Tempat Pasca Bencana - Model #3" (9–10 Agu)
+- `8b7bd9c1-…` "Personalisasi Berbasis AI dalam Layanan Pariwisata…" (9–10 Agu)
+
+**Dan ia masih memakan.** Dua order berikutnya mulai tayang **hari ini 2026-08-10
+pukul 15.00 WIB** (`8462698a-…`, `2a0db0c3-…`), keduanya masih `live_notified_at
+IS NULL`. Mereka akan ikut terbakar pada cron pertama setelah 08.00 UTC.
+
+**Pilih satu, sekarang:**
+
+```sql
+-- A. Kalau deploy TIDAK terjadi sebelum 15.00 WIB hari ini — rem dulu:
+select cron.unschedule('notify-primary-ads-live');
+-- lalu setelah deploy:
+select cron.schedule('notify-primary-ads-live', '*/15 * * * *',
+                     $$select public.notify_primary_ads_live()$$);
+```
+
+```sql
+-- B. Setelah deploy, kembalikan yang sudah terbakar supaya emailnya menyusul
+--    (aman: guard fungsinya tetap menyaring jendela tayang yang masih berjalan;
+--     order yang jendelanya sudah lewat tidak akan ikut terkirim).
+update public.form_submissions
+   set live_notified_at = null
+ where id in ('0cdd8ab4-7427-4bc8-a4df-d6ad906ce888',
+              'f9b73a58-6523-4c80-801c-7df7bd5fa6ed',
+              '8b7bd9c1-48b6-488a-997f-ce8ebc26d57a');
+```
+
+Sesudah deploy, **buktikan jalurnya hidup** — jangan anggap selesai karena cron
+`succeeded` (ia `succeeded` juga saat 405):
+
+```sql
+select id, status_code, created from net._http_response order by created desc limit 5;
+-- harus 200, bukan 405 (route hilang) dan bukan 401 (CRON_NOTIFY_SECRET beda)
+```
+
+⚠️ **`401` berarti gerbang rahasianya tidak cocok.** Vault sudah terisi keduanya
+(`notify_ad_live_url` + `cron_notify_secret`, diverifikasi 2026-08-10) — yang
+**belum bisa diverifikasi dari sini** adalah env var `CRON_NOTIFY_SECRET` di
+Cloudflare Pages produksi. Nilainya harus identik dengan isi Vault.
+
+⚠️ Cek juga status akun **Resend** sebelum menyalahkan kode: akun sempat
+suspended 2026-08-10 dan form reaktivasinya baru dikirim. `200` dari
+`/api/notify-ad-live` hanya membuktikan endpoint-nya hidup, bukan emailnya sampai.
+
+**Pelajaran yang lebih besar dari insiden ini** — dan ini yang membedakannya dari
+`sql/43` (DB maju, kode belum, tapi diam): sebuah migrasi yang **menulis penanda
+"sudah dikerjakan"** tidak boleh diterapkan sebelum yang mengerjakannya ada.
+`sql/43` cuma menunggu; `sql/48` menghabiskan. Aturan turunannya: kalau sebuah
+fungsi menandai baris sebelum tahu hasilnya, **jadwalnya menyusul deploy**, bukan
+mendahuluinya — atau tanda itu dipasang dari respons, bukan dari pengiriman.
+
+### 00B. 🟡 `sql/47` juga mendahului kodenya — dampaknya kecil dan diam
+
+Sudah diterapkan ke produksi 2026-08-10 dan **terverifikasi benar**: `anon` tinggal
+7 kolom (`criteria_responden, end_date, id, prize_per_winner, start_date,
+survey_url, winner_count`), `authenticated` utuh 35 kolom.
+
+Tapi kode yang tayang sekarang (`main`) masih memuat
+`functions/api/send-to-sheets.js`, yang membaca `form_submissions` dengan
+`select('*')` memakai **anon key** (`send-to-sheets.js:148`) dan masih dipanggil
+dari `StepCheckout.tsx:8` lewat `sendToGoogleSheetsBackground`. Sejak `sql/47`
+jalan, panggilan itu **selalu gagal**. Tidak berbahaya dan tidak perlu ditindak:
+ia fire-and-forget, sinkronisasi Sheets sudah lama mati (dipanggil sebelum halaman
+iklan terbit, jadi policy anon menolaknya bahkan sebelum `sql/47`), dan pemilik
+produk sudah memutuskan mencabutnya 2026-08-09. Deploy branch ini menghapus
+seluruh jalurnya.
+
+Konsumen anon lainnya sudah dicek satu per satu dan **semuanya aman**:
+`SurveyPage.tsx` (6 kolom), `SurveyListingPage.tsx` + `functions/api/surveys.js`
+(embed `prize_per_winner, winner_count`), `respondents.js` (`criteria_responden`).
+
+⚠️ **Yang tidak bisa diverifikasi dari luar, dan wajib dipastikan:**
+`doku/webhook.js` dan `doku/create-payment.js` memakai
+`SUPABASE_SERVICE_ROLE_KEY || VITE_SUPABASE_ANON_KEY` — **fallback ke anon**. Kalau
+service-role key tidak terpasang di env Cloudflare, jalur uang membaca
+`auth_user_id`/`voucher_code` yang kini **tidak lagi di-grant ke anon**, dan
+webhook DOKU akan gagal diam-diam. Bukti tidak langsung bahwa key-nya terpasang:
+10 order jadi `paid` dalam 48 jam terakhir, termasuk **sesudah** `sql/47` jalan.
+Cukup meyakinkan, belum konklusif — pantau webhook pertama setelah deploy.
 
 ### 00. Page Calendar sudah dipensiunkan ✅ (2026-08-08) — sisa: adu visual di browser
 
@@ -692,7 +804,7 @@ berubah serentak. 8B-2 keluar dari urutan ini — ia pindah jadi prasyarat Phase
 | Task | Isi | Catatan |
 |---|---|---|
 | ~~**8B-1**~~ | ~~Satu sumber angka hadiah + top-up jadi mulus~~ | ✅ **selesai & live 2026-08-05** (`sql/44`). Risiko terbesarnya — dua agregasi batch yang bisa menyimpang — sudah hilang secara struktural, bukan ditambal. |
-| **8B-2** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⏸️ **Ditunda jadi prasyarat Phase 4**, bukan bagian Phase 2. Hari ini semua yang diobatinya masih laten (10 perpanjangan seumur hidup, 0 top-up terpakai, 0 pool yatim) — Phase 4 yang membuat ketiganya hidup sekaligus. ⛔ Sebelum tabelnya dirancang, jawab dulu: **83 order sudah mendanai hadiah tanpa punya tanggal sama sekali**, sehingga kunci `(submission_id, period_batch)` tidak punya tempat untuk mereka. Nomor filenya `sql/45`. |
+| **8B-2** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⏸️ **Ditunda jadi prasyarat Phase 4**, bukan bagian Phase 2. Hari ini semua yang diobatinya masih laten (10 perpanjangan seumur hidup, 0 top-up terpakai, 0 pool yatim) — Phase 4 yang membuat ketiganya hidup sekaligus. ⛔ Sebelum tabelnya dirancang, jawab dulu: **83 order sudah mendanai hadiah tanpa punya tanggal sama sekali**, sehingga kunci `(submission_id, period_batch)` tidak punya tempat untuk mereka. Nomor filenya `sql/49` — sudah bergeser dua kali (dari `45`, lalu dari `47`); lihat baris "Peta dokumen" di bawah untuk alasannya sebelum menulis migrasinya. |
 | ~~**8C**~~ | ~~Pensiunkan sisa fitur pengundian di dashboard~~ | ✅ **selesai & live 2026-08-05.** Dipindah ke `main` lewat cherry-pick tanpa ikut menayangkan revamp visual. Indikator "Select Winners" terbukti hilang dari bundle produksi. |
 | ~~**8D**~~ | ~~`ad_schedules` mengenali Kilat~~ | ✅ **selesai & live 2026-08-05** (`sql/45`). Prasyarat Phase 3 yang pertama — sudah lunas. |
 | ~~**9**~~ | ~~Pisahkan status order dari status jadwal~~ | ✅ **selesai 2026-08-08.** 9A = `sql/46` (cermin dapat sumbu kedua), 9B = dashboard peneliti membacanya. Diadu atas seluruh 971 order: 664 identik, 307 berubah, semuanya perbaikan. **Belum tayang** — ikut branch ini. |
@@ -940,6 +1052,27 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
        tile tetap angka yang benar-benar terpakai — kalau tidak, hari yang baru
        saja dipilih akan mengunci dirinya sendiri.
 
+21. **Migrasi yang MENANDAI "sudah dikerjakan" tidak boleh mendahului kode yang
+    mengerjakannya.** Papan ini sudah lama tahu bahaya "DB maju, kode belum"
+    (`sql/43`, tersangkut sebulan) — tapi kasus itu **diam**: ia cuma menunggu.
+    `sql/48` mengajarkan varian yang lebih buas: fungsinya mem-`POST` lewat pg_net
+    lalu **langsung** menyetel `live_notified_at`, tanpa menunggu respons. Saat
+    diterapkan 2026-08-10 sementara `functions/api/notify-ad-live.js` masih di
+    branch, tiga order ditandai "sudah dinotifikasi" atas dasar **tiga `405`**.
+    Emailnya hilang permanen — bukan tertunda. Detail & pemulihannya di §00A.
+
+    Aturannya, untuk migrasi mana pun sesudah ini: kalau sebuah fungsi terjadwal
+    menulis penanda kemajuan, **`cron.schedule` menyusul deploy, bukan
+    mendahuluinya** — atau penandanya dipasang dari respons (baca
+    `net._http_response`), bukan dari pengiriman. Bagian aditifnya (kolom, fungsi)
+    tetap aman jalan duluan; yang harus ditahan cuma penjadwalannya.
+
+    ⚠️ **`cron.job` `succeeded` tidak membuktikan apa-apa soal hasilnya.** Job-nya
+    memang sukses — yang gagal ada di `net._http_response`, tabel lain. Sama
+    keluarganya dengan jebakan no. 7 (SQL Editor bukan bukti hak akses) dan no. 12
+    (verifikasi SQL melewati gateway REST): **ukur di lapisan yang benar-benar
+    dilewati**, bukan di lapisan yang paling gampang di-query.
+
 ---
 
 ## Peta dokumen
@@ -953,4 +1086,5 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — judulnya sudah basi; baca kotak koreksi di kepalanya sebelum mengeksekusi apa pun dari sana |
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
-| `multi-step-form/sql/36`–`46` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup. `46` = Task 9A (dua sumbu); `reward_pools` bergeser ke `47` |
+| [`superpowers/plans/2026-08-09-order-flow-reorder.md`](superpowers/plans/2026-08-09-order-flow-reorder.md) | **Rencana reorder flow order user** — Ringkasan sebelum Jadwal, gabung layar jadwal+bayar, P0 kebocoran anon, dua email transisi. ✅ committed 2026-08-10, belum di-merge. **Tidak termasuk daftar Task 8–13 di atas** — workstream terpisah yang menumpang branch yang sama |
+| `multi-step-form/sql/36`–`48` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup. `46` = Task 9A (dua sumbu); `47`/`48` dipakai reorder flow order (P0 anon + email transisi, **bukan** `reward_pools` — tabrakan nomor ditemukan 2026-08-10). `reward_pools` bergeser jadi `sql/49` |

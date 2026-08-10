@@ -16,9 +16,9 @@
 > keduanya **belum tayang** dan ikut menunggu merge branch itu. Task 10 & 11 sesudahnya,
 > dari branch baru — lihat [`README.md`](README.md) §"Urutan rilis yang berlaku".
 >
-> Task 8B-2 (`reward_pools`, kini `sql/47`) **keluar dari Phase 2** — ia jadi prasyarat
-> Phase 4. Status berjalan yang paling mutakhir selalu di
-> [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
+> Task 8B-2 (`reward_pools`, kini `sql/49` — bergeser dari `47` 2026-08-10, lihat progress
+> doc) **keluar dari Phase 2** — ia jadi prasyarat Phase 4. Status berjalan yang paling
+> mutakhir selalu di [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
 
 > **Status file ini, 2026-08-03:** file ini awalnya berjudul "Jadwal Iklan Redesign: Bug
 > Fix + Admin Tab Restructure" dan berisi rencana lain. Rencana itu **digantikan penuh**
