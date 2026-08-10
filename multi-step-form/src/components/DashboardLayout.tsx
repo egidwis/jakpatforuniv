@@ -58,15 +58,15 @@ export function DashboardLayout() {
       icon: <LayoutDashboard className="w-5 h-5" />
     },
     {
-      label: 'JFU Form',
-      path: '/dashboard/forms',
-      icon: <FileSpreadsheet className="w-5 h-5 text-blue-600 dark:text-blue-400" />,
-      badge: 'BETA'
-    },
-    {
       label: 'Support',
       path: '/dashboard/chat',
       icon: <MessageSquare className="w-5 h-5" />
+    },
+    {
+      label: 'JFU Form',
+      path: '/dashboard/forms',
+      icon: <FileSpreadsheet className="w-5 h-5" />,
+      badge: 'BETA'
     }
   ];
 
@@ -124,7 +124,7 @@ export function DashboardLayout() {
                   <span className="truncate">{item.label}</span>
                 </div>
                 {item.badge && (
-                  <span className="text-[9px] font-black bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-1.5 py-0.5 rounded-full shadow-xs uppercase tracking-wider">
+                  <span className="text-[9px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider">
                     {item.badge}
                   </span>
                 )}
