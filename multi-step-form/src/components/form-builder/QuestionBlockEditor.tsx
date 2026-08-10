@@ -197,13 +197,12 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Question Text */}
           <div className="md:col-span-2 space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                 Pertanyaan
               </span>
               {index > 0 && (
-                <div className="flex items-center gap-1 text-[11px]">
-                  <span className="text-indigo-500 font-semibold hidden sm:inline">✨ Sisipkan Jawaban:</span>
+                <div className="relative inline-flex items-center shrink-0">
                   <select
                     onChange={(e) => {
                       if (!e.target.value) return;
@@ -215,9 +214,9 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                       }
                       e.target.value = '';
                     }}
-                    className="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-full px-2.5 py-0.5 text-[11px] font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all shadow-2xs"
+                    className="appearance-none bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 rounded-full pl-2.5 pr-6 py-0.5 text-[11px] font-bold cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all shadow-2xs"
                   >
-                    <option value="">+ Piped Text (@ Jawaban)</option>
+                    <option value="">+ @ Jawaban</option>
                     {/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/i.test(block.label || '') && (
                       <option value="__REMOVE_ALL__">🧹 Hapus Semua Piped Text</option>
                     )}
@@ -227,6 +226,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                       </option>
                     ))}
                   </select>
+                  <ChevronDown className="w-3 h-3 text-indigo-500 dark:text-indigo-400 pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
                 </div>
               )}
             </div>
@@ -240,13 +240,13 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               onClick={handleTrackCursor}
               onKeyUp={handleTrackCursor}
               placeholder="Tuliskan pertanyaan Anda... (Gunakan @q1 untuk Piped Text)"
-              className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-1"
+              className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none pb-1 transition-all"
             />
 
             {/* Piped text human-readable badges with remove button */}
             {/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/i.test(block.label || '') && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/40 p-2 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
-                <span className="font-semibold text-indigo-700 dark:text-indigo-300">✨ Piped Variables:</span>
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">✨ Dynamic Text:</span>
                 {((block.label || '').match(/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/gi) || []).map((token, tIdx) => {
                   const numMatch = token.match(/\d+/);
                   const qNumStr = numMatch ? numMatch[0] : '';
@@ -258,16 +258,18 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   return (
                     <span
                       key={tIdx}
-                      className="inline-flex items-center gap-1.5 bg-white dark:bg-gray-800 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-700 shadow-2xs"
+                      className="inline-flex items-center gap-1.5 bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold px-2.5 py-0.5 rounded-full border border-indigo-200/70 dark:border-indigo-800/70 shadow-2xs"
                     >
-                      <span><code>{token}</code> → <span className="underline decoration-indigo-300">{refLabel}</span></span>
+                      <code>{token}</code>
+                      <span className="text-gray-400 dark:text-gray-500 font-normal">→</span>
+                      <span className="underline decoration-indigo-300/80 max-w-[220px] truncate">{refLabel}</span>
                       <button
                         type="button"
                         onClick={() => {
                           const cleaned = (block.label || '').replace(token, '').trim();
                           onChange({ ...block, label: cleaned });
                         }}
-                        className="p-0.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/40 rounded-full transition-colors"
+                        className="p-0.5 text-indigo-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/40 rounded-full transition-colors ml-0.5"
                         title="Hapus variabel ini"
                       >
                         <X className="w-3 h-3" />
