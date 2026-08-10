@@ -281,7 +281,7 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
 
       {/* Sticky Bottom Input Bar when Chat Thread is active */}
       {messages.length > 0 && (
-        <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="shrink-0 p-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
           <form
             onSubmit={(e) => {
               e.preventDefault();

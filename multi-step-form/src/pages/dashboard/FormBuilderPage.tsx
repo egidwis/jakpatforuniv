@@ -244,9 +244,9 @@ export const FormBuilderPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Top Navbar Editor */}
-      <header className="shrink-0 sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 shadow-sm z-10">
+      <header className="shrink-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 shadow-sm z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Button
@@ -345,10 +345,10 @@ export const FormBuilderPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Body Area with Side-by-Side Flex Layout (Full Height Side Panel) */}
-      <div className="flex-1 flex overflow-hidden min-h-[calc(100vh-57px)] relative">
-        {/* Editor Main Canvas */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-24">
+      {/* Body Area with Side-by-Side Flex Layout (Independent Scrolling Canvas) */}
+      <div className="flex-1 flex overflow-hidden min-h-0 relative">
+        {/* Editor Main Canvas (Independent Internal Scroll) */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-24 h-full">
           <div className="max-w-3xl mx-auto space-y-6">
             {/* Form Header Card */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border-t-8 border-t-blue-600 border-x border-b border-gray-200 dark:border-gray-700 p-6 shadow-sm space-y-4">
@@ -450,9 +450,9 @@ export const FormBuilderPage: React.FC = () => {
           </div>
         </main>
 
-        {/* Compact Side-by-Side Ask AI Assistant Side Panel (Full Height) */}
+        {/* Compact Side-by-Side Ask AI Side Panel (Pinned Full Height) */}
         {isAiDrawerOpen && (
-          <aside className="w-[340px] sm:w-[350px] shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col min-h-full shadow-sm z-20 transition-all duration-200">
+          <aside className="w-[340px] sm:w-[350px] shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col h-full shadow-sm z-20 transition-all duration-200">
             <FormAiAssistantDrawer
               isOpen={isAiDrawerOpen}
               onClose={() => setIsAiDrawerOpen(false)}
