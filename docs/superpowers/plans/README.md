@@ -9,10 +9,16 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — itu titik masuk resmi
 > pekerjaan Jadwal Iklan dan selalu lebih mutakhir dari file mana pun di sini.
 
+> ⚠️ Satu rencana di sini **bukan** bagian Jadwal Iklan:
+> [webhook DOKU](2026-08-10-doku-webhook-silent-failure.md) lahir dari insiden pembayaran dan
+> berdiri sendiri. Ia mengambil `sql/54` supaya tidak menggeser nomor `50`–`53` yang sudah
+> diklaim `reward_pools`/Task 11/Task 13.
+
 ## Daftar rencana
 
 | Rencana | Status | Ringkas |
 |---|---|---|
+| [2026-08-10-doku-webhook-silent-failure](2026-08-10-doku-webhook-silent-failure.md) | ✅ **kode selesai & teruji lokal 2026-08-10** · ⛔ **`sql/54` belum diterapkan, belum di-deploy** | Webhook DOKU dulu balas 200 walau tulis DB gagal — pembayaran hilang diam-diam (insiden Nur Fitriana, Rp 499.500). Sebabnya semua `fetch` ke PostgREST tidak memeriksa `res.ok`. Sekarang: `sbFetch` + cek jumlah baris berubah, kunci service-role fail-closed, balas 500 supaya DOKU retry (dibatasi 5x), jejak permanen di `doku_webhook_events` (`sql/54`), email admin, banner di halaman Keuangan. **Cloudflare Observability TIDAK tersedia untuk Pages** — itu sebabnya loggingnya di Supabase. **Jalur uang — rilis sendiri; terapkan `sql/54` SEBELUM deploy** |
 | [2026-08-09-order-flow-reorder](2026-08-09-order-flow-reorder.md) | ✅ **committed di branch 2026-08-10, belum di-merge** · 🔴 **`sql/48` sudah jalan di prod & sedang membakar email** | Wizard order user dibalik: Detail → Ringkasan → Jadwal & Bayar (dulu Jadwal sebelum Review); layar jadwal+countdown digabung, kedaluwarsa pulih di tempat; P0 kebocoran data anon (`sql/47`); dua email transisi via pg_cron/pg_net (`sql/48`). Verifikasi 6 skenario baru lewat code-trace, klik manual di browser masih PR. **Baca kotak koreksi 2026-08-10 di kepalanya** — tiga hal menyimpang dari badan dokumen |
 | [2026-08-09-task-13-tagihan-fleksibel-per-jadwal](2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) | ⬜ **disetujui; terkunci di belakang Task 11** | Satu jadwal boleh punya **beberapa invoice** — tagihan susulan jadi piutang yang terlihat dan tidak pernah menghentikan iklan yang sedang tayang. Plus **batal reservasi per jadwal** (status `cancelled` sudah ada di DB, tinggal dipakai) dan **Extra Ad jadi sifat jadwal**, bukan sifat order. **Jalur uang — rilis sendiri.** Butuh `schedule_id` dari Task 11 langkah 1b |
 | [2026-08-08-task-11-ad-schedules-otoritatif](2026-08-08-task-11-ad-schedules-otoritatif.md) | ⬜ **disetujui; kini terkunci HANYA oleh merge + deploy** | `ad_schedules` jadi otoritatif; `form_submissions_extend` jadi view lalu pensiun. Menambah `booking_id` (kode jadwal yang dikutip peneliti) dan `schedule_id` di invoices/transactions. **Jalur uang — rilis sendiri.** Menyusut 2026-08-08: langkah 3 kehilangan dua pemanggil, langkah 5 tinggal identifier |

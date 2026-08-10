@@ -1,5 +1,37 @@
 // Cloudflare Function untuk webhook DOKU
 // Menerima notifikasi pembayaran dari DOKU dan memperbarui status di database
+//
+// ============================================================================
+// KENAPA FILE INI PENUH CEK `res.ok` — baca sebelum menyederhanakannya
+// ============================================================================
+// Insiden 2026-08-10 (invoice JFU-INV-d7a41f-1786333513279, Rp 499.500): DOKU
+// mencatat notifikasi TERKIRIM & SUKSES, tapi invoices/transactions/
+// form_submissions tidak berubah sama sekali dan order tersangkut "Menunggu
+// channel" berjam-jam.
+//
+// Sebabnya: dulu semua tulis di sini memakai `fetch` mentah ke PostgREST TANPA
+// memeriksa `res.ok`. `fetch` tidak melempar error pada HTTP 4xx/5xx, jadi blok
+// `catch (dbError)` di bawah hampir tidak pernah kena — webhook bisa "berhasil"
+// tanpa menulis apa pun lalu balas 200. DOKU melihat 200, tidak pernah retry,
+// pembayaran hilang permanen tanpa jejak. Cloudflare Workers Logs & Logpush
+// tidak tersedia untuk project Pages, jadi tidak ada jejak platform juga.
+//
+// Tiga aturan yang menutupnya, dan ketiganya harus tetap berdiri:
+//   1. Semua panggilan PostgREST lewat sbFetch() — melempar error kalau !res.ok.
+//   2. PATCH yang penting memakai `Prefer: return=representation` dan MEMERIKSA
+//      array balikannya. Array kosong = 0 baris cocok = kegagalan diam-diam yang
+//      dari luar tampak seperti sukses.
+//   3. Kegagalan tulis membalas HTTP 500 supaya DOKU retry (dibatasi
+//      MAX_WRITE_ATTEMPTS agar tidak jadi badai), mencatat baris di
+//      doku_webhook_events, dan mengirim email ke admin.
+// ============================================================================
+
+import { sendWebhookAlert } from './_webhook-alert.js';
+
+// Setelah sekian kali percobaan gagal untuk satu invoice, berhenti meminta DOKU
+// retry (balas 200) — kegagalannya jelas bukan transien lagi. Baris audit dan
+// email alert tetap ada, jadi tidak ada yang hilang; yang berhenti hanya retry.
+const MAX_WRITE_ATTEMPTS = 5;
 
 export async function onRequest(context) {
   // Hanya terima metode POST
@@ -201,33 +233,37 @@ export async function onRequest(context) {
       const payoutStatus = requestData.payout.status;
       console.log(`[Webhook Payout] Payout callback received. Invoice: ${payoutInvoice}, Status: ${payoutStatus}`);
       
+      let payoutError = null;
       if (payoutInvoice) {
         try {
-          const env = context.env;
-          const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
-          const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY;
-          
-          if (supabaseUrl && supabaseKey) {
-            console.log(`[Webhook Payout] Updating doku_payouts status for invoice ${payoutInvoice} to ${payoutStatus}`);
-            const payoutUpdateRes = await fetch(
-              `${supabaseUrl}/rest/v1/doku_payouts?invoice_number=eq.${encodeURIComponent(payoutInvoice)}`,
-              {
-                method: 'PATCH',
-                headers: {
-                  'apikey': supabaseKey,
-                  'Authorization': `Bearer ${supabaseKey}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ status: payoutStatus })
-              }
-            );
-            console.log(`[Webhook Payout] Update response status: ${payoutUpdateRes.status}`);
-          }
+          const sb = resolveSupabase(context.env);
+          console.log(`[Webhook Payout] Updating doku_payouts status for invoice ${payoutInvoice} to ${payoutStatus}`);
+          await sbFetch(
+            `${sb.url}/rest/v1/doku_payouts?invoice_number=eq.${encodeURIComponent(payoutInvoice)}`,
+            {
+              method: 'PATCH',
+              headers: sb.headers,
+              body: JSON.stringify({ status: payoutStatus })
+            },
+            'payout PATCH doku_payouts'
+          );
         } catch (dbError) {
+          // Payout bukan jalur penerimaan pembayaran, jadi tetap balas 200 —
+          // tapi jangan lagi hilang tanpa jejak seperti dulu.
+          payoutError = dbError?.message || String(dbError);
           console.error('[Webhook Payout] Error updating doku_payouts table:', dbError);
         }
       }
-      
+
+      await recordWebhookEvent(context.env, {
+        invoiceNumber: payoutInvoice,
+        dokuStatus: payoutStatus,
+        outcome: 'payout',
+        httpStatus: 200,
+        errorMessage: payoutError,
+        rawPayload: requestData
+      });
+
       return new Response(JSON.stringify({
         success: true,
         message: 'Payout webhook processed successfully',
@@ -246,6 +282,7 @@ export async function onRequest(context) {
     const jmInvoice = requestData.order?.invoice_number || requestData.trxId || '';
     if (jmInvoice.startsWith('JM-')) {
       console.log(`[Webhook Router] Forwarding JM invoice to jakpatmission: ${jmInvoice}`);
+      let forwardError = null;
       try {
         const forwardRes = await fetch(
           'https://jakpatmission.product-d79.workers.dev/api/doku/webhook',
@@ -256,9 +293,24 @@ export async function onRequest(context) {
           }
         );
         console.log(`[Webhook Router] Forward response: ${forwardRes.status}`);
+        if (!forwardRes.ok) {
+          forwardError = `jakpatmission membalas HTTP ${forwardRes.status}`;
+        }
       } catch (fwdError) {
+        forwardError = fwdError?.message || String(fwdError);
         console.error('[Webhook Router] Forward failed:', fwdError);
       }
+
+      // jakpatmission punya database & dashboard sendiri, jadi kegagalan forward
+      // tidak dialertkan di sini — cukup dicatat supaya bisa ditelusuri.
+      await recordWebhookEvent(context.env, {
+        invoiceNumber: jmInvoice,
+        outcome: 'forwarded_jm',
+        httpStatus: 200,
+        errorMessage: forwardError,
+        rawPayload: requestData
+      });
+
       // Always return 200 to DOKU regardless of forward result
       return new Response(JSON.stringify({
         success: true, forwarded: true, to: 'jakpatmission', invoiceNumber: jmInvoice
@@ -323,300 +375,91 @@ export async function onRequest(context) {
 
     console.log(`Payment ${invoiceNumber} status updated to ${appStatus}${paymentChannel ? `, channel: ${paymentChannel}` : ''}`);
 
-    // Update status di database Supabase
+    // ======================================================================
+    // FASE TULIS DB — setiap kegagalan sekarang punya nama, jejak, dan akibat.
+    // ======================================================================
+    let outcome = 'ok';
+    let errorMessage = null;
     try {
-      const env = context.env;
-      const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
-      // Gunakan SERVICE_ROLE_KEY jika ada (agar bisa menembus RLS dan mengupdate payment_status)
-      const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY;
-
-      if (!supabaseUrl || !supabaseKey) {
-         throw new Error('Supabase credentials not found in environment');
-      }
-      
-      // ====================================================================
-      // STEP 0: AMOUNT VERIFICATION — must happen BEFORE any DB write.
-      // The transactions PATCH below is the first write; if this check came
-      // after it, a forged webhook could still flip transactions.status to
-      // 'completed' even though the invoice stays unpaid.
-      // SNAP sends paidAmount.value as a decimal STRING (e.g. "10000.00"),
-      // so compare with Number() on BOTH sides.
-      // ====================================================================
-      const lookupHeaders = {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json'
-      };
-      const encodedInvoice = encodeURIComponent(invoiceNumber);
-
-      const invAmountRes = await fetch(
-        `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount&limit=1`,
-        { headers: lookupHeaders }
-      );
-      const invAmountRows = await invAmountRes.json();
-      let expectedAmount = Array.isArray(invAmountRows) && invAmountRows.length > 0
-        ? Number(invAmountRows[0].amount)
-        : null;
-
-      // Legacy rows may exist only in transactions (pre-invoices flow).
-      if (expectedAmount === null) {
-        const txnAmountRes = await fetch(
-          `${supabaseUrl}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount&limit=1`,
-          { headers: lookupHeaders }
-        );
-        const txnAmountRows = await txnAmountRes.json();
-        expectedAmount = Array.isArray(txnAmountRows) && txnAmountRows.length > 0
-          ? Number(txnAmountRows[0].amount)
-          : null;
-      }
-
-      if (expectedAmount !== null && !Number.isNaN(expectedAmount)) {
-        const webhookAmount = Number(amount);
-        if (Number.isNaN(webhookAmount) || webhookAmount !== expectedAmount) {
-          // Do NOT write anything; reply 200 so DOKU stops retrying. Status
-          // stays 'pending' for an admin to reconcile.
-          console.error(`[Webhook] AMOUNT MISMATCH for ${invoiceNumber}: webhook amount=${JSON.stringify(amount)}, expected=${expectedAmount}. No DB writes performed. Raw payload was logged above.`);
-          return new Response(JSON.stringify({
-            success: false,
-            message: 'Amount mismatch — notification ignored',
-            invoiceNumber
-          }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      }
-
-      // ====================================================================
-      // STEP 1: Try to find form_submission_id from transactions OR invoices
-      // ====================================================================
-      let formSubmissionId = null;
-
-      // 1a. Try transactions first (Scenario A: user pays directly after submit)
-      const transactionUrl = `${supabaseUrl}/rest/v1/transactions?payment_id=eq.${invoiceNumber}`;
-      const transactionUpdate = { status: appStatus };
-      // Record the channel when DOKU provides it (kept separate from the gateway).
-      if (paymentChannel) {
-        transactionUpdate.payment_channel = paymentChannel;
-      }
-      const updateTransactionResponse = await fetch(transactionUrl, {
-        method: 'PATCH',
-        headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-        },
-        body: JSON.stringify(transactionUpdate)
+      const result = await processPaymentUpdate(context.env, {
+        invoiceNumber,
+        amount,
+        appStatus,
+        paymentChannel
       });
-      const updatedTransactions = await updateTransactionResponse.json();
-
-      if (updatedTransactions && updatedTransactions.length > 0) {
-        formSubmissionId = updatedTransactions[0].form_submission_id;
-        console.log(`Found form_submission_id from transactions: ${formSubmissionId}`);
-      }
-
-      // 1b. If no transaction found, look up invoice directly (Scenario B: admin-created invoice)
-      if (!formSubmissionId) {
-        console.log(`No transaction found for payment_id ${invoiceNumber}, checking invoices table...`);
-        const invoiceLookupRes = await fetch(
-          `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${invoiceNumber}&select=form_submission_id,entity_type,extend_id&limit=1`,
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        const invoiceLookup = await invoiceLookupRes.json();
-        if (invoiceLookup && invoiceLookup.length > 0) {
-          formSubmissionId = invoiceLookup[0].form_submission_id;
-          console.log(`Found form_submission_id from invoices: ${formSubmissionId}`);
-        }
-      }
-
-      // ====================================================================
-      // STEP 2: Update invoice status by payment_id
-      // ====================================================================
-      if (formSubmissionId) {
-        const invoiceUpdateRes = await fetch(`${supabaseUrl}/rest/v1/invoices?payment_id=eq.${invoiceNumber}`, {
-            method: 'PATCH',
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=representation'
-            },
-            body: JSON.stringify({
-              status: appStatus === 'completed' ? 'paid' : appStatus,
-              paid_at: appStatus === 'completed' ? new Date().toISOString() : null
-            })
-        });
-        const invoiceUpdateData = await invoiceUpdateRes.json();
-        console.log(`Invoice PATCH response (status ${invoiceUpdateRes.status}):`, JSON.stringify(invoiceUpdateData));
-
-        // ====================================================================
-        // STEP 3: Get the LATEST invoice for this form_submission_id
-        // ====================================================================
-        const latestInvoiceRes = await fetch(
-          `${supabaseUrl}/rest/v1/invoices?form_submission_id=eq.${formSubmissionId}&order=created_at.desc&limit=1`,
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        const latestInvoices = await latestInvoiceRes.json();
-        console.log(`Latest invoice SELECT response (status ${latestInvoiceRes.status}):`, JSON.stringify(latestInvoices));
-
-        // ====================================================================
-        // STEP 4: Determine form payment_status from latest invoice
-        // ====================================================================
-        let formPaymentStatus = appStatus === 'completed' ? 'paid' : appStatus;
-        let formSubmissionStatus = appStatus === 'completed' ? 'paid' : undefined;
-
-        if (latestInvoices && latestInvoices.length > 0) {
-          const latestStatus = latestInvoices[0].status;
-          formPaymentStatus = latestStatus === 'paid' ? 'paid' : (latestStatus || 'pending');
-          formSubmissionStatus = latestStatus === 'paid' ? 'paid' : undefined;
-        }
-
-        // ====================================================================
-        // STEP 5: Route update based on entity_type (extend vs submission)
-        // ====================================================================
-        const txn = updatedTransactions && updatedTransactions.length > 0 ? updatedTransactions[0] : null;
-        const isExtendPayment = txn && txn.entity_type === 'extend' && txn.extend_id;
-
-        if (isExtendPayment) {
-          // ───── EXTEND PAYMENT ─────
-          console.log(`[Extend] Updating extend ${txn.extend_id} payment_status to ${formPaymentStatus}`);
-          await fetch(
-            `${supabaseUrl}/rest/v1/form_submissions_extend?id=eq.${txn.extend_id}`,
-            {
-              method: 'PATCH',
-              headers: {
-                'apikey': supabaseKey,
-                'Authorization': `Bearer ${supabaseKey}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                payment_status: formPaymentStatus,
-                ...(formSubmissionStatus === 'paid' ? { submission_status: 'scheduled' } : {})
-              })
-            }
-          );
-
-          // Check if banner update is needed (new rewards = new banner)
-          if (formPaymentStatus === 'paid') {
-            try {
-              const extRes = await fetch(
-                `${supabaseUrl}/rest/v1/form_submissions_extend?id=eq.${txn.extend_id}&select=is_new_month,additional_prize_per_winner`,
-                {
-                  headers: {
-                    'apikey': supabaseKey,
-                    'Authorization': `Bearer ${supabaseKey}`,
-                    'Content-Type': 'application/json'
-                  }
-                }
-              );
-              const extData = await extRes.json();
-              const ext = extData && extData.length > 0 ? extData[0] : null;
-              if (ext && (ext.is_new_month || (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0))) {
-                console.log(`[Extend] Setting requires_banner_update=true for submission ${formSubmissionId}`);
-                await fetch(
-                  `${supabaseUrl}/rest/v1/survey_pages?submission_id=eq.${formSubmissionId}`,
-                  {
-                    method: 'PATCH',
-                    headers: {
-                      'apikey': supabaseKey,
-                      'Authorization': `Bearer ${supabaseKey}`,
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ requires_banner_update: true })
-                  }
-                );
-              }
-            } catch (extErr) {
-              console.error('[Extend] Error checking banner update:', extErr);
-            }
-          }
-        } else {
-          // ───── REGULAR SUBMISSION PAYMENT ─────
-          console.log(`Updating form ${formSubmissionId} payment_status to ${formPaymentStatus} (based on latest invoice)`);
-          await fetch(
-            `${supabaseUrl}/rest/v1/form_submissions?id=eq.${formSubmissionId}`,
-            {
-              method: 'PATCH',
-              headers: {
-                'apikey': supabaseKey,
-                'Authorization': `Bearer ${supabaseKey}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                payment_status: formPaymentStatus,
-                ...(formSubmissionStatus ? { submission_status: formSubmissionStatus } : {})
-              })
-            }
-          );
-
-          // Record a one-time voucher redemption (e.g. ILKOMUNY) on confirmed
-          // payment. The UNIQUE(auth_user_id, voucher_code) constraint in
-          // voucher_redemptions (sql/35) is the authoritative "once per account"
-          // gate; ignore-duplicates makes a repeat a harmless no-op.
-          if (formPaymentStatus === 'paid') {
-            try {
-              const subRes = await fetch(
-                `${supabaseUrl}/rest/v1/form_submissions?id=eq.${formSubmissionId}&select=auth_user_id,voucher_code&limit=1`,
-                { headers: lookupHeaders }
-              );
-              const subRows = await subRes.json();
-              const sub = Array.isArray(subRows) && subRows.length > 0 ? subRows[0] : null;
-              const code = sub && sub.voucher_code ? String(sub.voucher_code).toUpperCase() : null;
-              const LIMITED_VOUCHERS = ['ILKOMUNY'];
-              if (sub && sub.auth_user_id && code && LIMITED_VOUCHERS.includes(code)) {
-                const vrRes = await fetch(`${supabaseUrl}/rest/v1/voucher_redemptions`, {
-                  method: 'POST',
-                  headers: {
-                    'apikey': supabaseKey,
-                    'Authorization': `Bearer ${supabaseKey}`,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'resolution=ignore-duplicates'
-                  },
-                  body: JSON.stringify({
-                    auth_user_id: sub.auth_user_id,
-                    voucher_code: code,
-                    form_submission_id: formSubmissionId
-                  })
-                });
-                if (!vrRes.ok) {
-                  const vrText = await vrRes.text();
-                  console.warn(`[Webhook] voucher_redemptions insert non-OK (${vrRes.status}) for user ${sub.auth_user_id} / ${code}: ${vrText}`);
-                }
-              }
-            } catch (vrErr) {
-              console.error('[Webhook] Error recording voucher redemption:', vrErr);
-            }
-          }
-        }
-      } else {
-        console.error(`Could not find form_submission_id for payment_id ${invoiceNumber} in either transactions or invoices!`);
-      }
-
+      outcome = result.outcome;
+      errorMessage = result.errorMessage || null;
     } catch (dbError) {
+      // Dulu blok ini hanya console.error lalu tetap balas 200 — itu persis
+      // yang membuat pembayaran hilang diam-diam pada insiden 2026-08-10.
+      // Sekarang ia punya akibat: baris audit, email, dan retry dari DOKU.
       console.error('Error updating database:', dbError);
-      // DOKU mewajibkan HTTP 200 apapun yang terjadi agar webhook tidak re-try terus jika error db
+      outcome = 'write_failed';
+      errorMessage = dbError?.message || String(dbError);
+    }
+
+    // Hanya kegagalan TULIS yang layak di-retry DOKU. amount_mismatch dan
+    // no_submission_found adalah masalah data — mengulanginya tidak mengubah
+    // apa pun, hanya membuang percobaan dan membanjiri log.
+    let httpStatus = 200;
+    let attempt = null;
+    if (outcome === 'write_failed') {
+      const priorFailures = await countPriorWriteFailures(context.env, invoiceNumber);
+      attempt = priorFailures + 1;
+      httpStatus = attempt < MAX_WRITE_ATTEMPTS ? 500 : 200;
+      console.error(
+        `[Webhook] Tulis DB gagal untuk ${invoiceNumber} (percobaan ${attempt}/${MAX_WRITE_ATTEMPTS}) — membalas HTTP ${httpStatus}. ${errorMessage}`
+      );
+    }
+
+    await recordWebhookEvent(context.env, {
+      invoiceNumber,
+      dokuStatus: status,
+      appStatus,
+      paymentChannel,
+      amount,
+      outcome,
+      httpStatus,
+      errorMessage,
+      rawPayload: requestData
+    });
+
+    // Alert hanya untuk yang butuh manusia. Untuk write_failed cukup pada
+    // percobaan PERTAMA — kalau tidak, retry DOKU berubah jadi banjir email.
+    const needsAlert =
+      outcome === 'amount_mismatch' ||
+      outcome === 'no_submission_found' ||
+      (outcome === 'write_failed' && attempt === 1);
+
+    if (needsAlert) {
+      const alertPromise = sendWebhookAlert(context.env, {
+        invoiceNumber,
+        outcome,
+        errorMessage,
+        amount,
+        dokuStatus: status,
+        paymentChannel,
+        httpStatus,
+        attempt
+      });
+      // waitUntil supaya email tidak menambah latensi balasan ke DOKU.
+      if (typeof context.waitUntil === 'function') {
+        context.waitUntil(alertPromise);
+      } else {
+        await alertPromise;
+      }
     }
 
     return new Response(JSON.stringify({
-      success: true,
-      message: 'Webhook received and processed successfully',
+      success: outcome === 'ok',
+      message: outcome === 'ok'
+        ? 'Webhook received and processed successfully'
+        : `Webhook received but not fully processed (${outcome})`,
       invoiceNumber,
-      status: appStatus
+      status: appStatus,
+      outcome
     }), {
-      status: 200,
+      status: httpStatus,
       headers: { 'Content-Type': 'application/json' }
     });
 
@@ -630,5 +473,415 @@ export async function onRequest(context) {
       status: 500, // Walaupun DOKU butuh 200, jika error syntax/kode harus 500
       headers: { 'Content-Type': 'application/json' }
     });
+  }
+}
+
+// ============================================================================
+// Helper Supabase
+// ============================================================================
+
+/**
+ * FAIL-CLOSED. Dulu di sini ada rantai
+ * `SERVICE_ROLE_KEY || VITE_ANON_KEY || ANON_KEY` — artinya kalau service key
+ * hilang, webhook diam-diam turun ke anon key, SETIAP tulis ditolak RLS, dan
+ * kita tetap membalas 200. Ranjau persis sejenis insiden 2026-08-10. Sekarang
+ * ketiadaan service key adalah error yang terdengar.
+ */
+function resolveSupabase(env) {
+  const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url) {
+    throw new Error('VITE_SUPABASE_URL/SUPABASE_URL tidak ada di environment');
+  }
+  if (!key) {
+    throw new Error(
+      'SUPABASE_SERVICE_ROLE_KEY tidak ada di environment — webhook menolak turun ke anon key ' +
+      '(semua tulis akan ditolak RLS tanpa suara)'
+    );
+  }
+
+  return {
+    url,
+    key,
+    headers: {
+      'apikey': key,
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    }
+  };
+}
+
+/**
+ * `fetch` yang benar-benar gagal ketika Supabase menolak.
+ *
+ * `fetch` bawaan hanya menolak pada error jaringan — HTTP 401/404/500 lewat
+ * sebagai resolusi normal. Setiap panggilan PostgREST di file ini WAJIB lewat
+ * sini; itu satu-satunya alasan blok `catch` di onRequest sekarang berfungsi.
+ */
+async function sbFetch(url, init, label) {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`${label} gagal — HTTP ${res.status}: ${body.slice(0, 400)}`);
+  }
+  return res;
+}
+
+/**
+ * PATCH yang memastikan ada baris yang benar-benar berubah.
+ *
+ * PostgREST membalas 200 + `[]` ketika filter tidak cocok dengan baris mana pun.
+ * Dari luar itu tampak persis seperti sukses — dan itulah bentuk kegagalan yang
+ * paling berbahaya di sini, karena uang sudah diterima tapi tidak ada status
+ * yang berpindah.
+ */
+async function sbPatchExpectingRows(sb, path, body, label) {
+  const res = await sbFetch(
+    `${sb.url}/rest/v1/${path}`,
+    {
+      method: 'PATCH',
+      headers: { ...sb.headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(body)
+    },
+    label
+  );
+  const rows = await res.json();
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error(`${label} tidak mengubah baris apa pun (0 baris cocok dengan filternya)`);
+  }
+  return rows;
+}
+
+// ============================================================================
+// Fase tulis DB — STEP 0..5
+//
+// Melempar error kalau ada tulis yang gagal; onRequest menerjemahkannya jadi
+// outcome 'write_failed' + HTTP 500 supaya DOKU retry. Mengembalikan outcome
+// non-'ok' untuk kegagalan yang retry-nya TIDAK akan menolong.
+// ============================================================================
+async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, paymentChannel }) {
+  const sb = resolveSupabase(env);
+  const encodedInvoice = encodeURIComponent(invoiceNumber);
+
+  // ====================================================================
+  // STEP 0: AMOUNT VERIFICATION — must happen BEFORE any DB write.
+  // The transactions PATCH below is the first write; if this check came
+  // after it, a forged webhook could still flip transactions.status to
+  // 'completed' even though the invoice stays unpaid.
+  // SNAP sends paidAmount.value as a decimal STRING (e.g. "10000.00"),
+  // so compare with Number() on BOTH sides.
+  // ====================================================================
+  const invAmountRes = await sbFetch(
+    `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount&limit=1`,
+    { headers: sb.headers },
+    'STEP 0 SELECT invoices.amount'
+  );
+  const invAmountRows = await invAmountRes.json();
+  let expectedAmount = Array.isArray(invAmountRows) && invAmountRows.length > 0
+    ? Number(invAmountRows[0].amount)
+    : null;
+
+  // Legacy rows may exist only in transactions (pre-invoices flow).
+  if (expectedAmount === null) {
+    const txnAmountRes = await sbFetch(
+      `${sb.url}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount&limit=1`,
+      { headers: sb.headers },
+      'STEP 0 SELECT transactions.amount'
+    );
+    const txnAmountRows = await txnAmountRes.json();
+    expectedAmount = Array.isArray(txnAmountRows) && txnAmountRows.length > 0
+      ? Number(txnAmountRows[0].amount)
+      : null;
+  }
+
+  if (expectedAmount !== null && !Number.isNaN(expectedAmount)) {
+    const webhookAmount = Number(amount);
+    if (Number.isNaN(webhookAmount) || webhookAmount !== expectedAmount) {
+      // Do NOT write anything. Retry tidak akan menolong — angkanya memang
+      // beda — jadi balas 200 dan panggil admin lewat alert.
+      console.error(`[Webhook] AMOUNT MISMATCH for ${invoiceNumber}: webhook amount=${JSON.stringify(amount)}, expected=${expectedAmount}. No DB writes performed. Raw payload was logged above.`);
+      return {
+        outcome: 'amount_mismatch',
+        errorMessage: `Webhook membawa ${JSON.stringify(amount)}, invoice di database bernilai ${expectedAmount}. Tidak ada yang ditulis.`
+      };
+    }
+  }
+
+  // ====================================================================
+  // STEP 1: Try to find form_submission_id from transactions OR invoices
+  // ====================================================================
+  let formSubmissionId = null;
+
+  // 1a. Try transactions first (Scenario A: user pays directly after submit)
+  // 0 baris di sini SAH — itu Skenario B (invoice dibuat admin, tanpa baris
+  // transactions; terukur 17 invoice seperti itu per 2026-08-10). Karena itu
+  // yang ini TIDAK memakai sbPatchExpectingRows, tapi tetap wajib res.ok.
+  const transactionUpdate = { status: appStatus };
+  // Record the channel when DOKU provides it (kept separate from the gateway).
+  if (paymentChannel) {
+    transactionUpdate.payment_channel = paymentChannel;
+  }
+  const updateTransactionResponse = await sbFetch(
+    `${sb.url}/rest/v1/transactions?payment_id=eq.${encodedInvoice}`,
+    {
+      method: 'PATCH',
+      headers: { ...sb.headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(transactionUpdate)
+    },
+    'STEP 1a PATCH transactions'
+  );
+  const updatedTransactions = await updateTransactionResponse.json();
+
+  if (Array.isArray(updatedTransactions) && updatedTransactions.length > 0) {
+    formSubmissionId = updatedTransactions[0].form_submission_id;
+    console.log(`Found form_submission_id from transactions: ${formSubmissionId}`);
+  }
+
+  // 1b. If no transaction found, look up invoice directly (Scenario B: admin-created invoice)
+  if (!formSubmissionId) {
+    console.log(`No transaction found for payment_id ${invoiceNumber}, checking invoices table...`);
+    const invoiceLookupRes = await sbFetch(
+      `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=form_submission_id,entity_type,extend_id&limit=1`,
+      { headers: sb.headers },
+      'STEP 1b SELECT invoices'
+    );
+    const invoiceLookup = await invoiceLookupRes.json();
+    if (Array.isArray(invoiceLookup) && invoiceLookup.length > 0) {
+      formSubmissionId = invoiceLookup[0].form_submission_id;
+      console.log(`Found form_submission_id from invoices: ${formSubmissionId}`);
+    }
+  }
+
+  if (!formSubmissionId) {
+    // DOKU menerima uang untuk invoice yang tidak kita kenal. Retry tidak akan
+    // memunculkan barisnya — ini butuh manusia menelusuri, bukan mesin mengulang.
+    console.error(`Could not find form_submission_id for payment_id ${invoiceNumber} in either transactions or invoices!`);
+    return {
+      outcome: 'no_submission_found',
+      errorMessage: `Invoice ${invoiceNumber} tidak ada di transactions maupun invoices.`
+    };
+  }
+
+  // ====================================================================
+  // STEP 2: Update invoice status by payment_id
+  // ====================================================================
+  const invoiceUpdateData = await sbPatchExpectingRows(
+    sb,
+    `invoices?payment_id=eq.${encodedInvoice}`,
+    {
+      status: appStatus === 'completed' ? 'paid' : appStatus,
+      paid_at: appStatus === 'completed' ? new Date().toISOString() : null
+    },
+    'STEP 2 PATCH invoices'
+  );
+  console.log('Invoice PATCH berhasil:', JSON.stringify(invoiceUpdateData));
+
+  // ====================================================================
+  // STEP 3: Get the LATEST invoice for this form_submission_id
+  // ====================================================================
+  const latestInvoiceRes = await sbFetch(
+    `${sb.url}/rest/v1/invoices?form_submission_id=eq.${formSubmissionId}&order=created_at.desc&limit=1`,
+    { headers: sb.headers },
+    'STEP 3 SELECT invoice terbaru'
+  );
+  const latestInvoices = await latestInvoiceRes.json();
+  console.log('Latest invoice SELECT:', JSON.stringify(latestInvoices));
+
+  // ====================================================================
+  // STEP 4: Determine form payment_status from latest invoice
+  // ====================================================================
+  let formPaymentStatus = appStatus === 'completed' ? 'paid' : appStatus;
+  let formSubmissionStatus = appStatus === 'completed' ? 'paid' : undefined;
+
+  if (Array.isArray(latestInvoices) && latestInvoices.length > 0) {
+    const latestStatus = latestInvoices[0].status;
+    formPaymentStatus = latestStatus === 'paid' ? 'paid' : (latestStatus || 'pending');
+    formSubmissionStatus = latestStatus === 'paid' ? 'paid' : undefined;
+  }
+
+  // ====================================================================
+  // STEP 5: Route update based on entity_type (extend vs submission)
+  // ====================================================================
+  const txn = Array.isArray(updatedTransactions) && updatedTransactions.length > 0
+    ? updatedTransactions[0]
+    : null;
+  const isExtendPayment = txn && txn.entity_type === 'extend' && txn.extend_id;
+
+  if (isExtendPayment) {
+    // ───── EXTEND PAYMENT ─────
+    console.log(`[Extend] Updating extend ${txn.extend_id} payment_status to ${formPaymentStatus}`);
+    await sbPatchExpectingRows(
+      sb,
+      `form_submissions_extend?id=eq.${txn.extend_id}`,
+      {
+        payment_status: formPaymentStatus,
+        ...(formSubmissionStatus === 'paid' ? { submission_status: 'scheduled' } : {})
+      },
+      'STEP 5 PATCH form_submissions_extend'
+    );
+
+    // Check if banner update is needed (new rewards = new banner).
+    // Efek sekunder: sengaja ditelan sendiri supaya kegagalannya tidak membuat
+    // pembayaran yang SUDAH tercatat lunas ikut dianggap gagal & di-retry.
+    if (formPaymentStatus === 'paid') {
+      try {
+        const extRes = await sbFetch(
+          `${sb.url}/rest/v1/form_submissions_extend?id=eq.${txn.extend_id}&select=is_new_month,additional_prize_per_winner`,
+          { headers: sb.headers },
+          'STEP 5 SELECT extend untuk cek banner'
+        );
+        const extData = await extRes.json();
+        const ext = Array.isArray(extData) && extData.length > 0 ? extData[0] : null;
+        if (ext && (ext.is_new_month || (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0))) {
+          console.log(`[Extend] Setting requires_banner_update=true for submission ${formSubmissionId}`);
+          await sbFetch(
+            `${sb.url}/rest/v1/survey_pages?submission_id=eq.${formSubmissionId}`,
+            {
+              method: 'PATCH',
+              headers: sb.headers,
+              body: JSON.stringify({ requires_banner_update: true })
+            },
+            'STEP 5 PATCH survey_pages.requires_banner_update'
+          );
+        }
+      } catch (extErr) {
+        console.error('[Extend] Error checking banner update:', extErr);
+      }
+    }
+  } else {
+    // ───── REGULAR SUBMISSION PAYMENT ─────
+    console.log(`Updating form ${formSubmissionId} payment_status to ${formPaymentStatus} (based on latest invoice)`);
+    await sbPatchExpectingRows(
+      sb,
+      `form_submissions?id=eq.${formSubmissionId}`,
+      {
+        payment_status: formPaymentStatus,
+        ...(formSubmissionStatus ? { submission_status: formSubmissionStatus } : {})
+      },
+      'STEP 5 PATCH form_submissions'
+    );
+
+    // Record a one-time voucher redemption (e.g. ILKOMUNY) on confirmed
+    // payment. The UNIQUE(auth_user_id, voucher_code) constraint in
+    // voucher_redemptions (sql/35) is the authoritative "once per account"
+    // gate; ignore-duplicates makes a repeat a harmless no-op.
+    // Efek sekunder — ditelan sendiri, alasan sama seperti blok banner di atas.
+    if (formPaymentStatus === 'paid') {
+      try {
+        const subRes = await sbFetch(
+          `${sb.url}/rest/v1/form_submissions?id=eq.${formSubmissionId}&select=auth_user_id,voucher_code&limit=1`,
+          { headers: sb.headers },
+          'SELECT voucher_code'
+        );
+        const subRows = await subRes.json();
+        const sub = Array.isArray(subRows) && subRows.length > 0 ? subRows[0] : null;
+        const code = sub && sub.voucher_code ? String(sub.voucher_code).toUpperCase() : null;
+        const LIMITED_VOUCHERS = ['ILKOMUNY'];
+        if (sub && sub.auth_user_id && code && LIMITED_VOUCHERS.includes(code)) {
+          const vrRes = await fetch(`${sb.url}/rest/v1/voucher_redemptions`, {
+            method: 'POST',
+            headers: { ...sb.headers, 'Prefer': 'resolution=ignore-duplicates' },
+            body: JSON.stringify({
+              auth_user_id: sub.auth_user_id,
+              voucher_code: code,
+              form_submission_id: formSubmissionId
+            })
+          });
+          if (!vrRes.ok) {
+            const vrText = await vrRes.text();
+            console.warn(`[Webhook] voucher_redemptions insert non-OK (${vrRes.status}) for user ${sub.auth_user_id} / ${code}: ${vrText}`);
+          }
+        }
+      } catch (vrErr) {
+        console.error('[Webhook] Error recording voucher redemption:', vrErr);
+      }
+    }
+  }
+
+  return { outcome: 'ok' };
+}
+
+// ============================================================================
+// Jejak permanen — doku_webhook_events (sql/54)
+// ============================================================================
+
+/**
+ * Berapa kali invoice ini sudah gagal ditulis dan belum diselesaikan.
+ * Dipakai untuk membatasi retry DOKU. Kalau query-nya sendiri gagal (Supabase
+ * benar-benar mati), kembalikan 0 — artinya kita tetap meminta retry, yang
+ * memang perilaku yang diinginkan saat gangguan transien.
+ */
+async function countPriorWriteFailures(env, invoiceNumber) {
+  if (!invoiceNumber) return 0;
+  try {
+    const sb = resolveSupabase(env);
+    const res = await sbFetch(
+      `${sb.url}/rest/v1/doku_webhook_events` +
+      `?invoice_number=eq.${encodeURIComponent(invoiceNumber)}` +
+      `&outcome=eq.write_failed&resolved_at=is.null&select=id&limit=${MAX_WRITE_ATTEMPTS + 1}`,
+      { headers: sb.headers },
+      'SELECT doku_webhook_events (hitung kegagalan)'
+    );
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch (err) {
+    console.error('[Webhook] Gagal menghitung kegagalan sebelumnya:', err);
+    return 0;
+  }
+}
+
+/**
+ * Satu baris per notifikasi DOKU yang lolos autentikasi.
+ *
+ * TIDAK PERNAH melempar: kegagalan mencatat tidak boleh menjatuhkan webhook
+ * yang sebenarnya berhasil. Kalau ini pun gagal, alert email tetap jadi lapisan
+ * terakhir — ia tidak bergantung pada Supabase sama sekali.
+ */
+async function recordWebhookEvent(env, event) {
+  try {
+    const sb = resolveSupabase(env);
+    const numericAmount = Number(event.amount);
+
+    await sbFetch(
+      `${sb.url}/rest/v1/doku_webhook_events`,
+      {
+        method: 'POST',
+        headers: { ...sb.headers, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          invoice_number: event.invoiceNumber || null,
+          doku_status: event.dokuStatus || null,
+          app_status: event.appStatus || null,
+          payment_channel: event.paymentChannel || null,
+          amount: Number.isFinite(numericAmount) ? numericAmount : null,
+          outcome: event.outcome,
+          http_status: event.httpStatus,
+          error_message: event.errorMessage || null,
+          raw_payload: event.rawPayload ?? null
+        })
+      },
+      'INSERT doku_webhook_events'
+    );
+
+    // Percobaan yang berhasil membersihkan jejak kegagalannya sendiri, jadi
+    // banner admin hanya menyisakan yang benar-benar masih perlu dilihat.
+    if (event.outcome === 'ok' && event.invoiceNumber) {
+      await sbFetch(
+        `${sb.url}/rest/v1/doku_webhook_events` +
+        `?invoice_number=eq.${encodeURIComponent(event.invoiceNumber)}` +
+        `&outcome=neq.ok&resolved_at=is.null`,
+        {
+          method: 'PATCH',
+          headers: { ...sb.headers, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            resolved_at: new Date().toISOString(),
+            resolved_by: 'auto:webhook'
+          })
+        },
+        'PATCH doku_webhook_events (auto-resolve)'
+      );
+    }
+  } catch (err) {
+    console.error('[Webhook] Gagal mencatat doku_webhook_events:', err);
   }
 }

@@ -21,6 +21,7 @@ import {
 import { TransactionListRow } from './transactions/TransactionListRow';
 import { TransactionDetailSheet } from './transactions/TransactionDetailSheet';
 import { WalletView } from './transactions/WalletView';
+import { WebhookFailuresBanner } from './transactions/WebhookFailuresBanner';
 
 type FinanceTab = 'transaksi' | 'wallet';
 
@@ -187,6 +188,11 @@ export function TransactionsPage() {
           </button>
         ))}
       </div>
+
+      {/* Notifikasi DOKU yang gagal diproses. Sengaja di luar tab: uang yang
+          tersangkut harus terlihat dari mana pun halaman ini dibuka. Merender
+          null kalau tidak ada masalah. */}
+      <WebhookFailuresBanner />
 
       {activeTab === 'wallet' ? (
         <WalletView
