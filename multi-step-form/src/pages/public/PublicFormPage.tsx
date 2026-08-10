@@ -420,7 +420,16 @@ export const PublicFormPage: React.FC = () => {
         )}
 
         {/* Question Form Body for Active Page */}
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form
+          onSubmit={handleSubmit}
+          onKeyDown={(e) => {
+            // Prevent Enter key from auto-submitting the form (except in textareas)
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+            }
+          }}
+          className="space-y-5"
+        >
           {currentPage.blocks.map((q: QuestionBlock, idx: number) => {
             const overallNum = questionNumberOffset + idx + 1;
             const hasError = !!fieldErrors[q.id];
