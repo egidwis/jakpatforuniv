@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { AlertCircle, CalendarClock, DollarSign, Loader2 } from 'lucide-react';
+import { AlertCircle, CalendarClock, Clock, DollarSign, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -10,8 +10,8 @@ import {
   fetchSlotAvailability, supabase, updateExtendScheduleDates, updateScheduleDates,
   type AdScheduleEntry, type FormSubmissionExtend,
 } from '@/utils/supabase';
-import { toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
-import { formatWibShort } from '@/pages/dashboard/schedule/scheduleModel';
+import { nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { KilatScheduleStep } from '@/components/KilatScheduleStep';
 import { DAYS_AHEAD, SlotCalendar, daysCoveredBy, nextDays } from './SlotCalendar';
 
@@ -137,6 +137,16 @@ export function ScheduleForm({
   const [duration, setDuration] = useState(
     isCreate ? 7 : Math.max(1, entry?.duration || 1)
   );
+
+  const getInitialAiringTime = () => {
+    if (!isCreate && entry?.startDate) {
+      const wib = nowWib(new Date(entry.startDate));
+      return `${String(wib.hour).padStart(2, '0')}:${String(wib.minute).padStart(2, '0')}`;
+    }
+    return '15:00';
+  };
+
+  const [airingTime, setAiringTime] = useState<string>(getInitialAiringTime());
   const isExtraMode = isCreate ? isExtraAd : !!entry?.isExtraAd;
 
   const [regularCounts, setRegularCounts] = useState<Record<string, number>>({});
@@ -152,6 +162,10 @@ export function ScheduleForm({
   const [isResolvingBatch, setIsResolvingBatch] = useState(false);
 
   const days = useMemo(() => nextDays(DAYS_AHEAD), []);
+
+  const [hourStr, minStr] = airingTime.split(':');
+  const selectedHour = Math.min(23, Math.max(0, parseInt(hourStr || '15', 10)));
+  const selectedMinute = Math.min(59, Math.max(0, parseInt(minStr || '0', 10)));
 
   // Iklan tambahan punya KOLAM KUOTA SENDIRI. Mengukurnya terhadap kuota reguler
   // akan menolak tanggal yang sebenarnya masih kosong untuknya.
@@ -180,7 +194,13 @@ export function ScheduleForm({
     void loadSlots();
   }, [loadSlots]);
 
-  const endIso = selectedYmd ? toAiringEndIso(selectedYmd, duration) : null;
+  const startIso = selectedYmd
+    ? toAiringStartIso(selectedYmd, selectedHour, selectedMinute)
+    : null;
+
+  const endIso = selectedYmd
+    ? toAiringEndIso(selectedYmd, duration, selectedHour, selectedMinute)
+    : null;
 
   // Batch di-resolve saat tanggal/durasi berubah supaya pratinjau hadiah tidak
   // berbohong. `handleSave` tetap me-resolve ulang sebelum menulis apa pun.
@@ -244,12 +264,14 @@ export function ScheduleForm({
   const moveSchedule = async (ymd: string) => {
     if (!entry) return;
     if (entry.isExtension) {
-      await updateExtendScheduleDates(entry.sourceId, ymd, duration);
+      await updateExtendScheduleDates(entry.sourceId, ymd, duration, selectedHour, selectedMinute);
     } else {
+      const sIso = toAiringStartIso(ymd, selectedHour, selectedMinute);
+      const eIso = toAiringEndIso(ymd, duration, selectedHour, selectedMinute);
       await updateScheduleDates(
         submissionId,
-        toAiringStartIso(ymd),
-        toAiringEndIso(ymd, duration)
+        sIso,
+        eIso
       );
 
       // ⚠️ JANGAN MEREGRESI ORDER YANG SUDAH LUNAS ke 'slot_reserved'.
@@ -279,10 +301,8 @@ export function ScheduleForm({
 
   /** Mode create — melahirkan jadwal berikutnya untuk order yang sama. */
   const createSchedule = async (ymd: string) => {
-    // 15:00 WIB → 15:00 WIB, diturunkan lewat airing-window supaya zona waktu
-    // perangkat tidak pernah ikut bicara.
-    const startIso = toAiringStartIso(ymd);
-    const endDateStr = toAiringEndIso(ymd, duration);
+    const startIso = toAiringStartIso(ymd, selectedHour, selectedMinute);
+    const endDateStr = toAiringEndIso(ymd, duration, selectedHour, selectedMinute);
 
     // Resolve ulang terhadap tanggal yang BENAR-BENAR disimpan — pratinjau bisa
     // basi antara render dan submit, dan keputusan ini menaruh uang di invoice.
@@ -400,14 +420,52 @@ export function ScheduleForm({
         />
       </div>
 
+      {/* Jam tayang */}
+      <div className="space-y-1.5 rounded-lg border border-gray-200 bg-white p-3">
+        <div className="flex items-center justify-between gap-3">
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+            <Clock className="w-3.5 h-3.5 text-blue-600" />
+            Jam Tayang (WIB)
+          </label>
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="time"
+              value={airingTime}
+              onChange={(e) => setAiringTime(e.target.value)}
+              className="h-8 w-28 text-xs font-mono font-medium text-center"
+            />
+            <span className="text-xs font-semibold text-gray-500">WIB</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+          <span className="text-[10px] text-gray-400 font-medium mr-1">Pilihan cepat:</span>
+          {['08:00', '10:00', '13:00', '15:00', '18:00', '20:00'].map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => setAiringTime(preset)}
+              className={cn(
+                'px-2 py-0.5 rounded text-[11px] font-medium transition-colors border',
+                airingTime === preset
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
+                  : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+              )}
+            >
+              {preset} {preset === '15:00' ? '(Bawaan)' : ''}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Ringkasan */}
       <div className="rounded-lg border border-gray-200 bg-gray-50/70 px-3 py-2.5 text-xs">
-        {selectedYmd && endIso ? (
+        {selectedYmd && startIso && endIso ? (
           <>
             <p className="font-semibold text-gray-900">
-              {formatWibShort(toAiringStartIso(selectedYmd))} 15.00 WIB
+              {formatWibShort(startIso)} {formatWibTime(startIso)} WIB
               {' → '}
-              {formatWibShort(endIso)} 15.00 WIB
+              {formatWibShort(endIso)} {formatWibTime(endIso)} WIB
             </p>
             <p className="text-gray-500 mt-0.5">
               {duration} hari tayang ·{' '}

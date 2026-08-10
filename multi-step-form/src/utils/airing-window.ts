@@ -56,11 +56,12 @@ export function nowWib(now: Date = new Date()): WibNow {
 }
 
 /** Instant UTC untuk jam WIB tertentu pada tanggal (YMD) tertentu. */
-function wibInstant(ymd: string, hourWib: number): Date {
+function wibInstant(ymd: string, hourWib: number, minuteWib: number = 0): Date {
     // Lewat epoch, bukan menyusun string jam — supaya jam WIB di bawah 07.00
     // (yang jatuh di tanggal UTC sebelumnya) tetap benar.
     const midnightUtc = new Date(`${ymd}T00:00:00.000Z`).getTime();
-    return new Date(midnightUtc + (hourWib - WIB_UTC_OFFSET_HOURS) * 3600000);
+    const totalMinutesWib = hourWib * 60 + minuteWib;
+    return new Date(midnightUtc + (totalMinutesWib - WIB_UTC_OFFSET_HOURS * 60) * 60000);
 }
 
 /**
@@ -87,19 +88,15 @@ export function normalizeScheduleDate(dateStr: string | null | undefined): Date 
 }
 
 /**
- * Tanggal mulai tayang: selalu 15.00 WIB = 08:00 UTC.
- *
- * Nilai ini sengaja identik dengan yang disintesis `normalizeScheduleDate`
- * di atas — supaya jalur wizard dan jalur dashboard tidak pernah berbeda
- * pendapat soal kapan iklan mulai.
+ * Tanggal mulai tayang menurut jam WIB (bawaan 15.00 WIB = 08:00 UTC).
  */
-export function toAiringStartIso(ymd: string): string {
-    return wibInstant(ymd, AIRING_HOUR_WIB).toISOString();
+export function toAiringStartIso(ymd: string, hourWib: number = AIRING_HOUR_WIB, minuteWib: number = 0): string {
+    return wibInstant(ymd, hourWib, minuteWib).toISOString();
 }
 
 /** Akhir jendela tayang: `days` × 24 jam setelah start. */
-export function toAiringEndIso(ymd: string, days: number): string {
-    const start = wibInstant(ymd, AIRING_HOUR_WIB);
+export function toAiringEndIso(ymd: string, days: number, hourWib: number = AIRING_HOUR_WIB, minuteWib: number = 0): string {
+    const start = wibInstant(ymd, hourWib, minuteWib);
     return new Date(start.getTime() + days * 86400000).toISOString();
 }
 

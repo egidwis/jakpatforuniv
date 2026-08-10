@@ -87,9 +87,12 @@ check('00:00 WIB tgl 6 (17:00Z tgl 5) dinilai tgl 6', nowWib(new Date('2026-08-0
 check('jam 00 WIB dilaporkan sebagai 0, bukan 24', nowWib(new Date('2026-08-05T17:00:00Z')).hour, 0);
 
 // ── 6. Instant jadwal ───────────────────────────────────────────────────────
-check('start selalu 08:00Z (15.00 WIB)', toAiringStartIso(TODAY), '2026-08-05T08:00:00.000Z');
+check('start default 15.00 WIB = 08:00Z', toAiringStartIso(TODAY), '2026-08-05T08:00:00.000Z');
+check('start custom 08:00 WIB = 01:00Z', toAiringStartIso(TODAY, 8, 0), '2026-08-05T01:00:00.000Z');
+check('start custom 10:30 WIB = 03:30Z', toAiringStartIso(TODAY, 10, 30), '2026-08-05T03:30:00.000Z');
 check('cutoff bayar selalu 07:00Z (14.00 WIB)', paymentCutoffInstant(TODAY).toISOString(), '2026-08-05T07:00:00.000Z');
-check('end = start + n×24 jam', toAiringEndIso(TODAY, 7), '2026-08-12T08:00:00.000Z');
+check('end = start + n×24 jam (default 15.00 WIB)', toAiringEndIso(TODAY, 7), '2026-08-12T08:00:00.000Z');
+check('end = start + n×24 jam (custom 09.00 WIB)', toAiringEndIso(TODAY, 4, 9, 0), '2026-08-09T02:00:00.000Z');
 check('end kilat = start + 24 jam', toAiringEndIso(TODAY, 1), '2026-08-06T08:00:00.000Z');
 
 // `normalizeScheduleDate` menyintesis 08:00 UTC untuk string date-only. Sejak
@@ -108,6 +111,26 @@ check(
 );
 
 check('toWibYmd konsisten dengan nowWib', toWibYmd(INSTANT), nowWib(INSTANT).ymd);
+
+// ── 7. Tanggal WIB bertahan bolak-balik lewat instant ───────────────────────
+// Ini invarian yang menjaga kolom DATE (`form_submissions.start_date`) dari
+// mundur sehari saat admin menyetel jam tayang di bawah 07.00 WIB: instant-nya
+// jatuh di tanggal UTC SEBELUMNYA, jadi tanggalnya wajib diturunkan lewat
+// toWibYmd, bukan dibiarkan Postgres meng-cast dari UTC. Lihat
+// updateScheduleDates() di utils/supabase.ts.
+for (const [h, m] of [[0, 0], [3, 0], [6, 59], [7, 0], [15, 0], [23, 30]] as const) {
+  const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  check(
+    `tanggal WIB bertahan untuk jam ${label}`,
+    toWibYmd(new Date(toAiringStartIso(TODAY, h, m))),
+    TODAY,
+  );
+}
+check(
+  '03.00 WIB memang jatuh di tanggal UTC sebelumnya (kenapa uji di atas perlu)',
+  toAiringStartIso(TODAY, 3, 0).slice(0, 10),
+  '2026-08-04',
+);
 
 console.log(failures === 0 ? '\nAll tests passed.' : `\n${failures} test(s) failed.`);
 if (failures > 0) process.exit(1);

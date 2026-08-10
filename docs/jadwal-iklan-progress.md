@@ -1073,6 +1073,41 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
     (verifikasi SQL melewati gateway REST): **ukur di lapisan yang benar-benar
     dilewati**, bukan di lapisan yang paling gampang di-query.
 
+22. **Jam tayang kustom (admin) hidup di TIGA tempat dengan tiga nasib berbeda.**
+    `ScheduleForm` sejak 2026-08-10 punya kontrol "Jam Tayang (WIB)" untuk
+    kasus khusus. Sebelum membaca jam tayang dari mana pun, tahu dulu mana yang
+    menjawab pertanyaanmu:
+
+    | Tempat | Tipe | Jam kustom |
+    |---|---|---|
+    | `survey_pages.publish_start_date` | TIMESTAMPTZ | **tersimpan & dihormati** — ini yang benar-benar menggerbang tayang di halaman iklan + feed aplikasi |
+    | `form_submissions.start_date` | DATE | mustahil menyimpan jam; **tanggalnya** benar (diturunkan `toWibYmd`, lihat di bawah) |
+    | `ad_schedules.start_date` (cermin) | TIMESTAMPTZ | **selalu 15.00 WIB** untuk ordinal 1 — `airing_instant_of_date()` mengangkatnya dari kolom DATE |
+
+    Untuk **jadwal ke-2 dst. tidak ada masalah**: sumbernya
+    `form_submissions_extend` (TIMESTAMPTZ) dan trigger cermin menyalin apa
+    adanya, jadi jamnya sampai utuh ke papan Schedule.
+
+    ⚠️ **Utang yang diketahui & diterima:** untuk jadwal #1 berjam-kustom, papan
+    Schedule dan kartu peneliti akan menampilkan **15.00** padahal iklannya
+    tayang di jam yang disetel admin. Begitu juga `notify_primary_ads_live()`
+    (sql/48) yang mengukur lewat `airing_instant_of_date()`, dan badan email
+    `notify-ad-live.js` yang hardcode "pukul 15.00 WIB". Kalau ini perlu ditutup
+    benar, presedennya persis sama: **kolom jam terpisah seperti
+    `kilat_slot_hour`**, lalu cermin melewati `airing_instant_of_date()` untuk
+    baris itu — sama seperti `sql/45` menyelesaikannya untuk Kilat.
+
+    ⚠️ **JANGAN mengoper instant UTC ke kolom `DATE`.** Postgres meng-cast-nya di
+    zona sesi (**UTC** di Supabase), jadi setiap jam WIB di bawah 07.00 **mundur
+    sehari**: 12 Agu 03.00 WIB = 11 Agu 20.00 UTC → tersimpan `2026-08-11`.
+    Terbukti langsung di produksi. Yang membuatnya senyap: `survey_pages` tetap
+    menyimpan instant yang benar, jadi iklannya tayang di hari yang benar
+    sementara **seluruh penghitung** — cermin, `trg_submission_no_overlap`,
+    kuota slot, `notify_primary_ads_live` — bekerja di hari sebelumnya.
+    `updateScheduleDates()` karena itu menurunkan tanggalnya lewat `toWibYmd()`.
+    Invariannya dikunci uji di `airing-window.test.ts` §7 (00.00 · 03.00 · 06.59
+    · 07.00 · 15.00 · 23.30).
+
 ---
 
 ## Peta dokumen

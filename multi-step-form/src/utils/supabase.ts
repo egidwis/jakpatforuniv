@@ -1165,22 +1165,37 @@ export const updateScheduleDates = async (
   startDate: string,
   endDate: string
 ) => {
-  // Every ad runs 15:00 WIB → 15:00 WIB, so pin both ends to that instant
-  // whatever shape the caller passed. Values that already carried a time used
-  // to pass through untouched, which let a reschedule store a window at the
-  // wrong hour and overlap the survey's own extend.
+  // Pin string tanggal-saja ke instant WIB (default 15.00 WIB), tetapi biarkan
+  // nilai yang sudah memuat jam & menit (ISO instant dengan 'T') tetap utuh —
+  // admin boleh menyetel jam tayang non-standar lewat ScheduleForm.
   const normalize = (ds: string): string => {
-    const ymd = ds.includes('T') ? toWibYmd(new Date(ds)) : ds;
-    return toAiringStartIso(ymd);
+    if (ds.includes('T')) {
+      const d = new Date(ds);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    }
+    return toAiringStartIso(ds);
   };
   const normalizedStart = normalize(startDate);
   const normalizedEnd = normalize(endDate);
+
+  // ⚠️ DUA TABEL, DUA TIPE — dan menyamakan nilainya justru yang bikin salah.
+  //
+  //   form_submissions.start_date        DATE
+  //   survey_pages.publish_start_date    TIMESTAMPTZ
+  //
+  // Mengoper instant UTC ke kolom DATE membuat Postgres meng-cast-nya di zona
+  // sesi (UTC), jadi setiap jam WIB di bawah 07.00 MUNDUR SEHARI: 12 Agu 03.00
+  // WIB = 11 Agu 20.00 UTC, tersimpan sebagai `2026-08-11`. Tanggalnya karena
+  // itu diturunkan lewat toWibYmd() — kalendernya WIB, bukan UTC. Kolom
+  // TIMESTAMPTZ tetap menerima instant penuh supaya jamnya benar-benar tersimpan.
+  const startYmdWib = toWibYmd(new Date(normalizedStart));
+  const endYmdWib = toWibYmd(new Date(normalizedEnd));
 
   try {
     // 1. Update form_submissions (slot reservation / sync)
     const { error: subError } = await supabase
       .from('form_submissions')
-      .update({ start_date: normalizedStart, end_date: normalizedEnd, updated_at: new Date().toISOString() })
+      .update({ start_date: startYmdWib, end_date: endYmdWib, updated_at: new Date().toISOString() })
       .eq('id', submissionId);
 
     if (subError) throw subError;
@@ -1230,7 +1245,7 @@ export const updateScheduleDates = async (
  *
  *   1. TIPE KOLOMNYA BEDA. `form_submissions.start_date` adalah `DATE`;
  *      `form_submissions_extend.start_date` adalah `TIMESTAMPTZ`. Karena itu di
- *      sini kita menulis instant penuh 15.00 WIB lewat `toAiringStartIso` /
+ *      sini kita menulis instant penuh jam WIB lewat `toAiringStartIso` /
  *      `toAiringEndIso`, bukan tanggal telanjang.
  *   2. TIDAK MENYENTUH `survey_pages`. Jendela publish sebuah perpanjangan
  *      dikelola `cron_activate_extends`; menulisnya dari sini akan menurunkan
@@ -1242,13 +1257,15 @@ export const updateScheduleDates = async (
 export const updateExtendScheduleDates = async (
   extendId: string,
   startYmd: string,
-  durationDays: number
+  durationDays: number,
+  hourWib: number = 15,
+  minuteWib: number = 0
 ) => {
   const { error } = await supabase
     .from('form_submissions_extend')
     .update({
-      start_date: toAiringStartIso(startYmd),
-      end_date: toAiringEndIso(startYmd, durationDays),
+      start_date: toAiringStartIso(startYmd, hourWib, minuteWib),
+      end_date: toAiringEndIso(startYmd, durationDays, hourWib, minuteWib),
       updated_at: new Date().toISOString(),
     })
     .eq('id', extendId);
