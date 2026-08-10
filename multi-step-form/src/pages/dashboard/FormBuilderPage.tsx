@@ -36,7 +36,7 @@ export const FormBuilderPage: React.FC = () => {
   const [loading, setLoading] = useState(!!formId);
   const [saving, setSaving] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
+  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(true);
 
   const [title, setTitle] = useState('Untitled Form');
   const [description, setDescription] = useState('');
