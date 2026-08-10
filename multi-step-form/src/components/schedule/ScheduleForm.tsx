@@ -271,7 +271,9 @@ export function ScheduleForm({
       await updateScheduleDates(
         submissionId,
         sIso,
-        eIso
+        eIso,
+        selectedHour,
+        selectedMinute
       );
 
       // ⚠️ JANGAN MEREGRESI ORDER YANG SUDAH LUNAS ke 'slot_reserved'.

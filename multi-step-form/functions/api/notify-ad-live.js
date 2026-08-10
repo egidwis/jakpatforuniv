@@ -2,8 +2,14 @@
 // bukan dari frontend — karena itu wajib membawa ?k=<CRON_NOTIFY_SECRET> yang valid.
 // Pola sama dengan gerbang webhook DOKU di functions/api/doku/webhook.js.
 
-const WIB_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+const WIB_DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta',
+});
+// sql/49: notify_primary_ads_live() sekarang mengirim start_date/end_date sebagai
+// instant sebenarnya (jam kustom admin atau gelombang Kilat), bukan selalu 15.00 —
+// formatter jam ini menggantikan teks "pukul 15.00 WIB" yang dulu di-hardcode.
+const WIB_TIME_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta',
 });
 
 export async function onRequestPost(context) {
@@ -32,10 +38,13 @@ export async function onRequestPost(context) {
 
         const name = full_name || 'Kak';
         const surveyLine = title ? ` <strong>${title}</strong>` : ' kamu';
-        const startText = start_date ? WIB_FORMATTER.format(new Date(start_date)) : null;
-        const endText = end_date ? WIB_FORMATTER.format(new Date(end_date)) : null;
+        const startInstant = start_date ? new Date(start_date) : null;
+        const endInstant = end_date ? new Date(end_date) : null;
+        const startText = startInstant ? WIB_DATE_FORMATTER.format(startInstant) : null;
+        const endText = endInstant ? WIB_DATE_FORMATTER.format(endInstant) : null;
+        const startTimeText = startInstant ? WIB_TIME_FORMATTER.format(startInstant) : null;
         const windowLine = startText && endText
-            ? `<p>Iklan tayang mulai <strong>${startText}</strong> pukul 15.00 WIB sampai <strong>${endText}</strong>.</p>`
+            ? `<p>Iklan tayang mulai <strong>${startText}</strong> pukul ${startTimeText} WIB sampai <strong>${endText}</strong>.</p>`
             : '';
 
         const response = await fetch('https://api.resend.com/emails', {

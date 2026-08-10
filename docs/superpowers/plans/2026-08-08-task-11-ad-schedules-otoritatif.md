@@ -104,12 +104,13 @@ endpoint **dibekukan kontrak pihak ketiga**, jadi fungsi itu masuk daftar uji wa
 
 ---
 
-## Langkah 1 — `sql/50`: aditif, nol perubahan perilaku
+## Langkah 1 — `sql/51`: aditif, nol perubahan perilaku
 
-⚠️ **Nomor bergeser 2026-08-10**: `sql/47`+`48` dipakai P0 keamanan (anon grant) + email
-transisi order-flow reorder — workstream lain yang menumpang branch yang sama, ditulis dan
-diterapkan ke prod lebih dulu. `sql/49` **sudah diklaim** `reward_pools` (8B-2, prasyarat
-Phase 4). Mulai dari 50. Detail: `docs/jadwal-iklan-progress.md` §"Peta dokumen".
+⚠️ **Nomor bergeser 2026-08-10, dua kali**: `sql/47`+`48` dipakai P0 keamanan (anon grant) +
+email transisi order-flow reorder; `sql/49` dipakai perbaikan bug jam tayang kustom ordinal
+1 — keduanya workstream lain yang menumpang branch yang sama, ditulis dan diterapkan ke prod
+lebih dulu. `sql/50` **sudah diklaim** `reward_pools` (8B-2, prasyarat Phase 4). Mulai dari
+51. Detail: `docs/jadwal-iklan-progress.md` §"Peta dokumen".
 
 Seluruh isi langkah ini bisa dijalankan hari ini tanpa menyentuh satu pun alur lama.
 Kalau rilis ini batal di tengah jalan, tidak ada yang perlu dibatalkan.
@@ -168,7 +169,7 @@ sudah dipatuhi.
 
 ---
 
-## Langkah 2 — `sql/51`: tabel jadi view, `ad_schedules` jadi otoritatif
+## Langkah 2 — `sql/52`: tabel jadi view, `ad_schedules` jadi otoritatif
 
 Inti rilis ini, dan satu-satunya langkah yang tidak reversibel dengan mudah.
 **Jalankan sendiri, jangan dibundel dengan perubahan lain.**

@@ -130,11 +130,12 @@ memperbaikinya.
 
 ---
 
-## Langkah 1 — `sql/52`: dua kolom, satu fungsi agregat
+## Langkah 1 — `sql/53`: dua kolom, satu fungsi agregat
 
-⚠️ **Nomor bergeser 2026-08-10** (order-flow reorder menumpang branch yang sama, dieksekusi
-lebih dulu): `sql/47`+`48` dipakai P0 keamanan + email transisi, `sql/49` diklaim
-`reward_pools` (8B-2), `sql/50`+`51` diklaim Task 11. Mulai dari **52**.
+⚠️ **Nomor bergeser 2026-08-10** (order-flow reorder & perbaikan bug jam tayang kustom
+menumpang branch yang sama, dieksekusi lebih dulu): `sql/47`+`48` dipakai P0 keamanan +
+email transisi, `sql/49` dipakai perbaikan jam tayang kustom, `sql/50` diklaim
+`reward_pools` (8B-2), `sql/51`+`52` diklaim Task 11. Mulai dari **53**.
 
 ### 1a. `ad_schedules.is_extra_ad BOOLEAN NOT NULL DEFAULT false`
 

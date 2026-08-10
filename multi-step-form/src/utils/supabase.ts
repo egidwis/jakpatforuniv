@@ -1163,7 +1163,9 @@ export const getAllChatSessions = async () => {
 export const updateScheduleDates = async (
   submissionId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  hourWib?: number,
+  minuteWib?: number
 ) => {
   // Pin string tanggal-saja ke instant WIB (default 15.00 WIB), tetapi biarkan
   // nilai yang sudah memuat jam & menit (ISO instant dengan 'T') tetap utuh —
@@ -1193,9 +1195,21 @@ export const updateScheduleDates = async (
 
   try {
     // 1. Update form_submissions (slot reservation / sync)
+    //
+    // ⚠️ start_date/end_date DATE tidak bisa menyimpan jam sama sekali — itulah
+    // kenapa airing_hour_wib/airing_minute_wib (sql/49) ikut ditulis di sini,
+    // eksplisit, bukan diselundupkan lewat instant di atas. Tanpa keduanya
+    // cermin ad_schedules (dibaca halaman Schedule) tidak mungkin tahu jam
+    // kustom pernah dipilih — lihat header sql/49 untuk kejadian nyatanya.
     const { error: subError } = await supabase
       .from('form_submissions')
-      .update({ start_date: startYmdWib, end_date: endYmdWib, updated_at: new Date().toISOString() })
+      .update({
+        start_date: startYmdWib,
+        end_date: endYmdWib,
+        airing_hour_wib: hourWib ?? null,
+        airing_minute_wib: hourWib !== undefined ? (minuteWib ?? 0) : null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', submissionId);
 
     if (subError) throw subError;

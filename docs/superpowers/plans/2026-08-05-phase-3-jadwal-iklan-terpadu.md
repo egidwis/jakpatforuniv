@@ -60,8 +60,9 @@
 > `PageBuilderModal`. Keduanya harus dipindahkan lebih dulu — rinciannya di progress doc.
 >
 > **5. `sql/46` dipakai Task 9A.** `reward_pools` (8B-2) bergeser ke `sql/47`, lalu ke
-> `sql/49` (2026-08-10) — `47`/`48` diambil order-flow reorder yang menumpang branch
-> yang sama. Nomor terkini selalu ada di `docs/jadwal-iklan-progress.md` §"Peta dokumen".
+> `sql/49`, lalu ke `sql/50` (2026-08-10) — `47`/`48` diambil order-flow reorder, `49`
+> diambil perbaikan bug jam tayang kustom, keduanya menumpang branch yang sama lebih
+> dulu. Nomor terkini selalu ada di `docs/jadwal-iklan-progress.md` §"Peta dokumen".
 
 ## Context
 

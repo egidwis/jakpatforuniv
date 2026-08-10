@@ -27,7 +27,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, **`sql/49`** — `46` dipakai Task 9A, `47`/`48` dipakai order-flow reorder 2026-08-10) |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, **`sql/50`** — `46` dipakai Task 9A, `47`/`48` dipakai order-flow reorder, `49` dipakai perbaikan jam tayang kustom, semua 2026-08-10) |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
 Baca §00A sebelum melakukan apa pun. `sql/47` dan `sql/48` **sudah diterapkan ke
@@ -804,7 +804,7 @@ berubah serentak. 8B-2 keluar dari urutan ini — ia pindah jadi prasyarat Phase
 | Task | Isi | Catatan |
 |---|---|---|
 | ~~**8B-1**~~ | ~~Satu sumber angka hadiah + top-up jadi mulus~~ | ✅ **selesai & live 2026-08-05** (`sql/44`). Risiko terbesarnya — dua agregasi batch yang bisa menyimpang — sudah hilang secara struktural, bukan ditambal. |
-| **8B-2** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⏸️ **Ditunda jadi prasyarat Phase 4**, bukan bagian Phase 2. Hari ini semua yang diobatinya masih laten (10 perpanjangan seumur hidup, 0 top-up terpakai, 0 pool yatim) — Phase 4 yang membuat ketiganya hidup sekaligus. ⛔ Sebelum tabelnya dirancang, jawab dulu: **83 order sudah mendanai hadiah tanpa punya tanggal sama sekali**, sehingga kunci `(submission_id, period_batch)` tidak punya tempat untuk mereka. Nomor filenya `sql/49` — sudah bergeser dua kali (dari `45`, lalu dari `47`); lihat baris "Peta dokumen" di bawah untuk alasannya sebelum menulis migrasinya. |
+| **8B-2** | `reward_pools` — pool jadi milik batch, bukan milik jadwal pertama | ⏸️ **Ditunda jadi prasyarat Phase 4**, bukan bagian Phase 2. Hari ini semua yang diobatinya masih laten (10 perpanjangan seumur hidup, 0 top-up terpakai, 0 pool yatim) — Phase 4 yang membuat ketiganya hidup sekaligus. ⛔ Sebelum tabelnya dirancang, jawab dulu: **83 order sudah mendanai hadiah tanpa punya tanggal sama sekali**, sehingga kunci `(submission_id, period_batch)` tidak punya tempat untuk mereka. Nomor filenya `sql/50` — sudah bergeser tiga kali (dari `45`, lalu `47`, lalu `49` dipakai perbaikan bug jam tayang kustom 2026-08-10); lihat baris "Peta dokumen" di bawah untuk alasannya sebelum menulis migrasinya. |
 | ~~**8C**~~ | ~~Pensiunkan sisa fitur pengundian di dashboard~~ | ✅ **selesai & live 2026-08-05.** Dipindah ke `main` lewat cherry-pick tanpa ikut menayangkan revamp visual. Indikator "Select Winners" terbukti hilang dari bundle produksi. |
 | ~~**8D**~~ | ~~`ad_schedules` mengenali Kilat~~ | ✅ **selesai & live 2026-08-05** (`sql/45`). Prasyarat Phase 3 yang pertama — sudah lunas. |
 | ~~**9**~~ | ~~Pisahkan status order dari status jadwal~~ | ✅ **selesai 2026-08-08.** 9A = `sql/46` (cermin dapat sumbu kedua), 9B = dashboard peneliti membacanya. Diadu atas seluruh 971 order: 664 identik, 307 berubah, semuanya perbaikan. **Belum tayang** — ikut branch ini. |
@@ -1073,29 +1073,33 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
     (verifikasi SQL melewati gateway REST): **ukur di lapisan yang benar-benar
     dilewati**, bukan di lapisan yang paling gampang di-query.
 
-22. **Jam tayang kustom (admin) hidup di TIGA tempat dengan tiga nasib berbeda.**
-    `ScheduleForm` sejak 2026-08-10 punya kontrol "Jam Tayang (WIB)" untuk
-    kasus khusus. Sebelum membaca jam tayang dari mana pun, tahu dulu mana yang
-    menjawab pertanyaanmu:
+22. **Jam tayang kustom (admin) hidup di TIGA tempat dengan tiga nasib berbeda —
+    ✅ SUDAH DIPERBAIKI `sql/49` (2026-08-10).** `ScheduleForm` sejak 2026-08-10
+    punya kontrol "Jam Tayang (WIB)" untuk kasus khusus. Ditulis di sini
+    sebagai "utang yang diterima", lalu terbukti nyata di prod dalam hitungan
+    jam (order `#8462698a`, admin memilih 10.00 WIB — papan Schedule tetap
+    menampilkan 15.00 dan admin melaporkannya sebagai bug). Sebelum membaca jam
+    tayang dari mana pun, tahu dulu mana yang menjawab pertanyaanmu:
 
     | Tempat | Tipe | Jam kustom |
     |---|---|---|
-    | `survey_pages.publish_start_date` | TIMESTAMPTZ | **tersimpan & dihormati** — ini yang benar-benar menggerbang tayang di halaman iklan + feed aplikasi |
-    | `form_submissions.start_date` | DATE | mustahil menyimpan jam; **tanggalnya** benar (diturunkan `toWibYmd`, lihat di bawah) |
-    | `ad_schedules.start_date` (cermin) | TIMESTAMPTZ | **selalu 15.00 WIB** untuk ordinal 1 — `airing_instant_of_date()` mengangkatnya dari kolom DATE |
+    | `survey_pages.publish_start_date` | TIMESTAMPTZ | tersimpan & dihormati — ini yang benar-benar menggerbang tayang di halaman iklan + feed aplikasi |
+    | `form_submissions.start_date` | DATE | mustahil menyimpan jam; **tanggalnya** benar (diturunkan `toWibYmd`); jamnya kini hidup terpisah di `airing_hour_wib`/`airing_minute_wib` (`sql/49`) |
+    | `ad_schedules.start_date` (cermin) | TIMESTAMPTZ | **kini benar** untuk ordinal 1 — trigger memakai `airing_hour_wib`/`airing_minute_wib` kalau diisi, baru jatuh ke Kilat lalu ke `airing_instant_of_date()` bawaan |
 
-    Untuk **jadwal ke-2 dst. tidak ada masalah**: sumbernya
+    Untuk **jadwal ke-2 dst. tidak pernah ada masalah**: sumbernya
     `form_submissions_extend` (TIMESTAMPTZ) dan trigger cermin menyalin apa
     adanya, jadi jamnya sampai utuh ke papan Schedule.
 
-    ⚠️ **Utang yang diketahui & diterima:** untuk jadwal #1 berjam-kustom, papan
-    Schedule dan kartu peneliti akan menampilkan **15.00** padahal iklannya
-    tayang di jam yang disetel admin. Begitu juga `notify_primary_ads_live()`
-    (sql/48) yang mengukur lewat `airing_instant_of_date()`, dan badan email
-    `notify-ad-live.js` yang hardcode "pukul 15.00 WIB". Kalau ini perlu ditutup
-    benar, presedennya persis sama: **kolom jam terpisah seperti
-    `kilat_slot_hour`**, lalu cermin melewati `airing_instant_of_date()` untuk
-    baris itu — sama seperti `sql/45` menyelesaikannya untuk Kilat.
+    **Perbaikannya** persis presedennya sendiri: **kolom jam terpisah seperti
+    `kilat_slot_hour`** — `form_submissions.airing_hour_wib`/`airing_minute_wib`
+    (nullable, NULL = bawaan 15.00), ditulis `updateScheduleDates()`, dicermin ke
+    `ad_schedules`, dan dibaca `sync_ad_schedule_from_submission()` sebelum jatuh
+    ke cabang Kilat lalu ke `airing_instant_of_date()` bawaan — sama seperti
+    `sql/45` menyelesaikannya untuk Kilat. `notify_primary_ads_live()` (sql/48,
+    ditulis ulang oleh `sql/49`) dan `notify-ad-live.js` (hardcode "pukul 15.00
+    WIB" dihapus) ikut mengikuti prioritas yang sama. Rincian lengkap & bukti
+    prod: header `sql/49_ad_schedules_custom_airing_hour.sql`.
 
     ⚠️ **JANGAN mengoper instant UTC ke kolom `DATE`.** Postgres meng-cast-nya di
     zona sesi (**UTC** di Supabase), jadi setiap jam WIB di bawah 07.00 **mundur
@@ -1122,4 +1126,4 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
 | [`superpowers/plans/2026-08-09-order-flow-reorder.md`](superpowers/plans/2026-08-09-order-flow-reorder.md) | **Rencana reorder flow order user** — Ringkasan sebelum Jadwal, gabung layar jadwal+bayar, P0 kebocoran anon, dua email transisi. ✅ committed 2026-08-10, belum di-merge. **Tidak termasuk daftar Task 8–13 di atas** — workstream terpisah yang menumpang branch yang sama |
-| `multi-step-form/sql/36`–`48` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup. `46` = Task 9A (dua sumbu); `47`/`48` dipakai reorder flow order (P0 anon + email transisi, **bukan** `reward_pools` — tabrakan nomor ditemukan 2026-08-10). `reward_pools` bergeser jadi `sql/49` |
+| `multi-step-form/sql/36`–`49` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup. `46` = Task 9A (dua sumbu); `47`/`48` dipakai reorder flow order (P0 anon + email transisi); `49` dipakai perbaikan bug jam tayang kustom ordinal 1 (**bukan** `reward_pools` — tabrakan nomor ditemukan 2026-08-10, dua kali). `reward_pools` bergeser jadi `sql/50` |
