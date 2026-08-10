@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { QuestionBlock, QuestionType } from '../../utils/customForms';
 import {
   Type,
