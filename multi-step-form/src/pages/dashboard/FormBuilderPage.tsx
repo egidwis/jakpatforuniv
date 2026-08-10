@@ -382,21 +382,18 @@ export const FormBuilderPage: React.FC = () => {
               Ask AI <span className="text-[9px] bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-200 px-1 py-0.2 rounded font-bold">Beta</span>
             </Button>
 
-            {formId && (
+            {status === 'published' ? (
               <>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleCopyPublicLink}
-                  className="text-xs text-gray-700 dark:text-gray-200 hidden sm:flex items-center gap-1.5"
+                  disabled={saving}
+                  onClick={() => handleSave('draft')}
+                  className="text-xs text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                 >
-                  {copiedLink ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  Copy Link
+                  Unpublish
                 </Button>
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -405,32 +402,58 @@ export const FormBuilderPage: React.FC = () => {
                 >
                   <ExternalLink className="w-3.5 h-3.5" /> Preview
                 </Button>
+
+                <Button
+                  size="sm"
+                  onClick={handleCopyPublicLink}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 hidden sm:flex items-center gap-1.5"
+                >
+                  {copiedLink ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  {copiedLink ? 'Copied!' : 'Copy Link'}
+                </Button>
+              </>
+            ) : (
+              <>
+                {formId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(`/f/${formId}?preview=true`, '_blank')}
+                    className="text-xs text-gray-700 dark:text-gray-200 hidden sm:flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Preview
+                  </Button>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={saving}
+                  onClick={() => handleSave('draft')}
+                  className="text-xs text-gray-700 dark:text-gray-200"
+                >
+                  <Save className="w-3.5 h-3.5 mr-1" /> Simpan Draft
+                </Button>
+
+                <Button
+                  size="sm"
+                  disabled={saving}
+                  onClick={() => handleSave('published')}
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20"
+                >
+                  {saving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                  ) : (
+                    <Globe className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  Publish Form
+                </Button>
               </>
             )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={saving}
-              onClick={() => handleSave('draft')}
-              className="text-xs text-gray-700 dark:text-gray-200"
-            >
-              <Save className="w-3.5 h-3.5 mr-1" /> Simpan Draft
-            </Button>
-
-            <Button
-              size="sm"
-              disabled={saving}
-              onClick={() => handleSave('published')}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20"
-            >
-              {saving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-              ) : (
-                <Globe className="w-3.5 h-3.5 mr-1" />
-              )}
-              Publish Form
-            </Button>
           </div>
         </div>
       </header>
