@@ -199,10 +199,26 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-1"
             />
 
-            {/* Piped text hint badge when tag detected */}
+            {/* Piped text human-readable badges when tag detected */}
             {/\$\{q:([a-zA-Z0-9_-]+)\}/.test(block.label || '') && (
-              <div className="flex items-center gap-1.5 text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
-                <span>✨ <strong>Piped Text Aktif:</strong> Kode <code>${'{q:...}'}</code> akan otomatis diganti dengan jawaban responden saat survei diisi.</span>
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/40 p-2 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
+                <span className="font-semibold text-indigo-700 dark:text-indigo-300">✨ Piped Variables:</span>
+                {((block.label || '').match(/\$\{q:([a-zA-Z0-9_-]+)\}/g) || []).map((token, tIdx) => {
+                  const qNumStr = token.replace('${q:', '').replace('}', '');
+                  let targetB = allBlocks.find(b => b.id === qNumStr);
+                  if (!targetB && !isNaN(Number(qNumStr))) {
+                    targetB = allBlocks[Number(qNumStr) - 1];
+                  }
+                  const refLabel = targetB ? `@${qNumStr}. ${targetB.label || 'Pertanyaan ' + qNumStr}` : `@${qNumStr}`;
+                  return (
+                    <span
+                      key={tIdx}
+                      className="inline-flex items-center gap-1 bg-white dark:bg-gray-800 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-700 shadow-2xs"
+                    >
+                      <code>{token}</code> → <span className="underline decoration-indigo-300">{refLabel}</span>
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>

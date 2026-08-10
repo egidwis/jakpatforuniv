@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import type { QuestionBlock, QuestionType } from '../../utils/customForms';
@@ -23,7 +23,8 @@ import {
   ExternalLink,
   Copy,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Cloud
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { toast } from 'sonner';
@@ -51,11 +52,59 @@ export const FormBuilderPage: React.FC = () => {
     }
   ]);
 
+  const [autoSaveState, setAutoSaveState] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+  const isInitialLoad = useRef(true);
+
   useEffect(() => {
     if (formId) {
       loadForm(formId);
     }
   }, [formId]);
+
+  // Debounced Auto-Save Draft on changes
+  useEffect(() => {
+    if (loading) return;
+
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return;
+    }
+
+    setAutoSaveState('unsaved');
+    const timer = setTimeout(() => {
+      handleAutoSave();
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [title, description, blocks]);
+
+  const handleAutoSave = async () => {
+    if (!user) return;
+    try {
+      setAutoSaveState('saving');
+      const saved = await saveCustomForm(
+        {
+          id: formId,
+          title,
+          description,
+          schema: blocks,
+          status
+        },
+        user.id
+      );
+
+      if (!formId && saved?.id) {
+        navigate(`/dashboard/forms/${saved.id}`, { replace: true });
+      }
+
+      setAutoSaveState('saved');
+      setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    } catch (err) {
+      console.error('Auto save error:', err);
+      setAutoSaveState('unsaved');
+    }
+  };
 
   const loadForm = async (id: string) => {
     try {
@@ -272,6 +321,30 @@ export const FormBuilderPage: React.FC = () => {
                 >
                   {status === 'published' ? 'Published' : 'Draft'}
                 </span>
+
+                {/* Auto Save Status Badge */}
+                <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 px-2.5 py-0.5 rounded-full border border-gray-200 dark:border-gray-700">
+                  {autoSaveState === 'saving' && (
+                    <>
+                      <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+                      <span className="text-blue-600 dark:text-blue-400 font-semibold">Menyimpan...</span>
+                    </>
+                  )}
+                  {autoSaveState === 'saved' && (
+                    <>
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                      <span className="text-gray-600 dark:text-gray-300 font-medium">
+                        {lastSavedTime ? `Tersimpan (${lastSavedTime})` : 'Tersimpan'}
+                      </span>
+                    </>
+                  )}
+                  {autoSaveState === 'unsaved' && (
+                    <>
+                      <Cloud className="w-3 h-3 text-amber-500 animate-pulse" />
+                      <span className="text-amber-600 dark:text-amber-400 font-medium">Ada perubahan</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
