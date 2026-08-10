@@ -13,7 +13,6 @@ import {
   ChevronDown,
   Plus,
   X,
-  X,
   Zap,
   FileText
 } from 'lucide-react';
