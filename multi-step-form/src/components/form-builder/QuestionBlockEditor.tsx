@@ -164,12 +164,37 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
       <div className="space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Question Text */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                Pertanyaan
+              </span>
+              {index > 0 && (
+                <div className="relative group">
+                  <select
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      onChange({ ...block, label: block.label + ' ' + e.target.value });
+                      e.target.value = '';
+                    }}
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 rounded-md px-1.5 py-0.5 cursor-pointer focus:outline-none"
+                  >
+                    <option value="">+ Piped Text</option>
+                    {allBlocks.filter((_, idx) => idx < index).map((b, idx) => (
+                      <option key={b.id} value={`\${q:${idx + 1}}`}>
+                        @{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)} ({`\${q:${idx + 1}}`})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
             <input
               type="text"
               value={block.label}
               onChange={handleLabelChange}
-              placeholder="Tuliskan pertanyaan Anda..."
+              placeholder="Tuliskan pertanyaan Anda... (Gunakan ${q:1} untuk Piped Text)"
               className="w-full text-base font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-1"
             />
           </div>
@@ -368,6 +393,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
           blockIndex={index}
           allBlocks={allBlocks}
           onChangeRules={(newRules) => onChange({ ...block, logicRules: newRules })}
+          onChangeMatchMode={(mode) => onChange({ ...block, logicMatchMode: mode })}
         />
       )}
     </div>

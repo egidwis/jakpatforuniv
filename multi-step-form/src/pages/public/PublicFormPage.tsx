@@ -147,7 +147,24 @@ export const PublicFormPage: React.FC = () => {
     return false;
   };
 
-  // Compute processed & visible question blocks based on active logic rules
+  // Render Piped Text dynamically (e.g. ${q:1} or ${q:block_id})
+  const renderPipedText = (text: string | undefined): string => {
+    if (!text || !form) return '';
+    return text.replace(/\$\{q:([a-zA-Z0-9_-]+)\}/g, (_, targetId) => {
+      let targetBlock = form.schema.find(b => b.id === targetId);
+      if (!targetBlock && !isNaN(Number(targetId))) {
+        const idx = Number(targetId) - 1;
+        targetBlock = form.schema[idx];
+      }
+      if (!targetBlock) return '';
+      const val = answers[targetBlock.id];
+      if (val === undefined || val === null) return '';
+      if (Array.isArray(val)) return val.join(', ');
+      return String(val);
+    });
+  };
+
+  // Compute processed & visible question blocks based on active logic rules & piped text
   const visibleBlocks = useMemo(() => {
     if (!form) return [];
 
@@ -174,13 +191,22 @@ export const PublicFormPage: React.FC = () => {
       const rules = b.logicRules || [];
       const showRules = rules.filter(r => r.action === 'show');
       const hideRules = rules.filter(r => r.action === 'hide');
+      const matchMode = b.logicMatchMode || 'ALL';
 
       let isVisible = true;
       if (showRules.length > 0) {
-        isVisible = showRules.some(r => evaluateRuleCondition(r, answers));
+        if (matchMode === 'ANY') {
+          isVisible = showRules.some(r => evaluateRuleCondition(r, answers));
+        } else {
+          isVisible = showRules.every(r => evaluateRuleCondition(r, answers));
+        }
       }
-      if (hideRules.length > 0 && hideRules.some(r => evaluateRuleCondition(r, answers))) {
-        isVisible = false;
+      if (hideRules.length > 0) {
+        if (matchMode === 'ANY') {
+          if (hideRules.some(r => evaluateRuleCondition(r, answers))) isVisible = false;
+        } else {
+          if (hideRules.every(r => evaluateRuleCondition(r, answers))) isVisible = false;
+        }
       }
 
       if (!isVisible) continue;
@@ -198,6 +224,8 @@ export const PublicFormPage: React.FC = () => {
 
       const processedBlock: QuestionBlock = {
         ...b,
+        label: renderPipedText(b.label),
+        description: renderPipedText(b.description),
         options: effectiveOptions
       };
 

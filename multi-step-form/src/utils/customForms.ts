@@ -10,6 +10,7 @@ export type QuestionType =
 
 export type LogicOperator = 'equals' | 'not_equals' | 'contains' | 'is_answered' | 'is_empty';
 export type LogicAction = 'show' | 'hide' | 'jump_to';
+export type LogicMatchMode = 'ALL' | 'ANY'; // ALL = AND, ANY = OR
 
 export interface LogicRule {
   id: string;
@@ -30,6 +31,7 @@ export interface QuestionBlock {
   minScale?: number;
   maxScale?: number;
   carryForwardFromBlockId?: string; // ID pertanyaan acuan untuk carry forward opsi
+  logicMatchMode?: LogicMatchMode; // ALL (AND) atau ANY (OR)
   logicRules?: LogicRule[];
 }
 
