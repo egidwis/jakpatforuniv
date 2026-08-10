@@ -405,7 +405,7 @@ export const FormBuilderPage: React.FC = () => {
               size="sm"
               disabled={saving}
               onClick={() => handleSave('published')}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm"
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20"
             >
               {saving ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
@@ -424,21 +424,24 @@ export const FormBuilderPage: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-24 h-full">
           <div className="max-w-3xl mx-auto space-y-6">
             {/* Form Header Card */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl border-t-8 border-t-blue-600 border-x border-b border-gray-200 dark:border-gray-700 p-6 shadow-sm space-y-4">
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Judul Form / Survei..."
-                className="w-full text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none pb-2"
-              />
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Deskripsi atau instruksi untuk responden (opsional)..."
-                rows={2}
-                className="w-full text-sm text-gray-600 dark:text-gray-300 bg-transparent border-b border-dashed border-gray-200 dark:border-gray-700 focus:border-blue-600 focus:outline-none resize-none"
-              />
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-xs overflow-hidden">
+              <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+              <div className="p-6 space-y-4">
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Judul Form / Survei..."
+                  className="w-full text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none pb-2 transition-all"
+                />
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Deskripsi atau instruksi untuk responden (opsional)..."
+                  rows={2}
+                  className="w-full text-sm text-gray-600 dark:text-gray-300 bg-transparent border-b border-dashed border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none resize-none transition-all"
+                />
+              </div>
             </div>
 
             {/* Question Blocks List */}
@@ -459,9 +462,9 @@ export const FormBuilderPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Add Question Floating Toolbar */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 shadow-md sticky bottom-6 z-20">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 text-center">
+            {/* Add Question Floating Glass Toolbar */}
+            <div className="backdrop-blur-md bg-white/95 dark:bg-gray-800/95 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 p-4 shadow-xl sticky bottom-6 z-20">
+              <p className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2.5 text-center">
                 Tambah Pertanyaan:
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2">
