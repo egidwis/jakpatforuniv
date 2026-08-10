@@ -22,11 +22,12 @@ interface Product {
 }
 
 // Respondent Access disiapkan tapi masih disembunyikan (hidden: true) —
-// tinggal dibuka saat produknya siap. Kilat comingSoon tapi tetap klikabel:
-// mengarah ke halaman edukasinya (pintu masuk submit-kilat).
+// tinggal dibuka saat produknya siap. Kilat tetap tampil sebagai comingSoon
+// tapi TIDAK klikabel lagi 2026-08-10 — halaman edukasinya (submit-kilat)
+// dihapus, jadi tanpa `to` kartu ini otomatis jatuh ke varian non-link.
 const PRODUCTS: Product[] = [
     { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', to: '/dashboard/submit-iklan' },
-    { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', to: '/dashboard/submit-kilat', comingSoon: true },
+    { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', comingSoon: true },
     { id: 'respondent-access', icon: Target, titleKey: 'productRespAccessTitle', hookKey: 'productRespAccessHook', descKey: 'productRespAccessDesc', comingSoon: true, hidden: true },
 ];
 

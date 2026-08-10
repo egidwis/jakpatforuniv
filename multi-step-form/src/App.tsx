@@ -16,7 +16,6 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import PrivateRoute from './components/PrivateRoute';
 import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
-import { KilatPage } from './pages/dashboard/KilatPage';
 import { ChatPage } from './pages/dashboard/ChatPage';
 import { ProfilePage } from './pages/dashboard/ProfilePage';
 import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
@@ -95,7 +94,6 @@ function AppContent() {
           <Route path="status" element={<Navigate to="/dashboard" replace />} />
           <Route path="submit" element={<Navigate to="/dashboard/submit-iklan" replace />} />
           <Route path="submit-iklan" element={<MultiStepForm />} />
-          <Route path="submit-kilat" element={<KilatPage />} />
           <Route path="chat" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="payment/:submissionId" element={<PaymentCheckoutPage />} />
