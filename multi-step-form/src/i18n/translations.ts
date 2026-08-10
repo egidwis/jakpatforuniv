@@ -543,6 +543,9 @@ export const translations = {
 
     // Dashboard revamp — navigation
     navOrders: "My Orders",
+    navMyOrder: "My Order",
+    navTheForm: "The Form",
+    navChatMimin: "Chat Mimin",
     navCreateOrder: "New Order",
     navHelp: "Help",
     navProfile: "Profile",
@@ -1203,6 +1206,9 @@ export const translations = {
 
     // Dashboard revamp — navigasi
     navOrders: "Order Saya",
+    navMyOrder: "My Order",
+    navTheForm: "The Form",
+    navChatMimin: "Chat Mimin",
     navCreateOrder: "Buat Order",
     navHelp: "Bantuan",
     navProfile: "Profil",
