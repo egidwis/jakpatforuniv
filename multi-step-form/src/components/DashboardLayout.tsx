@@ -8,7 +8,9 @@ import {
   MessageSquare,
   LogOut,
   User,
-  ChevronRight
+  ChevronRight,
+  Menu,
+  X
 } from 'lucide-react';
 import { Button } from './ui/button';
 
