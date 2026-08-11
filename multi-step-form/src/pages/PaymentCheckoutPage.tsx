@@ -12,6 +12,7 @@ import {
   toWibYmd,
   isBookingClosedForDate,
 } from '../utils/airing-window';
+import { slotReleaseDeadline } from '../utils/slotHold';
 import { airingDayCount } from './dashboard/schedule/scheduleModel';
 import { SchedulePicker, AiringSummary } from '../components/SchedulePicker';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
@@ -40,9 +41,16 @@ export function PaymentCheckoutPage() {
   const [isExpired, setIsExpired] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
-  /** Yang menghabiskan waktu adalah batas 14.00 WIB, bukan jendela 1 jam —
-   *  pesan dan label timernya beda, jadi statusnya dibedakan. */
+  /** Batas bayar 14.00 WIB pada hari tayang sudah lewat.
+   *
+   *  ⚠️ Ini MURNI TAMPILAN dan tidak boleh dipakai untuk melepas slot. Yang
+   *  habis di jam 14.00 bukan reservasinya, melainkan waktu admin menyiapkan
+   *  halaman iklan untuk tayang 15.00 — perbedaan yang sudah dinyatakan di
+   *  `components/status/airingPeriods.ts` dan dulu dilanggar tepat di sini. */
   const [isTooLateToday, setIsTooLateToday] = useState(false);
+  /** Slot yang tidak pernah lepas sendiri tidak punya hitung mundur untuk
+   *  ditampilkan. Lihat `utils/slotHold.ts`. */
+  const [hasHoldDeadline, setHasHoldDeadline] = useState(false);
 
   // Kalender pemulihan: hanya relevan setelah kedaluwarsa, tapi hook harus
   // tetap dipanggil tanpa syarat. Order ini dikecualikan dari hitungan supaya
@@ -87,28 +95,52 @@ export function PaymentCheckoutPage() {
         return;
       }
 
-      if (data.slot_reserved_at) {
-        const reservedAt = new Date(data.slot_reserved_at).getTime();
-        const oneHourAfter = reservedAt + 3600 * 1000;
-        // Jadwal hari-H hanya bisa dikejar kalau lunas sebelum 14.00 WIB —
-        // admin menyiapkan halaman iklannya pukul 14.00–15.00. Batas mana pun
-        // yang tiba lebih dulu, itu yang dipakai.
-        const cutoff = data.start_date
-          ? paymentCutoffInstant(toWibYmd(normalizeScheduleDate(data.start_date))).getTime()
-          : Infinity;
-        const deadline = Math.min(oneHourAfter, cutoff);
-        const now = Date.now();
+      // ⚠️ HANYA RESERVASI MANDIRI YANG BISA LEPAS KARENA WAKTU.
+      //
+      // Jadwal yang dibuat admin — dan baris lama tanpa `slot_booked_by` —
+      // tidak pernah lepas sendiri; melepasnya keputusan admin. Aturan itu
+      // sudah dijaga di tujuh tempat lain (holdsSlot, deriveLifecycle,
+      // deriveOrderUiState, isExpiredHold, PaymentRetryPage, CampaignActions,
+      // create-payment.js); halaman inilah satu-satunya yang dulu
+      // melanggarnya — dan satu-satunya yang memanggil `releaseExpiredSlot`.
+      //
+      // Terukur 2026-08-10 sebelum perbaikan ini: 35 jadwal admin belum lunas
+      // yang hold 1 jam-nya sudah lewat (6 tayang 10–13 Agu), plus 264 baris
+      // tanpa `slot_booked_by` yang cabang `else` lama hapus SEKETIKA.
+      const releaseAt = slotReleaseDeadline({
+        slotBookedBy: data.slot_booked_by,
+        slotReservedAt: data.slot_reserved_at,
+      });
+      const now = Date.now();
 
-        setIsTooLateToday(cutoff <= oneHourAfter);
+      // Batas 14.00 WIB tidak lagi ikut menentukan pelepasan — ia hanya
+      // memberi tahu bahwa TANGGAL itu sudah tidak terkejar.
+      const cutoff = data.start_date
+        ? paymentCutoffInstant(toWibYmd(normalizeScheduleDate(data.start_date))).getTime()
+        : null;
 
-        if (now > deadline) {
-          handleExpired(data.id);
-        } else {
-          setTimeLeft(Math.floor((deadline - now) / 1000));
-          setIsExpired(false);
-        }
-      } else {
+      setIsTooLateToday(cutoff !== null && now > cutoff);
+      setHasHoldDeadline(releaseAt !== null);
+
+      // Slot yang SUDAH dilepas harus tetap dikenali sesudah reload.
+      // `releaseExpiredSlot` mengosongkan `slot_booked_by`, jadi aturan hold di
+      // atas mengembalikan "tidak pernah lepas" untuk baris yang justru sudah
+      // lepas. `payment_status` yang menyimpan faktanya — pola yang sama sudah
+      // dipakai PaymentRetryPage.
+      if (data.payment_status === 'expired') {
+        setIsExpired(true);
+        setTimeLeft(0);
+        return;
+      }
+
+      if (releaseAt === null) {
+        setTimeLeft(0);
+        setIsExpired(false);
+      } else if (now > releaseAt) {
         handleExpired(data.id);
+      } else {
+        setTimeLeft(Math.floor((releaseAt - now) / 1000));
+        setIsExpired(false);
       }
     } catch (error) {
       console.error('Failed to load submission:', error);
@@ -122,9 +154,11 @@ export function PaymentCheckoutPage() {
     loadSubmission();
   }, [loadSubmission]);
 
-  // Timer countdown
+  // Timer countdown — hanya untuk slot yang memang bisa lepas sendiri.
+  // Tanpa `hasHoldDeadline`, jadwal admin akan ikut menghitung mundur dan
+  // memanggil `handleExpired` saat mencapai nol.
   useEffect(() => {
-    if (isLoading || isExpired || timeLeft <= 0) return;
+    if (isLoading || isExpired || !hasHoldDeadline || timeLeft <= 0) return;
 
     const timer = setInterval(() => {
       setTimeLeft(prev => {
@@ -138,7 +172,7 @@ export function PaymentCheckoutPage() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isLoading, isExpired, timeLeft, submission, handleExpired]);
+  }, [isLoading, isExpired, hasHoldDeadline, timeLeft, submission, handleExpired]);
 
   // Polling status pembayaran — user biasanya membayar di tab lain.
   useEffect(() => {
@@ -165,8 +199,25 @@ export function PaymentCheckoutPage() {
 
     let paymentWindow: Window | null = null;
     try {
-      const reservedAt = new Date(submission.slot_reserved_at!).getTime();
-      const expirationDate = new Date(reservedAt + 60 * 60 * 1000);
+      // Umur link DOKU mengikuti umur reservasinya. Untuk jadwal admin —
+      // yang tidak punya umur — dulu baris ini membaca `slot_reserved_at!`
+      // yang NULL dan mengirim "Invalid Date" ke DOKU. Jalur itu baru
+      // benar-benar terpakai sejak halaman ini berhenti menganggap jadwal
+      // admin kedaluwarsa, jadi fallback-nya wajib ada.
+      const releaseAt = slotReleaseDeadline({
+        slotBookedBy: submission.slot_booked_by,
+        slotReservedAt: submission.slot_reserved_at,
+      });
+      const cutoffMs = submission.start_date
+        ? paymentCutoffInstant(toWibYmd(normalizeScheduleDate(submission.start_date))).getTime()
+        : null;
+      // Batas bayar hari tayang selagi masih di depan; kalau sudah lewat,
+      // 7 hari — sama dengan tagihan manual admin (utils/payment.ts).
+      const fallback =
+        cutoffMs !== null && cutoffMs > Date.now()
+          ? cutoffMs
+          : Date.now() + 7 * 24 * 60 * 60 * 1000;
+      const expirationDate = new Date(releaseAt ?? fallback);
 
       // Tab baru dibuka di awal supaya tidak kena popup blocker (ada await di bawah)
       paymentWindow = window.open('about:blank', '_blank');
@@ -367,24 +418,51 @@ export function PaymentCheckoutPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
-              {/* Timer — labelnya mengikuti tenggat yang sedang mengejar.
-                  Dulu kedua tenggat dilebur jadi satu angka tanpa keterangan,
-                  jadi user tidak pernah tahu yang mana yang sedang berjalan. */}
-              <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Clock className="w-5 h-5 opacity-80" />
-                  <span className="font-medium text-sm">
-                    {isTooLateToday ? t('timerLabelCutoff') : t('timerLabelHold')}
-                  </span>
-                </div>
-                <div className="text-2xl font-mono font-bold tracking-wider bg-black/20 px-3 py-1 rounded-lg shadow-inner">
-                  {formatTime(timeLeft)}
+            {/* Batas 14.00 WIB lewat — tanggalnya tidak terkejar, TAPI slotnya
+                tidak dilepas. Pembayaran sengaja tetap dibuka: admin menagih
+                order seperti ini secara manual, lalu menjadwalkan ulang. */}
+            {isTooLateToday && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 mb-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                    <AlertTriangle size={18} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-amber-900">{t('paymentPastCutoffTitle')}</p>
+                    <p className="text-sm text-amber-800 mt-0.5 leading-relaxed">
+                      {t('paymentPastCutoffBody')}
+                    </p>
+                  </div>
                 </div>
               </div>
+            )}
+
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
+              {/* Hitung mundur hanya ada kalau slotnya memang bisa lepas
+                  sendiri — yaitu reservasi mandiri. Jadwal yang dibuat admin
+                  tidak punya umur, dan menampilkan angka yang berjalan untuknya
+                  adalah janji yang tidak ditepati siapa pun. */}
+              {hasHoldDeadline ? (
+                <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Clock className="w-5 h-5 opacity-80" />
+                    <span className="font-medium text-sm">{t('timerLabelHold')}</span>
+                  </div>
+                  <div className="text-2xl font-mono font-bold tracking-wider bg-black/20 px-3 py-1 rounded-lg shadow-inner">
+                    {formatTime(timeLeft)}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-700 text-white px-6 py-4 flex items-center gap-3">
+                  <Lock className="w-5 h-5 opacity-80" />
+                  <span className="font-medium text-sm">{t('slotHeldByAdminLabel')}</span>
+                </div>
+              )}
 
               <div className="p-6 md:p-8 space-y-4">
-                <p className="text-xs text-gray-500 leading-relaxed text-center">{t('timerConsequenceNote')}</p>
+                <p className="text-xs text-gray-500 leading-relaxed text-center">
+                  {hasHoldDeadline ? t('timerConsequenceNote') : t('slotHeldByAdminNote')}
+                </p>
 
                 <div className="space-y-3 bg-gray-50 p-5 rounded-xl border border-gray-100">
                   <h4 className="text-sm font-semibold text-gray-900">{submission.title}</h4>

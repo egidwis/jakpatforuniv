@@ -55,6 +55,55 @@ branch itu. Lihat §2.
 
 ## Yang menunggu tindakan
 
+### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
+
+**Nol migrasi SQL. Seluruhnya frontend**, jadi ia tidak menambah lubang DB-mendahului-kode.
+
+**Yang ditemukan.** Tidak ada cron, edge function, maupun worker yang melepas slot —
+tidak pernah ada. Aturan "hanya reservasi mandiri (`slot_booked_by = 'user'`) yang lepas
+karena waktu" sudah dijaga di **tujuh** tempat (`holdsSlot`, `deriveLifecycle`,
+`deriveOrderUiState`, `isExpiredHold`, `PaymentRetryPage`, `CampaignActions`,
+`create-payment.js`). Yang **tidak** menjaganya cuma `PaymentCheckoutPage` — dan justru
+halaman itu satu-satunya pemanggil `releaseExpiredSlot()`. Ia bocor dua kali: cutoff 14.00
+ikut masuk `Math.min` sebagai tenggat pelepasan, dan cabang `else` menghapus SEKETIKA
+setiap baris yang `slot_reserved_at`-nya NULL.
+
+Terukur di produksi tepat sebelum perbaikan:
+
+| Populasi | Jml |
+|---|---|
+| Jadwal **admin** belum lunas, hold 1 jam sudah lewat | **35** (6 tayang 10–13 Agu) |
+| Baris tanpa `slot_booked_by` **dan** `slot_reserved_at` | **264** (35 punya transaksi pending) |
+| Jadwal **user** belum lunas — yang aturan 1 jam memang untuk mereka | **3** |
+| Kerusakan yang sudah terjadi sejak April | **9** (7 tanggal terhapus, **4 terdampar**) |
+| Antrean "perlu ditagih" | **17** — dan **12 di antaranya bertanggal Maret–Juni** |
+
+**Yang berubah.**
+
+- [`utils/slotHold.ts`](../multi-step-form/src/utils/slotHold.ts) baru — satu tempat untuk
+  aturan umur reservasi, dengan 12 uji. Batas 14.00 WIB **sengaja tidak** tinggal di sana:
+  ia tidak melepas slot, ia hanya membuat tanggalnya tidak terkejar (niat yang sudah
+  tertulis di `status/airingPeriods.ts` dan dulu dilanggar di `PaymentCheckoutPage`).
+- `PaymentCheckoutPage` — jadwal admin tidak lagi punya hitung mundur maupun pelepasan;
+  layar "batas bayar lewat" tetap **membuka pembayaran**, karena order seperti itu memang
+  ditagih manual lalu dijadwalkan ulang. Sekalian ditutup: `payment_status = 'expired'`
+  kini dikenali sesudah reload (`releaseExpiredSlot` mengosongkan `slot_booked_by`, jadi
+  aturan hold sendirian akan bilang "tidak pernah lepas" untuk baris yang sudah lepas),
+  dan `expiredAt` ke DOKU tidak lagi bisa jadi `Invalid Date`.
+- `releaseScheduleSlot()` — pelepasan berlingkup **satu jadwal**, semua ordinal, transaksi
+  pending disaring per jadwal. Dipakai aksi **"Hapus dari list"**.
+- Badge **"perlu ditagih"** di kartu jadwal + pil papan Schedule berganti nama dari "lewat
+  batas bayar". Baris antrean diurut **terbaru di atas** — tanpa itu, 12 tunggakan
+  Maret–Juni mengubur 4 baris yang benar-benar bisa ditagih.
+
+⚠️ **Ini fondasi Task 13 Langkah 3, dan dokumen Task 13 sudah dikoreksi** — langkah itu kini
+**menggantikan** `releaseScheduleSlot`, bukan menulis fungsi kedua di sebelahnya. Yang
+tersisa di sana: tukar penautan ke `schedule_id`, dan pertahankan tanggal alih-alih
+mengosongkannya (keduanya butuh Task 11).
+
+**Belum dikerjakan:** uji manual di browser (urutannya di rencana), dan keputusan atas **4
+order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomatis.
+
 ### 00A. 🔴 `sql/48` sudah jalan di prod tanpa endpoint-nya — email "iklan mulai tayang" TERBAKAR
 
 **Ditemukan 2026-08-10 saat audit pra-merge. Ini gerbang deploy paling mendesak

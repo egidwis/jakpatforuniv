@@ -283,6 +283,37 @@ dipakai sebagai penjaga sebelum insert.
 
 ## Langkah 3 — batalkan reservasi jadwal
 
+> ### ⚠️ SEBAGIAN LANGKAH INI SUDAH DIBANGUN — LANGKAH INI MENGGANTIKAN, BUKAN MENAMBAH
+>
+> Rilis "kontrol pelepasan slot" (2026-08-10) menarik maju inti langkah ini sebagai
+> **`releaseScheduleSlot(entry)`** di
+> [`supabase.ts`](../../../multi-step-form/src/utils/supabase.ts), dipakai aksi
+> **"Hapus dari list"** di kartu `ScheduleCardList`. Ia sudah berlingkup SATU jadwal,
+> sudah berlaku SEMUA ordinal, dan sudah melewatkan transaksi pending jadi `expired`
+> **per jadwal** — tiga hal yang bagian ini ada untuk memperbaikinya.
+>
+> **Dua perbedaan yang tersisa, dan keduanya memang menunggu Task 11:**
+>
+> 1. **Penautan jadwal→pembayaran.** Versi sekarang memakai aturan
+>    `entity_type = 'extend'` + `extend_id` (sama persis dengan `fetchSchedulePayments`).
+>    Tukar ke `schedule_id`. Itu satu blok filter di ujung fungsi; sisanya tidak berubah.
+> 2. **Tanggal dipertahankan vs dikosongkan.** Versi sekarang MENGOSONGKAN tanggal, dan itu
+>    bukan pilihan gaya. Hari ini `submission_status` masih memikul dua sumbu, jadi menulis
+>    `'cancelled'` ke sana menghapus informasi review; dan `airing_status_of()` (sql/46)
+>    tidak mengenal `'cancelled'` sebagai MASUKAN — ia memetakannya jadi `'requested'`,
+>    membuat jadwal yang dilepas tampak seperti permintaan aktif. Begitu `ad_schedules` bisa
+>    ditulis langsung, rancangan di bawah (`status='cancelled'`, tanggal jadi catatan
+>    sejarah) yang berlaku.
+>
+> **Jangan menulis fungsi baru di samping `releaseScheduleSlot` — ubah yang itu.** Dua jalur
+> pelepasan slot yang hidup berdampingan persis kegagalan yang `holdsSlot` vs
+> `releaseExpiredSlot` sudah tunjukkan harganya.
+>
+> Ikut lahir di rilis itu dan relevan di sini: [`utils/slotHold.ts`](../../../multi-step-form/src/utils/slotHold.ts)
+> — satu tempat untuk aturan "hanya `slot_booked_by = 'user'` yang lepas karena waktu".
+> Enam berkas masih memuat salinan hardcode `3_600_000`-nya; menyatukannya kandidat
+> pembersihan di langkah ini.
+
 ### `supabase.ts` — `cancelSchedule(scheduleId)` baru
 
 Menggantikan `handleCancelSchedule` di

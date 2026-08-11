@@ -196,7 +196,13 @@ export function ScheduleBoardPage({
    */
   const lapsedEntries = useMemo(
     () => (showLapsed
-      ? filtered.filter((e) => !isUnscheduled(e) && holdStateOf(e, now) === 'lapsed')
+      ? filtered
+          .filter((e) => !isUnscheduled(e) && holdStateOf(e, now) === 'lapsed')
+          // TERBARU DI ATAS, dan ini bukan selera. Terukur 2026-08-10: 12 dari
+          // 17 baris antrean ini tanggalnya Maret–Juni — tunggakan lama yang
+          // sekali dibersihkan lalu tidak kembali. Urutan menaik membuat empat
+          // baris yang benar-benar bisa ditagih terkubur di bawahnya.
+          .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))
       : []),
     [filtered, showLapsed, now]
   );
@@ -437,11 +443,15 @@ export function ScheduleBoardPage({
               <AlertPill
                 icon={Clock}
                 count={alerts.lateForPayment}
-                label="lewat batas bayar"
+                label="perlu ditagih"
                 tone="red"
                 active={showLapsed}
                 onClick={() => setShowLapsed((v) => !v)}
-                title={showLapsed ? 'Sembunyikan jadwal yang gugur' : 'Tampilkan jadwal yang gugur'}
+                title={
+                  showLapsed
+                    ? 'Sembunyikan jadwal yang perlu ditagih'
+                    : 'Tampilkan jadwal yang perlu ditagih — slotnya MASIH ditahan, yang lewat batas bayarnya'
+                }
               />
               <AlertPill
                 icon={AlertTriangle}

@@ -5,7 +5,7 @@ import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
-  fetchAdSchedules, fetchSchedulePayments, supabase,
+  fetchAdSchedules, fetchSchedulePayments, releaseScheduleSlot, supabase,
   type AdScheduleEntry, type SchedulePayment,
 } from '@/utils/supabase';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
@@ -140,6 +140,42 @@ export function SchedulePaymentTab({
     }
   }, [reload, onExtendCreated]);
 
+  /**
+   * "Hapus dari list" — lepaskan slot jadwal yang batas bayarnya sudah lewat.
+   *
+   * Ini pasangan dari "Jadwalkan ulang", dan admin memilih salah satunya
+   * SESUDAH menagih peneliti di luar sistem. Tidak ada yang melepas slot ini
+   * selain admin: sejak `utils/slotHold.ts`, hanya reservasi mandiri
+   * (`slot_booked_by = 'user'`) yang lepas karena waktu.
+   *
+   * Efeknya di layar: tanggalnya kosong → `isUnscheduled()` true → baris keluar
+   * dari antrean "perlu ditagih" dan pindah ke pil "belum dijadwalkan", lalu
+   * `occupiesSlot()` false → kuota hari itu bebas. Ordernya sendiri tetap utuh
+   * dan bisa dijadwalkan lagi kapan saja.
+   */
+  const handleReleaseSlot = useCallback(async (entry: AdScheduleEntry) => {
+    const when = entry.startDate
+      ? new Date(entry.startDate).toLocaleDateString('id-ID', {
+          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta',
+        })
+      : 'tanggal ini';
+    const ok = confirm(
+      `Lepaskan slot ${when}?\n\n` +
+      'Jadwalnya dikosongkan dan kuota hari itu kembali bisa dijual. ' +
+      'Ordernya TIDAK dihapus — ia pindah ke daftar "belum dijadwalkan" dan ' +
+      'bisa dijadwalkan lagi kapan saja.'
+    );
+    if (!ok) return;
+    try {
+      await releaseScheduleSlot(entry);
+      toast.success('Slot dilepas. Order pindah ke "belum dijadwalkan".');
+      reload();
+      onExtendCreated();
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal melepas slot');
+    }
+  }, [reload, onExtendCreated]);
+
   // ⚠️ `updatePaymentStatus` masih melunasi SELURUH invoice order (menyaring
   // `form_submission_id` saja). Untuk order berjadwal SATU itu tidak berbeda —
   // "semua tagihan order" persis sama dengan "tagihan jadwal ini" — jadi
@@ -203,6 +239,7 @@ export function SchedulePaymentTab({
             onCreateInvoice={onCreateInvoice}
             onMarkPaid={canMarkPaidInCard ? () => setIsConfirmPaymentOpen(true) : null}
             onCancel={(entry) => void handleCancelSchedule(entry)}
+            onReleaseSlot={(entry) => void handleReleaseSlot(entry)}
           />
         )}
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  CalendarClock, Check, ChevronDown, Copy, CreditCard, ExternalLink,
+  AlertTriangle, CalendarClock, Check, ChevronDown, Copy, CreditCard, ExternalLink,
   FileText, Sparkles, Trash2, Zap,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
@@ -12,7 +12,7 @@ import { copyToClipboard } from '../types';
 import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
 // Derivasi chip diimpor, TIDAK disalin. Papan Schedule dan drawer ini harus
 // menamai keadaan yang sama dengan nama yang sama.
-import { chipKindOf, isUnscheduled, tokenForChip, formatWibShort } from '@/pages/dashboard/schedule/scheduleModel';
+import { chipKindOf, holdStateOf, isUnscheduled, tokenForChip, formatWibShort } from '@/pages/dashboard/schedule/scheduleModel';
 import { deriveScheduleMoney } from './scheduleMoney';
 
 // ─────────────────────────────────────────────────────────────
@@ -38,6 +38,19 @@ function cardStateOf(entry: AdScheduleEntry, payment: SchedulePayment | undefine
   if (isUnscheduled(entry)) return 'choose_schedule';
   if (!payment) return 'awaiting_invoice';
   return 'waiting_payment';
+}
+
+/**
+ * Jadwal yang slotnya masih ditahan tapi batas bayarnya sudah lewat — inilah
+ * yang admin perlu tagih manual.
+ *
+ * Sengaja `holdStateOf` dan BUKAN definisi baru: papan Schedule sudah memakai
+ * fungsi yang sama untuk pil "perlu ditagih", jadi angka di papan dan badge di
+ * drawer tidak bisa menyimpang. Ia sudah memagari keluar `in_review`/`requested`
+ * yang memilih tanggal saat checkout tanpa pernah memesan apa pun.
+ */
+function needsBilling(entry: AdScheduleEntry, now: number = Date.now()): boolean {
+  return holdStateOf(entry, now) === 'lapsed';
 }
 
 /** Jadwal yang masih menunggu tindakan admin — inilah yang dibuka duluan. */
@@ -70,6 +83,8 @@ interface CardActions {
   onMarkPaid: (() => void) | null;
   /** null = jadwal ini tidak boleh dibatalkan dari sini. */
   onCancel: ((entry: AdScheduleEntry) => void) | null;
+  /** "Hapus dari list" — lepaskan slot jadwal yang batas bayarnya sudah lewat. */
+  onReleaseSlot: ((entry: AdScheduleEntry) => void) | null;
 }
 
 function PaymentBanner({
@@ -222,6 +237,18 @@ function ScheduleCard({
       </div>
       <div className="flex items-center gap-2 text-xs flex-wrap">
         <Chip variant={token.variant} size="sm" dot={token.dot} pulse={token.pulse}>{token.label}</Chip>
+        {/* Slotnya MASIH ditahan — yang lewat cuma batas bayarnya. Badge ini
+            ada supaya keadaan itu terbaca tanpa membuka kartu; sebelumnya ia
+            cuma hidup di dalam banner, dan di papan Schedule barisnya malah
+            disembunyikan secara default. */}
+        {needsBilling(entry) && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1"
+            title="Batas bayar 14.00 WIB pada hari tayang sudah lewat. Slotnya tidak dilepas — tagih manual, lalu jadwalkan ulang atau hapus dari list."
+          >
+            <AlertTriangle className="w-2.5 h-2.5" /> perlu ditagih
+          </span>
+        )}
         <span className="text-slate-600">
           {formatIDR(money.total)}
           {money.isEstimate && <span className="text-slate-400"> · estimasi</span>}
@@ -330,6 +357,23 @@ function ScheduleCard({
           )}
         </div>
       )}
+
+      {/* Jalan keluar kedua untuk jadwal yang batas bayarnya lewat: lepaskan
+          slotnya. Pasangannya "Jadwalkan ulang" sudah ada di baris di atas —
+          admin memilih salah satu setelah menagih di luar sistem.
+
+          Dipisah dari baris aksi supaya tidak bersaing perhatian dengan dua
+          aksi tetap itu: melepas slot adalah keputusan akhir, bukan langkah
+          rutin. */}
+      {actions.onReleaseSlot && needsBilling(entry) && state !== 'paid' && (
+        <button
+          type="button"
+          onClick={() => actions.onReleaseSlot!(entry)}
+          className="w-full text-[11px] text-slate-400 hover:text-red-600 transition-colors inline-flex items-center justify-center gap-1.5 py-1"
+        >
+          <Trash2 className="w-3 h-3" /> Hapus dari list — lepaskan slotnya
+        </button>
+      )}
     </div>
   );
 
@@ -359,7 +403,7 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, payments, submission, onEditSchedule, onCreateInvoice, onMarkPaid, onCancel,
+  entries, payments, submission, onEditSchedule, onCreateInvoice, onMarkPaid, onCancel, onReleaseSlot,
 }: {
   entries: AdScheduleEntry[];
   payments: Map<string, SchedulePayment>;
@@ -386,6 +430,15 @@ export function ScheduleCardList({
    * pindah ke luar beserta peringatannya. Penyempitannya ada di Task 11.
    */
   onMarkPaid: (() => void) | null;
+  /**
+   * "Hapus dari list" — melepas slot SATU jadwal yang batas bayarnya lewat.
+   *
+   * Berlaku semua ordinal, dan pembayarannya disaring per jadwal lewat
+   * `releaseScheduleSlot` (utils/supabase.ts). Ini fondasi Task 13 Langkah 3;
+   * yang tersisa di sana tinggal menukar penautan `entity_type`/`extend_id`
+   * ke `schedule_id` dan mempertahankan tanggal alih-alih mengosongkannya.
+   */
+  onReleaseSlot: ((entry: AdScheduleEntry) => void) | null;
 }) {
   const [openId, setOpenId] = useState<string | null>(() => pickDefaultOpen(entries, payments));
   const isOnly = entries.length === 1;
@@ -432,7 +485,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onCancel }}
+          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onCancel, onReleaseSlot }}
         />
       ))}
     </div>

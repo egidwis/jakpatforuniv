@@ -298,6 +298,12 @@ export const translations = {
     timerLabelHold: "Slot held — time left",
     timerLabelCutoff: "Today's payment cut-off (14:00 WIB) — time left",
     timerConsequenceNote: "If the time runs out, the slot is released to other advertisers. Your survey details stay saved.",
+    // Jadwal yang dibuat admin tidak punya umur — lihat utils/slotHold.ts.
+    slotHeldByAdminLabel: "Slot held for you by our team",
+    slotHeldByAdminNote: "This slot has no countdown — it is not released automatically. Our team will confirm the schedule with you.",
+    // Batas 14.00 WIB lewat, tapi slotnya TIDAK dilepas.
+    paymentPastCutoffTitle: "That date can no longer be met",
+    paymentPastCutoffBody: "The 14:00 WIB payment cut-off for that date has passed, so the ad cannot go live then. Your slot has not been released — you can still pay, and our team will confirm the new airing date with you.",
     paymentExpiredTitle: "Payment time is up",
     paymentExpiredHoldBody: "The slot has been released to other advertisers. Your survey details are still saved — just pick another date below.",
     paymentExpiredCutoffBody: "The 14:00 WIB payment cut-off for that date has passed, so the ad can no longer go live then. Your survey details are still saved — just pick another date below.",
@@ -898,6 +904,12 @@ export const translations = {
     timerLabelHold: "Slot ditahan — sisa",
     timerLabelCutoff: "Batas bayar hari ini (14.00 WIB) — sisa",
     timerConsequenceNote: "Kalau waktunya habis, slot dilepas untuk pemesan lain. Detail surveimu tetap tersimpan.",
+    // Jadwal yang dibuat admin tidak punya umur — lihat utils/slotHold.ts.
+    slotHeldByAdminLabel: "Slot ditahan admin untukmu",
+    slotHeldByAdminNote: "Slot ini tidak punya hitung mundur dan tidak dilepas otomatis. Admin akan mengonfirmasi jadwalnya denganmu.",
+    // Batas 14.00 WIB lewat, tapi slotnya TIDAK dilepas.
+    paymentPastCutoffTitle: "Tanggal ini sudah tidak bisa dikejar",
+    paymentPastCutoffBody: "Batas bayar 14.00 WIB untuk tanggal itu sudah lewat, jadi iklanmu tidak bisa tayang di tanggal tersebut. Slotmu tidak dilepas — kamu tetap bisa membayar, dan admin akan mengonfirmasi tanggal tayang barunya denganmu.",
     paymentExpiredTitle: "Waktu pembayaran habis",
     paymentExpiredHoldBody: "Slotnya sudah dilepas untuk pemesan lain. Detail surveimu masih tersimpan — tinggal pilih tanggal lain di bawah ini.",
     paymentExpiredCutoffBody: "Batas pembayaran 14.00 WIB untuk tanggal itu sudah lewat, jadi iklanmu belum bisa tayang di tanggal tersebut. Detail surveimu masih tersimpan — tinggal pilih tanggal lain di bawah ini.",

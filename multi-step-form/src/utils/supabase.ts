@@ -1919,6 +1919,123 @@ export const releaseExpiredSlot = async (submissionId: string) => {
 };
 
 /**
+ * Lepaskan slot SATU jadwal atas keputusan admin — "Hapus dari list".
+ *
+ * Bedanya dengan `releaseExpiredSlot` bukan pada apa yang ditulis, melainkan
+ * pada SIAPA yang dilepas: fungsi ini berlingkup satu baris jadwal, bukan satu
+ * order. Untuk order berjadwal satu keduanya identik; untuk order berjadwal
+ * banyak, `releaseExpiredSlot` akan ikut mematikan tagihan jadwal lain.
+ *
+ * ⚠️ FONDASI TASK 13 LANGKAH 3. Penautan jadwal→pembayaran di sini memakai
+ * aturan yang sama persis dengan `fetchSchedulePayments`: `entity_type =
+ * 'extend'` + `extend_id` untuk ordinal ≥2, sisanya milik ordinal 1. Itulah
+ * satu-satunya sambungan yang perlu ditukar ke `schedule_id` begitu Task 11
+ * mendarat — sisa fungsi ini tidak berubah.
+ *
+ * ⚠️ KENAPA TANGGALNYA DIKOSONGKAN, BUKAN DIBERI STATUS 'cancelled'.
+ * Rancangan Task 13 mempertahankan tanggal dan menulis `status = 'cancelled'`.
+ * Itu benar SESUDAH Task 11, tapi mustahil hari ini: `submission_status` masih
+ * memikul dua sumbu sekaligus, jadi menulis 'cancelled' ke sana menghapus
+ * informasi review ("dulu approved atau belum?"), dan `airing_status_of()`
+ * (sql/46) tidak mengenal 'cancelled' sebagai MASUKAN — ia memetakannya jadi
+ * 'requested', membuat jadwal yang dilepas tampak seperti permintaan aktif.
+ * Mengosongkan tanggal mencapai tujuan yang sama tanpa migrasi: `isUnscheduled()`
+ * jadi true → keluar dari antrean "perlu ditagih", dan `occupiesSlot()` jadi
+ * false → kuota harinya bebas.
+ */
+export const releaseScheduleSlot = async (entry: {
+  submissionId: string;
+  sourceId: string;
+  isExtension: boolean;
+  paymentStatus: string | null;
+}) => {
+  // Penjaga yang sama dengan releaseExpiredSlot: yang sudah lunas tidak
+  // pernah dilepas dari sini, apa pun yang diklik admin.
+  if (['paid', 'completed'].includes(entry.paymentStatus || '')) {
+    throw new Error('Jadwal yang sudah lunas tidak bisa dilepas dari sini.');
+  }
+
+  // ⚠️ Penjaga lunas diulang DI DALAM query, bukan cuma dari `entry` yang bisa
+  // basi: pembayaran bisa mendarat lewat webhook DOKU tepat saat admin mengklik.
+  // Nol baris terpengaruh = ada yang lebih dulu, dan kita berhenti tanpa
+  // mematikan tagihan siapa pun. Pola yang sama dipakai `rebookSlotForSubmission`.
+  const unpaidOnly = '("paid","completed")';
+
+  if (entry.isExtension) {
+    // ⚠️ `submission_status` TIDAK disentuh. CHECK di form_submissions_extend
+    // hanya menerima waiting_payment|paid|scheduled|live|completed|cancelled —
+    // 'slot_reserved' ditolak, dan 'cancelled' salah dipetakan (lihat atas).
+    const { data, error } = await supabase
+      .from('form_submissions_extend')
+      .update({
+        start_date: null,
+        end_date: null,
+        slot_booked_by: null,
+        slot_reserved_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', entry.sourceId)
+      .not('payment_status', 'in', unpaidOnly)
+      .select('id');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('Jadwal ini sudah lunas atau sudah dilepas. Muat ulang dulu.');
+    }
+  } else {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .update({
+        start_date: null,
+        end_date: null,
+        slot_booked_by: null,
+        slot_reserved_at: null,
+        submission_status: 'slot_reserved',
+        payment_status: 'expired',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', entry.submissionId)
+      .not('payment_status', 'in', unpaidOnly)
+      .select('id');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('Order ini sudah lunas atau sudah dilepas. Muat ulang dulu.');
+    }
+
+    // Halaman iklan ikut kehilangan jendela terbitnya — hanya untuk ordinal 1,
+    // karena hanya jadwal pertama yang memilikinya secara langsung.
+    await supabase
+      .from('survey_pages')
+      .update({
+        publish_start_date: null,
+        publish_end_date: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('submission_id', entry.submissionId);
+  }
+
+  // Transaksi pending MILIK JADWAL INI saja.
+  const { data: txs } = await supabase
+    .from('transactions')
+    .select('id, entity_type, extend_id')
+    .eq('form_submission_id', entry.submissionId)
+    .eq('status', 'pending');
+
+  const mine = (txs || []).filter((tx) => {
+    const owner = tx.entity_type === 'extend' && tx.extend_id ? tx.extend_id : entry.submissionId;
+    return owner === entry.sourceId;
+  });
+
+  if (mine.length > 0) {
+    await supabase
+      .from('transactions')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .in('id', mine.map((t) => t.id));
+  }
+
+  return true;
+};
+
+/**
  * Kunci ulang slot untuk order yang SUDAH ada, tanpa membuat baris baru.
  *
  * Ini pasangan dari `releaseExpiredSlot`: dipakai saat jendela pembayaran habis
