@@ -3,7 +3,7 @@
 Folder ini berisi rencana implementasi yang ditulis sebelum eksekusi. Sebagian sudah
 selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sekali.
 
-**Diperbarui 2026-08-10.**
+**Diperbarui 2026-08-13.**
 
 > Rencana **bukan** status berjalan. Untuk "di mana posisi kita sekarang", baca
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — itu titik masuk resmi
@@ -13,6 +13,15 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 > [webhook DOKU](2026-08-10-doku-webhook-silent-failure.md) lahir dari insiden pembayaran dan
 > berdiri sendiri. Ia mengambil `sql/54` supaya tidak menggeser nomor `50`–`53` yang sudah
 > diklaim `reward_pools`/Task 11/Task 13.
+
+> ⚠️ `sql/55` juga **tidak** punya dokumen rencana di folder ini — perbaikan langsung dari
+> sesi chat 2026-08-13, bukan rencana pra-tulis. Ia mengubah `ensure_survey_page()` (Phase 1,
+> `sql/40`/`42`): `display_order` iklan auto-publish kembali `NULL` saat dibuat, bukan
+> `MAX+1`, supaya iklan baru tidak tenggelam ke bawah list hanya karena masih pakai banner
+> default. Guard Kilat `sql/42` tidak disentuh. **Committed di kode
+> ([`multi-step-form/sql/55_auto_page_display_order_neutral.sql`](../../../multi-step-form/sql/55_auto_page_display_order_neutral.sql)),
+> belum diterapkan ke database produksi.** Detail lengkap ada di
+> [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md), bagian "00C".
 
 ## Daftar rencana
 

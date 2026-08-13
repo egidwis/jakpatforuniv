@@ -209,6 +209,36 @@ webhook DOKU akan gagal diam-diam. Bukti tidak langsung bahwa key-nya terpasang:
 10 order jadi `paid` dalam 48 jam terakhir, termasuk **sesudah** `sql/47` jalan.
 Cukup meyakinkan, belum konklusif — pantau webhook pertama setelah deploy.
 
+### 00C. ✅ Iklan auto-publish tak lagi tenggelam ke bawah list (2026-08-13) — `sql/55` belum diterapkan ke prod
+
+**Nol perubahan frontend.** `ensure_survey_page()` (Phase 1, `sql/40`/`42`) sengaja menyetel
+`display_order = MAX(display_order) + 1` untuk setiap halaman iklan yang dibuat otomatis
+saat order lunas — supaya kartu berbanner default tidak jadi yang paling mencolok di
+listing. Karena Page Calendar (jalur pembuatan manual) sudah dipensiunkan (§00), hampir
+semua iklan baru lewat jalur trigger ini, dan MAX+1 selalu menghasilkan angka tertinggi
+baru — jadi tiap iklan baru selalu berakhir di ujung bawah pita "sudah ditempatkan"
+(`orderBand()` di `src/utils/adOrdering.ts`) sampai admin sempat menyeretnya naik lewat tab
+Live. Diverifikasi ke produksi sebelum fix: `MAX(display_order) = 40`, dan pemiliknya
+persis halaman yang paling baru dibuat (12 Agu 21:50 WIB).
+
+Keputusan produk 2026-08-13: konsekuensinya lebih besar daripada manfaatnya — performa
+iklan pembayar bergantung pada admin sempat membuka tab Live, dan itu gampang terlupa.
+
+**Fix:** [`sql/55_auto_page_display_order_neutral.sql`](../multi-step-form/sql/55_auto_page_display_order_neutral.sql)
+— `CREATE OR REPLACE` atas `ensure_survey_page()` (basis: versi `sql/42` yang aktif di
+produksi, dicocokkan lewat `pg_get_functiondef` sebelum ditulis), satu nilai yang berubah:
+`display_order` balik ke `NULL` saat insert, sama seperti jalur manual `PageBuilderModal.tsx`.
+Guard Kilat `sql/42` tidak disentuh. `orderBand()` sudah memperlakukan halaman non-extra-ad
+ber-`display_order` NULL sebagai pita TOP, jadi tidak ada kode frontend yang perlu berubah.
+
+⚠️ **Belum diterapkan ke database produksi** — menunggu dijalankan manual (Supabase
+Dashboard > SQL Editor), sesuai kebiasaan proyek ini. Sampai diterapkan, iklan baru tetap
+tenggelam ke bawah persis seperti sebelumnya.
+
+**Sengaja tidak dikerjakan:** backfill 49 baris lama yang sudah kadung dapat `display_order`
+dari aturan MAX+1 (2026-08-04 s/d 13) — datanya tidak bisa membedakan mana yang murni bekas
+trigger dan mana yang sudah pernah diatur manual oleh admin lewat drag di tab Live.
+
 ### 00. Page Calendar sudah dipensiunkan ✅ (2026-08-08) — sisa: adu visual di browser
 
 **`SchedulingPage.tsx` + `SchedulingPage.css` dihapus** atas keputusan pemilik produk
