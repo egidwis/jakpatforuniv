@@ -19,9 +19,9 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 > `sql/40`/`42`): `display_order` iklan auto-publish kembali `NULL` saat dibuat, bukan
 > `MAX+1`, supaya iklan baru tidak tenggelam ke bawah list hanya karena masih pakai banner
 > default. Guard Kilat `sql/42` tidak disentuh. **Committed di kode
-> ([`multi-step-form/sql/55_auto_page_display_order_neutral.sql`](../../../multi-step-form/sql/55_auto_page_display_order_neutral.sql)),
-> belum diterapkan ke database produksi.** Detail lengkap ada di
-> [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md), bagian "00C".
+> ([`multi-step-form/sql/55_auto_page_display_order_neutral.sql`](../../../multi-step-form/sql/55_auto_page_display_order_neutral.sql))
+> dan sudah diterapkan ke database produksi 2026-08-13, terverifikasi.** Detail lengkap ada
+> di [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md), bagian "00C".
 
 ## Daftar rencana
 

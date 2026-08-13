@@ -209,7 +209,7 @@ webhook DOKU akan gagal diam-diam. Bukti tidak langsung bahwa key-nya terpasang:
 10 order jadi `paid` dalam 48 jam terakhir, termasuk **sesudah** `sql/47` jalan.
 Cukup meyakinkan, belum konklusif — pantau webhook pertama setelah deploy.
 
-### 00C. ✅ Iklan auto-publish tak lagi tenggelam ke bawah list (2026-08-13) — `sql/55` belum diterapkan ke prod
+### 00C. ✅ Iklan auto-publish tak lagi tenggelam ke bawah list (2026-08-13) — `sql/55` diterapkan & terverifikasi di prod
 
 **Nol perubahan frontend.** `ensure_survey_page()` (Phase 1, `sql/40`/`42`) sengaja menyetel
 `display_order = MAX(display_order) + 1` untuk setiap halaman iklan yang dibuat otomatis
@@ -231,9 +231,9 @@ produksi, dicocokkan lewat `pg_get_functiondef` sebelum ditulis), satu nilai yan
 Guard Kilat `sql/42` tidak disentuh. `orderBand()` sudah memperlakukan halaman non-extra-ad
 ber-`display_order` NULL sebagai pita TOP, jadi tidak ada kode frontend yang perlu berubah.
 
-⚠️ **Belum diterapkan ke database produksi** — menunggu dijalankan manual (Supabase
-Dashboard > SQL Editor), sesuai kebiasaan proyek ini. Sampai diterapkan, iklan baru tetap
-tenggelam ke bawah persis seperti sebelumnya.
+✅ **Diterapkan ke database produksi 2026-08-13.** Diverifikasi lewat `pg_get_functiondef`:
+`display_order` di INSERT sudah `NULL`, komentar fungsi menyebut `sql/55`, dan guard Kilat
+(`IF v_sub.distribution_type = 'kilat' THEN RETURN NULL`) masih utuh — tidak tertimpa balik.
 
 **Sengaja tidak dikerjakan:** backfill 49 baris lama yang sudah kadung dapat `display_order`
 dari aturan MAX+1 (2026-08-04 s/d 13) — datanya tidak bisa membedakan mana yang murni bekas
