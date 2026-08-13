@@ -310,6 +310,7 @@ export function StepCheckout({ formData, updateFormData, prevStep, onUpgradeKila
         payment_status: 'pending',
         submission_method: isManualForm ? 'manual' : 'google_import',
         detected_keywords: formData.detectedKeywords || [],
+        custom_form_id: formData.customFormId || null,
         auth_user_id: user?.id,
         distribution_type: formData.isKilatUpgrade ? 'kilat' : 'regular',
         ...(isAutoApproval || formData.isKilatUpgrade ? {

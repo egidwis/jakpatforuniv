@@ -13,6 +13,8 @@ export interface SurveyFormData {
   isManualEntry?: boolean; // Flag untuk menandai form diisi manual
   hasPersonalDataQuestions?: boolean; // Flag untuk deteksi keyword personal data
   detectedKeywords?: string[]; // List keyword yang terdeteksi
+  flaggedPersonalDataQuestions?: string[]; // Teks pertanyaan yang terdeteksi meminta data pribadi (khusus deteksi AI form JFU)
+  customFormId?: string; // ID custom_forms (JFU) asal submission ini, jika berasal dari CTA "Sebar"
 
   // Step 2: Data Diri & Insentif
   fullName: string;

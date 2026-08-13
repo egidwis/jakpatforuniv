@@ -90,6 +90,10 @@ export const PublicFormPage: React.FC = () => {
     handleInputChange(questionId, updated);
   };
 
+  const handleMatrixChange = (questionId: string, rowId: string, option: string) => {
+    handleInputChange(questionId, { ...(answers[questionId] || {}), [rowId]: option });
+  };
+
   // Logic Rules Evaluator
   const evaluateRuleCondition = (rule: any, currentAnswers: Record<string, any>): boolean => {
     const val = currentAnswers[rule.sourceBlockId];
@@ -267,8 +271,12 @@ export const PublicFormPage: React.FC = () => {
       if (q.required) {
         const val = answers[q.id];
         let isEmpty = false;
-        if (val === undefined || val === null || val === '') isEmpty = true;
-        if (Array.isArray(val) && val.length === 0) isEmpty = true;
+        if (q.type === 'matrix') {
+          isEmpty = !q.rows || q.rows.length === 0 || q.rows.some(row => !val || !val[row.id]);
+        } else {
+          if (val === undefined || val === null || val === '') isEmpty = true;
+          if (Array.isArray(val) && val.length === 0) isEmpty = true;
+        }
         if (isEmpty) {
           errors[q.id] = 'Pertanyaan ini wajib diisi.';
           if (!firstErrId) firstErrId = q.id;
@@ -369,41 +377,38 @@ export const PublicFormPage: React.FC = () => {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto space-y-5 pt-6 px-4">
-        {/* Header Title Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-xs overflow-hidden">
-          <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
-          <div className="p-6 sm:p-8 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50 text-[11px] font-bold tracking-wide">
-                <span>JFU Form</span>
-                <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.2 rounded-full">BETA</span>
-              </div>
-              <span className="text-xs font-medium text-gray-400 dark:text-gray-500">* Wajib diisi</span>
+      <div className="max-w-2xl mx-auto space-y-8 pt-6 px-4">
+        {/* Header */}
+        <div className="space-y-3 pb-6 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 text-[11px] font-bold tracking-wide uppercase">
+              <span>JFU Form</span>
+              <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.2 rounded-full normal-case">BETA</span>
             </div>
-
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white leading-tight tracking-tight">
-              {form.title}
-            </h1>
-            {form.description && (
-              <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line leading-relaxed border-t border-gray-100 dark:border-gray-700/80 pt-3">
-                {form.description}
-              </p>
-            )}
+            <span className="text-xs font-medium text-gray-400 dark:text-gray-500">* Wajib diisi</span>
           </div>
+
+          <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 dark:text-white leading-tight tracking-tight">
+            {form.title}
+          </h1>
+          {form.description && (
+            <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400 whitespace-pre-line leading-relaxed">
+              {form.description}
+            </p>
+          )}
         </div>
 
         {/* Multi-step Page Progress Bar */}
         {formPages.length > 1 && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 p-4 shadow-xs space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-gray-700 dark:text-gray-200">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-gray-500 dark:text-gray-400">
               <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
                 📄 Halaman {activePageIndex + 1} dari {formPages.length}
                 {currentPage.pageTitle && <span className="text-gray-400 dark:text-gray-500 font-medium">• {currentPage.pageTitle}</span>}
               </span>
               <span>{Math.round(((activePageIndex + 1) / formPages.length) * 100)}% Selesai</span>
             </div>
-            <div className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300 rounded-full"
                 style={{ width: `${((activePageIndex + 1) / formPages.length) * 100}%` }}
@@ -413,7 +418,7 @@ export const PublicFormPage: React.FC = () => {
         )}
 
         {/* Question Form Body for Active Page */}
-        <div className="space-y-5">
+        <div className="space-y-10 sm:space-y-12">
           {currentPage.blocks.map((q: QuestionBlock, idx: number) => {
             const overallNum = questionNumberOffset + idx + 1;
             const hasError = !!fieldErrors[q.id];
@@ -421,30 +426,28 @@ export const PublicFormPage: React.FC = () => {
               <div
                 key={q.id}
                 id={`question-${q.id}`}
-                className={`bg-white dark:bg-gray-800 rounded-2xl border p-6 sm:p-7 shadow-xs hover:shadow-md transition-all space-y-4 ${
-                  hasError
-                    ? 'border-rose-400 dark:border-rose-500 ring-2 ring-rose-100 dark:ring-rose-900/30'
-                    : 'border-gray-200/80 dark:border-gray-700/80'
+                className={`space-y-4 pb-8 border-b border-gray-100 dark:border-gray-800 last:border-b-0 transition-colors ${
+                  hasError ? 'border-l-2 border-l-rose-400 pl-4 -ml-4' : ''
                 }`}
               >
-                <div className="flex items-start gap-3">
-                  <span className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-100 dark:border-indigo-800 shrink-0 mt-0.5">
-                    {overallNum}
-                  </span>
-                  <div className="space-y-1">
-                    <label className="text-base font-bold text-gray-900 dark:text-white block leading-snug">
-                      {q.label} {q.required && <span className="text-rose-500 font-bold ml-0.5">*</span>}
+                <div className="space-y-1.5">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-bold text-indigo-500 dark:text-indigo-400 shrink-0">
+                      {overallNum}.
+                    </span>
+                    <label className="text-lg sm:text-2xl font-semibold text-gray-900 dark:text-white leading-snug">
+                      {q.label} {q.required && <span className="text-rose-500 ml-1">*</span>}
                     </label>
-                    {q.description && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        {q.description}
-                      </p>
-                    )}
                   </div>
+                  {q.description && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed pl-6">
+                      {q.description}
+                    </p>
+                  )}
                 </div>
 
                 {/* Render Question Inputs */}
-                <div className="pt-1">
+                <div className="pl-6">
                   {/* Short Text */}
                   {q.type === 'short_text' && (
                     <input
@@ -452,7 +455,7 @@ export const PublicFormPage: React.FC = () => {
                       value={answers[q.id] || ''}
                       onChange={(e) => handleInputChange(q.id, e.target.value)}
                       placeholder="Jawaban Anda..."
-                      className="w-full text-sm bg-gray-50/60 dark:bg-gray-750 border border-gray-200 dark:border-gray-600 rounded-xl p-3.5 text-gray-900 dark:text-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                      className="w-full text-lg bg-transparent border-0 border-b-2 border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:outline-none rounded-none px-0 py-2 text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-gray-600 transition-colors"
                     />
                   )}
 
@@ -463,29 +466,30 @@ export const PublicFormPage: React.FC = () => {
                       onChange={(e) => handleInputChange(q.id, e.target.value)}
                       placeholder="Jawaban Anda..."
                       rows={3}
-                      className="w-full text-sm bg-gray-50/60 dark:bg-gray-750 border border-gray-200 dark:border-gray-600 rounded-xl p-3.5 text-gray-900 dark:text-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none transition-all"
+                      className="w-full text-lg bg-transparent border-0 border-b-2 border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:outline-none rounded-none px-0 py-2 text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-gray-600 resize-none transition-colors"
                     />
                   )}
 
                   {/* Multiple Choice */}
                   {q.type === 'multiple_choice' && (
-                    <div className="space-y-2.5">
+                    <div className="space-y-2">
                       {(q.options || []).map((opt, optIdx) => {
+                        const letter = String.fromCharCode(65 + optIdx);
                         const isSelected = answers[q.id] === opt;
                         return (
                           <label
                             key={optIdx}
-                            className={`flex items-center gap-3.5 p-3.5 rounded-xl border cursor-pointer transition-all duration-150 ${
+                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all duration-150 ${
                               isSelected
-                                ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/20 text-indigo-950 dark:text-indigo-100 font-semibold shadow-2xs'
-                                : 'border-gray-200/90 dark:border-gray-700/80 bg-gray-50/40 dark:bg-gray-750 hover:bg-white dark:hover:bg-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
+                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 font-semibold'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
                             }`}
                           >
-                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${
-                              isSelected ? 'border-indigo-600 bg-indigo-600 text-white shadow-2xs scale-105' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
+                            <span className={`w-7 h-7 shrink-0 rounded-md border flex items-center justify-center text-xs font-bold transition-all ${
+                              isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400'
                             }`}>
-                              {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
-                            </div>
+                              {letter}
+                            </span>
                             <input
                               type="radio"
                               name={`q_${q.id}`}
@@ -503,24 +507,25 @@ export const PublicFormPage: React.FC = () => {
 
                   {/* Checkboxes */}
                   {q.type === 'checkbox' && (
-                    <div className="space-y-2.5">
+                    <div className="space-y-2">
                       {(q.options || []).map((opt, optIdx) => {
+                        const letter = String.fromCharCode(65 + optIdx);
                         const currentArr: string[] = Array.isArray(answers[q.id]) ? answers[q.id] : [];
                         const isChecked = currentArr.includes(opt);
                         return (
                           <label
                             key={optIdx}
-                            className={`flex items-center gap-3.5 p-3.5 rounded-xl border cursor-pointer transition-all duration-150 ${
+                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all duration-150 ${
                               isChecked
-                                ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/20 text-indigo-950 dark:text-indigo-100 font-semibold shadow-2xs'
-                                : 'border-gray-200/90 dark:border-gray-700/80 bg-gray-50/40 dark:bg-gray-750 hover:bg-white dark:hover:bg-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
+                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 font-semibold'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
                             }`}
                           >
-                            <div className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-all ${
-                              isChecked ? 'border-indigo-600 bg-indigo-600 text-white shadow-2xs scale-105' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
+                            <span className={`w-7 h-7 shrink-0 rounded-md border flex items-center justify-center text-xs font-bold transition-all ${
+                              isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400'
                             }`}>
-                              {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                            </div>
+                              {isChecked ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : letter}
+                            </span>
                             <input
                               type="checkbox"
                               value={opt}
@@ -537,7 +542,7 @@ export const PublicFormPage: React.FC = () => {
 
                   {/* Rating / Scale */}
                   {q.type === 'rating' && (
-                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       {Array.from({ length: q.maxScale || 5 }, (_, i) => i + 1).map((val) => {
                         const isSelected = answers[q.id] === val;
                         return (
@@ -545,10 +550,10 @@ export const PublicFormPage: React.FC = () => {
                             key={val}
                             type="button"
                             onClick={() => handleInputChange(q.id, val)}
-                            className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl font-bold text-sm border transition-all ${
+                            className={`flex flex-col items-center justify-center w-11 h-11 rounded-lg font-bold text-sm border transition-all ${
                               isSelected
-                                ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 scale-105'
-                                : 'bg-gray-50/70 dark:bg-gray-750 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:border-amber-400'
+                                ? 'bg-amber-500 text-white border-amber-500 scale-105'
+                                : 'bg-transparent text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-amber-400'
                             }`}
                           >
                             <Star className={`w-3.5 h-3.5 ${isSelected ? 'fill-white' : 'text-amber-400'}`} />
@@ -565,13 +570,88 @@ export const PublicFormPage: React.FC = () => {
                       type="date"
                       value={answers[q.id] || ''}
                       onChange={(e) => handleInputChange(q.id, e.target.value)}
-                      className="w-full sm:w-64 text-sm bg-gray-50/60 dark:bg-gray-750 border border-gray-200 dark:border-gray-600 rounded-xl p-3.5 text-gray-900 dark:text-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                      className="w-full sm:w-64 text-lg bg-transparent border-0 border-b-2 border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:outline-none rounded-none px-0 py-2 text-gray-900 dark:text-white transition-colors"
                     />
+                  )}
+
+                  {/* Matrix */}
+                  {q.type === 'matrix' && (
+                    <>
+                      {/* Desktop: table layout */}
+                      <div className="hidden sm:block overflow-x-auto">
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr>
+                              <th className="text-left" />
+                              {(q.options || []).map((col, colIdx) => (
+                                <th key={colIdx} className="text-center font-semibold text-gray-600 dark:text-gray-300 pb-3 px-2 text-xs">
+                                  {col}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(q.rows || []).map((row) => (
+                              <tr key={row.id} className="border-t border-gray-100 dark:border-gray-800">
+                                <td className="py-3 pr-4 text-sm font-medium text-gray-800 dark:text-gray-100 whitespace-nowrap">
+                                  {row.label}
+                                </td>
+                                {(q.options || []).map((col, colIdx) => {
+                                  const isSelected = answers[q.id]?.[row.id] === col;
+                                  return (
+                                    <td key={colIdx} className="text-center py-3 px-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMatrixChange(q.id, row.id, col)}
+                                        aria-label={`${row.label}: ${col}`}
+                                        className={`w-5 h-5 rounded-full border-2 mx-auto transition-all ${
+                                          isSelected
+                                            ? 'border-indigo-600 bg-indigo-600'
+                                            : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                                        }`}
+                                      />
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile: stacked rows with choice pills */}
+                      <div className="sm:hidden space-y-5">
+                        {(q.rows || []).map((row) => (
+                          <div key={row.id} className="space-y-2">
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.label}</p>
+                            <div className="flex flex-wrap gap-2">
+                              {(q.options || []).map((col, colIdx) => {
+                                const isSelected = answers[q.id]?.[row.id] === col;
+                                return (
+                                  <button
+                                    key={colIdx}
+                                    type="button"
+                                    onClick={() => handleMatrixChange(q.id, row.id, col)}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                                      isSelected
+                                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                                        : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                                    }`}
+                                  >
+                                    {col}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
 
                 {hasError && (
-                  <p className="text-xs font-semibold text-rose-500 pt-1">
+                  <p className="text-xs font-semibold text-rose-500 pl-6">
                     {fieldErrors[q.id]}
                   </p>
                 )}

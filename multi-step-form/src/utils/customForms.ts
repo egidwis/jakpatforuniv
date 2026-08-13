@@ -7,7 +7,13 @@ export type QuestionType =
   | 'checkbox'
   | 'rating'
   | 'date'
+  | 'matrix'
   | 'page_break';
+
+export interface MatrixRow {
+  id: string;
+  label: string;
+}
 
 export type LogicOperator = 'equals' | 'not_equals' | 'contains' | 'is_answered' | 'is_empty';
 export type LogicAction = 'show' | 'hide' | 'jump_to';
@@ -28,7 +34,8 @@ export interface QuestionBlock {
   label: string;
   description?: string;
   required: boolean;
-  options?: string[];
+  options?: string[]; // Untuk multiple_choice/checkbox: daftar opsi. Untuk matrix: kolom bersama.
+  rows?: MatrixRow[]; // Khusus matrix: daftar baris/sub-pernyataan
   minScale?: number;
   maxScale?: number;
   carryForwardFromBlockId?: string; // ID pertanyaan acuan untuk carry forward opsi
@@ -244,15 +251,28 @@ export function exportResponsesToCSV(
 ) {
   if (!responses.length) return;
 
-  const headers = ['Submitted At', ...schema.map(q => `"${q.label.replace(/"/g, '""')}"`) ];
+  const csvEscape = (text: string) => `"${text.replace(/"/g, '""')}"`;
+
+  const headers = ['Submitted At', ...schema.flatMap(q =>
+    q.type === 'matrix'
+      ? (q.rows || []).map(row => csvEscape(`${q.label} - ${row.label}`))
+      : [csvEscape(q.label)]
+  )];
 
   const rows = responses.map(r => {
     const dateStr = new Date(r.created_at).toLocaleString('id-ID');
-    const answerCols = schema.map(q => {
+    const answerCols = schema.flatMap(q => {
+      if (q.type === 'matrix') {
+        const matrixVal = r.answers[q.id];
+        return (q.rows || []).map(row => {
+          const cell = matrixVal?.[row.id];
+          return cell === undefined || cell === null ? '""' : csvEscape(String(cell));
+        });
+      }
       const val = r.answers[q.id];
-      if (val === undefined || val === null) return '""';
-      if (Array.isArray(val)) return `"${val.join(', ').replace(/"/g, '""')}"`;
-      return `"${String(val).replace(/"/g, '""')}"`;
+      if (val === undefined || val === null) return ['""'];
+      if (Array.isArray(val)) return [csvEscape(val.join(', '))];
+      return [csvEscape(String(val))];
     });
     return [ `"${dateStr}"`, ...answerCols ].join(',');
   });

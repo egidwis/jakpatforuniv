@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { SurveyFormData } from '../types';
-import { CheckCircle, AlertCircle, Settings, Gift, Info, Lightbulb } from 'lucide-react';
+import { CheckCircle, AlertCircle, Settings, Gift, Info, Lightbulb, ShieldAlert } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
@@ -23,6 +23,7 @@ interface StepOneFormFieldsProps {
   onSubmit: () => void;
   onBack?: () => void;
   isGoogleImport?: boolean;
+  isJfuImport?: boolean;
 }
 
 interface FormErrors {
@@ -41,13 +42,17 @@ export function StepOneFormFields({
   updateFormData,
   onSubmit,
   onBack,
-  isGoogleImport = false
+  isGoogleImport = false,
+  isJfuImport = false
 }: StepOneFormFieldsProps) {
   const { t } = useLanguage();
   const prevQuestionCountRef = useRef(formData.questionCount);
   const hasInitializedRef = useRef(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+
+  const fieldsReadOnly = isGoogleImport || isJfuImport;
+  const isBlockedByPersonalData = isJfuImport && !!formData.hasPersonalDataQuestions;
 
   // Auto-update prizePerWinner when component mounts or questionCount changes
   useEffect(() => {
@@ -141,6 +146,7 @@ export function StepOneFormFields({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBlockedByPersonalData) return;
     setAttemptedSubmit(true);
 
     if (validateForm()) {
@@ -165,6 +171,55 @@ export function StepOneFormFields({
         </div>
       )}
 
+      {/* Success Banner for JFU Form Import */}
+      {isJfuImport && !isBlockedByPersonalData && (
+        <div className="info-box success mb-4">
+          <div className="flex items-start gap-2">
+            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-800">Diisi otomatis dari JFU Form</p>
+              <p className="text-xs text-green-700 mt-1">
+                Link, judul, deskripsi, dan jumlah pertanyaan disinkronkan dari form JFU Anda dan tidak bisa diubah di sini. Edit form aslinya jika ada yang perlu diperbarui.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hard Block: personal data question detected on a JFU-origin form */}
+      {isBlockedByPersonalData && (
+        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800">Survey tidak bisa disebar — terdeteksi pertanyaan data pribadi</p>
+              <p className="text-xs text-red-700 mt-1">
+                AI kami mendeteksi form ini kemungkinan meminta data pribadi responden
+                {formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
+                  <> ({formData.detectedKeywords.join(', ')})</>
+                )}
+                . Untuk melanjutkan, edit form JFU Anda agar tidak meminta data pribadi responden, atau buat form baru khusus untuk disebar via Jakpat, lalu klik "Sebar via Jakpat" lagi.
+              </p>
+              {formData.flaggedPersonalDataQuestions && formData.flaggedPersonalDataQuestions.length > 0 && (
+                <ul className="mt-2 space-y-1 list-disc list-inside">
+                  {formData.flaggedPersonalDataQuestions.map((question, idx) => (
+                    <li key={idx} className="text-xs text-red-700">
+                      <span className="font-medium">"{question}"</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link
+                to={`/dashboard/forms/${formData.customFormId}/edit`}
+                className="inline-flex items-center gap-1.5 mt-3 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Edit Form
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SECTION: SURVEY INFORMATION */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
@@ -184,19 +239,20 @@ export function StepOneFormFields({
         <div className="p-6 space-y-6">
           <div className="space-y-2">
             <label htmlFor="surveyUrl" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {t('googleFormLink')} <span className="text-red-500">*</span>
+              {isJfuImport ? 'Link JFU Form' : t('googleFormLink')} <span className="text-red-500">*</span>
               {isGoogleImport && <span className="text-xs font-normal text-gray-500 ml-1">{t('surveyTitleFromGoogleDrive')}</span>}
+              {isJfuImport && <span className="text-xs font-normal text-gray-500 ml-1">Diisi otomatis dari JFU Form</span>}
             </label>
             <div className="relative">
               <input
                 id="surveyUrl"
                 type="url"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 
+                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
                   ${errors.surveyUrl && attemptedSubmit
                     ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
                     : 'border-gray-200 hover:border-gray-300'
                   }
-                  ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
+                  ${fieldsReadOnly ? 'bg-gray-50 text-gray-600' : 'bg-white'}
                 `}
                 style={!errors.surveyUrl || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
                 onFocus={(e) => {
@@ -211,19 +267,19 @@ export function StepOneFormFields({
                     e.target.style.boxShadow = 'none';
                   }
                 }}
-                placeholder={t('googleFormLinkPlaceholder')}
+                placeholder={isJfuImport ? 'https://.../f/...' : t('googleFormLinkPlaceholder')}
                 value={formData.surveyUrl}
                 onChange={(e) => {
-                  if (!isGoogleImport) {
+                  if (!fieldsReadOnly) {
                     updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
                     if (attemptedSubmit && errors.surveyUrl) {
                       setErrors({ ...errors, surveyUrl: undefined });
                     }
                   }
                 }}
-                readOnly={isGoogleImport}
+                readOnly={fieldsReadOnly}
               />
-              {formData.surveyUrl && !errors.surveyUrl && !isGoogleImport && (
+              {formData.surveyUrl && !errors.surveyUrl && !fieldsReadOnly && (
                 <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4" />
               )}
             </div>
@@ -233,7 +289,9 @@ export function StepOneFormFields({
               </p>
             ) : (
               <p className="text-xs text-gray-500">
-                Masukan link Google Form atau shortlink (forms.gle/...)
+                {isJfuImport
+                  ? 'Link ini otomatis diambil dari form JFU Anda dan tidak bisa diubah di sini.'
+                  : 'Masukan link Google Form atau shortlink (forms.gle/...)'}
               </p>
             )}
           </div>
@@ -252,7 +310,7 @@ export function StepOneFormFields({
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
                       : 'border-gray-200 hover:border-gray-300'
                     }
-                    ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
+                    ${fieldsReadOnly ? 'bg-gray-50 text-gray-600' : 'bg-white'}
                   `}
                   style={!errors.title || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
                   onFocus={(e) => {
@@ -270,14 +328,14 @@ export function StepOneFormFields({
                   placeholder={t('surveyTitlePlaceholder')}
                   value={formData.title}
                   onChange={(e) => {
-                    if (!isGoogleImport) {
+                    if (!fieldsReadOnly) {
                       updateFormData({ title: e.target.value });
                       if (attemptedSubmit && errors.title) {
                         setErrors({ ...errors, title: undefined });
                       }
                     }
                   }}
-                  readOnly={isGoogleImport}
+                  readOnly={fieldsReadOnly}
                 />
               </div>
               {errors.title && attemptedSubmit && (
@@ -300,7 +358,7 @@ export function StepOneFormFields({
                       ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
                       : 'border-gray-200 hover:border-gray-300'
                     }
-                    ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
+                    ${fieldsReadOnly ? 'bg-gray-50 text-gray-600' : 'bg-white'}
                   `}
                   style={!errors.questionCount || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
                   onFocus={(e) => {
@@ -318,14 +376,14 @@ export function StepOneFormFields({
                   placeholder={t('questionCountPlaceholder')}
                   value={formData.questionCount || ''}
                   onChange={(e) => {
-                    if (!isGoogleImport) {
+                    if (!fieldsReadOnly) {
                       updateFormData({ questionCount: parseInt(e.target.value) || 0 });
                       if (attemptedSubmit && errors.questionCount) {
                         setErrors({ ...errors, questionCount: undefined });
                       }
                     }
                   }}
-                  readOnly={isGoogleImport}
+                  readOnly={fieldsReadOnly}
                   min={1}
                 />
               </div>
@@ -354,7 +412,7 @@ export function StepOneFormFields({
                     ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
                     : 'border-gray-200 hover:border-gray-300'
                   }
-                  ${isGoogleImport ? 'bg-gray-50 text-gray-600' : 'bg-white'}
+                  ${fieldsReadOnly ? 'bg-gray-50 text-gray-600' : 'bg-white'}
                 `}
                 style={!errors.description || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
                 onFocus={(e) => {
@@ -372,14 +430,14 @@ export function StepOneFormFields({
                 placeholder={t('surveyDescriptionPlaceholder')}
                 value={formData.description}
                 onChange={(e) => {
-                  if (!isGoogleImport) {
+                  if (!fieldsReadOnly) {
                     updateFormData({ description: e.target.value });
                     if (attemptedSubmit && errors.description) {
                       setErrors({ ...errors, description: undefined });
                     }
                   }
                 }}
-                readOnly={isGoogleImport}
+                readOnly={fieldsReadOnly}
                 rows={4}
                 maxLength={500}
               />
@@ -680,7 +738,8 @@ export function StepOneFormFields({
         )}
         <button
           type="submit"
-          className={`px-6 py-2.5 rounded-xl text-white font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 ${!onBack ? 'ml-auto' : ''}`}
+          disabled={isBlockedByPersonalData}
+          className={`px-6 py-2.5 rounded-xl text-white font-medium shadow-md transition-all duration-200 flex items-center gap-2 ${!onBack ? 'ml-auto' : ''} ${isBlockedByPersonalData ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:-translate-y-0.5'}`}
           style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' }}
         >
           {t('continue')} →

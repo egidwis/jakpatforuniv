@@ -17,6 +17,7 @@ import {
   AlignLeft,
   CircleDot,
   CheckSquare,
+  Table,
   Star,
   Calendar,
   Loader2,
@@ -25,9 +26,16 @@ import {
   CheckCircle2,
   FileText,
   Sparkles,
-  Cloud
+  Cloud,
+  Send
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../../components/ui/dropdown-menu';
 import { toast } from 'sonner';
 
 export const FormBuilderPage: React.FC = () => {
@@ -134,11 +142,18 @@ export const FormBuilderPage: React.FC = () => {
       label: type === 'multiple_choice' || type === 'checkbox' ? 'Choose an option' : 'Enter question title...',
       description: '',
       required: false,
-      options: type === 'multiple_choice' || type === 'checkbox' ? ['Option 1', 'Option 2'] : undefined,
+      options: type === 'multiple_choice' || type === 'checkbox' || type === 'matrix' ? ['Opsi 1', 'Opsi 2'] : undefined,
+      rows: type === 'matrix' ? [
+        { id: crypto.randomUUID(), label: 'Baris 1' },
+        { id: crypto.randomUUID(), label: 'Baris 2' }
+      ] : undefined,
       minScale: type === 'rating' ? 1 : undefined,
       maxScale: type === 'rating' ? 5 : undefined
     };
     setBlocks(prev => [...prev, newBlock]);
+    setTimeout(() => {
+      document.getElementById(`block-${newBlock.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
   };
 
   const handleUpdateBlock = (index: number, updatedBlock: QuestionBlock) => {
@@ -260,8 +275,12 @@ export const FormBuilderPage: React.FC = () => {
               label: act.block.label || 'Question Title',
               description: act.block.description || '',
               required: !!act.block.required,
-              options: act.block.options || (blockType === 'multiple_choice' || blockType === 'checkbox' ? ['Option 1', 'Option 2'] : undefined),
-              maxScale: act.block.maxScale || 5
+              options: act.block.options || (blockType === 'multiple_choice' || blockType === 'checkbox' || blockType === 'matrix' ? ['Option 1', 'Option 2'] : undefined),
+              rows: act.block.rows || (blockType === 'matrix' ? [{ id: crypto.randomUUID(), label: 'Baris 1' }, { id: crypto.randomUUID(), label: 'Baris 2' }] : undefined),
+              maxScale: act.block.maxScale || 5,
+              carryForwardFromBlockId: act.block.carryForwardFromBlockId,
+              logicMatchMode: act.block.logicMatchMode,
+              logicRules: act.block.logicRules as QuestionBlock['logicRules']
             };
         setBlocks(prev => {
           const next = [...prev];
@@ -291,8 +310,12 @@ export const FormBuilderPage: React.FC = () => {
             label: b.label || 'Question Title',
             description: b.description || '',
             required: !!b.required,
-            options: b.options || (b.type === 'multiple_choice' || b.type === 'checkbox' ? ['Option 1', 'Option 2'] : undefined),
-            maxScale: b.maxScale || 5
+            options: b.options || (b.type === 'multiple_choice' || b.type === 'checkbox' || b.type === 'matrix' ? ['Option 1', 'Option 2'] : undefined),
+            rows: b.rows || (b.type === 'matrix' ? [{ id: crypto.randomUUID(), label: 'Baris 1' }, { id: crypto.randomUUID(), label: 'Baris 2' }] : undefined),
+            maxScale: b.maxScale || 5,
+            carryForwardFromBlockId: b.carryForwardFromBlockId,
+            logicMatchMode: b.logicMatchMode,
+            logicRules: b.logicRules as QuestionBlock['logicRules']
           }));
           setBlocks(newBlocks);
         }
@@ -403,18 +426,32 @@ export const FormBuilderPage: React.FC = () => {
                   <ExternalLink className="w-3.5 h-3.5" /> Preview
                 </Button>
 
-                <Button
-                  size="sm"
-                  onClick={handleCopyPublicLink}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 hidden sm:flex items-center gap-1.5"
-                >
-                  {copiedLink ? (
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  {copiedLink ? 'Copied!' : 'Copy Link'}
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 hidden sm:flex items-center gap-1.5"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Sebar
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => formId && navigate(`/dashboard/submit?custom_form_id=${formId}`)}
+                      className="cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5 mr-2" /> Sebar via Jakpat
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyPublicLink} className="cursor-pointer">
+                      {copiedLink ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 mr-2" />
+                      )}
+                      {copiedLink ? 'Link Disalin!' : 'Copy Link Publik'}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             ) : (
               <>
@@ -514,7 +551,8 @@ export const FormBuilderPage: React.FC = () => {
                   { type: 'multiple_choice' as QuestionType, label: 'Multiple Choice', icon: CircleDot, hoverClass: 'hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20' },
                   { type: 'checkbox' as QuestionType, label: 'Checkboxes', icon: CheckSquare, hoverClass: 'hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20' },
                   { type: 'rating' as QuestionType, label: 'Rating', icon: Star, hoverClass: 'hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20' },
-                  { type: 'date' as QuestionType, label: 'Date', icon: Calendar, hoverClass: 'hover:border-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20' }
+                  { type: 'date' as QuestionType, label: 'Date', icon: Calendar, hoverClass: 'hover:border-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20' },
+                  { type: 'matrix' as QuestionType, label: 'Matrix', icon: Table, hoverClass: 'hover:border-cyan-400 hover:text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-900/20' }
                 ].map(({ type, label, icon: Icon, hoverClass }) => (
                   <button
                     key={type}
@@ -546,16 +584,25 @@ export const FormBuilderPage: React.FC = () => {
           </div>
         </main>
 
-        {/* Compact Side-by-Side Ask AI Side Panel (Pinned Full Height) */}
+        {/* Ask AI Panel — bottom sheet on mobile/tablet (form stays peekable behind the dimmed backdrop), pinned side-by-side from lg: up */}
         {isAiDrawerOpen && (
-          <aside className="w-[340px] sm:w-[350px] shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col h-full shadow-sm z-20 transition-all duration-200">
-            <FormAiAssistantDrawer
-              isOpen={isAiDrawerOpen}
-              onClose={() => setIsAiDrawerOpen(false)}
-              formState={{ title, description, blocks }}
-              onApplyActions={handleApplyAiActions}
+          <>
+            <div
+              className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+              onClick={() => setIsAiDrawerOpen(false)}
             />
-          </aside>
+            <aside className="fixed bottom-0 inset-x-0 z-40 h-[80vh] rounded-t-2xl bg-white dark:bg-gray-800 flex flex-col shadow-2xl lg:static lg:inset-auto lg:z-20 lg:h-full lg:w-[350px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-gray-200 lg:dark:border-gray-700 lg:shadow-sm">
+              <div className="lg:hidden flex justify-center pt-2 pb-1 shrink-0">
+                <div className="w-10 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600" />
+              </div>
+              <FormAiAssistantDrawer
+                isOpen={isAiDrawerOpen}
+                onClose={() => setIsAiDrawerOpen(false)}
+                formState={{ title, description, blocks }}
+                onApplyActions={handleApplyAiActions}
+              />
+            </aside>
+          </>
         )}
       </div>
     </div>

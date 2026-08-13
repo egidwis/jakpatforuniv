@@ -64,9 +64,7 @@ export const FormResponsesPage: React.FC = () => {
 
   const handleLaunchCampaign = () => {
     if (!form) return;
-    const origin = window.location.origin;
-    const formUrl = `${origin}/f/${form.id}`;
-    navigate(`/dashboard/submit?survey_url=${encodeURIComponent(formUrl)}&title=${encodeURIComponent(form.title)}`);
+    navigate(`/dashboard/submit?custom_form_id=${form.id}`);
   };
 
   const filteredResponses = responses.filter(r => {

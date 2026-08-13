@@ -349,6 +349,7 @@ export interface FormSubmission {
   payment_status?: string;
   submission_method?: string;
   detected_keywords?: string[];
+  custom_form_id?: string | null;
   admin_notes?: string;
   slot_booked_by?: string;
   slot_reserved_at?: string;

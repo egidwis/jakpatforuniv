@@ -21,8 +21,9 @@ export const QuestionLogicBuilder: React.FC<QuestionLogicBuilderProps> = ({
   const rules = block.logicRules || [];
   const matchMode = block.logicMatchMode || 'ALL';
 
-  // Available source blocks (blocks BEFORE current block)
-  const availableSourceBlocks = allBlocks.filter((_, idx) => idx < blockIndex);
+  // Available source blocks (blocks BEFORE current block). Matrix is excluded —
+  // its answer is a per-row object, not the flat string/array these rules compare against.
+  const availableSourceBlocks = allBlocks.filter((b, idx) => idx < blockIndex && b.type !== 'matrix');
   // All blocks for jump_to target
   const availableTargetBlocks = allBlocks.filter(b => b.id !== block.id);
 

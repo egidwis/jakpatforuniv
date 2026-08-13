@@ -37,6 +37,10 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   const [flowState, setFlowState] = useState<FlowState>(getInitialFlowState());
   const [showConfirmSwitch, setShowConfirmSwitch] = useState(false);
 
+  // Submission dimulai dari JFU form (CTA "Sebar via Jakpat") — field survey
+  // di-lock karena sumber datanya adalah form JFU itu sendiri.
+  const isJfuImport = Boolean(formData.customFormId);
+
   // Notify parent about header visibility
   useEffect(() => {
     if (onHeaderVisibilityChange) {
@@ -49,8 +53,22 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   // Check if form has data
   const hasFilledData = formData.title || formData.description || formData.questionCount > 0;
 
+  // Lepaskan status "berasal dari JFU form" (customFormId + hasil deteksi AI-nya)
+  // saat user secara eksplisit memilih/beralih metode dari layar pilihan —
+  // tanpa ini, draft lama yang masih menyimpan customFormId akan terus
+  // mengunci field manual walau user sudah kembali ke pilihan awal.
+  const clearJfuOrigin = () => {
+    updateFormData({
+      customFormId: undefined,
+      hasPersonalDataQuestions: undefined,
+      detectedKeywords: undefined,
+      flaggedPersonalDataQuestions: undefined
+    });
+  };
+
   // Handle method selection
   const handleMethodSelection = (method: 'google' | 'manual') => {
+    clearJfuOrigin();
     if (method === 'google') {
       setFlowState('google-form');
       updateFormData({ isManualEntry: false });
@@ -67,6 +85,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
 
   // Handle switch between methods
   const handleSwitchToManual = () => {
+    clearJfuOrigin();
     setFlowState('manual');
     updateFormData({ isManualEntry: true });
   };
@@ -75,12 +94,14 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
     if (hasFilledData) {
       setShowConfirmSwitch(true);
     } else {
+      clearJfuOrigin();
       setFlowState('google-form');
       updateFormData({ isManualEntry: false });
     }
   };
 
   const confirmSwitchToGoogle = () => {
+    clearJfuOrigin();
     // Reset form data
     updateFormData({
       surveyUrl: '',
@@ -156,15 +177,19 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
           onSubmit={handleSubmit}
           onBack={handleBackToMethodSelection}
           isGoogleImport={false}
+          isJfuImport={isJfuImport}
         />
 
-        {/* Switch to Google Form */}
-        <div className="switch-method-section">
-          <p className="switch-method-text">{t('troubleFillingManual')}</p>
-          <button onClick={handleSwitchToGoogle} className="switch-method-link">
-            {t('importFromGoogleForm')}
-          </button>
-        </div>
+        {/* Switch to Google Form — disembunyikan untuk submission dari JFU form,
+            karena beralih metode akan menghapus data yang sudah dikunci */}
+        {!isJfuImport && (
+          <div className="switch-method-section">
+            <p className="switch-method-text">{t('troubleFillingManual')}</p>
+            <button onClick={handleSwitchToGoogle} className="switch-method-link">
+              {t('importFromGoogleForm')}
+            </button>
+          </div>
+        )}
 
         {/* Confirmation Dialog for Switching */}
         {showConfirmSwitch && (

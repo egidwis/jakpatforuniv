@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext, useNavigate } from 'react-router-dom';
+import { useOutletContext, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getFormSubmissionsByUser, deleteFormSubmission, getOwnProfile } from '../utils/supabase';
 import { expandReferralSource } from '../constants/biodata';
 import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
 import { isManualVerificationVoucher } from '../utils/cost-calculator';
+import { getCustomFormById } from '../utils/customForms';
+import { detectPersonalDataInSchema } from '../utils/detectPersonalData';
 import type { SurveyFormData } from '../types';
 import { StepSurveyDetails } from './StepSurveyDetails';
 import { StepSchedule } from './StepSchedule';
 import { StepCheckout } from './StepCheckout';
 import { UnifiedHeader } from './UnifiedHeader';
-import { Menu } from 'lucide-react';
+import { Menu, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
+import { toast } from 'sonner';
 
 // Fungsi untuk mendapatkan tanggal hari ini dalam format YYYY-MM-DD
 const getTodayDate = () => {
@@ -94,6 +97,8 @@ export function MultiStepForm() {
   const { user } = useAuth();
   const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [isPrefillLoading, setIsPrefillLoading] = useState(() => !!searchParams.get('custom_form_id'));
 
   // Initialize state from localStorage if available
   const [resetKey, setResetKey] = useState(0);
@@ -125,6 +130,66 @@ export function MultiStepForm() {
       currentStep
     }));
   }, [formData, currentStep]);
+
+  // Prefill dari JFU form (CTA "Sebar via Jakpat" di /dashboard/forms):
+  // ambil title/description/schema langsung dari Supabase, lewati langkah
+  // pilihan Google Form vs manual, dan jalankan pengecekan AI untuk
+  // pertanyaan yang meminta data pribadi responden.
+  useEffect(() => {
+    const customFormId = searchParams.get('custom_form_id');
+    if (!customFormId) return;
+
+    let cancelled = false;
+
+    const prefillFromCustomForm = async () => {
+      try {
+        const form = await getCustomFormById(customFormId);
+        if (cancelled) return;
+
+        if (!form) {
+          toast.error('Survey tidak ditemukan.');
+          return;
+        }
+
+        const detection = await detectPersonalDataInSchema(form.schema || []);
+        if (cancelled) return;
+
+        setFormData(prev => ({
+          ...prev,
+          surveyUrl: `${window.location.origin}/f/${customFormId}`,
+          title: form.title,
+          description: form.description || '',
+          questionCount: (form.schema || []).length,
+          isManualEntry: true,
+          hasPersonalDataQuestions: detection.hasPersonalDataQuestions,
+          detectedKeywords: detection.detectedKeywords,
+          flaggedPersonalDataQuestions: detection.flaggedQuestions,
+          customFormId
+        }));
+        setCurrentStep(1);
+      } catch (error) {
+        console.error('Failed to prefill from custom form', error);
+        toast.error('Gagal memuat data survey. Silakan isi manual.');
+      } finally {
+        if (!cancelled) {
+          setIsPrefillLoading(false);
+          setSearchParams(prevParams => {
+            const next = new URLSearchParams(prevParams);
+            next.delete('custom_form_id');
+            return next;
+          }, { replace: true });
+        }
+      }
+    };
+
+    prefillFromCustomForm();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
     // Auto-fill form data from logged-in user
   useEffect(() => {
     const loadUserData = async () => {
@@ -300,6 +365,15 @@ export function MultiStepForm() {
       regularStartTimeBackup: '',
     });
   };
+
+  if (isPrefillLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
+        <p className="text-sm text-gray-500">Memuat data survey...</p>
+      </div>
+    );
+  }
 
   return (
     <div className={`multi-step-form ${isHeaderVisible ? 'pt-24' : ''}`}>

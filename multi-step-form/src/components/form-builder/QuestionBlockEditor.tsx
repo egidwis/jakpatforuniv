@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { QuestionBlock, QuestionType } from '../../utils/customForms';
 import {
   Type,
@@ -7,6 +7,7 @@ import {
   CheckSquare,
   Star,
   Calendar,
+  Table,
   Trash2,
   Copy,
   ChevronUp,
@@ -14,7 +15,8 @@ import {
   Plus,
   X,
   Zap,
-  FileText
+  FileText,
+  AtSign
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { QuestionLogicBuilder } from './QuestionLogicBuilder';
@@ -38,7 +40,19 @@ const QUESTION_TYPE_ICONS: Record<QuestionType, React.ReactNode> = {
   checkbox: <CheckSquare className="w-4 h-4 text-purple-500" />,
   rating: <Star className="w-4 h-4 text-amber-500" />,
   date: <Calendar className="w-4 h-4 text-rose-500" />,
+  matrix: <Table className="w-4 h-4 text-cyan-500" />,
   page_break: <FileText className="w-4 h-4 text-indigo-500" />
+};
+
+// Detect an in-progress "@mention" right before the cursor, e.g. typing "@q" or "@brand"
+// while the cursor sits right after it (no whitespace between "@" and cursor).
+const detectMentionTrigger = (text: string, cursorPos: number): { atIndex: number; query: string } | null => {
+  const uptoCursor = text.slice(0, cursorPos);
+  const atIndex = uptoCursor.lastIndexOf('@');
+  if (atIndex === -1) return null;
+  const query = uptoCursor.slice(atIndex + 1);
+  if (/\s/.test(query)) return null;
+  return { atIndex, query };
 };
 
 const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
@@ -48,6 +62,7 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   checkbox: 'Checkboxes',
   rating: 'Rating / Scale',
   date: 'Date',
+  matrix: 'Matrix',
   page_break: 'Page Break'
 };
 
@@ -66,39 +81,138 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   const ruleCount = block.logicRules?.length || 0;
   const pageNum = allBlocks.slice(0, index).filter(b => b.type === 'page_break').length + 1;
   const questionNum = allBlocks.slice(0, index).filter(b => b.type !== 'page_break').length + 1;
+  const priorBlocks = allBlocks.slice(0, index).filter(b => b.type !== 'page_break');
 
-  const labelInputRef = useRef<HTMLInputElement>(null);
+  const labelInputRef = useRef<HTMLTextAreaElement>(null);
   const savedSelectionRef = useRef<number | null>(null);
 
-  const handleTrackCursor = (e: React.SyntheticEvent<HTMLInputElement>) => {
+  // Auto-grow the question-label textarea to fit its content (no horizontal clipping on mobile)
+  useEffect(() => {
+    const el = labelInputRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, [block.label]);
+
+  // @mention autocomplete state for the question-label input
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionAtIndex, setMentionAtIndex] = useState<number | null>(null);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
+
+  const mentionSuggestions = mentionQuery === null
+    ? []
+    : priorBlocks
+        .map((b, idx) => ({ block: b, qIndex: idx }))
+        .filter(({ block: b, qIndex }) =>
+          !mentionQuery ||
+          `q${qIndex + 1}`.includes(mentionQuery.toLowerCase()) ||
+          (b.label || '').toLowerCase().includes(mentionQuery.toLowerCase())
+        );
+
+  const updateMentionState = (target: HTMLTextAreaElement) => {
+    const cursorPos = target.selectionStart ?? target.value.length;
+    const trigger = index > 0 ? detectMentionTrigger(target.value, cursorPos) : null;
+    if (trigger) {
+      setMentionQuery(trigger.query);
+      setMentionAtIndex(trigger.atIndex);
+      setActiveSuggestionIndex(0);
+    } else {
+      setMentionQuery(null);
+      setMentionAtIndex(null);
+    }
+  };
+
+  const selectMentionSuggestion = (qIndex: number) => {
+    if (mentionAtIndex === null || mentionQuery === null) return;
+    const token = `@q${qIndex + 1}`;
+    const text = block.label || '';
+    const cursorPos = mentionAtIndex + 1 + mentionQuery.length;
+    const before = text.slice(0, mentionAtIndex);
+    const after = text.slice(cursorPos);
+    const updated = `${before}${token} ${after}`;
+
+    onChange({ ...block, label: updated });
+    setMentionQuery(null);
+    setMentionAtIndex(null);
+
+    setTimeout(() => {
+      const input = labelInputRef.current;
+      if (input) {
+        input.focus();
+        const newPos = before.length + token.length + 1;
+        input.setSelectionRange(newPos, newPos);
+        savedSelectionRef.current = newPos;
+      }
+    }, 0);
+  };
+
+  const handleLabelKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && mentionSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveSuggestionIndex(prev => (prev + 1) % mentionSuggestions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveSuggestionIndex(prev => (prev - 1 + mentionSuggestions.length) % mentionSuggestions.length);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        selectMentionSuggestion(mentionSuggestions[activeSuggestionIndex].qIndex);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setMentionQuery(null);
+        setMentionAtIndex(null);
+        return;
+      }
+    }
+    // Pertanyaan tetap satu field logis (wrap secara visual saja) — jangan sisipkan newline.
+    if (e.key === 'Enter') {
+      e.preventDefault();
+    }
+  };
+
+  const handleTrackCursor = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
     const target = e.currentTarget;
     if (target.selectionStart !== null) {
       savedSelectionRef.current = target.selectionStart;
     }
+    updateMentionState(target);
   };
 
-  const insertTokenAtCursor = (token: string) => {
+  // Sisipkan "@" di posisi cursor dan langsung buka popover autocomplete —
+  // dipicu oleh tombol ikon @ di pojok textarea (pengganti dropdown lama).
+  const handleOpenMentionPicker = () => {
     const input = labelInputRef.current;
     const currentText = block.label || '';
     const cursorIndex = savedSelectionRef.current ?? input?.selectionStart ?? currentText.length;
 
     const before = currentText.substring(0, cursorIndex);
     const after = currentText.substring(cursorIndex);
-    const updated = `${before}${before.endsWith(' ') || !before ? '' : ' '}${token}${after.startsWith(' ') || !after ? '' : ' '}${after}`;
+    const needsSpaceBefore = before && !before.endsWith(' ') ? ' ' : '';
+    const atIndex = before.length + needsSpaceBefore.length;
+    const updated = `${before}${needsSpaceBefore}@${after}`;
 
     onChange({ ...block, label: updated });
+    setMentionQuery('');
+    setMentionAtIndex(atIndex);
+    setActiveSuggestionIndex(0);
 
     setTimeout(() => {
       if (input) {
         input.focus();
-        const newPos = cursorIndex + token.length + 2;
+        const newPos = atIndex + 1;
         input.setSelectionRange(newPos, newPos);
         savedSelectionRef.current = newPos;
       }
-    }, 50);
+    }, 0);
   };
 
-  const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLabelChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     handleTrackCursor(e);
     onChange({ ...block, label: e.target.value });
   };
@@ -110,10 +224,17 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newType = e.target.value as QuestionType;
     let defaultOptions = block.options;
-    if ((newType === 'multiple_choice' || newType === 'checkbox') && (!defaultOptions || defaultOptions.length === 0)) {
+    if ((newType === 'multiple_choice' || newType === 'checkbox' || newType === 'matrix') && (!defaultOptions || defaultOptions.length === 0)) {
       defaultOptions = ['Option 1', 'Option 2'];
     }
-    onChange({ ...block, type: newType, options: defaultOptions });
+    let defaultRows = block.rows;
+    if (newType === 'matrix' && (!defaultRows || defaultRows.length === 0)) {
+      defaultRows = [
+        { id: crypto.randomUUID(), label: 'Baris 1' },
+        { id: crypto.randomUUID(), label: 'Baris 2' }
+      ];
+    }
+    onChange({ ...block, type: newType, options: defaultOptions, rows: defaultRows });
   };
 
   const handleOptionChange = (optIndex: number, val: string) => {
@@ -132,18 +253,34 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
     onChange({ ...block, options: opts.filter((_, idx) => idx !== optIndex) });
   };
 
+  const handleRowChange = (rowIndex: number, val: string) => {
+    const updatedRows = [...(block.rows || [])];
+    updatedRows[rowIndex] = { ...updatedRows[rowIndex], label: val };
+    onChange({ ...block, rows: updatedRows });
+  };
+
+  const handleAddRow = () => {
+    const rows = block.rows || [];
+    onChange({ ...block, rows: [...rows, { id: crypto.randomUUID(), label: `Baris ${rows.length + 1}` }] });
+  };
+
+  const handleRemoveRow = (rowIndex: number) => {
+    const rows = block.rows || [];
+    onChange({ ...block, rows: rows.filter((_, idx) => idx !== rowIndex) });
+  };
+
   const handleRequiredToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange({ ...block, required: e.target.checked });
   };
 
   if (block.type === 'page_break') {
     return (
-      <div className="relative my-6 group">
+      <div id={`block-${block.id}`} className="relative my-6 group">
         <div className="absolute inset-0 flex items-center" aria-hidden="true">
           <div className="w-full border-t-2 border-dashed border-indigo-300 dark:border-indigo-800" />
         </div>
-        <div className="relative flex justify-center">
-          <div className="bg-indigo-600 dark:bg-indigo-700 text-white rounded-full px-5 py-2 text-xs font-bold shadow-md flex items-center gap-3 border border-indigo-500">
+        <div className="relative flex justify-center px-2">
+          <div className="max-w-full bg-indigo-600 dark:bg-indigo-700 text-white rounded-full px-3 sm:px-5 py-2 text-xs font-bold shadow-md flex flex-wrap items-center justify-center gap-2 sm:gap-3 border border-indigo-500">
             <div className="flex items-center gap-1.5 shrink-0">
               <FileText className="w-4 h-4 text-indigo-200" />
               <span>HALAMAN {pageNum + 1}</span>
@@ -153,7 +290,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               value={block.label}
               onChange={(e) => onChange({ ...block, label: e.target.value })}
               placeholder="Judul Bagian / Halaman (Opsional)..."
-              className="bg-indigo-700 dark:bg-indigo-800 text-white placeholder-indigo-300/80 px-3 py-0.5 rounded-full text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-white border border-indigo-500/80 w-48 sm:w-64"
+              className="bg-indigo-700 dark:bg-indigo-800 text-white placeholder-indigo-300/80 px-3 py-0.5 rounded-full text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-white border border-indigo-500/80 w-32 sm:w-48 md:w-64 min-w-0"
             />
             <div className="flex items-center gap-1">
               <button
@@ -190,7 +327,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 shadow-sm space-y-2.5 hover:shadow-md transition-shadow">
+    <div id={`block-${block.id}`} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 shadow-sm space-y-2.5 hover:shadow-md transition-shadow">
       {/* Block Top Control Header */}
       <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-700 pb-2">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -257,57 +394,66 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
       <div className="space-y-2">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           {/* Question Text */}
-          <div className="md:col-span-2 space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                Pertanyaan
-              </span>
+          <div className="md:col-span-2 space-y-1 min-w-0">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+              Pertanyaan
+            </span>
+
+            <div className="relative">
+              <textarea
+                ref={labelInputRef}
+                value={block.label}
+                onChange={handleLabelChange}
+                onSelect={handleTrackCursor}
+                onClick={handleTrackCursor}
+                onKeyUp={handleTrackCursor}
+                onKeyDown={handleLabelKeyDown}
+                onBlur={() => setTimeout(() => { setMentionQuery(null); setMentionAtIndex(null); }, 150)}
+                placeholder="Tuliskan pertanyaan Anda..."
+                rows={1}
+                className={`w-full text-sm font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none pb-0.5 transition-all resize-none overflow-hidden leading-snug break-words ${index > 0 ? 'pr-6' : ''}`}
+              />
+
               {index > 0 && (
-                <div className="relative inline-flex items-center shrink-0">
-                  <select
-                    onChange={(e) => {
-                      if (!e.target.value) return;
-                      if (e.target.value === '__REMOVE_ALL__') {
-                        const cleaned = (block.label || '').replace(/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/gi, '').trim();
-                        onChange({ ...block, label: cleaned });
-                      } else {
-                        insertTokenAtCursor(e.target.value);
-                      }
-                      e.target.value = '';
-                    }}
-                    className="appearance-none bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 rounded-full pl-2.5 pr-6 py-0.5 text-[11px] font-bold cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all shadow-2xs"
-                  >
-                    <option value="">+ @ Jawaban</option>
-                    {/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/i.test(block.label || '') && (
-                      <option value="__REMOVE_ALL__">🧹 Hapus Semua Piped Text</option>
-                    )}
-                    {allBlocks.slice(0, index).filter(b => b.type !== 'page_break').map((b, idx) => (
-                      <option key={b.id} value={`@q${idx + 1}`}>
-                        @q{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-3 h-3 text-indigo-500 dark:text-indigo-400 pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
+                <button
+                  type="button"
+                  onClick={handleOpenMentionPicker}
+                  title="Sisipkan Piped Text (@Jawaban)"
+                  className="absolute top-0 right-0 p-1 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 dark:hover:text-indigo-400 transition-colors"
+                >
+                  <AtSign className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* @mention autocomplete popover */}
+              {mentionQuery !== null && mentionSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto py-1">
+                  {mentionSuggestions.map(({ block: b, qIndex }, sIdx) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        selectMentionSuggestion(qIndex);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+                        sIdx === activeSuggestionIndex
+                          ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                          : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60'
+                      }`}
+                    >
+                      <span className="font-bold shrink-0">@q{qIndex + 1}</span>
+                      <span className="truncate">{b.label || 'Pertanyaan ' + (qIndex + 1)}</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
 
-            <input
-              ref={labelInputRef}
-              type="text"
-              value={block.label}
-              onChange={handleLabelChange}
-              onSelect={handleTrackCursor}
-              onClick={handleTrackCursor}
-              onKeyUp={handleTrackCursor}
-              placeholder="Tuliskan pertanyaan Anda... (Gunakan @q1 untuk Piped Text)"
-              className="w-full text-sm font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none pb-0.5 transition-all"
-            />
-
             {/* Piped text human-readable badges with remove button */}
             {/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/i.test(block.label || '') && (
               <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
-                <span className="font-semibold text-indigo-600 dark:text-indigo-400">✨ Dynamic Text:</span>
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">✨ Piped Text:</span>
                 {((block.label || '').match(/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/gi) || []).map((token, tIdx) => {
                   const numMatch = token.match(/\d+/);
                   const qNumStr = numMatch ? numMatch[0] : '';
@@ -338,16 +484,27 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                     </span>
                   );
                 })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cleaned = (block.label || '').replace(/(@answerq\d+|@q\d+|\$\{q:[a-zA-Z0-9_-]+\})/gi, '').trim();
+                    onChange({ ...block, label: cleaned });
+                  }}
+                  className="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 font-medium underline decoration-dotted"
+                  title="Hapus semua piped text"
+                >
+                  🧹 Hapus Semua
+                </button>
               </div>
             )}
           </div>
 
           {/* Question Type Selector */}
-          <div>
+          <div className="min-w-0">
             <select
               value={block.type}
               onChange={handleTypeChange}
-              className="w-full text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-1.5 px-2 font-medium text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full max-w-[200px] truncate text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-1.5 px-2 font-medium text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {Object.entries(QUESTION_TYPE_LABELS).map(([typeKey, typeName]) => (
                 <option key={typeKey} value={typeKey}>
@@ -376,7 +533,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
                 Options Source:
               </label>
-              {allBlocks.slice(0, index).filter(b => b.type !== 'page_break').length > 0 && (
+              {allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix').length > 0 && (
                 <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700/60 p-0.5 rounded-lg text-xs">
                   <button
                     type="button"
@@ -392,7 +549,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const prevBlocks = allBlocks.slice(0, index).filter(b => b.type !== 'page_break');
+                      const prevBlocks = allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix');
                       const defaultPrev = prevBlocks[prevBlocks.length - 1]?.id;
                       onChange({ ...block, carryForwardFromBlockId: defaultPrev });
                     }}
@@ -420,7 +577,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   onChange={(e) => onChange({ ...block, carryForwardFromBlockId: e.target.value })}
                   className="w-full text-xs bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-700 rounded-lg p-2 font-semibold text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {allBlocks.slice(0, index).filter(b => b.type !== 'page_break').map((b, idx) => (
+                  {allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix').map((b, idx) => (
                     <option key={b.id} value={b.id}>
                       @{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)}
                     </option>
@@ -490,6 +647,85 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               <option value={5}>1 to 5 Stars</option>
               <option value={10}>1 to 10 Scale</option>
             </select>
+          </div>
+        )}
+
+        {/* Matrix Rows & Columns Editor */}
+        {block.type === 'matrix' && (
+          <div className="pt-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
+                Baris (Sub-Pernyataan)
+              </label>
+              {(block.rows || []).map((row, rowIdx) => (
+                <div key={row.id} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={row.label}
+                    onChange={(e) => handleRowChange(rowIdx, e.target.value)}
+                    placeholder={`Baris ${rowIdx + 1}`}
+                    className="flex-1 text-xs bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
+                  />
+                  {(block.rows || []).length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveRow(rowIdx)}
+                      className="h-6 w-6 p-0 text-gray-400 hover:text-rose-500 shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddRow}
+                className="h-6 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400"
+              >
+                <Plus className="w-3 h-3 mr-1" /> Add Row
+              </Button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
+                Kolom (Skala Jawaban Bersama)
+              </label>
+              {(block.options || []).map((option, optIdx) => (
+                <div key={optIdx} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={option}
+                    onChange={(e) => handleOptionChange(optIdx, e.target.value)}
+                    placeholder={`Kolom ${optIdx + 1}`}
+                    className="flex-1 text-xs bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
+                  />
+                  {(block.options || []).length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveOption(optIdx)}
+                      className="h-6 w-6 p-0 text-gray-400 hover:text-rose-500 shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddOption}
+                className="h-6 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400"
+              >
+                <Plus className="w-3 h-3 mr-1" /> Add Column
+              </Button>
+            </div>
           </div>
         )}
       </div>

@@ -20,6 +20,12 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../../components/ui/dropdown-menu';
 import { toast } from 'sonner';
 
 export const FormListPage: React.FC = () => {
@@ -73,9 +79,7 @@ export const FormListPage: React.FC = () => {
 
   const handleLaunchCampaign = (form: CustomForm, e: React.MouseEvent) => {
     e.stopPropagation();
-    const origin = window.location.origin;
-    const formUrl = `${origin}/f/${form.id}`;
-    navigate(`/dashboard/submit?survey_url=${encodeURIComponent(formUrl)}&title=${encodeURIComponent(form.title)}`);
+    navigate(`/dashboard/submit?custom_form_id=${form.id}`);
   };
 
   const filteredForms = useMemo(() => {
@@ -267,20 +271,6 @@ export const FormListPage: React.FC = () => {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={(e) => handleCopyLink(form, e)}
-                      className="h-7 w-7 p-0 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                      title="Copy Public Link"
-                    >
-                      {copiedFormId === form.id ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         window.open(`/f/${form.slug || form.id}?preview=true`, '_blank');
@@ -291,15 +281,32 @@ export const FormListPage: React.FC = () => {
                       <ExternalLink className="w-3.5 h-3.5" />
                     </Button>
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => handleLaunchCampaign(form, e)}
-                      className="h-7 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 px-2 flex items-center gap-1 font-semibold rounded-lg"
-                      title="Sebarkan survei via Jakpat App"
-                    >
-                      <Send className="w-3.5 h-3.5" /> Sebar
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-7 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 px-2 flex items-center gap-1 font-semibold rounded-lg"
+                          title="Sebarkan survei"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Sebar
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenuItem onClick={(e) => handleLaunchCampaign(form, e)} className="cursor-pointer">
+                          <Send className="w-3.5 h-3.5 mr-2" /> Sebar via Jakpat
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => handleCopyLink(form, e)} className="cursor-pointer">
+                          {copiedFormId === form.id ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5 mr-2" />
+                          )}
+                          Copy Link Publik
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
 
                     <Button
                       variant="ghost"
