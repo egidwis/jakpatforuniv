@@ -104,7 +104,7 @@ export const FormBuilderPage: React.FC = () => {
       );
 
       if (!formId && saved?.id) {
-        navigate(`/dashboard/forms/${saved.id}`, { replace: true });
+        navigate(`/dashboard/forms/${saved.id}/edit`, { replace: true });
       }
 
       setAutoSaveState('saved');

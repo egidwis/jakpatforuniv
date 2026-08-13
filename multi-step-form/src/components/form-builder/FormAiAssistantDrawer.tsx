@@ -12,7 +12,8 @@ import {
   PlusCircle,
   MinusCircle,
   Edit3,
-  Paperclip
+  Paperclip,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
@@ -36,7 +37,9 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputPrompt, setInputPrompt] = useState('');
   const [loading, setLoading] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<{ name: string; content: string } | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -50,19 +53,43 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
 
   if (!isOpen) return null;
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Hanya file .csv yang didukung saat ini.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachedFile({ name: file.name, content: String(reader.result || '') });
+    };
+    reader.onerror = () => {
+      toast.error('Gagal membaca file. Silakan coba lagi.');
+    };
+    reader.readAsText(file);
+  };
+
   const handleSend = async (customText?: string) => {
-    const text = customText || inputPrompt;
-    if (!text.trim() || loading) return;
+    const text = (customText || inputPrompt).trim();
+    const file = attachedFile;
+    if ((!text && !file) || loading) return;
+
+    const displayText = text || `Import pertanyaan dari file "${file?.name}"`;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       sender: 'user',
-      text: text.trim(),
+      text: displayText,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInputPrompt('');
+    setAttachedFile(null);
     setLoading(true);
 
     try {
@@ -71,9 +98,13 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
         role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
         content: m.text
       }));
-      history.push({ role: 'user', content: text.trim() });
+      history.push({ role: 'user', content: displayText });
 
-      const aiResponse = await sendFormAiPrompt(history, formState);
+      const aiResponse = await sendFormAiPrompt(
+        history,
+        formState,
+        file ? { fileName: file.name, content: file.content } : undefined
+      );
 
       const aiMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -167,6 +198,29 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
 
             {/* Prominent Tally-style Prompt Box when empty */}
             <div className="w-full bg-white dark:bg-gray-700/50 border-2 border-blue-400 dark:border-blue-500/80 rounded-2xl p-3 shadow-sm transition-all text-left">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+
+              {attachedFile && (
+                <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[11px] font-medium px-2.5 py-1.5 rounded-lg mb-2">
+                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate flex-1">{attachedFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachedFile(null)}
+                    className="p-0.5 text-blue-400 hover:text-rose-600 rounded-full transition-colors shrink-0"
+                    title="Hapus lampiran"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
               <textarea
                 value={inputPrompt}
                 onChange={(e) => setInputPrompt(e.target.value)}
@@ -185,16 +239,18 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0 text-gray-400 hover:text-gray-600"
-                  title="Attach Context"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-7 px-2 text-gray-400 hover:text-gray-600 flex items-center gap-1.5"
+                  title="Import .CSV dari form lain (G-Form, dan lainnya)"
                 >
-                  <Paperclip className="w-3.5 h-3.5" />
+                  <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[11px] font-medium">Import CSV</span>
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   onClick={() => handleSend()}
-                  disabled={loading || !inputPrompt.trim()}
+                  disabled={loading || (!inputPrompt.trim() && !attachedFile)}
                   className="h-7 w-7 p-0 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-sm"
                 >
                   {loading ? (

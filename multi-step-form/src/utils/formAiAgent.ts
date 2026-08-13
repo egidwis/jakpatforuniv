@@ -49,15 +49,19 @@ Aturan Penting:
 - "Carry forward" (membawa opsi yang dipilih responden dari pertanyaan checkbox/multiple_choice sebelumnya menjadi opsi pertanyaan ini) BUKAN logicRules — itu diatur lewat field "carryForwardFromBlockId" langsung pada block (isi dengan id block sumbernya). Jangan pernah menaruh "carry_forward" sebagai value di "action" logicRules, itu tidak valid.
 - PENTING soal posisi (ADD_BLOCK): daftar pertanyaan pada [SYSTEM CONTEXT] berindeks mulai dari 0 (pertanyaan pertama = index 0). Field "index" pada ADD_BLOCK menentukan DI MANA block baru disisipkan dalam array (menggeser sisanya ke bawah) — jika tidak diisi, block akan ditambahkan di paling akhir. Jika pengguna minta menyisipkan sesuatu "di antara pertanyaan N dan N+1" atau "setelah pertanyaan ke-N", gunakan "index": N (karena pertanyaan ke-N ada di array index N-1, jadi block baru harus menempati posisi N agar berada tepat setelahnya).
 - Saat pengguna minta menambahkan "page break"/"pemisah halaman" di antara dua pertanyaan tertentu, gunakan ADD_BLOCK dengan block type "page_break" dan index yang sesuai — JANGAN gunakan REPLACE_ALL hanya untuk menyisipkan satu pemisah halaman.
+- Jika ada pesan bertanda [FILE CONTEXT: ...]: itu adalah isi mentah file CSV hasil export/copy-paste dari form lain (Google Form, dsb) yang dilampirkan pengguna. Baca barisnya, kenali tiap pertanyaan beserta jenis & opsinya (tebak jenis paling sesuai dari daftar tipe yang tersedia jika tidak eksplisit disebut), lalu ubah jadi block-block pertanyaan. Gunakan REPLACE_ALL jika formulir saat ini masih kosong, atau rangkaian ADD_BLOCK di akhir formulir jika formulir sudah berisi pertanyaan lain (kecuali pengguna minta sisipkan di posisi tertentu). Jangan salin baris yang bukan pertanyaan (mis. header kolom, metadata, jawaban responden).
 - Kembalikan HANYA JSON valid tanpa teks di luar objek JSON.
 `;
+
+const MAX_FILE_CONTEXT_CHARS = 12000;
 
 /**
  * Call the /api/chat proxy to generate or update form schema via AI
  */
 export async function sendFormAiPrompt(
   promptHistory: { role: 'user' | 'assistant'; content: string }[],
-  currentFormState: { title: string; description: string; blocks: QuestionBlock[] }
+  currentFormState: { title: string; description: string; blocks: QuestionBlock[] },
+  fileContext?: { fileName: string; content: string }
 ): Promise<AiAgentResponse> {
 
   const contextMessage = `
@@ -71,6 +75,14 @@ ${JSON.stringify(currentFormState.blocks, null, 2)}
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: `[SYSTEM CONTEXT]\n${contextMessage}` },
+    ...(fileContext ? [{
+      role: 'user',
+      content: `[FILE CONTEXT: ${fileContext.fileName}]\n${
+        fileContext.content.length > MAX_FILE_CONTEXT_CHARS
+          ? fileContext.content.slice(0, MAX_FILE_CONTEXT_CHARS) + '\n...(dipotong, file terlalu panjang)'
+          : fileContext.content
+      }`
+    }] : []),
     ...promptHistory.map(m => ({
       role: m.role,
       content: m.content
