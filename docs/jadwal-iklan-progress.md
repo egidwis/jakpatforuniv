@@ -235,9 +235,23 @@ ber-`display_order` NULL sebagai pita TOP, jadi tidak ada kode frontend yang per
 `display_order` di INSERT sudah `NULL`, komentar fungsi menyebut `sql/55`, dan guard Kilat
 (`IF v_sub.distribution_type = 'kilat' THEN RETURN NULL`) masih utuh — tidak tertimpa balik.
 
-**Sengaja tidak dikerjakan:** backfill 49 baris lama yang sudah kadung dapat `display_order`
-dari aturan MAX+1 (2026-08-04 s/d 13) — datanya tidak bisa membedakan mana yang murni bekas
-trigger dan mana yang sudah pernah diatur manual oleh admin lewat drag di tab Live.
+**Backfill 49 baris lama — selesai 2026-08-13.** Awalnya ditahan karena datanya tidak bisa
+dibedakan mana bekas trigger murni dan mana bekas drag manual admin — dipecahkan lewat dua
+sinyal yang terbukti akurat 100% (nol anomali di seluruh 49 baris):
+
+1. `set_survey_pages_order()` menormalkan SELURUH daftar live dalam satu `UPDATE` — jadi
+   baris yang berbagi `updated_at` persis sama pasti satu sesi simpan admin, dan nilainya
+   pasti rentang rapat `0..N-1`. Diverifikasi: **8 klaster, 33 baris, seluruhnya rapat
+   sempurna tanpa satu pun celah** — bukti kuat, bukan dugaan.
+2. Sisa baris "sendirian" (`updated_at` tak dibagi baris lain) diuji kontradiksi: kalau ada
+   baris LAIN yang dibuat lebih dulu tapi `display_order`-nya lebih besar/sama, baris
+   "sendirian" itu **mustahil** murni trigger (`MAX+1` naik monoton) — pasti pernah
+   disentuh manual. 4 dari 16 baris solo gagal uji ini dan diikutkan ke daftar dipertahankan.
+
+Hasil: **37 baris dipertahankan** (33 klaster + 4 solo-kontradiksi — kemungkinan bekas
+susunan manual admin), **12 baris di-backfill ke `NULL`** (solo, lolos uji kontradiksi; 6 di
+antaranya malah `updated_at = created_at` persis — belum tersentuh apa pun sejak dibuat
+trigger). `survey_pages` sekarang: 268 baris `display_order NULL`, 37 baris terisi.
 
 ### 00. Page Calendar sudah dipensiunkan ✅ (2026-08-08) — sisa: adu visual di browser
 
