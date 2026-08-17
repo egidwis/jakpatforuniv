@@ -1,5 +1,16 @@
--- Migration 46: Custom Forms and Form Responses
+-- Migration 56: Custom Forms and Form Responses
 -- Adds custom form builder support and response logging
+--
+-- ⚠️ DINOMORI ULANG 2026-08-17 — file ini dulu bernama `46_custom_forms.sql`.
+-- Nomor 46 sudah lebih dulu dipakai `46_ad_schedules_axes.sql` di branch
+-- `feat/dashboard-soft-dna-navbar`, dan 47–55 juga sudah terpakai/diklaim di
+-- sana (50–53 dipesan reward_pools/Task 11/Task 13). Dua deret nomor tumbuh
+-- paralel tanpa saling tahu; git tidak menganggapnya konflik karena nama
+-- filenya berbeda, jadi tabrakannya baru terlihat kalau ada yang membaca
+-- foldernya. Isi SQL-nya TIDAK diubah sama sekali.
+--
+-- ✅ Sudah diterapkan ke produksi (tabel `custom_forms` + `custom_form_responses`
+-- ada sejak sebelum 2026-08-14). Aman dijalankan ulang.
 
 -- 1. Ensure username column exists in public.profiles
 DO $$

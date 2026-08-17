@@ -1,4 +1,22 @@
--- 47_add_custom_form_id_to_submissions.sql
+-- 57_add_custom_form_id_to_submissions.sql
+--
+-- ⚠️ DINOMORI ULANG 2026-08-17 — dulu `47_add_custom_form_id_to_submissions.sql`.
+-- Alasannya sama dengan `56_custom_forms.sql`: nomor 47 sudah dipakai
+-- `47_restrict_anon_form_submissions.sql` di branch Soft DNA. Isi SQL tidak
+-- diubah.
+--
+-- 🔴 FILE INI PERNAH MENJADI INSIDEN PRODUKSI — baca sebelum menulis migrasi
+-- berikutnya. `StepCheckout.tsx` mulai mengirim `custom_form_id` di payload
+-- insert `form_submissions` sejak commit `6c42644` (2026-08-13 15:02 WIB) dan
+-- ikut ter-deploy, TAPI migrasi ini tidak pernah dijalankan. PostgREST menolak
+-- seluruh insert karena nama kolomnya tak dikenal (`42703`), sehingga SETIAP
+-- order baru gagal — peneliti cuma melihat toast "gagal menyimpan". Order
+-- terakhir yang berhasil masuk 2026-08-13 10:50 WIB; nol order selama empat
+-- hari sesudahnya. Diterapkan dan diverifikasi 2026-08-17.
+--
+-- Pelajarannya: `46_custom_forms.sql` (kini 56) dijalankan, yang ini terlewat.
+-- Kalau satu fitur butuh lebih dari satu migrasi, jalankan seluruhnya sebelum
+-- kodenya di-deploy — jangan sebagian.
 --
 -- Traces a form_submissions row back to the JFU-built custom_forms row it
 -- was launched from (via the "Sebar via Jakpat" CTA on /dashboard/forms).
