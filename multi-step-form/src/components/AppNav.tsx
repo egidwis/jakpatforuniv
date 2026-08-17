@@ -46,6 +46,9 @@ export function AppNav() {
 
     const isMyOrdersActive = location.pathname === '/dashboard' || location.pathname === '/dashboard/status';
     const isChatActive = location.pathname.startsWith('/dashboard/chat');
+    // Termasuk /forms/new, /forms/:id/edit, dan /forms/:id/responses — seluruh
+    // pembuat form hidup di bawah prefix ini.
+    const isTheFormActive = location.pathname.startsWith('/dashboard/forms');
 
     return (
         <header className="sticky top-0 z-40 h-14 md:h-16 bg-white/90 backdrop-blur shadow-[0_4px_20px_rgba(25,118,210,0.08)]">
@@ -80,16 +83,22 @@ export function AppNav() {
                                     {t('navMyOrder')}
                                 </Link>
 
-                                {/* The Form (coming soon) */}
-                                <span
-                                    className="relative inline-flex items-center text-sm font-medium text-gray-400 cursor-default select-none"
-                                    title="The Form - Coming Soon"
+                                {/* The Form — sejak merge JFU Form (2026-08-17) ini pintu
+                                    masuk pembuat form JFU. Dulu <span> mati berbadge "Soon";
+                                    fiturnya sekarang nyata, jadi badge-nya jadi "Beta". */}
+                                <Link
+                                    to="/dashboard/forms"
+                                    className={`relative inline-flex items-center text-sm font-medium transition-colors ${
+                                        isTheFormActive
+                                            ? 'text-jfu-primary font-semibold'
+                                            : 'text-gray-600 hover:text-jfu-primary'
+                                    }`}
                                 >
                                     <span>{t('navTheForm')}</span>
                                     <span className="ml-1 -mt-2.5 px-1 py-0.5 text-[9px] font-bold leading-none rounded bg-amber-100 text-amber-700 uppercase tracking-tighter border border-amber-200/80">
-                                        Soon
+                                        Beta
                                     </span>
-                                </span>
+                                </Link>
 
                                 {/* Chat Mimin */}
                                 <Link
@@ -206,17 +215,24 @@ export function AppNav() {
                                             </Link>
                                         </SheetClose>
 
-                                        <div
-                                            className="flex items-center justify-between px-3 py-2.5 text-sm font-medium text-gray-400 cursor-default select-none"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <FileText className="w-4 h-4 text-gray-400" />
-                                                <span>{t('navTheForm')}</span>
-                                            </div>
-                                            <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-                                                SOON
-                                            </span>
-                                        </div>
+                                        <SheetClose asChild>
+                                            <Link
+                                                to="/dashboard/forms"
+                                                className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                                    isTheFormActive
+                                                        ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
+                                                        : 'text-gray-700 hover:bg-gray-100'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <FileText className="w-4 h-4 text-jfu-primary" />
+                                                    <span>{t('navTheForm')}</span>
+                                                </div>
+                                                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                                    Beta
+                                                </span>
+                                            </Link>
+                                        </SheetClose>
 
                                         <SheetClose asChild>
                                             <Link

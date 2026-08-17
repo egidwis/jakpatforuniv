@@ -192,6 +192,15 @@ export async function submitOrder({
     payment_status: 'pending',
     submission_method: isManualForm ? 'manual' : 'google_import',
     detected_keywords: formData.detectedKeywords || [],
+    // Jejak ke form JFU asalnya, kalau order ini lahir dari CTA "Sebar via
+    // Jakpat". NULL untuk order Google Form dan seluruh order lama.
+    //
+    // ⚠️ Kolom `form_submissions.custom_form_id` WAJIB ada sebelum baris ini
+    // ikut tayang. Mengirim nama kolom yang belum ada membuat PostgREST menolak
+    // SELURUH insert (`42703`), bukan cuma field ini — dan itu sudah pernah
+    // terjadi: order produksi mati total 13–17 Agustus 2026 karena kodenya
+    // dideploy tanpa migrasinya. Lihat `sql/57_add_custom_form_id_to_submissions.sql`.
+    custom_form_id: formData.customFormId || null,
     auth_user_id: authUserId,
     distribution_type: formData.isKilatUpgrade ? 'kilat' : 'regular',
     ...(isAutoApproval || formData.isKilatUpgrade

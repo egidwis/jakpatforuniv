@@ -8,6 +8,7 @@ import {
   Hash,
   Info,
   Link2,
+  ShieldAlert,
   Trophy,
   Type,
   Users,
@@ -45,6 +46,9 @@ interface StepOneFormFieldsProps {
   onBack: () => void;
   isGoogleImport?: boolean;
   onSwitchToGoogle?: () => void;
+  /** Order lahir dari CTA "Sebar via Jakpat": sumber datanya form JFU, jadi
+   *  field surveinya dikunci dan tautan ganti-metode disembunyikan. */
+  isJfuImport?: boolean;
 }
 
 interface FormErrors {
@@ -107,7 +111,8 @@ export function StepOneFormFields({
   onSubmit,
   onBack,
   isGoogleImport = false,
-  onSwitchToGoogle
+  onSwitchToGoogle,
+  isJfuImport = false
 }: StepOneFormFieldsProps) {
   const { t } = useLanguage();
   const prevQuestionCountRef = useRef(formData.questionCount);
@@ -139,6 +144,9 @@ export function StepOneFormFields({
       criteriaRespondenRef.current.style.height = `${Math.max(60, criteriaRespondenRef.current.scrollHeight)}px`;
     }
   }, [formData.criteriaResponden]);
+
+  const fieldsReadOnly = isGoogleImport || isJfuImport;
+  const isBlockedByPersonalData = isJfuImport && !!formData.hasPersonalDataQuestions;
 
   // Auto-update prizePerWinner when component mounts or questionCount changes
   useEffect(() => {
@@ -230,6 +238,7 @@ export function StepOneFormFields({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBlockedByPersonalData) return;
     setAttemptedSubmit(true);
 
     if (validateForm()) {
@@ -282,12 +291,63 @@ export function StepOneFormFields({
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
+      {/* Blokir keras: form JFU yang terdeteksi meminta data pribadi responden.
+          Sengaja DI LUAR kartu dan di paling atas — ini bukan catatan tambahan,
+          melainkan alasan seluruh layar ini tidak bisa dilanjutkan. */}
+      {isBlockedByPersonalData && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 md:p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5 text-red-600" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-red-900">
+                Survei ini belum bisa disebar — terdeteksi pertanyaan data pribadi
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-red-800/90">
+                Form JFU ini kemungkinan meminta data pribadi responden
+                {formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
+                  <> ({formData.detectedKeywords.join(', ')})</>
+                )}
+                . Edit form aslinya sampai tidak lagi meminta data pribadi, lalu klik
+                “Sebar via Jakpat” sekali lagi.
+              </p>
+              {formData.flaggedPersonalDataQuestions && formData.flaggedPersonalDataQuestions.length > 0 && (
+                <ul className="mt-2 space-y-1 list-disc list-inside">
+                  {formData.flaggedPersonalDataQuestions.map((question, idx) => (
+                    <li key={idx} className="text-xs text-red-800">
+                      <span className="font-medium">“{question}”</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {formData.customFormId && (
+                <Link
+                  to={`/dashboard/forms/${formData.customFormId}/edit`}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
+                >
+                  Edit Form
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CARD 1 — INFORMASI & KONFIGURASI SURVEI */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
         {isGoogleImport && (
           <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
             <CheckCircle className="w-3.5 h-3.5 shrink-0" />
             {t('successImportedFromGoogleDrive')}
+          </p>
+        )}
+
+        {isJfuImport && !isBlockedByPersonalData && (
+          <p className="mb-3 flex items-start gap-1.5 text-xs font-medium text-emerald-600">
+            <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Diisi otomatis dari JFU Form — link, judul, dan jumlah pertanyaan
+              disinkronkan dari form aslinya. Ubah di form JFU kalau perlu diperbarui.
+            </span>
           </p>
         )}
 
@@ -301,7 +361,7 @@ export function StepOneFormFields({
             htmlFor="surveyUrl"
             required
             error={attemptedSubmit ? errors.surveyUrl : undefined}
-            readOnly={isGoogleImport}
+            readOnly={fieldsReadOnly}
           >
             <textarea
               id="surveyUrl"
@@ -311,14 +371,14 @@ export function StepOneFormFields({
               placeholder={isGoogleImport ? t('googleFormLinkPlaceholder') : t('surveyLinkPlaceholder')}
               value={formData.surveyUrl}
               onChange={(e) => {
-                if (!isGoogleImport) {
+                if (!fieldsReadOnly) {
                   updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
                   if (attemptedSubmit && errors.surveyUrl) {
                     setErrors({ ...errors, surveyUrl: undefined });
                   }
                 }
               }}
-              readOnly={isGoogleImport}
+              readOnly={fieldsReadOnly}
             />
           </FieldRow>
 
@@ -328,7 +388,7 @@ export function StepOneFormFields({
             htmlFor="title"
             required
             error={attemptedSubmit ? errors.title : undefined}
-            readOnly={isGoogleImport}
+            readOnly={fieldsReadOnly}
           >
             <textarea
               id="title"
@@ -339,14 +399,14 @@ export function StepOneFormFields({
               placeholder={t('surveyTitlePlaceholder')}
               value={formData.title}
               onChange={(e) => {
-                if (!isGoogleImport) {
+                if (!fieldsReadOnly) {
                   updateFormData({ title: e.target.value });
                   if (attemptedSubmit && errors.title) {
                     setErrors({ ...errors, title: undefined });
                   }
                 }
               }}
-              readOnly={isGoogleImport}
+              readOnly={fieldsReadOnly}
             />
           </FieldRow>
 
@@ -357,7 +417,7 @@ export function StepOneFormFields({
             required
             compact
             error={attemptedSubmit ? errors.questionCount : undefined}
-            readOnly={isGoogleImport}
+            readOnly={fieldsReadOnly}
           >
             <input
               id="questionCount"
@@ -366,14 +426,14 @@ export function StepOneFormFields({
               placeholder={t('questionCountPlaceholder')}
               value={formData.questionCount || ''}
               onChange={(e) => {
-                if (!isGoogleImport) {
+                if (!fieldsReadOnly) {
                   updateFormData({ questionCount: parseInt(e.target.value) || 0 });
                   if (attemptedSubmit && errors.questionCount) {
                     setErrors({ ...errors, questionCount: undefined });
                   }
                 }
               }}
-              readOnly={isGoogleImport}
+              readOnly={fieldsReadOnly}
               min={1}
             />
             <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">items</span>
@@ -596,7 +656,8 @@ export function StepOneFormFields({
         </button>
         <button
           type="submit"
-          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark"
+          disabled={isBlockedByPersonalData}
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
         >
           {t('continueToSummary')}
           <span aria-hidden="true">→</span>

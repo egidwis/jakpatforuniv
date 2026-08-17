@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { getFormSubmissionsByUser, getOwnProfile } from '../utils/supabase';
@@ -11,11 +11,17 @@ import { calculateTotalCost } from '../utils/cost-calculator';
 import { submitOrder, orderSubmitErrorKey } from '../utils/submitOrder';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useLanguage } from '../i18n/LanguageContext';
+import { getCustomFormById } from '../utils/customForms';
+import { detectPersonalDataInSchema } from '../utils/detectPersonalData';
 import type { SurveyFormData } from '../types';
 import { StepSurveyDetails } from './StepSurveyDetails';
 import { StepSchedule } from './StepSchedule';
 import { StepCheckout } from './StepCheckout';
 import { UnifiedHeader } from './UnifiedHeader';
+// Hanya Loader2 yang tersisa dari sisi main di sini: `Menu`/`Button` ikut hilang
+// bersama header mobile lama (digantikan AppNav), dan `getTodayDate` tidak lagi
+// dipakai sejak flow order disusun ulang.
+import { Loader2 } from 'lucide-react';
 
 // Fungsi untuk mendapatkan tanggal berdasarkan durasi dari hari ini
 const getEndDateFromDuration = (duration: number) => {
@@ -92,6 +98,8 @@ export function MultiStepForm() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [isPrefillLoading, setIsPrefillLoading] = useState(() => !!searchParams.get('custom_form_id'));
 
   // Initialize state from localStorage if available
   const [currentStep, setCurrentStep] = useState<number>(() => {
@@ -139,6 +147,66 @@ export function MultiStepForm() {
       currentStep
     }));
   }, [formData, currentStep]);
+
+  // Prefill dari JFU form (CTA "Sebar via Jakpat" di /dashboard/forms):
+  // ambil title/description/schema langsung dari Supabase, lewati langkah
+  // pilihan Google Form vs manual, dan jalankan pengecekan AI untuk
+  // pertanyaan yang meminta data pribadi responden.
+  useEffect(() => {
+    const customFormId = searchParams.get('custom_form_id');
+    if (!customFormId) return;
+
+    let cancelled = false;
+
+    const prefillFromCustomForm = async () => {
+      try {
+        const form = await getCustomFormById(customFormId);
+        if (cancelled) return;
+
+        if (!form) {
+          toast.error('Survey tidak ditemukan.');
+          return;
+        }
+
+        const detection = await detectPersonalDataInSchema(form.schema || []);
+        if (cancelled) return;
+
+        setFormData(prev => ({
+          ...prev,
+          surveyUrl: `${window.location.origin}/f/${customFormId}`,
+          title: form.title,
+          description: form.description || '',
+          questionCount: (form.schema || []).length,
+          isManualEntry: true,
+          hasPersonalDataQuestions: detection.hasPersonalDataQuestions,
+          detectedKeywords: detection.detectedKeywords,
+          flaggedPersonalDataQuestions: detection.flaggedQuestions,
+          customFormId
+        }));
+        setCurrentStep(1);
+      } catch (error) {
+        console.error('Failed to prefill from custom form', error);
+        toast.error('Gagal memuat data survey. Silakan isi manual.');
+      } finally {
+        if (!cancelled) {
+          setIsPrefillLoading(false);
+          setSearchParams(prevParams => {
+            const next = new URLSearchParams(prevParams);
+            next.delete('custom_form_id');
+            return next;
+          }, { replace: true });
+        }
+      }
+    };
+
+    prefillFromCustomForm();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
     // Auto-fill form data from logged-in user
   useEffect(() => {
     const loadUserData = async () => {
@@ -333,6 +401,17 @@ export function MultiStepForm() {
     localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
     navigate('/dashboard', { replace: true });
   };
+
+  // Impor dari form JFU menunda seluruh layar sampai prefill selesai — tanpa ini
+  // layar "pilih metode" sempat berkedip sebelum tergantikan.
+  if (isPrefillLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-jfu-primary animate-spin mb-3" />
+        <p className="text-sm text-gray-500">Memuat data survei…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="multi-step-form">

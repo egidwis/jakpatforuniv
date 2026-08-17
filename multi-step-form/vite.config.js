@@ -356,9 +356,57 @@ function googleFormsProxyPlugin() {
   };
 }
 
+// Dev-only bridge for Cloudflare Pages Function functions/api/chat.js
+function chatDevPlugin() {
+  return {
+    name: 'chat-dev-plugin',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url || !/^\/api\/chat(\?|$)/.test(req.url)) return next();
+
+        (async () => {
+          const modulePath = pathToFileURL(
+            path.resolve(__dirname, 'functions/api/chat.js')
+          ).href;
+          const { onRequestPost } = await import(modulePath);
+
+          const env = loadEnv('', process.cwd(), '');
+          const url = `http://${req.headers.host || 'localhost'}${req.url}`;
+
+          let body;
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            body = await new Promise((resolve, reject) => {
+              let data = '';
+              req.on('data', (chunk) => (data += chunk));
+              req.on('end', () => resolve(data));
+              req.on('error', reject);
+            });
+          }
+
+          const request = new Request(url, {
+            method: req.method,
+            headers: { 'content-type': req.headers['content-type'] || 'application/json' },
+            body: body || undefined,
+          });
+
+          const response = await onRequestPost({ request, env });
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        })().catch((error) => {
+          console.error('💥 Chat dev bridge error:', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: error.message }));
+        });
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), dokuProxyPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin()],
+  plugins: [react(), dokuProxyPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin(), chatDevPlugin()],
   base: '/',
   resolve: {
     alias: {

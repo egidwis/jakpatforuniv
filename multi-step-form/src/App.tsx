@@ -18,6 +18,11 @@ import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
 import { ChatPage } from './pages/dashboard/ChatPage';
 import { ProfilePage } from './pages/dashboard/ProfilePage';
+import { FormListPage } from './pages/dashboard/FormListPage';
+import { FormBuilderPage } from './pages/dashboard/FormBuilderPage';
+import { FormResponsesPage } from './pages/dashboard/FormResponsesPage';
+import { PublicFormPage } from './pages/public/PublicFormPage';
+import { getSubdomainUsername } from './utils/subdomain';
 import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
 import { SurveyListingPage } from './pages/public/SurveyListingPage';
 import { SurveyPage } from './pages/public/SurveyPage';
@@ -32,9 +37,34 @@ function ExternalRedirect({ to }: { to: string }) {
   return null;
 }
 
+/**
+ * <Navigate> yang MEMBAWA SERTA query string dan hash.
+ *
+ * `<Navigate to="/x">` polos membuang keduanya. Untuk redirect kosmetik itu
+ * tidak terasa, tapi begitu ada satu saja parameter yang berarti — di sini
+ * `?custom_form_id=` dari CTA "Sebar via Jakpat" — hilangnya sunyi: halaman
+ * tujuan terbuka normal, cuma tanpa prefill.
+ */
+function RedirectPreservingQuery({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
+}
+
 function AppContent() {
   const { t } = useLanguage();
   const location = useLocation();
+
+  // If accessing via custom wildcard subdomain (e.g. budi.jakpatforuniv.com)
+  const subdomainUser = getSubdomainUsername();
+  if (subdomainUser && !location.pathname.startsWith('/dashboard') && !location.pathname.startsWith('/login')) {
+    return (
+      <Routes>
+        <Route path="/f/:formId" element={<PublicFormPage />} />
+        <Route path="/f/:username/:slug" element={<PublicFormPage />} />
+        <Route path="*" element={<PublicFormPage />} />
+      </Routes>
+    );
+  }
 
   // Hide header/footer for internal dashboard
   const isInternalDash = location.pathname === '/internal-dash';
@@ -92,12 +122,25 @@ function AppContent() {
               profil tidak lagi di level route — pindah ke saat pilih metode
               (ProfileCompletionSheet di dalam flow). */}
           <Route path="status" element={<Navigate to="/dashboard" replace />} />
-          <Route path="submit" element={<Navigate to="/dashboard/submit-iklan" replace />} />
+          {/* ⚠️ `replace` SAJA TIDAK CUKUP — query string wajib ikut. CTA "Sebar
+              via Jakpat" mengirim `?custom_form_id=…`, dan <Navigate to="/path">
+              polos MEMBUANGNYA diam-diam: halaman terbuka normal, cuma tanpa
+              prefill, jadi peneliti mengira formnya gagal termuat. Link lama
+              yang sudah beredar tetap lewat sini. */}
+          <Route path="submit" element={<RedirectPreservingQuery to="/dashboard/submit-iklan" />} />
           <Route path="submit-iklan" element={<MultiStepForm />} />
+          <Route path="forms" element={<FormListPage />} />
+          <Route path="forms/new" element={<FormBuilderPage />} />
+          <Route path="forms/:formId/edit" element={<FormBuilderPage />} />
+          <Route path="forms/:formId/responses" element={<FormResponsesPage />} />
           <Route path="chat" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="payment/:submissionId" element={<PaymentCheckoutPage />} />
         </Route>
+
+        {/* Public Standalone Form Route (without footer wrapper) */}
+        <Route path="/f/:formId" element={<PublicFormPage />} />
+        <Route path="/f/:username/:slug" element={<PublicFormPage />} />
 
         {/* Public Routes - Wrapped in Container */}
         <Route path="*" element={
@@ -127,7 +170,6 @@ function AppContent() {
 }
 
 function App() {
-  // Effect to apply theme when app loads
   // Effect to apply theme when app loads
   useEffect(() => {
     // Force light theme

@@ -26,25 +26,12 @@ export function normalizeJakpatId(raw: string): string {
   return raw
     .replace(/\s+/g, '')
     .replace(/^https?:\/\//i, '')
-    .replace(/^jakpat\.net\/s\//i, '')
-    .replace(/^jakpat\./i, '');
+    .replace(/^jakpat\.net\/s\//i, '');
 }
 
 /**
- * Every Jakpat ID we have seen looks like five alphanumeric characters with at
- * least one digit (ks8oh, qt0yt, 50bx0, 0bxr5, 8uvvh, 2fuad, z8wii, vq4c9),
- * while the junk fails one of those two conditions — `indah`, `dimas`, `andra`
- * (five letters, no digit); `lal`, `mon`, `ayu` (too short); `jakpat123` (too
- * long).
- *
- * ⚠️ ADVISORY ONLY — DO NOT PROMOTE THIS TO A HARD BLOCK without evidence.
- * That sample came from duplicate rows only, which is both biased and tiny.
- * Rejecting a real ID is far more damaging than the silent filtering that
- * happens today. Before this is allowed to block a submit:
- *   1. count how many existing page_respondents rows would fail this pattern,
- *   2. confirm the canonical format with Jakpat or the lottery platform,
- *   3. ship it as this soft warning first and watch it,
- *   4. only then consider blocking.
+ * Advisory check for standard Jakpat ID format.
+ * Non-standard formats (such as IDs containing '.', '-', '_') are allowed without warning.
  *
  * @returns a human-readable warning, or null when nothing looks off.
  */
@@ -52,9 +39,11 @@ export function jakpatIdWarning(value: string): string | null {
   const id = normalizeJakpatId(value);
   if (!id) return null;
 
-  if (!/^[a-zA-Z0-9]+$/.test(id)) {
-    return 'Jakpat ID biasanya hanya berisi huruf dan angka. Coba cek lagi.';
+  // Allow '.', '-', '_' or other non-alphanumeric characters without warning
+  if (/[._-]/.test(id)) {
+    return null;
   }
+
   if (id.length !== 5) {
     return 'Jakpat ID biasanya 5 karakter. Coba cek lagi.';
   }

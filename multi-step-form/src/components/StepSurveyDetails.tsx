@@ -60,6 +60,10 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Submission dimulai dari JFU form (CTA "Sebar via Jakpat") — field survey
+  // di-lock karena sumber datanya adalah form JFU itu sendiri.
+  const isJfuImport = Boolean(formData.customFormId);
+
   // Notify parent about header visibility
   useEffect(() => {
     if (onHeaderVisibilityChange) {
@@ -72,7 +76,21 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   // Check if form has data
   const hasFilledData = formData.title || formData.description || formData.questionCount > 0;
 
+  // Lepaskan status "berasal dari JFU form" (customFormId + hasil deteksi AI-nya)
+  // saat user secara eksplisit memilih/beralih metode dari layar pilihan —
+  // tanpa ini, draft lama yang masih menyimpan customFormId akan terus
+  // mengunci field manual walau user sudah kembali ke pilihan awal.
+  const clearJfuOrigin = () => {
+    updateFormData({
+      customFormId: undefined,
+      hasPersonalDataQuestions: undefined,
+      detectedKeywords: undefined,
+      flaggedPersonalDataQuestions: undefined
+    });
+  };
+
   const proceedWithMethod = (method: 'google' | 'manual') => {
+    clearJfuOrigin();
     if (method === 'google') {
       setFlowState('google-form');
       updateFormData({ isManualEntry: false });
@@ -126,6 +144,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
 
   // Handle switch between methods
   const handleSwitchToManual = () => {
+    clearJfuOrigin();
     setFlowState('manual');
     updateFormData({ isManualEntry: true });
   };
@@ -134,12 +153,14 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
     if (hasFilledData) {
       setShowConfirmSwitch(true);
     } else {
+      clearJfuOrigin();
       setFlowState('google-form');
       updateFormData({ isManualEntry: false });
     }
   };
 
   const confirmSwitchToGoogle = () => {
+    clearJfuOrigin();
     // Reset form data
     updateFormData({
       surveyUrl: '',
@@ -223,7 +244,12 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             onSubmit={handleSubmit}
             onBack={handleBackToMethodSelection}
             isGoogleImport={false}
-            onSwitchToGoogle={handleSwitchToGoogle}
+            isJfuImport={isJfuImport}
+            // Tautan "beralih ke Google Form" hidup DI DALAM StepOneFormFields
+            // sejak revamp, jadi menyembunyikannya cukup dengan tidak mengoper
+            // handler-nya. Untuk impor JFU tautan itu memang harus hilang:
+            // beralih metode membuang data yang sudah dikunci dari form JFU.
+            onSwitchToGoogle={isJfuImport ? undefined : handleSwitchToGoogle}
           />
         </AdsFlowCard>
 

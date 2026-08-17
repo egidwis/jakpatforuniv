@@ -264,6 +264,49 @@ baru, dan tiga error lama ikut hilang (termasuk `ui/Dialog.tsx` yang di-*rename*
 `dialog.tsx` supaya cocok dengan 14 import yang semuanya huruf kecil; build Linux dulu
 rawan gagal di sini). Build produksi lolos.
 
+### 00F. ✅ `main` (JFU Form) di-merge ke branch Soft DNA (2026-08-17)
+
+**Insiden yang ditemukan saat menyiapkan merge — order produksi mati 4 hari.**
+`StepCheckout` mulai mengirim `custom_form_id` sejak commit `6c42644`
+(2026-08-13 15:02 WIB) dan ikut ter-deploy, tapi migrasinya tidak pernah dijalankan —
+dari dua migrasi JFU Form hanya `custom_forms` yang diterapkan. PostgREST menolak
+**seluruh** insert (`42703`), jadi setiap order baru gagal dengan toast "gagal menyimpan".
+Order terakhir berhasil 13 Agustus 10.50 WIB; **nol order 14–17 Agustus** (laju sebelumnya
+~5,4/hari). Kolomnya diterapkan & diverifikasi 2026-08-17, dan penomoran migrasinya
+dibereskan di `main` lewat commit `05f921a` (`46`→`56`, `47`→`57`) — dua deret nomor sempat
+tumbuh paralel, dan git **tidak** menganggap itu konflik karena nama filenya berbeda.
+
+**Bentuk merge-nya.** `main` menyentuh 25 file, 19 di antaranya file baru (Form Builder
+berdiri sendiri). Irisannya 8 file, 6 konflik. Seluruh file JFU Form masuk **identik**
+dengan `main` — nol modifikasi.
+
+**Keputusan pemilik produk: flow baru Soft DNA yang menang**, fitur `main` disisipkan ke
+dalamnya. Yang perlu disesuaikan:
+
+| Titik | Penyesuaian |
+|---|---|
+| `StepCheckout` | Konflik besar karena branch kita memindahkan submit ke `submitOrder.ts`. Ambil versi kita; baris `custom_form_id` dipasang di lokasi barunya |
+| Rute `/dashboard/submit` | Branch kita mengalihkannya ke `submit-iklan`, dan `<Navigate>` polos **membuang query string** — `?custom_form_id=` hilang diam-diam, halaman terbuka normal tanpa prefill. Dibuatkan `RedirectPreservingQuery`; CTA "Sebar" juga diarahkan langsung ke rute kanonik |
+| Entry point | `main` menambah "JFU Form" ke **sidebar** yang sudah kita hapus. Dipindahkan ke `AppNav`: item **"The Form"** yang tadinya `<span>` mati berbadge "Soon" kini `<Link>` hidup ke `/dashboard/forms`, badge jadi "Beta", desktop & mobile, dengan state aktif mencakup seluruh prefix `/dashboard/forms` |
+| `StepSurveyDetails` | Gate profil (kita) + `isJfuImport`/`clearJfuOrigin` (main) dipertahankan keduanya. Tautan ganti-metode disembunyikan untuk impor JFU dengan tidak mengoper `onSwitchToGoogle` |
+| `StepOneFormFields` | JSX versi kita dipakai; porting `fieldsReadOnly` (9 titik), spanduk "diisi otomatis", dan blokir keras data pribadi ke gaya kartu kita |
+| `MultiStepForm` | Effect prefill dipertahankan utuh. `setCurrentStep(1)` kebetulan tetap benar — step 1 = `StepSurveyDetails` di kedua flow |
+
+**Nomor step berbeda antar flow** — dicatat supaya tidak menjebak nanti:
+
+| Step | main (lama) | Soft DNA (baru) |
+|---|---|---|
+| 1 | StepSurveyDetails | StepSurveyDetails |
+| 2 | StepSchedule | **StepCheckout** |
+| 3 | StepCheckout | **StepSchedule** |
+
+**Gerbang:** `tsc -b` **37 → 37**, nol error baru (satu error warisan `main` di
+`QuestionLogicBuilder.tsx` sekalian dibereskan); `npm run build` lolos.
+
+⚠️ **Belum diuji di browser.** Yang paling perlu diklik: CTA "Sebar via Jakpat" → prefill →
+lanjut sampai bayar, dan satu order Google Form biasa untuk memastikan `custom_form_id`
+NULL tidak mengganggu.
+
 ### 00E. ✅ Pencarian admin kini menemukan Booking ID jadwal ke-2 dst. (2026-08-17) — nol SQL, frontend saja
 
 **Celahnya:** Booking ID yang dilihat peneliti adalah `ad_schedules.source_id`
