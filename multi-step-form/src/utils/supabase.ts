@@ -909,6 +909,71 @@ export const getAllFormSubmissions = async () => {
   }
 };
 
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const SHORT_ID_RE = /^[0-9a-fA-F]{8}$/;
+
+/**
+ * Rentang uuid yang memuat seluruh nilai berawalan `hex` (8 hex pertama).
+ *
+ * Pembandingnya uuid, bukan teks, jadi HURUF BESAR/KECIL TIDAK BERPENGARUH —
+ * penting karena dashboard peneliti menampilkan Booking ID dalam huruf besar
+ * (`#24D76FD9`) sementara admin menampilkannya huruf kecil. Terverifikasi ke
+ * PostgREST produksi 2026-08-17: kedua bentuk mengembalikan baris yang sama.
+ */
+const uuidPrefixRange = (hex: string): [string, string] => [
+  `${hex}-0000-0000-0000-000000000000`,
+  `${hex}-ffff-ffff-ffff-ffffffffffff`,
+];
+
+/**
+ * Order mana yang Booking ID-nya cocok — lewat cermin `ad_schedules`.
+ *
+ * ⚠️ BOOKING ID PENELITI BUKAN SELALU ID SUBMISSION. Yang tampil di dashboard
+ * peneliti adalah `ad_schedules.source_id` (`SchedulePhase.tsx`), dan kolom itu
+ * berpindah tabel: id `form_submissions` untuk jadwal ke-1, id
+ * `form_submissions_extend` untuk jadwal ke-2 dst. Terukur di produksi
+ * 2026-08-17: dari 13 Booking ID jadwal lanjutan, NOL yang bisa ditemukan lewat
+ * pencocokan `form_submissions.id` saja. Peneliti mengutip kodenya ke support,
+ * admin mengetiknya di kotak pencarian, hasilnya kosong — tanpa error, cuma
+ * "tidak ada hasil", jadi tidak ada yang sadar pencariannya yang salah.
+ *
+ * Satu lookup ke `source_id` menutupi KEDUA bentuk sekaligus, karena baris
+ * ordinal 1 memang punya `source_id = submission_id`.
+ *
+ * Task 11 akan menggantikan ini dengan kolom `booking_id` yang opaque dan abadi;
+ * sampai saat itu, inilah pemetaannya.
+ */
+const submissionIdsForBookingId = async (
+  cleanHex: string,
+  isFullUuid: boolean
+): Promise<string[]> => {
+  let q = supabase.from('ad_schedules').select('submission_id');
+
+  if (isFullUuid) {
+    q = q.eq('source_id', cleanHex);
+  } else {
+    const [lo, hi] = uuidPrefixRange(cleanHex);
+    q = q.gte('source_id', lo).lte('source_id', hi);
+  }
+
+  const { data, error } = await q;
+
+  // Cermin bermasalah tidak boleh MENJATUHKAN pencarian — ia cuma boleh
+  // mengecilkannya kembali ke pencocokan id submission langsung, yaitu persis
+  // perilaku sebelum perbaikan ini.
+  if (error) {
+    console.warn(
+      'Pencarian Booking ID: lookup ad_schedules gagal, jatuh kembali ke id submission saja.',
+      error
+    );
+    return [];
+  }
+
+  return Array.from(
+    new Set((data || []).map((r: any) => r.submission_id).filter(Boolean))
+  );
+};
+
 // Fungsi untuk mendapatkan form submissions dengan pagination
 export const getFormSubmissionsPaginated = async (
   page: number,
@@ -928,22 +993,41 @@ export const getFormSubmissionsPaginated = async (
       .order('created_at', { ascending })
       .range(from, to);
 
-    if (searchQuery) {
-      const cleanHex = searchQuery.replace(/#/g, '').trim();
-      const isShortId = /^[0-9a-fA-F]{8}$/.test(cleanHex);
-      const isFullUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cleanHex);
+    const cleanHex = searchQuery.replace(/#/g, '').trim();
+    const isFullUuid = UUID_RE.test(cleanHex);
+    const isShortId = SHORT_ID_RE.test(cleanHex);
+    const isIdSearch = !!searchQuery && (isFullUuid || isShortId);
 
-      if (isFullUuid) {
+    if (isIdSearch) {
+      const [lo, hi] = uuidPrefixRange(cleanHex);
+      const viaSchedule = await submissionIdsForBookingId(cleanHex, isFullUuid);
+
+      if (viaSchedule.length > 0) {
+        // Cabang langsung TETAP DIPERTAHANKAN di samping hasil cermin: 6 order
+        // belum punya baris `ad_schedules` sama sekali (terukur 2026-08-17), dan
+        // menyerahkan pencarian sepenuhnya ke cermin akan menghilangkan mereka.
+        const direct = isFullUuid ? `id.eq.${cleanHex}` : `and(id.gte.${lo},id.lte.${hi})`;
+        query = query.or(`${direct},id.in.(${viaSchedule.join(',')})`);
+      } else if (isFullUuid) {
         query = query.eq('id', cleanHex);
-      } else if (isShortId) {
-        query = query.gte('id', `${cleanHex}-0000-0000-0000-000000000000`)
-                     .lte('id', `${cleanHex}-ffff-ffff-ffff-ffffffffffff`);
       } else {
-        query = query.or(`title.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`);
+        query = query.gte('id', lo).lte('id', hi);
       }
+    } else if (searchQuery) {
+      query = query.or(`title.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`);
     }
 
-    if (startDate && endDate) {
+    // ⚠️ PENCARIAN ID SENGAJA MELEWATI FILTER BULAN.
+    //
+    // Sebuah id menunjuk tepat satu order, jadi menyaringnya lagi per bulan tidak
+    // menyempitkan apa pun — ia cuma menyembunyikan. Dan yang disembunyikan
+    // hampir semuanya: 985 order tersebar di 16 bulan, cuma 60 di bulan berjalan,
+    // jadi ~94% pencarian id akan kosong hanya karena admin sedang membuka bulan
+    // yang lain. Gagalnya sunyi dan mirip sekali dengan "order tidak ada".
+    //
+    // Pencarian TEKS tetap terikat bulan: di sana bulan memang menyempitkan
+    // sesuatu yang bisa cocok di ratusan baris.
+    if (startDate && endDate && !isIdSearch) {
       query = query.gte('created_at', startDate).lte('created_at', endDate);
     }
 

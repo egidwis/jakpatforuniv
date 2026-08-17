@@ -41,6 +41,16 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 >    `releaseScheduleSlot`, dan penandaan `slot_booked_by='admin'` saat admin memindah jadwal).
 >    Keduanya **sudah dipulihkan**.
 
+> ⚠️ **2026-08-17 — sebagian "Booking ID" Task 11 ditambal lebih awal.** Pencarian admin dulu
+> hanya mencocokkan `form_submissions.id`, padahal Booking ID yang dilihat peneliti adalah
+> `ad_schedules.source_id` — id `form_submissions_extend` untuk jadwal ke-2 dst. Akibatnya
+> **13 dari 13** Booking ID jadwal lanjutan tidak bisa ditemukan admin sama sekali, dan
+> gagalnya sunyi. Pencarian kini menerima kedua bentuk (dan pencarian id melewati filter
+> bulan, karena ~94% order berada di luar bulan berjalan). **Yang TIDAK dikerjakan:**
+> menyamakan id yang *ditampilkan* admin — itu tetap milik
+> [Task 11](2026-08-08-task-11-ad-schedules-otoritatif.md), supaya kodenya tidak berganti dua
+> kali. Detail di "00E" pada [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
+
 ## Daftar rencana
 
 | Rencana | Status | Ringkas |

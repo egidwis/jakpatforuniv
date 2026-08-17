@@ -71,6 +71,34 @@ Dua konsekuensi: bentuk tampilnya sebaiknya **tetap `#XXXXXXXX`** supaya penelit
 merasa sistemnya berganti; dan UUID lama **harus tetap bisa dicari**, karena dukungan akan
 menerima kutipan kode lama selama berbulan-bulan.
 
+> **A-lanjutan (2026-08-17) — admin dan peneliti masih menyebut jadwal ke-2 dengan id
+> BERBEDA. Task 11 yang menyatukannya.**
+>
+> `card.info.id` itu `ad_schedules.source_id`, dan kolom itu berpindah tabel: id
+> `form_submissions` untuk ordinal 1, id `form_submissions_extend` untuk ordinal ≥2. Sisi
+> admin tidak ikut: [`ScheduleAgenda.tsx:102`](../../../multi-step-form/src/pages/dashboard/schedule/ScheduleAgenda.tsx#L102)
+> dan [`ScheduleEntryDrawer.tsx:218`](../../../multi-step-form/src/pages/dashboard/schedule/ScheduleEntryDrawer.tsx#L218)
+> menampilkan `submissionId` untuk **semua** baris satu order. Jadi untuk jadwal lanjutan,
+> peneliti melihat `#E284351B` sementara admin melihat `#078e561b` — dua kode untuk satu
+> jadwal yang sama.
+>
+> **Yang sudah ditambal duluan** (lihat `00E` di `docs/jadwal-iklan-progress.md`): pencarian
+> admin kini menerima kedua bentuk, lewat lookup ke `ad_schedules.source_id`. Itu menutup
+> celah dukungan — 13 dari 13 Booking ID jadwal lanjutan kini ketemu, sebelumnya nol — tapi
+> **tidak** menyatukan apa yang ditampilkan.
+>
+> **Sisanya milik rencana ini,** karena menyamakan tampilan sekarang berarti mengganti kode
+> yang dilihat admin dua kali (sekali ke `source_id`, sekali lagi ke `booking_id`). Saat
+> `booking_id` mendarat, kedua permukaan harus membacanya dari kolom yang sama, dan tiga
+> bentuk lama wajib tetap bisa dicari: id submission, id extend, dan `booking_id` baru.
+>
+> Dua angka yang menghemat penyelidikan nanti:
+>
+> | | |
+> |---|---|
+> | Order tanpa baris `ad_schedules` sama sekali | **6** — cabang pencarian langsung ke `form_submissions.id` tidak boleh dibuang |
+> | Prefiks 8-hex yang ambigu | **0** dari 998 kode — memotong UUID di 8 karakter masih aman pada skala ini |
+
 **B. Halaman iklan itu jendela yang BERPINDAH, bukan milik satu jadwal.**
 `cron_activate_extends()` langkah 2 ([`sql/36:63-73`](../../../multi-step-form/sql/36_open_banner_gate.sql#L63))
 menimpa `publish_start_date`/`publish_end_date`/`current_period_batch` di `survey_pages`

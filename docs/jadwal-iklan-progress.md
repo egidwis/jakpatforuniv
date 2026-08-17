@@ -264,6 +264,58 @@ baru, dan tiga error lama ikut hilang (termasuk `ui/Dialog.tsx` yang di-*rename*
 `dialog.tsx` supaya cocok dengan 14 import yang semuanya huruf kecil; build Linux dulu
 rawan gagal di sini). Build produksi lolos.
 
+### 00E. ✅ Pencarian admin kini menemukan Booking ID jadwal ke-2 dst. (2026-08-17) — nol SQL, frontend saja
+
+**Celahnya:** Booking ID yang dilihat peneliti adalah `ad_schedules.source_id`
+([`SchedulePhase.tsx:624`](../multi-step-form/src/components/status/SchedulePhase.tsx#L624)),
+dan kolom itu **berpindah tabel** — id `form_submissions` untuk jadwal ke-1, id
+`form_submissions_extend` untuk jadwal ke-2 dst. Kotak pencarian admin hanya mencocokkan
+`form_submissions.id`. Terukur di produksi: dari **13** Booking ID jadwal lanjutan, **nol**
+yang bisa ditemukan. Peneliti mengutip kodenya ke support, admin mengetiknya, hasilnya
+kosong — tanpa error, jadi tidak ada yang sadar pencariannya yang salah.
+
+Sisi admin memang menyebut jadwal lanjutan dengan id yang berbeda dari sisi peneliti: agenda
+([`ScheduleAgenda.tsx:102`](../multi-step-form/src/pages/dashboard/schedule/ScheduleAgenda.tsx#L102))
+dan drawer-nya ([`ScheduleEntryDrawer.tsx:218`](../multi-step-form/src/pages/dashboard/schedule/ScheduleEntryDrawer.tsx#L218))
+menampilkan `submissionId` untuk **semua** baris satu order. **Itu sengaja belum disamakan** —
+lihat catatan di rencana Task 11.
+
+**Yang diperbaiki**, seluruhnya di `getFormSubmissionsPaginated`
+([`supabase.ts`](../multi-step-form/src/utils/supabase.ts)):
+
+- Pencarian id kini juga melakukan lookup ke `ad_schedules.source_id` lalu memetakan balik ke
+  `submission_id`. Satu lookup menutupi kedua bentuk sekaligus, karena baris ordinal 1 memang
+  punya `source_id = submission_id`.
+- Pencocokan langsung ke `form_submissions.id` **tetap dipertahankan** di sampingnya: **6
+  order belum punya baris `ad_schedules`** sama sekali, dan menyerahkan pencarian sepenuhnya
+  ke cermin akan menghilangkan mereka.
+- Kegagalan lookup cermin **tidak menjatuhkan pencarian** — ia mengecil kembali ke perilaku
+  lama dan menulis `console.warn`.
+
+**Perubahan perilaku yang disengaja:** pencarian **id** kini melewati filter bulan.
+Sebuah id menunjuk tepat satu order, jadi menyaringnya lagi per bulan tidak menyempitkan
+apa pun — ia cuma menyembunyikan, dan menyembunyikan hampir semuanya: 985 order tersebar di
+16 bulan, cuma 60 di bulan berjalan, jadi **~94% pencarian id akan kosong** hanya karena
+admin sedang membuka bulan lain. Tanpa ini perbaikan di atas nyaris tak terasa. Pencarian
+**teks** tetap terikat bulan.
+
+**Verifikasi:**
+
+| | |
+|---|---|
+| 13 Booking ID jadwal lanjutan | **13/13** memetakan ke tepat satu order yang benar (sebelumnya 0) |
+| Ambiguitas prefiks 8-hex | **998 kode, 0 ambigu** — tidak ada kode yang menunjuk >1 order |
+| Sintaks PostgREST | `and()` bersarang di `or=()`, rentang prefiks uuid, dan input HURUF BESAR diuji langsung ke server produksi |
+| `tsc -b` | 37 error sebelum, **37 sesudah** — nol error baru, nol hilang |
+| `npm run build` | lolos |
+
+⚠️ **Belum diuji di browser.** Yang dikerjakan baru typecheck, build, dan simulasi SQL atas
+data produksi.
+
+**Belum dikerjakan (sadar, bukan lupa):** papan Schedule masih mencari judul + nama peneliti
+saja, tanpa id sama sekali
+([`ScheduleBoardPage.tsx:154`](../multi-step-form/src/pages/dashboard/ScheduleBoardPage.tsx#L154)).
+
 ### 00C. ✅ Iklan auto-publish tak lagi tenggelam ke bawah list (2026-08-13) — `sql/55` diterapkan & terverifikasi di prod
 
 **Nol perubahan frontend.** `ensure_survey_page()` (Phase 1, `sql/40`/`42`) sengaja menyetel
