@@ -214,6 +214,56 @@ disalin lagi.**
 
 ## Langkah 2 — uang jadwal jadi agregat invoice
 
+### ⚠️ Prototipe 2026-08-17 — sudah pernah dibuat, lalu SENGAJA dikembalikan
+
+Sebagian langkah ini tidak sengaja ikut terbawa revamp visual dashboard dan sempat hidup di
+working tree `feat/dashboard-soft-dna-navbar`. Ia **dikembalikan ke bentuk lama sebelum
+commit** supaya pekerjaannya tidak dilakukan dua kali dan supaya versi yang benar lahir di
+atas `schedule_id`. Yang berikut ini adalah hasil belajar dari prototipe itu — pakai, jangan
+mulai dari nol.
+
+**Kenapa dikembalikan, dengan angka.** Prototipe membaca `transactions` + `invoices`,
+mendeduplikasi per `payment_id`, lalu menjadikannya `invoices[]` dengan
+`amount = Σ semua invoice`. Di data produksi hari ini itu **salah menghitung uang**, karena
+tanpa `schedule_id` beberapa baris untuk satu jadwal adalah **percobaan bayar berulang**,
+bukan tagihan terpisah. Hasil query produksi 2026-08-17:
+
+| | |
+|---|---|
+| sumber (`sourceId`) dengan >1 baris invoice | **82** |
+| di antaranya: tepat 1 lunas, tapi Σ > yang benar-benar dibayar | **33** |
+| sumber dengan >1 baris lunas | 17 |
+
+Contoh nyata (bukan data `sim_`): order `58f4e837` dibayar **Rp 1.150.000**, kartunya
+menampilkan **Rp 3.450.000** (3 baris). Kasus terburuk: satu jadwal dengan 29 percobaan
+Rp 350.000 tampil **Rp 10.150.000**.
+
+**Inilah bukti bahwa prasyarat `schedule_id` bukan formalitas.** Selama penautan masih lewat
+`entity_type`/`extend_id`, "beberapa baris" dan "beberapa tagihan" tidak bisa dibedakan.
+`schedule_billing()` (Langkah 1c) harus memisahkan keduanya secara eksplisit: percobaan bayar
+berbagi `payment_id`, tagihan tidak.
+
+**Yang layak dipungut dari prototipe** (murni presentasi, tidak bergantung skema — hasilnya
+harus minimal setara ini):
+
+- Header seksi `Tagihan & Pembayaran` dengan **cacah** di sampingnya saat >1.
+- Satu **baris per invoice** di dalam satu kontainer ber-`divide-y`, diberi nomor `#1`, `#2`
+  saat >1 — bukan satu banner yang melipat semuanya.
+- Baris lunas: `payment_id`, pil hijau **Lunas**, nominal, tautan **Kuitansi** ke
+  `/invoices/:paymentId` (route ini sudah ada).
+- Baris belum lunas: `payment_id` sebagai tautan invoice, tombol salin **link bayar**,
+  garis batas bayar (`14.00 WIB`, dari `paymentCutoffInstant`), tombol **Tandai Lunas**
+  per baris.
+- Lewat batas bayar: `payment_id` di-*strikethrough* + diredupkan, nominal dicoret, dan
+  aksi bayar disembunyikan — bukan dihapus dari daftar.
+- Tombol **Buat Tagihan Baru** di header seksi (ini yang jadi "Tagih Susulan" di rencana ini,
+  dengan penjaga `openInvoice === null`).
+
+Bentuk yang dikembalikan (satu pembayaran per jadwal) memakai nama `PaymentSection` di
+[`ScheduleCardList.tsx`](../../../multi-step-form/src/components/submissions/tabs/ScheduleCardList.tsx)
+dan memuat komentar penjaga yang menjelaskan kenapa ia BUKAN daftar. Ganti komponen itu di
+langkah ini, dan hapus komentarnya bersamaan.
+
 ### `supabase.ts` — `fetchSchedulePayments` dibongkar
 
 [`supabase.ts:2151-2216`](../../../multi-step-form/src/utils/supabase.ts#L2151). `SchedulePayment`

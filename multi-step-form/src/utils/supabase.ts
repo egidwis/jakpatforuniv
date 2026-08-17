@@ -858,14 +858,23 @@ export const updateSubmissionCriteria = async (id: string, criteria: string, pri
   }
 };
 
+/**
+ * ⚠️ KIRIM HANYA KOLOM YANG BENAR-BENAR DIUBAH.
+ *
+ * Keempat kolom ini disunting dari DUA sisi: admin lewat tab Info, peneliti
+ * lewat "Ganti link" di dashboard-nya. Mengirim keempatnya padahal cuma satu
+ * yang berubah membuat salinan lokal yang basi menimpa suntingan pihak lain —
+ * dan `question_count`/`duration` adalah masukan harga, jadi yang tertimpa
+ * bukan sekadar teks.
+ */
 export const updateFormDetails = async (
   id: string,
-  updates: {
+  updates: Partial<{
     title: string;
     survey_url: string;
     question_count: number;
     duration: number;
-  }
+  }>
 ) => {
   try {
     const { data, error } = await supabase
@@ -2196,6 +2205,7 @@ export interface AdScheduleEntry {
   slotReservedAt: string | null;
   title: string;
   researcherName: string;
+  university: string | null;
   /** created_at ORDER-nya, bukan baris jadwalnya — dipakai deep-link ke drawer. */
   submissionCreatedAt: string;
   /**
@@ -2302,7 +2312,7 @@ export const fetchAdSchedules = async (
       total_cost, subtotal, ppn_amount, voucher_code,
       prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
       slot_booked_by, slot_reserved_at, created_at,
-      form_submissions!ad_schedules_submission_id_fkey ( title, full_name, created_at )
+      form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
     `, { count: 'exact' });
 
   // Dipakai tiga permukaan: papan admin (tanpa argumen, semuanya), drawer order
@@ -2406,6 +2416,7 @@ export const fetchAdSchedules = async (
       slotReservedAt: row.slot_reserved_at,
       title: row.form_submissions?.title || 'Untitled',
       researcherName: row.form_submissions?.full_name || 'Unknown',
+      university: row.form_submissions?.university || null,
       submissionCreatedAt: row.form_submissions?.created_at || new Date().toISOString(),
       createdAt: row.created_at || null,
       pageStatus,
@@ -2446,6 +2457,15 @@ export interface SchedulePayment {
  *
  * Task 11 akan menggantikan pencocokan ini dengan kolom `schedule_id` yang
  * eksplisit; sampai saat itu bentuk lama inilah satu-satunya penautnya.
+ *
+ * ⚠️ SATU PEMBAYARAN PER JADWAL — JANGAN DIJADIKAN DAFTAR SEBELUM TASK 11.
+ * Beberapa baris untuk satu `sourceId` di data hari ini adalah PERCOBAAN BAYAR
+ * BERULANG, bukan tagihan terpisah: 82 sumber punya >1 baris, dan pada 33 di
+ * antaranya menjumlahkan `amount` melebihi yang benar-benar dibayar (satu order
+ * nyata: lunas Rp 1.150.000, jumlah semua baris Rp 3.450.000). Karena itu
+ * `amount` di sini adalah nilai transaksi TERBARU dan `attempts` hanya
+ * mencacah percobaan. Rancangan multi-invoice per jadwal ada di rencana
+ * Task 13 dan butuh `schedule_id` dari Task 11 lebih dulu.
  */
 export const fetchSchedulePayments = async (
   submissionId: string,

@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import {
-  AlertTriangle, CalendarClock, Check, ChevronDown, Copy, CreditCard, ExternalLink,
+  AlertTriangle, CalendarClock, CalendarPlus, Check, ChevronDown, Copy, CreditCard, ExternalLink,
   FileText, Sparkles, Trash2, Zap,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
-import { Chip } from '../../ui/chip';
+import { Skeleton } from '../../ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { AdScheduleEntry, SchedulePayment } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
@@ -12,7 +12,7 @@ import { copyToClipboard } from '../types';
 import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
 // Derivasi chip diimpor, TIDAK disalin. Papan Schedule dan drawer ini harus
 // menamai keadaan yang sama dengan nama yang sama.
-import { chipKindOf, holdStateOf, isUnscheduled, tokenForChip, formatWibShort } from '@/pages/dashboard/schedule/scheduleModel';
+import { holdStateOf, isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { deriveScheduleMoney } from './scheduleMoney';
 
 // ─────────────────────────────────────────────────────────────
@@ -32,12 +32,20 @@ import { deriveScheduleMoney } from './scheduleMoney';
 type CardState = 'cancelled' | 'choose_schedule' | 'awaiting_invoice' | 'waiting_payment' | 'paid';
 
 function cardStateOf(entry: AdScheduleEntry, payment: SchedulePayment | undefined): CardState {
-  const kind = chipKindOf(entry);
-  if (kind === 'rejected' || kind === 'spam') return 'cancelled';
-  if (payment?.hasEverPaid || ['paid', 'completed'].includes(entry.paymentStatus || '')) return 'paid';
-  if (isUnscheduled(entry)) return 'choose_schedule';
-  if (!payment) return 'awaiting_invoice';
-  return 'waiting_payment';
+  if (entry.reviewStatus === 'rejected' || entry.reviewStatus === 'spam' || entry.status === 'cancelled') {
+    return 'cancelled';
+  }
+  if (isUnscheduled(entry)) {
+    return 'choose_schedule';
+  }
+  const isPaid = payment?.hasEverPaid || ['paid', 'completed'].includes(entry.paymentStatus || '') || ['paid', 'completed'].includes(entry.status || '');
+  if (isPaid) {
+    return 'paid';
+  }
+  if (payment?.paymentId || payment?.paymentUrl) {
+    return 'waiting_payment';
+  }
+  return 'awaiting_invoice';
 }
 
 /**
@@ -49,32 +57,53 @@ function cardStateOf(entry: AdScheduleEntry, payment: SchedulePayment | undefine
  * drawer tidak bisa menyimpang. Ia sudah memagari keluar `in_review`/`requested`
  * yang memilih tanggal saat checkout tanpa pernah memesan apa pun.
  */
-function needsBilling(entry: AdScheduleEntry, now: number = Date.now()): boolean {
-  return holdStateOf(entry, now) === 'lapsed';
+function needsBilling(e: AdScheduleEntry): boolean {
+  return holdStateOf(e, Date.now()) === 'lapsed';
 }
 
 /** Jadwal yang masih menunggu tindakan admin — inilah yang dibuka duluan. */
-function needsWork(entry: AdScheduleEntry, payment: SchedulePayment | undefined): boolean {
-  const state = cardStateOf(entry, payment);
+function needsWork(e: AdScheduleEntry, p: SchedulePayment | undefined): boolean {
+  const state = cardStateOf(e, p);
   return state === 'choose_schedule' || state === 'awaiting_invoice' || state === 'waiting_payment';
 }
 
 /**
- * Yang terbuka default adalah yang PALING BUTUH DIKERJAKAN, bukan yang sedang
- * tayang. Sengaja berbeda dari `pickDefaultExpandedKey()` di dashboard user:
- * peneliti membuka layar untuk melihat surveinya berjalan, admin membukanya
- * untuk mencari apa yang macet.
+ * Kartu mana yang default terbuka saat drawer pertama kali dibuka.
+ *
+ * Logikanya mengikuti kartu di agenda: kalau order berjadwal satu, kartu itu
+ * langsung terbuka; kalau berjadwal banyak, kartu PERTAMA YANG BUTUH TINDAKAN
+ * (belum dijadwalkan, belum ditagih, atau belum dibayar) yang terbuka. Kalau
+ * semua sudah beres (misal order lama yang lunas semua), kartu pertama yang
+ * terbuka. Admin tidak perlu klik-klik ekstra pada 90% kasus harian, tapi tetap
+ * punya kendali untuk mencari apa yang macet.
  */
 function pickDefaultOpen(entries: AdScheduleEntry[], payments: Map<string, SchedulePayment>): string | null {
   if (entries.length <= 1) return entries[0]?.id ?? null;
   return entries.find((e) => needsWork(e, payments.get(e.id)))?.id ?? null;
 }
 
-function dateRangeOf(e: AdScheduleEntry): string {
-  if (isUnscheduled(e)) return 'Belum dijadwalkan';
-  const start = formatWibShort(e.startDate!);
-  const end = e.endDate ? formatWibShort(e.endDate) : null;
-  return end && end !== start ? `${start} – ${end}` : start;
+function ScheduleDateTitle({ entry }: { entry: AdScheduleEntry }) {
+  if (isUnscheduled(entry)) return <>Belum dijadwalkan</>;
+  const startDay = formatWibShort(entry.startDate!);
+  const startTime = `${formatWibTime(entry.startDate!)} WIB`;
+
+  const endDay = entry.endDate ? formatWibShort(entry.endDate) : null;
+  const endTime = entry.endDate ? `${formatWibTime(entry.endDate)} WIB` : null;
+
+  const hasDistinctEnd = endDay && `${endDay}, ${endTime}` !== `${startDay}, ${startTime}`;
+
+  return (
+    <>
+      <span>{startDay}, </span>
+      <span className="font-normal text-slate-400">{startTime}</span>
+      {hasDistinctEnd && (
+        <>
+          <span> – {endDay}, </span>
+          <span className="font-normal text-slate-400">{endTime}</span>
+        </>
+      )}
+    </>
+  );
 }
 
 interface CardActions {
@@ -83,11 +112,21 @@ interface CardActions {
   onMarkPaid: (() => void) | null;
   /** null = jadwal ini tidak boleh dibatalkan dari sini. */
   onCancel: ((entry: AdScheduleEntry) => void) | null;
-  /** "Hapus dari list" — lepaskan slot jadwal yang batas bayarnya sudah lewat. */
+  /** "Lepaskan Slot" — lepaskan slot jadwal jika belum dibayar. */
   onReleaseSlot: ((entry: AdScheduleEntry) => void) | null;
 }
 
-function PaymentBanner({
+/**
+ * Tagihan & pembayaran untuk SATU jadwal.
+ *
+ * ⚠️ SATU TAGIHAN, BUKAN DAFTAR. `SchedulePayment` sengaja memuat satu
+ * pembayaran per jadwal: sebelum `schedule_id` (Task 11) ada, beberapa baris
+ * `transactions` untuk satu jadwal adalah PERCOBAAN BAYAR BERULANG, bukan
+ * tagihan terpisah — merendernya sebagai daftar akan menjumlahkan ulang uang
+ * yang sama. Tampilan multi-invoice yang sebenarnya adalah pekerjaan Task 13;
+ * rancangannya sudah dicatat di rencana itu.
+ */
+function PaymentSection({
   entry, payment, state, actions,
 }: {
   entry: AdScheduleEntry;
@@ -95,100 +134,239 @@ function PaymentBanner({
   state: CardState;
   actions: CardActions;
 }) {
-  // Sejak jadwal & tagihan pindah ke sub-tampilan drawer, setiap aksi berlingkup
-  // SATU jadwal — jadi tidak ada lagi pagar ordinal di sini. Pagar lamanya ada
-  // semata karena SchedulePaymentView selalu menyunting jadwal pertama.
-  //
-  // ⚠️ PEMBAGIAN PERANNYA: banner menjelaskan KEADAAN dan hanya memuat aksi yang
-  // khas keadaan itu (tandai lunas, salin link bayar, kuitansi). Dua aksi tetap —
-  // "Jadwalkan ulang" dan "Buat tagihan" — hidup di baris aksi di dasar kartu,
-  // SATU tempat saja. Sempat ada di kedua tempat, dan admin jadi harus menebak
-  // tombol mana yang benar.
-  if (state === 'cancelled') return null;
-
-  if (state === 'paid') {
+  if (state === 'cancelled') {
+    const isSpamOrRejected = entry.reviewStatus === 'spam' || entry.reviewStatus === 'rejected';
     return (
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium text-emerald-800 inline-flex items-center gap-1.5">
-          <Check className="w-3.5 h-3.5" /> Lunas
-          {payment && payment.attempts > 1 && (
-            <span className="font-normal text-emerald-600">· {payment.attempts} percobaan bayar</span>
-          )}
-        </span>
-        {payment?.paymentId && (
-          <a
-            href={`/invoices/${payment.paymentId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] font-medium text-emerald-700 hover:underline inline-flex items-center gap-1 shrink-0"
-          >
-            <FileText className="w-3 h-3" /> Kuitansi <ExternalLink className="w-2.5 h-2.5" />
-          </a>
-        )}
+      <div className="rounded-lg border border-slate-200 bg-slate-100/90 px-3 py-2.5 text-xs text-slate-600 space-y-1">
+        <p className="font-semibold text-slate-700">
+          {isSpamOrRejected
+            ? `Submission berstatus ${entry.reviewStatus === 'spam' ? 'Spam' : 'Ditolak'}`
+            : 'Jadwal telah dibatalkan'}
+        </p>
+        <p className="text-[11px] text-slate-500 leading-snug">
+          {isSpamOrRejected
+            ? 'Jadwal dinonaktifkan. Silakan ubah status review menjadi Approved di tab Review jika ingin mengaktifkan kembali penjadwalan.'
+            : 'Jadwal ini telah dibatalkan dari sistem.'}
+        </p>
       </div>
     );
   }
 
   if (state === 'choose_schedule') {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
-        <p className="text-[11px] text-amber-900 inline-flex items-center gap-1.5">
-          <CalendarClock className="w-3.5 h-3.5 shrink-0" /> Slot belum dipilih.
+      <div className="rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2.5 space-y-2">
+        <p className="text-[11px] text-sky-900 leading-snug font-medium">
+          Jadwal belum ditentukan. Pilih tanggal tayang untuk memesan slot kuota.
         </p>
+        <Button size="sm" className="w-full h-7 text-[11px] bg-sky-600 hover:bg-sky-700 text-white font-medium" onClick={() => actions.onEditSchedule(entry)}>
+          <CalendarClock className="w-3 h-3 mr-1.5" /> Pilih jadwal tayang
+        </Button>
       </div>
     );
   }
 
-  if (state === 'awaiting_invoice') {
-    return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 space-y-2">
-        <p className="text-[11px] text-slate-600 inline-flex items-center gap-1.5">
-          <CreditCard className="w-3.5 h-3.5 shrink-0" /> Belum ada tagihan untuk jadwal ini.
-        </p>
-        {actions.onMarkPaid && (
-          <Button size="sm" className="w-full h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white" onClick={actions.onMarkPaid}>
-            <Check className="w-3 h-3 mr-1.5" /> Tandai Lunas
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  // waiting_payment — batas bayar 14.00 WIB pada hari tayang (airing-window.ts)
   const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
-  const isLate = ymd ? isPaymentTooLateForDate(ymd) : false;
+  const isLate = !payment?.hasEverPaid && state !== 'paid' && ymd ? isPaymentTooLateForDate(ymd) : false;
   const cutoff = ymd ? paymentCutoffInstant(ymd) : null;
 
-  return (
-    <div className={cn('rounded-lg border px-3 py-2.5 space-y-2', isLate ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60')}>
-      <p className={cn('text-[11px] inline-flex items-center gap-1.5', isLate ? 'text-red-800' : 'text-amber-900')}>
-        <CreditCard className="w-3.5 h-3.5 shrink-0" />
-        {isLate ? (
-          <span><strong>Batas bayar terlewat</strong> — 14.00 WIB pada hari tayang.</span>
-        ) : cutoff ? (
-          <span>
-            Batas bayar <strong>14.00 WIB, {formatWibShort(cutoff.toISOString())}</strong>
+  // ⚠️ CABANG LUNAS WAJIB DI ATAS CABANG "BELUM ADA TAGIHAN", JANGAN DIBALIK.
+  // Sebagian order dibayar di luar sistem dan tidak pernah punya baris
+  // `transactions` (lihat memo payment-status-not-proof-of-payment). Kalau
+  // urutannya terbalik, jadwal yang sudah lunas malah menampilkan ajakan
+  // "Terbitkan tagihan" lengkap dengan tombolnya.
+  if (state === 'paid') {
+    return (
+      <div className="space-y-2 pt-1 border-t border-slate-200">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-bold text-slate-700 inline-flex items-center gap-1.5">
+            <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+            Tagihan &amp; Pembayaran
           </span>
-        ) : (
-          <span>Menunggu pembayaran.</span>
+          {payment && payment.attempts > 1 && (
+            <span className="text-[10px] font-medium text-slate-400" title="Jumlah percobaan bayar untuk jadwal ini">
+              {payment.attempts} percobaan bayar
+            </span>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+          <div className="p-2.5 flex items-center justify-between gap-3 bg-slate-50/40">
+            <div className="min-w-0 flex-1 space-y-1">
+              {payment?.paymentId && (
+                <span className="text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 truncate">
+                  <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="truncate">{payment.paymentId}</span>
+                </span>
+              )}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
+                  <Check className="w-3.5 h-3.5" /> Lunas
+                </span>
+                {!payment && (
+                  <span className="text-[10px] text-slate-400">tanpa catatan tagihan di sistem</span>
+                )}
+              </div>
+            </div>
+
+            <div className="text-right shrink-0 space-y-1">
+              {payment && payment.amount > 0 && (
+                <div className="text-xs font-bold text-slate-900 tabular-nums">
+                  {formatIDR(payment.amount)}
+                </div>
+              )}
+              {payment?.paymentId && (
+                <a
+                  href={`/invoices/${payment.paymentId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-emerald-700 hover:underline inline-flex items-center gap-1"
+                >
+                  Kuitansi <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Belum ada tagihan sama sekali untuk jadwal ini.
+  if (!payment?.paymentId && !payment?.paymentUrl) {
+    return (
+      <div className="space-y-2 pt-1 border-t border-slate-200">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-bold text-slate-700 inline-flex items-center gap-1.5">
+            <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+            Tagihan &amp; Pembayaran
+          </span>
+        </div>
+        <div className={cn(
+          "rounded-lg border px-3 py-2.5 space-y-2",
+          isLate ? "border-red-200 bg-red-50/60" : "border-amber-200 bg-amber-50/60"
+        )}>
+          <p className={cn("text-[11px] leading-snug", isLate ? "text-red-900" : "text-amber-900")}>
+            {isLate
+              ? 'Batas waktu pembayaran untuk slot ini sudah terlewat. Silakan buat jadwal baru.'
+              : 'Slot tayang sudah dipesan. Terbitkan tagihan supaya peneliti bisa membayar.'}
+          </p>
+          {!isLate && (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="flex-1 h-7 text-[11px] bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={() => actions.onCreateInvoice(entry)}
+              >
+                <CreditCard className="w-3 h-3 mr-1.5" /> Buat Tagihan
+              </Button>
+              {actions.onMarkPaid && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px] text-emerald-700 hover:bg-emerald-50 border-emerald-300 bg-white"
+                  onClick={actions.onMarkPaid}
+                >
+                  <Check className="w-3 h-3 mr-1.5" /> Tandai Lunas
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const paymentId = payment.paymentId;
+  const invoiceUrl = paymentId ? `/invoices/${paymentId}` : null;
+
+  return (
+    <div className="space-y-2 pt-1 border-t border-slate-200">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold text-slate-700 inline-flex items-center gap-1.5">
+          <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+          Tagihan &amp; Pembayaran
+        </span>
+        {payment.attempts > 1 && (
+          <span className="text-[10px] font-medium text-slate-400" title="Jumlah percobaan bayar untuk jadwal ini">
+            {payment.attempts} percobaan bayar
+          </span>
         )}
-      </p>
-      <div className="flex gap-2">
-        {payment?.paymentUrl && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="flex-1 h-7 text-[11px] bg-white"
-            onClick={() => copyToClipboard(payment.paymentUrl!, 'Payment link copied!')}
-          >
-            <Copy className="w-3 h-3 mr-1.5" /> Salin link bayar
-          </Button>
-        )}
-        {actions.onMarkPaid && (
-          <Button size="sm" className="flex-1 h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white" onClick={actions.onMarkPaid}>
-            <Check className="w-3 h-3 mr-1.5" /> Tandai Lunas
-          </Button>
-        )}
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+        <div className={cn(
+          "p-2.5 flex items-center justify-between gap-3",
+          isLate ? "bg-slate-50/80" : "bg-white"
+        )}>
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {isLate ? (
+                <span
+                  className="text-xs font-semibold text-slate-400 inline-flex items-center gap-1 truncate cursor-not-allowed"
+                  title="Batas bayar terlewat — invoice sudah tidak berlaku"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span className="truncate line-through opacity-70">{paymentId}</span>
+                </span>
+              ) : (
+                <>
+                  {invoiceUrl && (
+                    <a
+                      href={invoiceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1 truncate"
+                      title="Buka halaman invoice"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      <span className="truncate">{paymentId}</span>
+                      <ExternalLink className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+                    </a>
+                  )}
+
+                  {payment.paymentUrl && (
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(payment.paymentUrl!, 'Link bayar berhasil disalin!')}
+                      className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      title="Salin link bayar"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="text-[10px] text-slate-500">
+              {isLate ? (
+                <span className="font-semibold text-red-600">Batas bayar terlewat</span>
+              ) : cutoff ? (
+                <span>Batas: <strong className="font-semibold text-slate-700">{formatWibShort(cutoff.toISOString())}</strong></span>
+              ) : (
+                <span className="text-amber-700 font-medium">Menunggu pembayaran</span>
+              )}
+            </div>
+          </div>
+
+          <div className="text-right shrink-0 space-y-1">
+            <div className={cn(
+              "text-xs font-bold tabular-nums",
+              isLate ? "text-slate-400 line-through" : "text-slate-900"
+            )}>
+              {formatIDR(payment.amount)}
+            </div>
+            {actions.onMarkPaid && !isLate && (
+              <Button
+                size="sm"
+                className="h-6 px-2 text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={actions.onMarkPaid}
+              >
+                <Check className="w-3 h-3 mr-1" /> Tandai Lunas
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -199,23 +377,31 @@ function ScheduleCard({
 }: {
   entry: AdScheduleEntry;
   payment: SchedulePayment | undefined;
-  submission: { questionCount?: number | null; distribution_type?: string | null };
+  submission: {
+    questionCount?: number | null;
+    question_count?: number | null;
+    distribution_type?: string | null;
+    distributionType?: string | null;
+  };
   isOpen: boolean;
   isOnly: boolean;
   onToggle: () => void;
   actions: CardActions;
 }) {
-  const token = tokenForChip(chipKindOf(entry));
   const money = deriveScheduleMoney(entry, submission);
   const state = cardStateOf(entry, payment);
   const isKilat = entry.distributionType === 'kilat';
+  const isBookedByUser = entry.slotBookedBy?.toLowerCase() === 'user' || entry.slotBookedBy?.toLowerCase() === 'customer';
+  const actor = isBookedByUser ? 'Customer' : 'Admin';
+  const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
+  const isLate = !payment?.hasEverPaid && state !== 'paid' && ymd ? isPaymentTooLateForDate(ymd) : false;
 
   const summary = (
     <div className="min-w-0 flex-1 space-y-1">
       <div className="flex items-center gap-2 flex-wrap">
         {!isOnly && <span className="text-xs font-bold text-slate-400 tabular-nums shrink-0">#{entry.ordinal}</span>}
         <span className="text-sm font-semibold text-slate-900">
-          {dateRangeOf(entry)}
+          <ScheduleDateTitle entry={entry} />
           {entry.duration ? <span className="font-normal text-slate-500"> · {entry.duration} hari</span> : null}
         </span>
         {isKilat && entry.kilatSlotHour != null && (
@@ -236,11 +422,9 @@ function ScheduleCard({
         )}
       </div>
       <div className="flex items-center gap-2 text-xs flex-wrap">
-        <Chip variant={token.variant} size="sm" dot={token.dot} pulse={token.pulse}>{token.label}</Chip>
-        {/* Slotnya MASIH ditahan — yang lewat cuma batas bayarnya. Badge ini
-            ada supaya keadaan itu terbaca tanpa membuka kartu; sebelumnya ia
-            cuma hidup di dalam banner, dan di papan Schedule barisnya malah
-            disembunyikan secara default. */}
+        <span className="text-slate-500 font-medium">
+          Reserved by <strong className="font-bold text-slate-700">{actor}</strong>
+        </span>
         {needsBilling(entry) && (
           <span
             className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1"
@@ -249,21 +433,12 @@ function ScheduleCard({
             <AlertTriangle className="w-2.5 h-2.5" /> perlu ditagih
           </span>
         )}
-        <span className="text-slate-600">
-          {formatIDR(money.total)}
-          {money.isEstimate && <span className="text-slate-400"> · estimasi</span>}
-        </span>
-        <span className={state === 'paid' ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>
-          {state === 'paid' ? 'lunas' : entry.paymentStatus === 'failed' ? 'gagal' : 'belum dibayar'}
-        </span>
       </div>
     </div>
   );
 
   const details = (
     <div className="border-t border-slate-100 px-3 py-2.5 space-y-2.5 bg-slate-50/50">
-      <PaymentBanner entry={entry} payment={payment} state={state} actions={actions} />
-
       {money.lines ? (
         <div className="space-y-1 text-xs">
           {money.lines.map((line, i) => (
@@ -279,7 +454,7 @@ function ScheduleCard({
             </div>
           ))}
           <div className="flex justify-between gap-3 pt-1 border-t border-slate-200">
-            <span className="font-medium text-slate-600">{money.isEstimate ? 'Estimasi' : 'Ditagih'}</span>
+            <span className="font-bold text-slate-900">{money.isEstimate ? 'Estimasi Total' : 'Total Penagihan'}</span>
             <span className="font-bold text-blue-600 tabular-nums">{formatIDR(money.total)}</span>
           </div>
         </div>
@@ -287,69 +462,44 @@ function ScheduleCard({
         <p className="text-[11px] text-slate-400 italic">{money.note}</p>
       )}
 
-      {(payment?.paymentId || entry.slotBookedBy || entry.voucherCode) && (
-        <div className="grid grid-cols-[auto_1fr] [display:grid] gap-x-3 gap-y-1 text-[11px] pt-1 border-t border-slate-200">
-          {payment?.paymentId && state !== 'paid' && (
-            <>
-              <span className="text-slate-400">Tagihan</span>
-              <a
-                href={`/invoices/${payment.paymentId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-blue-600 hover:underline inline-flex items-center gap-1 truncate"
-              >
-                <FileText className="w-3 h-3 shrink-0" />
-                <span className="truncate">{payment.paymentId}</span>
-                <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-              </a>
-            </>
-          )}
-          {entry.slotBookedBy && (
-            <>
-              <span className="text-slate-400">Dipesan</span>
-              <span className="font-medium text-slate-700 capitalize">{entry.slotBookedBy}</span>
-            </>
-          )}
-          {entry.voucherCode && (
-            <>
-              <span className="text-slate-400">Voucher</span>
-              <span className="font-mono text-slate-700">{entry.voucherCode}</span>
-            </>
-          )}
-        </div>
-      )}
+      <PaymentSection entry={entry} payment={payment} state={state} actions={actions} />
 
-      {/* Aksi jadwal — berlaku untuk SEMUA ordinal sejak keduanya jadi
-          sub-tampilan drawer yang berlingkup satu jadwal. */}
+      {/* Aksi jadwal: Ganti Jadwal / Buat Jadwal Baru di kiri, Lepaskan Slot di kanan (hanya jika belum bayar) */}
       {state !== 'cancelled' && (
-        <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-200">
+        <div className="flex items-center gap-2 pt-1 border-t border-slate-200">
           <Button
             size="sm"
-            variant="outline"
-            className="flex-1 h-7 text-[11px] bg-white"
+            variant={isLate ? 'default' : 'outline'}
+            className={cn(
+              'flex-1 h-7 text-[11px] font-medium transition-colors shadow-none',
+              isLate
+                ? 'bg-blue-600 hover:bg-blue-700 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300'
+            )}
             onClick={() => actions.onEditSchedule(entry)}
           >
-            <CalendarClock className="w-3 h-3 mr-1.5" />
-            {isUnscheduled(entry) ? 'Pilih jadwal' : 'Jadwalkan ulang'}
+            <CalendarClock className={cn('w-3 h-3 mr-1.5', isLate ? 'text-white' : 'text-slate-400')} />
+            {isLate ? 'Buat Jadwal Baru' : isUnscheduled(entry) ? 'Pilih Jadwal' : 'Ganti Jadwal'}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="flex-1 h-7 text-[11px] bg-white"
-            onClick={() => actions.onCreateInvoice(entry)}
-          >
-            <CreditCard className="w-3 h-3 mr-1.5" /> Buat tagihan
-          </Button>
-          {/* ⚠️ Syarat pembatalan SENGAJA sama persis dengan tombol lama di
-              ExtendSection: hanya jadwal perpanjangan, hanya selama belum ada
-              tagihan yang menempel. Melonggarkannya berarti menyelundupkan
-              kemampuan baru ke dalam pemindahan permukaan — itu Task 13. */}
-          {actions.onCancel && entry.isExtension && !payment && (
+
+          {actions.onReleaseSlot && !payment?.hasEverPaid && state !== 'paid' && (
             <Button
               size="sm"
               variant="outline"
-              className="h-7 w-7 p-0 shrink-0 bg-white text-slate-400 hover:text-red-600 hover:border-red-200"
-              title="Batalkan jadwal ini"
+              className="h-7 px-2.5 text-[11px] font-medium text-red-600 hover:text-red-700 bg-white hover:bg-red-50/60 border-slate-200 hover:border-red-200 shadow-none transition-colors"
+              onClick={() => actions.onReleaseSlot!(entry)}
+              title="Lepaskan slot jadwal agar kuota tanggal ini kembali bebas"
+            >
+              <Trash2 className="w-3 h-3 mr-1" /> Lepaskan Slot
+            </Button>
+          )}
+
+          {actions.onCancel && entry.isExtension && !payment?.hasEverPaid && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 w-7 p-0 shrink-0 bg-white text-slate-400 hover:text-red-600 hover:border-red-200 shadow-none"
+              title="Batalkan jadwal perpanjangan ini"
               onClick={() => actions.onCancel!(entry)}
             >
               <Trash2 className="w-3 h-3" />
@@ -357,29 +507,12 @@ function ScheduleCard({
           )}
         </div>
       )}
-
-      {/* Jalan keluar kedua untuk jadwal yang batas bayarnya lewat: lepaskan
-          slotnya. Pasangannya "Jadwalkan ulang" sudah ada di baris di atas —
-          admin memilih salah satu setelah menagih di luar sistem.
-
-          Dipisah dari baris aksi supaya tidak bersaing perhatian dengan dua
-          aksi tetap itu: melepas slot adalah keputusan akhir, bukan langkah
-          rutin. */}
-      {actions.onReleaseSlot && needsBilling(entry) && state !== 'paid' && (
-        <button
-          type="button"
-          onClick={() => actions.onReleaseSlot!(entry)}
-          className="w-full text-[11px] text-slate-400 hover:text-red-600 transition-colors inline-flex items-center justify-center gap-1.5 py-1"
-        >
-          <Trash2 className="w-3 h-3" /> Hapus dari list — lepaskan slotnya
-        </button>
-      )}
     </div>
   );
 
   if (isOnly) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+      <div className="rounded-lg border border-slate-300 shadow-sm bg-white overflow-hidden">
         <div className="px-3 py-2.5">{summary}</div>
         {details}
       </div>
@@ -387,7 +520,7 @@ function ScheduleCard({
   }
 
   return (
-    <div className={cn('rounded-lg border bg-white overflow-hidden', isOpen ? 'border-blue-300' : 'border-slate-200')}>
+    <div className={cn('rounded-lg border bg-white overflow-hidden transition-all', isOpen ? 'border-blue-400 shadow-sm ring-1 ring-blue-400/20' : 'border-slate-300 hover:border-slate-400 shadow-sm')}>
       <button
         type="button"
         onClick={onToggle}
@@ -403,12 +536,13 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, payments, submission, onEditSchedule, onCreateInvoice, onMarkPaid, onCancel, onReleaseSlot,
+  entries, payments, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onCancel, onReleaseSlot,
 }: {
   entries: AdScheduleEntry[];
   payments: Map<string, SchedulePayment>;
-  submission: { questionCount?: number | null; distribution_type?: string | null };
+  submission: { questionCount?: number | null; distribution_type?: string | null; submission_status?: string | null; status?: string | null };
   onEditSchedule: (entry: AdScheduleEntry) => void;
+  onCreateSchedule?: (isExtraAd: boolean) => void;
   onCreateInvoice: (entry: AdScheduleEntry) => void;
   /**
    * null = jadwal ini tidak boleh dibatalkan dari sini.
@@ -453,10 +587,34 @@ export function ScheduleCardList({
   }, [entries, payments]);
 
   if (entries.length === 0) {
+    const isSpamOrRejected =
+      ['rejected', 'spam'].includes(submission.submission_status || '') ||
+      ['rejected', 'spam'].includes(submission.status || '');
+
+    if (isSpamOrRejected) {
+      return (
+        <p className="text-xs text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg px-3 py-2.5">
+          Belum ada jadwal untuk order ini.
+        </p>
+      );
+    }
+
     return (
-      <p className="text-xs text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg px-3 py-2.5">
-        Belum ada jadwal untuk order ini.
-      </p>
+      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-5 text-center space-y-3">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-slate-700">Jadwal belum ditentukan</p>
+          <p className="text-[11px] text-slate-500">Order ini belum memiliki jadwal tayang iklan aktif.</p>
+        </div>
+        {onCreateSchedule && (
+          <Button
+            size="sm"
+            className="h-8 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white shadow-2xs"
+            onClick={() => onCreateSchedule(false)}
+          >
+            <CalendarPlus className="w-3.5 h-3.5 mr-1.5" /> Buat Jadwal Tayang
+          </Button>
+        )}
+      </div>
     );
   }
 
@@ -488,6 +646,70 @@ export function ScheduleCardList({
           actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onCancel, onReleaseSlot }}
         />
       ))}
+    </div>
+  );
+}
+
+/**
+ * Skeleton loading untuk memuat kartu jadwal dengan animasi pulse halus.
+ */
+export function ScheduleCardSkeleton() {
+  return (
+    <div className="rounded-lg border border-slate-300 shadow-sm bg-white overflow-hidden animate-pulse">
+      {/* Header Skeleton */}
+      <div className="px-3 py-2.5 space-y-2">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-4 w-3/5 bg-slate-200" />
+          <Skeleton className="h-3.5 w-14 bg-slate-100" />
+        </div>
+        <Skeleton className="h-3 w-1/4 bg-slate-100" />
+      </div>
+
+      {/* Details Skeleton */}
+      <div className="border-t border-slate-100 px-3 py-2.5 space-y-3 bg-slate-50/50">
+        {/* Breakdown lines */}
+        <div className="space-y-2 text-xs">
+          <div className="flex justify-between items-center">
+            <Skeleton className="h-3 w-20 bg-slate-200" />
+            <Skeleton className="h-3 w-16 bg-slate-200" />
+          </div>
+          <div className="flex justify-between items-center">
+            <Skeleton className="h-3 w-28 bg-slate-200" />
+            <Skeleton className="h-3 w-16 bg-slate-200" />
+          </div>
+          <div className="flex justify-between items-center">
+            <Skeleton className="h-3 w-16 bg-slate-200" />
+            <Skeleton className="h-3 w-14 bg-slate-200" />
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+            <Skeleton className="h-3.5 w-24 bg-slate-300" />
+            <Skeleton className="h-4 w-20 bg-blue-200" />
+          </div>
+        </div>
+
+        {/* Invoice List Section Skeleton */}
+        <div className="space-y-2 pt-1 border-t border-slate-200">
+          <div className="flex justify-between items-center">
+            <Skeleton className="h-3 w-28 bg-slate-200" />
+            <Skeleton className="h-3 w-20 bg-slate-100" />
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-2.5 flex justify-between items-center">
+            <div className="space-y-1.5 flex-1">
+              <Skeleton className="h-3.5 w-40 bg-slate-200" />
+              <Skeleton className="h-2.5 w-24 bg-slate-100" />
+            </div>
+            <div className="space-y-1 text-right">
+              <Skeleton className="h-3.5 w-16 ml-auto bg-slate-200" />
+              <Skeleton className="h-5 w-16 ml-auto rounded bg-emerald-100" />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Action Skeleton */}
+        <div className="pt-1 border-t border-slate-200">
+          <Skeleton className="h-7 w-full rounded bg-slate-200" />
+        </div>
+      </div>
     </div>
   );
 }

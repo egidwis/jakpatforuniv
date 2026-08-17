@@ -203,11 +203,6 @@ export function InternalDashboardWithLayout() {
           icon: FileText,
         },
         {
-          id: 'customers' as Page,
-          label: 'Customers',
-          icon: Users,
-        },
-        {
           id: 'ad-schedules' as Page,
           label: 'Schedule',
           icon: CalendarDays,
@@ -226,6 +221,11 @@ export function InternalDashboardWithLayout() {
           id: 'transactions' as Page,
           label: 'Finance',
           icon: CreditCard,
+        },
+        {
+          id: 'customers' as Page,
+          label: 'Customers',
+          icon: Users,
         },
         {
           id: 'analytics' as Page,

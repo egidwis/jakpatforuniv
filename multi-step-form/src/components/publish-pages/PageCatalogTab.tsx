@@ -3,13 +3,14 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import {
-    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+    DropdownMenu, DropdownMenuContent, DropdownMenuLabel,
     DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronRight, ListFilter, Loader2, Search, X } from 'lucide-react';
+import { ChevronRight, Copy, ListFilter, Loader2, Search, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-    PAGE_TYPE_LABEL, formatPageDate, pageAiringToken, pageTypeOf, shortOrderId,
+    PAGE_TYPE_LABEL, formatPageDate, pageAiringToken, pageTypeOf,
     statusPriority, usesPlaceholderBanner, type PageData, type PageType,
 } from './types';
 
@@ -27,7 +28,7 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 const COL = {
-    id: 'w-[84px] shrink-0 hidden lg:block',
+    id: 'w-[104px] shrink-0 hidden lg:flex items-center',
     page: 'flex-1 min-w-0',
     period: 'w-[128px] shrink-0 hidden md:block',
     status: 'w-[124px] shrink-0 flex justify-end',
@@ -73,6 +74,15 @@ export function PageCatalogTab({
         });
     }, [pages, typeFilter, now]);
 
+    const handleCopyId = (id: string) => {
+        if (navigator?.clipboard) {
+            navigator.clipboard.writeText(id);
+            toast.success('Page ID berhasil disalin!');
+        } else {
+            toast.error('Gagal menyalin Page ID');
+        }
+    };
+
     const typeLabel = TYPE_FILTERS.find(f => f.value === typeFilter)?.label ?? '';
 
     return (
@@ -103,36 +113,30 @@ export function PageCatalogTab({
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-gray-500 hover:text-gray-900"
-                                title="Filter tipe halaman"
+                                variant="outline"
+                                size="sm"
+                                className={cn(
+                                    'h-9 gap-1.5 text-xs text-gray-600',
+                                    typeFilter !== 'all' && 'border-slate-800 bg-slate-50 text-slate-900 font-semibold'
+                                )}
                             >
-                                <ListFilter className="w-4 h-4" />
+                                <ListFilter className="w-3.5 h-3.5" />
+                                Tipe
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-gray-400">
-                                Tipe halaman
-                            </DropdownMenuLabel>
+                        <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuLabel className="text-xs">Saring berdasarkan Tipe</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
                             <DropdownMenuRadioGroup
                                 value={typeFilter}
                                 onValueChange={(v) => setTypeFilter(v as 'all' | PageType)}
                             >
                                 {TYPE_FILTERS.map(f => (
-                                    <DropdownMenuRadioItem key={f.value} value={f.value} className="text-sm cursor-pointer">
+                                    <DropdownMenuRadioItem key={f.value} value={f.value} className="text-xs">
                                         {f.label}
                                     </DropdownMenuRadioItem>
                                 ))}
                             </DropdownMenuRadioGroup>
-                            {typeFilter !== 'all' && (
-                                <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => setTypeFilter('all')} className="text-sm text-blue-600 cursor-pointer">
-                                        Bersihkan filter
-                                    </DropdownMenuItem>
-                                </>
-                            )}
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
@@ -143,7 +147,7 @@ export function PageCatalogTab({
             {/* ── Satu wilayah gulung ── */}
             <div className="flex-1 min-h-0 overflow-y-auto">
                 <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                    <span className={COL.id}>ID</span>
+                    <span className={COL.id}>Page ID</span>
                     <span className={COL.page}>Halaman</span>
                     <span className={COL.period}>Periode</span>
                     <span className={cn(COL.status, 'text-right')}>Status</span>
@@ -155,7 +159,7 @@ export function PageCatalogTab({
                     <div className="divide-y divide-gray-100">
                         {Array(8).fill(0).map((_, i) => (
                             <div key={`skeleton-catalog-${i}`} className="flex items-center gap-3 px-4 py-3">
-                                <div className="w-[84px] h-4 bg-gray-100 animate-pulse rounded shrink-0 hidden lg:block" />
+                                <div className="w-[104px] h-4 bg-gray-100 animate-pulse rounded shrink-0 hidden lg:block" />
                                 <div className="flex-1 min-w-0 space-y-1.5">
                                     <div className="h-4 w-3/5 bg-gray-200 animate-pulse rounded" />
                                     <div className="h-2.5 w-2/5 bg-gray-100 animate-pulse rounded" />
@@ -175,7 +179,6 @@ export function PageCatalogTab({
                     <div className="divide-y divide-gray-100">
                         {rows.map(page => {
                             const token = pageAiringToken(page, now);
-                            const orderId = shortOrderId(page);
                             const type = pageTypeOf(page);
                             const collects = !!page.submission_id;
                             return (
@@ -192,9 +195,21 @@ export function PageCatalogTab({
                                     }}
                                     className="group flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-gray-50"
                                 >
-                                    <span className={cn(COL.id, 'font-mono text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 truncate')}>
-                                        {orderId ?? <span className="text-gray-300">—</span>}
-                                    </span>
+                                    <div className={COL.id}>
+                                        <span
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleCopyId(page.id);
+                                            }}
+                                            className="group/id inline-flex items-center gap-1.5 font-mono text-[11px] text-gray-600 bg-gray-50 hover:bg-blue-50 hover:text-blue-700 border border-gray-200/80 hover:border-blue-200 rounded px-1.5 py-0.5 whitespace-nowrap transition-colors cursor-pointer"
+                                            title={`Klik untuk menyalin Page ID (${page.id})`}
+                                        >
+                                            <span>#{page.id.slice(0, 8)}</span>
+                                            <Copy className="w-3 h-3 text-gray-400 group-hover/id:text-blue-600 shrink-0 transition-colors" />
+                                        </span>
+                                    </div>
 
                                     <div className={cn(COL.page, 'flex flex-col leading-tight')}>
                                         <span className="truncate text-sm font-semibold text-gray-900" title={page.title}>

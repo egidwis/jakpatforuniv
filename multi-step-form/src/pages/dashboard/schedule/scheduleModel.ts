@@ -304,14 +304,13 @@ export const CHIP_ORDER: ChipKind[] = [
 /** rejected + spam dilipat jadi satu sakelar "Batal" — keduanya tidak menempati jendela. */
 export const CANCELLED_CHIPS: ChipKind[] = ['rejected', 'spam'];
 
-export const PAGE_LABEL: Record<AdScheduleEntry['pageStatus'], string> = {
-  published: 'terbit',
-  draft: 'draft',
-  none: '⚠ blm',
-  // Kilat memang TIDAK PERNAH punya halaman (guard ensure_survey_page, sql/42).
-  // "—" dan "⚠ blm" harus berbeda: yang satu benar, yang lain pekerjaan tertunda.
-  kilat: '—',
-};
+// PAGE_LABEL dihapus: status halaman kini dirender sebagai chip di
+// `ScheduleEntryDrawer`, bukan teks di agenda. Pembedaan yang dulu dijaga
+// konstanta ini tetap WAJIB dan sudah pindah ke sana — Kilat memang tidak
+// pernah punya halaman (guard ensure_survey_page, sql/42) dan mendapat chip
+// "Kilat" sendiri, sementara iklan reguler yang sudah lunas tanpa halaman
+// mendapat chip merah "⚠ Belum ada halaman". Keduanya tidak boleh kembali
+// tampil sama.
 
 /**
  * Satu jadwal PADA SATU HARI tayangnya.

@@ -21,73 +21,78 @@ export function ReviewTab({
   submission: SurveySubmission;
   onEditFormDetails: (submission: SurveySubmission) => void;
 }) {
+  const actionButtons = (
+    <div className="flex items-center gap-0.5 shrink-0 ml-auto">
+      <TooltipProvider>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+              onClick={() => onEditFormDetails(submission)}
+            >
+              <PenLine className="w-3.5 h-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
+            Edit Link
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+              onClick={() => copyToClipboard(submission.formUrl, 'Survey link copied!')}
+              disabled={!submission.formUrl}
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
+            Copy Link
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+              onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
+              disabled={!submission.formUrl}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
+            Buka Link
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+
   return (
     <>
       {/* Survey preview */}
-      <DetailSheetSection
-        title="Kuesioner"
-        className="flex flex-col flex-1 h-full"
-        action={
-          <div className="flex items-center gap-1">
-            <TooltipProvider>
-              <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => onEditFormDetails(submission)}
-                  >
-                    <PenLine className="w-3.5 h-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
-                  Edit Link
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => copyToClipboard(submission.formUrl, 'Survey link copied!')}
-                    disabled={!submission.formUrl}
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
-                  Copy Link
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
-                    disabled={!submission.formUrl}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
-                  Buka Link
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        }
-      >
+      <DetailSheetSection className="flex flex-col flex-1 h-full">
         {submission.formUrl ? (
-          <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
+          <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex flex-col h-[calc(100vh-220px)] min-h-[440px]">
             <div className="px-3 py-1.5 border-b border-gray-200 bg-white flex items-center gap-1.5 min-w-0">
-              <Globe className="w-3 h-3 text-gray-400 shrink-0" />
-              <span className="text-[11px] text-gray-500 truncate">{submission.formUrl.replace(/^https?:\/\//, '')}</span>
+              <Globe className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <span className="text-xs text-gray-600 truncate">{submission.formUrl.replace(/^https?:\/\//, '')}</span>
+              {submission.detected_keywords && submission.detected_keywords.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 border border-red-200 shrink-0 ml-1">
+                  <ShieldAlert className="w-3 h-3 text-red-500" />
+                  Sensitif: {submission.detected_keywords.join(', ')}
+                </span>
+              )}
+              {actionButtons}
             </div>
             
             {submission.formUrl.includes('docs.google.com') && !submission.formUrl.includes('/d/e/') ? (
@@ -117,21 +122,13 @@ export function ReviewTab({
               />
             )}
             
-            <p className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-200 bg-white">
-              Preview kosong? Situs survei memblokir embed — gunakan tombol "Buka" di atas.
+            <p className="px-3 py-1 text-[10px] text-gray-400 border-t border-gray-200 bg-white">
+              Preview kosong? Situs survei memblokir embed — gunakan tombol &quot;Buka&quot; di atas.
             </p>
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-xs text-gray-400">
             Tidak ada link survey.
-          </div>
-        )}
-        {submission.detected_keywords && submission.detected_keywords.length > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 mt-3">
-            <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-red-700">
-              Detected keywords: <span className="font-medium">{submission.detected_keywords.join(', ')}</span>
-            </p>
           </div>
         )}
       </DetailSheetSection>

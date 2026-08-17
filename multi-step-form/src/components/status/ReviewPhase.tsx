@@ -1,17 +1,45 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
-import { AlertCircle, Bot, ChevronDown, FileText, Link2, Trash2, UserCheck, Users } from 'lucide-react';
+import {
+    AlertCircle,
+    Bot,
+    CheckCircle2,
+    ChevronDown,
+    FileText,
+    Link2,
+    Loader2,
+    PenLine,
+    Trash2,
+    UserCheck,
+    Users,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
     Accordion,
     AccordionContent,
     AccordionItem,
 } from '@/components/ui/accordion';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { InfoTooltip } from './InfoTooltip';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
-import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
+import {
+    updateFormStatus,
+    updateFormDetails,
+    type AdScheduleEntry,
+    type FormSubmission,
+} from '@/utils/supabase';
+import type { ReviewHistoryEntry } from '@/components/submissions/types';
 import { isAutoReviewed } from './deriveOrderUiState';
+import { toast } from 'sonner';
 
 /**
  * Keadaan review sebuah order — sumbu sendiri sejak `sql/46`, tidak lagi
@@ -34,14 +62,12 @@ interface ReviewPhaseProps {
     /** Jadwal pertama (ordinal 1) — pembawa sumbu review order ini. */
     first: AdScheduleEntry;
     onDelete: () => void;
+    onDataUpdated?: () => void;
     /** Fase ① sedang berjalan (`getActiveDashboardPhase(ui.currentStep) === 1`)
      * — kartu default terbuka. Kalau tidak (sudah lewat/belum sampai), default
      * tertutup; user tetap bisa expand manual. */
     active: boolean;
 }
-
-const ctaButtonClass = 'max-md:w-full min-h-11 md:min-h-9 justify-center whitespace-nowrap';
-const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 hover:from-jfu-primary hover:to-jfu-light transition-all';
 
 /** Chip status review — dipasang di trigger accordion Fase ① (lihat
  * `ReviewPhase` di bawah). `t` dioper sebagai parameter (bukan
@@ -52,16 +78,16 @@ export function getReviewChip(first: AdScheduleEntry, t: (key: TranslationKey) =
     const state = reviewStateOf(first);
     if (state === 'rejected') {
         return (
-            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-rose-50 border-rose-200 text-rose-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-amber-50 border-amber-200 text-amber-800">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 {t('reviewChipRejected')}
             </span>
         );
     }
     if (state === 'pending') {
         return (
-            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-gray-50 border-gray-200 text-gray-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-blue-50 border-blue-200 text-blue-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
                 {t('reviewChipPending')}
             </span>
         );
@@ -116,111 +142,302 @@ function ReviewMethodChip({ auto }: { auto: boolean }) {
  * link/ringkasan survei + chip status review (dulu ada di header Fase),
  * expand untuk detail lengkap + banner status.
  */
-export function ReviewPhase({ submission, first, onDelete, active }: ReviewPhaseProps) {
+export function ReviewPhase({ submission, first, onDelete, onDataUpdated, active }: ReviewPhaseProps) {
     const { t } = useLanguage();
     const state = reviewStateOf(first);
     const rejected = state === 'rejected';
     const inReview = state === 'pending';
+
+    const [isSubmittingReReview, setIsSubmittingReReview] = useState(false);
+    const [isEditLinkOpen, setIsEditLinkOpen] = useState(false);
+    const [newSurveyUrl, setNewSurveyUrl] = useState(submission.survey_url || '');
+    const [isSavingLink, setIsSavingLink] = useState(false);
+
     /** Selama masih di step 0 metodenya PASTI manual — `isAutoReviewed` cuma
      * label retrospektif untuk order yang sudah lolos, jadi baru dipercaya
      * setelah review kelar. */
     const showsAutoMethod = !inReview && isAutoReviewed(submission);
 
+    const handleRequestReReview = async () => {
+        if (!submission.id) return;
+        setIsSubmittingReReview(true);
+        try {
+            const newHistoryEntry: ReviewHistoryEntry = {
+                action: 'in_review',
+                notes: 'Peneliti mengajukan review ulang setelah perbaikan kuesioner.',
+                timestamp: new Date().toISOString(),
+            };
+            const updatedHistory = [
+                ...((submission as any).review_history || []),
+                newHistoryEntry,
+            ];
+            await updateFormStatus(submission.id, 'in_review', submission.admin_notes, updatedHistory);
+            toast.success('Pengajuan review ulang berhasil dikirimkan ke tim reviewer.');
+            onDataUpdated?.();
+        } catch (error) {
+            console.error('Failed to request re-review:', error);
+            toast.error('Gagal mengajukan review ulang. Silakan coba lagi.');
+        } finally {
+            setIsSubmittingReReview(false);
+        }
+    };
+
+    const handleSaveNewLink = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!submission.id || !newSurveyUrl.trim()) return;
+        setIsSavingLink(true);
+        try {
+            // Hanya tautannya — judul/jumlah pertanyaan/durasi sengaja TIDAK ikut
+            // dikirim supaya suntingan admin tidak tertimpa salinan lokal yang basi.
+            await updateFormDetails(submission.id, {
+                survey_url: newSurveyUrl.trim(),
+            });
+            const newHistoryEntry: ReviewHistoryEntry = {
+                action: 'in_review',
+                notes: 'Peneliti memperbarui tautan survei dan mengajukan review ulang.',
+                timestamp: new Date().toISOString(),
+            };
+            const updatedHistory = [
+                ...((submission as any).review_history || []),
+                newHistoryEntry,
+            ];
+            await updateFormStatus(submission.id, 'in_review', submission.admin_notes, updatedHistory);
+            toast.success('Link kuesioner diperbarui dan diajukan untuk review ulang.');
+            setIsEditLinkOpen(false);
+            onDataUpdated?.();
+        } catch (error) {
+            console.error('Failed to update survey URL:', error);
+            toast.error('Gagal memperbarui link kuesioner.');
+        } finally {
+            setIsSavingLink(false);
+        }
+    };
+
     return (
-        <Accordion type="single" collapsible defaultValue={active ? 'review' : undefined} className="rounded-xl border border-gray-100 divide-y divide-gray-100">
-            <AccordionItem value="review" className="border-b-0 px-3">
-                <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
-                    <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-2 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all">
-                        <span className="flex items-center gap-1.5 min-w-0 text-sm">
-                            <ReviewMethodChip auto={showsAutoMethod} />
-                        </span>
-                        <span className="flex-1 min-w-2" />
-                        {getReviewChip(first, t)}
-                    </AccordionPrimitive.Trigger>
-                    <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
-                </AccordionPrimitive.Header>
-                <AccordionContent className="pb-3 pt-1.5 space-y-3">
-                    {rejected && (
-                        <div className="rounded-xl border p-3 border-rose-200 bg-rose-50/60">
-                            <div className="flex gap-2.5">
-                                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-semibold text-[#1a1a1a]">{t('revisionNeededTitle')}</p>
-                                    <p className="text-sm text-gray-600 mt-1 leading-relaxed">
-                                        {t('revisionNeededDescPart1')}{' '}
-                                        <a href="/homepage/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="text-rose-700 underline hover:text-rose-800">
-                                            {t('termsConditions')}
-                                        </a>
-                                        {t('revisionNeededDescPart2')}
-                                    </p>
-                                    {submission.detected_keywords && submission.detected_keywords.length > 0 && (
-                                        <p className="text-xs text-rose-700 mt-2">
-                                            {t('calloutDetectedKeywords')} {submission.detected_keywords.join(', ')}
+        <>
+            <Accordion type="single" collapsible defaultValue={active ? 'review' : undefined} className="rounded-xl border border-gray-100 divide-y divide-gray-100">
+                <AccordionItem value="review" className="border-b-0 px-3">
+                    <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
+                        <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-2 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all">
+                            <span className="flex items-center gap-1.5 min-w-0 text-sm">
+                                <ReviewMethodChip auto={showsAutoMethod} />
+                            </span>
+                            <span className="flex-1 min-w-2" />
+                            {getReviewChip(first, t)}
+                        </AccordionPrimitive.Trigger>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
+                    </AccordionPrimitive.Header>
+                    <AccordionContent className="pb-3 pt-1.5 space-y-3">
+                        {rejected && (
+                            <div className="rounded-xl border p-4 border-amber-200/90 bg-amber-50/60 shadow-xs space-y-3.5">
+                                <div className="flex items-start gap-2.5">
+                                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                                    <div className="flex-1 min-w-0 space-y-3">
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-900 leading-snug">{t('reviewTitleRejected')}</p>
+                                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">
+                                                {t('reviewSubRejected')}
+                                            </p>
+                                        </div>
+
+                                        {submission.admin_notes && (
+                                            <div className="bg-white/95 border border-amber-200/90 rounded-lg p-3 text-xs space-y-1 shadow-xs">
+                                                <span className="font-semibold text-amber-900 block text-[11px] uppercase tracking-wider">
+                                                    {t('reviewerNotesTitle')}:
+                                                </span>
+                                                <p className="whitespace-pre-line leading-relaxed text-gray-800 font-normal">
+                                                    &ldquo;{submission.admin_notes}&rdquo;
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {submission.detected_keywords && submission.detected_keywords.length > 0 && (
+                                            <div className="rounded-lg bg-rose-50 border border-rose-200/80 px-3 py-2 text-xs text-rose-700 font-medium">
+                                                {t('calloutDetectedKeywords')} {submission.detected_keywords.join(', ')}
+                                            </div>
+                                        )}
+
+                                        <p className="text-xs text-gray-600 font-normal">
+                                            {t('reviewGuideText')}
                                         </p>
-                                    )}
-                                    <div className="flex max-md:flex-col flex-wrap gap-2 mt-3">
-                                        <Link to="/dashboard/submit-iklan" className="max-md:w-full">
-                                            <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal}`}>
-                                                {t('resubmit')}
-                                            </Button>
-                                        </Link>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={onDelete}
-                                            className={`${ctaButtonClass} rounded-full font-semibold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 gap-1.5`}
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                            {t('delete')}
-                                        </Button>
+
+                                        <div className="pt-1">
+                                            {/* Desktop & Tablet: Horizontal left-aligned row */}
+                                            <div className="hidden sm:flex items-center gap-2 flex-wrap">
+                                                <Button
+                                                    size="sm"
+                                                    disabled={isSubmittingReReview}
+                                                    onClick={handleRequestReReview}
+                                                    className="rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light hover:from-jfu-primary hover:to-jfu-light shadow-sm text-xs px-4 h-9 gap-1.5 transition-all"
+                                                >
+                                                    {isSubmittingReReview ? (
+                                                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('submittingReReview')}</>
+                                                    ) : (
+                                                        <><CheckCircle2 className="w-3.5 h-3.5" /> {t('btnConfirmFixed')}</>
+                                                    )}
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        setNewSurveyUrl(submission.survey_url || '');
+                                                        setIsEditLinkOpen(true);
+                                                    }}
+                                                    className="rounded-full font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-xs px-3.5 h-9 gap-1.5 shadow-xs transition-all"
+                                                >
+                                                    <PenLine className="w-3.5 h-3.5 text-gray-500" /> {t('btnChangeLink')}
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={onDelete}
+                                                    className="rounded-full font-semibold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 text-xs px-3.5 h-9 gap-1.5 shadow-xs transition-all ml-auto"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" /> {t('btnDeleteForm')}
+                                                </Button>
+                                            </div>
+
+                                            {/* Mobile View (< 640px) */}
+                                            <div className="sm:hidden space-y-2">
+                                                <Button
+                                                    size="sm"
+                                                    disabled={isSubmittingReReview}
+                                                    onClick={handleRequestReReview}
+                                                    className="w-full rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light hover:from-jfu-primary hover:to-jfu-light shadow-sm text-xs px-4 h-10 gap-1.5 transition-all justify-center"
+                                                >
+                                                    {isSubmittingReReview ? (
+                                                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('submittingReReview')}</>
+                                                    ) : (
+                                                        <><CheckCircle2 className="w-3.5 h-3.5" /> {t('btnConfirmFixed')}</>
+                                                    )}
+                                                </Button>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => {
+                                                            setNewSurveyUrl(submission.survey_url || '');
+                                                            setIsEditLinkOpen(true);
+                                                        }}
+                                                        className="w-full rounded-full font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-xs px-2.5 h-9 gap-1.5 shadow-xs transition-all justify-center"
+                                                    >
+                                                        <PenLine className="w-3.5 h-3.5 text-gray-500" /> {t('btnChangeLink')}
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={onDelete}
+                                                        className="w-full rounded-full font-semibold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 text-xs px-2.5 h-9 gap-1.5 shadow-xs transition-all justify-center"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" /> {t('btnDeleteForm')}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {inReview && (
-                        <div className="rounded-xl border p-3 border-gray-200 bg-gray-50">
-                            {/* Selalu copy manual: review otomatis sudah tuntas sebelum
-                                checkout, jadi order yang duduk di sini pasti menunggu admin. */}
-                            <p className="text-sm text-gray-600 leading-relaxed">
-                                {t('calloutReviewManual')}
-                            </p>
-                        </div>
-                    )}
+                        {inReview && (
+                            <div className="rounded-xl border p-3 border-gray-200 bg-gray-50">
+                                <p className="text-sm text-gray-600 leading-relaxed">
+                                    {t('calloutReviewManual')}
+                                </p>
+                            </div>
+                        )}
 
-                    <div className="space-y-1.5">
-                        {/* Stack satu kolom, bukan class `grid` — styles.css legacy
-                            `.grid { gap: 1.5rem }` menang cascade & merenggangkan baris. */}
-                        <div className="space-y-1.5">
-                            {submission.survey_url && (
-                                <div className="flex items-center gap-1.5 text-sm min-w-0">
-                                    <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <dl className="[display:grid] grid-cols-[auto_1fr] sm:grid-cols-[9.5rem_1fr] gap-x-3 gap-y-2.5 items-start pt-1">
+                            <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap pt-0.5 pr-1">
+                                <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                {t('questionnaireLabel')}
+                            </dt>
+                            <dd className="text-sm font-medium min-w-0 break-words">
+                                {submission.survey_url ? (
                                     <a
                                         href={submission.survey_url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="truncate text-blue-600 font-medium hover:text-blue-700 hover:underline transition-colors"
+                                        className="truncate text-blue-600 font-medium hover:text-blue-700 hover:underline block"
                                         title={submission.survey_url}
                                     >
                                         {submission.survey_url.replace(/^https?:\/\//, '')}
                                     </a>
-                                </div>
-                            )}
-                            <div className="flex items-center gap-1.5 text-sm">
+                                ) : (
+                                    <span className="text-gray-400 font-normal">—</span>
+                                )}
+                            </dd>
+
+                            <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap pt-0.5 pr-1">
                                 <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                <span className="text-[#1a1a1a] font-medium">{submission.question_count} {t('questionsUnit')}</span>
-                            </div>
-                            {submission.criteria_responden && (
-                                <div className="flex items-start gap-1.5 text-sm">
-                                    <Users className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
-                                    <span className="text-[#1a1a1a]">{submission.criteria_responden}</span>
-                                </div>
-                            )}
+                                {t('questionsCountLabel')}
+                            </dt>
+                            <dd className="text-sm font-semibold text-gray-900 min-w-0 break-words">
+                                {submission.question_count} {t('questionsItemUnit')}
+                            </dd>
+
+                            <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap pt-0.5 pr-1">
+                                <Users className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                {t('criteriaRespondentLabel')}
+                            </dt>
+                            <dd className="text-sm font-semibold text-gray-900 min-w-0 break-words">
+                                {submission.criteria_responden || '—'}
+                            </dd>
+                        </dl>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+
+            {/* Modal Ganti Link Form */}
+            <Dialog open={isEditLinkOpen} onOpenChange={setIsEditLinkOpen}>
+                <DialogContent className="sm:max-w-[480px]">
+                    <DialogHeader>
+                        <DialogTitle>Ganti Link Kuesioner</DialogTitle>
+                        <DialogDescription>
+                            Masukkan URL kuesioner baru Anda (misal Google Form / Microsoft Form publik) untuk diajukan review ulang.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSaveNewLink} className="space-y-4 pt-2">
+                        <div className="space-y-1.5">
+                            <label htmlFor="new-survey-url" className="text-xs font-semibold text-slate-700">
+                                URL Kuesioner Baru
+                            </label>
+                            <Input
+                                id="new-survey-url"
+                                type="url"
+                                placeholder="https://forms.gle/..."
+                                value={newSurveyUrl}
+                                onChange={(e) => setNewSurveyUrl(e.target.value)}
+                                required
+                                className="text-xs"
+                            />
                         </div>
-                    </div>
-                </AccordionContent>
-            </AccordionItem>
-        </Accordion>
+                        <DialogFooter className="flex gap-2 justify-end pt-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setIsEditLinkOpen(false)}
+                                disabled={isSavingLink}
+                            >
+                                Batal
+                            </Button>
+                            <Button
+                                type="submit"
+                                size="sm"
+                                disabled={isSavingLink || !newSurveyUrl.trim()}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                            >
+                                {isSavingLink ? (
+                                    <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Menyimpan...</>
+                                ) : (
+                                    'Simpan & Ajukan Review'
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }

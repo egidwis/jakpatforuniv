@@ -1,4 +1,3 @@
-import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isBookingClosedForDate, toLocalYmd } from '@/utils/airing-window';
 
@@ -46,6 +45,35 @@ export interface SlotCalendarProps {
   isLoading?: boolean;
 }
 
+/**
+ * Skeleton loading untuk kalender kapasitas slot.
+ */
+export function SlotCalendarSkeleton({
+  columns = 7,
+  count = DAYS_AHEAD,
+}: {
+  columns?: 4 | 7;
+  count?: number;
+}) {
+  return (
+    <div className={cn('[display:grid] gap-2', COLUMN_CLASS[columns])}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className="flex flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-1 h-[70px] space-y-1.5 animate-pulse"
+        >
+          {/* Weekday skeleton */}
+          <div className="h-2.5 w-6 rounded bg-slate-200" />
+          {/* Date skeleton */}
+          <div className="h-3.5 w-10 rounded bg-slate-300" />
+          {/* Quota badge skeleton */}
+          <div className="h-3.5 w-7 rounded-full bg-slate-100 mt-0.5" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SlotCalendar({
   days,
   counts,
@@ -57,11 +85,7 @@ export function SlotCalendar({
   isLoading = false,
 }: SlotCalendarProps) {
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-10">
-        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-      </div>
-    );
+    return <SlotCalendarSkeleton columns={columns} count={days.length || DAYS_AHEAD} />;
   }
 
   return (
@@ -95,14 +119,14 @@ export function SlotCalendar({
             className={cn(
               'flex flex-col items-center justify-center rounded-lg border p-1 h-[70px] text-center transition-all',
               isOver
-                ? 'bg-red-50 border-red-500 ring-1 ring-red-500'
+                ? 'bg-red-50/70 border-red-400 ring-1 ring-red-400'
                 : isStart
-                  ? 'bg-blue-50 border-blue-600 ring-1 ring-blue-600'
+                  ? 'bg-blue-50/80 border-blue-600 ring-1 ring-blue-600 shadow-sm'
                   : covered
-                    ? 'bg-blue-50/50 border-blue-300'
+                    ? 'bg-blue-50/40 border-blue-300'
                     : disabled
                       ? 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed'
-                      : 'bg-white border-slate-200 hover:border-blue-400'
+                      : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50 shadow-xs'
             )}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">

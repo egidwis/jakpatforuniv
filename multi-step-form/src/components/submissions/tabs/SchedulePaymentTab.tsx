@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Loader2, PenLine, CalendarPlus } from 'lucide-react';
+import { AlertTriangle, Check, CalendarPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
@@ -10,8 +10,7 @@ import {
 } from '@/utils/supabase';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
-import { ScheduleCardList } from './ScheduleCardList';
-import { DistributionSection } from './DistributionSection';
+import { ScheduleCardList, ScheduleCardSkeleton } from './ScheduleCardList';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Jadwal & Bayar.
@@ -28,17 +27,17 @@ import { DistributionSection } from './DistributionSection';
 // SchedulePaymentView, dan jadwal ke-2 dst. sama sekali tidak kebagian.
 // ─────────────────────────────────────────────────────────────
 
+// `paymentData`, `existingPage`, `onEditFormDetails`, dan `onConvertDistribution`
+// tetap ada di prop-nya (pemanggil masih mengopernya) tapi tidak lagi dibaca di
+// sini: ringkasan pembayaran kini hidup per-kartu di `ScheduleCardList`, dan
+// aksi edit/konversi pindah ke tab Info.
 export function SchedulePaymentTab({
   submission,
-  paymentData,
-  existingPage,
   lifecycle,
   onEditSchedule,
   onCreateInvoice,
   onCreateSchedule,
   onPaymentStatusChange,
-  onEditFormDetails,
-  onConvertDistribution,
   onExtendCreated,
   reloadKey = 0,
   initialSubView = null,
@@ -209,33 +208,37 @@ export function SchedulePaymentTab({
    * Membuka ini butuh formulir itu mengenal jalur distribusi lebih dulu: bukan
    * cuma rumus harga, tapi pemilih gelombang alih-alih rentang hari.
    */
-  const canAddSchedule = submission.distribution_type !== 'kilat' && lifecycle.canBuildPage;
+  const isSpamOrRejected =
+    ['rejected', 'spam'].includes(submission.submission_status || '') ||
+    ['rejected', 'spam'].includes(submission.status || '');
+
+  const canAddSchedule =
+    submission.distribution_type !== 'kilat' &&
+    !isSpamOrRejected &&
+    schedules.length > 0;
 
   return (
     <>
-      <DetailSheetSection
-        title="Jadwal"
-        action={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-gray-500 hover:text-blue-600"
-            onClick={() => onEditFormDetails(submission)}
-          >
-            <PenLine className="w-3 h-3 mr-1" /> Edit form
-          </Button>
-        }
-      >
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+      <DetailSheetSection>
+        {isSpamOrRejected && (
+          <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+            <span className="leading-relaxed">
+              <strong>Submission berstatus {submission.submission_status === 'spam' || submission.status === 'spam' ? 'Spam' : 'Ditolak'}.</strong>{' '}
+              Jadwal dinonaktifkan. Silakan ubah status review menjadi <strong>Approved</strong> di tab Review jika ingin menjadwalkan kembali order ini.
+            </span>
           </div>
+        )}
+
+        {isLoading ? (
+          <ScheduleCardSkeleton />
         ) : (
           <ScheduleCardList
             entries={schedules}
             payments={payments}
             submission={submission}
             onEditSchedule={onEditSchedule}
+            onCreateSchedule={onCreateSchedule}
             onCreateInvoice={onCreateInvoice}
             onMarkPaid={canMarkPaidInCard ? () => setIsConfirmPaymentOpen(true) : null}
             onCancel={(entry) => void handleCancelSchedule(entry)}
@@ -275,14 +278,6 @@ export function SchedulePaymentTab({
             tapi itu persis "pembayaran yatim" yang Task 10 ada untuk menutup,
             jadi tidak diberi jalan pintas baru di sini. */}
       </DetailSheetSection>
-
-      <DistributionSection
-        submission={submission}
-        paymentData={paymentData}
-        existingPage={existingPage}
-        lifecycle={lifecycle}
-        onConvertDistribution={onConvertDistribution}
-      />
 
       <Dialog open={isConfirmPaymentOpen} onOpenChange={setIsConfirmPaymentOpen}>
         <DialogContent

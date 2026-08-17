@@ -152,6 +152,20 @@ Kolom `extend_id`/`entity_type` **tidak** dibuang — pembaca lama masih memakai
 Ini juga **prasyarat langkah 2**: FK tidak bisa menunjuk ke view, jadi `schedule_id` harus
 sudah berdiri sebelum `invoices_extend_id_fkey`/`transactions_extend_id_fkey` dilepas.
 
+⚠️ **Backfill-nya tidak cukup hanya memetakan pemilik — ia harus membedakan PERCOBAAN BAYAR
+dari TAGIHAN.** Diukur di produksi 2026-08-17: 82 sumber punya lebih dari satu baris
+transaksi/invoice, dan itu hampir selalu percobaan bayar berulang atas tagihan yang sama
+(kasus terburuk: 29 baris Rp 350.000 untuk satu jadwal). Setelah `schedule_id` ada, beberapa
+baris dengan `schedule_id` sama **tidak** otomatis berarti beberapa tagihan — Task 13
+bersandar penuh pada pembedaan ini untuk menjumlahkan uang dengan benar, dan pernah ada
+prototipe yang salah menampilkan Rp 1.150.000 sebagai Rp 3.450.000 justru karena
+menyamakannya. Catat aturan pembedanya (percobaan berbagi `payment_id`) di verifikasi
+langkah ini, bukan nanti.
+
+Titik sambung frontend yang harus ditukar ke `schedule_id` adalah `fetchSchedulePayments` di
+[`supabase.ts`](../../../multi-step-form/src/utils/supabase.ts) — komentar penanda ada di
+kepala fungsinya dan menyebut Task 11 secara eksplisit.
+
 ### 1c. `UNIQUE (submission_id)` di `survey_pages`
 
 Partial unique — `WHERE submission_id IS NOT NULL`, karena 16 halaman announcement memang

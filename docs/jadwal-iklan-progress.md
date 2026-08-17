@@ -1,7 +1,7 @@
 # Jadwal Iklan — Status Berjalan
 
 > **Titik masuk untuk pekerjaan Jadwal Iklan.** Baca ini dulu sebelum membuka
-> rencana mana pun. Diperbarui 2026-08-10.
+> rencana mana pun. Diperbarui 2026-08-17.
 >
 > ⛔ **Merge `feat/dashboard-soft-dna-navbar` → `main` DITAHAN (2026-08-09).**
 > Pemilik produk masih memeriksa beberapa hal. Jangan merge tanpa aba-aba
@@ -208,6 +208,61 @@ service-role key tidak terpasang di env Cloudflare, jalur uang membaca
 webhook DOKU akan gagal diam-diam. Bukti tidak langsung bahwa key-nya terpasang:
 10 order jadi `paid` dalam 48 jam terakhir, termasuk **sesudah** `sql/47` jalan.
 Cukup meyakinkan, belum konklusif — pantau webhook pertama setelah deploy.
+
+### 00D. ✅ Revamp visual dashboard diaudit sebelum commit (2026-08-17) — nol SQL, nol perubahan skema
+
+Perubahan besar bertema tampilan (39 file, ~4.100 baris) diperiksa sebelum di-commit. Tiga
+hal menyentuh rencana dan sembilan bug ikut ditemukan; **semuanya sudah diselesaikan di
+commit yang sama.** Ringkas — detail per rencana ada di
+[`docs/superpowers/plans/README.md`](superpowers/plans/README.md).
+
+**Yang dikembalikan supaya tidak dikerjakan dua kali:**
+
+- Sebagian **Task 13 Langkah 2** (multi-invoice per jadwal) tak sengaja ikut terbangun.
+  Dikembalikan; rancangan UI-nya dicatat lengkap di rencana Task 13 supaya versi benar lahir
+  di atas `schedule_id` (Task 11) dan hasilnya minimal setara.
+- Alasannya bukan selera: prototipe itu **salah menghitung uang**. Diukur di produksi —
+  82 sumber punya >1 baris transaksi, 33 di antaranya penjumlahannya melebihi yang
+  benar-benar dibayar. Satu order nyata lunas Rp 1.150.000 tampil Rp 3.450.000; kasus
+  terburuk 29 percobaan Rp 350.000 tampil Rp 10.150.000.
+
+**Penjaga jalur uang yang dipulihkan** (keduanya dari commit `0b295bb`): penjaga lunas
+di dalam query `releaseScheduleSlot` (balapan dengan webhook DOKU), dan penandaan
+`slot_booked_by='admin'` saat admin memindahkan jadwal — tanpa itu slot yang baru dipindah
+tetap `'user'` dan bisa ikut kadaluwarsa otomatis.
+
+**Bug yang diperbaiki** — dua di antaranya akan lolos ke produksi karena `vite build` tidak
+melakukan typecheck: `AlertTriangle` dipakai tanpa import (tab Jadwal & Bayar *crash* untuk
+submission spam/rejected), dan `updateExtendScheduleDates` dipanggil dengan `endIso` di slot
+`durationDays` (tanggal rusak saat memindahkan jadwal ordinal ≥2). Sisanya: badge "perlu
+ditagih" yang tak pernah muncul, empat baris identitas peneliti tanpa kolom DB, dua cabang
+render mati, variant Chip tak sah, dan `totalPaid` yang tak pernah ada.
+
+**Ronde review kedua** menemukan tiga hal lagi, semuanya sudah diperbaiki:
+
+- `PaymentSection` sempat mengecek "belum ada tagihan" SEBELUM cek lunas, sehingga jadwal
+  yang dibayar di luar sistem (tanpa baris `transactions`) menampilkan ajakan "Terbitkan
+  tagihan". Presedens dikembalikan seperti `PaymentBanner` lama: lunas didahulukan.
+- `scheduleMoney.ts` sempat memuat **salinan ketiga** tarif voucher sebagai daftar
+  hardcoded — dan daftarnya sudah tertinggal: `JFUANA`/`JFUNATALIA`/`JFUSALSA` (10%) dan
+  `TEGARGANTENG` (20%) tidak ada di sana. Diganti dengan **probe dua titik** terhadap
+  `calculateDiscount`; voucher proporsional dibalik otomatis, yang berbasis cap
+  (`JFUFEB`/`ILKOMUNY`) dan `JFUTGRX` sengaja dilewati. Terverifikasi untuk 20 kode.
+- `updateFormDetails` kini menerima `Partial`, dan "Ganti link" di dashboard peneliti hanya
+  mengirim `survey_url`. Sebelumnya ia ikut menulis `title`/`question_count`/`duration` dari
+  salinan lokal — persis empat kolom yang admin sunting di tab Info, jadi suntingan admin
+  bisa tertimpa, termasuk dua masukan harga.
+
+**Perubahan perilaku yang disengaja dan perlu diketahui:** `isScheduleLate` baru di
+`lifecycle.ts` membuat order belum lunas yang tanggal tayangnya sudah lewat berderajat
+`reserved_expired`. Terukur **336 order** akan berpindah label jadi "Slot Expired". Iklan
+yang dibayar di luar sistem **tidak** terdampak — 32 baris berstatus scheduled/live/completed
+terlindungi presedens stage yang menaruh live/page_scheduled/completed di atasnya.
+
+**Gerbang typecheck:** baseline `tsc -b` **39** error sebelum, **36** sesudah — nol error
+baru, dan tiga error lama ikut hilang (termasuk `ui/Dialog.tsx` yang di-*rename* jadi
+`dialog.tsx` supaya cocok dengan 14 import yang semuanya huruf kecil; build Linux dulu
+rawan gagal di sini). Build produksi lolos.
 
 ### 00C. ✅ Iklan auto-publish tak lagi tenggelam ke bawah list (2026-08-13) — `sql/55` diterapkan & terverifikasi di prod
 

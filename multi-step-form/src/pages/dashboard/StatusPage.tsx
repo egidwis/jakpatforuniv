@@ -146,8 +146,10 @@ export function StatusPage() {
                             const extendTx = transactions.filter((tx) => tx.entity_type === 'extend');
 
                             if (mainTx.length > 0) {
-                                if (mainTx[0].payment_id) {
-                                    foundTransactionId = mainTx[0].payment_id;
+                                const paidTx = mainTx.find((tx) => tx.status === 'completed' || tx.status === 'paid');
+                                const pickedTx = paidTx || mainTx[0];
+                                if (pickedTx?.payment_id) {
+                                    foundTransactionId = pickedTx.payment_id;
                                 }
                                 if (submission.payment_status !== 'paid' && mainTx[0].payment_url) {
                                     links[submission.id] = mainTx[0].payment_url;
@@ -174,22 +176,27 @@ export function StatusPage() {
                             console.error(`Error fetching transactions for ${submission.id}:`, e);
                         }
 
-                        if (foundTransactionId) {
-                            invIds[submission.id] = foundTransactionId;
-                        }
-
-                        // Try to get manual invoice if no transaction link is found and not yet paid
-                        if (submission.payment_status !== 'paid' && !links[submission.id]) {
+                        // Try to get manual invoice if no transaction payment_id or link is found
+                        if (!foundTransactionId || (submission.payment_status !== 'paid' && !links[submission.id])) {
                             try {
                                 const invoices = await getInvoicesByFormSubmissionId(submission.id);
                                 // Exclude extend invoices — only the survey's own invoice is the main link
                                 const mainInvoices = invoices.filter((inv) => inv.entity_type !== 'extend');
-                                if (mainInvoices.length > 0 && mainInvoices[0].invoice_url) {
-                                    links[submission.id] = mainInvoices[0].invoice_url;
+                                if (mainInvoices.length > 0) {
+                                    if (!foundTransactionId && mainInvoices[0].payment_id) {
+                                        foundTransactionId = mainInvoices[0].payment_id;
+                                    }
+                                    if (submission.payment_status !== 'paid' && mainInvoices[0].invoice_url && !links[submission.id]) {
+                                        links[submission.id] = mainInvoices[0].invoice_url;
+                                    }
                                 }
                             } catch (e) {
                                 console.error(`Error fetching invoices for ${submission.id}:`, e);
                             }
+                        }
+
+                        if (foundTransactionId) {
+                            invIds[submission.id] = foundTransactionId;
                         }
 
                         // No payment link found
@@ -512,6 +519,7 @@ export function StatusPage() {
                                                         submission={submission}
                                                         first={ui.first}
                                                         onDelete={() => setPendingDismiss(submission)}
+                                                        onDataUpdated={fetchSubmissions}
                                                         active={activePhase === 1}
                                                     />
                                                 </Phase>

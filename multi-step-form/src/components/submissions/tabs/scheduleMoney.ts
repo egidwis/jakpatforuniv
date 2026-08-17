@@ -54,9 +54,15 @@ function storedIncentive(e: AdScheduleEntry): number | null {
 
 export function deriveScheduleMoney(
   entry: AdScheduleEntry,
-  submission: { questionCount?: number | null; distribution_type?: string | null },
+  submission: {
+    questionCount?: number | null;
+    question_count?: number | null;
+    distribution_type?: string | null;
+    distributionType?: string | null;
+  },
 ): ScheduleMoney {
-  const isKilat = entry.distributionType === 'kilat';
+  const isKilat = entry.distributionType === 'kilat' || submission.distribution_type === 'kilat' || submission.distributionType === 'kilat';
+  const questionCount = submission.question_count ?? submission.questionCount ?? 0;
 
   // ── Sudah ditagih ────────────────────────────────────────
   if (entry.totalCost > 0) {
@@ -64,24 +70,77 @@ export function deriveScheduleMoney(
 
     if (entry.subtotal != null && entry.ppnAmount != null) {
       const incentive = storedIncentive(entry);
-      const adCost = incentive != null ? entry.subtotal - incentive : null;
+      const netAdCost = incentive != null ? entry.subtotal - incentive : null;
+      const duration = entry.duration || 1;
+      const voucher = entry.voucherCode ?? undefined;
 
-      // Pecah jadi iklan + insentif hanya kalau hasilnya masuk akal. Selisih
-      // negatif berarti asumsinya tidak berlaku untuk baris ini — lebih baik
-      // menampilkan DPP utuh daripada dua angka yang tidak menjumlah.
-      const lines: MoneyLine[] =
-        adCost != null && adCost >= 0
-          ? [
-              { label: 'Iklan', hint: entry.duration ? `${entry.duration} hari` : undefined, amount: adCost },
-              ...(incentive! > 0
-                ? [{
-                    label: 'Insentif',
-                    hint: `Rp ${entry.prizePerWinner.toLocaleString('id-ID')} × ${entry.winnerCount}`,
-                    amount: incentive!,
-                  }]
-                : []),
-            ]
-          : [{ label: 'Subtotal (DPP)', amount: entry.subtotal }];
+      let grossAdCost = netAdCost;
+      let discountAmount = 0;
+
+      if (voucher && netAdCost != null && netAdCost > 0) {
+        let calculatedGross = isKilat
+          ? calculateAdCostPerDay(questionCount)
+          : calculateTotalAdCost(questionCount, duration);
+        let calculatedDiscount = isKilat ? 0 : calculateDiscount(voucher, calculatedGross, incentive || 0, duration);
+
+        if (calculatedGross > 0 && Math.abs((calculatedGross - calculatedDiscount) - netAdCost) < 10) {
+          grossAdCost = calculatedGross;
+          discountAmount = calculatedDiscount;
+        } else if (!isKilat) {
+          // `question_count` kosong, jadi harga kotornya tidak bisa dihitung ulang
+          // — ia harus dibalik dari nilai bersih yang tersimpan.
+          //
+          // ⚠️ JANGAN MENDAFTAR KODE VOUCHER DI SINI. `calculateDiscount` sudah
+          // jadi sumber kebenaran (dan sudah punya satu duplikat di
+          // create-payment.js yang wajib diubah bersamaan) — menaruh salinan
+          // ketiga berarti tarif diam-diam menyimpang. Yang dilakukan: PROBE
+          // fungsi itu di dua titik. Kalau diskonnya proporsional terhadap harga
+          // (semua voucher persentase), dua probe memberi rasio yang sama dan
+          // pembalikannya sah: net = gross × (1 − r).
+          //
+          // Voucher non-proporsional (JFUFEB/ILKOMUNY yang memakai cap harian,
+          // JFUTGRX yang mematok total) sengaja TIDAK dibalik — dua probenya
+          // berbeda, dan baris diskon dilewati alih-alih menampilkan angka karangan.
+          const probeA = 1_000_000;
+          const probeB = 2_000_000;
+          const rateA = calculateDiscount(voucher, probeA, 0, duration) / probeA;
+          const rateB = calculateDiscount(voucher, probeB, 0, duration) / probeB;
+          const isProportional = Math.abs(rateA - rateB) < 1e-9 && rateA > 0 && rateA < 1;
+
+          if (isProportional) {
+            grossAdCost = Math.round(netAdCost / (1 - rateA));
+            discountAmount = grossAdCost - netAdCost;
+          }
+        }
+      }
+
+      const lines: MoneyLine[] = [];
+
+      if (grossAdCost != null && grossAdCost >= 0) {
+        lines.push({
+          label: 'Iklan',
+          hint: entry.duration ? `${entry.duration} hari` : undefined,
+          amount: grossAdCost,
+        });
+
+        if (discountAmount > 0) {
+          lines.push({
+            label: `Diskon Voucher (${voucher})`,
+            amount: -discountAmount,
+            tone: 'discount',
+          });
+        }
+
+        if (incentive != null && incentive > 0) {
+          lines.push({
+            label: 'Reward',
+            hint: `Rp ${entry.prizePerWinner.toLocaleString('id-ID')} × ${entry.winnerCount}`,
+            amount: incentive,
+          });
+        }
+      } else {
+        lines.push({ label: 'Subtotal (DPP)', amount: entry.subtotal });
+      }
 
       lines.push({ label: 'PPN 11%', amount: entry.ppnAmount });
       return { total, isEstimate: false, lines };
@@ -97,7 +156,6 @@ export function deriveScheduleMoney(
 
   // ── Belum ditagih: penawaran, bukan catatan ──────────────
   const duration = entry.duration || 0;
-  const questionCount = submission.questionCount || 0;
   const incentive = calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner);
 
   // Kilat: base rate 1× (durasi tidak berlaku — selesai ~2 jam), plus add-on,
@@ -121,10 +179,10 @@ export function deriveScheduleMoney(
     },
   ];
   if (addon > 0) lines.push({ label: 'Add-on JFU Kilat', amount: addon, tone: 'addon' });
-  if (discount > 0) lines.push({ label: `Diskon (${entry.voucherCode})`, amount: -discount, tone: 'discount' });
+  if (discount > 0) lines.push({ label: `Diskon Voucher (${entry.voucherCode})`, amount: -discount, tone: 'discount' });
   if (incentive > 0) {
     lines.push({
-      label: 'Insentif',
+      label: 'Reward',
       hint: `Rp ${entry.prizePerWinner.toLocaleString('id-ID')} × ${entry.winnerCount}`,
       amount: incentive,
     });

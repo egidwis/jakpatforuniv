@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { AlertCircle, CalendarClock, Clock, DollarSign, Loader2 } from 'lucide-react';
+import { CalendarClock, Clock, Gift, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -97,15 +97,7 @@ export interface ScheduleFormProps {
   columns?: 4 | 7;
   onCancel: () => void;
   onDone: () => void;
-  /**
-   * Elemen tempat aksi di-portal. Diisi drawer supaya tombolnya mendarat di
-   * footer yang dipaku; dibiarkan kosong oleh dialog, yang merendernya inline.
-   */
   actionsSlot?: HTMLElement | null;
-  /**
-   * Merender tombol aksi. Pemanggil memutuskan DI MANA mereka muncul — footer
-   * drawer atau DialogFooter — dan form ini hanya menyediakan keadaannya.
-   */
   renderActions?: (state: {
     canSave: boolean;
     isSaving: boolean;
@@ -113,6 +105,23 @@ export interface ScheduleFormProps {
     cancel: () => void;
     label: string;
   }) => React.ReactNode;
+}
+
+export function formatBatchPeriod(batchStr?: string | null): string {
+  if (!batchStr) return '—';
+  const parts = batchStr.split('-');
+  if (parts.length === 2) {
+    const year = parts[0];
+    const monthIdx = parseInt(parts[1], 10) - 1;
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+    if (months[monthIdx]) {
+      return `${months[monthIdx]} ${year}`;
+    }
+  }
+  return batchStr;
 }
 
 export function ScheduleForm({
@@ -154,7 +163,6 @@ export function ScheduleForm({
   const [isLoadingSlots, setIsLoadingSlots] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Mode create saja
   const [prizePerWinner, setPrizePerWinner] = useState(currentPrizePerWinner);
   const [winnerCount, setWinnerCount] = useState(currentWinnerCount);
   const [additionalPrize, setAdditionalPrize] = useState(0);
@@ -167,18 +175,12 @@ export function ScheduleForm({
   const selectedHour = Math.min(23, Math.max(0, parseInt(hourStr || '15', 10)));
   const selectedMinute = Math.min(59, Math.max(0, parseInt(minStr || '0', 10)));
 
-  // Iklan tambahan punya KOLAM KUOTA SENDIRI. Mengukurnya terhadap kuota reguler
-  // akan menolak tanggal yang sebenarnya masih kosong untuknya.
   const quota = isExtraMode ? MAX_EXTRA_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
   const counts = isExtraMode ? extraCounts : regularCounts;
 
   const loadSlots = useCallback(async () => {
     setIsLoadingSlots(true);
     try {
-      // Kecualikan HANYA jadwal yang sedang dipindah — bukan seluruh order.
-      // Mengecualikan ordernya membuat jadwal ke-2 order yang sama tidak terlihat,
-      // jadi harinya tampil kosong padahal `trg_submission_no_overlap` (sql/38)
-      // akan menolaknya saat disimpan. Mode create tidak mengecualikan apa pun.
       const res = await fetchSlotAvailability(undefined, 'regular', entry?.sourceId);
       setRegularCounts(res.regularCounts);
       setExtraCounts(res.extraCounts);
@@ -202,8 +204,6 @@ export function ScheduleForm({
     ? toAiringEndIso(selectedYmd, duration, selectedHour, selectedMinute)
     : null;
 
-  // Batch di-resolve saat tanggal/durasi berubah supaya pratinjau hadiah tidak
-  // berbohong. `handleSave` tetap me-resolve ulang sebelum menulis apa pun.
   useEffect(() => {
     if (!isCreate || !endIso) {
       setBatchContext(null);
@@ -217,18 +217,24 @@ export function ScheduleForm({
     return () => { cancelled = true; };
   }, [isCreate, endIso, submissionId]);
 
-  // Sampai server menjawab, anggap batch BUKAN baru: itu menyembunyikan field
-  // "danai pool baru" alih-alih memunculkannya sekejap, dan handleSave
-  // me-resolve ulang secara otoritatif sebelum menulis.
   const isNewBatch = batchContext?.isNewBatch ?? false;
 
-  const covered = selectedYmd ? daysCoveredBy(selectedYmd, duration) : [];
+  const covered = useMemo(
+    () => (selectedYmd ? daysCoveredBy(selectedYmd, duration) : []),
+    [selectedYmd, duration]
+  );
 
+  // Kalender hanya MENGUNCI tile hari yang sudah penuh; iklan multi-hari bisa
+  // mulai di hari kosong lalu menabrak hari penuh di tengah jendelanya — tile
+  // itu memerah tapi tetap bisa disimpan. Penjaga ini yang menolaknya.
   const fullDayIn = (ymd: string): string | null =>
     daysCoveredBy(ymd, duration).find((d) => (counts[d] || 0) >= quota) ?? null;
 
   const handleSave = async () => {
-    if (!selectedYmd) return;
+    if (!selectedYmd || !startIso || !endIso) {
+      toast.error('Pilih tanggal mulai terlebih dahulu.');
+      return;
+    }
 
     const blocked = fullDayIn(selectedYmd);
     if (blocked) {
@@ -245,36 +251,30 @@ export function ScheduleForm({
     setIsSaving(true);
     try {
       if (isCreate) {
-        await createSchedule(selectedYmd);
+        await handleSaveCreate();
       } else {
-        await moveSchedule(selectedYmd);
+        await handleSaveEdit();
       }
       onDone();
-    } catch (e: any) {
-      console.error('Gagal menyimpan jadwal:', e);
-      // Pesan DB dibiarkan lewat: `trg_submission_no_overlap` / `trg_extend_no_overlap`
-      // (sql/38) menjelaskan tabrakan jadwal jauh lebih tepat daripada kalimat umum.
-      toast.error(e?.message || 'Gagal menyimpan jadwal.');
+    } catch (err: any) {
+      console.error('Gagal menyimpan jadwal:', err);
+      toast.error(err?.message || 'Gagal menyimpan jadwal.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  /** Mode edit — memindahkan jendela jadwal yang sudah ada. */
-  const moveSchedule = async (ymd: string) => {
-    if (!entry) return;
+  const handleSaveEdit = async () => {
+    if (!entry) throw new Error('Jadwal yang disunting tidak ditemukan.');
+    if (!selectedYmd || !startIso || !endIso) throw new Error('Waktu tayang tidak valid.');
+
     if (entry.isExtension) {
-      await updateExtendScheduleDates(entry.sourceId, ymd, duration, selectedHour, selectedMinute);
+      // ⚠️ Signature-nya (extendId, startYmd, durationDays, jam, menit) — ia
+      // MENYUSUN sendiri instant-nya. Mengoper `endIso` ke slot `durationDays`
+      // menulis tanggal sampah ke baris extend.
+      await updateExtendScheduleDates(entry.sourceId, selectedYmd, duration, selectedHour, selectedMinute);
     } else {
-      const sIso = toAiringStartIso(ymd, selectedHour, selectedMinute);
-      const eIso = toAiringEndIso(ymd, duration, selectedHour, selectedMinute);
-      await updateScheduleDates(
-        submissionId,
-        sIso,
-        eIso,
-        selectedHour,
-        selectedMinute
-      );
+      await updateScheduleDates(submissionId, startIso, endIso, selectedHour, selectedMinute);
 
       // ⚠️ JANGAN MEREGRESI ORDER YANG SUDAH LUNAS ke 'slot_reserved'.
       const { data: fresh } = await supabase
@@ -287,6 +287,9 @@ export function ScheduleForm({
       const alreadyCommitted = ['paid', 'scheduled', 'live', 'completed'].includes(
         fresh?.submission_status || ''
       );
+      // Slot yang dipindahkan admin menjadi milik admin: `slot_booked_by`
+      // 'user' adalah satu-satunya yang dilepas otomatis setelah 1 jam, dan
+      // slot yang baru saja dipindah admin tidak boleh ikut kadaluwarsa.
       if (!isPaid && !alreadyCommitted) {
         await supabase
           .from('form_submissions')
@@ -298,25 +301,21 @@ export function ScheduleForm({
           .eq('id', submissionId);
       }
     }
-    toast.success('Jadwal berhasil dipindahkan.');
+    toast.success('Jadwal tayang berhasil diperbarui.');
   };
 
-  /** Mode create — melahirkan jadwal berikutnya untuk order yang sama. */
-  const createSchedule = async (ymd: string) => {
-    const startIso = toAiringStartIso(ymd, selectedHour, selectedMinute);
-    const endDateStr = toAiringEndIso(ymd, duration, selectedHour, selectedMinute);
+  const handleSaveCreate = async () => {
+    if (!startIso || !endIso) throw new Error('Waktu tayang tidak valid.');
 
-    // Resolve ulang terhadap tanggal yang BENAR-BENAR disimpan — pratinjau bisa
-    // basi antara render dan submit, dan keputusan ini menaruh uang di invoice.
-    const resolved = await fetchBatchContext(submissionId, endDateStr);
+    const resolved = await fetchBatchContext(submissionId, endIso);
     if (!resolved) {
-      throw new Error('Gagal memastikan batch reward. Coba lagi.');
+      throw new Error('Gagal menentukan batch undian untuk jadwal ini.');
     }
 
-    // Batch yang benar-benar baru belum punya pool, jadi ia harus didanai di sini.
+
     if (resolved.isNewBatch && (prizePerWinner <= 0 || winnerCount <= 0)) {
       throw new Error(
-        `Batch ${resolved.periodBatch} belum punya reward: prize per winner dan jumlah pemenang wajib diisi`
+        `Jadwal berakhir di batch ${resolved.periodBatch} yang baru — wajib mengisi reward.`
       );
     }
 
@@ -324,14 +323,14 @@ export function ScheduleForm({
       submission_id: submissionId,
       duration,
       start_date: startIso,
-      end_date: endDateStr,
+      end_date: endIso,
       submission_status: 'waiting_payment',
       payment_status: 'pending',
       prize_per_winner: resolved.isNewBatch ? prizePerWinner : 0,
       winner_count: resolved.isNewBatch ? winnerCount : 0,
       additional_prize_per_winner: !resolved.isNewBatch ? additionalPrize : 0,
       is_new_month: resolved.isNewBatch,
-      total_cost: 0, // Diisi lewat alur tagihan
+      total_cost: 0,
       slot_booked_by: 'admin',
     };
 
@@ -348,12 +347,18 @@ export function ScheduleForm({
     ? renderActions({ canSave, isSaving, save: handleSave, cancel: onCancel, label: saveLabel })
     : (
       <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onCancel} disabled={isSaving}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="font-medium text-slate-700 bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-none"
+          onClick={onCancel}
+          disabled={isSaving}
+        >
           Batal
         </Button>
         <Button
           size="sm"
-          className="bg-blue-600 hover:bg-blue-700 text-white"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm"
           onClick={handleSave}
           disabled={isSaving || !canSave}
         >
@@ -364,16 +369,12 @@ export function ScheduleForm({
       </div>
     );
 
-  // `undefined` = pemanggil merender inline (dialog). `null` = wadah portal-nya
-  // ada tapi belum ter-mount; menahan render sesaat mencegah tombolnya berkedip
-  // di dalam badan sebelum melompat ke footer.
   const actions = actionsSlot === undefined
     ? actionNode
-    : actionsSlot ? createPortal(actionNode, actionsSlot) : null;
+    : actionsSlot
+      ? createPortal(actionNode, actionsSlot)
+      : null;
 
-  // Kilat punya kuota per-GELOMBANG dan hanya hari kerja — kalender 14-hari
-  // milik iklan reguler tidak berlaku sedikit pun di sini. Cabangnya hidup di
-  // dalam form supaya drawer dan papan Schedule tidak bisa berbeda pendapat.
   if (isKilat && entry) {
     return (
       <KilatScheduleStep
@@ -389,14 +390,13 @@ export function ScheduleForm({
 
   return (
     <div className="space-y-4">
-      {/* Tanggal + durasi */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             Tanggal mulai
           </p>
-          {isCreate && (
-            <label className="flex items-center gap-2 text-[11px] font-medium text-gray-600">
+          {isCreate ? (
+            <label className="flex items-center gap-2 text-[11px] font-medium text-slate-600">
               Durasi (hari)
               <Input
                 type="number"
@@ -404,9 +404,14 @@ export function ScheduleForm({
                 max={90}
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
-                className="h-8 w-16 text-sm"
+                className="h-8 w-16 text-sm text-center border-slate-200 focus:border-blue-400"
               />
             </label>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <span className="text-slate-400">Durasi:</span>
+              <span className="font-semibold text-slate-700">{duration} hari</span>
+            </div>
           )}
         </div>
 
@@ -422,10 +427,9 @@ export function ScheduleForm({
         />
       </div>
 
-      {/* Jam tayang */}
-      <div className="space-y-1.5 rounded-lg border border-gray-200 bg-white p-3">
+      <div className="space-y-1.5 rounded-lg border border-slate-200 bg-white p-3">
         <div className="flex items-center justify-between gap-3">
-          <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
             <Clock className="w-3.5 h-3.5 text-blue-600" />
             Jam Tayang (WIB)
           </label>
@@ -434,14 +438,14 @@ export function ScheduleForm({
               type="time"
               value={airingTime}
               onChange={(e) => setAiringTime(e.target.value)}
-              className="h-8 w-28 text-xs font-mono font-medium text-center"
+              className="h-8 w-28 text-xs font-mono font-medium text-center border-slate-200 focus:border-blue-400"
             />
-            <span className="text-xs font-semibold text-gray-500">WIB</span>
+            <span className="text-xs font-semibold text-slate-500">WIB</span>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap pt-1">
-          <span className="text-[10px] text-gray-400 font-medium mr-1">Pilihan cepat:</span>
+          <span className="text-[10px] text-slate-400 font-medium mr-1">Pilihan cepat:</span>
           {['08:00', '10:00', '13:00', '15:00', '18:00', '20:00'].map((preset) => (
             <button
               key={preset}
@@ -451,7 +455,7 @@ export function ScheduleForm({
                 'px-2 py-0.5 rounded text-[11px] font-medium transition-colors border',
                 airingTime === preset
                   ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
-                  : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
               )}
             >
               {preset} {preset === '15:00' ? '(Bawaan)' : ''}
@@ -460,16 +464,15 @@ export function ScheduleForm({
         </div>
       </div>
 
-      {/* Ringkasan */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50/70 px-3 py-2.5 text-xs">
+      <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-xs">
         {selectedYmd && startIso && endIso ? (
           <>
-            <p className="font-semibold text-gray-900">
+            <p className="font-semibold text-slate-900">
               {formatWibShort(startIso)} {formatWibTime(startIso)} WIB
               {' → '}
               {formatWibShort(endIso)} {formatWibTime(endIso)} WIB
             </p>
-            <p className="text-gray-500 mt-0.5">
+            <p className="text-slate-500 mt-0.5">
               {duration} hari tayang ·{' '}
               {isCreate
                 ? 'jadwal baru untuk order ini'
@@ -479,100 +482,87 @@ export function ScheduleForm({
             </p>
           </>
         ) : (
-          <p className="text-gray-400">Pilih tanggal mulai.</p>
+          <p className="text-slate-400">Pilih tanggal mulai.</p>
         )}
       </div>
 
-      {/* Batch & hadiah — mode create saja */}
+      {/* Hadiah Undian — mode create saja */}
       {isCreate && endIso && (
-        <div
-          className={cn(
-            'flex items-start gap-2 rounded-lg border p-3',
-            isNewBatch ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'
-          )}
-        >
-          <AlertCircle className={cn('w-4 h-4 mt-0.5 shrink-0', isNewBatch ? 'text-amber-600' : 'text-blue-600')} />
-          <div className="text-[11px] space-y-0.5 min-w-0">
-            <p className="font-medium text-gray-700">
-              Batch: <span className="font-mono font-bold">{batchContext?.periodBatch ?? '—'}</span>
-            </p>
-            {isResolvingBatch ? (
-              <p className="font-semibold text-gray-500">Mengecek reward batch…</p>
-            ) : !batchContext ? (
-              <p className="font-semibold text-gray-500">Batch belum bisa dipastikan</p>
-            ) : isNewBatch ? (
-              <p className="font-semibold text-amber-700">
-                ⚠️ Batch {batchContext.periodBatch} belum punya reward — wajib set reward baru
-              </p>
-            ) : (
-              <p className="font-semibold text-blue-700">
-                ✓ Menempel ke reward batch {batchContext.periodBatch}
-                {batchContext.poolPrizePerWinner > 0
-                  ? ` (Rp ${batchContext.poolPrizePerWinner.toLocaleString('id-ID')} × ${batchContext.poolWinnerCount})`
-                  : ''}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {isCreate && (
         isNewBatch ? (
-          <div className="rounded-lg border border-amber-200 bg-white p-3 space-y-2">
-            <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
-              <DollarSign className="w-3.5 h-3.5" /> Reward baru (wajib)
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="space-y-1 text-[11px] font-medium text-gray-700">
-                Prize per winner (Rp)
+          <div className="rounded-lg border border-amber-200 bg-white p-3 space-y-3">
+            <div>
+              <p className="text-xs font-semibold text-amber-900 flex items-center gap-1.5">
+                <Gift className="w-3.5 h-3.5 text-amber-600" />
+                Hadiah Undian · Periode {formatBatchPeriod(batchContext?.periodBatch)}
+              </p>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                Periode baru — wajib tentukan pool hadiah untuk periode ini
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-amber-100">
+              <label className="space-y-1 text-[11px] font-medium text-slate-700">
+                Hadiah per pemenang (Rp)
                 <Input
                   type="number"
                   min={0}
                   value={prizePerWinner}
                   onChange={(e) => setPrizePerWinner(Number(e.target.value))}
-                  className="h-9 text-sm"
+                  className="h-9 text-sm border-slate-200 focus:border-amber-400"
                 />
               </label>
-              <label className="space-y-1 text-[11px] font-medium text-gray-700">
+              <label className="space-y-1 text-[11px] font-medium text-slate-700">
                 Jumlah pemenang
                 <Input
                   type="number"
                   min={0}
                   value={winnerCount}
                   onChange={(e) => setWinnerCount(Number(e.target.value))}
-                  className="h-9 text-sm"
+                  className="h-9 text-sm border-slate-200 focus:border-amber-400"
                 />
               </label>
             </div>
+
             {prizePerWinner > 0 && winnerCount > 0 && (
-              <p className="text-[11px] font-medium text-amber-700">
-                Total hadiah: Rp {(prizePerWinner * winnerCount).toLocaleString('id-ID')}
+              <p className="text-[11px] font-medium text-amber-800">
+                Total hadiah periode ini: Rp {(prizePerWinner * winnerCount).toLocaleString('id-ID')}
               </p>
             )}
           </div>
         ) : (
-          <div className="rounded-lg border border-blue-200 bg-white p-3 space-y-1.5">
-            <p className="text-xs font-semibold text-blue-800 flex items-center gap-1.5">
-              <DollarSign className="w-3.5 h-3.5" /> Tambah prize (opsional)
-            </p>
-            <label className="space-y-1 text-[11px] font-medium text-gray-700 block">
-              Additional prize per winner (Rp)
-              <Input
-                type="number"
-                min={0}
-                value={additionalPrize}
-                onChange={(e) => setAdditionalPrize(Number(e.target.value))}
-                className="h-9 text-sm"
-              />
-            </label>
-            <p className="text-[10px] text-gray-400">
-              Saat ini: Rp {currentPrizePerWinner.toLocaleString('id-ID')}/winner × {currentWinnerCount} winner
+          <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5">
+            <div>
+              <p className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                <Gift className="w-3.5 h-3.5 text-blue-600" />
+                Hadiah Undian · Periode {formatBatchPeriod(batchContext?.periodBatch)}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {isResolvingBatch
+                  ? 'Mengecek reward periode…'
+                  : batchContext && batchContext.poolPrizePerWinner > 0
+                    ? `Mengikuti pool aktif: Rp ${batchContext.poolPrizePerWinner.toLocaleString('id-ID')}/pemenang (${batchContext.poolWinnerCount} pemenang)`
+                    : 'Mengikuti reward periode aktif'}
+              </p>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 space-y-1.5">
+              <label className="space-y-1 text-[11px] font-medium text-slate-700 block">
+                Tambah hadiah per pemenang (opsional)
+                <Input
+                  type="number"
+                  min={0}
+                  value={additionalPrize}
+                  onChange={(e) => setAdditionalPrize(Number(e.target.value))}
+                  className="h-9 text-sm border-slate-200 focus:border-blue-400"
+                />
+              </label>
+
               {additionalPrize > 0 && (
-                <span className="text-blue-600 font-medium">
-                  {' → '}Rp {(currentPrizePerWinner + additionalPrize).toLocaleString('id-ID')}/winner
-                </span>
+                <p className="text-[11px] font-medium text-blue-600">
+                  ↗ Total menjadi: Rp {(currentPrizePerWinner + additionalPrize).toLocaleString('id-ID')}/pemenang ({currentWinnerCount} pemenang)
+                </p>
               )}
-            </p>
+            </div>
           </div>
         )
       )}

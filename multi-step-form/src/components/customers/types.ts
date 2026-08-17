@@ -239,12 +239,13 @@ export function customerDisplayId(c: Customer): string {
   return value.slice(0, 8);
 }
 
-export type CustomerTier = 'vvip' | 'vip' | 'returning' | 'new';
+export type CustomerTier = 'vvip' | 'vip' | 'returning' | 'new' | 'unpaid';
 
 export function customerTier(c: Customer): CustomerTier {
+  if (!c.paidCount || c.paidCount === 0) return 'unpaid';
   if (c.paidCount >= 5 && c.totalSpent >= 5_000_000) return 'vvip';
   if (c.paidCount >= 3 && c.totalSpent >= 1_000_000) return 'vip';
-  if (c.totalOrders >= 2) return 'returning';
+  if (c.paidCount >= 2) return 'returning';
   return 'new';
 }
 

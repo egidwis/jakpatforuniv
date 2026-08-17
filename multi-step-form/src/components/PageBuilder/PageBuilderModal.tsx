@@ -475,206 +475,219 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent
-                className="max-w-full w-screen h-[100dvh] flex flex-col p-0 overflow-hidden rounded-none border-0 !m-0 data-[state=closed]:!slide-out-to-bottom-full data-[state=open]:!slide-in-from-bottom-full"
+                className="max-w-full w-screen h-[100dvh] flex flex-col p-0 overflow-hidden rounded-none border-0 !m-0 bg-slate-100/60 data-[state=closed]:!slide-out-to-bottom-full data-[state=open]:!slide-in-from-bottom-full"
                 onInteractOutside={(e) => e.preventDefault()}
             >
                 {/* Header */}
-                <DialogHeader className="px-6 py-4 border-b">
-                    <DialogTitle>{initialData ? 'Edit Page' : 'Create New Page'}</DialogTitle>
+                <DialogHeader className="px-6 md:px-8 py-3.5 border-b border-slate-200 bg-white flex flex-row items-center justify-between shrink-0">
+                    <DialogTitle className="text-sm font-bold text-slate-800 tracking-tight">
+                        {initialData ? 'Edit Page' : 'Create New Page'}
+                    </DialogTitle>
                 </DialogHeader>
 
                 <div className="flex-1 overflow-hidden flex flex-row w-full">
-                    {/* Main Content (Left Pane) */}
-                    <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 bg-white">
-                        {isUnpaid && (
-                            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm flex items-start">
-                                <div className="font-medium">
-                                    Iklan ini belum lunas (Waiting Payment). Anda dapat menyimpan draf halaman, tetapi tidak dapat mem-publish-nya sampai pembayaran diselesaikan.
-                                </div>
-                            </div>
-                        )}
-                        <Input
-                            value={formData.title}
-                            onChange={(e) => {
-                                const newTitle = e.target.value;
-                                setFormData({ ...formData, title: newTitle, slug: generateSlug(newTitle) });
-                            }}
-                            placeholder="Page Title"
-                            className="text-3xl font-bold bg-white border border-gray-200 focus:border-blue-500 shadow-sm px-3 h-auto py-2 rounded-lg transition-all"
-                        />
-                        <div className="shrink-0">
-                            <BlockEditor
-                                content={formData.blocks}
-                                onChange={(newContent) => setFormData({ ...formData, blocks: newContent })}
-                            />
-                        </div>
-
-                        {/* Extra Questions (moved from sidebar) */}
-                        <div className="space-y-2 border-t border-gray-200/50 pt-4">
-                            <div className="flex items-center justify-between pb-1">
-                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Extra Questions ({formData.custom_fields.length})</Label>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                    onClick={() => setFormData({ ...formData, custom_fields: [...formData.custom_fields, { label: '', placeholder: '', type: 'text', required: false, options: '' }] })}
-                                >
-                                    <Plus className="w-3 h-3 mr-1" /> ADD
-                                </Button>
-                            </div>
-
-                            {formData.custom_fields.length === 0 && (
-                                <div className="text-center py-4 text-xs text-gray-400 italic">
-                                    No extra questions added.
+                    {/* Main Content (Left Pane Workspace Canvas) */}
+                    <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 flex justify-center bg-slate-100/60">
+                        <div className="w-full max-w-3xl flex flex-col gap-6 bg-white p-6 sm:p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs h-fit">
+                            {isUnpaid && (
+                                <div className="bg-amber-50/90 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-xs flex items-start leading-relaxed">
+                                    <div className="font-medium">
+                                        ⚠️ Iklan ini belum lunas (Waiting Payment). Anda dapat menyimpan draf halaman, tetapi tidak dapat mem-publish-nya sampai pembayaran diselesaikan.
+                                    </div>
                                 </div>
                             )}
 
-                            <div className="space-y-3">
-                                {formData.custom_fields.map((field, index) => (
-                                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-2.5 relative group shadow-sm transition-all hover:border-gray-300">
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-5 w-5 absolute right-1.5 top-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:bg-red-50 rounded"
-                                            onClick={() => {
-                                                const newFields = formData.custom_fields.filter((_, i) => i !== index);
-                                                setFormData({ ...formData, custom_fields: newFields });
-                                            }}
-                                        >
-                                            <Trash2 className="w-3 h-3" />
-                                        </Button>
+                            <div>
+                                <Input
+                                    value={formData.title}
+                                    onChange={(e) => {
+                                        const newTitle = e.target.value;
+                                        setFormData({ ...formData, title: newTitle, slug: generateSlug(newTitle) });
+                                    }}
+                                    placeholder="Judul Halaman / Page Title..."
+                                    className="text-base sm:text-lg font-bold text-slate-800 bg-white border border-slate-200 focus:border-blue-500 shadow-2xs px-3.5 py-2.5 h-11 rounded-xl transition-all placeholder:text-slate-300 placeholder:font-normal"
+                                />
+                            </div>
 
-                                        <div className="space-y-2">
-                                            <div className="pr-5">
-                                                <Input
-                                                    value={field.label}
-                                                    onChange={(e) => {
-                                                        const newFields = [...formData.custom_fields];
-                                                        newFields[index].label = e.target.value;
-                                                        setFormData({ ...formData, custom_fields: newFields });
-                                                    }}
-                                                    placeholder="Question title"
-                                                    className="h-6 text-xs font-semibold px-1.5 border-transparent hover:border-gray-200 focus:border-blue-500 rounded shadow-none"
-                                                />
-                                            </div>
+                            <div className="shrink-0">
+                                <BlockEditor
+                                    content={formData.blocks}
+                                    onChange={(newContent) => setFormData({ ...formData, blocks: newContent })}
+                                />
+                            </div>
 
-                                            <div className="grid grid-cols-2 gap-2 pl-1.5">
-                                                <Select
-                                                    value={field.type}
-                                                    onValueChange={(val) => {
-                                                        const newFields = [...formData.custom_fields];
-                                                        newFields[index].type = val;
-                                                        setFormData({ ...formData, custom_fields: newFields });
-                                                    }}
-                                                >
-                                                    <SelectTrigger className="h-6 text-[11px] px-2 shadow-sm border-gray-200 text-gray-700 bg-gray-50 hover:bg-gray-100 transition-colors">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="text" className="text-[11px]">Short Answer</SelectItem>
-                                                        <SelectItem value="number" className="text-[11px]">Number</SelectItem>
-                                                        <SelectItem value="textarea" className="text-[11px]">Long Answer</SelectItem>
-                                                        <SelectItem value="select" className="text-[11px]">Dropdown</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
+                            {/* Extra Questions */}
+                            <div className="space-y-3 border-t border-slate-100 pt-5 mt-2">
+                                <div className="flex items-center justify-between pb-1">
+                                    <div>
+                                        <Label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                            Extra Questions ({formData.custom_fields.length})
+                                        </Label>
+                                        <p className="text-[11px] text-slate-400">Pertanyaan tambahan untuk responden sebelum mengisi kuesioner utama</p>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-2.5 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg"
+                                        onClick={() => setFormData({ ...formData, custom_fields: [...formData.custom_fields, { label: '', placeholder: '', type: 'text', required: false, options: '' }] })}
+                                    >
+                                        <Plus className="w-3.5 h-3.5 mr-1" /> Tambah Pertanyaan
+                                    </Button>
+                                </div>
 
-                                                <div className="flex items-center space-x-1.5 pl-1">
-                                                    <Checkbox
-                                                        id={`required-${index}`}
-                                                        className="w-3 h-3 rounded-[2px] border-gray-300 data-[state=checked]:bg-blue-600"
-                                                        checked={field.required}
-                                                        onCheckedChange={(checked) => {
-                                                            const newFields = [...formData.custom_fields];
-                                                            newFields[index].required = checked as boolean;
-                                                            setFormData({ ...formData, custom_fields: newFields });
-                                                        }}
-                                                    />
-                                                    <Label htmlFor={`required-${index}`} className="text-[10px] font-medium cursor-pointer text-gray-600">Required</Label>
-                                                </div>
-                                            </div>
+                                {formData.custom_fields.length === 0 && (
+                                    <div className="text-center py-6 text-xs text-slate-400 italic bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                        Belum ada pertanyaan tambahan.
+                                    </div>
+                                )}
 
-                                            {field.type === 'select' && (
-                                                <div className="space-y-1.5 pl-1.5 pt-1">
+                                <div className="space-y-3">
+                                    {formData.custom_fields.map((field, index) => (
+                                        <div key={index} className="bg-slate-50/60 border border-slate-200/90 rounded-xl p-3.5 relative group shadow-2xs transition-all hover:border-slate-300">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 absolute right-2 top-2 text-slate-400 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                onClick={() => {
+                                                    const newFields = formData.custom_fields.filter((_, i) => i !== index);
+                                                    setFormData({ ...formData, custom_fields: newFields });
+                                                }}
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+
+                                            <div className="space-y-2.5">
+                                                <div className="pr-6">
                                                     <Input
-                                                        value={field.options}
+                                                        value={field.label}
                                                         onChange={(e) => {
                                                             const newFields = [...formData.custom_fields];
-                                                            newFields[index].options = e.target.value;
+                                                            newFields[index].label = e.target.value;
                                                             setFormData({ ...formData, custom_fields: newFields });
                                                         }}
-                                                        placeholder="Opt1, Opt2, Opt3"
-                                                        className="h-6 text-[11px] px-2 border-gray-200 shadow-sm bg-gray-50 focus:bg-white"
+                                                        placeholder="Tulis pertanyaan..."
+                                                        className="h-8 text-xs font-semibold px-2.5 bg-white border-slate-200 hover:border-slate-300 focus:border-blue-500 rounded-lg shadow-2xs"
                                                     />
-
-                                                    {field.is_screening && (
-                                                        <div className="bg-blue-50/50 border border-blue-100 rounded-md p-2 mt-1 shadow-sm">
-                                                            <span className="text-[9px] font-bold text-blue-700 uppercase mb-1.5 block">Valid Answers (Screening)</span>
-                                                            <div className="flex flex-wrap gap-1.5">
-                                                                {(field.options || '').split(',').map((opt: string, i: number) => {
-                                                                    const optVal = opt.trim();
-                                                                    if (!optVal) return null;
-                                                                    return (
-                                                                        <div key={i} className="flex items-center space-x-1.5 bg-white px-1.5 py-0.5 rounded border border-blue-100 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-colors hover:border-blue-300">
-                                                                            <Checkbox
-                                                                                id={`valid-${index}-${i}`}
-                                                                                className="w-2.5 h-2.5 rounded-[2px] bg-white border-blue-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                                                                                checked={(field.valid_options || []).includes(optVal)}
-                                                                                onCheckedChange={(checked) => {
-                                                                                    const newFields = [...formData.custom_fields];
-                                                                                    const currentValid = field.valid_options || [];
-                                                                                    if (checked) {
-                                                                                        newFields[index].valid_options = [...currentValid, optVal];
-                                                                                    } else {
-                                                                                        newFields[index].valid_options = currentValid.filter((v: string) => v !== optVal);
-                                                                                    }
-                                                                                    setFormData({ ...formData, custom_fields: newFields });
-                                                                                }}
-                                                                            />
-                                                                            <Label htmlFor={`valid-${index}-${i}`} className="text-[10px] cursor-pointer text-blue-900 font-medium leading-none mt-0.5">{optVal}</Label>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    )}
                                                 </div>
-                                            )}
 
-                                            <div className="flex items-center space-x-1.5 pt-1.5 mt-1 border-t border-gray-100 pl-1.5">
-                                                <Checkbox
-                                                    id={`screening-${index}`}
-                                                    className="w-3 h-3 rounded-[2px] border-gray-300 data-[state=checked]:bg-blue-600"
-                                                    checked={field.is_screening || false}
-                                                    onCheckedChange={(checked) => {
-                                                        const newFields = [...formData.custom_fields];
-                                                        newFields[index].is_screening = checked as boolean;
-                                                        setFormData({ ...formData, custom_fields: newFields });
-                                                    }}
-                                                />
-                                                <Label htmlFor={`screening-${index}`} className="text-[10px] font-medium cursor-pointer text-gray-500 hover:text-gray-700">
-                                                    Use as screening question
-                                                </Label>
+                                                <div className="grid grid-cols-2 gap-2.5">
+                                                    <Select
+                                                        value={field.type}
+                                                        onValueChange={(val) => {
+                                                            const newFields = [...formData.custom_fields];
+                                                            newFields[index].type = val;
+                                                            setFormData({ ...formData, custom_fields: newFields });
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="h-7 text-xs px-2.5 shadow-2xs border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors rounded-lg">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="text" className="text-xs">Short Answer</SelectItem>
+                                                            <SelectItem value="number" className="text-xs">Number</SelectItem>
+                                                            <SelectItem value="textarea" className="text-xs">Long Answer</SelectItem>
+                                                            <SelectItem value="select" className="text-xs">Dropdown</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+
+                                                    <div className="flex items-center space-x-2 pl-1">
+                                                        <Checkbox
+                                                            id={`required-${index}`}
+                                                            className="w-3.5 h-3.5 rounded-[3px] border-slate-300 data-[state=checked]:bg-blue-600"
+                                                            checked={field.required}
+                                                            onCheckedChange={(checked) => {
+                                                                const newFields = [...formData.custom_fields];
+                                                                newFields[index].required = checked as boolean;
+                                                                setFormData({ ...formData, custom_fields: newFields });
+                                                            }}
+                                                        />
+                                                        <Label htmlFor={`required-${index}`} className="text-xs font-medium cursor-pointer text-slate-600">Wajib Diisi (Required)</Label>
+                                                    </div>
+                                                </div>
+
+                                                {field.type === 'select' && (
+                                                    <div className="space-y-1.5 pt-1">
+                                                        <Input
+                                                            value={field.options}
+                                                            onChange={(e) => {
+                                                                const newFields = [...formData.custom_fields];
+                                                                newFields[index].options = e.target.value;
+                                                                setFormData({ ...formData, custom_fields: newFields });
+                                                            }}
+                                                            placeholder="Pilihan 1, Pilihan 2, Pilihan 3 (pisahkan dengan koma)"
+                                                            className="h-7 text-xs px-2.5 border-slate-200 shadow-2xs bg-white focus:bg-white rounded-lg"
+                                                        />
+
+                                                        {field.is_screening && (
+                                                            <div className="bg-blue-50/70 border border-blue-100 rounded-lg p-2.5 mt-1 shadow-2xs">
+                                                                <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wide mb-1.5 block">Jawaban Valid (Screening)</span>
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {(field.options || '').split(',').map((opt: string, i: number) => {
+                                                                        const optVal = opt.trim();
+                                                                        if (!optVal) return null;
+                                                                        return (
+                                                                            <div key={i} className="flex items-center space-x-1.5 bg-white px-2 py-0.5 rounded-md border border-blue-200 shadow-2xs transition-colors hover:border-blue-300">
+                                                                                <Checkbox
+                                                                                    id={`valid-${index}-${i}`}
+                                                                                    className="w-3 h-3 rounded-[2px] bg-white border-blue-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                                                                    checked={(field.valid_options || []).includes(optVal)}
+                                                                                    onCheckedChange={(checked) => {
+                                                                                        const newFields = [...formData.custom_fields];
+                                                                                        const currentValid = field.valid_options || [];
+                                                                                        if (checked) {
+                                                                                            newFields[index].valid_options = [...currentValid, optVal];
+                                                                                        } else {
+                                                                                            newFields[index].valid_options = currentValid.filter((v: string) => v !== optVal);
+                                                                                        }
+                                                                                        setFormData({ ...formData, custom_fields: newFields });
+                                                                                    }}
+                                                                                />
+                                                                                <Label htmlFor={`valid-${index}-${i}`} className="text-xs cursor-pointer text-blue-900 font-medium leading-none">{optVal}</Label>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                <div className="flex items-center space-x-2 pt-1.5 mt-1 border-t border-slate-200/60 pl-0.5">
+                                                    <Checkbox
+                                                        id={`screening-${index}`}
+                                                        className="w-3.5 h-3.5 rounded-[3px] border-slate-300 data-[state=checked]:bg-blue-600"
+                                                        checked={field.is_screening || false}
+                                                        onCheckedChange={(checked) => {
+                                                            const newFields = [...formData.custom_fields];
+                                                            newFields[index].is_screening = checked as boolean;
+                                                            setFormData({ ...formData, custom_fields: newFields });
+                                                        }}
+                                                    />
+                                                    <Label htmlFor={`screening-${index}`} className="text-xs font-medium cursor-pointer text-slate-500 hover:text-slate-700">
+                                                        Jadikan pertanyaan screening kriteria
+                                                    </Label>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Sidebar Settings (Right Pane) */}
-                    <div className="w-[360px] overflow-y-auto bg-gray-50/50 p-5 flex flex-col gap-6 flex-shrink-0 border-l border-gray-100">
+                    <div className="w-[360px] lg:w-[380px] overflow-y-auto bg-white p-6 flex flex-col gap-6 flex-shrink-0 border-l border-slate-200 shadow-2xs">
                         {/* URL Config */}
                         <div className="space-y-2">
-                            <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Page URL</Label>
-                            <div className="flex rounded-md shadow-sm">
-                                <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-100 text-gray-500 sm:text-xs">
+                            <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Page URL</Label>
+                            <div className="flex rounded-lg shadow-2xs overflow-hidden border border-slate-200">
+                                <span className="inline-flex items-center px-3 border-r border-slate-200 bg-slate-50 text-slate-500 text-xs font-mono">
                                     /pages/
                                 </span>
                                 <Input
                                     value={formData.slug}
                                     disabled
-                                    className="flex-1 min-w-0 block w-full px-2 py-1.5 rounded-none rounded-r-md bg-white text-gray-500 border-gray-300 focus:ring-0 cursor-not-allowed sm:text-xs h-8"
+                                    className="flex-1 min-w-0 block w-full px-2.5 py-1.5 rounded-none bg-white text-slate-600 border-0 focus:ring-0 cursor-not-allowed text-xs h-8 font-mono"
                                     placeholder="auto-generated-slug"
                                 />
                             </div>
@@ -683,18 +696,18 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         {/* Redirect URL (only for standalone/announcement pages) */}
                         {isStandalone && (
                             <div className="space-y-2">
-                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <ExternalLink className="w-3 h-3" />
+                                <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                    <ExternalLink className="w-3.5 h-3.5" />
                                     Redirect URL
                                 </Label>
                                 <Input
                                     value={formData.redirect_url}
                                     onChange={(e) => setFormData({ ...formData, redirect_url: e.target.value })}
                                     placeholder="https://instagram.com/p/... (opsional)"
-                                    className="h-8 text-xs bg-white border-gray-200 focus:border-blue-500 shadow-sm"
+                                    className="h-8 text-xs bg-white border-slate-200 focus:border-blue-500 shadow-2xs rounded-lg"
                                 />
                                 {formData.redirect_url && (
-                                    <p className="text-[10px] text-amber-600 font-medium">
+                                    <p className="text-[11px] text-amber-600 font-medium leading-relaxed">
                                         ⚡ Klik "Lihat Selengkapnya" akan langsung redirect ke URL ini
                                     </p>
                                 )}
@@ -703,7 +716,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
                         {/* Banner Image */}
                         <div className="space-y-2">
-                            <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Featured Banner</Label>
+                            <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Featured Banner</Label>
                             <BannerPicker
                                 value={formData.banner_url}
                                 onChange={(url) => setFormData(prev => ({ ...prev, banner_url: url }))}
@@ -714,24 +727,24 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         {/* Campaign Summary Card (read-only from submission props) */}
                         {!isStandalone && submissionPrizePerWinner && submissionWinnerCount && (
                             <div className="space-y-2">
-                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Campaign Rewards</Label>
-                                <div className="bg-white border border-blue-100/60 rounded-lg p-3 flex flex-col space-y-2 shadow-sm">
+                                <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Campaign Rewards</Label>
+                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col space-y-2.5 shadow-2xs">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
                                             <Trophy className="w-3.5 h-3.5 text-blue-600" />
-                                            <span className="text-xs font-medium text-gray-600">Total Prize</span>
+                                            <span className="text-xs font-medium text-slate-600">Total Hadiah</span>
                                         </div>
-                                        <span className="text-sm font-bold text-gray-900">
+                                        <span className="text-xs font-bold text-slate-900">
                                             Rp {(submissionPrizePerWinner * submissionWinnerCount).toLocaleString('id-ID')}
                                         </span>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
                                             <Users className="w-3.5 h-3.5 text-blue-600" />
-                                            <span className="text-xs font-medium text-gray-600">Winners</span>
+                                            <span className="text-xs font-medium text-slate-600">Pemenang</span>
                                         </div>
-                                        <span className="text-sm font-bold text-gray-900">
-                                            {submissionWinnerCount}
+                                        <span className="text-xs font-bold text-slate-900">
+                                            {submissionWinnerCount} Orang
                                         </span>
                                     </div>
                                 </div>
@@ -741,12 +754,12 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         {/* Criteria Responden */}
                         {!isStandalone && (
                             <div className="space-y-2">
-                                <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Respondent Criteria</Label>
+                                <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Kriteria Responden</Label>
                                 <Textarea
                                     value={formData.criteria_responden || ''}
                                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, criteria_responden: e.target.value })}
-                                    placeholder="Enter respondent criteria to be displayed to public..."
-                                    className="h-28 text-sm resize-none bg-white border-gray-200 focus:border-blue-500 shadow-sm transition-all"
+                                    placeholder="Masukkan kriteria responden untuk ditampilkan ke publik..."
+                                    className="h-28 text-xs resize-none bg-white border-slate-200 focus:border-blue-500 shadow-2xs rounded-xl transition-all"
                                 />
                             </div>
                         )}
@@ -754,7 +767,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     </div>
                 </div>
 
-                <div className="p-4 border-t bg-gray-50/80 backdrop-blur-sm flex items-center justify-between gap-4 mt-auto">
+                <div className="px-6 md:px-8 py-3.5 border-t border-slate-200 bg-white flex items-center justify-between gap-4 mt-auto shrink-0 shadow-2xs">
                     {/* Left Side: Status + Schedule Capsule */}
                     <div className="flex items-center gap-2 flex-shrink min-w-0 mr-auto">
                         {/* Status Badge */}

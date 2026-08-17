@@ -37,8 +37,10 @@ import {
 } from './airingPeriods';
 import { formatIDR } from '@/utils/currency';
 
+const WIB = 'Asia/Jakarta';
+
 const formatDateLong = (d: string) =>
-    new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: WIB });
 
 interface SchedulePhaseProps {
     submission: FormSubmission;
@@ -140,35 +142,45 @@ interface RowDef {
     value: ReactNode;
 }
 
-const formatDateFullMonth = (d: Date | null) => {
+const formatWithWeekday = (d: Date | null, withYear = true) => {
     if (!d) return '';
-    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    const weekday = d.toLocaleDateString('id-ID', { timeZone: WIB, weekday: 'short' });
+    const day = d.toLocaleDateString('id-ID', { timeZone: WIB, day: 'numeric' });
+    const month = d.toLocaleDateString('id-ID', { timeZone: WIB, month: 'long' });
+    const year = d.toLocaleDateString('id-ID', { timeZone: WIB, year: 'numeric' });
+    return withYear ? `${weekday}, ${day} ${month} ${year}` : `${weekday}, ${day} ${month}`;
 };
 
 const formatDateRangeClean = (start: Date | null, end: Date | null, fallback?: string) => {
     if (!start && !end) return fallback || '—';
-    if (start && !end) return formatDateFullMonth(start);
-    if (!start && end) return formatDateFullMonth(end);
+    if (start && !end) return formatWithWeekday(start, true);
+    if (!start && end) return formatWithWeekday(end, true);
     if (start && end) {
         if (start.getTime() === end.getTime()) {
-            return formatDateFullMonth(start);
+            return formatWithWeekday(start, true);
         }
-        const sDay = start.getDate();
-        const eDay = end.getDate();
-        const sMonth = start.toLocaleDateString('id-ID', { month: 'long' });
-        const eMonth = end.toLocaleDateString('id-ID', { month: 'long' });
-        const sYear = start.getFullYear();
-        const eYear = end.getFullYear();
+        const sYear = start.toLocaleDateString('id-ID', { timeZone: WIB, year: 'numeric' });
+        const eYear = end.toLocaleDateString('id-ID', { timeZone: WIB, year: 'numeric' });
 
-        if (sYear === eYear && sMonth === eMonth) {
-            return `${sDay} – ${eDay} ${sMonth} ${sYear}`;
-        }
         if (sYear === eYear) {
-            return `${sDay} ${sMonth} – ${eDay} ${eMonth} ${sYear}`;
+            return `${formatWithWeekday(start, false)} – ${formatWithWeekday(end, true)}`;
         }
-        return `${formatDateFullMonth(start)} – ${formatDateFullMonth(end)}`;
+        return `${formatWithWeekday(start, true)} – ${formatWithWeekday(end, true)}`;
     }
     return fallback || '—';
+};
+
+const formatPeriodBatch = (batch: string) => {
+    const parts = batch.split('-');
+    if (parts.length === 2) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);
+        if (!isNaN(year) && !isNaN(month) && month >= 1 && month <= 12) {
+            const d = new Date(year, month - 1, 1);
+            return d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+        }
+    }
+    return batch;
 };
 
 /**
@@ -207,11 +219,11 @@ function Section({ label, sublabel, children }: { label: string; sublabel?: Reac
 function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean }) {
     const { t } = useLanguage();
     if (info.mode === 'plain') {
-        const text = `${info.winnerCount} ${t('winner')} · ${formatIDR(info.prizePerWinner!)}/${t('winner')}`;
+        const text = `@${formatIDR(info.prizePerWinner!)} · ${info.winnerCount} ${t('winner')}`;
         return <span className={valueTone(muted)}>{text}</span>;
     }
     if (info.mode === 'new_pool') {
-        const text = `${info.winnerCount} ${t('winner')} · ${formatIDR(info.prizePerWinner!)}/${t('winner')}`;
+        const text = `@${formatIDR(info.prizePerWinner!)} · ${info.winnerCount} ${t('winner')}`;
         return (
             <span className="inline-flex items-center gap-1">
                 <span className={valueTone(muted)}>{text}</span>
@@ -238,6 +250,7 @@ const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-700 border 
 function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const { t } = useLanguage();
     const rows: RowDef[] = [];
+    const bState = card?.booking?.state;
 
     // Panjang tayang diturunkan dari rentang tanggalnya (akhir-eksklusif), BUKAN dari
     // kolom `duration` — keduanya bisa berbeda, dan yang salah adalah kolomnya. Baris
@@ -247,27 +260,67 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const duration = card?.info?.airingDays || card?.info?.duration || 1;
     const totalHours = duration * 24;
     const formattedRange = formatDateRangeClean(card?.startDate, card?.endDate, card?.dateRange);
+    const startTimeWib = card?.startDate
+        ? card.startDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: WIB }).replace(':', '.')
+        : '15.00';
 
-    const airingValue = (
-        <div>
-            <div className={`font-semibold text-sm ${valueTone(muted)}`}>{formattedRange}</div>
-            {card?.startDate && (
-                <div className="text-xs text-gray-500 font-normal mt-0.5 flex items-center gap-1.5 flex-wrap">
-                    <span>Mulai <strong className="font-medium text-gray-700">15.00 WIB</strong></span>
-                    <span className="text-gray-300">•</span>
-                    <span>Durasi <strong className="font-medium text-gray-700">{duration} Hari ({totalHours} Jam)</strong></span>
-                </div>
-            )}
-        </div>
-    );
+    let airingValue: ReactNode;
+    if (bState === 'expired') {
+        airingValue = (
+            <span className="text-rose-600/90 font-medium text-xs sm:text-sm">
+                {t('scheduleSlotReleased')}
+            </span>
+        );
+    } else if (bState === 'too_late_today') {
+        airingValue = (
+            <span className="text-rose-600/90 font-medium text-xs sm:text-sm">
+                {t('scheduleTooLate')}
+            </span>
+        );
+    } else if (bState === 'in_review') {
+        airingValue = (
+            <span className="text-gray-400 font-normal text-xs sm:text-sm">
+                {t('schedulePendingReview')}
+            </span>
+        );
+    } else if (bState === 'choose_schedule') {
+        airingValue = (
+            <span className="text-gray-400 font-normal text-xs sm:text-sm">
+                {t('scheduleNotYetChosen')}
+            </span>
+        );
+    } else if (bState === 'cancelled') {
+        airingValue = (
+            <span className="text-gray-400 font-normal text-xs sm:text-sm">
+                {t('scheduleCancelled')}
+            </span>
+        );
+    } else {
+        airingValue = (
+            <div>
+                <div className={`font-semibold text-sm ${valueTone(muted)}`}>{formattedRange}</div>
+                {card?.startDate && (
+                    <div className="text-xs text-gray-500 font-normal mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>Mulai <strong className="font-medium text-gray-700">{startTimeWib} WIB</strong></span>
+                        <span className="text-gray-300">•</span>
+                        <span>Durasi <strong className="font-medium text-gray-700">{duration} Hari ({totalHours} Jam)</strong></span>
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     rows.push({ key: 'airingDate', icon: <CalendarCheck className={iconCls} />, label: t('airingDateLabel'), value: airingValue });
-    if (card?.info?.periodBatch) {
-        rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: <span className="font-mono text-xs">{card.info.periodBatch}</span> });
-    }
     if (card?.info?.incentive) {
         rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('rewardRespondentLabel'), value: <IncentiveValue info={card.info.incentive} muted={muted} /> });
     }
+
+    const hasValidDate = bState !== 'expired' && bState !== 'too_late_today' && bState !== 'in_review' && bState !== 'choose_schedule' && bState !== 'cancelled';
+    const batchValue = hasValidDate && card?.info?.periodBatch
+        ? <span className={valueTone(muted)}>{formatPeriodBatch(card.info.periodBatch)}</span>
+        : <span className="text-gray-400 font-normal text-xs sm:text-sm">{t('periodAwaitingSchedule')}</span>;
+
+    rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: batchValue });
 
     const sublabel = card?.info?.createdAt ? `${t('submittedOn')} ${formatDateLong(card.info.createdAt)}` : undefined;
 
@@ -355,9 +408,9 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
                     <span className="font-bold text-blue-600">{formatIDR(grandTotal)}</span>
                 </div>
 
-                {b.invoicePaymentId && b.state !== 'expired' && (
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-200/60 mt-1 text-xs">
-                        <span className="text-gray-500">{b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel')}</span>
+                <div className="flex justify-between items-center pt-2 border-t border-gray-200/60 mt-1 text-xs">
+                    <span className="text-gray-500">{b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel')}</span>
+                    {b.isPaidForLabel && b.invoicePaymentId ? (
                         <a
                             href={`/invoices/${b.invoicePaymentId}`}
                             target="_blank"
@@ -365,11 +418,32 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
                             className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
                         >
                             <FileText className="w-3.5 h-3.5" />
-                            {b.isPaidForLabel ? t('viewReceiptLink') : t('viewInvoiceLink')}
+                            {t('viewReceiptLink')}
                             <ExternalLink className="w-3 h-3 ml-0.5" />
                         </a>
-                    </div>
-                )}
+                    ) : b.state === 'waiting_payment' && b.invoicePaymentId ? (
+                        <a
+                            href={`/invoices/${b.invoicePaymentId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                        >
+                            <FileText className="w-3.5 h-3.5" />
+                            {t('viewInvoiceLink')}
+                            <ExternalLink className="w-3 h-3 ml-0.5" />
+                        </a>
+                    ) : b.state === 'expired' ? (
+                        <span className="text-rose-600/80 italic font-normal">{t('invoiceExpired')}</span>
+                    ) : b.state === 'too_late_today' ? (
+                        <span className="text-rose-600/80 italic font-normal">{t('invoicePaymentClosedToday')}</span>
+                    ) : b.state === 'choose_schedule' ? (
+                        <span className="text-gray-400 italic font-normal">{t('invoiceAwaitingSchedule')}</span>
+                    ) : b.state === 'cancelled' ? (
+                        <span className="text-gray-400 italic font-normal">{t('invoiceCancelled')}</span>
+                    ) : (
+                        <span className="text-gray-400 italic font-normal">{t('invoiceAwaitingIssue')}</span>
+                    )}
+                </div>
             </div>
         </Section>
     );
@@ -381,7 +455,7 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
 
     if (b.state === 'in_review') {
         return (
-            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50">
+            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50/80">
                 <p className="text-sm text-gray-600 leading-relaxed">
                     {t('scheduleEmptyPending')}
                 </p>
@@ -390,7 +464,7 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'awaiting_invoice') {
         return (
-            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50">
+            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50/80">
                 <p className="text-sm text-gray-600 leading-relaxed">
                     {card.kind === 'extend' ? t('calloutAwaitingInvoiceSchedule') : t('calloutAwaitingInvoice')}
                 </p>
@@ -399,11 +473,14 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'choose_schedule') {
         return (
-            <div className="rounded-xl border p-3.5 border-amber-200 bg-amber-50/60">
+            <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/50 shadow-sm">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
                         <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                        <p className="text-sm text-[#1a1a1a] leading-relaxed min-w-0">{t('calloutChooseSchedule')}</p>
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 leading-snug">{t('bannerTitleChooseSchedule')}</p>
+                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{t('bannerSubChooseSchedule')}</p>
+                        </div>
                     </div>
                     <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
                         <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftAmber}`}>
@@ -417,33 +494,22 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'waiting_payment') {
         const isExternal = card.kind === 'original' ? b.isExternalLink : true;
-        /* Satu label untuk semua kartu. Dulu kartu ke-2 dst. berbunyi "Bayar
-           Perpanjangan" — istilah yang tidak punya padanan di layar ini lagi:
-           kartunya sudah bernomor "Jadwal Iklan 2", jadi tombolnya cukup
-           menyebut aksinya. */
         const payLabel = t('payNow');
+        const deadlineTime = b.deadline
+            ? b.deadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB'
+            : null;
+        const bannerTitle = deadlineTime
+            ? `${t('bannerTitleWaitingPayment')} (${deadlineTime})`
+            : t('bannerTitleWaitingPayment');
+
         return (
-            <div className="rounded-xl border p-3.5 border-amber-200 bg-amber-50/60">
+            <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/50 shadow-sm">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
                         <CreditCard className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
                         <div className="min-w-0">
-                            <p className="text-sm text-[#1a1a1a] leading-relaxed">
-                                {b.deadline ? (
-                                    <>
-                                        {t('calloutPayBefore')}{' '}
-                                        <strong>{b.deadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })} WIB</strong>{' '}
-                                        {b.deadlineCause === 'cutoff'
-                                            ? t('calloutPayBeforeSuffixCutoff')
-                                            : t('calloutPayBeforeSuffix')}
-                                    </>
-                                ) : (
-                                    t('calloutPaymentGeneric')
-                                )}
-                            </p>
-                            <p className="text-xs text-gray-600 leading-relaxed mt-1">
-                                {t('paymentQuotaPriorityNote')}
-                            </p>
+                            <p className="text-sm font-semibold text-gray-900 leading-snug">{bannerTitle}</p>
+                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{t('bannerSubWaitingPayment')}</p>
                         </div>
                     </div>
                     {b.payUrl && (
@@ -472,13 +538,16 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'expired') {
         return (
-            <div className="rounded-xl border p-3.5 border-rose-200 bg-rose-50/60">
+            <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/50 shadow-sm">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                        <p className="text-sm text-[#1a1a1a] leading-relaxed min-w-0">
-                            {card.kind === 'extend' ? t('scheduleExpiredHint') : t('calloutExpired')}
-                        </p>
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 leading-snug">{t('bannerTitleExpired')}</p>
+                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">
+                                {card.kind === 'extend' ? t('scheduleExpiredHint') : t('bannerSubExpired')}
+                            </p>
+                        </div>
                     </div>
                     {card.kind === 'original' && (
                         <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
@@ -494,11 +563,14 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'too_late_today') {
         return (
-            <div className="rounded-xl border p-3.5 border-rose-200 bg-rose-50/60">
+            <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/50 shadow-sm">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
                         <Clock className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                        <p className="text-sm text-[#1a1a1a] leading-relaxed min-w-0">{t('calloutTooLateToday')}</p>
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 leading-snug">{t('bannerTitleTooLateToday')}</p>
+                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{t('bannerSubTooLateToday')}</p>
+                        </div>
                     </div>
                     {card.kind === 'original' && (
                         <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
@@ -514,7 +586,7 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'cancelled') {
         return (
-            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50">
+            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50/80">
                 <p className="text-sm text-gray-600 leading-relaxed">
                     {t('calloutCancelledSchedule')}
                 </p>

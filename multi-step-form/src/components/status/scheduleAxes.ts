@@ -141,6 +141,7 @@ export function scheduleFromSubmission(submission: FormSubmission): AdScheduleEn
         slotReservedAt: submission.slot_reserved_at || null,
         title: submission.title || '',
         researcherName: submission.full_name || '',
+        university: submission.university || null,
         submissionCreatedAt: submission.created_at || new Date().toISOString(),
         pageStatus: 'none',
         isExtraAd: false,

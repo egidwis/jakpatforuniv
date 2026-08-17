@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  CalendarClock, Check, ChevronDown, Copy, CreditCard, ExternalLink, Eye, EyeOff,
-  FileText, Image as ImageIcon, Link2, Loader2, PenLine, Save, SlidersHorizontal, Zap,
+  CalendarClock,
+  Check,
+  Copy,
+  CreditCard,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FileText,
+  Gift,
+  Globe,
+  Image as ImageIcon,
+  Loader2,
+  Paintbrush,
+  PenLine,
+  Save,
+  Zap,
 } from 'lucide-react';
 import { DetailSheet, DetailSheetSection } from '@/components/data-list/DetailSheet';
 import { Button } from '@/components/ui/button';
@@ -15,30 +29,26 @@ import { copyToClipboard } from '@/components/submissions/types';
 import { formatIDR } from '@/utils/currency';
 import { bannerSavePatch, isPlaceholderBannerUrl } from '@/utils/page-banner';
 import {
-  fetchSchedulePayments, getScheduledPageBySubmission, supabase,
-  type AdScheduleEntry, type SchedulePayment,
+  fetchSchedulePayments,
+  getScheduledPageBySubmission,
+  supabase,
+  type AdScheduleEntry,
+  type SchedulePayment,
 } from '@/utils/supabase';
 import { isPaymentTooLateForDate, toWibYmd } from '@/utils/airing-window';
-import { agendaChipOf, airingDaysOf, formatWibShort, formatWibTime, isUnscheduled, tokenForChip } from './scheduleModel';
+import {
+  agendaChipOf,
+  airingDaysOf,
+  formatWibShort,
+  formatWibTime,
+  isUnscheduled,
+  tokenForChip,
+} from './scheduleModel';
 import { RescheduleDialog } from './RescheduleDialog';
 
 // ─────────────────────────────────────────────────────────────
-// Drawer satu JADWAL — pintu penyesuaian, bukan tukar-halaman.
-//
-// Sebelumnya mengklik baris papan Schedule MELEMPAR admin ke halaman
-// Submissions: papannya hilang, periode yang dipilih hilang, posisi gulung
-// hilang. Padahal pertanyaan yang sedang dikerjakan ("banner iklan besok sudah
-// diganti belum") tidak pernah butuh meninggalkan kalender.
-//
-// PEMBAGIAN DENGAN HALAMAN PAGES SENGAJA DIJAGA:
-//   PAGES    — sumbu HALAMAN. Audit responden, urutan feed, hapus proof.
-//   SCHEDULE — sumbu TANGGAL. Penyesuaian yang muncul karena tanggal tayang:
-//              banner, judul, kriteria, dan memindahkan jendelanya.
-// Karena itu di sini TIDAK ADA tabel responden — itu sudah dijawab drawer Pages,
-// dan menduplikasinya membuat dua layar mengaku sebagai tempat kerja yang sama.
-//
-// Drawer ini milik JADWAL, bukan milik HARI. Dibuka dari baris "hari 2/4" atau
-// "hari 4/4", isinya sama persis.
+// Drawer satu JADWAL — fokus utama: penyesuaian konten & banner halaman.
+// Jadwal & Pembayaran diringkas sebagai konteks sekunder di bagian bawah.
 // ─────────────────────────────────────────────────────────────
 
 interface PageRow {
@@ -53,7 +63,6 @@ interface PageRow {
   views_count: number | null;
 }
 
-/** Nilai yang bisa disunting form cepat. Dipakai juga untuk deteksi "ada yang berubah". */
 interface QuickEdit {
   title: string;
   bannerUrl: string;
@@ -61,12 +70,16 @@ interface QuickEdit {
 }
 
 export function ScheduleEntryDrawer({
-  entry, open, onClose, onChanged, onOpenPageBuilder, onOpenSubmission,
+  entry,
+  open,
+  onClose,
+  onChanged,
+  onOpenPageBuilder,
+  onOpenSubmission,
 }: {
   entry: AdScheduleEntry | null;
   open: boolean;
   onClose: () => void;
-  /** Data berubah — papan induk harus memuat ulang. */
   onChanged: () => void;
   onOpenPageBuilder: (entry: AdScheduleEntry, page: PageRow | null) => void;
   onOpenSubmission: (entry: AdScheduleEntry) => void;
@@ -76,10 +89,7 @@ export function ScheduleEntryDrawer({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
-  /** Akordeon penyesuaian. Tertutup default supaya jadwal + uang + aksi halaman
-   *  muat dalam satu layar; dibuka sendiri hanya kalau memang ada pekerjaannya. */
   const [isEditOpen, setIsEditOpen] = useState(false);
-  /** Pemilih banner penuh (3 tab). Di luar ini yang tampil cuma thumbnail. */
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const [form, setForm] = useState<QuickEdit>({ title: '', bannerUrl: '', criteria: '' });
@@ -92,9 +102,6 @@ export function ScheduleEntryDrawer({
     if (!entry) return;
     setIsLoading(true);
     try {
-      // Halaman diambil per-drawer, BUKAN ikut dimuat untuk 971 baris papan.
-      // Kilat tidak pernah punya baris survey_pages (guard sql/42), jadi ia tidak
-      // ditanyakan sama sekali.
       const [pageRow, sub, payments] = await Promise.all([
         entry.distributionType === 'kilat'
           ? Promise.resolve(null)
@@ -113,17 +120,13 @@ export function ScheduleEntryDrawer({
       setPayment(payments.get(entry.id) ?? null);
 
       const initial: QuickEdit = {
-        title: p?.title || '',
+        title: p?.title || entry.title || '',
         bannerUrl: p?.banner_url || '',
         criteria: c,
       };
       setForm(initial);
       setBaseline(initial);
-      // Satu-satunya alasan akordeon terbuka sendiri: halaman sudah TERBIT tapi
-      // bannernya masih gambar bawaan. Itu pekerjaan yang memang harus dilihat —
-      // menyembunyikannya di balik satu klik menghapus guna penanda `⚠ banner`
-      // yang baru saja diikuti admin dari Agenda.
-      setIsEditOpen(!!p?.is_published && isPlaceholderBannerUrl(p?.banner_url));
+      setIsEditOpen(false);
       setIsPickerOpen(false);
     } catch (e) {
       console.error('Gagal memuat detail jadwal:', e);
@@ -145,21 +148,6 @@ export function ScheduleEntryDrawer({
     [form, baseline]
   );
 
-  /**
-   * Simpan TEPAT tiga hal.
-   *
-   * ⚠️ `slug` SENGAJA TIDAK IKUT, dan ini bukan kelalaian. Slug ADALAH URL publik
-   * `/pages/<slug>` — rute SurveyPage, tombol "Buka", dan setiap tautan yang
-   * sudah tersebar ke responden memakainya. Page Builder menulis ulang slug tiap
-   * kali judul diketik (`slug: generateSlug(newTitle)`), jadi mengganti judul di
-   * sana mematikan tautan iklan yang SEDANG TAYANG. Agenda isinya justru
-   * didominasi iklan live/paid; jalur ini tidak boleh mewarisi perilaku itu.
-   *
-   * ⚠️ `is_published`, `publish_start_date`, `publish_end_date`, `blocks`, dan
-   * `custom_fields` juga tidak disentuh. Empat yang pertama dimiliki auto-publish
-   * (sql/40) dan `cron_activate_extends`; menulisnya dari sini bisa menurunkan
-   * iklan yang sedang di udara.
-   */
   const handleSave = async () => {
     if (!entry || !isDirty) return;
     setIsSaving(true);
@@ -181,13 +169,12 @@ export function ScheduleEntryDrawer({
           .from('form_submissions')
           .update({ criteria_responden: form.criteria })
           .eq('id', submissionId);
-        // Tabel kedua — kalau yang ini gagal, katakan MANA yang gagal. Toast
-        // "gagal menyimpan" polos akan membuat admin mengira judulnya ikut batal.
         if (error) throw new Error(`Halaman tersimpan, tapi kriteria gagal: ${error.message}`);
       }
 
-      toast.success('Perubahan tersimpan.');
+      toast.success('Perubahan konten berhasil disimpan.');
       setBaseline(form);
+      setIsEditOpen(false);
       await load();
       onChanged();
     } catch (e: any) {
@@ -218,17 +205,11 @@ export function ScheduleEntryDrawer({
 
   if (!entry) return null;
 
-  // Chip yang sama dengan baris yang barusan diklik — drawer tidak boleh menamai
-  // keadaan yang sama dengan nama berbeda dari daftarnya.
   const kind = agendaChipOf(entry, Date.now());
   const token = tokenForChip(kind);
   const unscheduled = isUnscheduled(entry);
-  const bannerTodo = !!page?.is_published && isPlaceholderBannerUrl(page?.banner_url);
+  const bannerTodo = !isKilat && Boolean(page?.is_published && isPlaceholderBannerUrl(page?.banner_url));
   const isPaid = payment?.hasEverPaid || ['paid', 'completed'].includes(entry.paymentStatus || '');
-  // ⚠️ Panjang tayang diturunkan dari JENDELA, bukan dari kolom `duration`.
-  // Kolom itu terbukti bisa berbohong (#8462698a: jendela 1 hari, kolom 3), dan
-  // memajangnya di sebelah rentang tanggalnya berarti menampilkan dua angka yang
-  // saling menyangkal. Aturan yang sama sudah dipakai Agenda & papan kapasitas.
   const dayCount = airingDaysOf(entry).length;
   const airingYmd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
   const isLate = !isPaid && airingYmd ? isPaymentTooLateForDate(airingYmd) : false;
@@ -236,13 +217,27 @@ export function ScheduleEntryDrawer({
   const subtitle = [
     `#${entry.submissionId.slice(0, 8)}`,
     entry.researcherName,
-  ].join(' · ');
+    entry.university || null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const totalPrize = entry.prizePerWinner && entry.winnerCount
+    ? entry.prizePerWinner * entry.winnerCount
+    : 0;
+
+  const fullPublicUrl = page ? `${window.location.origin}/p/${page.slug}` : '';
+
+  // Mode editor terbuka: jika banner masih bawaan ATAU admin mengklik edit secara manual
+  const showEditor = bannerTodo || isEditOpen;
 
   return (
     <>
       <DetailSheet
         open={open}
-        onOpenChange={(v) => { if (!v) onClose(); }}
+        onOpenChange={(v) => {
+          if (!v) onClose();
+        }}
         size="lg"
         title={entry.title}
         subtitle={subtitle}
@@ -251,22 +246,38 @@ export function ScheduleEntryDrawer({
             <Chip variant={token.variant} size="sm" dot={token.dot} pulse={token.pulse}>
               {token.label}
             </Chip>
+            {isKilat ? (
+              <Chip variant="amber" size="sm">
+                <Zap className="w-3 h-3 mr-1 fill-amber-500 text-amber-500" /> Kilat
+              </Chip>
+            ) : bannerTodo ? (
+              <Chip variant="amber" size="sm" title="Banner masih menggunakan gambar default">
+                ⚠ Banner default
+              </Chip>
+            ) : page?.is_published ? (
+              <Chip variant="green" size="sm">
+                Siap
+              </Chip>
+            ) : page ? (
+              <Chip variant="slate" size="sm">
+                Draft
+              </Chip>
+            ) : isPaid ? (
+              // ⚠️ "belum ada halaman" dan "memang tidak punya halaman" HARUS
+              // berbeda: Kilat sudah pergi ke cabang chip-nya sendiri di atas
+              // (guard ensure_survey_page, sql/42), jadi sampai di sini artinya
+              // iklan reguler lunas yang halamannya belum dibuat — pekerjaan
+              // tertunda, bukan keadaan normal.
+              <Chip variant="red" size="sm" title="Iklan sudah lunas tapi halamannya belum dibuat">
+                ⚠ Belum ada halaman
+              </Chip>
+            ) : null}
             {entry.ordinal > 1 && (
               <Chip variant="purple" size="sm" title="Jadwal iklan ke-berapa dari order ini">
                 jadwal #{entry.ordinal}
               </Chip>
             )}
-            {isKilat && (
-              <Chip variant="amber" size="sm">
-                <Zap className="w-3 h-3 mr-1 fill-amber-500 text-amber-500" /> Kilat
-              </Chip>
-            )}
             {entry.isExtraAd && <Chip variant="outline" size="sm">Iklan tambahan</Chip>}
-            {bannerTodo && (
-              <Chip variant="amber" size="sm" title="Masih memakai banner bawaan">
-                Banner default
-              </Chip>
-            )}
           </>
         }
         footer={
@@ -277,7 +288,7 @@ export function ScheduleEntryDrawer({
               className="h-8 text-xs text-gray-500 hover:text-blue-700"
               onClick={() => onOpenSubmission(entry)}
             >
-              Buka di Submissions <ExternalLink className="w-3 h-3 ml-1.5" />
+              Buka Detail di Submissions <ExternalLink className="w-3 h-3 ml-1.5" />
             </Button>
           </div>
         }
@@ -287,339 +298,582 @@ export function ScheduleEntryDrawer({
             <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
           </div>
         ) : (
-          <>
-            {/* ── Jadwal ─────────────────────────────────────── */}
-            <DetailSheetSection title="Jadwal">
-              <div className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2.5 space-y-2">
-                <p className="text-sm font-semibold text-gray-900">
-                  {unscheduled ? (
-                    'Belum dijadwalkan'
-                  ) : (
-                    <>
-                      {formatWibShort(entry.startDate!)}
-                      {entry.endDate ? ` – ${formatWibShort(entry.endDate)}` : ''}
-                      {dayCount > 0 ? (
-                        <span className="font-normal text-gray-500"> · {dayCount} hari</span>
-                      ) : null}
-                    </>
-                  )}
-                </p>
-                <p className="text-[11px] text-gray-500">
-                  {!unscheduled && <>Tayang {formatWibTime(entry.startDate!)} WIB</>}
-                  {entry.slotBookedBy && <> · dipesan {entry.slotBookedBy}</>}
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full h-8 text-xs border-gray-200"
-                  onClick={() => setIsRescheduleOpen(true)}
-                >
-                  <CalendarClock className="w-3.5 h-3.5 mr-1.5" />
-                  {unscheduled ? 'Pilih jadwal' : 'Jadwalkan ulang'}
-                </Button>
-              </div>
-            </DetailSheetSection>
-
-            {/* ── Pembayaran jadwal ini ──────────────────────────
-                Naik ke posisi kedua: ia GERBANG. Halaman iklan baru ada setelah
-                order lunas (auto-publish sql/40), jadi blok di bawahnya sering
-                kosong justru ketika blok ini merah — membacanya lebih dulu
-                menjelaskan kenapa. */}
-            <DetailSheetSection title="Pembayaran jadwal ini">
-              {isPaid ? (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-emerald-800 inline-flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5" /> Lunas · {formatIDR(entry.totalCost)}
-                    {payment && payment.attempts > 1 && (
-                      <span className="font-normal text-emerald-600">
-                        · {payment.attempts} percobaan
-                      </span>
-                    )}
-                  </span>
-                  {payment?.paymentId && (
-                    <a
-                      href={`/invoices/${payment.paymentId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] font-medium text-emerald-700 hover:underline inline-flex items-center gap-1 shrink-0"
-                    >
-                      <FileText className="w-3 h-3" /> Kuitansi
-                    </a>
-                  )}
-                </div>
-              ) : (
-                <div
-                  className={cn(
-                    'rounded-lg border px-3 py-2.5 space-y-2',
-                    isLate ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60'
-                  )}
-                >
-                  <p className={cn('text-[11px] inline-flex items-center gap-1.5', isLate ? 'text-red-800' : 'text-amber-900')}>
-                    <CreditCard className="w-3.5 h-3.5 shrink-0" />
-                    {isLate
-                      ? <span><strong>Batas bayar terlewat</strong> — 14.00 WIB pada hari tayang. Jadwalkan ulang untuk menyelamatkannya.</span>
-                      : <span>Menunggu pembayaran · {formatIDR(entry.totalCost)}</span>}
-                  </p>
-                  {payment?.paymentUrl && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full h-7 text-[11px] bg-white"
-                      onClick={() => copyToClipboard(payment.paymentUrl!, 'Payment link copied!')}
-                    >
-                      <Copy className="w-3 h-3 mr-1.5" /> Salin link bayar
-                    </Button>
-                  )}
-                  {/* ⚠️ TANPA "Tandai lunas". `updatePaymentStatus` masih melunasi
-                      SELURUH invoice order, jadi di drawer ber-lingkup satu jadwal
-                      ia akan berbohong untuk order berjadwal banyak. Penyempitan
-                      ke schedule_id adalah Task 11. */}
-                </div>
-              )}
-            </DetailSheetSection>
-
-            {/* ── Halaman iklan ──────────────────────────────── */}
-            {isKilat ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
-                <Zap className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-800">
-                  <span className="font-semibold">Distribusi Kilat.</span> Tidak memakai halaman
-                  iklan — survei didorong langsung ke panel.
-                </p>
-              </div>
-            ) : page ? (
-              <>
-                <DetailSheetSection title="Halaman iklan">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2.5 text-[11px] text-gray-500 space-y-1">
-                    <p>
-                      {page.publish_start_date ? formatWibShort(page.publish_start_date) : '—'}
-                      {' → '}
-                      {page.publish_end_date ? formatWibShort(page.publish_end_date) : '—'}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-gray-800 tabular-nums">
-                        {page.views_count || 0}
-                      </span>{' '}
-                      views
-                      {page.is_hidden && <span className="text-red-600"> · disembunyikan</span>}
-                    </p>
-                    {/* Slug tinggal di sini, bukan di bawah field judul: ia IDENTITAS
-                        halaman, bukan bagian dari penyuntingan. Form di bawah tidak
-                        pernah menulisnya. */}
-                    <p className="flex items-center gap-1.5 text-gray-400">
-                      <Link2 className="w-3 h-3 shrink-0" />
-                      <span className="font-mono truncate">/{page.slug}</span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(`${window.location.origin}/pages/${page.slug}`, 'Link halaman disalin!')}
-                        className="shrink-0 hover:text-blue-600"
-                        title="Salin link halaman"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </button>
-                    </p>
+          <div className="space-y-4">
+            {/* ── 1. Jalur Kilat (Khusus Kilat) ── */}
+            {isKilat && (
+              <DetailSheetSection title="Distribusi JFU Kilat">
+                <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-3 shadow-2xs">
+                  <div className="flex items-center gap-2 text-amber-900">
+                    <Zap className="w-4 h-4 fill-amber-500 text-amber-500" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider">
+                      Jalur Distribusi Langsung
+                    </h4>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs border-gray-200"
-                      onClick={() => onOpenPageBuilder(entry, page)}
-                      title="Isi halaman, extra questions, slug, hadiah, jadwal publish"
-                    >
-                      <PenLine className="w-3.5 h-3.5 mr-1.5" />Page Builder
-                    </Button>
-                    {page.is_published && (
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Survei JFU Kilat disiarkan langsung melalui platform panel di luar JFU tanpa menggunakan halaman web landing page.
+                  </p>
+                  <div className="pt-2 border-t border-amber-200/70 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-amber-700/80 block text-[11px]">Waktu Siaran</span>
+                      <span className="font-semibold text-amber-950">
+                        {entry.kilatSlotHour != null
+                          ? `Jam ${String(entry.kilatSlotHour).padStart(2, '0')}.00 WIB`
+                          : 'Belum Ditugaskan'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-amber-700/80 block text-[11px]">Status Siaran</span>
+                      <span className="font-semibold text-amber-950">
+                        {isPaid ? 'Siap Disiarkan' : 'Menunggu Pembayaran'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </DetailSheetSection>
+            )}
+
+            {/* ── 2. Halaman Belum Ada (Order Belum Lunas / Belum Dibuat) ── */}
+            {!isKilat && !page && (
+              <DetailSheetSection title="Halaman Iklan">
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-5 text-center space-y-2.5">
+                  <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                    <Globe className="w-4.5 h-4.5" />
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-800">
+                    Halaman Iklan Belum Dibuat
+                  </h4>
+                  <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    {isPaid
+                      ? 'Belum ada halaman untuk order lunas ini. Silakan buat melalui Page Builder.'
+                      : 'Halaman iklan web dibuat otomatis begitu pembayaran tagihan telah terverifikasi lunas.'}
+                  </p>
+                  {isPaid && (
+                    <div className="pt-1">
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="h-8 text-xs border-gray-200"
-                        onClick={() => window.open(`/pages/${page.slug}`, '_blank')}
+                        onClick={() => onOpenPageBuilder(entry, null)}
+                        className="h-7 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-2xs"
                       >
-                        <ExternalLink className="w-3.5 h-3.5 mr-1.5" />Buka
+                        <PenLine className="w-3.5 h-3.5 mr-1.5" /> Buat Halaman
                       </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className={cn(
-                        'h-8 text-xs ml-auto',
-                        page.is_hidden
-                          ? 'border-blue-200 text-blue-600 hover:bg-blue-50'
-                          : 'border-gray-200 text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50'
-                      )}
-                      onClick={handleToggleHide}
-                    >
-                      {page.is_hidden
-                        ? <><Eye className="w-3.5 h-3.5 mr-1.5" />Tampilkan</>
-                        : <><EyeOff className="w-3.5 h-3.5 mr-1.5" />Sembunyikan</>}
-                    </Button>
-                  </div>
+                    </div>
+                  )}
+                </div>
+              </DetailSheetSection>
+            )}
 
-                  {/* ── Penyesuaian cepat (akordeon) ──────────────
-                      Tiga field yang cuma sesekali disentuh. Ditutup default agar
-                      jadwal, uang, dan aksi halaman muat dalam satu layar — banner
-                      lebar-penuh sebelumnya memakan separuh drawer sendirian. */}
-                  <div className="rounded-lg border border-gray-200 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setIsEditOpen((v) => !v)}
-                      className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50/80 hover:bg-gray-100 transition-colors text-left"
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                      <span className="text-xs font-semibold text-gray-700">Penyesuaian cepat</span>
-                      {/* Hanya saat tertutup — kalau terbuka, lencana yang sama sudah
-                          menempel di thumbnail, dan yang di sana mengikuti nilai form
-                          secara langsung (turun begitu banner diganti, sebelum simpan). */}
-                      {bannerTodo && !isEditOpen && (
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700">
-                          ⚠ banner masih bawaan
+            {/* ── 3. Konten Halaman & Editor Banner (FOKUS UTAMA) ── */}
+            {!isKilat && page && (
+              <DetailSheetSection title="Konten Halaman Survei">
+                {showEditor ? (
+                  /* ── Mode Editor Terbuka (Banner perlu update atau user klik Edit) ── */
+                  <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden divide-y divide-slate-100">
+                    {/* Header Editor */}
+                    <div className="p-3 bg-slate-50/60 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-slate-800">
+                          Penyesuaian Konten &amp; Banner
                         </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            navigator.clipboard.writeText(page.id);
+                            toast.success('Page ID berhasil disalin!');
+                          }}
+                          className="group/id inline-flex items-center gap-1.5 font-mono text-[11px] text-gray-600 bg-white hover:bg-blue-50 hover:text-blue-700 border border-gray-200/80 hover:border-blue-200 rounded px-1.5 py-0.5 whitespace-nowrap transition-colors cursor-pointer"
+                          title={`Klik untuk menyalin Page ID (${page.id})`}
+                        >
+                          <span>#{page.id.slice(0, 8)}</span>
+                          <Copy className="w-3 h-3 text-gray-400 group-hover/id:text-blue-600 shrink-0 transition-colors" />
+                        </span>
+                      </div>
+                      {!bannerTodo && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setForm(baseline);
+                            setIsEditOpen(false);
+                          }}
+                          className="h-6 px-2 text-[11px] text-slate-500 hover:text-slate-700"
+                        >
+                          Tutup Editor
+                        </Button>
                       )}
-                      <ChevronDown
-                        className={cn(
-                          'w-4 h-4 text-gray-400 ml-auto shrink-0 transition-transform',
-                          isEditOpen && 'rotate-180'
-                        )}
-                      />
-                    </button>
+                    </div>
 
-                    {isEditOpen && (
-                      <div className="p-3 space-y-3 border-t border-gray-200">
-                        {/* Dua kolom: pratinjau banner ringkas di kiri, teks di kanan.
-                            ⚠️ TANPA varian breakpoint, dan itu disengaja: styles.css
-                            lama menimpa `.flex` DAN `.grid`, dan terbukti dua kali di
-                            sini `sm:grid-cols-[…]` lalu `sm:flex-row` sama-sama kalah
-                            — kolomnya tetap menumpuk. Jadi: `[display:flex]` (kelas
-                            arbitrer, tidak tersentuh timpaan itu), arah baris bawaan,
-                            dan `flex-wrap` yang menumpuk sendiri kalau sempit. Lebar
-                            thumbnail dipatok di elemennya lewat `max-w-[152px]`. */}
-                        <div className="[display:flex] flex-wrap gap-3">
-                          <div className="space-y-1.5 w-full max-w-[152px] shrink-0">
-                            <label className="text-[11px] font-medium text-gray-500">Banner</label>
+                    {/* Reward Context */}
+                    <div className="px-3.5 py-2.5 bg-emerald-50/40 flex items-center gap-2 text-xs">
+                      <Gift className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span className="text-[11px] text-emerald-900 font-bold">
+                          Reward Undian:{' '}
+                        </span>
+                        <span className="font-semibold text-emerald-700">
+                          {totalPrize > 0 ? (
+                            <>
+                              {formatIDR(totalPrize)}{' '}
+                              <span className="font-normal text-emerald-600">
+                                (@{formatIDR(entry.prizePerWinner)} · {entry.winnerCount} Pemenang)
+                              </span>
+                            </>
+                          ) : (
+                            <span className="italic text-slate-400">Tidak ada reward</span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Form Layout: Thumbnail Banner di Kiri, Input Teks di Kanan */}
+                    <div className="p-3.5 space-y-3">
+                      <div className="[display:flex] flex-wrap gap-3">
+                        {/* Kolom Banner */}
+                        <div className="space-y-1.5 w-full max-w-[152px] shrink-0">
+                          <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                            Banner
+                          </label>
+                          <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-slate-200 shadow-2xs bg-slate-50">
                             {form.bannerUrl ? (
                               <img
                                 src={form.bannerUrl}
                                 alt="Pratinjau banner"
-                                className="w-full aspect-video object-cover rounded-md border border-gray-200"
+                                className="w-full h-full object-cover"
                               />
                             ) : (
-                              <div className="w-full aspect-video rounded-md border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
-                                <ImageIcon className="w-4 h-4 text-gray-300" />
+                              <div className="w-full h-full flex items-center justify-center">
+                                <ImageIcon className="w-5 h-5 text-slate-300" />
                               </div>
                             )}
                             {isPlaceholderBannerUrl(form.bannerUrl) && (
-                              <span className="inline-block rounded-full border border-amber-200 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700">
-                                masih bawaan
+                              <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/90 text-white shadow-2xs">
+                                Default
                               </span>
                             )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full h-7 text-[11px] border-gray-200"
-                              onClick={() => setIsPickerOpen((v) => !v)}
-                            >
-                              {isPickerOpen ? 'Tutup pemilih' : 'Ganti banner'}
-                            </Button>
                           </div>
-
-                          {/* `min-w-[240px]` yang memicu wrap: begitu sisa lebar tak
-                              cukup untuk judul + kriteria, kolom ini turun sendiri ke
-                              bawah thumbnail — tanpa media query. */}
-                          <div className="space-y-3 flex-1 min-w-[240px]">
-                            <div className="space-y-1">
-                              <label className="text-[11px] font-medium text-gray-500">Judul halaman</label>
-                              <Input
-                                value={form.title}
-                                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                                className="h-9 text-sm"
-                              />
-                              {/* Alasan slug tidak ikut ditulis di layar, bukan cuma di
-                                  kode — admin yang mengganti judul berhak tahu URL yang
-                                  sudah tersebar ke responden tidak ikut bergerak. */}
-                              <p className="text-[11px] text-gray-400">
-                                URL tidak berubah saat judul diganti
-                              </p>
-                            </div>
-
-                            <div className="space-y-1">
-                              <label className="text-[11px] font-medium text-gray-500">
-                                Kriteria responden
-                              </label>
-                              <Textarea
-                                value={form.criteria}
-                                onChange={(e) => setForm((f) => ({ ...f, criteria: e.target.value }))}
-                                rows={3}
-                                className="text-xs"
-                                placeholder="Mis. Mahasiswa aktif S1, 18–24 th…"
-                              />
-                            </div>
-                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full h-7 text-[11px] font-medium border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs"
+                            onClick={() => setIsPickerOpen((v) => !v)}
+                          >
+                            <Paintbrush className="w-3 h-3 mr-1 text-slate-500" />
+                            {isPickerOpen ? 'Tutup Pemilih' : 'Ganti Banner'}
+                          </Button>
                         </div>
 
-                        {/* Pemilih penuh butuh lebar — 3 tab di kolom 152px tidak
-                            terbaca. `value=""` disengaja: BannerPicker menyembunyikan
-                            tabnya dan memajang pratinjaunya sendiri begitu `value`
-                            terisi, dan pratinjau lebar-penuh itu persis yang kita
-                            singkirkan. Thumbnail di kiri yang memegang perannya.
-                            Menutup sendiri begitu banner dipilih. */}
-                        {isPickerOpen && (
+                        {/* Kolom Teks: Judul & Kriteria */}
+                        <div className="space-y-3 flex-1 min-w-[240px]">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                              Judul Halaman
+                            </label>
+                            <Input
+                              value={form.title}
+                              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                              className="h-8.5 text-xs font-semibold"
+                            />
+                            <p className="text-[10px] text-slate-400">
+                              URL publik tidak berubah saat judul diganti
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                              Kriteria Responden
+                            </label>
+                            <Textarea
+                              value={form.criteria}
+                              onChange={(e) => setForm((f) => ({ ...f, criteria: e.target.value }))}
+                              rows={3}
+                              className="text-xs leading-relaxed"
+                              placeholder="Mis. Responden berusia 18 tahun ke atas, domisili Jabodetabek…"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Modal BannerPicker jika dibuka */}
+                      {isPickerOpen && (
+                        <div className="pt-2 border-t border-slate-100">
                           <BannerPicker
                             value=""
                             onChange={(url) => {
                               setForm((f) => ({ ...f, bannerUrl: url }));
                               if (url) setIsPickerOpen(false);
                             }}
-                            active={open && isEditOpen}
+                            active={open && showEditor}
                           />
-                        )}
+                        </div>
+                      )}
 
+                      {/* Aksi Simpan & Full Builder */}
+                      <div className="pt-2 flex items-center gap-2">
                         <Button
                           size="sm"
-                          className="w-full h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                          className="h-8 flex-1 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-2xs"
                           onClick={handleSave}
                           disabled={!isDirty || isSaving}
                         >
-                          {isSaving
-                            ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Menyimpan…</>
-                            : <><Save className="w-3.5 h-3.5 mr-1.5" />Simpan perubahan</>}
+                          {isSaving ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                              Menyimpan…
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-3.5 h-3.5 mr-1.5" />
+                              Simpan Perubahan
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs"
+                          onClick={() => onOpenPageBuilder(entry, page)}
+                        >
+                          <PenLine className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                          Page Builder
                         </Button>
                       </div>
-                    )}
+                    </div>
+
+                    {/* Footer: Tautan Publik */}
+                    <div className="p-3 bg-slate-50/80 flex items-center justify-between gap-2 flex-wrap text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="font-mono text-[11px] text-slate-600 truncate select-all">
+                          /p/{page.slug}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-[11px] font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-2xs"
+                          onClick={() => copyToClipboard(fullPublicUrl, 'Link halaman disalin!')}
+                        >
+                          <Copy className="w-3 h-3 mr-1 text-slate-400" /> Salin
+                        </Button>
+                        {page.is_published ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px] font-medium bg-white hover:bg-blue-50 border-slate-200 hover:border-blue-200 text-blue-600 shadow-2xs"
+                            onClick={() => window.open(fullPublicUrl, '_blank')}
+                          >
+                            <ExternalLink className="w-3 h-3 mr-1" /> Buka
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px] font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-600 shadow-2xs"
+                            onClick={() => window.open(`${fullPublicUrl}?preview=true`, '_blank')}
+                            title="Pratinjau tampilan halaman draft"
+                          >
+                            <Eye className="w-3 h-3 mr-1" /> Pratinjau
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </DetailSheetSection>
-              </>
-            ) : (
-              <DetailSheetSection title="Halaman iklan">
-                <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 flex items-start gap-2">
-                  <ImageIcon className="w-4 h-4 text-gray-300 shrink-0 mt-0.5" />
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    {isPaid ? (
-                      <>
-                        Belum ada halaman untuk order lunas ini. Biasanya ia dibuat &amp;
-                        diterbitkan otomatis — buat manual lewat Page Builder.
-                      </>
-                    ) : (
-                      <>
-                        Halaman iklan <strong>dibuat &amp; diterbitkan otomatis</strong> begitu
-                        order lunas. Belum ada yang bisa disesuaikan dari sini.
-                      </>
-                    )}
-                  </p>
-                </div>
-                {isPaid && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 text-xs border-gray-200"
-                    onClick={() => onOpenPageBuilder(entry, null)}
-                  >
-                    <PenLine className="w-3.5 h-3.5 mr-1.5" />Buat halaman
-                  </Button>
+                ) : (
+                  /* ── Mode Ringkas (Banner sudah kustom & siap / Draft) ── */
+                  <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden divide-y divide-slate-100">
+                    {/* Header Card */}
+                    <div className="p-3 bg-slate-50/60 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {page.is_published ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <span
+                              className={cn(
+                                'w-1.5 h-1.5 rounded-full bg-emerald-500',
+                                kind === 'live' && 'animate-pulse'
+                              )}
+                            />
+                            Siap
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-slate-100 text-slate-700 border-slate-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                            Draft
+                          </span>
+                        )}
+
+                        {/* Page ID Badge */}
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            navigator.clipboard.writeText(page.id);
+                            toast.success('Page ID berhasil disalin!');
+                          }}
+                          className="group/id inline-flex items-center gap-1.5 font-mono text-[11px] text-gray-600 bg-white hover:bg-blue-50 hover:text-blue-700 border border-gray-200/80 hover:border-blue-200 rounded px-1.5 py-0.5 whitespace-nowrap transition-colors cursor-pointer"
+                          title={`Klik untuk menyalin Page ID (${page.id})`}
+                        >
+                          <span>#{page.id.slice(0, 8)}</span>
+                          <Copy className="w-3 h-3 text-gray-400 group-hover/id:text-blue-600 shrink-0 transition-colors" />
+                        </span>
+
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          {page.publish_start_date ? formatWibShort(page.publish_start_date) : '—'} —{' '}
+                          {page.publish_end_date ? formatWibShort(page.publish_end_date) : '—'}
+                        </span>
+                        {page.is_published ? (
+                          <span className="text-[11px] text-slate-400">
+                            {kind === 'live' ? (
+                              <>
+                                · Sedang tayang (
+                                <span className="font-semibold text-slate-700 tabular-nums">
+                                  {page.views_count || 0}
+                                </span>{' '}
+                                views)
+                              </>
+                            ) : kind === 'page_scheduled' ? (
+                              <>· Otomatis aktif saat jadwal tiba</>
+                            ) : kind === 'completed' ? (
+                              <>
+                                · Selesai tayang (
+                                <span className="font-semibold text-slate-700 tabular-nums">
+                                  {page.views_count || 0}
+                                </span>{' '}
+                                views)
+                              </>
+                            ) : (
+                              <>
+                                ·{' '}
+                                <span className="font-semibold text-slate-700 tabular-nums">
+                                  {page.views_count || 0}
+                                </span>{' '}
+                                views
+                              </>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-amber-700 font-medium">
+                            · Belum terbit (perlu publish manual)
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setIsEditOpen(true)}
+                          className="h-6 px-2 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        >
+                          <Paintbrush className="w-3 h-3 mr-1" /> Edit Konten
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Body Rincian Konten */}
+                    <div className="p-3.5 space-y-3 text-xs">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Judul Halaman
+                        </span>
+                        <p className="font-bold text-slate-900 text-sm leading-snug">
+                          {page.title || entry.title}
+                        </p>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Reward &amp; Pemenang
+                        </span>
+                        <p className="font-semibold text-emerald-700">
+                          {totalPrize > 0 ? (
+                            <>
+                              {formatIDR(totalPrize)}{' '}
+                              <span className="text-slate-500 font-normal ml-1">
+                                (@{formatIDR(entry.prizePerWinner)} · {entry.winnerCount} Pemenang)
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400 italic font-normal">Belum diisi</span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Kriteria Responden
+                        </span>
+                        <p className="text-slate-700 font-medium leading-relaxed whitespace-pre-line text-[11px]">
+                          {form.criteria || (
+                            <span className="text-slate-400 italic">Target responden belum dispesifikasikan</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Footer: Tautan Publik, Salin, Buka, dan Builder */}
+                    <div className="p-3 bg-slate-50/80 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="font-mono text-[11px] text-slate-600 truncate select-all">
+                          /p/{page.slug}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-[11px] font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-2xs"
+                          onClick={() => copyToClipboard(fullPublicUrl, 'Link halaman disalin!')}
+                        >
+                          <Copy className="w-3 h-3 mr-1 text-slate-400" /> Salin Link
+                        </Button>
+                        {page.is_published ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px] font-medium bg-white hover:bg-blue-50 border-slate-200 hover:border-blue-200 text-blue-600 shadow-2xs"
+                            onClick={() => window.open(fullPublicUrl, '_blank')}
+                          >
+                            <ExternalLink className="w-3 h-3 mr-1" /> Buka
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px] font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-600 shadow-2xs"
+                            onClick={() => window.open(`${fullPublicUrl}?preview=true`, '_blank')}
+                            title="Pratinjau tampilan halaman draft"
+                          >
+                            <Eye className="w-3 h-3 mr-1" /> Pratinjau
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={cn(
+                            'h-6 px-2 text-[11px] font-medium shadow-2xs',
+                            !page.is_published
+                              ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                          )}
+                          onClick={() => onOpenPageBuilder(entry, page)}
+                        >
+                          <PenLine className="w-3 h-3 mr-1" />
+                          {!page.is_published ? 'Terbitkan di Page Builder' : 'Page Builder'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className={cn(
+                            'h-6 px-2 text-[11px]',
+                            page.is_hidden
+                              ? 'text-blue-600 hover:bg-blue-50'
+                              : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+                          )}
+                          onClick={handleToggleHide}
+                          title={page.is_hidden ? 'Tampilkan di aplikasi' : 'Sembunyikan dari aplikasi'}
+                        >
+                          {page.is_hidden ? (
+                            <><Eye className="w-3 h-3 mr-1" /> Tampilkan</>
+                          ) : (
+                            <><EyeOff className="w-3 h-3 mr-1" /> Sembunyikan</>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </DetailSheetSection>
             )}
-          </>
+
+            {/* ── 4. Jadwal & Pembayaran (SEKUNDER - Ringkas 2-Kolom) ── */}
+            <DetailSheetSection title="Jadwal & Pembayaran">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Kolom Kiri: Jadwal Tayang */}
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 space-y-2 shadow-2xs">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                    <CalendarClock className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Jadwal Tayang</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">
+                      {unscheduled ? (
+                        'Belum dijadwalkan'
+                      ) : (
+                        <>
+                          {formatWibShort(entry.startDate!)}
+                          {entry.endDate ? ` – ${formatWibShort(entry.endDate)}` : ''}
+                          {dayCount > 0 && (
+                            <span className="font-normal text-slate-500"> · {dayCount} hari</span>
+                          )}
+                        </>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {!unscheduled && <>Tayang jam {formatWibTime(entry.startDate!)} WIB</>}
+                      {entry.slotBookedBy && <> · dipesan {entry.slotBookedBy}</>}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-7 text-[11px] font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-2xs"
+                    onClick={() => setIsRescheduleOpen(true)}
+                  >
+                    <CalendarClock className="w-3 h-3 mr-1 text-slate-500" />
+                    {unscheduled ? 'Pilih Jadwal' : 'Jadwalkan Ulang'}
+                  </Button>
+                </div>
+
+                {/* Kolom Kanan: Pembayaran */}
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 space-y-2 shadow-2xs">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                    <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Pembayaran</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">
+                      {isPaid ? (
+                        <span className="text-emerald-700 flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" /> Lunas · {formatIDR(entry.totalCost)}
+                        </span>
+                      ) : isLate ? (
+                        <span className="text-red-700">Slot Expired (Terlewat)</span>
+                      ) : (
+                        <span className="text-amber-700">Menunggu Pembayaran</span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {isPaid ? (
+                        <span>Biaya tagihan terverifikasi</span>
+                      ) : (
+                        <span>Total tagihan: {formatIDR(entry.totalCost)}</span>
+                      )}
+                    </p>
+                  </div>
+                  {isPaid && payment?.paymentId ? (
+                    <a
+                      href={`/invoices/${payment.paymentId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full h-7 rounded-md border border-emerald-200 bg-white hover:bg-emerald-50 text-[11px] font-medium text-emerald-700 flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                    >
+                      <FileText className="w-3 h-3" /> Lihat Kuitansi
+                    </a>
+                  ) : payment?.paymentUrl ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-7 text-[11px] font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-2xs"
+                      onClick={() => copyToClipboard(payment.paymentUrl!, 'Link pembayaran disalin!')}
+                    >
+                      <Copy className="w-3 h-3 mr-1 text-slate-500" /> Salin Link Bayar
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </DetailSheetSection>
+          </div>
         )}
       </DetailSheet>
 
@@ -628,9 +882,13 @@ export function ScheduleEntryDrawer({
           entry={entry}
           open={isRescheduleOpen}
           onOpenChange={setIsRescheduleOpen}
-          onDone={() => { void load(); onChanged(); }}
+          onDone={() => {
+            void load();
+            onChanged();
+          }}
         />
       )}
     </>
   );
 }
+

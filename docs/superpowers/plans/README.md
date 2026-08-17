@@ -3,7 +3,7 @@
 Folder ini berisi rencana implementasi yang ditulis sebelum eksekusi. Sebagian sudah
 selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sekali.
 
-**Diperbarui 2026-08-13.**
+**Diperbarui 2026-08-17.**
 
 > Rencana **bukan** status berjalan. Untuk "di mana posisi kita sekarang", baca
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — itu titik masuk resmi
@@ -22,6 +22,24 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 > ([`multi-step-form/sql/55_auto_page_display_order_neutral.sql`](../../../multi-step-form/sql/55_auto_page_display_order_neutral.sql))
 > dan sudah diterapkan ke database produksi 2026-08-13, terverifikasi.** Detail lengkap ada
 > di [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md), bagian "00C".
+
+> ⚠️ **2026-08-17 — revamp visual dashboard sempat menyerempet tiga rencana.** Ketiganya
+> sudah diselesaikan sebelum commit, tidak ada yang menggantung:
+>
+> 1. **Sebagian Task 13 Langkah 2 tak sengaja ikut terbangun** (multi-invoice per jadwal di
+>    `fetchSchedulePayments` + daftar invoice di `ScheduleCardList`). **Dikembalikan ke
+>    bentuk lama**, karena tanpa `schedule_id` ia salah menghitung uang: 82 sumber punya >1
+>    baris transaksi dan pada 33 di antaranya penjumlahannya melebihi yang benar-benar
+>    dibayar — satu order nyata lunas Rp 1.150.000 tampil Rp 3.450.000. Rancangan UI-nya
+>    **dipungut dan dicatat** di [Task 13 §Langkah 2](2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md),
+>    lengkap dengan angkanya, supaya versi yang benar lahir di atas Task 11 dan hasilnya
+>    minimal setara. Catatan padanannya ditambahkan di [Task 11 §1b](2026-08-08-task-11-ad-schedules-otoritatif.md).
+> 2. **`PAGE_LABEL` dihapus** — status halaman kini chip di `ScheduleEntryDrawer`, bukan teks
+>    di agenda. Pembedaan Phase 3 yang wajib dijaga ("Kilat memang tidak punya halaman" vs
+>    "halaman belum dibuat") sempat hilang dan **sudah dipulihkan** sebagai chip terpisah.
+> 3. **Penjaga jalur uang dari commit `0b295bb` sempat melemah** (penjaga lunas di dalam query
+>    `releaseScheduleSlot`, dan penandaan `slot_booked_by='admin'` saat admin memindah jadwal).
+>    Keduanya **sudah dipulihkan**.
 
 ## Daftar rencana
 

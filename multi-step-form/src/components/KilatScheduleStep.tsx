@@ -149,10 +149,23 @@ export function KilatScheduleStep({
             <div className="space-y-2">
                 <Label className="flex items-center justify-between">
                     <span>Pilih Tanggal (Senin–Jumat)</span>
-                    {isFetching && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                 </Label>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 py-1 px-1">
-                    {workdays.map((date) => {
+                {isFetching ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 py-1 px-1">
+                        {Array.from({ length: 10 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="flex flex-col items-center justify-center p-1 h-[80px] rounded-xl border border-slate-200 bg-white space-y-1.5 animate-pulse"
+                            >
+                                <div className="h-2.5 w-6 rounded bg-slate-200" />
+                                <div className="h-4 w-12 rounded bg-slate-300" />
+                                <div className="h-3.5 w-8 rounded-full bg-slate-100 mt-auto" />
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 py-1 px-1">
+                        {workdays.map((date) => {
                         const ymd = toLocalYmd(date);
                         const used = dayTotal(ymd);
                         const isFull = used >= dayCapacity;
@@ -201,7 +214,8 @@ export function KilatScheduleStep({
                             </button>
                         );
                     })}
-                </div>
+                    </div>
+                )}
             </div>
 
             {/* Gelombang */}

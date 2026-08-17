@@ -100,7 +100,7 @@ export const translations = {
     airingPeriodLabel: "Ad Schedule",
     incentiveNewPeriod: "New period",
     incentiveAccumulated: "added to the previous incentive pool",
-    periodBatchLabel: "Period",
+    periodBatchLabel: "Lottery Period",
     airingDateLabel: "Reservation Date",
     scheduleExpiredHint: "The payment link for this ad schedule has expired. Please contact the admin to have it reissued.",
     extStatusWaitingPayment: "Awaiting Payment",
@@ -638,6 +638,14 @@ export const translations = {
     reviewChipRejected: "Needs Revision",
     reviewChipPending: "In Review",
     reviewChipApproved: "Approved",
+    reviewTitleRejected: "Questionnaire Needs Revision",
+    reviewSubRejected: "Your questionnaire requires minor revisions before proceeding to scheduling.",
+    reviewerNotesTitle: "Notes from Review Team",
+    reviewGuideText: "Please update your questionnaire, then submit your confirmation below:",
+    btnConfirmFixed: "I Have Fixed the Questionnaire",
+    btnChangeLink: "Change Form Link",
+    btnDeleteForm: "Delete Form",
+    submittingReReview: "Submitting...",
     // Label chip = SUMBER form; hint = SIAPA yang mereview. Dua fakta berbeda
     // yang dulu dipadatkan jadi satu kalimat ("Auto Review - Google Form").
     reviewMethodAuto: "Google Forms",
@@ -645,6 +653,10 @@ export const translations = {
     reviewMethodAutoHint: "Automatic check",
     reviewMethodManualHint: "Checked by our team",
     openLinkInNewTab: "Open link in new tab",
+    questionnaireLabel: "Questionnaire",
+    questionsCountLabel: "Questions",
+    questionsItemUnit: "Items",
+    criteriaRespondentLabel: "Respondent Criteria",
 
     // Order card v3 — phase ② Jadwal Iklan (schedule cards)
     sectionInfo: "Booking Info",
@@ -672,6 +684,29 @@ export const translations = {
     publicationEmptyState: "Airing info will appear once a schedule is paid.",
     adPageLinkLabel: "Ad Page",
     viewsUnit: "views",
+
+    // Banners with CTA
+    bannerTitleWaitingPayment: "Complete Payment",
+    bannerSubWaitingPayment: "Pay before the deadline to keep your reserved slot from being released.",
+    bannerTitleChooseSchedule: "Review Approved — Pick Ad Schedule",
+    bannerSubChooseSchedule: "Please select an available airing date and time slot for your survey.",
+    bannerTitleExpired: "Payment Deadline Expired",
+    bannerSubExpired: "The airing slot has been released. Please select a new schedule without resubmitting the form.",
+    bannerTitleTooLateToday: "Cut-off for Today Has Passed",
+    bannerSubTooLateToday: "Payment was not completed before the 14:00 WIB cut-off. Please choose the next available airing date.",
+
+    // Placeholders
+    scheduleSlotReleased: "Slot released (reschedule needed)",
+    scheduleTooLate: "Past cut-off (reschedule needed)",
+    scheduleNotYetChosen: "Not yet scheduled",
+    schedulePendingReview: "Awaiting review approval",
+    scheduleCancelled: "Schedule cancelled",
+    periodAwaitingSchedule: "Awaiting schedule selection",
+    invoiceAwaitingIssue: "Waiting for admin to issue invoice",
+    invoiceExpired: "Invoice expired (please reschedule)",
+    invoiceAwaitingSchedule: "Awaiting schedule selection",
+    invoiceCancelled: "Invoice cancelled",
+    invoicePaymentClosedToday: "Payment for today is closed",
   },
 
   id: {
@@ -1081,7 +1116,7 @@ export const translations = {
     airingPeriodLabel: "Jadwal Iklan",
     incentiveNewPeriod: "Periode baru",
     incentiveAccumulated: "diakumulasi ke insentif sebelumnya",
-    periodBatchLabel: "Periode",
+    periodBatchLabel: "Periode Undian",
     airingDateLabel: "Penayangan",
     scheduleExpiredHint: "Link pembayaran jadwal iklan ini telah kedaluwarsa. Silakan hubungi admin untuk menerbitkannya ulang.",
     extStatusWaitingPayment: "Menunggu Pembayaran",
@@ -1304,14 +1339,26 @@ export const translations = {
 
     // Order card v3 — fase ① Review
     phaseReviewTitle: "Review",
-    reviewChipRejected: "Perlu Revisi",
+    reviewChipRejected: "Perlu Penyesuaian",
     reviewChipPending: "Di-review",
     reviewChipApproved: "Disetujui",
+    reviewTitleRejected: "Kuesioner Perlu Penyesuaian",
+    reviewSubRejected: "Kuesioner Anda memerlukan perbaikan kecil sebelum dapat kami proses ke tahap berikutnya.",
+    reviewerNotesTitle: "Catatan dari Tim Reviewer",
+    reviewGuideText: "Perbaiki kuesioner Anda, lalu konfirmasi di bawah jika sudah selesai:",
+    btnConfirmFixed: "Saya Sudah Perbaiki Kuesioner",
+    btnChangeLink: "Ganti Link Form",
+    btnDeleteForm: "Hapus Form",
+    submittingReReview: "Mengirimkan...",
     reviewMethodAuto: "Google Forms",
     reviewMethodManual: "Manual Review",
     reviewMethodAutoHint: "Pengecekan otomatis",
     reviewMethodManualHint: "Pengecekan oleh tim kami",
     openLinkInNewTab: "Buka link di tab baru",
+    questionnaireLabel: "Kuesioner",
+    questionsCountLabel: "Pertanyaan",
+    questionsItemUnit: "Item",
+    criteriaRespondentLabel: "Kriteria Responden",
 
     // Order card v3 — fase ② Jadwal Iklan (kartu jadwal)
     sectionInfo: "Info Booking",
@@ -1328,9 +1375,9 @@ export const translations = {
     airingStartTimeNote: "Mulai 15.00 WIB",
     voucherLabel: "Voucher",
     invoiceRowLabel: "Invoice",
-    receiptRowLabel: "Kwitansi",
+    receiptRowLabel: "Receipt",
     viewInvoiceLink: "Lihat invoice",
-    viewReceiptLink: "Lihat kwitansi",
+    viewReceiptLink: "Lihat receipt",
     incentiveNoAdditionNote: "Tanpa tambahan — insentif berjalan tetap berlaku",
     calloutAwaitingInvoiceSchedule: "Menunggu admin menerbitkan tagihan untuk jadwal iklan ini.",
     calloutCancelledSchedule: "Jadwal ini dibatalkan oleh admin. Butuh penjelasan? Chat Mimin di bawah.",
@@ -1339,6 +1386,29 @@ export const translations = {
     publicationEmptyState: "Info penayangan akan muncul setelah ada jadwal yang lunas.",
     adPageLinkLabel: "Halaman Iklan",
     viewsUnit: "views",
+
+    // Banners with CTA
+    bannerTitleWaitingPayment: "Selesaikan Pembayaran",
+    bannerSubWaitingPayment: "Bayar sebelum batas waktu agar reservasi slot tidak dilepas ke pengguna lain.",
+    bannerTitleChooseSchedule: "Review Disetujui — Pilih Jadwal Penayangan",
+    bannerSubChooseSchedule: "Silakan tentukan tanggal dan gelombang tayang yang tersedia untuk survei Anda.",
+    bannerTitleExpired: "Batas Waktu Pembayaran Kedaluwarsa",
+    bannerSubExpired: "Slot penayangan telah dilepas otomatis. Silakan pilih jadwal baru tanpa perlu mengajukan ulang form.",
+    bannerTitleTooLateToday: "Waktu Penyiapan Hari Ini Telah Lewat",
+    bannerSubTooLateToday: "Pembayaran melewati batas 14.00 WIB untuk jadwal hari ini. Silakan pilih tanggal penayangan berikutnya.",
+
+    // Placeholders
+    scheduleSlotReleased: "Slot dilepas (perlu dijadwalkan ulang)",
+    scheduleTooLate: "Jadwal lewat batas (perlu dijadwalkan ulang)",
+    scheduleNotYetChosen: "Belum dijadwalkan",
+    schedulePendingReview: "Menunggu persetujuan review",
+    scheduleCancelled: "Jadwal dibatalkan",
+    periodAwaitingSchedule: "Menunggu jadwal dipilih",
+    invoiceAwaitingIssue: "Menunggu tagihan diterbitkan admin",
+    invoiceExpired: "Tagihan kedaluwarsa (jadwalkan ulang)",
+    invoiceAwaitingSchedule: "Menunggu jadwal dipilih",
+    invoiceCancelled: "Tagihan dibatalkan",
+    invoicePaymentClosedToday: "Pembayaran hari ini ditutup",
   }
 };
 

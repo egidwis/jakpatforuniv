@@ -68,12 +68,17 @@ export interface PaymentState {
 }
 
 export interface ExistingPage {
+  id?: string;
   slug: string;
   is_published: boolean;
   publish_start_date: string | null;
   publish_end_date: string | null;
   title?: string;
   is_extra_ad?: boolean;
+  banner_url?: string | null;
+  views_count?: number;
+  respondents_count?: number;
+  requires_banner_update?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────

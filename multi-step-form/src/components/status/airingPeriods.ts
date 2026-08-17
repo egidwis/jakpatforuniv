@@ -202,7 +202,7 @@ export function buildScheduleCards(
                 // Belum lolos review = belum ada tagihan; jangan tampilkan baris
                 // Invoice walau ada baris nyasar di tabel transactions.
                 invoicePaymentId: bookingState === 'in_review' ? null : invoiceId,
-                isPaidForLabel: ui.isPaid,
+                isPaidForLabel: bookingState === 'paid' || ui.isPaid,
             },
             publication: {
                 state: pubState,

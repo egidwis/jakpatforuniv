@@ -46,7 +46,7 @@ export const STATUS_TOKENS: Record<LifecycleStage, StatusToken> = {
     dot: true,
     pulse: true,
   },
-  reserved_expired: { label: "Expired", variant: "red" },
+  reserved_expired: { label: "Slot Expired", variant: "red" },
   awaiting_payment: { label: "Waiting Payment", variant: "amber", dot: true },
   paid: { label: "Paid", variant: "purple" },
   completed: { label: "Completed", variant: "slate" },

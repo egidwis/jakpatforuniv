@@ -10,17 +10,29 @@ import {
   FileText,
   Globe,
   Info,
+  Link2,
   Loader2,
+  Lock,
   Mail,
   MessageCircle,
   RotateCcw,
+  ShieldAlert,
   X,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
-import { Chip } from '../ui/chip';
+import { ClientStatusIcon } from '../customers/ClientStatusIcon';
+import type { CustomerTier } from '../customers/types';
 import { DetailSheet } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { deriveLifecycle } from './lifecycle';
@@ -32,7 +44,33 @@ import { SchedulePaymentTab } from './tabs/SchedulePaymentTab';
 import { PageTab } from './tabs/PageTab';
 import { ScheduleForm } from '@/components/schedule/ScheduleForm';
 import { InvoiceForm } from '@/components/schedule/InvoiceForm';
-import type { AdScheduleEntry } from '@/utils/supabase';
+import { updateFormDetails, type AdScheduleEntry } from '@/utils/supabase';
+import { isPlaceholderBannerUrl } from '@/utils/page-banner';
+import { toast } from 'sonner';
+
+const REASONS = {
+  ACCESS_LOCKED:
+    'Akses Google Form Anda dibatasi (restricted). Mohon buka setelan form menjadi publik / siapa saja yang memiliki link (Anyone with the link) agar responden dapat mengisi.',
+  BROKEN_LINK:
+    'Link kuesioner tidak dapat diakses atau tidak valid. Silakan periksa kembali tautan yang Anda kirimkan.',
+};
+
+function getSensitiveReason(keywords?: string[]) {
+  const kwText = keywords && keywords.length > 0 ? ` (${keywords.join(', ')})` : '';
+  return `Kuesioner Anda mengandung pertanyaan terkait data pribadi/sensitif${kwText}. Mohon hapus atau sesuaikan pertanyaan tersebut sesuai panduan kuesioner Jakpat.`;
+}
+
+function sendWhatsAppNotification(phone: string | undefined, researcherName: string, formTitle: string, note: string) {
+  const cleanPhone = (phone || '').replace(/[^0-9]/g, '').replace(/^0/, '62');
+  const message = `Halo Kak ${researcherName || 'Peneliti'},\n\nTerima kasih telah mengajukan kuesioner "${formTitle || 'Kuesioner'}" di Jakpat for Universities.\n\nSaat proses review, kami menemukan catatan berikut:\n📌 "${note}"\n\nMohon perbaiki kuesioner Anda, lalu buka dashboard Jakpat dan klik tombol "Saya Sudah Perbaiki Kuesioner" agar dapat kami proses kembali.\n\nTerima kasih! 🙏\nTim Reviewer Jakpat for Universities`;
+
+  if (cleanPhone) {
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  } else {
+    navigator.clipboard.writeText(message);
+    toast.info('Nomor WhatsApp tidak tersedia. Pesan notifikasi disalin ke clipboard.');
+  }
+}
 
 // Reservasi + Payment digabung jadi satu tab di Phase 3, dan sejak aksinya jadi
 // sub-tampilan drawer keduanya benar-benar satu tempat kerja: rute review manual
@@ -81,7 +119,7 @@ interface SubmissionDetailSheetProps {
   onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
   onExtendCreated: () => void;
   variant?: 'sheet' | 'pane';
-  clientTier?: 'vvip' | 'vip' | 'returning' | 'new';
+  clientTier?: CustomerTier;
 }
 
 /**
@@ -116,6 +154,12 @@ export function SubmissionDetailSheet({
   const [scheduleReloadKey, setScheduleReloadKey] = useState(0);
   const [footerEl, setFooterEl] = useState<HTMLDivElement | null>(null);
 
+  // Local state for Review tab inline editing & progressive disclosure
+  const [questionCountInput, setQuestionCountInput] = useState<number>(submission?.questionCount || 0);
+  const [isRejectMode, setIsRejectMode] = useState(false);
+  const [isSpamConfirmOpen, setIsSpamConfirmOpen] = useState(false);
+  const [isSavingApprove, setIsSavingApprove] = useState(false);
+
   // Reset to the Info tab whenever a different submission is opened
   const submissionId = submission?.id;
   useEffect(() => {
@@ -123,7 +167,11 @@ export function SubmissionDetailSheet({
     setReviewNote('');
     setIsHistoryExpanded(false);
     setSubView(null);
-  }, [submissionId]);
+    setQuestionCountInput(submission?.questionCount || 0);
+    setIsRejectMode(false);
+    setIsSpamConfirmOpen(false);
+    setIsSavingApprove(false);
+  }, [submissionId, submission?.questionCount]);
 
   // Niat dari luar (baris tabel, kartu mobile) mendarat di tab yang benar; jadwal
   // mana yang disunting diresolusi SchedulePaymentTab setelah daftarnya termuat.
@@ -141,12 +189,43 @@ export function SubmissionDetailSheet({
   if (!submission) return null;
 
   const lifecycle = deriveLifecycle(submission, paymentData, existingPage, isScheduled);
+  const { displayStatus } = lifecycle;
+  const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
+  const isRejected = displayStatus === 'rejected';
+  const isReviewActive = isNeedReview || isRejected;
+
+  // Dot status untuk tab Jadwal & Bayar:
+  // - Tidak aktif jika: masih dalam review/rejected/spam, sudah lunas (isPaid), atau sudah live/completed/page_scheduled
+  // - Dot abu-abu jika: slot kedaluwarsa (customer tidak lanjut bayar / timeout)
+  // - Dot merah jika: sudah di-approve dan masih dalam proses penjadwalan/pembayaran belum lunas
+  const isScheduleActive =
+    !isReviewActive &&
+    displayStatus !== 'spam' &&
+    !lifecycle.isPaid &&
+    lifecycle.stage !== 'live' &&
+    lifecycle.stage !== 'completed' &&
+    lifecycle.stage !== 'page_scheduled';
+
+  const scheduleDotType: 'red' | 'gray' | null = isScheduleActive
+    ? (lifecycle.isActuallyExpired ? 'gray' : 'red')
+    : null;
+
+  const isKilat = submission?.distribution_type === 'kilat';
+  const needsBannerUpdate = !isKilat && existingPage && (
+    isPlaceholderBannerUrl(existingPage.banner_url) ||
+    Boolean(existingPage.requires_banner_update)
+  );
+  const isPageUnpublishedWhenDue = !isKilat && existingPage && lifecycle.canBuildPage && !existingPage.is_published;
+  const pageDotType: 'red' | null = (needsBannerUpdate || isPageUnpublishedWhenDue) ? 'red' : null;
 
   const tabBar = (
     <div className="flex gap-1 -mb-px">
       {TABS.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
+        const isReviewTab = tab.id === 'review';
+        const isScheduleTab = tab.id === 'schedule-payment';
+        const isPageTab = tab.id === 'page';
         return (
           <button
             key={tab.id}
@@ -160,6 +239,29 @@ export function SubmissionDetailSheet({
           >
             <Icon className="w-3.5 h-3.5" />
             {tab.label}
+            {isReviewTab && isReviewActive && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Review aktif / perlu tindakan">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+            {isScheduleTab && scheduleDotType === 'red' && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Jadwal / Pembayaran belum selesai">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+            {isScheduleTab && scheduleDotType === 'gray' && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Slot kedaluwarsa (unpaid)">
+                <span className="inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
+              </span>
+            )}
+            {isPageTab && pageDotType === 'red' && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Halaman perlu tindakan (banner/publish)">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
           </button>
         );
       })}
@@ -167,47 +269,40 @@ export function SubmissionDetailSheet({
   );
 
   const clientTierBadge = clientTier ? (
-    clientTier === 'vvip' ? (
-      <span className="inline-flex bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500 text-white font-extrabold rounded-full px-2 py-0.5 text-[9px] tracking-wide shrink-0">
-        ✦ VVIP
-      </span>
-    ) : clientTier === 'vip' ? (
-      <Chip variant="amber" size="sm">VIP</Chip>
-    ) : clientTier === 'returning' ? (
-      <Chip variant="blue" size="sm">Returning</Chip>
-    ) : (
-      <Chip variant="slate" size="sm">New</Chip>
-    )
+    <ClientStatusIcon tier={clientTier} size="sm" />
   ) : null;
 
   const subtitle = (
     <span className="flex flex-col gap-1">
       <span className="flex items-center gap-1.5 min-w-0 w-full">
         <span className="truncate font-medium">{submission.researcherName}</span>
-        {submission.university && (
-          <span className="text-gray-400 text-[11px] truncate shrink-0 max-w-[120px] sm:max-w-[200px]">· {submission.university}</span>
-        )}
         <span className="shrink-0">{clientTierBadge}</span>
+        {submission.university && (
+          <span className="text-gray-400 text-[11px] truncate min-w-0">· {submission.university}</span>
+        )}
       </span>
-      <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-2 flex-wrap text-xs sm:text-[13px] mt-0.5">
         {submission.phone_number && (
           <a
-            href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
+            href={`https://wa.me/${submission.phone_number.replace(/[^0-9]/g, '').replace(/^0/, '62')}`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors"
+            className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:text-emerald-700 hover:underline transition-colors"
           >
-            <MessageCircle className="w-3 h-3" /> WhatsApp
+            <MessageCircle className="w-3.5 h-3.5 shrink-0" /> {submission.phone_number}
           </a>
+        )}
+        {submission.phone_number && submission.researcherEmail && (
+          <span className="text-gray-300">·</span>
         )}
         {submission.researcherEmail && (
           <a
             href={`mailto:${submission.researcherEmail}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+            className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
           >
-            <Mail className="w-3 h-3" /> Email
+            <Mail className="w-3.5 h-3.5 shrink-0" /> {submission.researcherEmail}
           </a>
         )}
       </span>
@@ -218,7 +313,17 @@ export function SubmissionDetailSheet({
 
   const body = (
     <>
-      {activeTab === 'info' && <InfoTab submission={submission} lifecycle={lifecycle} onDataUpdated={onExtendCreated} />}
+      {activeTab === 'info' && (
+        <InfoTab
+          submission={submission}
+          paymentData={paymentData}
+          existingPage={existingPage}
+          lifecycle={lifecycle}
+          onDataUpdated={onExtendCreated}
+          onConvertDistribution={onConvertDistribution}
+          onNavigateTab={setActiveTab}
+        />
+      )}
       {activeTab === 'review' && (
         <ReviewTab submission={submission} onEditFormDetails={onEditFormDetails} />
       )}
@@ -321,12 +426,18 @@ export function SubmissionDetailSheet({
         actionsSlot={footerEl}
         renderActions={({ canSave, isSaving, save, cancel, label }) => (
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="flex-1 h-9" onClick={cancel} disabled={isSaving}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-9 font-medium text-slate-700 bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-none"
+              onClick={cancel}
+              disabled={isSaving}
+            >
               Batal
             </Button>
             <Button
               size="sm"
-              className="flex-[2] h-9 bg-blue-600 hover:bg-blue-700 text-white"
+              className="flex-[2] h-9 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm"
               onClick={save}
               disabled={isSaving || !canSave}
             >
@@ -340,11 +451,47 @@ export function SubmissionDetailSheet({
     );
   }
 
-  const { displayStatus } = lifecycle;
-  const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
+  const handleApprove = async () => {
+    setIsSavingApprove(true);
+    try {
+      if (questionCountInput !== submission.questionCount) {
+        await updateFormDetails(submission.id, {
+          title: submission.formTitle || '',
+          survey_url: submission.formUrl || '',
+          question_count: questionCountInput,
+          duration: submission.duration || 0,
+        });
+        toast.success(`Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q`);
+        onExtendCreated();
+      }
+      onStatusChange(submission.id, 'approved', reviewNote);
+      setReviewNote('');
+      setIsRejectMode(false);
+    } catch (err) {
+      console.error('Error approving submission:', err);
+      toast.error('Gagal menyimpan perubahan jumlah pertanyaan');
+    } finally {
+      setIsSavingApprove(false);
+    }
+  };
+
+  const handleReject = (withWhatsApp = false) => {
+    const finalNote = reviewNote.trim() || REASONS.ACCESS_LOCKED;
+    onStatusChange(submission.id, 'rejected', finalNote);
+    if (withWhatsApp) {
+      sendWhatsAppNotification(
+        submission.phone_number,
+        submission.researcherName,
+        submission.formTitle,
+        finalNote
+      );
+    }
+    setReviewNote('');
+    setIsRejectMode(false);
+  };
 
   const footer = activeTab !== 'review' ? undefined : (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Row 1: Status & Timeline Toggle */}
       <div className="flex items-center justify-between border-b border-gray-100 pb-2">
         <div className="flex items-center gap-1.5">
@@ -359,80 +506,233 @@ export function SubmissionDetailSheet({
         />
       </div>
 
-      {/* Conditional: compose & buttons if in need review status */}
-      {isNeedReview ? (
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label htmlFor="review-note-input" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-              Review Notes (Optional)
-            </label>
-            <Textarea
-              id="review-note-input"
-              placeholder="Tambahkan catatan (misal alasan reject atau info tambahan)..."
-              value={reviewNote}
-              onChange={(e) => setReviewNote(e.target.value)}
-              className="text-xs min-h-[60px] max-h-[120px] bg-slate-50/50 focus:bg-white"
+      {/* State 1: Need Review (Baru Masuk / Diajukan Ulang) */}
+      {isNeedReview && !isRejectMode && (
+        <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+          {/* Inline Question Count Stepper */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 shrink-0">
+            <span className="text-[11px] font-semibold text-slate-500">Qty:</span>
+            <input
+              type="number"
+              min="1"
+              value={questionCountInput}
+              onChange={(e) => setQuestionCountInput(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-11 h-6 text-xs font-semibold text-center bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              title="Koreksi jumlah pertanyaan jika berbeda dengan klaim user"
             />
+            <span className="text-[11px] text-slate-500 font-medium">Q</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          {/* Quick Action Buttons */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <Button
-              size="sm"
-              className="h-9 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold"
-              onClick={() => {
-                onStatusChange(submission.id, 'approved', reviewNote);
-                setReviewNote('');
-              }}
-            >
-              <Check className="w-3.5 h-3.5 mr-1.5" /> Approve
-            </Button>
-            <Button
+              type="button"
               size="sm"
               variant="outline"
-              className="h-9 text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-              onClick={() => {
-                onStatusChange(submission.id, 'rejected', reviewNote);
-                setReviewNote('');
-              }}
+              title="Tandai sebagai Spam"
+              className="h-8 w-8 p-0 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 shrink-0"
+              onClick={() => setIsSpamConfirmOpen(true)}
             >
-              <X className="w-3.5 h-3.5 mr-1.5" /> Reject
+              <Ban className="w-3.5 h-3.5" />
             </Button>
+
             <Button
+              type="button"
               size="sm"
               variant="outline"
-              className="h-9 text-xs font-semibold text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-              onClick={() => {
-                onStatusChange(submission.id, 'spam', reviewNote);
-                setReviewNote('');
-              }}
+              className="h-8 px-2.5 text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={() => setIsRejectMode(true)}
             >
-              <Ban className="w-3.5 h-3.5 mr-1.5" /> Spam
+              <X className="w-3.5 h-3.5 mr-1" /> Reject
+            </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              disabled={isSavingApprove}
+              className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold"
+              onClick={handleApprove}
+            >
+              {isSavingApprove ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5 mr-1" />
+              )}
+              Approve
             </Button>
           </div>
         </div>
-      ) : (
-        <div className="space-y-2 pt-1">
-          {/* Penghubung sesudah approve. Rute review manual adalah SATU
-              percakapan dengan peneliti — dari feedback review sampai tagihan —
-              jadi lanjutannya berpindah TAB, bukan berpindah halaman. */}
-          {displayStatus === 'approved' && !lifecycle.isPaid && (
+      )}
+
+      {/* State 1B: Reject Mode (Progressive Disclosure) */}
+      {isNeedReview && isRejectMode && (
+        <div className="space-y-2.5 pt-0.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Pilih Alasan Cepat:
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
-              className="w-full inline-flex items-center justify-center gap-1.5 h-9 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
-              onClick={() => setActiveTab('schedule-payment')}
+              onClick={() => setReviewNote(REASONS.ACCESS_LOCKED)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
             >
-              Lanjut ke Jadwal &amp; Bayar <ArrowRight className="w-3.5 h-3.5" />
+              <Lock className="w-3 h-3 text-slate-500" /> Akses Terkunci
             </button>
-          )}
-          <div className="flex justify-center">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors px-3 py-1.5 rounded-md hover:bg-blue-50 border border-transparent hover:border-blue-100"
-              onClick={() => onStatusChange(submission.id, 'in_review', reviewNote)}
+              onClick={() => setReviewNote(getSensitiveReason(submission.detected_keywords))}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors"
             >
-              <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
+              <ShieldAlert className="w-3 h-3 text-red-500" /> Pertanyaan Sensitif
+            </button>
+            <button
+              type="button"
+              onClick={() => setReviewNote(REASONS.BROKEN_LINK)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+            >
+              <Link2 className="w-3 h-3 text-slate-500" /> Link Rusak
             </button>
           </div>
+          <Textarea
+            id="review-note-input"
+            placeholder="Tuliskan catatan/instruksi perbaikan kuesioner untuk peneliti..."
+            value={reviewNote}
+            onChange={(e) => setReviewNote(e.target.value)}
+            className="text-xs min-h-[55px] max-h-[100px] bg-slate-50/50 focus:bg-white"
+          />
+          <div className="flex items-center gap-2 flex-wrap pt-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-xs text-slate-500 hover:text-slate-700"
+              onClick={() => setIsRejectMode(false)}
+            >
+              Batal
+            </Button>
+            <div className="flex-1" />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 px-2.5 text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={() => handleReject(false)}
+            >
+              <X className="w-3.5 h-3.5 mr-1" /> Reject Saja
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
+              onClick={() => handleReject(true)}
+            >
+              <MessageCircle className="w-3.5 h-3.5 mr-1" /> Reject &amp; Kirim WA
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* State 2: Menunggu Revisi (Rejected) — Admin memiliki kuasa penuh untuk approve langsung */}
+      {isRejected && (
+        <div className="space-y-2 pt-0.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            {/* Inline Question Count Stepper */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 shrink-0">
+              <span className="text-[11px] font-semibold text-slate-500">Qty:</span>
+              <input
+                type="number"
+                min="1"
+                value={questionCountInput}
+                onChange={(e) => setQuestionCountInput(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-11 h-6 text-xs font-semibold text-center bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                title="Koreksi jumlah pertanyaan"
+              />
+              <span className="text-[11px] text-slate-500 font-medium">Q</span>
+            </div>
+
+            {/* Actions for Menunggu Revisi */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title="Batalkan Submission"
+                className="h-8 w-8 p-0 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 shrink-0"
+                onClick={() => setIsSpamConfirmOpen(true)}
+              >
+                <Ban className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 px-2.5 text-xs font-semibold text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                onClick={() => sendWhatsAppNotification(
+                  submission.phone_number,
+                  submission.researcherName,
+                  submission.formTitle,
+                  submission.admin_notes || reviewNote || REASONS.ACCESS_LOCKED
+                )}
+              >
+                <MessageCircle className="w-3.5 h-3.5 mr-1" /> Kirim WA
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSavingApprove}
+                className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold"
+                onClick={handleApprove}
+              >
+                {isSavingApprove ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 mr-1" />
+                )}
+                Approve
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* State 3: Approved / Selesai */}
+      {displayStatus === 'approved' && (
+        <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 px-2.5 text-xs font-semibold text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900"
+            onClick={() => onStatusChange(submission.id, 'in_review', reviewNote)}
+          >
+            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
+          </Button>
+
+          {!lifecycle.isPaid && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 px-3 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 ml-auto"
+              onClick={() => setActiveTab('schedule-payment')}
+            >
+              Lanjut ke Jadwal &amp; Bayar <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* State 4: Other (e.g. Spam / Canceled) */}
+      {displayStatus !== 'approved' && !isNeedReview && !isRejected && (
+        <div className="flex justify-center pt-1">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors px-3 py-1.5 rounded-md hover:bg-blue-50 border border-transparent hover:border-blue-100"
+            onClick={() => onStatusChange(submission.id, 'in_review', reviewNote)}
+          >
+            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
+          </button>
         </div>
       )}
     </div>
@@ -451,33 +751,67 @@ export function SubmissionDetailSheet({
     ? <div ref={setFooterEl} />
     : footer;
 
+  const spamDialog = (
+    <Dialog open={isSpamConfirmOpen} onOpenChange={setIsSpamConfirmOpen}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Tandai sebagai Spam?</DialogTitle>
+          <DialogDescription>
+            Submission ini akan ditandai sebagai spam dan diarsipkan dari antrean review aktif.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex gap-2 justify-end pt-2">
+          <Button variant="outline" size="sm" onClick={() => setIsSpamConfirmOpen(false)}>
+            Batal
+          </Button>
+          <Button
+            size="sm"
+            className="bg-orange-600 hover:bg-orange-700 text-white font-semibold"
+            onClick={() => {
+              onStatusChange(submission.id, 'spam', reviewNote || 'Ditandai sebagai spam');
+              setIsSpamConfirmOpen(false);
+            }}
+          >
+            Ya, Tandai Spam
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (variant === 'pane') {
     return (
-      <DetailPane
+      <>
+        <DetailPane
+          title={title}
+          subtitle={subtitle}
+          chips={chips}
+          nav={shellNav}
+          footer={shellFooter}
+          onClose={() => onOpenChange(false)}
+        >
+          {shellBody}
+        </DetailPane>
+        {spamDialog}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <DetailSheet
+        open={!!submission}
+        onOpenChange={onOpenChange}
         title={title}
         subtitle={subtitle}
         chips={chips}
         nav={shellNav}
         footer={shellFooter}
-        onClose={() => onOpenChange(false)}
       >
         {shellBody}
-      </DetailPane>
-    );
-  }
-
-  return (
-    <DetailSheet
-      open={!!submission}
-      onOpenChange={onOpenChange}
-      title={title}
-      subtitle={subtitle}
-      chips={chips}
-      nav={shellNav}
-      footer={shellFooter}
-    >
-      {shellBody}
-    </DetailSheet>
+      </DetailSheet>
+      {spamDialog}
+    </>
   );
 }
 

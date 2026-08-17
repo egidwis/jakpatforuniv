@@ -283,6 +283,8 @@ export function PublishPageManagement() {
                         loading={liveLoading}
                         actions={actions}
                         onSelectPage={setSelectedPage}
+                        onOpenPageBuilder={openPageBuilder}
+                        onToggleHide={handleToggleHide}
                         onOrderSaved={fetchLive}
                     />
                 ) : (

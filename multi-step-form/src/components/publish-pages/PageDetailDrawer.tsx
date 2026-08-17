@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-    AlertTriangle, Download, ExternalLink, Eye, EyeOff, Image as ImageIconLucide,
+    AlertTriangle, Copy, Download, ExternalLink, Eye, EyeOff, Image as ImageIconLucide,
     Info, Loader2, PenLine, Search, Trash2,
 } from 'lucide-react';
 import { DetailSheet } from '@/components/data-list/DetailSheet';
@@ -9,6 +9,7 @@ import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { getCdnUrl } from '@/utils/supabase';
 import { downloadCsv } from '@/utils/csv';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     PAGE_TYPE_LABEL, formatPageDateTime, formatRespondentTimestamp,
@@ -99,8 +100,8 @@ export function PageDetailDrawer({
             }),
         ]);
 
-        const stamp = new Date().toISOString().slice(0, 10);
-        downloadCsv(`responden_${page.slug}_${stamp}.csv`, headers, rows);
+        const filename = `responden-${page.slug || page.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+        downloadCsv(filename, headers, rows);
     };
 
     if (!page) return null;
@@ -129,6 +130,19 @@ export function PageDetailDrawer({
                     <Chip variant={token.variant} size="sm" dot={token.dot} pulse={token.pulse}>
                         {token.label}
                     </Chip>
+                    <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                            navigator.clipboard.writeText(page.id);
+                            toast.success('Page ID berhasil disalin!');
+                        }}
+                        className="group/id inline-flex items-center gap-1.5 font-mono text-[11px] text-gray-600 bg-white hover:bg-blue-50 hover:text-blue-700 border border-gray-200 hover:border-blue-200 rounded px-1.5 py-0.5 whitespace-nowrap transition-colors cursor-pointer"
+                        title={`Klik untuk menyalin Page ID (${page.id})`}
+                    >
+                        <span>#{page.id.slice(0, 8)}</span>
+                        <Copy className="w-3 h-3 text-gray-400 group-hover/id:text-blue-600 shrink-0 transition-colors" />
+                    </span>
                     <Chip variant="outline" size="sm">{PAGE_TYPE_LABEL[type]}</Chip>
                     {page.is_hidden && (
                         <Chip variant="red" size="sm" title="Disembunyikan dari API mobile app">

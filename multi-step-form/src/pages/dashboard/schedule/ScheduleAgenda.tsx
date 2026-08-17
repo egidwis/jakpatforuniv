@@ -3,7 +3,7 @@ import { Chip } from '@/components/ui/chip';
 import { cn } from '@/lib/utils';
 import type { AdScheduleEntry } from '@/utils/supabase';
 import {
-  agendaChipOf, tokenForChip, PAGE_LABEL, formatWibTime, formatWibShort,
+  agendaChipOf, tokenForChip, formatWibTime, formatWibShort,
   isUnscheduled, needsBannerSwap, type DayEntry, type DayGroup,
 } from './scheduleModel';
 
@@ -35,8 +35,8 @@ const COL = {
   id: 'w-[84px] shrink-0 hidden lg:block',
   survey: 'flex-1 min-w-0',
   period: 'w-[132px] shrink-0 hidden md:block',
+  page: 'w-[64px] shrink-0 hidden sm:block text-right',
   status: 'w-[116px] shrink-0 flex justify-end',
-  page: 'w-[52px] shrink-0 hidden sm:block text-right',
 };
 
 function ProgressBar({ entry, now }: { entry: AdScheduleEntry; now: number }) {
@@ -102,7 +102,7 @@ function EntryRow({
         #{entry.submissionId.slice(0, 8)}
       </span>
 
-      {/* Survei + peneliti */}
+      {/* Survei + peneliti + university */}
       <div className={cn(COL.survey, 'flex flex-col leading-tight')}>
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="truncate text-sm font-semibold text-gray-900" title={entry.title}>
@@ -120,6 +120,7 @@ function EntryRow({
         <span className="text-[11px] text-gray-500 truncate mt-0.5 flex items-center gap-1.5">
           <span className="truncate">
             {entry.researcherName}
+            {entry.university ? ` · ${entry.university}` : ''}
             {/* Periode ikut di subtitle hanya saat kolomnya tersembunyi (mobile). */}
             {!unscheduled && entry.startDate && entry.endDate && (
               <span className="md:hidden">
@@ -127,16 +128,6 @@ function EntryRow({
               </span>
             )}
           </span>
-          {/* Bentuk yang sama persis dengan katalog Pages — satu pekerjaan, satu
-              tampilannya, di papan mana pun ia muncul. */}
-          {bannerTodo && (
-            <span
-              className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700"
-              title="Halaman sudah terbit tapi masih memakai banner bawaan — ganti lewat drawer"
-            >
-              ⚠ banner
-            </span>
-          )}
         </span>
       </div>
 
@@ -168,31 +159,48 @@ function EntryRow({
         )}
       </div>
 
+      {/* Kolom Page: menampilkan badge ⚠ banner jika banner masih bawaan, atau status kesiapan halaman */}
+      <div className={cn(COL.page, 'flex items-center justify-end')}>
+        {bannerTodo ? (
+          <span
+            className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+            title="Halaman siap tayang, tetapi banner masih menggunakan gambar default — ganti lewat drawer"
+          >
+            ⚠ Banner
+          </span>
+        ) : entry.pageStatus === 'published' ? (
+          <span
+            className="text-[10px] font-semibold text-emerald-600"
+            title="Halaman survei sudah siap & dipublish"
+          >
+            Siap
+          </span>
+        ) : entry.pageStatus === 'draft' ? (
+          <span
+            className="text-[10px] font-medium text-slate-500"
+            title="Halaman masih tersimpan sebagai draft"
+          >
+            Draft
+          </span>
+        ) : (
+          <span
+            className="text-[10px] font-medium text-gray-300"
+            title={
+              entry.pageStatus === 'kilat'
+                ? 'Kilat disiarkan langsung tanpa halaman web'
+                : 'Halaman belum dibuat'
+            }
+          >
+            —
+          </span>
+        )}
+      </div>
+
       <div className={COL.status}>
         <Chip variant={token.variant} size="sm" dot={token.dot} pulse={token.pulse}>
           {token.label}
         </Chip>
       </div>
-
-      {/* Nada keempat kolom ini: 'terbit' yang masih memakai banner bawaan.
-          Halamannya benar, isinya belum — jadi ia tidak boleh terbaca setenang
-          'terbit' biasa, tapi juga bukan '⚠ blm' yang berarti halamannya belum ada. */}
-      <span
-        className={cn(
-          COL.page,
-          'text-[10px] font-medium',
-          entry.pageStatus === 'none' || bannerTodo ? 'text-amber-600' : 'text-gray-400'
-        )}
-        title={
-          entry.pageStatus === 'kilat'
-            ? 'Kilat tidak pernah punya halaman iklan'
-            : bannerTodo
-              ? 'Halaman terbit, tapi banner masih bawaan'
-              : 'Status halaman iklan'
-        }
-      >
-        {PAGE_LABEL[entry.pageStatus]}{bannerTodo ? ' ⚠' : ''}
-      </span>
 
       <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" />
     </div>
@@ -284,8 +292,8 @@ export function ScheduleAgenda({
         <span className={COL.id}>ID</span>
         <span className={COL.survey}>Survei</span>
         <span className={COL.period}>Periode</span>
+        <span className={COL.page}>Page</span>
         <span className={cn(COL.status, 'text-right')}>Status</span>
-        <span className={COL.page}>Hlm</span>
         <span className="w-4 shrink-0" aria-hidden="true" />
       </div>
 

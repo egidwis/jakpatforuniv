@@ -1,4 +1,6 @@
-import { ChevronRight, ShieldAlert } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronRight, ShieldAlert, Copy, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { Checkbox } from '../ui/checkbox';
 import { Chip } from '../ui/chip';
 import {
@@ -11,6 +13,8 @@ import { cn } from '@/lib/utils';
 import type { SurveySubmission } from './types';
 import type { LifecycleInfo } from './lifecycle';
 import { LifecycleChip } from './LifecycleChip';
+import { ClientStatusDot } from '../customers/ClientStatusIcon';
+import type { CustomerTier } from '../customers/types';
 
 interface SubmissionListRowProps {
   submission: SurveySubmission;
@@ -20,6 +24,16 @@ interface SubmissionListRowProps {
   onOpen: (id: string) => void;
   /** Row currently open in the detail pane */
   active?: boolean;
+  clientTier?: CustomerTier;
+}
+
+function getAutoPlatformTooltip(formUrl?: string): string {
+  if (!formUrl) return 'Auto: Google Forms';
+  const lowerUrl = formUrl.toLowerCase();
+  if (lowerUrl.includes('forms.office.com') || lowerUrl.includes('office.com') || lowerUrl.includes('microsoft')) {
+    return 'Auto: Microsoft Forms';
+  }
+  return 'Auto: Google Forms';
 }
 
 /**
@@ -34,7 +48,18 @@ export function SubmissionListRow({
   onSelectToggle,
   onOpen,
   active,
+  clientTier,
 }: SubmissionListRowProps) {
+  const [copiedId, setCopiedId] = useState(false);
+
+  const handleCopyId = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(submission.id);
+    setCopiedId(true);
+    toast.success('Submission ID disalin');
+    setTimeout(() => setCopiedId(false), 1500);
+  };
+
   return (
     <div
       role="button"
@@ -47,59 +72,110 @@ export function SubmissionListRow({
         }
       }}
       className={cn(
-        'group relative flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors',
+        'group relative flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors',
         'hover:bg-gray-50',
-        selected && 'bg-blue-50/50',
-        active && 'bg-blue-50'
+        active && 'bg-blue-50/70',
+        selected && 'bg-blue-50/40'
       )}
     >
       {active && <span aria-hidden="true" className="absolute left-0 top-0 h-full w-0.5 bg-blue-600" />}
-      {/* Checkbox — stop propagation so it never opens the drawer */}
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0 flex items-center">
+
+      {/* Checkbox wrapper */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex items-center shrink-0"
+      >
         <Checkbox
           checked={selected}
           onCheckedChange={() => onSelectToggle(submission.id)}
-          aria-label={`Select ${submission.formTitle}`}
+          aria-label={`Pilih survei ${submission.formTitle}`}
         />
       </div>
 
-      {/* Submitted */}
-      <div className="w-[76px] shrink-0 flex flex-col text-[11px] text-gray-500 leading-tight">
-        <span className="font-medium text-gray-900">
-          {new Date(submission.submittedAt).toLocaleDateString('id-ID')}
+      {/* Date & Time column */}
+      <div className="hidden sm:flex flex-col text-[11px] leading-tight w-[60px] shrink-0 text-gray-500">
+        <span className="font-medium text-gray-700">
+          {new Date(submission.submittedAt).toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: 'short',
+          })}
         </span>
-        <span>
-          {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+        <span className="text-[10px] text-gray-400">
+          {new Date(submission.submittedAt).toLocaleTimeString('id-ID', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </span>
       </div>
 
-      {/* Submission ID */}
-      <span className="w-[84px] shrink-0 font-mono text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 truncate">
-        #{submission.formId}
-      </span>
+      {/* Form ID badge with copy action */}
+      <button
+        type="button"
+        onClick={handleCopyId}
+        className="hidden md:inline-flex items-center gap-1 w-[100px] shrink-0 font-mono text-[11px] text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 transition-colors group/id text-left"
+        title={`Salin ID Lengkap: ${submission.id}`}
+      >
+        <span className="truncate">#{submission.formId}</span>
+        {copiedId ? (
+          <Check className="w-3 h-3 text-green-600 shrink-0 ml-auto" />
+        ) : (
+          <Copy className="w-3 h-3 text-gray-400 group-hover/id:text-blue-600 transition-colors shrink-0 ml-auto" />
+        )}
+      </button>
 
-      {/* Source chip · title, researcher subtitle below */}
-      <div className="flex-1 min-w-0 flex flex-col leading-tight">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Chip
-            variant={submission.submission_method === 'google_import' ? 'orange' : 'indigo'}
-            size="sm"
-            className="shrink-0"
-          >
-            {submission.submission_method === 'google_import' ? 'G-Form' : 'Manual'}
-          </Chip>
+      {/* Review method column */}
+      <div className="hidden md:flex items-center w-[65px] shrink-0">
+        {submission.distribution_type === 'kilat' ? (
+          <Chip variant="purple" size="sm">Kilat</Chip>
+        ) : submission.submission_method === 'manual' ? (
           <TooltipProvider>
-            <Tooltip delayDuration={300}>
+            <Tooltip delayDuration={200}>
               <TooltipTrigger asChild>
-                <span className="text-sm font-semibold text-gray-900 truncate min-w-0">
-                  {submission.formTitle}
+                <span className="inline-flex">
+                  <Chip variant="slate" size="sm" className="cursor-help bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200/80">Manual</Chip>
                 </span>
               </TooltipTrigger>
-              <TooltipContent className="max-w-[400px]">
-                <p>{submission.formTitle}</p>
+              <TooltipContent side="top" className="text-[11px] py-1 px-2">
+                <p>Manual Review</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        ) : (
+          <TooltipProvider>
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Chip variant="purple" size="sm" className="cursor-help font-semibold">Auto</Chip>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-[11px] py-1 px-2">
+                <p>{getAutoPlatformTooltip(submission.formUrl)}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+
+      {/* Title + Researcher Subtitle */}
+      <div className="flex-1 min-w-0 flex flex-col leading-tight">
+        <div className="flex items-center gap-1.5 truncate">
+          <span className="text-sm font-semibold text-gray-900 truncate" title={submission.formTitle}>
+            {submission.formTitle}
+          </span>
+          {submission.voucher_code && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase shrink-0">
+                    {submission.voucher_code}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Voucher Code: {submission.voucher_code}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           {submission.detected_keywords && submission.detected_keywords.length > 0 && (
             <TooltipProvider>
               <Tooltip>
@@ -113,10 +189,13 @@ export function SubmissionListRow({
             </TooltipProvider>
           )}
         </div>
-        <span className="text-[11px] text-gray-500 truncate mt-0.5">
-          {submission.researcherName}
-          {submission.university ? ` · ${submission.university}` : ''}
-        </span>
+        <div className="text-[11px] text-gray-500 truncate mt-0.5 flex items-center gap-1.5 min-w-0">
+          <span className="truncate">{submission.researcherName}</span>
+          {clientTier && <ClientStatusDot tier={clientTier} />}
+          {submission.university && (
+            <span className="truncate shrink-0 max-w-[160px] sm:max-w-[260px]">· {submission.university}</span>
+          )}
+        </div>
       </div>
 
       {/* Lifecycle chip */}

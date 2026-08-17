@@ -1,5 +1,6 @@
 import type { LifecycleStage } from '../../lib/status-tokens';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
+import { toWibYmd, isPaymentTooLateForDate } from '../../utils/airing-window';
 
 // ─────────────────────────────────────────────────────────────
 // Single source of truth for submission lifecycle derivation.
@@ -66,10 +67,13 @@ export function deriveLifecycle(
   }
   const legacyEnded = legacyEndMs !== null && legacyEndMs < now;
   const isUserBookedUnpaid = submission.slot_booked_by === 'user' && reservedAtTime > 0 && !isPaid && !paymentData.hasEverPaid;
+  const startYmd = submission.start_date ? toWibYmd(new Date(submission.start_date)) : null;
+  const isScheduleLate = !isPaid && !paymentData.hasEverPaid && Boolean(startYmd && isPaymentTooLateForDate(startYmd, new Date(now)));
   const isActuallyExpired = !isPaid && !paymentData.hasEverPaid && (
     paymentData.latestStatus === 'expired' ||
     submission.payment_status === 'expired' ||
-    (submission.slot_booked_by === 'user' && reservedAtTime > 0 && now > reservedAtTime + 3600_000)
+    (submission.slot_booked_by === 'user' && reservedAtTime > 0 && now > reservedAtTime + 3600_000) ||
+    isScheduleLate
   );
   const hasValidSchedule = (isScheduled || (isLegacyActive && !legacyEnded)) && !isActuallyExpired;
   const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && hasValidSchedule;
