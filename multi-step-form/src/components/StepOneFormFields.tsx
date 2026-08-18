@@ -7,6 +7,7 @@ import {
   Gift,
   Hash,
   Info,
+  Lightbulb,
   Link2,
   ShieldAlert,
   Trophy,
@@ -388,6 +389,20 @@ export function StepOneFormFields({
             required
             error={attemptedSubmit ? errors.surveyUrl : undefined}
             readOnly={fieldsReadOnly}
+            hint={
+              !fieldsReadOnly ? (
+                <span className="flex items-start gap-1 text-gray-400">
+                  <Lightbulb className="w-3 h-3 mt-0.5 shrink-0 text-amber-400" />
+                  <span>
+                    Lebih cepat lolos review &amp; monitoring langsung hasilnya — pakai{' '}
+                    <Link to="/dashboard/forms" className="font-semibold text-indigo-500 hover:text-indigo-700 underline decoration-indigo-300 hover:decoration-indigo-500 transition-colors">
+                      JFU Form
+                    </Link>
+                    , bisa import pertanyaan dari Google Form &amp; platform survey lainnya.
+                  </span>
+                </span>
+              ) : undefined
+            }
           >
             <textarea
               id="surveyUrl"
