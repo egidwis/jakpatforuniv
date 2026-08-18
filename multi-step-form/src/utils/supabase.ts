@@ -9,6 +9,7 @@ import {
   calculateDiscount,
   calculatePpn,
   getKilatAddonCost,
+  voucherInstantOf,
 } from './cost-calculator';
 
 // Supabase URL dan anon key akan diambil dari environment variables
@@ -1778,7 +1779,7 @@ export const convertDistributionType = async (
   // Baca ulang dari DB — props di dashboard bisa basi beberapa menit.
   const { data: sub, error: readError } = await supabase
     .from('form_submissions')
-    .select('question_count, duration, winner_count, prize_per_winner, voucher_code, payment_status, submission_status')
+    .select('question_count, duration, winner_count, prize_per_winner, voucher_code, payment_status, submission_status, created_at')
     .eq('id', submissionId)
     .single();
 
@@ -1824,7 +1825,11 @@ export const convertDistributionType = async (
       incentiveCost;
   } else {
     const adCost = calculateTotalAdCost(questionCount, duration);
-    const discount = calculateDiscount(sub.voucher_code, adCost, incentiveCost, duration);
+    // Voucher dinilai pada tanggal order lahir: memindahkan jalur distribusi
+    // tidak boleh mencabut hak diskon yang sudah dimiliki pemesannya.
+    const discount = calculateDiscount(
+      sub.voucher_code, adCost, incentiveCost, duration, voucherInstantOf(sub.created_at),
+    );
     subtotal = adCost + incentiveCost - discount;
   }
 

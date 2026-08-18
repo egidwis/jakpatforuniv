@@ -29,7 +29,7 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import type { FormSubmission } from '@/utils/supabase';
-import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount, calculatePpn, getKilatAddonCost } from '@/utils/cost-calculator';
+import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount, calculatePpn, getKilatAddonCost, voucherInstantOf } from '@/utils/cost-calculator';
 import {
     pickDefaultExpandedKey,
     type ScheduleCard,
@@ -355,7 +355,11 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
     }
 
     const voucherCode = card?.info?.voucherCode || submission?.voucher_code;
-    const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration);
+    // Dinilai pada tanggal order lahir, sama seperti create-payment.js — kalau
+    // tidak, angka yang ditampilkan di sini bisa berbeda dari yang ditagih.
+    const discount = calculateDiscount(
+        voucherCode, adCost, incentiveCost, duration, voucherInstantOf(submission?.created_at),
+    );
 
     const subtotal = Math.max(0, adCost + kilatAddon - discount + incentiveCost);
     const ppn = calculatePpn(subtotal);

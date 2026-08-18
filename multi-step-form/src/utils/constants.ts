@@ -46,9 +46,17 @@ export const PPN_RATE = 0.11;
 // Masa berlaku voucher (batas = instan pertama yang SUDAH tidak valid, WIB/UTC+7).
 // ILKOMUNY s/d 31 Des 2026 → 2027-01-01 00:00 WIB = 2026-12-31T17:00Z.
 // JFUFEB   s/d 20 Feb 2027 → 2027-02-21 00:00 WIB = 2027-02-20T17:00Z.
+// JFUSUHUD s/d 31 Agu 2026 → 2026-09-01 00:00 WIB = 2026-08-31T17:00Z.
 // DUPLICATED sebagai ISO literal di functions/api/doku/create-payment.js — jaga tetap sama.
 export const ILKOMUNY_VALID_UNTIL = '2026-12-31T17:00:00Z';
 export const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
+
+// JFUSUHUD adalah pintu masuk pilot JFU Kilat, bukan sekadar diskon 10%: saat ia
+// mati, tombol upgrade Kilat di Ringkasan Pesanan ikut hilang karena
+// getVoucherInfo berhenti mengembalikan isKilatEligible. Itu memang yang
+// diinginkan — Kilat akan lahir kembali sebagai menu tersendiri di dashboard
+// peneliti (lihat docs/superpowers/plans/2026-08-18-kilat-menu-mandiri.md).
+export const JFUSUHUD_VALID_UNTIL = '2026-08-31T17:00:00Z';
 
 // Kunci draft order form di localStorage. _v2 = skema step tanpa biodata
 // (1 Detail Survei, 2 Jadwal, 3 Review & Pembayaran, 4 Jadwal Kilat).
