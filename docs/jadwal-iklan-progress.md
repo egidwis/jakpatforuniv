@@ -8,21 +8,20 @@
 > Endpoint `/api/notify-ad-live` **terbukti tayang** — probe POST tanpa kunci
 > membalas `401` (gerbang menolak), bukan `405` (route hilang) seperti 10 Agustus.
 >
-> 🔴 **CRON NOTIFIKASI DICOBA 2026-08-18 20.45 WIB DAN GAGAL — `RESEND_API_KEY`
-> TIDAK ADA DI CLOUDFLARE.** Cron dijadwalkan, menyala, dan `net._http_response`
-> membalas **500 `{"error":"Email service not configured"}`** ×4. Itu memberi
-> tahu dua hal sekaligus: gerbang `CRON_NOTIFY_SECRET` **lolos** (kalau tidak,
-> 401), dan `env.RESEND_API_KEY` tidak terlihat oleh `notify-ad-live.js`.
-> Cron sudah **di-unschedule lagi**, dan keempat order yang sempat tertandai
-> **sudah dipulihkan** (`live_notified_at = null`) — jendelanya masih terbuka,
-> jadi kali ini pemulihannya nyata, bukan no-op seperti 10 Agustus.
-> **Tindakan berikutnya milik pemilik Cloudflare**, bukan kode: pasang
-> `RESEND_API_KEY` di environment Production project `jakpatforuniv-submit`,
-> probe manual, baru jadwalkan ulang. Rinciannya di §00A.
+> 🟢 **JALUR EMAIL HIDUP LAGI — Brevo, 2026-08-18 23.28 WIB.** Rantainya
+> dibuktikan berurutan, bukan diasumsikan: probe body `{}` → **400
+> `Missing email`** (lolos gerbang rahasia DAN lolos cek konfigurasi — inilah
+> yang kemarin 500), lalu kiriman uji ke `product@jakpat.net` → **200
+> `{"provider":"brevo"}`** dengan message-id `smtp-relay.mailin.fr`. Cron
+> `notify-primary-ads-live` dijadwalkan ulang (`jobid 4`, `*/15`). **4 order**
+> akan menerima email pada siklus pertama; 526 kandidat lain jendelanya sudah
+> lewat dan dilewati selamanya (kerugian 10 Agustus, tak terpulihkan).
+> Rinciannya di §00A.
 >
-> 🟢 **Task 11 Deploy A selesai di kode (2026-08-18).** `sql/51` diterapkan &
-> hijau di produksi; `booking_id` dan "Tandai Lunas" per jadwal ada di commit
-> `eb336cf`+`7b3450a`. **Belum dideploy dan belum diuji di browser.**
+> 🟢 **Task 11 Deploy A SUDAH TAYANG (2026-08-18).** `sql/51` hijau di
+> produksi; `booking_id` (1016 baris, nol NULL) dan "Tandai Lunas" per jadwal
+> di-merge ke `main` lewat fast-forward bersih, dipush, dan dideploy.
+> ⬜ **Belum diuji di browser** — tiga klik yang menunggu ada di §00K.
 > Menemukan satu regresi yang memblokir Deploy B — lihat §00J.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
@@ -113,6 +112,39 @@ selisihnya bukan nol, jangan terapkan `sql/52`.
 `TG_OP = 'DELETE'`, yaitu baris yang memang benar-benar dihapus. Itu benar; jangan ikut
 "diperbaiki".
 
+### 00K. 🟡 Task 11 Deploy A tayang 2026-08-18 — tersisa uji browser
+
+`sql/51` + commit `eb336cf`/`7b3450a` sudah di produksi. Yang belum: **tidak
+satu pun perubahan UI-nya pernah diklik.** Deploy A menyentuh jalur uang, jadi
+daftar ini bukan formalitas.
+
+**Terukur di DB sesudah deploy:**
+
+| | |
+|---|---|
+| `ad_schedules` | **1016** baris, `booking_id` **nol NULL**, nol duplikat |
+| `doku_webhook_events` | **1** baris — `sql/54` akhirnya terbukti (Rp 1.498.500, Mandiri VA, `outcome: ok`) |
+
+**Tiga klik yang menunggu** — urut dari yang paling mahal kalau salah:
+
+- [ ] **"Tandai Lunas" pada jadwal ke-2** order berjadwal banyak → tagihan
+      jadwal ke-1 **tidak ikut** berubah. Ini inti Deploy A; sebelum `sql/51`
+      satu klik melunasi seluruh order.
+- [ ] **Booking ID sama di dua sisi** — kode yang dilihat peneliti di dashboard
+      identik dengan yang dilihat admin di papan Schedule. Sebelumnya peneliti
+      melihat `#E284351B` dan admin `#078e561b` untuk jadwal yang sama.
+- [ ] **Pencarian admin menerima tiga bentuk** — `booking_id`, id submission,
+      id extend. ⚠️ Satu `booking_id` produksi juga cocok dengan `SHORT_ID_RE`
+      (1 dari 1016), jadi hasilnya **digabung**, bukan dipilih salah satu.
+
+⚠️ **Jangan turunkan tampilan dari `ordinal`.** `resync_ad_schedule_ordinals()`
+menomori ulang begitu jadwal disisipkan dengan tanggal lebih awal — kode
+turunan ordinal akan berpindah ke jadwal lain diam-diam. `booking_id` sekali
+diberikan tidak pernah dihitung ulang; itulah gunanya.
+
+⛔ **Deploy B menunggu dua hal:** daftar di atas hijau, **dan** uji paritas
+`sql/46` §7(1) hijau satu siklus penuh.
+
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 
 **Nol migrasi SQL. Seluruhnya frontend**, jadi ia tidak menambah lubang DB-mendahului-kode.
@@ -162,9 +194,38 @@ mengosongkannya (keduanya butuh Task 11).
 **Belum dikerjakan:** uji manual di browser (urutannya di rencana), dan keputusan atas **4
 order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomatis.
 
-### 00A. 🔴 Cron notifikasi — DICOBA 2026-08-18 dan GAGAL di `RESEND_API_KEY`
+### 00A. 🟢 Cron notifikasi — SELESAI 2026-08-18 lewat Brevo
 
-> **HASIL PERCOBAAN 2026-08-18 20.45 WIB. Baca ini sebelum riwayat di bawahnya.**
+> **SELESAI 2026-08-18 23.28 WIB. Baca kotak ini; sisanya riwayat.**
+>
+> | Bukti | Hasil |
+> |---|---|
+> | Probe body `{}` | **400 `Missing email`** — bukan 500 lagi |
+> | Kiriman uji → `product@jakpat.net` | **200 `{"provider":"brevo"}`**, id `smtp-relay.mailin.fr` |
+> | `cron.schedule` | `jobid 4`, `*/15 * * * *`, aktif |
+> | Kandidat siklus pertama | **4 dikirim**, 3 belum tayang, 526 jendela sudah lewat |
+>
+> ⚠️ **Kenapa kiriman uji dilakukan lebih dulu, bukan langsung menjadwalkan
+> cron:** `notify_primary_ads_live()` menyetel `live_notified_at = now()` tepat
+> setelah `net.http_post` **tanpa menunggu hasilnya** (pg_net asinkron). Kalau
+> Brevo menolak, keempat order itu hangus lagi dan tidak akan pernah dicoba
+> ulang — persis mekanisme yang membakar notifikasi 10 Agustus. Menguji ke
+> alamat sendiri lebih dulu memindahkan risiko itu ke tempat yang tidak
+> merugikan pelanggan. **Ulangi pola ini tiap kali provider email berganti.**
+>
+> ⚠️ **Job baru melewatkan satu tick.** pg_cron memuat daftar job di awal tick;
+> `jobid 4` dibuat beberapa detik sesudah 16:29 UTC sehingga tick 16:30 hanya
+> menjalankan `jobid 1`. Bukan kerusakan — hanya jangan simpulkan cron mati
+> sebelum melewati satu putaran penuh.
+>
+> ⛔ **`MAIL_PROVIDER=brevo` itu sementara.** Begitu Resend pulih, cukup ubah
+> satu variabel — `functions/api/_mail.js` sudah provider-agnostik dan
+> `_mail.spec.ts` menjaga pemilihannya (11 tes). Jangan menyentuh pemanggil.
+>
+> <details>
+> <summary>Riwayat percobaan yang gagal 20.45 WIB (penyebab & pemulihannya)</summary>
+>
+>
 >
 > Cron dijadwalkan (`jobid 3`), menyala tepat waktu, `cron.job_run_details`
 > melaporkan `succeeded` — dan tetap **nol email terkirim**. Buktinya cuma ada di
@@ -252,6 +313,8 @@ order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomat
 > `cron.job_run_details` hanya berarti SQL-nya jalan, bukan HTTP-nya berhasil.
 > Satu-satunya bukti ada di `net._http_response` — dan isinya dipangkas berkala,
 > jadi periksa dalam hitungan menit, bukan hari.
+
+> </details>
 
 <details>
 <summary>Riwayat 2026-08-10 — insiden pertama (dipertahankan, pelajarannya masih berlaku)</summary>
