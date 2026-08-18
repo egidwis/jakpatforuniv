@@ -49,8 +49,9 @@
 > baru mewarisi hak penuh untuk `anon` dari default privileges Supabase**, dan
 > **pengetatan RLS diam-diam merusak kuota slot**. Rinciannya di §00N; jangan
 > mengulang tabel serupa tanpa membacanya.
-> ⬜ **Belum diuji di browser & belum dideploy.** `sql/52` sudah di DB produksi,
-> perubahan frontend-nya belum tayang.
+> ✅ **Sudah diuji di browser & dideploy 2026-08-19.** Kalender slot admin dan
+> peneliti kini cocok — itu buktinya RPC `get_extend_slot_occupancy()` bekerja
+> dari sisi non-admin.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -357,10 +358,36 @@ dan semuanya akan terulang di tabel berikutnya kalau tidak dibaca:**
 dulu kalau benar-benar harus mundur. Boleh dibuang setelah satu siklus rilis
 tenang.
 
-⬜ **Belum diuji di browser & BELUM DIDEPLOY.** Yang wajib diklik: "Jadwal
-Iklan Baru" (INSERT lewat view), ubah tagihan di `InvoiceForm` sebagai admin,
-dan **alur pesan tanggal sebagai peneliti** — yang terakhir itu yang
-membuktikan RPC kuota slot bekerja dari sisi non-admin.
+✅ **Diuji di browser & dideploy 2026-08-19.** Ketiga klik wajib hijau:
+"Jadwal Iklan Baru" (INSERT lewat view), ubah tagihan di `InvoiceForm` sebagai
+admin, dan alur pesan tanggal sebagai peneliti — kalender slot peneliti kini
+**cocok dengan papan Schedule admin**, yang membuktikan RPC kuota bekerja dari
+sisi non-admin.
+
+**Keadaan terukur sesudah deploy (2026-08-19):**
+
+| Pemeriksaan | Hasil |
+|---|---|
+| `ordinal = 1` vs `form_submissions` | **1001 / 1001** — paritas `sql/51` bertahan |
+| `booking_id` NULL | **0** |
+| `transactions` / `invoices` tanpa `schedule_id` | **0 / 0** — trigger penurun A2 masih menutup semua penulis |
+| View vs `ad_schedules(source_table='form_submissions_extend')` | **15 / 15** |
+| `form_submissions_extend_legacy` | 15 baris, masih ada (jalan pulang) |
+| `is_trigger_updatable/insertable/deletable` di view | **YES / YES / YES** — PostgREST menerima PATCH & POST, jadi jalur `webhook.js` STEP 5 sah |
+
+🎉 **`sql/54` akhirnya terbukti.** `doku_webhook_events` yang sejak dibuat
+selalu 0 baris kini berisi **1** — pembayaran produksi nyata Rp 1.498.500 lewat
+VA Mandiri pada 2026-08-18 20:54 WIB (`http_status` 200, `outcome` `ok`,
+`app_status` `completed`), yaitu **sesudah `sql/52` diterapkan**. Jadi alur uang
+ujung-ke-ujung tetap utuh di atas view.
+
+⬜ **Satu gerbang belum terbukti dengan uang sungguhan:** pembayaran itu
+`entity_type='submission'` (ordinal 1). Cabang **extend** di
+[`webhook.js:716`](../multi-step-form/functions/api/doku/webhook.js#L716) —
+`PATCH form_submissions_extend?id=eq.…`, kini menembus `INSTEAD OF` — belum
+pernah dilewati sejak view berdiri. Secara struktur aman (`service_role`
+di-GRANT, view trigger-updatable), tapi **pantau baris `doku_webhook_events`
+ber-`entity_type='extend'` yang pertama** alih-alih menganggapnya terbukti.
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 
