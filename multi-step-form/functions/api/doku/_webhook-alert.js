@@ -1,3 +1,4 @@
+import { sendMail } from '../_mail.js';
 // Alert admin ketika notifikasi pembayaran DOKU tidak selesai diproses.
 //
 // Diawali `_` supaya Cloudflare Pages tidak merutekannya sebagai endpoint —
@@ -58,11 +59,11 @@ function escapeHtml(value) {
  */
 export async function sendWebhookAlert(env, details) {
   try {
-    const apiKey = env.RESEND_API_KEY;
-    if (!apiKey) {
-      console.error('[webhook-alert] RESEND_API_KEY tidak diset — alert tidak terkirim');
-      return;
-    }
+    // ⚠️ TIDAK ADA LAGI GUARD KUNCI DI SINI. Sampai 2026-08-18 fungsi ini
+    // memeriksa RESEND_API_KEY sendiri lalu `return` diam-diam saat kosong —
+    // jadi alarm yang dibangun justru untuk kegagalan senyap ikut senyap.
+    // Sekarang pemilihan provider dan kuncinya milik sendMail(), dan
+    // kegagalannya SELALU tercatat di log sebelum ditelan.
 
     const recipients = (env.ADMIN_EMAILS || 'product@jakpat.net')
       .split(',')
@@ -117,15 +118,8 @@ export async function sendWebhookAlert(env, details) {
 
     const advice = OUTCOME_ADVICE[outcome] || '<li>Periksa detailnya di dashboard admin.</li>';
 
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        from: 'Jakpat for Universities <noreply@jakpatforuniv.com>',
-        to: recipients,
+    const result = await sendMail(env, {
+      to: recipients,
         subject: `⚠️ Webhook DOKU: ${label} — ${invoiceText}`,
         html: `
           <div style="font-family: Arial, sans-serif; line-height:1.6; color:#333; max-width:600px;">
@@ -147,16 +141,17 @@ export async function sendWebhookAlert(env, details) {
             </p>
           </div>
         `,
-      }),
     });
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      console.error(`[webhook-alert] Resend menolak (${response.status}): ${body.slice(0, 300)}`);
+    if (!result.ok) {
+      console.error(
+        `[webhook-alert] provider ${result.provider} menolak (${result.status}):`,
+        result.error
+      );
       return;
     }
 
-    console.log(`[webhook-alert] Alert "${outcome}" terkirim untuk ${invoiceText}`);
+    console.log(`[webhook-alert] Alert "${outcome}" terkirim via ${result.provider} untuk ${invoiceText}`);
   } catch (err) {
     // Alert yang gagal tidak boleh menjatuhkan webhook. Baris audit di
     // doku_webhook_events tetap jadi catatan permanennya.

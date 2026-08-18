@@ -1,13 +1,10 @@
+import { sendMail } from './_mail.js';
+
 export async function onRequestPost(context) {
     try {
         const { request, env } = context;
         const { name, email, title, invoiceUrl, amount } = await request.json();
 
-        const API_KEY = env.RESEND_API_KEY;
-        if (!API_KEY) {
-            console.error('RESEND_API_KEY not configured');
-            return new Response(JSON.stringify({ error: 'Email service not configured' }), { status: 500 });
-        }
 
         if (!email || !name || !invoiceUrl) {
             return new Response(JSON.stringify({ error: 'Missing name, email, or invoiceUrl' }), { status: 400 });
@@ -18,17 +15,10 @@ export async function onRequestPost(context) {
             : null;
         const surveyLine = title ? ` untuk survei <strong>${title}</strong>` : '';
 
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`
-            },
-            body: JSON.stringify({
-                from: 'Jakpat for Universities <noreply@jakpatforuniv.com>',
-                to: [email],
-                subject: 'Pesananmu disetujui, tagihan siap dibayar — Jakpat for Universities',
-                html: `
+        const result = await sendMail(env, {
+            to: email,
+            subject: 'Pesananmu disetujui, tagihan siap dibayar — Jakpat for Universities',
+            html: `
           <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <p>Halo Kak <strong>${name}</strong>,</p>
             <p>Kabar baik! Pesananmu${surveyLine} sudah kami periksa dan disetujui.</p>
@@ -45,17 +35,15 @@ export async function onRequestPost(context) {
             <p><strong>Tim Jakpat for Universities</strong></p>
           </div>
         `
-            })
         });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-            console.error('Resend API Error:', data);
-            return new Response(JSON.stringify({ error: data }), { status: response.status });
+        if (!result.ok) {
+            console.error(`[mail] gagal via ${result.provider}:`, result.error);
+            // 502, bukan 500: yang gagal penyedia email di hulu, bukan fungsi ini.
+            return new Response(JSON.stringify({ error: result.error, provider: result.provider }), { status: 502 });
         }
 
-        return new Response(JSON.stringify(data), { status: 200 });
+        return new Response(JSON.stringify({ id: result.id, provider: result.provider }), { status: 200 });
     } catch (e) {
         console.error('send-invoice-ready-email error:', e);
         return new Response(JSON.stringify({ error: e.message }), { status: 500 });
