@@ -23,7 +23,8 @@ export const QuestionLogicBuilder: React.FC<QuestionLogicBuilderProps> = ({
 
   // Available source blocks (blocks BEFORE current block). Matrix is excluded —
   // its answer is a per-row object, not the flat string/array these rules compare against.
-  const availableSourceBlocks = allBlocks.filter((b, idx) => idx < blockIndex && b.type !== 'matrix');
+  // Image is excluded too — it's decorative and has no answer at all.
+  const availableSourceBlocks = allBlocks.filter((b, idx) => idx < blockIndex && b.type !== 'matrix' && b.type !== 'image');
   // All blocks for jump_to target
   const availableTargetBlocks = allBlocks.filter(b => b.id !== block.id);
 
@@ -225,7 +226,7 @@ export const QuestionLogicBuilder: React.FC<QuestionLogicBuilderProps> = ({
                         >
                           <option value="">-- Pilih Tujuan --</option>
                           <option value="submit">🏁 Submit Form (Selesaikan)</option>
-                          {availableTargetBlocks.map((b, idx) => (
+                          {availableTargetBlocks.map((b) => (
                             <option key={b.id} value={b.id}>
                               @{allBlocks.findIndex(item => item.id === b.id) + 1}. {b.label || 'Pertanyaan'}
                             </option>

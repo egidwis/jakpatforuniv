@@ -256,7 +256,7 @@ export const PublicFormPage: React.FC = () => {
 
   // Calculate overall question index offset for active page
   const questionNumberOffset = useMemo(() => {
-    const allNonBreakBlocks = visibleBlocks.filter(b => b.type !== 'page_break');
+    const allNonBreakBlocks = visibleBlocks.filter(b => b.type !== 'page_break' && b.type !== 'image');
     const firstBlockOfPage = currentPage.blocks[0];
     if (!firstBlockOfPage) return 0;
     const pageFirstIdx = allNonBreakBlocks.findIndex(b => b.id === firstBlockOfPage.id);
@@ -267,7 +267,7 @@ export const PublicFormPage: React.FC = () => {
     const errors: Record<string, string> = {};
     let firstErrId: string | null = null;
 
-    for (const q of blocks.filter(b => b.type !== 'page_break')) {
+    for (const q of blocks.filter(b => b.type !== 'page_break' && b.type !== 'image')) {
       if (q.required) {
         const val = answers[q.id];
         let isEmpty = false;
@@ -377,9 +377,16 @@ export const PublicFormPage: React.FC = () => {
         </div>
       )}
 
-      <div className="max-w-2xl space-y-8 pt-6 px-4 sm:px-8">
+      <div className="max-w-2xl mx-auto space-y-8 pt-6 px-4 sm:px-8">
         {/* Header */}
         <div className="space-y-3 pb-6 border-b border-gray-100 dark:border-gray-800">
+          {form.header_image_url && (
+            <img
+              src={form.header_image_url}
+              alt=""
+              className="w-full max-h-72 object-cover rounded-xl -mt-2"
+            />
+          )}
           <div className="flex items-center justify-between gap-2">
             <div className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 text-[11px] font-bold tracking-wide uppercase">
               <span>JFU Form</span>
@@ -420,8 +427,24 @@ export const PublicFormPage: React.FC = () => {
         {/* Question Form Body for Active Page */}
         <div className="space-y-10 sm:space-y-12">
           {currentPage.blocks.map((q: QuestionBlock, idx: number) => {
-            const overallNum = questionNumberOffset + idx + 1;
             const hasError = !!fieldErrors[q.id];
+
+            // Image blocks are decorative — no number, no required state, no answer.
+            if (q.type === 'image') {
+              return (
+                <div key={q.id} id={`question-${q.id}`} className="space-y-2">
+                  {q.imageUrl && (
+                    <img src={q.imageUrl} alt={q.label || ''} className="w-full rounded-xl" />
+                  )}
+                  {q.label && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">{q.label}</p>
+                  )}
+                </div>
+              );
+            }
+
+            const answerableBefore = currentPage.blocks.slice(0, idx).filter(b => b.type !== 'image').length;
+            const overallNum = questionNumberOffset + answerableBefore + 1;
             return (
               <div
                 key={q.id}

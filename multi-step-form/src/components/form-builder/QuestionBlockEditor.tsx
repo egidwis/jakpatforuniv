@@ -1,5 +1,6 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
 import type { QuestionBlock, QuestionType } from '../../utils/customForms';
+import { uploadFormImage } from '../../utils/customForms';
 import {
   Type,
   AlignLeft,
@@ -16,10 +17,13 @@ import {
   X,
   Zap,
   FileText,
-  AtSign
+  AtSign,
+  Image,
+  Loader2
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { QuestionLogicBuilder } from './QuestionLogicBuilder';
+import { toast } from 'sonner';
 
 interface QuestionBlockEditorProps {
   block: QuestionBlock;
@@ -41,6 +45,7 @@ const QUESTION_TYPE_ICONS: Record<QuestionType, React.ReactNode> = {
   rating: <Star className="w-4 h-4 text-amber-500" />,
   date: <Calendar className="w-4 h-4 text-rose-500" />,
   matrix: <Table className="w-4 h-4 text-cyan-500" />,
+  image: <Image className="w-4 h-4 text-fuchsia-500" />,
   page_break: <FileText className="w-4 h-4 text-indigo-500" />
 };
 
@@ -63,6 +68,7 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   rating: 'Rating / Scale',
   date: 'Date',
   matrix: 'Matrix',
+  image: 'Image',
   page_break: 'Page Break'
 };
 
@@ -85,6 +91,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
 
   const labelInputRef = useRef<HTMLTextAreaElement>(null);
   const savedSelectionRef = useRef<number | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-grow the question-label textarea to fit its content (no horizontal clipping on
   // mobile) — useLayoutEffect avoids a flash of clipped text before height adjusts.
@@ -280,6 +287,24 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
     onChange({ ...block, required: e.target.checked });
   };
 
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const handleBlockImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      const publicUrl = await uploadFormImage(file, 'block');
+      onChange({ ...block, imageUrl: publicUrl });
+    } catch (err) {
+      console.error('Error uploading block image:', err);
+      toast.error('Gagal upload gambar. Silakan coba lagi.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   if (block.type === 'page_break') {
     return (
       <div id={`block-${block.id}`} className="relative my-6 group">
@@ -403,7 +428,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
           {/* Question Text */}
           <div className="md:col-span-2 space-y-1 min-w-0">
             <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-              Pertanyaan
+              {block.type === 'image' ? 'Caption (opsional)' : 'Pertanyaan'}
             </span>
 
             <div className="relative">
@@ -540,7 +565,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
               <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
                 Options Source:
               </label>
-              {allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix').length > 0 && (
+              {allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix' && b.type !== 'image').length > 0 && (
                 <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700/60 p-0.5 rounded-lg text-xs">
                   <button
                     type="button"
@@ -556,7 +581,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const prevBlocks = allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix');
+                      const prevBlocks = allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix' && b.type !== 'image');
                       const defaultPrev = prevBlocks[prevBlocks.length - 1]?.id;
                       onChange({ ...block, carryForwardFromBlockId: defaultPrev });
                     }}
@@ -584,7 +609,7 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                   onChange={(e) => onChange({ ...block, carryForwardFromBlockId: e.target.value })}
                   className="w-full text-xs bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-700 rounded-lg p-2 font-semibold text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix').map((b, idx) => (
+                  {allBlocks.slice(0, index).filter(b => b.type !== 'page_break' && b.type !== 'matrix' && b.type !== 'image').map((b, idx) => (
                     <option key={b.id} value={b.id}>
                       @{idx + 1}. {b.label || 'Pertanyaan ' + (idx + 1)}
                     </option>
@@ -735,6 +760,59 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
             </div>
           </div>
         )}
+
+        {/* Image Upload */}
+        {block.type === 'image' && (
+          <div className="pt-1">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleBlockImageUpload}
+              className="hidden"
+            />
+            {block.imageUrl ? (
+              <div className="relative group rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                <img src={block.imageUrl} alt="" className="w-full max-h-48 object-cover" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={uploadingImage}
+                    className="bg-white/90 text-xs"
+                  >
+                    {uploadingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Ganti'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onChange({ ...block, imageUrl: undefined })}
+                    className="bg-white/90 text-xs text-rose-600"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" /> Hapus
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImage}
+                className="w-full flex items-center justify-center gap-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg py-6 text-xs font-medium text-gray-500 dark:text-gray-400 hover:border-fuchsia-400 hover:text-fuchsia-600 dark:hover:text-fuchsia-400 transition-colors"
+              >
+                {uploadingImage ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Image className="w-3.5 h-3.5" />
+                )}
+                Upload Gambar
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Footer controls: Logic Toggle & Required Toggle */}
@@ -759,17 +837,19 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
           )}
         </Button>
 
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={block.required}
-            onChange={handleRequiredToggle}
-            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
-          />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
-            Required Field
-          </span>
-        </label>
+        {block.type !== 'image' && (
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={block.required}
+              onChange={handleRequiredToggle}
+              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+            />
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+              Required Field
+            </span>
+          </label>
+        )}
       </div>
 
       {/* Inline Question Logic Builder */}

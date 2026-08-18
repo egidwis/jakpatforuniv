@@ -4,7 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import type { QuestionBlock, QuestionType } from '../../utils/customForms';
 import {
   getCustomFormById,
-  saveCustomForm
+  saveCustomForm,
+  uploadFormImage
 } from '../../utils/customForms';
 import { QuestionBlockEditor } from '../../components/form-builder/QuestionBlockEditor';
 import { FormAiAssistantDrawer } from '../../components/form-builder/FormAiAssistantDrawer';
@@ -28,7 +29,9 @@ import {
   Sparkles,
   Cloud,
   Send,
-  EyeOff
+  EyeOff,
+  Image,
+  X
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import {
@@ -51,6 +54,8 @@ export const FormBuilderPage: React.FC = () => {
 
   const [title, setTitle] = useState('Untitled Form');
   const [description, setDescription] = useState('');
+  const [headerImageUrl, setHeaderImageUrl] = useState<string | null>(null);
+  const [uploadingHeaderImage, setUploadingHeaderImage] = useState(false);
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
   const [blocks, setBlocks] = useState<QuestionBlock[]>([
     {
@@ -66,6 +71,7 @@ export const FormBuilderPage: React.FC = () => {
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const isInitialLoad = useRef(true);
   const titleInputRef = useRef<HTMLTextAreaElement>(null);
+  const headerImageInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-grow the form-title textarea to fit its content (no horizontal clipping,
   // no fixed-height ancestor to clip a 2nd+ line — useLayoutEffect avoids a flash
@@ -105,7 +111,7 @@ export const FormBuilderPage: React.FC = () => {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [title, description, blocks]);
+  }, [title, description, headerImageUrl, blocks]);
 
   const handleAutoSave = async () => {
     if (!user) return;
@@ -116,6 +122,7 @@ export const FormBuilderPage: React.FC = () => {
           id: formId,
           title,
           description,
+          header_image_url: headerImageUrl || undefined,
           schema: blocks,
           status
         },
@@ -141,6 +148,7 @@ export const FormBuilderPage: React.FC = () => {
       if (form) {
         setTitle(form.title || 'Untitled Form');
         setDescription(form.description || '');
+        setHeaderImageUrl(form.header_image_url || null);
         setStatus(form.status === 'published' ? 'published' : 'draft');
         setBlocks(form.schema && form.schema.length > 0 ? form.schema : []);
       } else {
@@ -158,7 +166,7 @@ export const FormBuilderPage: React.FC = () => {
     const newBlock: QuestionBlock = {
       id: crypto.randomUUID(),
       type,
-      label: type === 'multiple_choice' || type === 'checkbox' ? 'Choose an option' : 'Enter question title...',
+      label: type === 'multiple_choice' || type === 'checkbox' ? 'Choose an option' : type === 'image' ? '' : 'Enter question title...',
       description: '',
       required: false,
       options: type === 'multiple_choice' || type === 'checkbox' || type === 'matrix' ? ['Opsi 1', 'Opsi 2'] : undefined,
@@ -173,6 +181,22 @@ export const FormBuilderPage: React.FC = () => {
     setTimeout(() => {
       document.getElementById(`block-${newBlock.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 50);
+  };
+
+  const handleHeaderImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setUploadingHeaderImage(true);
+    try {
+      const publicUrl = await uploadFormImage(file, 'header');
+      setHeaderImageUrl(publicUrl);
+    } catch (err) {
+      toast.error('Gagal upload gambar. Silakan coba lagi.');
+    } finally {
+      setUploadingHeaderImage(false);
+    }
   };
 
   const handleUpdateBlock = (index: number, updatedBlock: QuestionBlock) => {
@@ -241,6 +265,7 @@ export const FormBuilderPage: React.FC = () => {
           id: formId,
           title: title.trim(),
           description: description.trim(),
+          header_image_url: headerImageUrl || undefined,
           schema: blocks,
           status: targetStatus
         },
@@ -520,6 +545,58 @@ export const FormBuilderPage: React.FC = () => {
             {/* Form Header Card */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-xs overflow-hidden">
               <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+
+              {/* Cover Image */}
+              <input
+                ref={headerImageInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleHeaderImageUpload}
+                className="hidden"
+              />
+              {headerImageUrl ? (
+                <div className="relative group">
+                  <img src={headerImageUrl} alt="Cover" className="w-full max-h-56 object-cover" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => headerImageInputRef.current?.click()}
+                      disabled={uploadingHeaderImage}
+                      className="bg-white/90 text-xs"
+                    >
+                      {uploadingHeaderImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Ganti'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setHeaderImageUrl(null)}
+                      className="bg-white/90 text-xs text-rose-600"
+                    >
+                      <X className="w-3.5 h-3.5 mr-1" /> Hapus
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-6 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => headerImageInputRef.current?.click()}
+                    disabled={uploadingHeaderImage}
+                    className="w-full flex items-center justify-center gap-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg py-3 text-xs font-medium text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  >
+                    {uploadingHeaderImage ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Image className="w-3.5 h-3.5" />
+                    )}
+                    Tambah Cover Image (opsional)
+                  </button>
+                </div>
+              )}
+
               <div className="p-6 space-y-4">
                 <textarea
                   ref={titleInputRef}
@@ -573,7 +650,8 @@ export const FormBuilderPage: React.FC = () => {
                   { type: 'checkbox' as QuestionType, label: 'Checkboxes', icon: CheckSquare, hoverClass: 'hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20' },
                   { type: 'rating' as QuestionType, label: 'Rating', icon: Star, hoverClass: 'hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20' },
                   { type: 'date' as QuestionType, label: 'Date', icon: Calendar, hoverClass: 'hover:border-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20' },
-                  { type: 'matrix' as QuestionType, label: 'Matrix', icon: Table, hoverClass: 'hover:border-cyan-400 hover:text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-900/20' }
+                  { type: 'matrix' as QuestionType, label: 'Matrix', icon: Table, hoverClass: 'hover:border-cyan-400 hover:text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-900/20' },
+                  { type: 'image' as QuestionType, label: 'Image', icon: Image, hoverClass: 'hover:border-fuchsia-400 hover:text-fuchsia-600 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20' }
                 ].map(({ type, label, icon: Icon, hoverClass }) => (
                   <button
                     key={type}

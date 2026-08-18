@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import imageCompression from 'browser-image-compression';
 
 export type QuestionType =
   | 'short_text'
@@ -8,6 +9,7 @@ export type QuestionType =
   | 'rating'
   | 'date'
   | 'matrix'
+  | 'image'
   | 'page_break';
 
 export interface MatrixRow {
@@ -36,6 +38,7 @@ export interface QuestionBlock {
   required: boolean;
   options?: string[]; // Untuk multiple_choice/checkbox: daftar opsi. Untuk matrix: kolom bersama.
   rows?: MatrixRow[]; // Khusus matrix: daftar baris/sub-pernyataan
+  imageUrl?: string; // Khusus image: URL gambar (label/description dipakai sebagai caption opsional)
   minScale?: number;
   maxScale?: number;
   carryForwardFromBlockId?: string; // ID pertanyaan acuan untuk carry forward opsi
@@ -49,6 +52,7 @@ export interface CustomForm {
   slug?: string;
   title: string;
   description: string;
+  header_image_url?: string;
   schema: QuestionBlock[];
   status: 'draft' | 'published' | 'archived';
   created_at: string;
@@ -154,6 +158,7 @@ export async function saveCustomForm(
     title: formData.title || 'Untitled Form',
     description: formData.description || '',
     slug: formData.slug || null,
+    header_image_url: formData.header_image_url || null,
     schema: formData.schema || [],
     status: formData.status || 'draft',
     updated_at: new Date().toISOString()
@@ -188,6 +193,36 @@ export async function saveCustomForm(
     }
     return data;
   }
+}
+
+/**
+ * Compress and upload an image (cover/header image or an in-form image block)
+ * to the shared `page-uploads` Supabase Storage bucket, returning its public URL.
+ */
+export async function uploadFormImage(file: File, folder: 'header' | 'block'): Promise<string> {
+  const compressed = await imageCompression(file, {
+    maxSizeMB: 0.5,
+    maxWidthOrHeight: 1280,
+    useWebWorker: true
+  });
+
+  const sanitizedName = file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9.-]/g, '');
+  const fileName = `${folder}-images/${Date.now()}-${sanitizedName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('page-uploads')
+    .upload(fileName, compressed);
+
+  if (uploadError) {
+    console.error('Error uploading form image:', uploadError);
+    throw uploadError;
+  }
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('page-uploads')
+    .getPublicUrl(fileName);
+
+  return publicUrl;
 }
 
 /**
@@ -253,7 +288,10 @@ export function exportResponsesToCSV(
 
   const csvEscape = (text: string) => `"${text.replace(/"/g, '""')}"`;
 
-  const headers = ['Submitted At', ...schema.flatMap(q =>
+  // Image blocks are purely decorative — no answer to export as a column.
+  const exportableSchema = schema.filter(q => q.type !== 'image');
+
+  const headers = ['Submitted At', ...exportableSchema.flatMap(q =>
     q.type === 'matrix'
       ? (q.rows || []).map(row => csvEscape(`${q.label} - ${row.label}`))
       : [csvEscape(q.label)]
@@ -261,7 +299,7 @@ export function exportResponsesToCSV(
 
   const rows = responses.map(r => {
     const dateStr = new Date(r.created_at).toLocaleString('id-ID');
-    const answerCols = schema.flatMap(q => {
+    const answerCols = exportableSchema.flatMap(q => {
       if (q.type === 'matrix') {
         const matrixVal = r.answers[q.id];
         return (q.rows || []).map(row => {

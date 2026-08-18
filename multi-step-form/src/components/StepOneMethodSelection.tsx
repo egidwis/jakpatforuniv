@@ -9,9 +9,9 @@ interface StepOneMethodSelectionProps {
 
 // Value proposition JFU Form yang bergantian di promo bar bawah
 const JFU_FORM_VALUE_PROPS = [
-  'custom survey pakai AI',
-  'logic lengkap',
-  'bisa import dari platform survey lain'
+  'alternatif Qualtrics & SurveyMonkey',
+  'tinggal chat, AI yang susunin pertanyaannya',
+  'survei bisa "loncat" otomatis sesuai jawaban'
 ];
 
 export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectionProps) {
