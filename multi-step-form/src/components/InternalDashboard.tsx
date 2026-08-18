@@ -1168,7 +1168,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
               <span className="hidden md:block w-[100px] shrink-0">ID</span>
               <span className="hidden md:block w-[65px] shrink-0">Review</span>
               <span className="flex-1">Survey</span>
-              <span className="w-[120px] shrink-0 text-right">Status</span>
+              <span className="w-5 shrink-0" />
               <span className="w-4 shrink-0" /> {/* Spacer to align with chevron */}
             </div>
 
@@ -1186,7 +1186,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                       <div className="h-4 w-3/5 bg-gray-200 animate-pulse rounded" />
                       <div className="h-2.5 w-2/5 bg-gray-100 animate-pulse rounded" />
                     </div>
-                    <div className="h-5 w-20 bg-gray-100 animate-pulse rounded-full shrink-0" />
+                    <div className="h-2.5 w-2.5 bg-gray-200 animate-pulse rounded-full shrink-0" />
                   </div>
                 ))}
               </div>
@@ -1220,6 +1220,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                       existingPages[submission.id],
                       scheduledSubmissionIds.has(submission.id)
                     )}
+                    existingPage={existingPages[submission.id]}
                     selected={rowSelection.isSelected(submission.id)}
                     onSelectToggle={rowSelection.toggle}
                     onOpen={setOpenSubmissionId}

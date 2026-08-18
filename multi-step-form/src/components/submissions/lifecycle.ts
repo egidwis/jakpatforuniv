@@ -1,6 +1,7 @@
 import type { LifecycleStage } from '../../lib/status-tokens';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { toWibYmd, isPaymentTooLateForDate } from '../../utils/airing-window';
+import { isPlaceholderBannerUrl } from '../../utils/page-banner';
 
 // ─────────────────────────────────────────────────────────────
 // Single source of truth for submission lifecycle derivation.
@@ -134,4 +135,74 @@ export function deriveLifecycle(
     pageStatus,
     slotExpiresAt,
   };
+}
+
+export interface ActionDot {
+  type: 'red' | 'gray';
+  label: string;
+}
+
+/**
+ * Derives whether a submission needs admin/user action across all tabs
+ * (Review, Schedule & Payment, Page) to display a notification dot in the list.
+ */
+export function getSubmissionActionDot(
+  submission: SurveySubmission,
+  lifecycle: LifecycleInfo,
+  existingPage?: ExistingPage
+): ActionDot | null {
+  const { displayStatus } = lifecycle;
+  const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
+  const isRejected = displayStatus === 'rejected';
+  const isReviewActive = isNeedReview || isRejected;
+
+  if (isReviewActive) {
+    return {
+      type: 'red',
+      label: isRejected ? 'Review ditolak' : 'Perlu tindakan di tab Review',
+    };
+  }
+
+  if (displayStatus === 'spam') {
+    return null;
+  }
+
+  // Dot status untuk tab Jadwal & Bayar:
+  const isScheduleActive =
+    !isReviewActive &&
+    displayStatus !== 'spam' &&
+    !lifecycle.isPaid &&
+    lifecycle.stage !== 'live' &&
+    lifecycle.stage !== 'completed' &&
+    lifecycle.stage !== 'page_scheduled';
+
+  const isKilat = submission.distribution_type === 'kilat';
+  const needsBannerUpdate = !isKilat && existingPage && (
+    isPlaceholderBannerUrl(existingPage.banner_url) ||
+    Boolean(existingPage.requires_banner_update)
+  );
+  const isPageUnpublishedWhenDue = !isKilat && existingPage && lifecycle.canBuildPage && !existingPage.is_published;
+
+  if (isScheduleActive && !lifecycle.isActuallyExpired) {
+    return {
+      type: 'red',
+      label: 'Perlu tindakan: Menunggu Pembayaran / Jadwal',
+    };
+  }
+
+  if (needsBannerUpdate || isPageUnpublishedWhenDue) {
+    return {
+      type: 'red',
+      label: needsBannerUpdate ? 'Perlu tindakan: Upload Banner Iklan' : 'Perlu tindakan: Publikasikan Halaman',
+    };
+  }
+
+  if (isScheduleActive && lifecycle.isActuallyExpired) {
+    return {
+      type: 'gray',
+      label: 'Slot kedaluwarsa (Unpaid)',
+    };
+  }
+
+  return null;
 }

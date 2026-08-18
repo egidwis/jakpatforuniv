@@ -10,15 +10,16 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import { cn } from '@/lib/utils';
-import type { SurveySubmission } from './types';
+import type { SurveySubmission, ExistingPage } from './types';
 import type { LifecycleInfo } from './lifecycle';
-import { LifecycleChip } from './LifecycleChip';
+import { getSubmissionActionDot } from './lifecycle';
 import { ClientStatusDot } from '../customers/ClientStatusIcon';
 import type { CustomerTier } from '../customers/types';
 
 interface SubmissionListRowProps {
   submission: SurveySubmission;
   lifecycle: LifecycleInfo;
+  existingPage?: ExistingPage;
   selected: boolean;
   onSelectToggle: (id: string) => void;
   onOpen: (id: string) => void;
@@ -44,6 +45,7 @@ function getAutoPlatformTooltip(formUrl?: string): string {
 export function SubmissionListRow({
   submission,
   lifecycle,
+  existingPage,
   selected,
   onSelectToggle,
   onOpen,
@@ -51,9 +53,9 @@ export function SubmissionListRow({
   clientTier,
 }: SubmissionListRowProps) {
   const [copiedId, setCopiedId] = useState(false);
+  const actionDot = getSubmissionActionDot(submission, lifecycle, existingPage);
 
   const handleCopyId = (e: React.MouseEvent) => {
-    e.stopPropagation();
     navigator.clipboard.writeText(submission.id);
     setCopiedId(true);
     toast.success('Submission ID disalin');
@@ -198,9 +200,37 @@ export function SubmissionListRow({
         </div>
       </div>
 
-      {/* Lifecycle chip */}
-      <div onClick={(e) => e.stopPropagation()} className="w-[120px] shrink-0 flex justify-end">
-        <LifecycleChip submission={submission} lifecycle={lifecycle} size="sm" />
+      {/* Action Dot Indicator (Red / Gray dot with tooltip) */}
+      <div onClick={(e) => e.stopPropagation()} className="w-5 shrink-0 flex items-center justify-center">
+        {actionDot?.type === 'red' && (
+          <TooltipProvider>
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <span className="relative flex h-2.5 w-2.5 cursor-help" aria-label={actionDot.label}>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 shadow-2xs"></span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="text-xs py-1 px-2.5 font-medium">
+                <p>{actionDot.label}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {actionDot?.type === 'gray' && (
+          <TooltipProvider>
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <span className="relative flex h-2 w-2 cursor-help" aria-label={actionDot.label}>
+                  <span className="inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="text-xs py-1 px-2.5 font-medium">
+                <p>{actionDot.label}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
 
       <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" />
