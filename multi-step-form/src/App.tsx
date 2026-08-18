@@ -14,7 +14,6 @@ import LoginPage from './pages/LoginPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import PrivateRoute from './components/PrivateRoute';
-import RequireCompleteProfile from './components/RequireCompleteProfile';
 import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
 import { ChatPage } from './pages/dashboard/ChatPage';
@@ -36,6 +35,19 @@ function ExternalRedirect({ to }: { to: string }) {
     window.location.href = to;
   }, [to]);
   return null;
+}
+
+/**
+ * <Navigate> yang MEMBAWA SERTA query string dan hash.
+ *
+ * `<Navigate to="/x">` polos membuang keduanya. Untuk redirect kosmetik itu
+ * tidak terasa, tapi begitu ada satu saja parameter yang berarti — di sini
+ * `?custom_form_id=` dari CTA "Sebar via Jakpat" — hilangnya sunyi: halaman
+ * tujuan terbuka normal, cuma tanpa prefill.
+ */
+function RedirectPreservingQuery({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
 }
 
 function AppContent() {
@@ -105,17 +117,22 @@ function AppContent() {
             <DashboardLayout />
           </PrivateRoute>
         }>
-          <Route index element={<Navigate to="/dashboard/submit" replace />} />
-          <Route path="submit" element={
-            <RequireCompleteProfile>
-              <MultiStepForm />
-            </RequireCompleteProfile>
-          } />
+          <Route index element={<StatusPage />} />
+          {/* URL lama tetap hidup sebagai redirect (bookmark/tab lama). Gate
+              profil tidak lagi di level route — pindah ke saat pilih metode
+              (ProfileCompletionSheet di dalam flow). */}
+          <Route path="status" element={<Navigate to="/dashboard" replace />} />
+          {/* ⚠️ `replace` SAJA TIDAK CUKUP — query string wajib ikut. CTA "Sebar
+              via Jakpat" mengirim `?custom_form_id=…`, dan <Navigate to="/path">
+              polos MEMBUANGNYA diam-diam: halaman terbuka normal, cuma tanpa
+              prefill, jadi peneliti mengira formnya gagal termuat. Link lama
+              yang sudah beredar tetap lewat sini. */}
+          <Route path="submit" element={<RedirectPreservingQuery to="/dashboard/submit-iklan" />} />
+          <Route path="submit-iklan" element={<MultiStepForm />} />
           <Route path="forms" element={<FormListPage />} />
           <Route path="forms/new" element={<FormBuilderPage />} />
           <Route path="forms/:formId/edit" element={<FormBuilderPage />} />
           <Route path="forms/:formId/responses" element={<FormResponsesPage />} />
-          <Route path="status" element={<StatusPage />} />
           <Route path="chat" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="payment/:submissionId" element={<PaymentCheckoutPage />} />
@@ -125,14 +142,16 @@ function AppContent() {
         <Route path="/f/:formId" element={<PublicFormPage />} />
         <Route path="/f/:username/:slug" element={<PublicFormPage />} />
 
-        {/* Public Routes - Wrapped in Container */}
+        {/* Auth Routes - Standalone Full Screen with unified background */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+        {/* Public Content Routes - Wrapped in Container */}
         <Route path="*" element={
           <PublicLayout>
             <Routes>
-              <Route path="/" element={<Navigate to="/dashboard/submit" replace />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/payment-success" element={<PaymentSuccessPage />} />
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
               <Route path="/payment-retry" element={<PaymentRetryPage />} />

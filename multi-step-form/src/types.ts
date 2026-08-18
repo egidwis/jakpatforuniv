@@ -28,8 +28,15 @@ export interface SurveyFormData {
   winnerCount: number;
   prizePerWinner: number;
 
-  // Step 3: Review & Pembayaran
+  // Step 2: Ringkasan
   voucherCode?: string;
+  /**
+   * Persetujuan S&K dicentang di Ringkasan, tetapi order jalur otomatis baru
+   * ditulis satu langkah kemudian (saat jadwal dikunci). Karena itu ia harus
+   * ikut di formData, bukan state lokal layar Ringkasan — kalau tidak,
+   * persetujuannya hilang begitu layar itu unmount.
+   */
+  termsAccepted?: boolean;
 
   // JFU Kilat
   isKilatUpgrade?: boolean;           // true jika user memilih upgrade Kilat

@@ -1,262 +1,147 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { Calendar, Clock, Loader2, AlertCircle } from 'lucide-react';
-import { fetchSlotAvailability } from '../utils/supabase';
+import { ArrowLeft, Loader2, Info, Lock } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-
-
-// Helper to format date
-const getDateString = (date: Date) => {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-};
-
-import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from '../utils/constants';
+import { SchedulePicker } from './SchedulePicker';
+import { useSlotAvailability } from '../hooks/useSlotAvailability';
+import { isBookingClosedForDate } from '../utils/airing-window';
 
 interface StepScheduleProps {
   formData: SurveyFormData;
-  updateFormData: (data: Partial<SurveyFormData>) => void;
-  nextStep: () => void;
-  prevStep: () => void;
+  /**
+   * Apa yang terjadi setelah tanggal dikunci. Mode reguler menulis order lalu
+   * pindah ke halaman pembayaran; mode kilat kembali ke Ringkasan. Mengembalikan
+   * false berarti gagal — tombol dipulihkan supaya user bisa mencoba lagi.
+   */
+  onConfirm: (ymd: string) => Promise<boolean> | boolean;
+  onBack: () => void;
   mode?: 'regular' | 'kilat';
 }
 
-export function StepSchedule({ formData, updateFormData, nextStep, prevStep, mode = 'regular' }: StepScheduleProps) {
+/**
+ * Fase A dari langkah "Jadwal & Bayar": memilih tanggal.
+ *
+ * Fase B (countdown + tombol bayar) hidup di `/dashboard/payment/:id` dan baru
+ * bisa dialamati setelah baris order lahir — batas route-nya jatuh tepat di
+ * tombol "Kunci Jadwal & Lanjut Bayar" di bawah. Secara pengalaman keduanya
+ * satu layar; secara alamat mereka terpisah karena Fase B punya dua pintu masuk
+ * "kembali setelah pergi" yang tidak bisa dilayani state wizard.
+ */
+export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: StepScheduleProps) {
   const { t } = useLanguage();
-  const [selectedDate, setSelectedDate] = useState<Date | null>(
-    formData.startDate ? new Date(formData.startDate) : null
+  const availability = useSlotAvailability(mode);
+
+  const [selected, setSelected] = useState<string | null>(
+    formData.startDate ? String(formData.startDate).slice(0, 10) : null
   );
-  const [selectedTime, setSelectedTime] = useState<string>(
-    formData.startTime || "15:00"
-  );
-  const [isFetchingAds, setIsFetchingAds] = useState(false);
-  const [regularCountsByDate, setRegularCountsByDate] = useState<Record<string, number>>({});
-  const [slotDetails, setSlotDetails] = useState<Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>>>({});
-  const calendarRef = useRef<HTMLDivElement>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
-  const navRef = useRef<HTMLDivElement>(null);
+  const duration = mode === 'kilat' ? 1 : Math.max(formData.duration || 1, 1);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const clickedOutsideCalendar = calendarRef.current && !calendarRef.current.contains(event.target as Node);
-      const clickedOutsideNav = navRef.current && !navRef.current.contains(event.target as Node);
-      if (clickedOutsideCalendar && clickedOutsideNav) {
-        setSelectedDate(null);
-      }
-    }
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    loadAvailability();
-  }, []);
-
-  const loadAvailability = async () => {
-    setIsFetchingAds(true);
-    try {
-      const { regularCounts, details } = await fetchSlotAvailability(undefined, mode);
-      setRegularCountsByDate(regularCounts);
-      if (details) {
-        setSlotDetails(details);
-      }
-    } catch (error) {
-      toast.error(t('slotErrorLoad'));
-    } finally {
-      setIsFetchingAds(false);
-    }
+  const handleSelect = (ymd: string) => {
+    setSelected(ymd);
+    // Tanggal hanya ditulis ke formData saat onConfirm — di sini cukup
+    // local state agar Step 2 tidak melihat tanggal yang belum ter-lock.
   };
 
-  // Generate next 14 days
-  const availableDates = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    availableDates.push(d);
-  }
-
-  const validateCapacityForRange = (startDay: Date, duration: number): boolean => {
-    const current = new Date(startDay);
-    current.setHours(0, 0, 0, 0);
-    const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
-    for (let i = 0; i < duration; i++) {
-      const dateStr = getDateString(current);
-      const count = regularCountsByDate[dateStr] || 0;
-      if (count >= maxAdsPerDay) {
-        return false;
-      }
-      current.setDate(current.getDate() + 1);
-    }
-    return true;
-  };
-
-  const handleNext = () => {
-    if (!selectedDate || !selectedTime) {
+  const handleConfirm = async () => {
+    if (!selected) {
       toast.error(t('slotErrorNoDate'));
       return;
     }
-
-    // Capacity Validation
-    const effectiveDuration = mode === 'kilat' ? 1 : (formData.duration || 1);
-    if (!validateCapacityForRange(selectedDate, effectiveDuration)) {
+    if (isBookingClosedForDate(selected)) {
+      toast.error(t('slotErrorPastCutoff'));
+      setSelected(null);
+      return;
+    }
+    if (!availability.isRangeAvailable(selected, duration)) {
       toast.error(t('slotErrorFull'));
       return;
     }
 
-    updateFormData({
-      startDate: getDateString(selectedDate),
-      startTime: selectedTime,
-    });
-
-    // Auto-calculate endDate here or let StepFour calculate it? 
-    // Usually StepFour/Dashboard does it based on start time UTC, but let's safely set it if needed.
-
-    nextStep();
+    setIsConfirming(true);
+    try {
+      const ok = await onConfirm(selected);
+      if (!ok) setIsConfirming(false);
+    } catch (e) {
+      console.error('Failed to lock schedule:', e);
+      setIsConfirming(false);
+    }
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
-              <Calendar size={18} />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{mode === 'kilat' ? t('kilatScheduleTitle') : t('slotReservationTitle')}</h3>
+    <div className="max-w-3xl mx-auto space-y-3.5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
+        {/* Title + subtitle grouped so gap between them is tight */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            {/* Kilat bukan iklan, jadi judul reguler ("kapan iklanmu tayang")
+                salah alamat di sini. Wording-nya dikembalikan lewat judul yang
+                sudah ada, bukan dengan menambah label baru. */}
+            <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
+              {mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleTitle')}
+            </h2>
+            {availability.isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
           </div>
-          {isFetchingAds && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+          <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
+            {t('scheduleSubtitle')}
+          </p>
         </div>
 
-        <div className="p-6">
-          <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-sm mb-6">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span dangerouslySetInnerHTML={{ __html: t('slotReservationInfo') }} />
+        {/* Calendar picker wrapped in card */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-4 shadow-2xs">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span>{t('scheduleCutoffNote')}</span>
           </div>
-
-          <div className="space-y-4">
-            <label className="text-sm font-medium text-gray-700">{t('slotStartDateLabel')}</label>
-            <div ref={calendarRef} className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 py-1">
-              {availableDates.map((date, i) => {
-                const dateStr = getDateString(date);
-                const maxAdsPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
-                const baseCount = regularCountsByDate[dateStr] || 0;
-                const isFull = baseCount >= maxAdsPerDay;
-                
-                const selectedIndex = selectedDate ? availableDates.findIndex(d => getDateString(d) === getDateString(selectedDate)) : -1;
-                const effectiveDuration = mode === 'kilat' ? 1 : (formData.duration || 1);
-                const isSelectedInRange = selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + effectiveDuration;
-                
-                const displayCount = isSelectedInRange ? baseCount + 1 : baseCount;
-
-                let statusColors = 'bg-white border-slate-200 hover:border-blue-400 shadow-sm';
-                let textColor = 'text-slate-800';
-                
-                if (isSelectedInRange) {
-                  if (displayCount > maxAdsPerDay) {
-                    statusColors = 'bg-red-50 border-red-500 ring-1 ring-red-500 shadow-md';
-                    textColor = 'text-red-900';
-                  } else {
-                    statusColors = mode === 'kilat' ? 'bg-amber-50 border-amber-500 ring-1 ring-amber-500 shadow-md' : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
-                    textColor = mode === 'kilat' ? 'text-amber-900' : 'text-blue-900';
-                  }
-                } else if (isFull) {
-                  statusColors = 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed';
-                }
-
-                const dotColor = displayCount > maxAdsPerDay ? 'bg-red-500' : isFull && !isSelectedInRange ? 'bg-red-500' : displayCount > 0 ? 'bg-amber-500' : 'bg-emerald-500';
-
-                const detailsForDate = (slotDetails[dateStr] || []).filter(ad => !ad.isExtra);
-
-                return (
-                  <button
-                    key={dateStr}
-                    type="button"
-                    disabled={isFull}
-                    onClick={() => {
-                      setSelectedDate(date);
-                      setSelectedTime("15:00");
-                    }}
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
-                  >
-                    <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                      {date.toLocaleDateString('id-ID', { weekday: 'short' })}
-                    </span>
-                    <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
-                      {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                    </span>
-                    <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
-                      <div className={`w-1 h-1 rounded-full ${dotColor}`} />
-                      <span className={`text-[10px] font-semibold ${displayCount > maxAdsPerDay ? 'text-red-700' : isFull && !isSelectedInRange ? 'text-red-700' : 'text-slate-600'}`}>
-                        {displayCount}/{maxAdsPerDay}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Fixed 15:00 WIB info banner */}
-          <div className="flex items-center gap-3 mt-6 p-3 bg-blue-50/70 border border-blue-100 rounded-xl">
-            <Clock className="w-4 h-4 text-blue-500 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-blue-800">{t('slotFixedTimeTitle')}</p>
-              <p className="text-xs text-blue-600 mt-0.5">{t('slotFixedTimeDesc')}</p>
-            </div>
-          </div>
-
-          {selectedDate && (() => {
-            const duration = formData.duration || 1;
-            const startObj = new Date(selectedDate);
-            startObj.setHours(15, 0, 0, 0);
-            const endObj = new Date(startObj);
-            endObj.setDate(endObj.getDate() + duration);
-            const fmtDate = (d: Date) => d.toLocaleDateString('id-ID', { day: 'numeric', month: 'numeric', year: 'numeric' });
-            return (
-              <div className="mt-6 space-y-2 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Schedule Summary</p>
-                <div className="flex flex-row gap-2 mt-1">
-                  <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
-                    <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">Start Date</span>
-                    <span className="font-bold text-gray-900 text-sm">{fmtDate(startObj)} 15:00</span>
-                  </div>
-                  <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
-                    <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">{t('slotDurationLabel')}</span>
-                    <span className="font-bold text-gray-900 text-sm">{mode === 'kilat' ? t('kilatDuration') : `${duration} ${t('days')}`}</span>
-                  </div>
-                  <div className="flex-1 flex flex-col bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
-                    <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">End Date</span>
-                    <span className="font-bold text-gray-900 text-sm">{fmtDate(endObj)} 15:00</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+          <SchedulePicker
+            availability={availability}
+            duration={duration}
+            mode={mode}
+            value={selected}
+            onChange={handleSelect}
+          />
         </div>
       </div>
 
-      {/* Navigation Buttons */}
-      <div ref={navRef} className="flex justify-between items-center pt-4">
-        <button
-          type="button"
-          className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
-          onClick={prevStep}
-        >
-          ← {mode === 'kilat' ? t('kilatUndoButton') : t('backButton')}
-        </button>
-        <button
-          onClick={handleNext}
-          disabled={!selectedDate || isFetchingAds}
-          className="px-6 py-2.5 rounded-xl text-white font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' }}
-        >
-          Review & Payment →
-        </button>
-      </div>
+      <div className="space-y-2 pb-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={isConfirming}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            {t('backButton')}
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!selected || availability.isLoading || isConfirming}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
+          >
+            {isConfirming ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t('lockingSlotLoading')}
+              </>
+            ) : (
+              <>
+                <Lock size={15} />
+                {mode === 'kilat' ? t('scheduleConfirmKilatCta') : t('scheduleLockCta')}
+                <span aria-hidden="true">→</span>
+              </>
+            )}
+          </button>
+        </div>
 
+        {/* Countdown dideklarasikan SEBELUM terjadi — layar berikutnya membuka
+            timer, dan itu tidak boleh terasa seperti kejutan. */}
+        <p className="text-xs text-gray-500 text-center leading-relaxed px-4">
+          {mode === 'kilat' ? t('scheduleKilatHint') : t('scheduleHoldHint')}
+        </p>
+      </div>
     </div>
   );
 }

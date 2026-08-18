@@ -1,57 +1,100 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ArrowLeft,
+  ArrowRight,
   Ban,
-  Calendar,
   CalendarCheck,
+  CalendarClock,
   Check,
-  Copy,
   CreditCard,
-  ExternalLink,
   FileText,
   Globe,
   Info,
+  Link2,
+  Loader2,
+  Lock,
   Mail,
   MessageCircle,
-  PenLine,
   RotateCcw,
   ShieldAlert,
   X,
-  Zap,
-  AlertTriangle,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
-import { Chip } from '../ui/chip';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '../ui/tooltip';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
-import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
+import { ClientStatusIcon } from '../customers/ClientStatusIcon';
+import type { CustomerTier } from '../customers/types';
+import { DetailSheet } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
-import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculateAdCostPerDay, calculatePpn, getKilatAddonCost } from '../../utils/cost-calculator';
-import { updateFormDetails, updateSubmissionCriteria } from '../../utils/supabase';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { deriveLifecycle } from './lifecycle';
-import { LifecycleChip } from './LifecycleChip';
 import { ReviewStatusChip } from './ReviewStatusChip';
 import { ReviewTimeline } from './ReviewTimeline';
-import { ReserveSlotAction, PaymentAction, PageAction, ExtendAction, DistributionAction } from './CampaignActions';
+import { InfoTab } from './tabs/InfoTab';
+import { ReviewTab } from './tabs/ReviewTab';
+import { SchedulePaymentTab } from './tabs/SchedulePaymentTab';
+import { PageTab } from './tabs/PageTab';
+import { ScheduleForm } from '@/components/schedule/ScheduleForm';
+import { InvoiceForm } from '@/components/schedule/InvoiceForm';
+import { updateFormDetails, type AdScheduleEntry } from '@/utils/supabase';
+import { isPlaceholderBannerUrl } from '@/utils/page-banner';
+import { toast } from 'sonner';
 
-type DetailTab = 'info' | 'review' | 'reservation' | 'payment' | 'page';
+const REASONS = {
+  ACCESS_LOCKED:
+    'Akses Google Form Anda dibatasi (restricted). Mohon buka setelan form menjadi publik / siapa saja yang memiliki link (Anyone with the link) agar responden dapat mengisi.',
+  BROKEN_LINK:
+    'Link kuesioner tidak dapat diakses atau tidak valid. Silakan periksa kembali tautan yang Anda kirimkan.',
+};
+
+function getSensitiveReason(keywords?: string[]) {
+  const kwText = keywords && keywords.length > 0 ? ` (${keywords.join(', ')})` : '';
+  return `Kuesioner Anda mengandung pertanyaan terkait data pribadi/sensitif${kwText}. Mohon hapus atau sesuaikan pertanyaan tersebut sesuai panduan kuesioner Jakpat.`;
+}
+
+function sendWhatsAppNotification(phone: string | undefined, researcherName: string, formTitle: string, note: string) {
+  const cleanPhone = (phone || '').replace(/[^0-9]/g, '').replace(/^0/, '62');
+  const message = `Halo Kak ${researcherName || 'Peneliti'},\n\nTerima kasih telah mengajukan kuesioner "${formTitle || 'Kuesioner'}" di Jakpat for Universities.\n\nSaat proses review, kami menemukan catatan berikut:\n📌 "${note}"\n\nMohon perbaiki kuesioner Anda, lalu buka dashboard Jakpat dan klik tombol "Saya Sudah Perbaiki Kuesioner" agar dapat kami proses kembali.\n\nTerima kasih! 🙏\nTim Reviewer Jakpat for Universities`;
+
+  if (cleanPhone) {
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  } else {
+    navigator.clipboard.writeText(message);
+    toast.info('Nomor WhatsApp tidak tersedia. Pesan notifikasi disalin ke clipboard.');
+  }
+}
+
+// Reservasi + Payment digabung jadi satu tab di Phase 3, dan sejak aksinya jadi
+// sub-tampilan drawer keduanya benar-benar satu tempat kerja: rute review manual
+// adalah SATU percakapan dengan peneliti, dari feedback sampai tagihan.
+type DetailTab = 'info' | 'review' | 'schedule-payment' | 'page';
 
 const TABS: { id: DetailTab; label: string; icon: typeof FileText }[] = [
   { id: 'info', label: 'Info', icon: Info },
   { id: 'review', label: 'Review', icon: FileText },
-  { id: 'reservation', label: 'Reservasi', icon: Calendar },
-  { id: 'payment', label: 'Payment', icon: CreditCard },
+  { id: 'schedule-payment', label: 'Jadwal & Bayar', icon: CalendarCheck },
   { id: 'page', label: 'Page', icon: Globe },
 ];
+
+/**
+ * Sub-tampilan menguasai seluruh drawer: bar tab diganti bar kembali, badan
+ * diganti formulir, footer diganti aksi utamanya. Judul survei di kepala drawer
+ * tetap terlihat, jadi konteksnya tidak pernah hilang — itu bedanya dengan
+ * halaman penuh yang dulu menelan seluruh layar.
+ */
+type SubView =
+  | { kind: 'edit'; entry: AdScheduleEntry }
+  | { kind: 'invoice'; entry: AdScheduleEntry }
+  | { kind: 'create'; isExtraAd: boolean }
+  | null;
 
 interface SubmissionDetailSheetProps {
   submission: SurveySubmission | null;
@@ -64,29 +107,27 @@ interface SubmissionDetailSheetProps {
   onEditFormDetails: (submission: SurveySubmission) => void;
   onEditCriteria: (submission: SurveySubmission) => void;
   onOpenPageBuilder: (submission: SurveySubmission) => void;
-  onOpenSchedule: (submission: SurveySubmission) => void;
-  onOpenPayment: (submission: SurveySubmission) => void;
+  /**
+   * Sub-tampilan yang harus terbuka begitu drawer muncul — dipakai pemanggil
+   * luar (baris tabel, kartu mobile) yang dulu melempar ke halaman penuh.
+   * Ia hanya niat; jadwal mana yang disunting baru bisa dipilih setelah daftar
+   * jadwal termuat, jadi resolusinya terjadi di dalam.
+   */
+  initialSubView?: 'schedule' | 'payment' | null;
+  onInitialSubViewConsumed?: () => void;
   /** Pindahkan order antara jalur iklan regular dan JFU Kilat. */
   onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
   onExtendCreated: () => void;
   variant?: 'sheet' | 'pane';
-  clientTier?: 'vvip' | 'vip' | 'returning' | 'new';
-}
-
-function copyToClipboard(text: string, message: string) {
-  navigator.clipboard.writeText(text);
-  toast.success(message);
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return 'Not set';
-  return new Date(value).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  clientTier?: CustomerTier;
 }
 
 /**
  * Right-side drawer with all submission detail & actions, organised in 4 tabs.
- * Tabs are entry points: heavy actions still launch the existing flows
- * (SchedulePaymentView fullscreen, PageBuilderModal, edit modals).
+ *
+ * Menjadwalkan dan menagih terjadi DI DALAM drawer ini sebagai sub-tampilan —
+ * keduanya dulu melempar admin ke halaman penuh. Yang masih mengambil alih layar
+ * tinggal PageBuilderModal (editor dokumen, bukan formulir) dan modal edit.
  */
 export function SubmissionDetailSheet({
   submission,
@@ -99,8 +140,8 @@ export function SubmissionDetailSheet({
   onEditFormDetails,
   onEditCriteria,
   onOpenPageBuilder,
-  onOpenSchedule,
-  onOpenPayment,
+  initialSubView = null,
+  onInitialSubViewConsumed,
   onConvertDistribution,
   onExtendCreated,
   variant = 'sheet',
@@ -109,6 +150,15 @@ export function SubmissionDetailSheet({
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [reviewNote, setReviewNote] = useState('');
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+  const [subView, setSubView] = useState<SubView>(null);
+  const [scheduleReloadKey, setScheduleReloadKey] = useState(0);
+  const [footerEl, setFooterEl] = useState<HTMLDivElement | null>(null);
+
+  // Local state for Review tab inline editing & progressive disclosure
+  const [questionCountInput, setQuestionCountInput] = useState<number>(submission?.questionCount || 0);
+  const [isRejectMode, setIsRejectMode] = useState(false);
+  const [isSpamConfirmOpen, setIsSpamConfirmOpen] = useState(false);
+  const [isSavingApprove, setIsSavingApprove] = useState(false);
 
   // Reset to the Info tab whenever a different submission is opened
   const submissionId = submission?.id;
@@ -116,18 +166,66 @@ export function SubmissionDetailSheet({
     setActiveTab('info');
     setReviewNote('');
     setIsHistoryExpanded(false);
-  }, [submissionId]);
+    setSubView(null);
+    setQuestionCountInput(submission?.questionCount || 0);
+    setIsRejectMode(false);
+    setIsSpamConfirmOpen(false);
+    setIsSavingApprove(false);
+  }, [submissionId, submission?.questionCount]);
+
+  // Niat dari luar (baris tabel, kartu mobile) mendarat di tab yang benar; jadwal
+  // mana yang disunting diresolusi SchedulePaymentTab setelah daftarnya termuat.
+  useEffect(() => {
+    if (initialSubView) setActiveTab('schedule-payment');
+  }, [initialSubView]);
+
+  const closeSubView = () => setSubView(null);
+  const finishSubView = () => {
+    setSubView(null);
+    setScheduleReloadKey((k) => k + 1);
+    onExtendCreated();
+  };
 
   if (!submission) return null;
 
   const lifecycle = deriveLifecycle(submission, paymentData, existingPage, isScheduled);
-  const isKilat = submission.distribution_type === 'kilat';
+  const { displayStatus } = lifecycle;
+  const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
+  const isRejected = displayStatus === 'rejected';
+  const isReviewActive = isNeedReview || isRejected;
+
+  // Dot status untuk tab Jadwal & Bayar:
+  // - Tidak aktif jika: masih dalam review/rejected/spam, sudah lunas (isPaid), atau sudah live/completed/page_scheduled
+  // - Dot abu-abu jika: slot kedaluwarsa (customer tidak lanjut bayar / timeout)
+  // - Dot merah jika: sudah di-approve dan masih dalam proses penjadwalan/pembayaran belum lunas
+  const isScheduleActive =
+    !isReviewActive &&
+    displayStatus !== 'spam' &&
+    !lifecycle.isPaid &&
+    lifecycle.stage !== 'live' &&
+    lifecycle.stage !== 'completed' &&
+    lifecycle.stage !== 'page_scheduled';
+
+  const scheduleDotType: 'red' | 'gray' | null = isScheduleActive
+    ? (lifecycle.isActuallyExpired ? 'gray' : 'red')
+    : null;
+
+  const isKilat = submission?.distribution_type === 'kilat';
+  const needsBannerUpdate = !isKilat && existingPage && (
+    isPlaceholderBannerUrl(existingPage.banner_url) ||
+    Boolean(existingPage.requires_banner_update)
+  );
+  const isPageUnpublishedWhenDue = !isKilat && existingPage && lifecycle.canBuildPage && !existingPage.is_published;
+  const pageDotType: 'red' | null = (needsBannerUpdate || isPageUnpublishedWhenDue) ? 'red' : null;
 
   const tabBar = (
     <div className="flex gap-1 -mb-px">
       {TABS.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
+        const isReviewTab = tab.id === 'review';
+        const isScheduleTab = tab.id === 'schedule-payment';
+        const isPageTab = tab.id === 'page';
         return (
           <button
             key={tab.id}
@@ -141,6 +239,29 @@ export function SubmissionDetailSheet({
           >
             <Icon className="w-3.5 h-3.5" />
             {tab.label}
+            {isReviewTab && isReviewActive && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Review aktif / perlu tindakan">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+            {isScheduleTab && scheduleDotType === 'red' && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Jadwal / Pembayaran belum selesai">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+            {isScheduleTab && scheduleDotType === 'gray' && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Slot kedaluwarsa (unpaid)">
+                <span className="inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
+              </span>
+            )}
+            {isPageTab && pageDotType === 'red' && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Halaman perlu tindakan (banner/publish)">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
           </button>
         );
       })}
@@ -148,47 +269,40 @@ export function SubmissionDetailSheet({
   );
 
   const clientTierBadge = clientTier ? (
-    clientTier === 'vvip' ? (
-      <span className="inline-flex bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500 text-white font-extrabold rounded-full px-2 py-0.5 text-[9px] tracking-wide shrink-0">
-        ✦ VVIP
-      </span>
-    ) : clientTier === 'vip' ? (
-      <Chip variant="amber" size="sm">VIP</Chip>
-    ) : clientTier === 'returning' ? (
-      <Chip variant="blue" size="sm">Returning</Chip>
-    ) : (
-      <Chip variant="slate" size="sm">New</Chip>
-    )
+    <ClientStatusIcon tier={clientTier} size="sm" />
   ) : null;
 
   const subtitle = (
     <span className="flex flex-col gap-1">
       <span className="flex items-center gap-1.5 min-w-0 w-full">
         <span className="truncate font-medium">{submission.researcherName}</span>
-        {submission.university && (
-          <span className="text-gray-400 text-[11px] truncate shrink-0 max-w-[120px] sm:max-w-[200px]">· {submission.university}</span>
-        )}
         <span className="shrink-0">{clientTierBadge}</span>
+        {submission.university && (
+          <span className="text-gray-400 text-[11px] truncate min-w-0">· {submission.university}</span>
+        )}
       </span>
-      <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-2 flex-wrap text-xs sm:text-[13px] mt-0.5">
         {submission.phone_number && (
           <a
-            href={`https://wa.me/${submission.phone_number.replace(/^0/, '62')}`}
+            href={`https://wa.me/${submission.phone_number.replace(/[^0-9]/g, '').replace(/^0/, '62')}`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors"
+            className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:text-emerald-700 hover:underline transition-colors"
           >
-            <MessageCircle className="w-3 h-3" /> WhatsApp
+            <MessageCircle className="w-3.5 h-3.5 shrink-0" /> {submission.phone_number}
           </a>
+        )}
+        {submission.phone_number && submission.researcherEmail && (
+          <span className="text-gray-300">·</span>
         )}
         {submission.researcherEmail && (
           <a
             href={`mailto:${submission.researcherEmail}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+            className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
           >
-            <Mail className="w-3 h-3" /> Email
+            <Mail className="w-3.5 h-3.5 shrink-0" /> {submission.researcherEmail}
           </a>
         )}
       </span>
@@ -199,29 +313,37 @@ export function SubmissionDetailSheet({
 
   const body = (
     <>
-      {activeTab === 'info' && <InfoTab submission={submission} lifecycle={lifecycle} onDataUpdated={onExtendCreated} />}
+      {activeTab === 'info' && (
+        <InfoTab
+          submission={submission}
+          paymentData={paymentData}
+          existingPage={existingPage}
+          lifecycle={lifecycle}
+          onDataUpdated={onExtendCreated}
+          onConvertDistribution={onConvertDistribution}
+          onNavigateTab={setActiveTab}
+        />
+      )}
       {activeTab === 'review' && (
         <ReviewTab submission={submission} onEditFormDetails={onEditFormDetails} />
       )}
-      {activeTab === 'reservation' && (
-        <ReservationTab
+      {activeTab === 'schedule-payment' && (
+        <SchedulePaymentTab
           submission={submission}
           paymentData={paymentData}
           existingPage={existingPage}
           isScheduled={isScheduled}
           lifecycle={lifecycle}
-          onOpenSchedule={onOpenSchedule}
-          onConvertDistribution={onConvertDistribution}
-        />
-      )}
-      {activeTab === 'payment' && (
-        <PaymentTab
-          submission={submission}
-          paymentData={paymentData}
-          lifecycle={lifecycle}
-          onOpenPayment={onOpenPayment}
+          onEditSchedule={(entry) => setSubView({ kind: 'edit', entry })}
+          onCreateInvoice={(entry) => setSubView({ kind: 'invoice', entry })}
+          onCreateSchedule={(isExtraAd) => setSubView({ kind: 'create', isExtraAd })}
           onPaymentStatusChange={onPaymentStatusChange}
           onEditFormDetails={onEditFormDetails}
+          onConvertDistribution={onConvertDistribution}
+          onExtendCreated={onExtendCreated}
+          reloadKey={scheduleReloadKey}
+          initialSubView={initialSubView}
+          onInitialSubViewConsumed={onInitialSubViewConsumed}
         />
       )}
       {activeTab === 'page' && (
@@ -230,17 +352,146 @@ export function SubmissionDetailSheet({
           existingPage={existingPage}
           lifecycle={lifecycle}
           onOpenPageBuilder={onOpenPageBuilder}
-          onExtendCreated={onExtendCreated}
         />
       )}
     </>
   );
 
-  const { displayStatus } = lifecycle;
-  const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
+  // ── Sub-tampilan ────────────────────────────────────────────────
+  // Tombol utamanya dipaku di footer drawer, bukan hanyut di ujung badan yang
+  // panjang — penting di ponsel. Formulir mem-portal aksinya ke elemen footer
+  // ini; `useState` untuk node-nya (bukan `useRef`) supaya render pertama yang
+  // melahirkan elemen langsung disusul render yang mengisinya.
+  let subViewNav: React.ReactNode = null;
+  let subViewBody: React.ReactNode = null;
+
+  if (subView) {
+    const heading =
+      subView.kind === 'create' ? 'Jadwal iklan baru'
+        : subView.kind === 'edit'
+          ? `Atur jadwal${subView.entry.ordinal > 1 ? ` #${subView.entry.ordinal}` : ''}`
+          : `Buat tagihan · jadwal #${subView.entry.ordinal}`;
+
+    subViewNav = (
+      <div className="flex items-center gap-2 py-2">
+        <button
+          type="button"
+          onClick={closeSubView}
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Kembali
+        </button>
+        <span className="min-w-0 truncate text-xs font-semibold text-gray-900">
+          {heading}
+        </span>
+      </div>
+    );
+
+    subViewBody = subView.kind === 'invoice' ? (
+      <InvoiceForm
+        entry={subView.entry}
+        submission={submission}
+        onCancel={closeSubView}
+        onDone={finishSubView}
+        actionsSlot={footerEl}
+        renderActions={({ canSave, isSaving, save, cancel }) => (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="flex-1 h-9" onClick={cancel} disabled={isSaving}>
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              className="flex-[2] h-9 bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={save}
+              disabled={isSaving || !canSave}
+            >
+              {isSaving
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Membuat…</>
+                : <><CreditCard className="w-3.5 h-3.5 mr-1.5" />Buat link pembayaran</>}
+            </Button>
+          </div>
+        )}
+      />
+    ) : (
+      <ScheduleForm
+        mode={subView.kind === 'create' ? 'create' : 'edit'}
+        submissionId={submission.id}
+        entry={subView.kind === 'edit' ? subView.entry : undefined}
+        isExtraAd={subView.kind === 'create' ? subView.isExtraAd : undefined}
+        currentPrizePerWinner={submission.prize_per_winner || 0}
+        currentWinnerCount={submission.winnerCount || 0}
+        columns={4}
+        onCancel={closeSubView}
+        onDone={finishSubView}
+        actionsSlot={footerEl}
+        renderActions={({ canSave, isSaving, save, cancel, label }) => (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-9 font-medium text-slate-700 bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-none"
+              onClick={cancel}
+              disabled={isSaving}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              className="flex-[2] h-9 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm"
+              onClick={save}
+              disabled={isSaving || !canSave}
+            >
+              {isSaving
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Menyimpan…</>
+                : <><CalendarClock className="w-3.5 h-3.5 mr-1.5" />{label}</>}
+            </Button>
+          </div>
+        )}
+      />
+    );
+  }
+
+  const handleApprove = async () => {
+    setIsSavingApprove(true);
+    try {
+      if (questionCountInput !== submission.questionCount) {
+        await updateFormDetails(submission.id, {
+          title: submission.formTitle || '',
+          survey_url: submission.formUrl || '',
+          question_count: questionCountInput,
+          duration: submission.duration || 0,
+        });
+        toast.success(`Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q`);
+        onExtendCreated();
+      }
+      onStatusChange(submission.id, 'approved', reviewNote);
+      setReviewNote('');
+      setIsRejectMode(false);
+    } catch (err) {
+      console.error('Error approving submission:', err);
+      toast.error('Gagal menyimpan perubahan jumlah pertanyaan');
+    } finally {
+      setIsSavingApprove(false);
+    }
+  };
+
+  const handleReject = (withWhatsApp = false) => {
+    const finalNote = reviewNote.trim() || REASONS.ACCESS_LOCKED;
+    onStatusChange(submission.id, 'rejected', finalNote);
+    if (withWhatsApp) {
+      sendWhatsAppNotification(
+        submission.phone_number,
+        submission.researcherName,
+        submission.formTitle,
+        finalNote
+      );
+    }
+    setReviewNote('');
+    setIsRejectMode(false);
+  };
 
   const footer = activeTab !== 'review' ? undefined : (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Row 1: Status & Timeline Toggle */}
       <div className="flex items-center justify-between border-b border-gray-100 pb-2">
         <div className="flex items-center gap-1.5">
@@ -255,58 +506,225 @@ export function SubmissionDetailSheet({
         />
       </div>
 
-      {/* Conditional: compose & buttons if in need review status */}
-      {isNeedReview ? (
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label htmlFor="review-note-input" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-              Review Notes (Optional)
-            </label>
-            <Textarea
-              id="review-note-input"
-              placeholder="Tambahkan catatan (misal alasan reject atau info tambahan)..."
-              value={reviewNote}
-              onChange={(e) => setReviewNote(e.target.value)}
-              className="text-xs min-h-[60px] max-h-[120px] bg-slate-50/50 focus:bg-white"
+      {/* State 1: Need Review (Baru Masuk / Diajukan Ulang) */}
+      {isNeedReview && !isRejectMode && (
+        <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+          {/* Inline Question Count Stepper */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 shrink-0">
+            <span className="text-[11px] font-semibold text-slate-500">Qty:</span>
+            <input
+              type="number"
+              min="1"
+              value={questionCountInput}
+              onChange={(e) => setQuestionCountInput(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-11 h-6 text-xs font-semibold text-center bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              title="Koreksi jumlah pertanyaan jika berbeda dengan klaim user"
             />
+            <span className="text-[11px] text-slate-500 font-medium">Q</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          {/* Quick Action Buttons */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <Button
-              size="sm"
-              className="h-9 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold"
-              onClick={() => {
-                onStatusChange(submission.id, 'approved', reviewNote);
-                setReviewNote('');
-              }}
-            >
-              <Check className="w-3.5 h-3.5 mr-1.5" /> Approve
-            </Button>
-            <Button
+              type="button"
               size="sm"
               variant="outline"
-              className="h-9 text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-              onClick={() => {
-                onStatusChange(submission.id, 'rejected', reviewNote);
-                setReviewNote('');
-              }}
+              title="Tandai sebagai Spam"
+              className="h-8 w-8 p-0 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 shrink-0"
+              onClick={() => setIsSpamConfirmOpen(true)}
             >
-              <X className="w-3.5 h-3.5 mr-1.5" /> Reject
+              <Ban className="w-3.5 h-3.5" />
             </Button>
+
             <Button
+              type="button"
               size="sm"
               variant="outline"
-              className="h-9 text-xs font-semibold text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-              onClick={() => {
-                onStatusChange(submission.id, 'spam', reviewNote);
-                setReviewNote('');
-              }}
+              className="h-8 px-2.5 text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={() => setIsRejectMode(true)}
             >
-              <Ban className="w-3.5 h-3.5 mr-1.5" /> Spam
+              <X className="w-3.5 h-3.5 mr-1" /> Reject
+            </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              disabled={isSavingApprove}
+              className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold"
+              onClick={handleApprove}
+            >
+              {isSavingApprove ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5 mr-1" />
+              )}
+              Approve
             </Button>
           </div>
         </div>
-      ) : (
+      )}
+
+      {/* State 1B: Reject Mode (Progressive Disclosure) */}
+      {isNeedReview && isRejectMode && (
+        <div className="space-y-2.5 pt-0.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Pilih Alasan Cepat:
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setReviewNote(REASONS.ACCESS_LOCKED)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+            >
+              <Lock className="w-3 h-3 text-slate-500" /> Akses Terkunci
+            </button>
+            <button
+              type="button"
+              onClick={() => setReviewNote(getSensitiveReason(submission.detected_keywords))}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors"
+            >
+              <ShieldAlert className="w-3 h-3 text-red-500" /> Pertanyaan Sensitif
+            </button>
+            <button
+              type="button"
+              onClick={() => setReviewNote(REASONS.BROKEN_LINK)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+            >
+              <Link2 className="w-3 h-3 text-slate-500" /> Link Rusak
+            </button>
+          </div>
+          <Textarea
+            id="review-note-input"
+            placeholder="Tuliskan catatan/instruksi perbaikan kuesioner untuk peneliti..."
+            value={reviewNote}
+            onChange={(e) => setReviewNote(e.target.value)}
+            className="text-xs min-h-[55px] max-h-[100px] bg-slate-50/50 focus:bg-white"
+          />
+          <div className="flex items-center gap-2 flex-wrap pt-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-xs text-slate-500 hover:text-slate-700"
+              onClick={() => setIsRejectMode(false)}
+            >
+              Batal
+            </Button>
+            <div className="flex-1" />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 px-2.5 text-xs font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={() => handleReject(false)}
+            >
+              <X className="w-3.5 h-3.5 mr-1" /> Reject Saja
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
+              onClick={() => handleReject(true)}
+            >
+              <MessageCircle className="w-3.5 h-3.5 mr-1" /> Reject &amp; Kirim WA
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* State 2: Menunggu Revisi (Rejected) — Admin memiliki kuasa penuh untuk approve langsung */}
+      {isRejected && (
+        <div className="space-y-2 pt-0.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            {/* Inline Question Count Stepper */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 shrink-0">
+              <span className="text-[11px] font-semibold text-slate-500">Qty:</span>
+              <input
+                type="number"
+                min="1"
+                value={questionCountInput}
+                onChange={(e) => setQuestionCountInput(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-11 h-6 text-xs font-semibold text-center bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                title="Koreksi jumlah pertanyaan"
+              />
+              <span className="text-[11px] text-slate-500 font-medium">Q</span>
+            </div>
+
+            {/* Actions for Menunggu Revisi */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title="Batalkan Submission"
+                className="h-8 w-8 p-0 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 shrink-0"
+                onClick={() => setIsSpamConfirmOpen(true)}
+              >
+                <Ban className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 px-2.5 text-xs font-semibold text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                onClick={() => sendWhatsAppNotification(
+                  submission.phone_number,
+                  submission.researcherName,
+                  submission.formTitle,
+                  submission.admin_notes || reviewNote || REASONS.ACCESS_LOCKED
+                )}
+              >
+                <MessageCircle className="w-3.5 h-3.5 mr-1" /> Kirim WA
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSavingApprove}
+                className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold"
+                onClick={handleApprove}
+              >
+                {isSavingApprove ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 mr-1" />
+                )}
+                Approve
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* State 3: Approved / Selesai */}
+      {displayStatus === 'approved' && (
+        <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 px-2.5 text-xs font-semibold text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900"
+            onClick={() => onStatusChange(submission.id, 'in_review', reviewNote)}
+          >
+            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
+          </Button>
+
+          {!lifecycle.isPaid && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 px-3 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 ml-auto"
+              onClick={() => setActiveTab('schedule-payment')}
+            >
+              Lanjut ke Jadwal &amp; Bayar <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* State 4: Other (e.g. Spam / Canceled) */}
+      {displayStatus !== 'approved' && !isNeedReview && !isRejected && (
         <div className="flex justify-center pt-1">
           <button
             type="button"
@@ -324,1042 +742,76 @@ export function SubmissionDetailSheet({
     <span className="truncate">{submission.formTitle}</span>
   );
 
+  // Sub-tampilan menguasai bar tab, badan, dan footer sekaligus. Footer-nya
+  // dirender sebagai wadah kosong yang di-portal-i formulir — itulah kenapa ia
+  // tetap dirender meski wadahnya belum berisi apa pun.
+  const shellNav = subView ? subViewNav : tabBar;
+  const shellBody = subView ? subViewBody : body;
+  const shellFooter = subView
+    ? <div ref={setFooterEl} />
+    : footer;
+
+  const spamDialog = (
+    <Dialog open={isSpamConfirmOpen} onOpenChange={setIsSpamConfirmOpen}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Tandai sebagai Spam?</DialogTitle>
+          <DialogDescription>
+            Submission ini akan ditandai sebagai spam dan diarsipkan dari antrean review aktif.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex gap-2 justify-end pt-2">
+          <Button variant="outline" size="sm" onClick={() => setIsSpamConfirmOpen(false)}>
+            Batal
+          </Button>
+          <Button
+            size="sm"
+            className="bg-orange-600 hover:bg-orange-700 text-white font-semibold"
+            onClick={() => {
+              onStatusChange(submission.id, 'spam', reviewNote || 'Ditandai sebagai spam');
+              setIsSpamConfirmOpen(false);
+            }}
+          >
+            Ya, Tandai Spam
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (variant === 'pane') {
     return (
-      <DetailPane
-        title={title}
-        subtitle={subtitle}
-        chips={chips}
-        nav={tabBar}
-        footer={footer}
-        onClose={() => onOpenChange(false)}
-      >
-        {body}
-      </DetailPane>
+      <>
+        <DetailPane
+          title={title}
+          subtitle={subtitle}
+          chips={chips}
+          nav={shellNav}
+          footer={shellFooter}
+          onClose={() => onOpenChange(false)}
+        >
+          {shellBody}
+        </DetailPane>
+        {spamDialog}
+      </>
     );
   }
 
   return (
-    <DetailSheet
-      open={!!submission}
-      onOpenChange={onOpenChange}
-      title={title}
-      subtitle={subtitle}
-      chips={chips}
-      nav={tabBar}
-      footer={footer}
-    >
-      {body}
-    </DetailSheet>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Tab: Info — submission summary & researcher profile
-// ─────────────────────────────────────────────────────────────
-
-function InfoTab({
-  submission,
-  lifecycle,
-  onDataUpdated,
-}: {
-  submission: SurveySubmission;
-  lifecycle: ReturnType<typeof deriveLifecycle>;
-  onDataUpdated: () => void;
-}) {
-  type EditSection = 'submission' | 'criteria' | 'incentive' | null;
-  const [editing, setEditing] = useState<EditSection>(null);
-  const [saving, setSaving] = useState(false);
-
-  // Draft states for Submission section
-  const [draftTitle, setDraftTitle] = useState('');
-  const [draftQuestions, setDraftQuestions] = useState('');
-  const [draftDuration, setDraftDuration] = useState('');
-
-  // Draft states for Kriteria section
-  const [draftCriteria, setDraftCriteria] = useState('');
-
-  // Draft states for Insentif section
-  const [draftPrize, setDraftPrize] = useState('');
-  const [draftWinners, setDraftWinners] = useState('');
-
-  const startEdit = useCallback((section: EditSection) => {
-    if (section === 'submission') {
-      setDraftTitle(submission.formTitle || '');
-      setDraftQuestions(submission.questionCount?.toString() || '');
-      setDraftDuration(submission.duration?.toString() || '');
-    } else if (section === 'criteria') {
-      setDraftCriteria(submission.criteria || '');
-    } else if (section === 'incentive') {
-      setDraftPrize(submission.prize_per_winner?.toString() || '');
-      setDraftWinners(submission.winnerCount?.toString() || '');
-    }
-    setEditing(section);
-  }, [submission]);
-
-  const cancelEdit = () => setEditing(null);
-
-  const handleSaveSubmission = async () => {
-    setSaving(true);
-    try {
-      await updateFormDetails(submission.id, {
-        title: draftTitle,
-        survey_url: submission.formUrl,
-        question_count: parseInt(draftQuestions) || 0,
-        duration: parseInt(draftDuration) || 0,
-      });
-      toast.success('Detail submission diperbarui');
-      setEditing(null);
-      onDataUpdated();
-    } catch {
-      toast.error('Gagal menyimpan perubahan');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveCriteria = async () => {
-    setSaving(true);
-    try {
-      await updateSubmissionCriteria(
-        submission.id,
-        draftCriteria,
-        submission.prize_per_winner || 0,
-        submission.winnerCount || 0,
-      );
-      toast.success('Kriteria diperbarui');
-      setEditing(null);
-      onDataUpdated();
-    } catch {
-      toast.error('Gagal menyimpan perubahan');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveIncentive = async () => {
-    setSaving(true);
-    try {
-      await updateSubmissionCriteria(
-        submission.id,
-        submission.criteria || '',
-        parseInt(draftPrize) || 0,
-        parseInt(draftWinners) || 0,
-      );
-      toast.success('Insentif diperbarui');
-      setEditing(null);
-      onDataUpdated();
-    } catch {
-      toast.error('Gagal menyimpan perubahan');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const editButton = (section: EditSection) => (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="h-6 px-2 text-[11px] text-gray-400 hover:text-blue-600"
-      onClick={() => startEdit(section)}
-    >
-      <PenLine className="w-3 h-3 mr-1" /> Edit
-    </Button>
-  );
-
-  const saveCancel = (onSave: () => void) => (
-    <div className="flex items-center gap-2 pt-1.5">
-      <Button
-        size="sm"
-        className="h-7 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-        onClick={onSave}
-        disabled={saving}
-      >
-        {saving ? 'Saving...' : 'Save'}
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 px-3 text-xs text-gray-500"
-        onClick={cancelEdit}
-        disabled={saving}
-      >
-        Cancel
-      </Button>
-    </div>
-  );
-
-  return (
     <>
-      {/* ── Submission ────────────────────────────────── */}
-      <DetailSheetSection
-        title="Submission"
-        action={editing !== 'submission' ? editButton('submission') : undefined}
+      <DetailSheet
+        open={!!submission}
+        onOpenChange={onOpenChange}
+        title={title}
+        subtitle={subtitle}
+        chips={chips}
+        nav={shellNav}
+        footer={shellFooter}
       >
-        {editing === 'submission' ? (
-          <div className="space-y-2.5 text-xs">
-            <div className="space-y-1">
-              <label className="text-gray-400 text-[11px]">Judul survey</label>
-              <Input
-                value={draftTitle}
-                onChange={(e) => setDraftTitle(e.target.value)}
-                className="h-8 text-xs"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="space-y-1">
-                <label className="text-gray-400 text-[11px]">Jumlah pertanyaan</label>
-                <Input
-                  type="number"
-                  value={draftQuestions}
-                  onChange={(e) => setDraftQuestions(e.target.value)}
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-gray-400 text-[11px]">Durasi iklan (days)</label>
-                <Input
-                  type="number"
-                  value={draftDuration}
-                  onChange={(e) => setDraftDuration(e.target.value)}
-                  className="h-8 text-xs"
-                />
-              </div>
-            </div>
-            {saveCancel(handleSaveSubmission)}
-          </div>
-        ) : (
-          <div className="grid grid-cols-[120px_1fr] !gap-x-3 !gap-y-1.5 text-xs">
-            <span className="text-gray-400">Judul survey</span>
-            <span className="font-medium text-gray-900">{submission.formTitle}</span>
-            <span className="text-gray-400">Submission ID</span>
-            <span className="font-mono text-gray-900">#{submission.formId}</span>
-            <span className="text-gray-400">Tanggal submission</span>
-            <span className="font-medium text-gray-900">
-              {new Date(submission.submittedAt).toLocaleDateString('id-ID')}{' '}
-              {new Date(submission.submittedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            <span className="text-gray-400">Jumlah pertanyaan</span>
-            <span className="font-medium text-gray-900">{submission.questionCount} Qs</span>
-            <span className="text-gray-400">Durasi iklan</span>
-            <span className="font-medium text-gray-900">{submission.duration ? `${submission.duration} Days` : 'Belum diisi'}</span>
-          </div>
-        )}
-      </DetailSheetSection>
-
-      {/* ── Kriteria Responden ────────────────────────── */}
-      <DetailSheetSection
-        title="Kriteria Responden"
-        action={editing !== 'criteria' ? editButton('criteria') : undefined}
-      >
-        {editing === 'criteria' ? (
-          <div className="space-y-2.5">
-            <Textarea
-              value={draftCriteria}
-              onChange={(e) => setDraftCriteria(e.target.value)}
-              className="min-h-[80px] text-xs"
-              placeholder="e.g. Usia 18-25 tahun, Mahasiswa aktif..."
-            />
-            {saveCancel(handleSaveCriteria)}
-          </div>
-        ) : submission.criteria ? (
-          <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">
-            {submission.criteria}
-          </p>
-        ) : (
-          <p className="text-xs text-gray-400 italic bg-gray-50 px-2.5 py-1.5 rounded border border-dashed border-gray-200">
-            Target not set
-          </p>
-        )}
-      </DetailSheetSection>
-
-      {/* ── Insentif ─────────────────────────────────── */}
-      <DetailSheetSection
-        title="Insentif"
-        action={editing !== 'incentive' ? editButton('incentive') : undefined}
-      >
-        {editing === 'incentive' ? (
-          <div className="space-y-2.5 text-xs">
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="space-y-1">
-                <label className="text-gray-400 text-[11px]">Insentif per user (Rp)</label>
-                <Input
-                  type="number"
-                  value={draftPrize}
-                  onChange={(e) => setDraftPrize(e.target.value)}
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-gray-400 text-[11px]">Jumlah user</label>
-                <Input
-                  type="number"
-                  value={draftWinners}
-                  onChange={(e) => setDraftWinners(e.target.value)}
-                  className="h-8 text-xs"
-                />
-              </div>
-            </div>
-            <div className="bg-gray-50 rounded-lg border border-gray-100 px-3 py-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-gray-500">Total insentif</span>
-                <span className="font-semibold text-emerald-600">
-                  Rp {((parseInt(draftPrize) || 0) * (parseInt(draftWinners) || 0)).toLocaleString('id-ID')}
-                </span>
-              </div>
-            </div>
-            {saveCancel(handleSaveIncentive)}
-          </div>
-        ) : submission.prize_per_winner ? (
-          <div className="grid grid-cols-[120px_1fr] !gap-x-3 !gap-y-1.5 text-xs">
-            <span className="text-gray-400">Insentif per user</span>
-            <span className="font-medium text-gray-900">
-              Rp {submission.prize_per_winner.toLocaleString('id-ID')}
-            </span>
-
-            <span className="text-gray-400">Jumlah user</span>
-            <span className="font-medium text-gray-900">
-              {submission.winnerCount || 0} user
-            </span>
-
-            <span className="text-gray-400">Total insentif</span>
-            <span className="font-semibold text-emerald-600">
-              Rp {((submission.prize_per_winner || 0) * (submission.winnerCount || 0)).toLocaleString('id-ID')}
-            </span>
-          </div>
-        ) : (
-          <p className="text-[11px] text-gray-400 italic">No incentive</p>
-        )}
-      </DetailSheetSection>
-
-      {/* ── Researcher (read-only) ────────────────────── */}
-      <DetailSheetSection title="Researcher">
-        <div className="grid grid-cols-[120px_1fr] !gap-x-3 !gap-y-1.5 text-xs">
-          <span className="text-gray-400">Nama</span>
-          <span className="font-medium text-gray-900">{submission.researcherName}</span>
-
-          {submission.education && (
-            <>
-              <span className="text-gray-400">Edukasi</span>
-              <span className="font-medium text-gray-900 capitalize text-left">
-                {submission.education.replace(/_/g, ' ')}
-              </span>
-            </>
-          )}
-
-          {submission.department && (
-            <>
-              <span className="text-gray-400">Jurusan</span>
-              <span className="font-medium text-gray-900">{submission.department}</span>
-            </>
-          )}
-
-          {submission.university && (
-            <>
-              <span className="text-gray-400">Universitas</span>
-              <span className="font-medium text-gray-900">{submission.university}</span>
-            </>
-          )}
-
-          {submission.leads && (
-            <>
-              <span className="text-gray-400">Lead</span>
-              <span className="font-medium text-gray-900 capitalize">
-                {submission.leads.replace(/_/g, ' ')}
-              </span>
-            </>
-          )}
-
-          {submission.phone_number && (
-            <>
-              <span className="text-gray-400">WhatsApp</span>
-              <span className="font-medium text-gray-900">{submission.phone_number}</span>
-            </>
-          )}
-
-          {submission.researcherEmail && (
-            <>
-              <span className="text-gray-400">Email</span>
-              <span className="font-medium text-gray-900">{submission.researcherEmail}</span>
-            </>
-          )}
-        </div>
-      </DetailSheetSection>
-
-      {/* ── Invoice (read-only) ───────────────────────── */}
-      <DetailSheetSection title="Invoice">
-        <div className="grid grid-cols-[120px_1fr] !gap-x-3 !gap-y-1.5 text-xs">
-          <span className="text-gray-400">Nama Invoice</span>
-          <span className="font-medium text-gray-900">{submission.invoiceName || 'Belum diisi'}</span>
-
-          <span className="text-gray-400">Email</span>
-          <span className="font-medium text-gray-900">{submission.invoiceEmail || 'Belum diisi'}</span>
-
-          <span className="text-gray-400">Nomor HP</span>
-          <span className="font-medium text-gray-900">{submission.invoicePhone || 'Belum diisi'}</span>
-        </div>
-      </DetailSheetSection>
-
-      {/* ── Status ────────────────────────────────────── */}
-      <DetailSheetSection title="Status Submission">
-        <div className="flex items-center">
-          <LifecycleChip submission={submission} lifecycle={lifecycle} />
-        </div>
-      </DetailSheetSection>
+        {shellBody}
+      </DetailSheet>
+      {spamDialog}
     </>
   );
 }
 
-
-// ─────────────────────────────────────────────────────────────
-// Tab: Review (default) — survey preview & review decision inputs
-// ─────────────────────────────────────────────────────────────
-
-function ReviewTab({
-  submission,
-  onEditFormDetails,
-}: {
-  submission: SurveySubmission;
-  onEditFormDetails: (submission: SurveySubmission) => void;
-}) {
-  return (
-    <>
-      {/* Survey preview */}
-      <DetailSheetSection
-        title="Kuesioner"
-        className="flex flex-col flex-1 h-full"
-        action={
-          <div className="flex items-center gap-1">
-            <TooltipProvider>
-              <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => onEditFormDetails(submission)}
-                  >
-                    <PenLine className="w-3.5 h-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
-                  Edit Link
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => copyToClipboard(submission.formUrl, 'Survey link copied!')}
-                    disabled={!submission.formUrl}
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
-                  Copy Link
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
-                    disabled={!submission.formUrl}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="bg-slate-950 px-2 py-1 text-white text-[11px] rounded shadow-md">
-                  Buka Link
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        }
-      >
-        {submission.formUrl ? (
-          <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
-            <div className="px-3 py-1.5 border-b border-gray-200 bg-white flex items-center gap-1.5 min-w-0">
-              <Globe className="w-3 h-3 text-gray-400 shrink-0" />
-              <span className="text-[11px] text-gray-500 truncate">{submission.formUrl.replace(/^https?:\/\//, '')}</span>
-            </div>
-            
-            {submission.formUrl.includes('docs.google.com') && !submission.formUrl.includes('/d/e/') ? (
-              <div className="flex-1 bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-4 border shadow-sm">
-                  <ExternalLink className="w-5 h-5 text-gray-400" />
-                </div>
-                <h4 className="text-sm font-medium text-gray-900 mb-1.5">Preview Tidak Tersedia</h4>
-                <p className="text-xs text-gray-500 max-w-[280px] mb-5 leading-relaxed">
-                  Sistem keamanan Google membatasi preview untuk tautan editor. Silakan buka form di tab baru untuk mengecek tampilannya.
-                </p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="bg-white border-gray-300 hover:bg-gray-50"
-                  onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
-                >
-                  Buka Preview di Tab Baru <ExternalLink className="w-3.5 h-3.5 ml-2" />
-                </Button>
-              </div>
-            ) : (
-              <iframe
-                src={submission.formUrl}
-                title={`Preview: ${submission.formTitle}`}
-                className="w-full flex-1 bg-white"
-                sandbox="allow-scripts allow-same-origin allow-forms"
-              />
-            )}
-            
-            <p className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-200 bg-white">
-              Preview kosong? Situs survei memblokir embed — gunakan tombol "Buka" di atas.
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-xs text-gray-400">
-            Tidak ada link survey.
-          </div>
-        )}
-        {submission.detected_keywords && submission.detected_keywords.length > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 mt-3">
-            <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-red-700">
-              Detected keywords: <span className="font-medium">{submission.detected_keywords.join(', ')}</span>
-            </p>
-          </div>
-        )}
-      </DetailSheetSection>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Tab: Reservasi — slot status + Reserve/Edit Schedule entry point
-// ─────────────────────────────────────────────────────────────
-
-function ReservationTab({
-  submission,
-  paymentData,
-  existingPage,
-  isScheduled,
-  lifecycle,
-  onOpenSchedule,
-  onConvertDistribution,
-}: {
-  submission: SurveySubmission;
-  paymentData: PaymentState;
-  existingPage?: ExistingPage;
-  isScheduled: boolean;
-  lifecycle: ReturnType<typeof deriveLifecycle>;
-  onOpenSchedule: (submission: SurveySubmission) => void;
-  onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
-}) {
-  const isExtraAd = existingPage?.is_extra_ad || (submission.admin_notes || '').includes('[EXTRA_AD]');
-  const isKilat = submission.distribution_type === 'kilat';
-
-  const [convertTarget, setConvertTarget] = useState<'regular' | 'kilat' | null>(null);
-  const [isConverting, setIsConverting] = useState(false);
-
-  // Harga jalur tujuan, dihitung untuk DITAMPILKAN di dialog sebelum admin
-  // menekan tombol. Angka finalnya tetap dihitung ulang di server oleh
-  // convertDistributionType() dari data DB yang segar — ini hanya pratinjau,
-  // jadi admin tidak memindahkan order secara buta.
-  const previewIncentive = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
-  const previewKilatSubtotal =
-    calculateAdCostPerDay(submission.questionCount || 0) +
-    getKilatAddonCost(submission.voucher_code) +
-    previewIncentive;
-  const previewRegularAdCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
-  const previewRegularSubtotal =
-    previewRegularAdCost +
-    previewIncentive -
-    calculateDiscount(submission.voucher_code, previewRegularAdCost, previewIncentive, submission.duration || 0);
-  const previewSubtotal = convertTarget === 'kilat' ? previewKilatSubtotal : previewRegularSubtotal;
-  const previewTotal = previewSubtotal + calculatePpn(previewSubtotal);
-
-  const hasPendingInvoice = paymentData.hasInvoices && paymentData.latestStatus === 'pending';
-
-  const handleConfirmConvert = async () => {
-    if (!convertTarget) return;
-    setIsConverting(true);
-    try {
-      await onConvertDistribution(submission, convertTarget);
-      setConvertTarget(null);
-    } finally {
-      setIsConverting(false);
-    }
-  };
-
-  return (
-    <>
-      <DetailSheetSection title="Status Reservasi">
-        {lifecycle.hasValidSchedule ? (
-          <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2.5 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-blue-700">
-              <CalendarCheck className="w-4 h-4" />
-              <span className="text-xs font-semibold">
-                {lifecycle.isLegacyActive && !isScheduled ? 'Scheduled' : 'Slot Reserved'}
-              </span>
-              {lifecycle.slotExpiresAt && (
-                <Chip variant="amber" size="sm" dot pulse>&lt;1h</Chip>
-              )}
-            </div>
-            <div className="grid grid-cols-[auto_1fr] !gap-x-3 !gap-y-1 text-xs">
-              <span className="text-gray-400">Start</span>
-              <span className="font-medium text-gray-900">{formatDate(submission.start_date)}</span>
-              <span className="text-gray-400">End</span>
-              <span className="font-medium text-gray-900">{formatDate(submission.end_date)}</span>
-              <span className="text-gray-400">Type</span>
-              <span className="font-medium text-gray-900">
-                {isKilat
-                  ? `Kilat${submission.kilat_slot_hour != null ? ` · ${String(submission.kilat_slot_hour).padStart(2, '0')}.00 WIB` : ' · gelombang belum dipilih'}`
-                  : isExtraAd ? 'Extra Ad' : 'Regular Ad'}
-              </span>
-              {submission.slot_booked_by && (
-                <>
-                  <span className="text-gray-400">Booked by</span>
-                  <span className="font-medium text-gray-900 capitalize">{submission.slot_booked_by}</span>
-                </>
-              )}
-            </div>
-          </div>
-        ) : lifecycle.isActuallyExpired ? (
-          <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2.5 text-xs text-red-700">
-            <span className="font-semibold">Reservasi sebelumnya expired.</span> Slot dilepas — reserve ulang untuk
-            melanjutkan ke pembayaran.
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-lg px-3 py-2.5">
-            Belum ada slot yang direservasi.
-            {!lifecycle.canReserveSlot && ' Submission harus di-approve dulu sebelum bisa reserve slot.'}
-          </p>
-        )}
-      </DetailSheetSection>
-
-      <DetailSheetSection title="Aksi">
-        <ReserveSlotAction
-          submission={submission}
-          paymentData={paymentData}
-          existingPage={existingPage}
-          isScheduled={isScheduled}
-          lifecycle={lifecycle}
-          onOpenSchedule={onOpenSchedule}
-        />
-        <p className="text-[11px] text-gray-400">
-          Membuka halaman Schedule &amp; Payment (fullscreen) — sama seperti flow sebelumnya.
-        </p>
-      </DetailSheetSection>
-
-      <DetailSheetSection title="Jalur Distribusi">
-        <DistributionAction
-          submission={submission}
-          existingPage={existingPage}
-          isConverting={isConverting}
-          onConvert={(target) => setConvertTarget(target)}
-        />
-        <p className="text-[11px] text-gray-400">
-          {isKilat
-            ? 'Kilat: push notifikasi langsung ke responden, ~2 jam, tanpa halaman iklan.'
-            : 'Untuk user yang sudah submit sebagai iklan biasa tapi ingin pindah ke Kilat.'}
-        </p>
-      </DetailSheetSection>
-
-      <Dialog open={convertTarget !== null} onOpenChange={(open) => { if (!open && !isConverting) setConvertTarget(null); }}>
-        <DialogContent className="sm:max-w-[440px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {convertTarget === 'kilat' ? (
-                <><Zap className="w-4 h-4 fill-amber-500 text-amber-500" /> Jadikan JFU Kilat?</>
-              ) : (
-                <><Calendar className="w-4 h-4 text-blue-500" /> Kembalikan ke Iklan Regular?</>
-              )}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              {submission.formTitle}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 text-xs">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 space-y-1">
-              <p className="text-gray-600">
-                Jadwal yang sudah dipesan akan <strong>dilepas</strong> — slotnya kembali ke pool, dan
-                slot baru dipilih di step Schedule setelah ini.
-              </p>
-              <p className="text-gray-600">
-                Harga dihitung ulang jadi{' '}
-                <strong className="text-gray-900">Rp {previewTotal.toLocaleString('id-ID')}</strong>{' '}
-                (subtotal Rp {previewSubtotal.toLocaleString('id-ID')} + PPN 11%)
-                {convertTarget === 'kilat'
-                  ? ' — base rate 1× + add-on Kilat, tanpa diskon voucher.'
-                  : ' — base rate × durasi, diskon voucher berlaku lagi.'}
-              </p>
-            </div>
-
-            {/* Peringatan, bukan penghalang. Order lunas dan invoice pending justru
-                kasus yang paling sering perlu dipindah — yang penting admin tahu. */}
-            {lifecycle.isPaid && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-800">
-                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span>
-                  Order ini <strong>sudah lunas</strong> dengan harga lama. Selisihnya harus
-                  ditagih atau dikembalikan di luar sistem — konversi ini tidak menyentuh
-                  pembayaran yang sudah masuk.
-                </span>
-              </div>
-            )}
-            {hasPendingInvoice && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-800">
-                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span>
-                  Masih ada <strong>invoice pending</strong> berisi harga lama dan link-nya
-                  masih bisa dibayar user. Batalkan invoice itu dulu kalau perlu — konversi
-                  tidak menutupnya.
-                </span>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" size="sm" disabled={isConverting} onClick={() => setConvertTarget(null)}>
-              Batal
-            </Button>
-            <Button
-              size="sm"
-              disabled={isConverting}
-              onClick={handleConfirmConvert}
-              className={convertTarget === 'kilat' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}
-            >
-              {isConverting ? 'Memindahkan...' : convertTarget === 'kilat' ? 'Ya, jadikan Kilat' : 'Ya, kembalikan ke Regular'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Tab: Payment — status, copy link, create payment, Mark as Paid
-// ─────────────────────────────────────────────────────────────
-
-function PaymentTab({
-  submission,
-  paymentData,
-  lifecycle,
-  onOpenPayment,
-  onPaymentStatusChange,
-  onEditFormDetails,
-}: {
-  submission: SurveySubmission;
-  paymentData: PaymentState;
-  lifecycle: ReturnType<typeof deriveLifecycle>;
-  onOpenPayment: (submission: SurveySubmission) => void;
-  onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
-  onEditFormDetails: (submission: SurveySubmission) => void;
-}) {
-  const [isConfirmPaymentOpen, setIsConfirmPaymentOpen] = useState(false);
-  const isKilat = submission.distribution_type === 'kilat';
-  const incentiveCost = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
-
-  // Kilat: base rate 1× (durasi tidak berlaku — selesai dalam ~2 jam), ditambah
-  // add-on, tanpa diskon voucher. Rumus yang sama dipakai invoice admin dan
-  // functions/api/doku/create-payment.js. Tanpa cabang ini, estimasi di sini
-  // menampilkan harga regular untuk order Kilat — angka yang tidak pernah ditagih.
-  const adCost = isKilat
-    ? calculateAdCostPerDay(submission.questionCount || 0)
-    : calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
-  const kilatAddon = isKilat ? getKilatAddonCost(submission.voucher_code) : 0;
-  const discount = isKilat
-    ? 0
-    : calculateDiscount(submission.voucher_code, adCost, incentiveCost, submission.duration || 0);
-  const finalAdCost = adCost - discount + kilatAddon;
-  const subtotal = finalAdCost + incentiveCost;
-  const ppn = calculatePpn(subtotal);
-  const grandTotal = subtotal + ppn;
-
-  return (
-    <>
-      <DetailSheetSection
-        title="Detail Form & Biaya"
-        action={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-gray-500 hover:text-blue-600"
-            onClick={() => onEditFormDetails(submission)}
-          >
-            <PenLine className="w-3 h-3 mr-1" /> Edit
-          </Button>
-        }
-      >
-        {isKilat || (submission.duration && submission.duration > 0) ? (
-          <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-500">
-                Ad cost <span className="text-[10px] text-gray-400 font-normal">({submission.questionCount} Qs | Rp {new Intl.NumberFormat('id-ID').format(calculateAdCostPerDay(submission.questionCount || 0))}{isKilat ? ' base rate' : ` x ${submission.duration} ${submission.duration === 1 ? 'day' : 'days'}`})</span>
-              </span>
-              <span className={cn('font-medium text-gray-900', discount > 0 && 'line-through text-gray-400 font-normal')}>
-                Rp {new Intl.NumberFormat('id-ID').format(adCost)}
-              </span>
-            </div>
-            {kilatAddon > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-500 flex items-center gap-1">
-                  <Zap className="w-3 h-3 fill-amber-500 text-amber-500" /> Add-on JFU Kilat
-                </span>
-                <span className="font-medium text-amber-600">Rp {new Intl.NumberFormat('id-ID').format(kilatAddon)}</span>
-              </div>
-            )}
-            {discount > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Discount ({submission.voucher_code})</span>
-                <span className="font-medium text-emerald-600">-Rp {new Intl.NumberFormat('id-ID').format(discount)}</span>
-              </div>
-            )}
-            {incentiveCost > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">
-                  Incentive cost <span className="text-[10px] text-gray-400 font-normal">(Rp {new Intl.NumberFormat('id-ID').format(submission.prize_per_winner || 0)} × {submission.winnerCount || 0})</span>
-                </span>
-                <span className="font-medium text-gray-900">
-                  Rp {new Intl.NumberFormat('id-ID').format(incentiveCost)}
-                </span>
-              </div>
-            )}
-            <div className="flex justify-between pt-1 border-t border-gray-200/60 mt-1 text-gray-500">
-              <span>Subtotal (DPP)</span>
-              <span className="font-medium text-gray-900">Rp {new Intl.NumberFormat('id-ID').format(subtotal)}</span>
-            </div>
-            <div className="flex justify-between text-gray-500">
-              <span>PPN (11%)</span>
-              <span className="font-medium text-gray-900">Rp {new Intl.NumberFormat('id-ID').format(ppn)}</span>
-            </div>
-            <div className="flex justify-between pt-1 border-t border-gray-200 mt-1">
-              <span className="text-gray-600 font-medium">Total cost</span>
-              <span className="font-bold text-blue-600">
-                Rp {new Intl.NumberFormat('id-ID').format(grandTotal)}
-              </span>
-            </div>
-            {paymentData.latestPaymentId ? (
-              <div className="flex justify-between items-center pt-1.5 border-t border-gray-200/60 mt-1.5 text-[11px]">
-                <span className="text-gray-500">Invoice</span>
-                <a
-                  href={`/invoices/${paymentData.latestPaymentId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-                >
-                  <FileText className="w-3 h-3" />
-                  {paymentData.latestPaymentId}
-                  <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
-                </a>
-              </div>
-            ) : paymentData.latestPaymentUrl ? (
-              <div className="flex justify-between items-center pt-1.5 border-t border-gray-200/60 mt-1.5 text-[11px]">
-                <span className="text-gray-500">Link Tagihan</span>
-                <a
-                  href={paymentData.latestPaymentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Buka Link Pembayaran
-                </a>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 italic">Durasi belum diisi — biaya iklan belum bisa dihitung.</p>
-        )}
-      </DetailSheetSection>
-
-      <DetailSheetSection title="Aksi">
-        <PaymentAction
-          submission={submission}
-          paymentData={paymentData}
-          lifecycle={lifecycle}
-          onOpenPayment={onOpenPayment}
-        />
-        {!lifecycle.isPaid && (
-          <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2.5 space-y-2">
-            <p className="text-[11px] text-emerald-800 leading-snug">
-              Pembayaran diterima di luar sistem (transfer manual)? Tandai submission ini sebagai lunas.
-            </p>
-            <Button
-              size="sm"
-              className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => setIsConfirmPaymentOpen(true)}
-            >
-              <Check className="w-3.5 h-3.5 mr-1.5" /> Mark as Paid
-            </Button>
-          </div>
-        )}
-      </DetailSheetSection>
-
-      <Dialog open={isConfirmPaymentOpen} onOpenChange={setIsConfirmPaymentOpen}>
-        <DialogContent 
-          className="sm:max-w-[360px] p-6 text-center"
-          style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
-        >
-          <DialogHeader className="space-y-1 text-center sm:text-center">
-            <DialogTitle className="text-base font-bold text-gray-900 leading-snug">
-              Tandai Submission Sebagai Lunas?
-            </DialogTitle>
-            <DialogDescription className="text-xs text-amber-600 font-semibold leading-relaxed">
-              Pastikan dana transfer manual benar-benar sudah diterima.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="text-[11px] text-gray-500 bg-slate-50/80 border border-slate-100 rounded-lg p-3.5 leading-relaxed">
-            Tindakan ini akan mengupdate status submission dan <span className="font-semibold text-gray-700">semua invoice/transaksi terkait menjadi lunas (paid)</span>.
-          </div>
-
-          <div className="flex justify-center gap-3">
-            <Button 
-              variant="outline" 
-              onClick={() => setIsConfirmPaymentOpen(false)}
-              className="text-xs font-semibold h-9 px-5 text-gray-600 border-gray-200 hover:bg-gray-50"
-            >
-              Batal
-            </Button>
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 px-5"
-              onClick={() => {
-                onPaymentStatusChange(submission.id, 'paid');
-                setIsConfirmPaymentOpen(false);
-              }}
-            >
-              Ya, Tandai Lunas
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <DetailSheetSection title="Status Pembayaran">
-        <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5">
-          <div className="grid grid-cols-[auto_1fr] !gap-x-3 !gap-y-1 text-xs">
-            <span className="text-gray-400">Status</span>
-            <span className={cn('font-semibold capitalize', lifecycle.isPaid ? 'text-green-600' : lifecycle.isActuallyExpired ? 'text-red-600' : 'text-gray-900')}>
-              {paymentData.latestStatus || submission.payment_status || 'No payment yet'}
-            </span>
-            <span className="text-gray-400">Amount</span>
-            <span className="font-medium text-gray-900">
-              Rp {paymentData.latestAmount ? paymentData.latestAmount.toLocaleString('id-ID') : '0'}
-            </span>
-            <span className="text-gray-400">Invoices</span>
-            <span className="font-medium text-gray-900">{paymentData.invoiceCount}</span>
-            {paymentData.latestPaymentId && (
-              <>
-                <span className="text-gray-400">Invoice Link</span>
-                <a
-                  href={`/invoices/${paymentData.latestPaymentId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-blue-600 hover:underline inline-flex items-center gap-1"
-                >
-                  <FileText className="w-3 h-3" /> {paymentData.latestPaymentId} <ExternalLink className="w-2.5 h-2.5" />
-                </a>
-              </>
-            )}
-            {paymentData.hasEverPaid && !lifecycle.isPaid && (
-              <>
-                <span className="text-gray-400">Riwayat</span>
-                <span className="font-medium text-green-600">Pernah dibayar</span>
-              </>
-            )}
-          </div>
-        </div>
-        {paymentData.latestPaymentUrl && !lifecycle.isPaid && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-8 text-xs justify-start text-amber-700 border-amber-200 bg-amber-50/60 hover:bg-amber-100"
-            onClick={() => copyToClipboard(paymentData.latestPaymentUrl!, 'Payment link copied!')}
-          >
-            <Copy className="w-3.5 h-3.5 mr-2" /> Copy payment link untuk researcher
-          </Button>
-        )}
-      </DetailSheetSection>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Tab: Page — page status + Page Builder entry point + Extend
-// ─────────────────────────────────────────────────────────────
-
-function PageTab({
-  submission,
-  existingPage,
-  lifecycle,
-  onOpenPageBuilder,
-  onExtendCreated,
-}: {
-  submission: SurveySubmission;
-  existingPage?: ExistingPage;
-  lifecycle: ReturnType<typeof deriveLifecycle>;
-  onOpenPageBuilder: (submission: SurveySubmission) => void;
-  onExtendCreated: () => void;
-}) {
-  const isKilat = submission.distribution_type === 'kilat';
-
-  return (
-    <>
-      <DetailSheetSection title="Status Page">
-        {isKilat ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
-            <Zap className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-800">
-              <span className="font-semibold">Distribusi Kilat.</span> Tidak menggunakan Page builder — survey
-              didistribusikan langsung ke panel.
-            </p>
-          </div>
-        ) : existingPage ? (
-          <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5">
-            <div className="grid grid-cols-[auto_1fr] !gap-x-3 !gap-y-1 text-xs">
-              <span className="text-gray-400">Status</span>
-              <span className="font-semibold text-gray-900 capitalize">{lifecycle.pageStatus}</span>
-              <span className="text-gray-400">Title</span>
-              <span className="font-medium text-gray-900">{existingPage.title || 'Not set'}</span>
-              <span className="text-gray-400">Slug</span>
-              <span className="font-mono text-[11px] text-gray-700">/{existingPage.slug}</span>
-              <span className="text-gray-400">Publish</span>
-              <span className="font-medium text-gray-900">
-                {formatDate(existingPage.publish_start_date)} — {formatDate(existingPage.publish_end_date)}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-lg px-3 py-2.5">
-            Belum ada page. {!lifecycle.canBuildPage && 'Page bisa dibuat setelah pembayaran diterima.'}
-          </p>
-        )}
-      </DetailSheetSection>
-
-      {!isKilat && (
-        <DetailSheetSection title="Aksi">
-          <PageAction
-            submission={submission}
-            existingPage={existingPage}
-            lifecycle={lifecycle}
-            onOpenPageBuilder={onOpenPageBuilder}
-          />
-          <ExtendAction
-            submission={submission}
-            existingPage={existingPage}
-            lifecycle={lifecycle}
-            onExtendCreated={onExtendCreated}
-          />
-        </DetailSheetSection>
-      )}
-    </>
-  );
-}

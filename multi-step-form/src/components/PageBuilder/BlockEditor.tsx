@@ -46,7 +46,7 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
         },
         editorProps: {
             attributes: {
-                class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[300px] p-4 border rounded-md dark:prose-invert [&_.ProseMirror-selectednode]:ring-2 [&_.ProseMirror-selectednode]:ring-blue-500 [&_.ProseMirror-selectednode]:ring-offset-2 [&_.ProseMirror-selectednode]:rounded-md transition-all',
+                class: 'prose prose-slate max-w-none focus:outline-none min-h-[320px] p-4 border border-slate-200 rounded-xl bg-white focus:border-blue-500 transition-all shadow-2xs dark:prose-invert [&_.ProseMirror-selectednode]:ring-2 [&_.ProseMirror-selectednode]:ring-blue-500 [&_.ProseMirror-selectednode]:ring-offset-2 [&_.ProseMirror-selectednode]:rounded-md',
             },
         },
     });
@@ -103,10 +103,10 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
 
                     // Insert image into editor
                     editor.chain().focus().setImage({ src: publicUrl }).run();
-                    toast.success('Image uploaded successfully');
-                } catch (error) {
+                    toast.success('Gambar berhasil diunggah');
+                } catch (error: any) {
                     console.error('Error uploading image:', error);
-                    toast.error('Failed to upload image');
+                    toast.error(error.message || 'Gagal mengunggah gambar');
                 }
             }
         };
@@ -135,70 +135,86 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
     };
 
     return (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
             {editable && (
-                <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
+                <div className="flex flex-wrap items-center gap-1 p-1.5 border border-slate-200 rounded-xl bg-slate-50/80">
                     <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => editor.chain().focus().toggleBold().run()}
-                        className={editor.isActive('bold') ? 'bg-gray-200 dark:bg-gray-700' : ''}
+                        className={`h-8 w-8 p-0 text-slate-600 hover:text-slate-900 rounded-lg transition-colors ${editor.isActive('bold') ? 'bg-white shadow-2xs font-bold text-blue-600' : 'hover:bg-white/80'}`}
+                        title="Bold"
                     >
                         <Bold className="w-4 h-4" />
                     </Button>
                     <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => editor.chain().focus().toggleItalic().run()}
-                        className={editor.isActive('italic') ? 'bg-gray-200 dark:bg-gray-700' : ''}
+                        className={`h-8 w-8 p-0 text-slate-600 hover:text-slate-900 rounded-lg transition-colors ${editor.isActive('italic') ? 'bg-white shadow-2xs text-blue-600' : 'hover:bg-white/80'}`}
+                        title="Italic"
                     >
                         <Italic className="w-4 h-4" />
                     </Button>
                     <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                        className={editor.isActive('heading', { level: 1 }) ? 'bg-gray-200 dark:bg-gray-700' : ''}
+                        className={`h-8 w-8 p-0 text-slate-600 hover:text-slate-900 rounded-lg transition-colors ${editor.isActive('heading', { level: 1 }) ? 'bg-white shadow-2xs font-bold text-blue-600' : 'hover:bg-white/80'}`}
+                        title="Heading 1"
                     >
                         <Heading1 className="w-4 h-4" />
                     </Button>
                     <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                        className={editor.isActive('heading', { level: 2 }) ? 'bg-gray-200 dark:bg-gray-700' : ''}
+                        className={`h-8 w-8 p-0 text-slate-600 hover:text-slate-900 rounded-lg transition-colors ${editor.isActive('heading', { level: 2 }) ? 'bg-white shadow-2xs font-bold text-blue-600' : 'hover:bg-white/80'}`}
+                        title="Heading 2"
                     >
                         <Heading2 className="w-4 h-4" />
                     </Button>
                     <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => editor.chain().focus().toggleBulletList().run()}
-                        className={editor.isActive('bulletList') ? 'bg-gray-200 dark:bg-gray-700' : ''}
+                        className={`h-8 w-8 p-0 text-slate-600 hover:text-slate-900 rounded-lg transition-colors ${editor.isActive('bulletList') ? 'bg-white shadow-2xs text-blue-600' : 'hover:bg-white/80'}`}
+                        title="Bullet List"
                     >
                         <List className="w-4 h-4" />
                     </Button>
                     <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                        className={editor.isActive('orderedList') ? 'bg-gray-200 dark:bg-gray-700' : ''}
+                        className={`h-8 w-8 p-0 text-slate-600 hover:text-slate-900 rounded-lg transition-colors ${editor.isActive('orderedList') ? 'bg-white shadow-2xs text-blue-600' : 'hover:bg-white/80'}`}
+                        title="Numbered List"
                     >
                         <ListOrdered className="w-4 h-4" />
                     </Button>
                     <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={handleImageUpload}
+                        className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900 hover:bg-white/80 rounded-lg transition-colors"
+                        title="Upload Image"
                     >
                         <ImageIcon className="w-4 h-4" />
                     </Button>
-                    <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+                    <div className="w-px h-5 bg-slate-200 mx-1 self-center" />
                     <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={setLink}
-                        className={editor.isActive('link') ? 'bg-gray-200 dark:bg-gray-700' : ''}
+                        className={`h-8 w-8 p-0 text-slate-600 hover:text-slate-900 rounded-lg transition-colors ${editor.isActive('link') ? 'bg-white shadow-2xs text-blue-600' : 'hover:bg-white/80'}`}
                         title="Add Link"
                     >
                         <LinkIcon className="w-4 h-4" />

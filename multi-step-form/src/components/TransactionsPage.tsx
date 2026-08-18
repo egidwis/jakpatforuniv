@@ -21,6 +21,7 @@ import {
 import { TransactionListRow } from './transactions/TransactionListRow';
 import { TransactionDetailSheet } from './transactions/TransactionDetailSheet';
 import { WalletView } from './transactions/WalletView';
+import { WebhookFailuresBanner } from './transactions/WebhookFailuresBanner';
 
 type FinanceTab = 'transaksi' | 'wallet';
 
@@ -71,16 +72,19 @@ export function TransactionsPage() {
   }, []);
 
   const filteredTransactions = useMemo(() => {
-    const searchLower = searchTerm.toLowerCase();
+    const searchLower = searchTerm.toLowerCase().trim();
+    const cleanSearch = searchLower.replace(/^#/, '');
     return transactions.filter((t) => {
       const date = new Date(t.created_at || '');
       const isSameMonth = selectedMonth === -1 || date.getMonth() === selectedMonth;
       const isSameYear = date.getFullYear() === selectedYear;
 
       const matchesSearch =
+        !searchLower ||
         t.form_submissions?.title.toLowerCase().includes(searchLower) ||
         t.form_submissions?.full_name.toLowerCase().includes(searchLower) ||
-        t.payment_id?.toLowerCase().includes(searchLower);
+        t.payment_id?.toLowerCase().includes(cleanSearch) ||
+        (t.form_submission_id && t.form_submission_id.toLowerCase().includes(cleanSearch));
 
       const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
 
@@ -187,6 +191,11 @@ export function TransactionsPage() {
           </button>
         ))}
       </div>
+
+      {/* Notifikasi DOKU yang gagal diproses. Sengaja di luar tab: uang yang
+          tersangkut harus terlihat dari mana pun halaman ini dibuka. Merender
+          null kalau tidak ada masalah. */}
+      <WebhookFailuresBanner />
 
       {activeTab === 'wallet' ? (
         <WalletView

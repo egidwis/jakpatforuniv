@@ -6,7 +6,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../ui/tooltip';
-import { ExtendSection } from '../ExtendSection';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import type { LifecycleInfo } from './lifecycle';
 
@@ -451,32 +450,5 @@ export function PageAction({
         )}
       </Tooltip>
     </TooltipProvider>
-  );
-}
-
-interface ExtendActionProps extends ActionBaseProps {
-  existingPage?: ExistingPage;
-  onExtendCreated: () => void;
-}
-
-export function ExtendAction({
-  submission,
-  existingPage,
-  lifecycle,
-  onExtendCreated,
-}: ExtendActionProps) {
-  if (!lifecycle.canBuildPage || !existingPage) return null;
-  return (
-    <ExtendSection
-      submissionId={submission.id}
-      submissionTitle={submission.formTitle}
-      currentPrizePerWinner={submission.prize_per_winner || 0}
-      currentWinnerCount={submission.winnerCount || 0}
-      questionCount={submission.questionCount || 0}
-      researcherName={submission.researcherName}
-      researcherEmail={submission.researcherEmail}
-      phoneNumber={submission.phone_number}
-      onExtendCreated={onExtendCreated}
-    />
   );
 }

@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
+import { AdsFlowCard } from './AdsFlowCard';
 import { StepOneMethodSelection } from './StepOneMethodSelection';
 import { StepOneGoogleForm } from './StepOneGoogleForm';
-import { StepOneFormFields } from './StepOneFormFields';
+import { StepOneFormFields, ReviewInfoBanner } from './StepOneFormFields';
+import { ProfileCompletionSheet } from './ProfileCompletionSheet';
+import { isProfileGateSatisfied } from './ProfileForm';
 import { AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -37,6 +40,26 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   const [flowState, setFlowState] = useState<FlowState>(getInitialFlowState());
   const [showConfirmSwitch, setShowConfirmSwitch] = useState(false);
 
+  // Gate kelengkapan profil — pengganti RequireCompleteProfile di level route.
+  // Prefetch saat mount; hasilnya di-await saat user memilih metode, sehingga
+  // klik terasa instan pada kasus umum (cek sudah selesai duluan).
+  const profileGateRef = useRef<Promise<boolean> | null>(null);
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [pendingMethod, setPendingMethod] = useState<'google' | 'manual' | null>(null);
+
+  useEffect(() => {
+    profileGateRef.current = isProfileGateSatisfied();
+    // Layar pilih metode (edukasi produk) bebas dilihat tanpa profil lengkap;
+    // tapi draft lama bisa melewati layar itu (getInitialFlowState) — untuk
+    // kasus itu gate tetap harus jalan, jadi cek juga saat mount.
+    if (flowState !== 'method-selection') {
+      profileGateRef.current.then((ok) => {
+        if (!ok) setProfileSheetOpen(true);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Submission dimulai dari JFU form (CTA "Sebar via Jakpat") — field survey
   // di-lock karena sumber datanya adalah form JFU itu sendiri.
   const isJfuImport = Boolean(formData.customFormId);
@@ -66,8 +89,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
     });
   };
 
-  // Handle method selection
-  const handleMethodSelection = (method: 'google' | 'manual') => {
+  const proceedWithMethod = (method: 'google' | 'manual') => {
     clearJfuOrigin();
     if (method === 'google') {
       setFlowState('google-form');
@@ -77,6 +99,43 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
       updateFormData({ isManualEntry: true });
     }
   };
+
+  // Handle method selection — di sinilah gate profil berlaku: profil belum
+  // lengkap → buka drawer profil dulu, metode terpilih disimpan sebagai pending.
+  const handleMethodSelection = async (method: 'google' | 'manual') => {
+    let ok = await (profileGateRef.current ?? (profileGateRef.current = isProfileGateSatisfied()));
+    if (!ok) {
+      // Hasil prefetch bisa basi — profil mungkin baru dilengkapi lewat banner
+      // DashboardLayout tanpa meninggalkan halaman ini. Cek ulang dulu.
+      profileGateRef.current = isProfileGateSatisfied();
+      ok = await profileGateRef.current;
+    }
+    if (!ok) {
+      setPendingMethod(method);
+      setProfileSheetOpen(true);
+      return;
+    }
+    proceedWithMethod(method);
+  };
+
+  const handleProfileCompleted = () => {
+    // Profil baru saja tersimpan lengkap — cache gate diperbarui supaya
+    // pemilihan metode berikutnya tidak memanggil Supabase lagi.
+    profileGateRef.current = Promise.resolve(true);
+    setProfileSheetOpen(false);
+    if (pendingMethod) {
+      proceedWithMethod(pendingMethod);
+      setPendingMethod(null);
+    }
+  };
+
+  const profileSheet = (
+    <ProfileCompletionSheet
+      open={profileSheetOpen}
+      onOpenChange={setProfileSheetOpen}
+      onCompleted={handleProfileCompleted}
+    />
+  );
 
   // Handle back to method selection
   const handleBackToMethodSelection = () => {
@@ -131,11 +190,6 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
       return false;
     }
 
-    if (!formData.description) {
-      toast.error(t('errorSurveyDescriptionEmpty'));
-      return false;
-    }
-
     if (formData.questionCount <= 0) {
       toast.error(t('errorQuestionCountZero'));
       return false;
@@ -151,47 +205,53 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   };
 
   // Render based on flow state
-  if (flowState === 'method-selection') {
-    return <StepOneMethodSelection onSelectMethod={handleMethodSelection} />;
-  }
-
-  if (flowState === 'google-form') {
+  if (flowState === 'method-selection' || flowState === 'google-form') {
+    const isImport = flowState === 'google-form';
     return (
-      <StepOneGoogleForm
-        formData={formData}
-        updateFormData={updateFormData}
-        onBack={handleBackToMethodSelection}
-        onSwitchMethod={handleSwitchToManual}
-        onFormReady={handleFormReady}
-      />
+      <>
+        <AdsFlowCard step={isImport ? 'import' : 'method'}>
+          {isImport ? (
+            <StepOneGoogleForm
+              formData={formData}
+              updateFormData={updateFormData}
+              onBack={handleBackToMethodSelection}
+              onSwitchMethod={handleSwitchToManual}
+              onFormReady={handleFormReady}
+            />
+          ) : (
+            <StepOneMethodSelection onSelectMethod={handleMethodSelection} />
+          )}
+        </AdsFlowCard>
+        {profileSheet}
+      </>
     );
   }
 
   // Manual flow - show form fields directly
   if (flowState === 'manual') {
     return (
-      <div className="manual-flow-container">
-        <StepOneFormFields
-          formData={formData}
-          updateFormData={updateFormData}
-          onSubmit={handleSubmit}
-          onBack={handleBackToMethodSelection}
-          isGoogleImport={false}
-          isJfuImport={isJfuImport}
-        />
+      <>
+        <ReviewInfoBanner formData={formData} />
+        <AdsFlowCard step="fields">
+          <StepOneFormFields
+            formData={formData}
+            updateFormData={updateFormData}
+            onSubmit={handleSubmit}
+            onBack={handleBackToMethodSelection}
+            isGoogleImport={false}
+            isJfuImport={isJfuImport}
+            // Tautan "beralih ke Google Form" hidup DI DALAM StepOneFormFields
+            // sejak revamp, jadi menyembunyikannya cukup dengan tidak mengoper
+            // handler-nya. Untuk impor JFU tautan itu memang harus hilang:
+            // beralih metode membuang data yang sudah dikunci dari form JFU.
+            onSwitchToGoogle={isJfuImport ? undefined : handleSwitchToGoogle}
+          />
+        </AdsFlowCard>
 
-        {/* Switch to Google Form — disembunyikan untuk submission dari JFU form,
-            karena beralih metode akan menghapus data yang sudah dikunci */}
-        {!isJfuImport && (
-          <div className="switch-method-section">
-            <p className="switch-method-text">{t('troubleFillingManual')}</p>
-            <button onClick={handleSwitchToGoogle} className="switch-method-link">
-              {t('importFromGoogleForm')}
-            </button>
-          </div>
-        )}
+        {profileSheet}
 
-        {/* Confirmation Dialog for Switching */}
+        {/* Confirmation Dialog for Switching — sengaja DI LUAR AdsFlowCard,
+            yang memakai overflow-hidden dan akan memotong overlay-nya */}
         {showConfirmSwitch && (
           <div className="modal-overlay">
             <div className="modal-dialog">
@@ -221,21 +281,26 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             </div>
           </div>
         )}
-      </div>
+      </>
     );
   }
 
   // Form Fields View (after Google import)
   if (flowState === 'form-fields') {
     return (
-      <div className="form-fields-container">
-        <StepOneFormFields
-          formData={formData}
-          updateFormData={updateFormData}
-          onSubmit={handleSubmit}
-          isGoogleImport={true}
-        />
-      </div>
+      <>
+        <ReviewInfoBanner formData={formData} />
+        <AdsFlowCard step="fields">
+          <StepOneFormFields
+            formData={formData}
+            updateFormData={updateFormData}
+            onSubmit={handleSubmit}
+            onBack={handleBackToMethodSelection}
+            isGoogleImport={true}
+          />
+        </AdsFlowCard>
+        {profileSheet}
+      </>
     );
   }
 

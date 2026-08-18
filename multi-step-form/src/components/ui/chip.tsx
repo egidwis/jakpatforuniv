@@ -3,24 +3,26 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+// Chip pill DNA JFU (pola stat-badge landing page): tint lembut,
+// border 1px muda, label semibold normal-case. Nama variant dipertahankan.
 const chipVariants = cva(
-  "inline-flex items-center gap-1 whitespace-nowrap rounded-full border font-medium",
+  "inline-flex items-center gap-1 whitespace-nowrap rounded-full border font-semibold",
   {
     variants: {
       variant: {
-        blue: "border-blue-200 bg-blue-50 text-blue-700",
-        amber: "border-amber-200 bg-amber-50 text-amber-700",
-        green: "border-green-200 bg-green-50 text-green-700",
-        red: "border-red-200 bg-red-50 text-red-700",
-        orange: "border-orange-200 bg-orange-50 text-orange-700",
-        indigo: "border-indigo-200 bg-indigo-50 text-indigo-700",
-        purple: "border-purple-200 bg-purple-50 text-purple-700",
-        slate: "border-slate-200 bg-slate-50 text-slate-700",
+        blue: "border-jfu-primary/20 bg-jfu-primary/[0.08] text-jfu-primary",
+        amber: "border-amber-300 bg-amber-50 text-amber-800",
+        green: "border-green-300 bg-green-50 text-green-800",
+        red: "border-red-300 bg-red-50 text-red-800",
+        orange: "border-orange-300 bg-orange-50 text-orange-800",
+        indigo: "border-indigo-300 bg-indigo-50 text-indigo-800",
+        purple: "border-purple-300 bg-purple-50 text-purple-800",
+        slate: "border-slate-300 bg-slate-50 text-slate-800",
         outline: "border-border bg-transparent text-foreground",
       },
       size: {
-        sm: "h-5 px-1.5 text-[10px]",
-        md: "h-6 px-2 text-xs",
+        sm: "h-6 px-2.5 text-[11px]",
+        md: "h-7 px-3 text-xs",
       },
     },
     defaultVariants: {

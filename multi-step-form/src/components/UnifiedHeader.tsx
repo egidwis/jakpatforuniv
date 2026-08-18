@@ -1,19 +1,21 @@
 import type { SurveyFormData } from '../types';
-import { calculateTotalCost, isManualVerificationVoucher } from '../utils/cost-calculator';
+import { calculateTotalCost } from '../utils/cost-calculator';
+import { formatRupiah } from '../utils/currency';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { Check } from 'lucide-react';
-import { Button } from './ui/button';
+import { X, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 
 interface UnifiedHeaderProps {
-    currentStep: number;
     formData: SurveyFormData;
-    onReset?: () => void;
+    onCancelConfirmed: () => void;
 }
 
-export function UnifiedHeader({ currentStep, formData, onReset }: UnifiedHeaderProps) {
+export function UnifiedHeader({ formData, onCancelConfirmed }: UnifiedHeaderProps) {
     const { t } = useLanguage();
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+
     // ILKOMUNY yang sudah dipakai akun ini → jangan tampilkan harga diskon.
     const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
     const calculation = useMemo(
@@ -28,98 +30,163 @@ export function UnifiedHeader({ currentStep, formData, onReset }: UnifiedHeaderP
         ]
     );
 
-    const formatRupiah = (amount: number) => {
-        return new Intl.NumberFormat('id-ID').format(amount);
-    };
-
-    const isAutoApprovalPath = !formData.isManualEntry && !formData.hasPersonalDataQuestions && formData.surveyUrl.includes('docs.google.com/forms') && !isManualVerificationVoucher(formData.voucherCode);
-
-    // Skema step tanpa biodata: 1 Detail Survei, 2 Jadwal (auto-approval saja),
-    // 3 Review & Pembayaran. Step 4 = Jadwal Kilat, ditampilkan sebagai step 3.
-    const steps = isAutoApprovalPath ? [
-        { number: 1, title: t('step1') },
-        { number: 2, title: 'Jadwal' },
-        { number: 3, title: 'Bayar' }
-    ] : [
-        { number: 1, title: t('step1') },
-        { number: 3, title: 'Review' }
-    ];
-
-    const displayStep = currentStep === 4 ? 3 : currentStep;
-
     return (
-        <div className="fixed top-4 right-4 left-4 md:left-[17rem] md:right-8 z-40">
-            <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl transition-all duration-200">
-                <div className="w-full max-w-5xl mx-auto px-6 py-4">
-                    <div className="flex items-center justify-between">
+        <>
+        {/* Kartu floating di bawah layar (desktop & mobile) — wrapper fixed
+            pointer-events-none supaya area di kiri/kanan kartu tetap bisa
+            di-scroll/diklik; safe-area untuk home indicator iOS. */}
+        <div className="fixed bottom-0 inset-x-0 z-30 pointer-events-none pb-[env(safe-area-inset-bottom)]">
+            <div className="max-w-4xl mx-auto px-4 md:px-6">
+                <div className="pointer-events-auto w-full mb-3 md:mb-4 rounded-2xl border border-jfu-primary/[0.12] bg-white/95 backdrop-blur shadow-[0_8px_30px_rgba(25,118,210,0.18)] transition-all">
+                    <div className="w-full px-4 md:px-6 py-3">
+                        <div className="flex items-center justify-between">
 
-                        {/* LEFT: Mini Stepper */}
-                        <div className="flex items-center gap-2 md:gap-4">
-                            <div className="flex items-center gap-0.5 md:gap-1">
-                                {steps.map((step, idx) => {
-                                    const isCompleted = displayStep > step.number;
-                                    const isActive = displayStep === step.number;
+                            {/* LEFT: Kembali + judul produk statis. */}
+                            <div className="flex items-center gap-2.5 md:gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCancelDialogOpen(true)}
+                                    className="w-8 h-8 rounded-xl bg-slate-100/90 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200/90 hover:border-rose-200 flex items-center justify-center transition-all duration-150 cursor-pointer shrink-0 shadow-2xs"
+                                    title="Batalkan Pesanan"
+                                    aria-label="Batalkan Pesanan"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
 
-                                    return (
-                                        <div key={step.number} className="flex items-center">
-                                            {/* Line Connector (except first) */}
-                                            {idx > 0 && (
-                                                <div className={`w-3 md:w-8 h-0.5 mx-0.5 md:mx-2 rounded-full transition-colors duration-300`} style={{ backgroundColor: isCompleted || isActive ? '#0091ff' : '#e5e7eb' }} />
-                                            )}
-
-                                            {/* Circle */}
-                                            <div
-                                                className={`
-                        w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center font-bold text-[10px] ring-2 md:ring-4 ring-white transition-all duration-300
-                        ${isActive ? 'text-white shadow-md scale-110' : ''}
-                        ${isCompleted ? 'text-white' : ''}
-                        ${!isActive && !isCompleted ? 'bg-gray-100 border border-gray-200' : ''}
-                      `}
-                                                style={isActive || isCompleted ? { backgroundColor: '#0091ff' } : {}}
-                                            >
-                                                {isCompleted && <Check className="w-2.5 h-2.5 md:w-3 md:h-3" />}
-                                                {isActive && <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-white rounded-full" />}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                <span className="text-sm md:text-base font-bold text-gray-900">
+                                    {t('productAdsTitle')}
+                                </span>
                             </div>
 
-                            {/* Step Title Indicator */}
-                            <div className="h-8 w-px bg-gray-200 mx-2 md:mx-4 hidden sm:block" />
-                            <div className="hidden sm:flex flex-col">
-                                <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Current Step</span>
-                                <span className="text-sm font-bold text-gray-900 line-clamp-1 max-w-[100px] md:max-w-none">
-                                    {currentStep === 4 ? 'JFU Kilat' : (steps.find(s => s.number === currentStep)?.title || 'Survey')}
+                            {/* RIGHT: Cost (Clickable Accordion Toggle) */}
+                            <button
+                                type="button"
+                                onClick={() => setIsExpanded(prev => !prev)}
+                                className="group text-right focus:outline-none flex items-center gap-2.5 -mr-1 p-1 md:p-1.5 rounded-xl hover:bg-slate-50 transition-colors"
+                            >
+                                <div>
+                                    <div className="flex items-center justify-end gap-1">
+                                        <p className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider hidden sm:block">
+                                            Estimated Cost
+                                        </p>
+                                        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider sm:hidden">
+                                            Cost
+                                        </p>
+                                    </div>
+                                    <p className="text-sm md:text-lg font-bold text-jfu-primary leading-tight">
+                                        Rp{formatRupiah(calculation.totalCost)}
+                                    </p>
+                                </div>
+                                <span className="w-8 h-8 rounded-xl bg-blue-50/80 text-jfu-primary border border-blue-100/90 group-hover:bg-blue-100/90 group-hover:border-blue-200 flex items-center justify-center transition-all shrink-0 shadow-2xs">
+                                    {isExpanded ? (
+                                        <ChevronDown className="w-4 h-4" />
+                                    ) : (
+                                        <ChevronUp className="w-4 h-4" />
+                                    )}
+                                </span>
+                            </button>
+
+                        </div>
+                    </div>
+
+                    {/* ACCORDION BREAKDOWN PANEL */}
+                    {isExpanded && (
+                        <div className="border-t border-gray-100 px-4 md:px-6 py-3.5 bg-slate-50/70 rounded-b-2xl text-xs md:text-sm space-y-2">
+                            <div className="flex justify-between items-center text-gray-600">
+                                <span>
+                                    Biaya Iklan ({formData.duration || 1} hari, {formData.questionCount || 0} pertanyaan)
+                                </span>
+                                <span className="font-semibold tabular-nums text-gray-900">
+                                    Rp{formatRupiah(calculation.adCost)}
+                                </span>
+                            </div>
+
+                            <div className="flex justify-between items-center text-gray-600">
+                                <span>
+                                    Total Reward ({formData.winnerCount || 0} pemenang × Rp{formatRupiah(formData.prizePerWinner || 0)})
+                                </span>
+                                <span className="font-semibold tabular-nums text-gray-900">
+                                    Rp{formatRupiah(calculation.incentiveCost)}
+                                </span>
+                            </div>
+
+                            {calculation.discount > 0 && (
+                                <div className="flex justify-between items-center text-emerald-600">
+                                    <span>Diskon Voucher</span>
+                                    <span className="font-semibold tabular-nums">
+                                        -Rp{formatRupiah(calculation.discount)}
+                                    </span>
+                                </div>
+                            )}
+
+                            {calculation.kilatAddonCost > 0 && (
+                                <div className="flex justify-between items-center text-amber-700">
+                                    <span>Layanan JFU Kilat</span>
+                                    <span className="font-semibold tabular-nums">
+                                        Rp{formatRupiah(calculation.kilatAddonCost)}
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className="flex justify-between items-center text-gray-600">
+                                <span>Subtotal</span>
+                                <span className="font-semibold tabular-nums text-gray-900">
+                                    Rp{formatRupiah(calculation.subtotal)}
+                                </span>
+                            </div>
+
+                            <div className="flex justify-between items-center text-gray-500">
+                                <span>PPN (11%)</span>
+                                <span className="font-semibold tabular-nums text-gray-700">
+                                    Rp{formatRupiah(calculation.ppn)}
+                                </span>
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-200/80 flex justify-between items-center font-bold text-gray-900">
+                                <span>Total Biaya Estimasi</span>
+                                <span className="text-sm md:text-base text-jfu-primary tabular-nums">
+                                    Rp{formatRupiah(calculation.totalCost)}
                                 </span>
                             </div>
                         </div>
-
-                        {/* RIGHT: Cost & Info */}
-                        <div className="flex items-center gap-2 md:gap-6">
-                            <div className="text-right">
-                                <p className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider hidden sm:block">Estimated Cost</p>
-                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider sm:hidden">Cost</p>
-                                <p className="text-sm md:text-lg font-bold" style={{ color: '#0091ff' }}>Rp{formatRupiah(calculation.totalCost)}</p>
-                            </div>
-
-                            {onReset && (
-                                <div className="border-l border-gray-200 pl-6 hidden md:block">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={onReset}
-                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
-                                    >
-                                        {t('cancelSubmission')}
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-
-                    </div>
+                    )}
                 </div>
             </div>
         </div>
+
+        {/* Dialog konfirmasi Cancel — sengaja DI LUAR wrapper pointer-events-none
+            di atas, dengan alasan yang sama seperti StepSurveyDetails.tsx:
+            elemen bertumpuk yang mewarisi pointer-events-none jadi tidak bisa
+            diklik sama sekali. */}
+        {isCancelDialogOpen && (
+            <div className="modal-overlay">
+                <div className="modal-dialog">
+                    <div className="modal-header">
+                        <AlertTriangle size={24} className="modal-icon-warning" />
+                        <h3 className="modal-title">Batalkan Pesanan?</h3>
+                    </div>
+                    <div className="modal-body">
+                        <p>
+                            Semua data yang sudah Anda isi akan hilang dan tidak bisa dikembalikan. Yakin ingin membatalkan pesanan ini dan kembali ke halaman utama?
+                        </p>
+                    </div>
+                    <div className="modal-footer">
+                        <button
+                            onClick={() => setIsCancelDialogOpen(false)}
+                            className="modal-button modal-button-cancel"
+                        >
+                            Tidak, Lanjutkan Mengisi
+                        </button>
+                        <button
+                            onClick={onCancelConfirmed}
+                            className="modal-button modal-button-confirm"
+                        >
+                            Ya, Batalkan Pesanan
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 }

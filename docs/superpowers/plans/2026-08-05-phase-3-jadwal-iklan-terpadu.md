@@ -1,19 +1,75 @@
-# Phase 3 — Tab "Jadwal Iklan" terpadu di dashboard admin
+# Phase 3 — Papan "Schedule" di dashboard admin
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> ## ⬜ BELUM DIMULAI — ini titik masuk sesi berikutnya
-> Ditulis 2026-08-05 sebagai serah terima. Berisi keadaan yang sudah terverifikasi,
-> keputusan yang sudah diambil, dan **satu pekerjaan yang harus dituntaskan lebih dulu
-> (Task 9)**. Baca [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) dulu
-> untuk status berjalan; file ini hanya soal Phase 3.
+> ## ✅ SELESAI DI BRANCH — 2026-08-08. Sisa: adu visual + deploy.
+>
+> Task 9A (`sql/46`) diterapkan & diverifikasi, papan Schedule jalan bertab
+> **Agenda · Iklan · Kilat**, drawer digabung, **Page Calendar sudah dipensiunkan**
+> (`824890f`), dan **Task 9B + 12 (copy) menyusul** (`e91f52f`..`433153c`).
+>
+> **Kedua gerbang terakhir sudah lunas, 2026-08-08 malam:**
+>
+> 1. ✅ **Adu visual papan Schedule di browser** — pemilik produk: tidak ada isu.
+> 2. ✅ **`SELECT cron_activate_extends();`** dijalankan dengan pengawasan. Sidik
+>    jari `form_submissions_extend` + `survey_pages` **identik** sebelum & sesudah;
+>    cacah status tak bergeser (1 `live`, 1 `scheduled`, 7 `completed`). Rinciannya
+>    di progress doc §4.
+>
+> **Branch ini siap merge.** Sesudah itu: deploy → **baru** Task 11 (rencana terpisah), lalu
+> Phase 4. Urutan itu diputuskan 2026-08-08; alasannya di
+> [`README.md`](README.md) §"Urutan rilis yang berlaku".
+>
+> Status berjalan selalu di [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
+>
+> ⚠️ **Bagian di bawah ditulis 2026-08-05 dan sebagian sudah TIDAK BERLAKU.**
+> Koreksinya ada di kotak berikutnya. Jangan mengeksekusi dari file ini tanpa
+> membacanya.
+
+> ### 🔴 Yang berubah sejak file ini ditulis
+>
+> **1. Judulnya sendiri sudah salah.** Bukan "tab Jadwal Iklan terpadu sebagai tempat
+> kerja". Pembagiannya jadi tiga permukaan dengan peran berbeda — keputusan pemilik
+> produk 2026-08-07:
+>
+> | Permukaan | Perannya |
+> |---|---|
+> | **Submissions** | **tempat kerja** — review → jadwal → bayar dalam satu drawer |
+> | **Schedule** | **papan pantau** — nol aksi, hanya baca + deep-link |
+> | **Pages** | kelola halaman (task terpisah, belum dikerjakan) |
+>
+> Alasannya perilaku, bukan simetri model data: rute review manual adalah satu
+> percakapan dengan peneliti dari feedback sampai tagihan.
+>
+> **2. Task 9 dipecah — dan kini keduanya selesai.** 9A (cermin dapat sumbu kedua,
+> `sql/46`) selesai 2026-08-08 pagi; **9B** (tulis ulang `deriveOrderUiState`/
+> `airingPeriods` di dashboard **peneliti**) selesai 2026-08-08 sore, `433153c`.
+> Nol migrasi — RLS `ad_schedules` sudah menampung peneliti sejak `sql/46`. Aturan
+> dua sumbunya tinggal di berkas baru `status/scheduleAxes.ts`, dan
+> `ProgressTracker.tsx` dihapus karena kehabisan pemanggil.
+>
+> **3. "Alihkan `SchedulingPage` lebih kecil" — SALAH, dan sebaliknya juga salah.**
+> `SchedulingPage` bukan "kalender halaman": tanggal yang diplotnya berasal dari
+> `form_submissions.start_date/end_date`, dan perpanjangan **memang** sudah jadi baris
+> sendiri lewat query ketiga ke `form_submissions_extend`. Yang benar-benar tidak bisa
+> dilakukannya: menampilkan order tanpa tanggal, membedakan empat keadaan yang runtuh,
+> dan menyaring apa pun (`const filteredEvents = events;`).
+>
+> **4. Menghapusnya membuang satu kemampuan nyata.** Membuat halaman untuk order yang
+> **belum lunas**, dan prop `paymentStatus` yang mematikan tombol publish di
+> `PageBuilderModal`. Keduanya harus dipindahkan lebih dulu — rinciannya di progress doc.
+>
+> **5. `sql/46` dipakai Task 9A.** `reward_pools` (8B-2) bergeser ke `sql/47`, lalu ke
+> `sql/49`, lalu ke `sql/50` (2026-08-10) — `47`/`48` diambil order-flow reorder, `49`
+> diambil perbaikan bug jam tayang kustom, keduanya menumpang branch yang sama lebih
+> dulu. Nomor terkini selalu ada di `docs/jadwal-iklan-progress.md` §"Peta dokumen".
 
 ## Context
 
 Phase 3 mengganti cara admin melihat jadwal iklan: dari beberapa permukaan yang
-masing-masing membaca sumbernya sendiri, jadi **satu tab yang membaca satu tabel**
-(`ad_schedules`). Rencana Phase 2 menyebutnya "menyusut jadi mapper biasa" — dan itu
-memang benar, **tapi hanya setelah Task 9.**
+masing-masing membaca sumbernya sendiri, jadi **satu papan pantau yang membaca satu
+tabel** (`ad_schedules`). Rencana Phase 2 menyebutnya "menyusut jadi mapper biasa" —
+dan itu memang benar, **tapi hanya setelah Task 9A.**
 
 Fondasinya sudah siap dan sudah diverifikasi di produksi 2026-08-05:
 
@@ -71,9 +127,24 @@ bisa dipatuhi: file yang harus ditulis ulang Task 9 —
 rilis**. Tidak bisa lagi di-revert sendiri-sendiri. Sekali branch ini dideploy, keduanya
 tayang bersamaan.
 
-### Langkah pertama, wajib: bawa `main` masuk ke branch
+### ✅ Langkah pertama, wajib: bawa `main` masuk ke branch — SELESAI 2026-08-05
 
-Branch ini tertinggal **17 commit** dari `main` (per 2026-08-05) — termasuk seluruh Task
+> **Sudah dikerjakan.** Merge dijalankan 2026-08-05 sore dan berlangsung persis seperti
+> diperkirakan di bawah: nol konflik kode, dua konflik dokumentasi, keduanya diselesaikan
+> dengan versi `main`. `git log --oneline HEAD..main` sekarang kosong.
+>
+> **Baseline pasca-merge: `tsc -p tsconfig.app.json` = 74 error.** (Sebelum merge: 75 di
+> branch, 76 di `main`. Yang hilang persis satu `TS6133 'isKilat' is declared but its value
+> is never read` — kode mati yang ikut terbersihkan saat `SubmissionDetailSheet.tsx`
+> dipecah.) **74 adalah baseline yang dipakai Task 9 ke atas.** `vite build` hijau, ketiga
+> test harness lolos.
+>
+> Dua pembersihan struktural ikut dituntaskan di sesi yang sama — lihat "Titik sentuh yang
+> berubah" di bawah.
+>
+> Bagian di bawah ini disimpan apa adanya sebagai catatan prosedur.
+
+Branch ini tertinggal **18 commit** dari `main` (per 2026-08-05) — termasuk seluruh Task
 8B-1, 8C, 8D, dan `sql/43`/`44`/`45`. Bekerja di atasnya tanpa menarik `main` dulu berarti
 membangun di atas fondasi yang sudah usang.
 
@@ -116,9 +187,9 @@ cd multi-step-form
 npx vite build
 ```
 
-Baseline `main` per 2026-08-05 = **76**. Branch ini punya baseline sendiri (sebelum merge:
-75 saat terakhir diukur 2026-08-04) — yang penting **tidak bertambah**, bukan angkanya
-sama. Kalau bertambah, adu daftar error-nya baris demi baris sebelum lanjut:
+Baseline branch **pasca-merge = 74** (diukur 2026-08-05, sesudah merge + kedua pembersihan
+di bawah). Yang penting **tidak bertambah**, bukan angkanya sama. Kalau bertambah, adu
+daftar error-nya baris demi baris sebelum lanjut:
 
 ```bash
 ./node_modules/.bin/tsc -p tsconfig.app.json --noEmit 2>&1 | grep "error TS" \
@@ -128,6 +199,29 @@ sama. Kalau bertambah, adu daftar error-nya baris demi baris sebelum lanjut:
 
 > Root `tsconfig.json` isinya `{"files": [], "references": [...]}`, jadi `npx tsc --noEmit`
 > **selalu** lapor 0 dan tidak membuktikan apa pun. Selalu pakai `-p tsconfig.app.json`.
+
+### Titik sentuh yang berubah sesudah merge (2026-08-05)
+
+Dua pembersihan struktural dikerjakan bersamaan dengan merge, supaya Task 9/10 tidak
+membaca kode yang menyesatkan. Alamat lama yang tercatat di rencana Phase 2 **sudah tidak
+berlaku**:
+
+| Yang dicari | Alamat lama | Alamat sekarang |
+|---|---|---|
+| "Mark as Paid" (Task 10) | `SubmissionDetailSheet.tsx:~982` | `submissions/tabs/PaymentTab.tsx` (246 baris) |
+| Tab Reservasi | `SubmissionDetailSheet.tsx:847` | `submissions/tabs/ReservationTab.tsx` |
+| `copyToClipboard`, `formatDate` | lokal di `SubmissionDetailSheet.tsx` | diekspor dari `submissions/types.ts` |
+| formatter uang mana pun | 4 `formatIDR` + 5 `formatRupiah` tersebar | `src/utils/currency.ts` saja |
+
+`SubmissionDetailSheet.tsx` sekarang 330 baris (cangkang saja), turun dari 1365. Kelima tab
+pindah ke `src/components/submissions/tabs/`. Pemecahannya nol perubahan perilaku —
+dibuktikan dengan mengadu isi kedua sisi setelah baris import/export dibuang.
+
+⚠️ Satu perubahan perilaku yang disengaja menyentuh **`SchedulePhase.tsx`**, berkas yang
+Task 9 tulis ulang: fungsi lokal bernama `formatRupiah` di sana ternyata berbadan
+`style: 'currency'` — bentuk `formatIDR`, bukan `formatRupiah`. Seluruh 13 call site
+diganti ke `formatIDR` bersama. Efek nyatanya hanya pembulatan nilai non-bulat, dan kolom
+uang semuanya `bigint`.
 
 ---
 

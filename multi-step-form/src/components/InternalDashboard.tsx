@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Checkbox } from './ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { cn, useMediaQuery } from '@/lib/utils';
-import { SchedulePaymentView } from './SchedulePaymentView';
 import { EditCriteriaModal } from './EditCriteriaModal';
 import { EditFormDetailsModal } from './EditFormDetailsModal';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsMobileCard } from './SubmissionsTableRow';
-import type { SurveySubmission, PaymentState, ReviewHistoryEntry } from './submissions/types';
+import type { SurveySubmission, PaymentState, ReviewHistoryEntry, ExistingPage } from './submissions/types';
 import { deriveLifecycle } from './submissions/lifecycle';
 import { SubmissionListRow } from './submissions/SubmissionListRow';
 import { SubmissionDetailSheet } from './submissions/SubmissionDetailSheet';
@@ -40,7 +39,7 @@ const STATUS_FILTER_OPTIONS = [
 interface InternalDashboardProps {
   hideAuth?: boolean;
   onLogout?: () => void;
-  focusSubmission?: { id: string; createdAt: string } | null;
+  focusSubmission?: { id: string; createdAt: string; distributionType?: string | null } | null;
 }
 
 export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission }: InternalDashboardProps = {}) {
@@ -67,8 +66,11 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
   const [passwordInput, setPasswordInput] = useState('');
 
   // Schedule & Payment View State
-  const [activeScheduleSubmission, setActiveScheduleSubmission] = useState<SurveySubmission | null>(null);
-  const [scheduleInitialStep, setScheduleInitialStep] = useState<'schedule' | 'payment'>('schedule');
+  // Niat "buka jadwal / buka tagihan" dari baris tabel & kartu mobile. Dulu ini
+  // menukar SELURUH halaman dengan SchedulePaymentView; sekarang ia cuma membuka
+  // drawer pada sub-tampilan yang tepat, jadi daftar order di belakangnya tidak
+  // ikut hilang.
+  const [pendingSubView, setPendingSubView] = useState<'schedule' | 'payment' | null>(null);
 
   const [paymentStates, setPaymentStates] = useState<Record<string, PaymentState>>({});
 
@@ -94,8 +96,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
   // Inline reading pane needs ≥1280px; below that the modal Sheet is used
   const isXl = useMediaQuery('(min-width: 1280px)');
 
-  // Map submission_id -> page data (slug, is_published)
-  const [existingPages, setExistingPages] = useState<Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }>>({});
+  // Map submission_id -> page data (slug, is_published, banner, views, etc)
+  const [existingPages, setExistingPages] = useState<Record<string, ExistingPage>>({});
 
   // Admin Access Check
   // STRICT: Only product@jakpat.net is allowed
@@ -226,15 +228,31 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
           // 1. Fetch Pages
           const { data: pages, error: pagesError } = await supabase
             .from('survey_pages')
-            .select('submission_id, slug, is_published, publish_start_date, publish_end_date, title, is_extra_ad')
+            .select('id, submission_id, slug, is_published, publish_start_date, publish_end_date, title, is_extra_ad, banner_url, views_count, requires_banner_update, page_respondents(count)')
             .in('submission_id', submissionIds);
 
           if (pagesError) console.error('Error fetching survey pages:', pagesError);
 
           if (pages) {
-            const pageMap: Record<string, { slug: string, is_published: boolean, publish_start_date: string | null, publish_end_date: string | null, title?: string, is_extra_ad?: boolean }> = {};
-            pages.forEach(p => {
-              pageMap[p.submission_id] = { slug: p.slug, is_published: p.is_published, publish_start_date: p.publish_start_date, publish_end_date: p.publish_end_date, title: p.title, is_extra_ad: p.is_extra_ad };
+            const pageMap: Record<string, ExistingPage> = {};
+            pages.forEach((p: any) => {
+              const respondentsCount = Array.isArray(p.page_respondents)
+                ? p.page_respondents.reduce((sum: number, r: { count?: number }) => sum + (r.count || 0), 0)
+                : (p.page_respondents?.count ?? 0);
+
+              pageMap[p.submission_id] = {
+                id: p.id,
+                slug: p.slug,
+                is_published: p.is_published,
+                publish_start_date: p.publish_start_date,
+                publish_end_date: p.publish_end_date,
+                title: p.title,
+                is_extra_ad: p.is_extra_ad,
+                banner_url: p.banner_url,
+                views_count: p.views_count || 0,
+                respondents_count: respondentsCount,
+                requires_banner_update: p.requires_banner_update,
+              };
             });
             setExistingPages(pageMap);
           }
@@ -388,14 +406,24 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     }
   }, [openSubmissionId, openSubmission, loading]);
 
-  // Deep-link dari papan jadwal Kilat: arahkan filter ke order ini dulu...
+  // Deep-link dari papan jadwal: arahkan filter ke order ini dulu...
+  //
+  // ⚠️ TAB DISTRIBUSI DITURUNKAN DARI ORDER-NYA, TIDAK DIPATOK.
+  // Sampai Phase 3 baris terakhir berbunyi `setDistTab('kilat')` tanpa syarat —
+  // benar selama satu-satunya pengirim adalah KilatScheduleBoard, salah begitu
+  // papan Schedule ikut mengirim order regular. `desktopSubmissions` menyaring
+  // `distribution_type === 'kilat'` saat tab kilat aktif, jadi order regular
+  // mendarat di daftar yang tidak memuat barisnya — drawer terbuka mengambang
+  // di atas daftar kosong. Pengirim lama yang tidak mengirim field ini tetap
+  // dapat perilaku lamanya.
   useEffect(() => {
     if (!focusSubmission) return;
     setCurrentDate(new Date(focusSubmission.createdAt));
     setSearchQuery(focusSubmission.id);
     setCurrentPage(1);
     setStatusFilter('all');
-    setDistTab('kilat');
+    const dist = focusSubmission.distributionType;
+    setDistTab(dist === undefined || dist === null ? 'kilat' : dist === 'kilat' ? 'kilat' : 'regular');
   }, [focusSubmission]);
 
   // ...lalu baru buka drawer-nya SETELAH baris itu benar-benar termuat di
@@ -409,8 +437,56 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     }
   }, [focusSubmission, submissions]);
 
+  // Map of submission ID -> CustomerTier for list rows
+  const clientTierMap = useMemo(() => {
+    const researcherStats = new Map<string, { totalOrders: number; paidCount: number; totalSpent: number }>();
+
+    const getKey = (sub: SurveySubmission) => {
+      const email = sub.researcherEmail?.toLowerCase().trim();
+      const phone = sub.phone_number?.replace(/\D/g, '');
+      if (email && email !== 'no email') return `email:${email}`;
+      if (phone && phone.length >= 8) return `phone:${phone}`;
+      return `id:${sub.id}`;
+    };
+
+    submissions.forEach((sub) => {
+      const key = getKey(sub);
+      const isPaid = (sub.payment_status || '').toLowerCase() === 'paid';
+      // `latestAmount`, bukan "totalPaid" — PaymentState tidak pernah punya
+      // field itu, jadi ekspresi lamanya selalu jatuh ke `total_cost`.
+      const paidAmount = isPaid ? (paymentStates[sub.id]?.latestAmount || sub.total_cost || 0) : 0;
+
+      const current = researcherStats.get(key) || { totalOrders: 0, paidCount: 0, totalSpent: 0 };
+      current.totalOrders += 1;
+      if (isPaid) {
+        current.paidCount += 1;
+        current.totalSpent += paidAmount;
+      }
+      researcherStats.set(key, current);
+    });
+
+    const map = new Map<string, 'vvip' | 'vip' | 'returning' | 'new' | 'unpaid'>();
+    submissions.forEach((sub) => {
+      const key = getKey(sub);
+      const stats = researcherStats.get(key);
+      if (!stats || stats.paidCount === 0) {
+        map.set(sub.id, 'unpaid');
+      } else if (stats.paidCount >= 5 && stats.totalSpent >= 5_000_000) {
+        map.set(sub.id, 'vvip');
+      } else if (stats.paidCount >= 3 && stats.totalSpent >= 1_000_000) {
+        map.set(sub.id, 'vip');
+      } else if (stats.paidCount >= 2) {
+        map.set(sub.id, 'returning');
+      } else {
+        map.set(sub.id, 'new');
+      }
+    });
+
+    return map;
+  }, [submissions, paymentStates]);
+
   // Client tier: fetched async against full Supabase history (not just current-month page)
-  const [clientTier, setClientTier] = useState<'vvip' | 'vip' | 'returning' | 'new' | undefined>(undefined);
+  const [clientTier, setClientTier] = useState<'vvip' | 'vip' | 'returning' | 'new' | 'unpaid' | undefined>(undefined);
 
   useEffect(() => {
     if (!openSubmission) { setClientTier(undefined); return; }
@@ -430,14 +506,14 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
         orParts.push(`phone_number.eq.${normPhone}`);
         orParts.push(`phone_number.eq.${withZero}`);
       }
-      if (!orParts.length) { setClientTier('new'); return; }
+      if (!orParts.length) { setClientTier('unpaid'); return; }
 
       const { data: subData } = await supabase
         .from('form_submissions')
         .select('id, payment_status')
         .or(orParts.join(','));
 
-      if (!subData?.length) { setClientTier('new'); return; }
+      if (!subData?.length) { setClientTier('unpaid'); return; }
 
       const ids = subData.map((s: any) => s.id);
 
@@ -454,7 +530,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
         }
       });
 
-      const totalOrders = subData.length;
       let paidCount = 0;
       let totalSpent = 0;
       subData.forEach((s: any) => {
@@ -465,9 +540,10 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
       });
 
       // Same thresholds as customerTier() in customers/types.ts
-      if (paidCount >= 5 && totalSpent >= 5_000_000) setClientTier('vvip');
+      if (paidCount === 0) setClientTier('unpaid');
+      else if (paidCount >= 5 && totalSpent >= 5_000_000) setClientTier('vvip');
       else if (paidCount >= 3 && totalSpent >= 1_000_000) setClientTier('vip');
-      else if (totalOrders >= 2) setClientTier('returning');
+      else if (paidCount >= 2) setClientTier('returning');
       else setClientTier('new');
     }
 
@@ -541,7 +617,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
       toast.success(
         target === 'kilat'
           ? `Dipindahkan ke JFU Kilat — harga jadi Rp ${totalCost.toLocaleString('id-ID')}. Pilih slot Kilat di tab Kilat.`
-          : `Dikembalikan ke iklan regular — harga jadi Rp ${totalCost.toLocaleString('id-ID')}. Reserve slot ulang di tab Regular Ads.`
+          : `Dikembalikan ke iklan regular — harga jadi Rp ${totalCost.toLocaleString('id-ID')}. Reserve slot ulang di tab Iklan.`
       );
     } catch (error: any) {
       console.error('Gagal memindahkan jalur distribusi:', error);
@@ -581,7 +657,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     }
   };
 
-  // Modals replaced by SchedulePaymentView
 
   const handleOpenEditCriteriaModal = (submission: SurveySubmission) => {
     setSelectedSubmissionForCriteria(submission);
@@ -733,23 +808,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     );
   }
 
-  // Fullscreen Schedule & Payment View
-  if (activeScheduleSubmission) {
-    return (
-      <div className={hideAuth ? 'h-full flex flex-col' : 'min-h-screen flex flex-col bg-background'}>
-        <SchedulePaymentView
-          submission={activeScheduleSubmission}
-          existingPageSlug={existingPages[activeScheduleSubmission.id]?.slug}
-          initialStep={scheduleInitialStep}
-          onBack={() => {
-            setActiveScheduleSubmission(null);
-            loadSubmissions(); // Refresh data
-          }}
-        />
-      </div>
-    );
-  }
-
   // Selection helpers for the current page of rows (desktop-scoped: Regular/Kilat tab split)
   const pageIds = desktopSubmissions.map((s) => s.id);
   const pageAllSelected = rowSelection.allSelected(pageIds);
@@ -769,8 +827,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     onEditFormDetails: handleOpenEditFormDetailsModal,
     onEditCriteria: handleOpenEditCriteriaModal,
     onOpenPageBuilder: handleOpenPageBuilder,
-    onOpenSchedule: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('schedule'); },
-    onOpenPayment: (sub: SurveySubmission) => { setActiveScheduleSubmission(sub); setScheduleInitialStep('payment'); },
+    initialSubView: pendingSubView,
+    onInitialSubViewConsumed: () => setPendingSubView(null),
     onConvertDistribution: handleConvertDistribution,
     onExtendCreated: loadSubmissions,
   };
@@ -941,11 +999,33 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
           )}
         </div>
 
+        {/* Desktop: Tab DI LUAR kartu, seperti di Schedule Board */}
+        <div className="hidden md:flex shrink-0 items-center border-b border-gray-200 -mb-2">
+          {([
+            ['regular', 'Iklan', Calendar],
+            ['kilat', 'Kilat', Zap]
+          ] as const).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              onClick={() => setDistTab(id)}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2.5 -mb-px text-sm font-semibold border-b-2 transition-colors',
+                distTab === id
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Desktop: unified list surface — toolbar, column header, rows, pagination in one card */}
         <div className="hidden md:flex flex-1 min-h-0 bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="flex min-w-0 flex-1 flex-col">
-          {/* Toolbar row 1: Periode · search · refresh */}
-          <div className="shrink-0 flex items-center gap-4 px-4 py-3">
+          {/* Toolbar row: Periode · search · filter · sort · refresh */}
+          <div className="shrink-0 flex items-center gap-4 px-4 py-3 border-b border-gray-200">
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
@@ -992,74 +1072,11 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                 {desktopSubmissions.length} result{desktopSubmissions.length !== 1 ? 's' : ''}
               </span>
             )}
-            <Button
-              onClick={loadSubmissions}
-              variant="ghost"
-              size="icon"
-              disabled={loading}
-              className="ml-auto h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
-              title="Refresh data"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-
-          {/* Toolbar row 2: Regular/Kilat tabs + filter & sort icons (Outlook-style) */}
-          <div className="shrink-0 flex items-center justify-between px-4 border-b border-gray-200 relative min-h-[44px]">
-            {/* Bulk Selection Overlay (Yahoo Mail style) */}
-            {rowSelection.count > 0 && (
-              <div className="absolute inset-0 z-20 flex items-center justify-between bg-blue-50/95 px-4 backdrop-blur-[2px] transition-all">
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-semibold text-blue-900">
-                    {rowSelection.count} selected
-                  </span>
-                  <span className="h-4 w-px bg-blue-200" aria-hidden="true" />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled
-                    className="h-7 px-2.5 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/50"
-                    title="Coming soon"
-                  >
-                    <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Create Bulk Payment
-                    <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide bg-blue-100/80 rounded px-1 py-0.5">Soon</span>
-                  </Button>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={rowSelection.clear}
-                  className="h-7 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100/50 hover:text-blue-900"
-                >
-                  <X className="w-3.5 h-3.5 mr-1" /> Clear
-                </Button>
-              </div>
-            )}
-            <div className="flex">
-              {([
-                ['regular', 'Regular Ads', Calendar],
-                ['kilat', 'Kilat', Zap]
-              ] as const).map(([id, label, Icon]) => (
-                <button
-                  key={id}
-                  onClick={() => setDistTab(id)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 -mb-px text-sm font-medium border-b-2 transition-colors',
-                    distTab === id
-                      ? 'border-blue-600 text-blue-700'
-                      : 'border-transparent text-gray-500 hover:text-gray-800'
-                  )}
-                >
-                  <Icon className="w-4 h-4" />
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1 pb-1">
+            <div className="ml-auto flex items-center gap-1">
               {statusFilter !== 'all' && (
                 <button
                   onClick={() => setStatusFilter('all')}
-                  className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-xs font-medium pl-2.5 pr-1.5 py-1"
+                  className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-xs font-medium pl-2.5 pr-1.5 py-1 mr-1"
                   title="Clear status filter"
                 >
                   {STATUS_FILTER_OPTIONS.find(o => o.id === statusFilter)?.label}
@@ -1094,8 +1111,48 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
               >
                 {sortDir === 'desc' ? <ArrowDownWideNarrow className="w-4 h-4" /> : <ArrowUpNarrowWide className="w-4 h-4" />}
               </Button>
+              <Button
+                onClick={loadSubmissions}
+                variant="ghost"
+                size="icon"
+                disabled={loading}
+                className="h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                title="Refresh data"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
           </div>
+
+          {/* Bulk Selection Bar (Yahoo Mail style — only rendered when rows are selected) */}
+          {rowSelection.count > 0 && (
+            <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-blue-50/95 border-b border-gray-200 min-h-[44px]">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-semibold text-blue-900">
+                  {rowSelection.count} selected
+                </span>
+                <span className="h-4 w-px bg-blue-200" aria-hidden="true" />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled
+                  className="h-7 px-2.5 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/50"
+                  title="Coming soon"
+                >
+                  <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Create Bulk Payment
+                  <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide bg-blue-100/80 rounded px-1 py-0.5">Soon</span>
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={rowSelection.clear}
+                className="h-7 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100/50 hover:text-blue-900"
+              >
+                <X className="w-3.5 h-3.5 mr-1" /> Clear
+              </Button>
+            </div>
+          )}
 
           {/* Scrollable rows region with sticky column header */}
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1107,8 +1164,9 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                   aria-label="Select all on this page"
                 />
               </div>
-              <span className="w-[76px] shrink-0">Submitted</span>
-              <span className="w-[84px] shrink-0">ID</span>
+              <span className="hidden sm:block w-[60px] shrink-0">Date</span>
+              <span className="hidden md:block w-[100px] shrink-0">ID</span>
+              <span className="hidden md:block w-[65px] shrink-0">Review</span>
               <span className="flex-1">Survey</span>
               <span className="w-[120px] shrink-0 text-right">Status</span>
               <span className="w-4 shrink-0" /> {/* Spacer to align with chevron */}
@@ -1166,6 +1224,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                     onSelectToggle={rowSelection.toggle}
                     onOpen={setOpenSubmissionId}
                     active={isXl && submission.id === openSubmissionId}
+                    clientTier={clientTierMap.get(submission.id)}
                   />
                 ))}
               </div>
@@ -1282,12 +1341,12 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                   onEditCriteria={handleOpenEditCriteriaModal}
                   onOpenPageBuilder={handleOpenPageBuilder}
                   onOpenSchedule={(sub) => {
-                    setActiveScheduleSubmission(sub);
-                    setScheduleInitialStep('schedule');
+                    setOpenSubmissionId(sub.id);
+                    setPendingSubView('schedule');
                   }}
                   onOpenPayment={(sub) => {
-                    setActiveScheduleSubmission(sub);
-                    setScheduleInitialStep('payment');
+                    setOpenSubmissionId(sub.id);
+                    setPendingSubView('payment');
                   }}
                   onExtendCreated={loadSubmissions}
                 />
@@ -1297,7 +1356,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
         </div>
       </div >
 
-      {/* Modals removed and replaced by SchedulePaymentView */}
 
       <EditCriteriaModal
         isOpen={isEditCriteriaModalOpen}

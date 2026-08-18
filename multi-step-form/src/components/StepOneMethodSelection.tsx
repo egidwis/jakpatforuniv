@@ -1,19 +1,45 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Bot, ChevronDown, ChevronRight, Download, Sparkles, UserCheck, Zap } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
+import { InfoTooltip } from '@/components/status/InfoTooltip';
 import { useLanguage } from '../i18n/LanguageContext';
-import { Zap, CheckCircle2, Clock, Info, Sparkles } from 'lucide-react';
 
 interface StepOneMethodSelectionProps {
   onSelectMethod: (method: 'google' | 'manual') => void;
 }
 
-// Value proposition JFU Form yang bergantian di promo bar bawah
-const JFU_FORM_VALUE_PROPS = [
-  'alternatif Qualtrics & SurveyMonkey',
-  'tinggal chat, AI yang susunin pertanyaannya',
-  'survei bisa "loncat" otomatis sesuai jawaban'
-];
+// Value proposition JFU Form yang bergantian di promo bar bawah.
+// Yang berputar adalah KUNCI-nya, bukan teksnya — supaya bar ikut bahasa aktif
+// tanpa memaksa interval di bawah bergantung pada `t` (yang berubah identitas
+// tiap kali bahasa diganti, dan akan me-restart rotasinya).
+const JFU_FORM_PROP_KEYS = [
+  'jfuFormPromoProp1',
+  'jfuFormPromoProp2',
+  'jfuFormPromoProp3'
+] as const;
 
+/**
+ * Body "pilih jalur review" dari kartu pintu-masuk Iklan Survei — dirender
+ * di dalam `AdsFlowCard` (cap biru + footer disclaimer T&C ada di sana, lihat
+ * doc comment-nya untuk alasan gradien/kontras & kenapa disclaimer wajib ada).
+ *
+ * Dua keputusan desain khusus file ini:
+ * 1. Level atas = METODE REVIEW (otomatis vs admin), sumber form turun jadi
+ *    anak accordion. Metode di halaman ini memang menentukan jalur review, jadi
+ *    judulnya langsung menyebut itu — tidak perlu chip yang mengulang judul.
+ *    Istilahnya reuse dari order card (lihat ReviewMethodChip di
+ *    status/ReviewPhase.tsx) supaya konsisten sampai user melihat statusnya.
+ * 2. Subtitle kedua baris WAJIB menyebut sumber form. Tanpa itu user Typeform
+ *    menekan "Review otomatis", tidak menemukan Typeform di dalamnya, lalu
+ *    mundur — dead-end yang sengaja dicegah saat struktur ini dipilih.
+ *
+ * Belum ada AI di jalur review (parser deterministik + regex PII), jadi tidak
+ * ada label "oleh AI" di sini. Harga juga sengaja tidak ditampilkan — angkanya
+ * bisa basi dan acuan "maks 15 pertanyaan" gampang disalahartikan jadi batas
+ * keras; harga muncul di checkout.
+ */
 export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectionProps) {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -25,127 +51,161 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
     const interval = setInterval(() => {
       setIsValuePropVisible(false);
       setTimeout(() => {
-        setValuePropIndex(prev => (prev + 1) % JFU_FORM_VALUE_PROPS.length);
+        setValuePropIndex(prev => (prev + 1) % JFU_FORM_PROP_KEYS.length);
         setIsValuePropVisible(true);
       }, 300);
     }, 2800);
     return () => clearInterval(interval);
   }, []);
 
+  const reviewNoteTooltipContent = (
+    <span className="leading-relaxed">
+      {t('adsEntryReviewNotePart1')}{' '}
+      <a
+        href="/homepage/terms-conditions.html"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline hover:text-gray-200"
+      >
+        {t('termsConditions')}
+      </a>
+      {t('adsEntryReviewNotePart2')}
+    </span>
+  );
+
+  const rowBase = 'w-full flex items-center gap-3 px-4 md:px-5 py-3.5 min-h-11 text-left transition-colors';
+  const iconBox = 'inline-flex shrink-0 items-center justify-center';
+  const iconBoxTop = `${iconBox} w-11 h-11 rounded-xl`;
+  const iconBoxChild = `${iconBox} w-9 h-9 rounded-lg`;
+
   return (
-    <div className="method-selection-container">
-      {/* Page Title */}
-      <div className="method-selection-header">
-        <h1 className="method-selection-title text-2xl font-semibold text-gray-900">{t('startByFillingData')}</h1>
-        <p className="method-selection-subtitle text-sm text-gray-500 mt-1">
-          {t('chooseMethodSuitable')}
-        </p>
+    <>
+      <div className="flex items-center gap-0.5">
+        <h2 className="text-base md:text-lg font-bold text-[#1a1a1a]">{t('adsEntryMethodQuestion')}</h2>
+        <InfoTooltip content={reviewNoteTooltipContent} />
       </div>
 
-      <div className="method-cards-grid">
-        {/* PRIMARY: Google Form Import */}
-        <div className="method-card method-card-primary">
-          {/* Recommended Badge */}
-          <div className="method-card-badge">
-            <span className="badge-icon">⭐</span>
-            <span className="badge-text">{t('recommended')}</span>
-          </div>
+      <div className="mt-3.5 flex flex-col gap-3">
+        {/* Jalur 1: review otomatis — accordion ber-border rounded */}
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="auto" className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+            <AccordionPrimitive.Header className="flex">
+              <AccordionPrimitive.Trigger className={`${rowBase} hover:bg-jfu-primary/[0.04] [&[data-state=open]>svg]:rotate-180`}>
+                <span className={`${iconBoxTop} bg-jfu-primary/[0.08] text-jfu-primary`}>
+                  <Bot className="w-5 h-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-[#1a1a1a]">{t('reviewMethodAutoHint')}</span>
+                  <span className="flex items-center gap-1 text-xs mt-0.5 leading-relaxed flex-wrap">
+                    <Zap className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                    <span className="font-semibold text-emerald-600">{t('adsEntryAutoRowHighlight')}</span>
+                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-500">{t('adsEntryAutoRowTime')}</span>
+                  </span>
+                </span>
+                <ChevronDown className="w-4 h-4 shrink-0 text-jfu-primary/50 transition-transform duration-200" />
+              </AccordionPrimitive.Trigger>
+            </AccordionPrimitive.Header>
 
-          {/* Card Content */}
-          <div className="method-card-content">
-            {/* Icon */}
-            <div className="method-card-icon method-card-icon-primary">
-              <Zap size={32} />
-            </div>
+            <AccordionContent className="pb-0 pt-0 bg-gray-50/50 border-t border-gray-100 divide-y divide-gray-100">
+              <button
+                type="button"
+                onClick={() => onSelectMethod('google')}
+                className={`${rowBase} pl-10 md:pl-12 hover:bg-jfu-primary/[0.04]`}
+              >
+                <span className={`${iconBoxChild} bg-jfu-primary/[0.08] text-jfu-primary`}>
+                  <Download className="w-4 h-4" />
+                </span>
+                <span className="min-w-0 flex-1 text-sm font-semibold text-[#1a1a1a]">{t('reviewMethodAuto')}</span>
+                <ChevronRight className="w-4 h-4 shrink-0 text-jfu-primary/50" />
+              </button>
 
-            {/* Title */}
-            <h2 className="method-card-title text-lg font-semibold mt-4 mb-6">{t('googleFormImportTitle')}</h2>
+              <div aria-disabled="true" className={`${rowBase} pl-10 md:pl-12`}>
+                <span className={`${iconBoxChild} bg-gray-100 text-gray-400`}>
+                  <Download className="w-4 h-4" />
+                </span>
+                <span className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-gray-500">{t('msFormsImportTitle')}</span>
+                  <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                    {t('comingSoon')}
+                  </span>
+                </span>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
-            {/* Benefits List */}
-            <ul className="method-card-benefits space-y-3 mb-8">
-              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
-                <CheckCircle2 className="benefit-icon text-blue-500 flex-shrink-0" size={18} />
-                <span className="benefit-text">{t('benefit100Accurate')}</span>
-              </li>
-              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
-                <Zap className="benefit-icon text-amber-500 flex-shrink-0" size={18} />
-                <span className="benefit-text font-medium text-gray-900">{t('benefitAutoFill')}</span>
-              </li>
-              <li className="method-benefit-item flex items-center gap-2.5 text-sm text-gray-600">
-                <Clock className="benefit-icon text-emerald-500 flex-shrink-0" size={18} />
-                <span className="benefit-text">{t('benefitSaveTime')}</span>
-              </li>
-            </ul>
-
-            {/* CTA Button */}
-            <button
-              onClick={() => onSelectMethod('google')}
-              className="method-card-cta method-card-cta-primary"
-            >
-              <svg className="cta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M7 16a4 4 0 0 1-.88-7.903A5 5 0 1 1 15.9 6L16 6a5 5 0 0 1 1 9.9M9 19l3 3m0 0l3-3m-3 3v-7" />
-              </svg>
-              {t('importFromGoogleForm')}
-            </button>
-          </div>
-        </div>
-
-        {/* SECONDARY: Manual Input */}
-        <div className="method-card method-card-secondary">
-          {/* Card Content */}
-          <div className="method-card-content flex flex-col items-start text-left h-full">
-            {/* Icon */}
-            <div className="method-card-icon method-card-icon-secondary">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </div>
-
-            {/* Title */}
-            <h2 className="method-card-title text-lg font-semibold mt-4 mb-2">{t('manualFillTitle')}</h2>
-
-            {/* Description */}
-            <p className="method-card-description text-sm text-gray-500 text-left leading-relaxed mb-auto">
-              {t('manualFillDescription')}
-            </p>
-
-            {/* Admin Review Info - Left Aligned */}
-            <div className="flex items-center gap-1.5 mt-8 mb-4 text-blue-600/80 text-xs">
-              <Info size={12} strokeWidth={2.5} />
-              <span className="font-medium">{t('requiresAdminReview')}</span>
-            </div>
-
-            {/* CTA Button */}
-            <button
-              onClick={() => onSelectMethod('manual')}
-              className="method-card-cta method-card-cta-secondary w-full"
-            >
-              {t('fillManually')}
-            </button>
-          </div>
-        </div>
+        {/* Jalur 2: review admin — tombol ber-border rounded */}
+        <button
+          type="button"
+          onClick={() => onSelectMethod('manual')}
+          className={`${rowBase} border border-gray-200 rounded-xl bg-white hover:bg-jfu-primary/[0.04] transition-colors`}
+        >
+          <span className={`${iconBoxTop} bg-gray-100 text-gray-500`}>
+            <UserCheck className="w-5 h-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-[#1a1a1a]">{t('reviewMethodManualHint')}</span>
+            <span className="flex items-center gap-1 text-xs mt-0.5 leading-relaxed flex-wrap text-gray-500">
+              <span>{t('adsEntryManualRowHighlight')}</span>
+              <span className="text-gray-300">·</span>
+              <span>{t('adsEntryManualRowTime')}</span>
+            </span>
+          </span>
+          <ChevronRight className="w-4 h-4 shrink-0 text-gray-400" />
+        </button>
       </div>
 
-      {/* JFU Form Builder Promo Bar */}
+      {/* Promo JFU Form — satu-satunya ajakan arah balik (iklan → bikin form);
+          arah sebaliknya sudah ada lewat CTA "Sebar via Jakpat" di
+          /dashboard/forms.
+
+          Sengaja TIDAK berbentuk seperti dua baris metode di atas: ini bukan
+          cara memesan iklan, jadi latarnya bertintal jfu-primary alih-alih
+          putih ber-border seperti baris pilihan. Versi main memakai gradien
+          indigo-ungu; di dalam kartu Soft DNA itu terbaca sebagai elemen dari
+          produk lain, bukan tawaran dari halaman yang sama.
+
+          Value prop turun ke baris kedua (di main ia menyambung satu baris di
+          belakang tanda pisah), jadi copy lead-nya tidak lagi berakhir dengan
+          em dash yang menggantung. */}
       <button
         type="button"
         onClick={() => navigate('/dashboard/forms')}
-        className="w-full flex flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-semibold rounded-full px-5 py-3 shadow-md shadow-indigo-500/20 transition-all"
+        className="mt-4 w-full flex items-center gap-3 px-4 md:px-5 py-3 min-h-11 rounded-xl border border-jfu-primary/15 bg-jfu-primary/[0.05] text-left hover:bg-jfu-primary/[0.09] hover:border-jfu-primary/25 transition-colors"
       >
-        <Sparkles className="w-4 h-4 shrink-0" />
-        <span className="whitespace-nowrap">Bikin survei baru? Coba JFU Form —</span>
-        <span
-          className={`transition-opacity duration-300 ${isValuePropVisible ? 'opacity-100' : 'opacity-0'}`}
-        >
-          {JFU_FORM_VALUE_PROPS[valuePropIndex]}
+        <span className={`${iconBoxChild} bg-white text-jfu-primary border border-jfu-primary/15`}>
+          <Sparkles className="w-4 h-4" />
         </span>
-        <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-wide">
-          Gratis
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-bold text-[#1a1a1a]">{t('jfuFormPromoLead')}</span>
+            <span className="rounded-full bg-jfu-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-jfu-primary">
+              {t('jfuFormPromoFree')}
+            </span>
+          </span>
+          {/* Tinggi baris dikunci lewat min-h supaya bar tidak berdenyut naik
+              turun saat value prop yang lebih panjang masuk. */}
+          <span className="block min-h-4 mt-0.5">
+            <span
+              className={`text-xs leading-relaxed text-gray-500 transition-opacity duration-300 ${isValuePropVisible ? 'opacity-100' : 'opacity-0'}`}
+            >
+              {t(JFU_FORM_PROP_KEYS[valuePropIndex])}
+            </span>
+          </span>
         </span>
+        <ChevronRight className="w-4 h-4 shrink-0 text-jfu-primary/50" />
       </button>
 
-      {/* Info Notice removed - moved to subtitle */}
-    </div>
+      <div className="mt-5 pt-4 border-t border-gray-100 flex justify-center">
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-500" />
+          <span>{t('backToOrders')}</span>
+        </Link>
+      </div>
+    </>
   );
 }

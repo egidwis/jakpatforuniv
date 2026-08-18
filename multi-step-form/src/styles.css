@@ -1875,16 +1875,9 @@ select.form-input.border-red-500:focus {
   line-height: 1.6;
 }
 
-/* ----------------
-   Flow Container (Google Form & Manual)
-   ---------------- */
-
-.google-form-flow-container,
-.manual-flow-container {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 1.5rem 1rem;
-}
+/* .google-form-flow-container / .manual-flow-container dihapus: seluruh flow
+   pintu-masuk Iklan Survei kini dibungkus AdsFlowCard, dan max-width 900px di
+   sini bertengkar dengan max-w-xl milik kartu itu. */
 
 /* Flow Header */
 .flow-header {
@@ -2334,36 +2327,8 @@ select.form-input.border-red-500:focus {
    Switch Method Section
    ---------------- */
 
-.switch-method-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1.5rem 1rem;
-  border-top: 1px solid var(--border);
-  margin-top: 1rem;
-}
-
-.switch-method-text {
-  font-size: 0.875rem;
-  color: var(--muted);
-  margin: 0;
-}
-
-.switch-method-link {
-  color: #0091ff;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
-}
-
-.switch-method-link:hover {
-  color: #0077cc;
-}
+/* .switch-method-* dihapus: link "import dari Google Form" kini hidup di dalam
+   AdsFlowCard memakai token jfu-primary, bukan #0091ff hardcode. */
 
 /* ----------------
    Google Drive Section
@@ -2684,10 +2649,10 @@ select.form-input.border-red-500:focus {
 
 @media (max-width: 767px) {
 
-  .method-selection-container,
-  .google-form-flow-container,
-  .manual-flow-container {
-    padding: 4.5rem 0.75rem 2rem;
+  /* Dulu 4.5rem atas untuk memberi ruang bar step sticky di atas; bar kini
+     floating di bawah layar, jadi padding atasnya dikembalikan normal. */
+  .method-selection-container {
+    padding: 1rem 0.75rem 2rem;
   }
 
   .method-selection-header {

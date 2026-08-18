@@ -56,28 +56,64 @@ export function nowWib(now: Date = new Date()): WibNow {
 }
 
 /** Instant UTC untuk jam WIB tertentu pada tanggal (YMD) tertentu. */
-function wibInstant(ymd: string, hourWib: number): Date {
+function wibInstant(ymd: string, hourWib: number, minuteWib: number = 0): Date {
     // Lewat epoch, bukan menyusun string jam — supaya jam WIB di bawah 07.00
     // (yang jatuh di tanggal UTC sebelumnya) tetap benar.
     const midnightUtc = new Date(`${ymd}T00:00:00.000Z`).getTime();
-    return new Date(midnightUtc + (hourWib - WIB_UTC_OFFSET_HOURS) * 3600000);
+    const totalMinutesWib = hourWib * 60 + minuteWib;
+    return new Date(midnightUtc + (totalMinutesWib - WIB_UTC_OFFSET_HOURS * 60) * 60000);
 }
 
 /**
- * Tanggal mulai tayang: selalu 15.00 WIB = 08:00 UTC.
+ * Angkat string tanggal jadi instant tayang.
  *
- * Nilai ini sengaja identik dengan yang disintesis `normalizeScheduleDate`
- * untuk string date-only (lihat ProgressTracker.tsx) — supaya jalur wizard dan
- * jalur dashboard tidak pernah berbeda pendapat soal kapan iklan mulai.
+ * String date-only ("2026-04-13") diurai JS sebagai tengah malam UTC = 07.00
+ * WIB — delapan jam sebelum iklan benar-benar tayang. Fungsi ini mendeteksi
+ * bentuk itu dan menetapkannya ke 08:00 UTC (= 15.00 WIB); nilai yang sudah
+ * memuat jam dibiarkan apa adanya.
+ *
+ * ⚠️ **Hanya untuk kolom `DATE` di `form_submissions`.** Sejak Task 9B seluruh
+ * dashboard peneliti membaca instant dari `ad_schedules`, yang sudah Kilat-aware
+ * (gelombang 08/11/14/17 WIB). Memakai fungsi ini di atas jadwal Kilat akan
+ * mengembalikan 15.00 untuk iklan yang sebenarnya didorong pukul 08.00.
+ * Sebelumnya bernama sama di `components/ProgressTracker.tsx`, yang dipensiunkan
+ * bersama Task 9B.
  */
-export function toAiringStartIso(ymd: string): string {
-    return wibInstant(ymd, AIRING_HOUR_WIB).toISOString();
+export function normalizeScheduleDate(dateStr: string | null | undefined): Date {
+    if (!dateStr || typeof dateStr !== 'string') return new Date();
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return new Date();
+    if (!dateStr.includes('T')) d.setUTCHours(AIRING_HOUR_WIB - WIB_UTC_OFFSET_HOURS, 0, 0, 0);
+    return d;
+}
+
+/**
+ * Tanggal mulai tayang menurut jam WIB (bawaan 15.00 WIB = 08:00 UTC).
+ */
+export function toAiringStartIso(ymd: string, hourWib: number = AIRING_HOUR_WIB, minuteWib: number = 0): string {
+    return wibInstant(ymd, hourWib, minuteWib).toISOString();
 }
 
 /** Akhir jendela tayang: `days` × 24 jam setelah start. */
-export function toAiringEndIso(ymd: string, days: number): string {
-    const start = wibInstant(ymd, AIRING_HOUR_WIB);
+export function toAiringEndIso(ymd: string, days: number, hourWib: number = AIRING_HOUR_WIB, minuteWib: number = 0): string {
+    const start = wibInstant(ymd, hourWib, minuteWib);
     return new Date(start.getTime() + days * 86400000).toISOString();
+}
+
+/**
+ * Hari tayang TERAKHIR — bukan akhir jendela tayang.
+ *
+ * `toAiringEndIso` mengembalikan batas yang EKSKLUSIF: 15.00 WIB di hari
+ * setelah tayang berhenti. Itu benar untuk `end_date` di database, dan
+ * `airingDaysOf()` memang menghitungnya begitu. Tapi begitu angka yang sama
+ * ditulis ke layar sebagai ujung rentang telanjang — "1 – 8 Sep" untuk pesanan
+ * 7 hari — ia terbaca satu hari lebih panjang daripada yang dibayar.
+ *
+ * Layar memakai helper ini, database tetap memakai `toAiringEndIso`. Keduanya
+ * diturunkan dari `ymd` yang sama, jadi tidak bisa berselisih.
+ */
+export function toAiringLastDayIso(ymd: string, days: number, hourWib: number = AIRING_HOUR_WIB, minuteWib: number = 0): string {
+    return toAiringEndIso(ymd, Math.max(days, 1) - 1, hourWib, minuteWib);
 }
 
 /** Batas pelunasan agar jadwal `ymd` masih bisa dikejar: 14.00 WIB = 07:00 UTC. */

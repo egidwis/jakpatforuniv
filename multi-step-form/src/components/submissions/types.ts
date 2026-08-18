@@ -3,6 +3,8 @@
 // (moved from SubmissionsTableRow.tsx; re-exported there during migration)
 // ─────────────────────────────────────────────────────────────
 
+import { toast } from 'sonner';
+
 export interface ReviewHistoryEntry {
   action: 'in_review' | 'approved' | 'rejected' | 'spam';
   notes?: string;
@@ -66,10 +68,30 @@ export interface PaymentState {
 }
 
 export interface ExistingPage {
+  id?: string;
   slug: string;
   is_published: boolean;
   publish_start_date: string | null;
   publish_end_date: string | null;
   title?: string;
   is_extra_ad?: boolean;
+  banner_url?: string | null;
+  views_count?: number;
+  respondents_count?: number;
+  requires_banner_update?: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helper bersama antar tab detail (dipindah dari SubmissionDetailSheet.tsx
+// saat berkas itu dipecah; badannya tidak diubah)
+// ─────────────────────────────────────────────────────────────
+
+export function copyToClipboard(text: string, message: string) {
+  navigator.clipboard.writeText(text);
+  toast.success(message);
+}
+
+export function formatDate(value: string | null | undefined) {
+  if (!value) return 'Not set';
+  return new Date(value).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 }

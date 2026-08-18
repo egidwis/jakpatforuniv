@@ -1,13 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, RefreshCcw, Loader2, MessageCircle, LayoutDashboard } from 'lucide-react';
 import { getFormSubmissionById } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
 import { ErrorPage } from './ErrorPage';
+import { airingDayCount } from '../pages/dashboard/schedule/scheduleModel';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface PaymentSuccessProps {
   formId?: string;
 }
 
+const fmtDate = (value: string | null | undefined) =>
+  value
+    ? new Date(value).toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Jakarta',
+      })
+    : null;
+
+/**
+ * Penutup sesungguhnya dari seluruh perjalanan order — DOKU hanya mengarah ke
+ * sini, `/payment-failed` tidak pernah jadi tujuan callback.
+ *
+ * Dulu layar ini menutup perjalanan panjang dengan perintah "silakan tutup
+ * halaman ini", tidak pernah menyebut kapan iklannya tayang (satu-satunya hal
+ * yang ingin dipastikan user), dan menampilkan judul "Menunggu Pembayaran"
+ * tepat setelah user membayar hanya karena webhook belum masuk. Ketiganya
+ * diperbaiki di sini; layarnya kini juga memperbarui dirinya sendiri.
+ */
 export function PaymentSuccess({ formId }: PaymentSuccessProps) {
   const { t } = useLanguage();
   const [formData, setFormData] = useState<FormSubmission | null>(null);
@@ -16,60 +38,40 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFromGateway, setIsFromGateway] = useState(false);
 
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    setIsFromGateway(urlParams.get('source') === 'gateway');
-    console.log('PaymentStatus component - formId:', formId);
-    
-    if (formId) {
-      fetchFormData(formId);
-    } else {
-      console.error('Form ID is missing in the URL parameters');
-      setLoading(false);
-      setError('ID form tidak ditemukan');
-    }
-  }, [formId]);
+  // Dibaca oleh polling supaya interval-nya tidak perlu dibuat ulang tiap kali
+  // datanya berubah (dan tidak menutup nilai `formData` yang basi).
+  const isPaidRef = useRef(false);
 
   const fetchFormData = async (id: string, isManualRefresh = false) => {
     if (isManualRefresh) setIsRefreshing(true);
     else setLoading(true);
-    // Clear any stale error from a previous attempt before re-fetching. Without
-    // this, the error set on the very first render (when formId was still
-    // undefined) — or from a failed "Coba Lagi" — stays latched in state, so the
-    // `error || !formData` guard below keeps showing the ErrorPage even after a
-    // successful fetch. That is what made a valid pending submission render
-    // "Terjadi Kesalahan / ID form tidak ditemukan".
+    // Bersihkan error dari percobaan sebelumnya. Tanpa ini, error yang ditulis
+    // pada render pertama (saat formId masih undefined) tetap tersangkut di
+    // state, sehingga guard `error || !formData` di bawah terus menampilkan
+    // ErrorPage walau fetch-nya sudah berhasil.
     setError(null);
     try {
-      // Race antara request asli dan timeout
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Request timeout')), 10000)
       );
 
-      const data = await Promise.race([
-        getFormSubmissionById(id),
-        timeoutPromise
-      ]) as FormSubmission;
+      const data = (await Promise.race([getFormSubmissionById(id), timeoutPromise])) as FormSubmission;
 
       if (!data) {
-        setError('Data form tidak ditemukan');
-        setLoading(false);
-        if (isManualRefresh) setIsRefreshing(false);
+        setError(t('successNotFound'));
         return;
       }
 
       setFormData(data);
-      if (data.title && data.title.includes('OFFLINE MODE')) {
-        console.log('Running in offline/simulation mode');
-      }
+      isPaidRef.current = data.payment_status === 'paid' || data.payment_status === 'completed';
     } catch (err: any) {
       console.error('Error fetching form data:', err);
       if (err.message && (err.message.includes('network') || err.message.includes('timeout'))) {
         setError(t('errorConnectionFailed'));
       } else if (err.code === 'PGRST116') {
-        setError('Data form tidak ditemukan');
+        setError(t('successNotFound'));
       } else {
-        setError(`Terjadi kesalahan: ${err.message || 'Unknown error'}`);
+        setError(err.message || t('successLoadError'));
       }
     } finally {
       setLoading(false);
@@ -77,20 +79,63 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
     }
   };
 
-  const openWhatsApp = () => {
-    const phoneNumber = '6287759153120'; 
-    const message = formData ?
-      `Halo, saya ingin menanyakan status pembayaran untuk survey "${formData.title}" dengan ID: ${formData.id}.` :
-      'Halo, saya ingin menanyakan status pembayaran untuk akun saya.';
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    setIsFromGateway(urlParams.get('source') === 'gateway');
 
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
+    if (formId) {
+      fetchFormData(formId);
+    } else {
+      setLoading(false);
+      setError(t('successNotFound'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formId]);
+
+  /**
+   * Webhook DOKU kerap menyusul beberapa menit setelah user kembali ke sini.
+   * Halaman ini dulu tidak pernah memeriksa sendiri, jadi user diminta menekan
+   * tombol untuk melihat pembayaran yang sebenarnya sudah selesai. Polling
+   * dipakai persis seperti di halaman countdown, dan berhenti begitu lunas.
+   */
+  useEffect(() => {
+    if (!formId) return;
+
+    const poll = setInterval(async () => {
+      if (isPaidRef.current) {
+        clearInterval(poll);
+        return;
+      }
+      try {
+        const data = await getFormSubmissionById(formId);
+        if (data) {
+          setFormData(data);
+          if (data.payment_status === 'paid' || data.payment_status === 'completed') {
+            isPaidRef.current = true;
+            clearInterval(poll);
+          }
+        }
+      } catch (e) {
+        // Jaringan sesekali gagal itu wajar di sini; dicatat, tidak dibisukan.
+        console.warn('Payment status poll failed, will retry:', e);
+      }
+    }, 5000);
+
+    return () => clearInterval(poll);
+  }, [formId]);
+
+  const openWhatsApp = () => {
+    const phoneNumber = '6287759153120';
+    const message = formData
+      ? `Halo, saya ingin menanyakan status pembayaran untuk survey "${formData.title}" dengan ID: ${formData.id}.`
+      : 'Halo, saya ingin menanyakan status pembayaran untuk akun saya.';
+    window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   if (loading && !isRefreshing) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+        <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full"></div>
       </div>
     );
   }
@@ -98,118 +143,147 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
   if (error || !formData) {
     return (
       <ErrorPage
-        title="Terjadi Kesalahan"
-        message={error || 'Data tidak ditemukan'}
+        title={t('successLoadErrorTitle')}
+        message={error || t('successNotFound')}
         referenceId={formId}
         onRetry={formId ? () => fetchFormData(formId) : undefined}
       />
     );
   }
 
-  // Cek apakah sudah dibayar murni dari database (bukan asumsi statis)
   const isPaid = formData.payment_status === 'paid' || formData.payment_status === 'completed';
+  // Panjang tayang diturunkan dari jendela tanggalnya; kolom `duration` hanya
+  // cadangan, karena ia terbukti bisa meleset dari rentang sebenarnya.
+  const airingDays = airingDayCount(formData.start_date, formData.end_date) ?? formData.duration ?? null;
+  const startText = fmtDate(formData.start_date);
+  const endText = fmtDate(formData.end_date);
 
   return (
-    <div className="py-8 max-w-2xl mx-auto">
-      <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-        {/* ICON DINAMIS */}
+    <div className="py-8 px-4 max-w-2xl mx-auto">
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 md:p-8 text-center">
         {isPaid ? (
-           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-             <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-             </svg>
-           </div>
+          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+          </div>
         ) : (
-           <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-             <svg className="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-             </svg>
-           </div>
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+          </div>
         )}
 
-        <h1 className="text-2xl font-bold mb-4">
-          {isPaid ? 'Pembayaran Berhasil / Lunas!' : 'Menunggu Pembayaran'}
+        <h1 className="text-2xl font-bold text-gray-900 mb-3">
+          {isPaid ? t('successPaidTitle') : t('successPendingTitle')}
         </h1>
 
-        <div className="mb-6">
-          <p className="text-lg mb-2">Halo, {formData.full_name || 'Pengguna'}!</p>
+        <div className="mb-6 space-y-2">
           {isPaid ? (
-             <p className="text-gray-600">
-               {isFromGateway 
-                 ? 'Pembayaran berhasil dikonfirmasi. Silakan tutup halaman ini dan kembali ke aplikasi.'
-                 : `Survey "${formData.title}" Anda akan segera dipublikasikan ke responden Jakpat.`}
-             </p>
+            <>
+              <p className="text-gray-600 leading-relaxed">
+                {startText && airingDays
+                  ? t('successPaidBody', {
+                      title: formData.title || '—',
+                      start: startText,
+                      days: `${airingDays} ${t('days')}`,
+                      end: endText || '—',
+                    })
+                  : t('successPaidBodyNoSchedule', { title: formData.title || '—' })}
+              </p>
+              <p className="text-gray-500 text-sm">{t('successFollowUp')}</p>
+            </>
           ) : (
-             <p className="text-gray-600">
-               Sistem kami sedang memantau pembayaran Anda untuk transaksi "{formData.title}". Jika Anda sudah membayar, status di bawah ini akan otomatis berubah menjadi Lunas dalam hitungan menit (bergantung pada verifikasi pihak Bank/DOKU).
-             </p>
+            <p className="text-gray-600 leading-relaxed">{t('successPendingBody')}</p>
           )}
         </div>
 
-        <div className="bg-gray-50 p-4 rounded-lg mb-6 text-left border border-gray-100 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-3">
-             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${isPaid ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
-                {isPaid ? 'PAID' : 'PENDING'}
-             </span>
+        <div className="bg-gray-50 p-4 md:p-5 rounded-xl mb-6 text-left border border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('successTxDetails')}</h3>
+            <span
+              className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+              }`}
+            >
+              {isPaid ? t('successBadgePaid') : t('successBadgePending')}
+            </span>
           </div>
-          <h3 className="font-medium mb-2 pr-20">Detail Transaksi:</h3>
-          <ul className="space-y-1 text-sm text-gray-600 relative z-10">
-            <li><span className="font-medium">Form ID:</span> <span className="font-mono text-xs">{formData.id}</span></li>
-            <li><span className="font-medium">Durasi:</span> {formData.duration} hari</li>
+
+          <dl className="space-y-2 text-sm">
+            {/* Jadwal tayang paling atas — inilah yang benar-benar ingin
+                dipastikan user setelah membayar, dan dulu tidak disebut sama sekali. */}
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">{t('successAiringLabel')}</dt>
+              <dd className="font-semibold text-gray-900 text-right">
+                {startText && airingDays
+                  ? `${startText}, 15.00 WIB · ${airingDays} ${t('days')}`
+                  : t('successNoScheduleYet')}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">{t('successOrderIdLabel')}</dt>
+              <dd className="font-mono text-xs text-gray-700 text-right break-all">{formData.id}</dd>
+            </div>
             {formData.ppn_amount != null && (
               <>
-                <li><span className="font-medium">Subtotal:</span> Rp {new Intl.NumberFormat('id-ID').format(formData.subtotal ?? (formData.total_cost - formData.ppn_amount))}</li>
-                <li><span className="font-medium">PPN 11%:</span> Rp {new Intl.NumberFormat('id-ID').format(formData.ppn_amount)}</li>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">{t('subtotal')}</dt>
+                  <dd className="text-gray-700">
+                    Rp {new Intl.NumberFormat('id-ID').format(formData.subtotal ?? formData.total_cost - formData.ppn_amount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">{t('ppn')}</dt>
+                  <dd className="text-gray-700">Rp {new Intl.NumberFormat('id-ID').format(formData.ppn_amount)}</dd>
+                </div>
               </>
             )}
-            <li><span className="font-medium">Total Tagihan:</span> Rp {new Intl.NumberFormat('id-ID').format(formData.total_cost)}</li>
-          </ul>
+            <div className="flex justify-between gap-4 pt-2 border-t border-gray-200">
+              <dt className="font-bold text-gray-900">{t('totalPayment')}</dt>
+              <dd className="font-bold text-gray-900">
+                Rp {new Intl.NumberFormat('id-ID').format(formData.total_cost)}
+              </dd>
+            </div>
+          </dl>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <div className="flex flex-col gap-3">
+          {/* Jalan kembali ke dashboard SELALU ada. Kalau popup DOKU sempat
+              diblokir dan terbuka di tab yang sama, "tutup halaman ini" akan
+              menjadi jalan buntu — jadi ia hanya boleh jadi tombol sekunder. */}
+          <a
+            href="/dashboard"
+            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+          >
+            <LayoutDashboard size={18} />
+            {t('successViewOrders')}
+          </a>
+
           {!isPaid && (
-            <button 
+            <button
               onClick={() => fetchFormData(formId!, true)}
               disabled={isRefreshing}
-              className="button bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              {isRefreshing ? (
-                 <span className="animate-spin h-5 w-5 border-2 border-orange-500 border-t-transparent rounded-full" />
-              ) : (
-                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-              )}
-              {isRefreshing ? 'Mengecek...' : 'Cek Status Sekarang'}
+              {isRefreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+              {isRefreshing ? t('successChecking') : t('successCheckNow')}
             </button>
-          )}
-
-          {isFromGateway ? (
-            <button 
-              onClick={() => {
-                // Try to close tab, fallback to dashboard if browser prevents it
-                window.close();
-                setTimeout(() => {
-                  window.location.href = "/dashboard/status";
-                }, 500);
-              }} 
-              className="button button-primary"
-            >
-              Tutup Halaman Ini
-            </button>
-          ) : (
-            <a href="/dashboard/status" className="button button-primary">
-              Lihat Dashboard
-            </a>
           )}
 
           <button
             onClick={openWhatsApp}
-            className="button button-secondary flex items-center justify-center gap-2"
+            className="w-full py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2"
           >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-            </svg>
-            Hubungi Bantuan
+            <MessageCircle size={16} />
+            {t('successContactSupport')}
           </button>
+
+          {isFromGateway && (
+            <button
+              onClick={() => window.close()}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors py-1"
+            >
+              {t('successCloseTab')}
+            </button>
+          )}
         </div>
       </div>
     </div>

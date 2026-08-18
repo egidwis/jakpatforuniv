@@ -1,5 +1,5 @@
 import type { SurveyFormData, CostCalculation } from '../types';
-import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL } from './constants';
+import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL } from './constants';
 
 // DUPLICATED in functions/api/doku/create-payment.js (server-side authoritative
 // copy) — the two MUST be changed together: price tiers, voucher list, the
@@ -19,13 +19,38 @@ export function calculatePpn(dpp: number): number {
 /**
  * Masa berlaku voucher. Lewat batas → voucher mati (diskon 0 / invalid).
  * DUPLICATED sebagai ISO literal di create-payment.js — jaga tetap sama.
+ *
+ * `atMs` menjawab "sah pada kapan", dan defaultnya sengaja `Date.now()` supaya
+ * seluruh pemanggil lama tidak perlu diubah. Ia ada karena harga sebuah order
+ * WAJIB dinilai pada tanggal order itu lahir, bukan pada jam seseorang menekan
+ * bayar: create-payment.js menghitung ulang harga tiap pembayaran dan diam-diam
+ * mengoreksi DB ke angka server, jadi tanpa `atMs` order yang dipesan sebelum
+ * voucher mati akan ditagih lebih mahal dari ringkasan yang disetujui pemesan.
  */
-export function ilkomunyExpired(): boolean {
-  return Date.now() >= Date.parse(ILKOMUNY_VALID_UNTIL);
+export function ilkomunyExpired(atMs: number = Date.now()): boolean {
+  return atMs >= Date.parse(ILKOMUNY_VALID_UNTIL);
 }
 
-export function jfufebExpired(): boolean {
-  return Date.now() >= Date.parse(JFUFEB_VALID_UNTIL);
+export function jfufebExpired(atMs: number = Date.now()): boolean {
+  return atMs >= Date.parse(JFUFEB_VALID_UNTIL);
+}
+
+export function jfusuhudExpired(atMs: number = Date.now()): boolean {
+  return atMs >= Date.parse(JFUSUHUD_VALID_UNTIL);
+}
+
+/**
+ * Instan penilai voucher untuk order yang SUDAH ada: tanggal order itu lahir.
+ *
+ * Dipakai setiap kali harga sebuah order lama dihitung ulang, supaya angka yang
+ * ditampilkan sama dengan angka yang ditagih server (create-payment.js memakai
+ * `created_at` untuk hal yang sama). Baris tanpa `created_at` yang terbaca
+ * jatuh ke "sekarang", bukan ke "tidak pernah kedaluwarsa" — data rusak tidak
+ * boleh berubah jadi diskon abadi.
+ */
+export function voucherInstantOf(createdAt: string | null | undefined): number {
+  const parsed = Date.parse(createdAt ?? '');
+  return Number.isNaN(parsed) ? Date.now() : parsed;
 }
 
 /**
@@ -101,7 +126,7 @@ export function calculateIncentiveCost(winnerCount: number, prizePerWinner: numb
  * @param adCost Biaya iklan
  * @returns Jumlah diskon
  */
-export function calculateDiscount(voucherCode: string | undefined, adCost: number, incentiveCost: number = 0, duration: number = 0): number {
+export function calculateDiscount(voucherCode: string | undefined, adCost: number, incentiveCost: number = 0, duration: number = 0, atMs: number = Date.now()): number {
   // Implementasi sederhana, bisa diganti dengan logika yang lebih kompleks
   if (!voucherCode) return 0;
 
@@ -124,8 +149,8 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
   // lewat itu tak ada diskon. DUPLICATED di create-payment.js — WAJIB diubah bersamaan.
   const upper = voucherCode.toUpperCase();
   if (upper === 'JFUFEB' || upper === 'ILKOMUNY') {
-    if (upper === 'JFUFEB' && jfufebExpired()) return 0;
-    if (upper === 'ILKOMUNY' && ilkomunyExpired()) return 0;
+    if (upper === 'JFUFEB' && jfufebExpired(atMs)) return 0;
+    if (upper === 'ILKOMUNY' && ilkomunyExpired(atMs)) return 0;
     if (duration === 7) {
       return adCost > 1000000 ? adCost - 1000000 : 0;
     }
@@ -197,9 +222,9 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
     return adCost * 0.2;
   }
 
-  // Kode JFUSUHUD memberikan diskon 10% untuk iklan regular
+  // Kode JFUSUHUD memberikan diskon 10% untuk iklan regular, s/d 31 Agu 2026.
   if (voucherCode.toUpperCase() === 'JFUSUHUD') {
-    return adCost * 0.1;
+    return jfusuhudExpired(atMs) ? 0 : adCost * 0.1;
   }
 
   return 0;
@@ -210,7 +235,7 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
  * @param voucherCode Kode voucher
  * @returns Informasi voucher atau null jika tidak valid
  */
-export function getVoucherInfo(voucherCode: string | undefined, duration: number = 0): { isValid: boolean; message?: string; discount?: number; isError?: boolean; isKilatEligible?: boolean } {
+export function getVoucherInfo(voucherCode: string | undefined, duration: number = 0, atMs: number = Date.now()): { isValid: boolean; message?: string; discount?: number; isError?: boolean; isKilatEligible?: boolean } {
   if (!voucherCode) return { isValid: false, isError: false };
 
   const upperCode = voucherCode.toUpperCase();
@@ -225,7 +250,7 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
   }
 
   if (upperCode === 'JFUFEB') {
-    if (jfufebExpired()) {
+    if (jfufebExpired(atMs)) {
       return {
         isValid: false,
         message: 'Kode JFUFEB sudah berakhir (berlaku s/d 20 Feb 2027).',
@@ -243,7 +268,7 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
   // "sekali pakai per akun". Status "sudah dipakai" dicek async saat submit
   // (getVoucherInfo sinkron, tak bisa query DB).
   if (upperCode === 'ILKOMUNY') {
-    if (ilkomunyExpired()) {
+    if (ilkomunyExpired(atMs)) {
       return {
         isValid: false,
         message: 'Kode ILKOMUNY sudah berakhir (berlaku s/d 31 Des 2026).',
@@ -265,10 +290,21 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
     };
   }
 
+  // Tanggal berakhirnya disebut SELAGI voucher masih hidup, bukan hanya saat ia
+  // sudah mati — kalau tidak, peneliti baru tahu pada 1 September, ketika kodenya
+  // tiba-tiba berhenti bekerja.
   if (upperCode === 'JFUSUHUD') {
+    if (jfusuhudExpired(atMs)) {
+      return {
+        isValid: false,
+        message: 'Kode JFUSUHUD sudah berakhir (berlaku s/d 31 Agu 2026).',
+        discount: 0,
+        isError: true
+      };
+    }
     return {
       isValid: true,
-      message: 'Diskon 10% untuk iklan regular! Atau upgrade ke ⚡ JFU Kilat',
+      message: 'Diskon 10% untuk iklan regular, berlaku s/d 31 Agu 2026! Atau upgrade ke ⚡ JFU Kilat',
       isKilatEligible: true
     };
   }

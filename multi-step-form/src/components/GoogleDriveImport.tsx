@@ -87,7 +87,7 @@ export function GoogleDriveImport({ formData, updateFormData, onFormDataLoaded }
         toast.error(
           <div className="flex flex-col gap-1">
             <span className="font-bold">Izin Tidak Lengkap</span>
-            <span className="text-sm">Mohon centang SEMUA kotak izin agar kami dapat membaca form Anda. Jangan khawatir, kami hanya membaca file yang Anda pilih.</span>
+            <span className="text-sm">Mohon centang SEMUA kotak izin agar kami dapat me-review form Anda. Jangan khawatir, kami hanya membaca file yang Anda pilih saja.</span>
           </div>,
           { duration: 6000 }
         );

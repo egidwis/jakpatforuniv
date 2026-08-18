@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Zap, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,9 +22,38 @@ import { toLocalYmd } from '../utils/airing-window';
 
 interface KilatScheduleBoardProps {
     onOpenSubmission: (params: { id: string; createdAt: string }) => void;
+    /**
+     * Dirender DI DALAM kartu lain (papan Schedule), jadi kartu luarnya sendiri
+     * dilepas — kartu di dalam kartu membuat batas ganda yang tidak berarti apa
+     * pun. Navigasi minggunya tetap ikut: gelombang Kilat Senin–Jumat adalah
+     * periode yang berbeda dari periode papan induknya, jadi ia harus punya
+     * kendali sendiri.
+     *
+     * Sejak Page Calendar dipensiunkan (2026-08-08) hanya papan Schedule yang
+     * memakainya, jadi `embedded` selalu `true` di praktiknya. Default `false`
+     * dipertahankan supaya komponen ini tetap bisa berdiri sendiri.
+     */
+    embedded?: boolean;
 }
 
 const formatHour = (h: number) => `${String(h).padStart(2, '0')}.00`;
+
+/**
+ * Kartu pembungkus kisi gelombang — dilepas saat papan ini dirender DI DALAM
+ * kartu lain, karena kartu di dalam kartu cuma menghasilkan batas ganda.
+ *
+ * Didefinisikan di tingkat modul, bukan di dalam komponennya: komponen yang
+ * lahir ulang tiap render akan me-remount seluruh kisi dan membuang posisi
+ * gulung horizontalnya setiap kali data masuk.
+ */
+function BoardShell({ embedded, children }: { embedded: boolean; children: ReactNode }) {
+    if (embedded) return <div>{children}</div>;
+    return (
+        <Card className="shadow-sm border-slate-200 bg-white">
+            <CardContent className="p-4">{children}</CardContent>
+        </Card>
+    );
+}
 
 /** Senin dari minggu kalender yang memuat `date`. Bukan "5 hari kerja ke depan" — ini dijangkarkan ke batas minggu supaya navigasi ←/→ punya arti. */
 function mondayOf(date: Date): Date {
@@ -58,7 +87,7 @@ function statusMeta(entry: KilatScheduleEntry): { label: string; dotClass: strin
     return { label: 'Menunggu bayar', dotClass: 'bg-amber-500' };
 }
 
-export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps) {
+export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: KilatScheduleBoardProps) {
     const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
     const [entries, setEntries] = useState<KilatScheduleEntry[]>([]);
     const [isFetching, setIsFetching] = useState(true);
@@ -185,8 +214,7 @@ export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps
                 {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
             </div>
 
-            <Card className="shadow-sm border-slate-200 bg-white">
-                <CardContent className="p-4">
+            <BoardShell embedded={embedded}>
                     {isFetching ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
@@ -195,23 +223,29 @@ export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps
                         <div className="overflow-x-auto">
                             <div className="min-w-[720px]">
                                 {/* Header hari */}
-                                <div className="grid grid-cols-[90px_repeat(5,1fr)] gap-2 mb-2">
+                                <div className="[display:grid] grid-cols-[92px_repeat(5,minmax(0,1fr))] gap-2 mb-2">
                                     <div />
-                                    {weekdays.map((day) => (
-                                        <div key={toLocalYmd(day)} className="text-center">
-                                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                                {day.toLocaleDateString('id-ID', { weekday: 'short' })}
+                                    {weekdays.map((day) => {
+                                        const isToday = toLocalYmd(day) === toLocalYmd(new Date());
+                                        return (
+                                            <div
+                                                key={toLocalYmd(day)}
+                                                className={`text-center rounded-lg py-0.5 ${isToday ? 'bg-blue-50 border border-blue-200' : ''}`}
+                                            >
+                                                <div className={`text-[10px] font-bold uppercase tracking-wider ${isToday ? 'text-blue-700' : 'text-slate-500'}`}>
+                                                    {day.toLocaleDateString('id-ID', { weekday: 'short' })}
+                                                </div>
+                                                <div className={`text-[13px] font-extrabold ${isToday ? 'text-blue-800' : 'text-slate-800'}`}>
+                                                    {day.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                                </div>
                                             </div>
-                                            <div className="text-[13px] font-extrabold text-slate-800">
-                                                {day.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
 
                                 {/* Baris per gelombang */}
                                 {KILAT_SLOT_HOURS.map((hour) => (
-                                    <div key={hour} className="grid grid-cols-[90px_repeat(5,1fr)] gap-2 mb-2">
+                                    <div key={hour} className="[display:grid] grid-cols-[92px_repeat(5,minmax(0,1fr))] gap-2 mb-2">
                                         <div className="flex items-center justify-center text-center text-[11px] font-bold text-amber-800 bg-amber-50 rounded-lg border border-amber-200 px-1">
                                             {formatHour(hour)} WIB
                                         </div>
@@ -224,7 +258,7 @@ export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps
                                             return (
                                                 <div
                                                     key={ymd}
-                                                    className={`rounded-lg border p-1.5 min-h-[76px] flex flex-col gap-1 ${isFull
+                                                    className={`min-w-0 rounded-lg border p-1.5 min-h-[76px] flex flex-col gap-1 ${isFull
                                                         ? 'bg-amber-50/60 border-amber-300'
                                                         : 'bg-white border-slate-200'
                                                         }`}
@@ -243,11 +277,14 @@ export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps
                                                                     key={entry.id}
                                                                     type="button"
                                                                     onClick={() => onOpenSubmission({ id: entry.id, createdAt: entry.createdAt })}
-                                                                    title={`${entry.title} — ${entry.researcherName}`}
-                                                                    className="flex items-center gap-1 px-1.5 py-1 rounded-md bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1"
+                                                                    title={`${entry.title} — ${entry.researcherName} (${meta.label})`}
+                                                                    className="flex w-full min-w-0 items-center gap-1 px-1.5 py-1 rounded-md bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1"
                                                                 >
                                                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dotClass}`} title={meta.label} />
-                                                                    <span className="text-[10px] font-medium text-slate-700 truncate">
+                                                                    {/* min-w-0 WAJIB: tanpa itu `truncate` tidak pernah menyala pada
+                                                                        anak flex, dan judul survei yang panjang akan melebarkan
+                                                                        kolomnya sendiri sampai kisinya berantakan. */}
+                                                                    <span className="min-w-0 flex-1 text-[10px] font-medium text-slate-700 truncate">
                                                                         {entry.title}
                                                                     </span>
                                                                 </button>
@@ -262,8 +299,7 @@ export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps
                             </div>
                         </div>
                     )}
-                </CardContent>
-            </Card>
+            </BoardShell>
 
             {/* Order Kilat dari wizard user yang belum ditugaskan gelombangnya oleh admin. */}
             {!isFetching && hasUnassigned && (
@@ -279,14 +315,14 @@ export function KilatScheduleBoard({ onOpenSubmission }: KilatScheduleBoardProps
                                     <span className="text-[11px] font-bold text-slate-500 uppercase shrink-0 w-20 pt-0.5">
                                         {day.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
                                     </span>
-                                    <div className="flex flex-wrap gap-1.5">
+                                    <div className="flex min-w-0 flex-wrap gap-1.5">
                                         {list.map((entry) => (
                                             <button
                                                 key={entry.id}
                                                 type="button"
                                                 onClick={() => onOpenSubmission({ id: entry.id, createdAt: entry.createdAt })}
                                                 title={`${entry.title} — ${entry.researcherName}`}
-                                                className="flex items-center gap-1 px-2 py-1 rounded-full bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-[10px] font-medium text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1"
+                                                className="max-w-[280px] truncate px-2 py-1 rounded-full bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-[10px] font-medium text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1"
                                             >
                                                 {entry.title}
                                             </button>

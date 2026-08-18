@@ -1,9 +1,31 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { SurveyFormData } from '../types';
-import { CheckCircle, AlertCircle, Settings, Gift, Info, Lightbulb, ShieldAlert } from 'lucide-react';
-import { useLanguage } from '../i18n/LanguageContext';
-import { toast } from 'sonner';
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle,
+  Gift,
+  Hash,
+  Info,
+  Link2,
+  ShieldAlert,
+  Trophy,
+  Type,
+  Users,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useLanguage } from '../i18n/LanguageContext';
+import { isAutoApprovalPath } from '../utils/review-path';
+import { useSlotAvailability } from '../hooks/useSlotAvailability';
+import { isBookingClosedForDate, toLocalYmd } from '../utils/airing-window';
+import {
+  FieldBlock,
+  FieldRow,
+  SectionLabel,
+  fieldInputClass,
+  fieldRowListClass,
+} from './SurveyFieldRow';
 
 // Helper function to get recommended prize based on question count
 const getRecommendedPrize = (questionCount: number): number => {
@@ -21,20 +43,66 @@ interface StepOneFormFieldsProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   onSubmit: () => void;
-  onBack?: () => void;
+  onBack: () => void;
   isGoogleImport?: boolean;
+  onSwitchToGoogle?: () => void;
+  /** Order lahir dari CTA "Sebar via Jakpat": sumber datanya form JFU, jadi
+   *  field surveinya dikunci dan tautan ganti-metode disembunyikan. */
   isJfuImport?: boolean;
 }
 
 interface FormErrors {
   surveyUrl?: string;
   title?: string;
-  description?: string;
   questionCount?: string;
   criteriaResponden?: string;
   duration?: string;
   winnerCount?: string;
   prizePerWinner?: string;
+}
+
+const isValidUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Body layar isi-form Iklan Survei — dirender di dalam `AdsFlowCard`
+ * (`step="fields"`, tanpa cap), dipakai dua jalur: manual dan lanjutan
+ * import Google Form (`isGoogleImport`).
+ */
+export function ReviewInfoBanner({ formData }: { formData: SurveyFormData }) {
+  const { t } = useLanguage();
+  const isAutoPath = isAutoApprovalPath(formData);
+
+  return (
+    <div className="mx-auto max-w-xl mb-4 p-3.5 md:p-4 rounded-2xl bg-blue-50/80 border border-blue-100/90 flex items-start gap-3 text-xs md:text-sm leading-relaxed text-blue-900 shadow-sm">
+      <Info className="w-5 h-5 mt-0.5 shrink-0 text-jfu-primary" aria-hidden="true" />
+      <div>
+        <p className="font-semibold text-blue-950 text-sm md:text-base">
+          {isAutoPath ? t('reviewMethodAutoHint') : t('reviewMethodManualHint')}
+          {' · '}
+          {isAutoPath ? t('adsEntryAutoRowTime') : t('adsEntryManualRowTime')}
+        </p>
+        <p className="mt-1 text-blue-800/90 leading-relaxed">
+          {t('adsEntryReviewNotePart1')}{' '}
+          <a
+            href="/homepage/terms-conditions.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-jfu-primary underline hover:text-jfu-dark"
+          >
+            {t('termsConditions')}
+          </a>
+          {t('adsEntryReviewNotePart2')}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export function StepOneFormFields({
@@ -43,6 +111,7 @@ export function StepOneFormFields({
   onSubmit,
   onBack,
   isGoogleImport = false,
+  onSwitchToGoogle,
   isJfuImport = false
 }: StepOneFormFieldsProps) {
   const { t } = useLanguage();
@@ -50,6 +119,31 @@ export function StepOneFormFields({
   const hasInitializedRef = useRef(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+
+  const surveyUrlRef = useRef<HTMLTextAreaElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const criteriaRespondenRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (surveyUrlRef.current) {
+      surveyUrlRef.current.style.height = 'auto';
+      surveyUrlRef.current.style.height = `${Math.max(24, surveyUrlRef.current.scrollHeight)}px`;
+    }
+  }, [formData.surveyUrl]);
+
+  useEffect(() => {
+    if (titleRef.current) {
+      titleRef.current.style.height = 'auto';
+      titleRef.current.style.height = `${Math.max(24, titleRef.current.scrollHeight)}px`;
+    }
+  }, [formData.title]);
+
+  useEffect(() => {
+    if (criteriaRespondenRef.current) {
+      criteriaRespondenRef.current.style.height = 'auto';
+      criteriaRespondenRef.current.style.height = `${Math.max(60, criteriaRespondenRef.current.scrollHeight)}px`;
+    }
+  }, [formData.criteriaResponden]);
 
   const fieldsReadOnly = isGoogleImport || isJfuImport;
   const isBlockedByPersonalData = isJfuImport && !!formData.hasPersonalDataQuestions;
@@ -100,14 +194,12 @@ export function StepOneFormFields({
 
     if (!formData.surveyUrl || !formData.surveyUrl.trim()) {
       newErrors.surveyUrl = t('errorSurveyLinkEmpty');
+    } else if (!isValidUrl(formData.surveyUrl.trim())) {
+      newErrors.surveyUrl = t('errorInvalidSurveyUrl');
     }
 
     if (!formData.title || !formData.title.trim()) {
       newErrors.title = t('errorTitleEmpty');
-    }
-
-    if (!formData.description || !formData.description.trim()) {
-      newErrors.description = t('errorDescriptionEmpty');
     }
 
     if (formData.questionCount <= 0) {
@@ -154,595 +246,418 @@ export function StepOneFormFields({
     }
   };
 
+  const winnerTooltip = (
+    <span className="leading-relaxed">
+      {t('maxWinnerWarning')}{' '}
+      <Link to="/dashboard/chat" target="_blank" className="font-semibold underline hover:text-gray-200">
+        {t('contactAdmin')}
+      </Link>
+      .
+    </span>
+  );
+
+  const durationTooltip = (
+    <span className="leading-relaxed">
+      {t('surveyDurationHint')}
+    </span>
+  );
+
+  const criteriaTooltip = (
+    <span className="leading-relaxed">
+      {t('respondentCriteriaHelp')
+        .split('*')
+        .map((part, index) =>
+          index % 2 === 1 ? (
+            <strong key={index} className="font-semibold text-white">{part}</strong>
+          ) : (
+            part
+          )
+        )}
+    </span>
+  );
+
+  const prizeTooltip = (
+    <span className="leading-relaxed">
+      {t('prizePerWinnerHint')}
+    </span>
+  );
+
+  // Durasi memakai kondisi ganda milik desain lama: error tampil dari state
+  // `errors` SETELAH submit, tapi juga langsung saat angka di luar 1–30.
+  const durationOutOfRange =
+    formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30);
+  const durationHasError = (errors.duration && attemptedSubmit) || durationOutOfRange;
+
+  /*
+   * Antisipasi tembok "slot penuh" di ujung flow.
+   *
+   * Sejak Ringkasan mendahului Jadwal, ketersediaan slot baru terlihat setelah
+   * user selesai mengisi semuanya — kalau durasinya panjang dan kalendernya
+   * padat, penolakan datang di saat paling menyakitkan. Angka di bawah
+   * memindahkan kabar itu ke tempat penyebabnya: kolom durasi.
+   *
+   * Hanya untuk jalur impor Google Form; entri manual tidak pernah melewati
+   * langkah Jadwal, jadi menampilkannya di sana justru menyesatkan.
+   */
+  const availability = useSlotAvailability('regular');
+  const openStartDays = useMemo(() => {
+    if (!isGoogleImport || availability.isLoading) return null;
+    const days = Math.max(formData.duration || 1, 1);
+    if (days > 30) return null;
+    const today = new Date();
+    let open = 0;
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const ymd = toLocalYmd(d);
+      if (!isBookingClosedForDate(ymd) && availability.isRangeAvailable(ymd, days)) open++;
+    }
+    return open;
+  }, [isGoogleImport, availability.isLoading, availability.isRangeAvailable, formData.duration]);
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-      {/* Success Banner for Google Import */}
-      {isGoogleImport && (
-        <div className="info-box success mb-4">
-          <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-green-800">{t('successImportedFromGoogleDrive')}</p>
-              <p className="text-xs text-green-700 mt-1">
-                Judul, deskripsi, dan jumlah pertanyaan telah diisi otomatis berdasarkan form Google Anda.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Success Banner for JFU Form Import */}
-      {isJfuImport && !isBlockedByPersonalData && (
-        <div className="info-box success mb-4">
-          <div className="flex items-start gap-2">
-            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-green-800">Diisi otomatis dari JFU Form</p>
-              <p className="text-xs text-green-700 mt-1">
-                Link, judul, deskripsi, dan jumlah pertanyaan disinkronkan dari form JFU Anda dan tidak bisa diubah di sini. Edit form aslinya jika ada yang perlu diperbarui.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Hard Block: personal data question detected on a JFU-origin form */}
+    <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
+      {/* Blokir keras: form JFU yang terdeteksi meminta data pribadi responden.
+          Sengaja DI LUAR kartu dan di paling atas — ini bukan catatan tambahan,
+          melainkan alasan seluruh layar ini tidak bisa dilanjutkan. */}
       {isBlockedByPersonalData && (
-        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4">
-          <div className="flex items-start gap-2">
-            <ShieldAlert className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-red-800">Survey tidak bisa disebar — terdeteksi pertanyaan data pribadi</p>
-              <p className="text-xs text-red-700 mt-1">
-                AI kami mendeteksi form ini kemungkinan meminta data pribadi responden
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 md:p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5 text-red-600" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-red-900">
+                Survei ini belum bisa disebar — terdeteksi pertanyaan data pribadi
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-red-800/90">
+                Form JFU ini kemungkinan meminta data pribadi responden
                 {formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
                   <> ({formData.detectedKeywords.join(', ')})</>
                 )}
-                . Untuk melanjutkan, edit form JFU Anda agar tidak meminta data pribadi responden, atau buat form baru khusus untuk disebar via Jakpat, lalu klik "Sebar via Jakpat" lagi.
+                . Edit form aslinya sampai tidak lagi meminta data pribadi, lalu klik
+                “Sebar via Jakpat” sekali lagi.
               </p>
               {formData.flaggedPersonalDataQuestions && formData.flaggedPersonalDataQuestions.length > 0 && (
                 <ul className="mt-2 space-y-1 list-disc list-inside">
                   {formData.flaggedPersonalDataQuestions.map((question, idx) => (
-                    <li key={idx} className="text-xs text-red-700">
-                      <span className="font-medium">"{question}"</span>
+                    <li key={idx} className="text-xs text-red-800">
+                      <span className="font-medium">“{question}”</span>
                     </li>
                   ))}
                 </ul>
               )}
-              <Link
-                to={`/dashboard/forms/${formData.customFormId}/edit`}
-                className="inline-flex items-center gap-1.5 mt-3 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                Edit Form
-              </Link>
+              {formData.customFormId && (
+                <Link
+                  to={`/dashboard/forms/${formData.customFormId}/edit`}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
+                >
+                  Edit Form
+                </Link>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* SECTION: SURVEY INFORMATION */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
-              <Info size={18} />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('surveyInformation')}</h3>
-          </div>
-          {formData.surveyUrl && formData.title && formData.description && formData.questionCount > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full border border-green-100">
-              <CheckCircle size={12} />
-              <span>Complete</span>
-            </div>
-          )}
-        </div>
-        <div className="p-6 space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="surveyUrl" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {isJfuImport ? 'Link JFU Form' : t('googleFormLink')} <span className="text-red-500">*</span>
-              {isGoogleImport && <span className="text-xs font-normal text-gray-500 ml-1">{t('surveyTitleFromGoogleDrive')}</span>}
-              {isJfuImport && <span className="text-xs font-normal text-gray-500 ml-1">Diisi otomatis dari JFU Form</span>}
-            </label>
-            <div className="relative">
-              <input
-                id="surveyUrl"
-                type="url"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
-                  ${errors.surveyUrl && attemptedSubmit
-                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                  ${fieldsReadOnly ? 'bg-gray-50 text-gray-600' : 'bg-white'}
-                `}
-                style={!errors.surveyUrl || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!(attemptedSubmit && errors.surveyUrl)) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!(attemptedSubmit && errors.surveyUrl)) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={isJfuImport ? 'https://.../f/...' : t('googleFormLinkPlaceholder')}
-                value={formData.surveyUrl}
-                onChange={(e) => {
-                  if (!fieldsReadOnly) {
-                    updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
-                    if (attemptedSubmit && errors.surveyUrl) {
-                      setErrors({ ...errors, surveyUrl: undefined });
-                    }
-                  }
-                }}
-                readOnly={fieldsReadOnly}
-              />
-              {formData.surveyUrl && !errors.surveyUrl && !fieldsReadOnly && (
-                <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4" />
-              )}
-            </div>
-            {errors.surveyUrl && attemptedSubmit ? (
-              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {errors.surveyUrl}
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500">
-                {isJfuImport
-                  ? 'Link ini otomatis diambil dari form JFU Anda dan tidak bisa diubah di sini.'
-                  : 'Masukan link Google Form atau shortlink (forms.gle/...)'}
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label htmlFor="title" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                {t('surveyTitle')} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  id="title"
-                  type="text"
-                  className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
-                    ${errors.title && attemptedSubmit
-                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 hover:border-gray-300'
-                    }
-                    ${fieldsReadOnly ? 'bg-gray-50 text-gray-600' : 'bg-white'}
-                  `}
-                  style={!errors.title || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                  onFocus={(e) => {
-                    if (!(attemptedSubmit && errors.title)) {
-                      e.target.style.borderColor = '#0091ff';
-                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!(attemptedSubmit && errors.title)) {
-                      e.target.style.borderColor = '#e5e7eb';
-                      e.target.style.boxShadow = 'none';
-                    }
-                  }}
-                  placeholder={t('surveyTitlePlaceholder')}
-                  value={formData.title}
-                  onChange={(e) => {
-                    if (!fieldsReadOnly) {
-                      updateFormData({ title: e.target.value });
-                      if (attemptedSubmit && errors.title) {
-                        setErrors({ ...errors, title: undefined });
-                      }
-                    }
-                  }}
-                  readOnly={fieldsReadOnly}
-                />
-              </div>
-              {errors.title && attemptedSubmit && (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {errors.title}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="questionCount" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                {t('questionCount')} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  id="questionCount"
-                  type="number"
-                  className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200
-                    ${errors.questionCount && attemptedSubmit
-                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 hover:border-gray-300'
-                    }
-                    ${fieldsReadOnly ? 'bg-gray-50 text-gray-600' : 'bg-white'}
-                  `}
-                  style={!errors.questionCount || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                  onFocus={(e) => {
-                    if (!(attemptedSubmit && errors.questionCount)) {
-                      e.target.style.borderColor = '#0091ff';
-                      e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!(attemptedSubmit && errors.questionCount)) {
-                      e.target.style.borderColor = '#e5e7eb';
-                      e.target.style.boxShadow = 'none';
-                    }
-                  }}
-                  placeholder={t('questionCountPlaceholder')}
-                  value={formData.questionCount || ''}
-                  onChange={(e) => {
-                    if (!fieldsReadOnly) {
-                      updateFormData({ questionCount: parseInt(e.target.value) || 0 });
-                      if (attemptedSubmit && errors.questionCount) {
-                        setErrors({ ...errors, questionCount: undefined });
-                      }
-                    }
-                  }}
-                  readOnly={fieldsReadOnly}
-                  min={1}
-                />
-              </div>
-              {errors.questionCount && attemptedSubmit ? (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {errors.questionCount}
-                </p>
-              ) : formData.questionCount > 0 && (
-                <p className="text-xs font-medium mt-1" style={{ color: '#0091ff' }}>
-                  Est. Cost: Rp {formData.questionCount <= 15 ? '150.000' : formData.questionCount <= 30 ? '200.000' : formData.questionCount <= 50 ? '300.000' : formData.questionCount <= 70 ? '400.000' : '500.000'}/hari
-                  <span className="text-gray-400 font-normal"> ({t('priceExcludesTax')})</span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="description" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {t('surveyDescription')} <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <textarea
-                id="description"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 min-h-[120px] resize-y
-                  ${errors.description && attemptedSubmit
-                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                  ${fieldsReadOnly ? 'bg-gray-50 text-gray-600' : 'bg-white'}
-                `}
-                style={!errors.description || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!(attemptedSubmit && errors.description)) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!(attemptedSubmit && errors.description)) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={t('surveyDescriptionPlaceholder')}
-                value={formData.description}
-                onChange={(e) => {
-                  if (!fieldsReadOnly) {
-                    updateFormData({ description: e.target.value });
-                    if (attemptedSubmit && errors.description) {
-                      setErrors({ ...errors, description: undefined });
-                    }
-                  }
-                }}
-                readOnly={fieldsReadOnly}
-                rows={4}
-                maxLength={500}
-              />
-              <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 font-medium bg-white/80 px-1.5 py-0.5 rounded">
-                {formData.description.length}/500
-              </div>
-            </div>
-            {errors.description && attemptedSubmit && (
-              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {errors.description}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION: SURVEY CONFIGURATION */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-10">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0, 145, 255, 0.1)', color: '#0091ff' }}>
-              <Settings size={18} />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('surveyConfiguration')}</h3>
-          </div>
-          {formData.criteriaResponden && formData.duration > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full border border-green-100">
-              <CheckCircle size={12} />
-              <span>Complete</span>
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="criteriaResponden" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {t('respondentCriteriaLabel')} <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <textarea
-                id="criteriaResponden"
-                className={`w-full px-4 py-2.5 rounded-lg border text-sm transition-all duration-200 min-h-[100px] resize-y
-                  ${errors.criteriaResponden && attemptedSubmit
-                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                  bg-white
-                `}
-                style={!errors.criteriaResponden || !attemptedSubmit ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!(attemptedSubmit && errors.criteriaResponden)) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!(attemptedSubmit && errors.criteriaResponden)) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={t('respondentCriteriaPlaceholder')}
-                value={formData.criteriaResponden}
-                onChange={(e) => {
-                  updateFormData({ criteriaResponden: e.target.value });
-                  if (attemptedSubmit && errors.criteriaResponden) {
-                    setErrors({ ...errors, criteriaResponden: undefined });
-                  }
-                }}
-                rows={3}
-                maxLength={200}
-              />
-              <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 font-medium bg-white/80 px-1.5 py-0.5 rounded">
-                {formData.criteriaResponden?.length || 0}/200
-              </div>
-            </div>
-            {errors.criteriaResponden && attemptedSubmit ? (
-              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {errors.criteriaResponden}
-              </p>
-            ) : (
-              <p className="text-xs flex items-start gap-2 mt-1 p-2 rounded-lg border text-left" style={{ backgroundColor: 'rgba(0, 145, 255, 0.05)', borderColor: 'rgba(0, 145, 255, 0.2)', color: '#0091ff' }}>
-                <Info size={14} className="mt-0.5 flex-shrink-0" />
-                <span className="leading-relaxed">
-                  {t('respondentCriteriaHelp').split('*').map((part, index) =>
-                    index % 2 === 1 ? <strong key={index} className="font-semibold">{part}</strong> : part
-                  )}
-                </span>
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="duration" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-              {t('surveyDurationLabel')} <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <input
-                id="duration"
-                type="number"
-                className={`w-full pl-4 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                  ${(errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30))
-                    ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                  bg-white
-                `}
-                style={(!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) ? { outlineColor: '#0091ff' } : {}}
-                onFocus={(e) => {
-                  if (!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) {
-                    e.target.style.borderColor = '#0091ff';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30)))) {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }
-                }}
-                placeholder={t('surveyDurationPlaceholder')}
-                value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const intVal = parseInt(val);
-                  updateFormData({ duration: isNaN(intVal) ? 0 : intVal });
-                  if (attemptedSubmit && errors.duration) {
-                    setErrors({ ...errors, duration: undefined });
-                  }
-                }}
-                min={1}
-                max={30}
-              />
-              {formData.duration > 0 && formData.duration <= 30 && !errors.duration && (
-                <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 w-4 h-4 pointer-events-none" />
-              )}
-            </div>
-            {((errors.duration && attemptedSubmit) || (formData.duration !== undefined && (formData.duration < 1 || formData.duration > 30))) ? (
-              <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3 h-3" /> {formData.duration > 30 ? t('errorDurationMax') : t('errorDurationZero')}
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500 mt-1">
-                {t('surveyDurationHelp')}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION: INCENTIVE SETTINGS */}
-      <div className="bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/30 rounded-xl border border-emerald-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-emerald-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
-              <Gift size={18} />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('incentiveSettings')}</h3>
-          </div>
-          {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
-              <CheckCircle size={12} />
-              <span>Complete</span>
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="p-3 rounded-lg flex items-start gap-2 border" style={{ backgroundColor: 'rgba(0, 145, 255, 0.05)', borderColor: 'rgba(0, 145, 255, 0.2)' }}>
-            <Info className="w-4 h-4 mt-0.5" style={{ color: '#0091ff' }} />
-            <p className="text-sm" style={{ color: '#0077cc' }}>
-              {t('incentiveDistributionInfo')}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label htmlFor="prizePerWinner" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                {t('prizePerWinnerLabel')} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">Rp</div>
-                <input
-                  id="prizePerWinner"
-                  type="number"
-                  className={`w-full pl-10 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                    ${errors.prizePerWinner
-                      ? 'border-red-300 focus:ring-red-200 bg-red-50/30'
-                      : 'border-gray-200 hover:border-gray-300'
-                    }
-                    bg-white
-                  `}
-                  placeholder={t('prizePerWinnerPlaceholder')}
-                  value={formData.prizePerWinner}
-                  onChange={(e) => {
-                    updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
-                    if (attemptedSubmit && errors.prizePerWinner) {
-                      setErrors({ ...errors, prizePerWinner: undefined });
-                    }
-                  }}
-                  min={25000}
-                  step={1000}
-                />
-                {formData.prizePerWinner >= 25000 && !errors.prizePerWinner && (
-                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4 pointer-events-none" />
-                )}
-              </div>
-              {formData.prizePerWinner > 0 && formData.prizePerWinner < 25000 ? (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {t('errorMinPrize')}
-                </p>
-              ) : (
-                <>
-                  {formData.prizePerWinner >= 25000 && formData.questionCount > 0 && (
-                    <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                      <Lightbulb className="w-3 h-3" />
-                      {t('recommendation')}: Rp {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}{t('perWinner')}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="winnerCount" className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                {t('winnerCountLabel')} <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  id="winnerCount"
-                  type="number"
-                  className={`w-full pl-4 pr-10 py-2.5 rounded-lg border text-sm transition-all duration-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                    ${errors.winnerCount ? 'border-red-300 focus:ring-red-200 bg-red-50/30' : 'border-gray-200 hover:border-gray-300'}
-                     bg-white
-                  `}
-                  placeholder={t('winnerCountPlaceholder')}
-                  value={formData.winnerCount}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    updateFormData({ winnerCount: Math.min(val, 5) });
-                    if (attemptedSubmit && errors.winnerCount) {
-                      setErrors({ ...errors, winnerCount: undefined });
-                    }
-                  }}
-                  min={2}
-                  max={5}
-                />
-                {formData.winnerCount >= 2 && formData.winnerCount <= 5 && !errors.winnerCount && (
-                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 w-4 h-4 pointer-events-none" />
-                )}
-              </div>
-              {formData.winnerCount > 0 && formData.winnerCount < 2 ? (
-                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3" /> {t('errorMinWinners')}
-                </p>
-              ) : (
-                <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                  <span className="flex items-start gap-1">
-                    <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
-                    <span>
-                      {t('maxWinnerWarning')}{' '}
-                      <Link
-                        to="/dashboard/chat"
-                        target="_blank"
-                        className="font-semibold underline hover:no-underline"
-                        style={{ color: '#0091ff' }}
-                      >
-                        {t('contactAdmin')}
-                      </Link>.
-                    </span>
-                  </span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          {formData.winnerCount >= 2 && formData.prizePerWinner >= 25000 && (
-            <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 flex items-center justify-between">
-              <span className="text-sm font-medium text-emerald-800">{t('totalIncentiveRequired')}</span>
-              <p className="text-lg font-bold text-emerald-700">
-                💰 Rp {(formData.winnerCount * formData.prizePerWinner).toLocaleString('id-ID')}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Navigation Buttons */}
-      <div className="flex justify-between items-center pt-4 mt-8">
-        {onBack && (
-          <button
-            type="button"
-            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
-            onClick={onBack}
-          >
-            ← {t('backButton')}
-          </button>
+      {/* CARD 1 — INFORMASI & KONFIGURASI SURVEI */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
+        {isGoogleImport && (
+          <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+            {t('successImportedFromGoogleDrive')}
+          </p>
         )}
+
+        {isJfuImport && !isBlockedByPersonalData && (
+          <p className="mb-3 flex items-start gap-1.5 text-xs font-medium text-emerald-600">
+            <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Diisi otomatis dari JFU Form — link, judul, dan jumlah pertanyaan
+              disinkronkan dari form aslinya. Ubah di form JFU kalau perlu diperbarui.
+            </span>
+          </p>
+        )}
+
+        {/* SEKSI 1 — INFORMASI SURVEY */}
+        <SectionLabel>{t('surveyInformation')}</SectionLabel>
+
+        <div className={fieldRowListClass}>
+          <FieldRow
+            icon={Link2}
+            label={isGoogleImport ? t('googleFormLink') : t('surveyLinkLabel')}
+            htmlFor="surveyUrl"
+            required
+            error={attemptedSubmit ? errors.surveyUrl : undefined}
+            readOnly={fieldsReadOnly}
+          >
+            <textarea
+              id="surveyUrl"
+              ref={surveyUrlRef}
+              rows={1}
+              className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[24px]`}
+              placeholder={isGoogleImport ? t('googleFormLinkPlaceholder') : t('surveyLinkPlaceholder')}
+              value={formData.surveyUrl}
+              onChange={(e) => {
+                if (!fieldsReadOnly) {
+                  updateFormData({ surveyUrl: e.target.value, isManualEntry: true });
+                  if (attemptedSubmit && errors.surveyUrl) {
+                    setErrors({ ...errors, surveyUrl: undefined });
+                  }
+                }
+              }}
+              readOnly={fieldsReadOnly}
+            />
+          </FieldRow>
+
+          <FieldRow
+            icon={Type}
+            label={t('surveyTitle')}
+            htmlFor="title"
+            required
+            error={attemptedSubmit ? errors.title : undefined}
+            readOnly={fieldsReadOnly}
+          >
+            <textarea
+              id="title"
+              ref={titleRef}
+              rows={1}
+              maxLength={100}
+              className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[24px]`}
+              placeholder={t('surveyTitlePlaceholder')}
+              value={formData.title}
+              onChange={(e) => {
+                if (!fieldsReadOnly) {
+                  updateFormData({ title: e.target.value });
+                  if (attemptedSubmit && errors.title) {
+                    setErrors({ ...errors, title: undefined });
+                  }
+                }
+              }}
+              readOnly={fieldsReadOnly}
+            />
+          </FieldRow>
+
+          <FieldRow
+            icon={Hash}
+            label={t('questionCount')}
+            htmlFor="questionCount"
+            required
+            compact
+            error={attemptedSubmit ? errors.questionCount : undefined}
+            readOnly={fieldsReadOnly}
+          >
+            <input
+              id="questionCount"
+              type="number"
+              className={fieldInputClass}
+              placeholder={t('questionCountPlaceholder')}
+              value={formData.questionCount || ''}
+              onChange={(e) => {
+                if (!fieldsReadOnly) {
+                  updateFormData({ questionCount: parseInt(e.target.value) || 0 });
+                  if (attemptedSubmit && errors.questionCount) {
+                    setErrors({ ...errors, questionCount: undefined });
+                  }
+                }
+              }}
+              readOnly={fieldsReadOnly}
+              min={1}
+            />
+            <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">items</span>
+          </FieldRow>
+        </div>
+
+        {/* Switch to Google Form — jika mode manual */}
+        {!isGoogleImport && onSwitchToGoogle && (
+          <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-center gap-x-1 text-xs md:text-sm text-gray-500">
+            <span>{t('troubleFillingManual')}</span>
+            <button
+              type="button"
+              onClick={onSwitchToGoogle}
+              className="font-semibold text-jfu-primary hover:underline"
+            >
+              {t('importFromGoogleForm')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* CARD 2 — KONFIGURASI IKLAN & REWARD */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
+        {/* SEKSI 2 — KONFIGURASI IKLAN */}
+        <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
+
+        <div className={fieldRowListClass}>
+          <FieldRow
+            icon={CalendarDays}
+            label={t('surveyDurationLabel')}
+            htmlFor="duration"
+            required
+            compact
+            tooltip={durationTooltip}
+            error={
+              durationHasError
+                ? formData.duration > 30
+                  ? t('errorDurationMax')
+                  : t('errorDurationZero')
+                : undefined
+            }
+            hint={
+              openStartDays !== null ? (
+                <span
+                  className={`font-medium ${openStartDays <= 2 ? 'text-amber-600' : 'text-gray-500'}`}
+                >
+                  {openStartDays === 0
+                    ? t('slotOutlookNone', { days: `${Math.max(formData.duration || 1, 1)} ${t('days').toLowerCase()}` })
+                    : t('slotOutlook', {
+                        days: `${Math.max(formData.duration || 1, 1)} ${t('days').toLowerCase()}`,
+                        open: openStartDays,
+                      })}
+                </span>
+              ) : undefined
+            }
+          >
+            <input
+              id="duration"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={fieldInputClass}
+              placeholder={t('surveyDurationPlaceholder')}
+              value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
+              onChange={(e) => {
+                const val = e.target.value;
+                const intVal = parseInt(val);
+                updateFormData({ duration: isNaN(intVal) ? 0 : intVal });
+                if (attemptedSubmit && errors.duration) {
+                  setErrors({ ...errors, duration: undefined });
+                }
+              }}
+            />
+            <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">{t('days')}</span>
+          </FieldRow>
+
+          <FieldBlock
+            icon={Users}
+            label={t('respondentCriteriaLabel')}
+            htmlFor="criteriaResponden"
+            required
+            counter={`${formData.criteriaResponden?.length || 0}/300`}
+            tooltip={criteriaTooltip}
+            error={attemptedSubmit ? errors.criteriaResponden : undefined}
+          >
+            <textarea
+              id="criteriaResponden"
+              ref={criteriaRespondenRef}
+              rows={2}
+              className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[60px]`}
+              placeholder={t('respondentCriteriaPlaceholder')}
+              value={formData.criteriaResponden}
+              onChange={(e) => {
+                updateFormData({ criteriaResponden: e.target.value });
+                if (attemptedSubmit && errors.criteriaResponden) {
+                  setErrors({ ...errors, criteriaResponden: undefined });
+                }
+              }}
+              maxLength={300}
+            />
+          </FieldBlock>
+        </div>
+
+        {/* SEKSI 3 — PENGATURAN INSENTIF */}
+        <div className="mt-6">
+          <SectionLabel>{t('incentiveSettings')}</SectionLabel>
+        </div>
+
+        <div className={fieldRowListClass}>
+          <FieldRow
+            icon={Gift}
+            label={t('prizePerWinnerLabel')}
+            htmlFor="prizePerWinner"
+            required
+            compact
+            labelWidth="w-[150px] md:w-[220px]"
+            tooltip={prizeTooltip}
+            error={
+              formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
+                ? t('errorMinPrize')
+                : undefined
+            }
+            hint={
+              formData.prizePerWinner >= 25000 && formData.questionCount > 0 ? (
+                <span className="font-medium text-gray-500">
+                  {t('recommendation')}: Rp{' '}
+                  {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}
+                  {t('perWinner')}
+                </span>
+              ) : undefined
+            }
+          >
+            <span className="mr-1.5 shrink-0 text-sm text-gray-400">Rp</span>
+            <input
+              id="prizePerWinner"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={fieldInputClass}
+              placeholder={t('prizePerWinnerPlaceholder')}
+              value={formData.prizePerWinner}
+              onChange={(e) => {
+                updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
+                if (attemptedSubmit && errors.prizePerWinner) {
+                  setErrors({ ...errors, prizePerWinner: undefined });
+                }
+              }}
+            />
+          </FieldRow>
+
+          <FieldRow
+            icon={Trophy}
+            label={t('winnerCountLabel')}
+            htmlFor="winnerCount"
+            required
+            compact
+            labelWidth="w-[150px] md:w-[220px]"
+            tooltip={winnerTooltip}
+            error={
+              formData.winnerCount > 0 && formData.winnerCount < 2 ? t('errorMinWinners') : undefined
+            }
+          >
+            <input
+              id="winnerCount"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={fieldInputClass}
+              placeholder={t('winnerCountPlaceholder')}
+              value={formData.winnerCount}
+              onChange={(e) => {
+                const val = parseInt(e.target.value) || 0;
+                updateFormData({ winnerCount: Math.min(val, 5) });
+                if (attemptedSubmit && errors.winnerCount) {
+                  setErrors({ ...errors, winnerCount: undefined });
+                }
+              }}
+            />
+          </FieldRow>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          {t('backButton')}
+        </button>
         <button
           type="submit"
           disabled={isBlockedByPersonalData}
-          className={`px-6 py-2.5 rounded-xl text-white font-medium shadow-md transition-all duration-200 flex items-center gap-2 ${!onBack ? 'ml-auto' : ''} ${isBlockedByPersonalData ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:-translate-y-0.5'}`}
-          style={{ background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' }}
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
         >
-          {t('continue')} →
+          {t('continueToSummary')}
+          <span aria-hidden="true">→</span>
         </button>
       </div>
     </form>

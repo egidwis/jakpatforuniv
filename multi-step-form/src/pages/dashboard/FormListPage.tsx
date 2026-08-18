@@ -79,7 +79,7 @@ export const FormListPage: React.FC = () => {
 
   const handleLaunchCampaign = (form: CustomForm, e: React.MouseEvent) => {
     e.stopPropagation();
-    navigate(`/dashboard/submit?custom_form_id=${form.id}`);
+    navigate(`/dashboard/submit-iklan?custom_form_id=${form.id}`);
   };
 
   const filteredForms = useMemo(() => {

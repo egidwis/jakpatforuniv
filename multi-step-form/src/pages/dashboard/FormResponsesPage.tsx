@@ -64,7 +64,7 @@ export const FormResponsesPage: React.FC = () => {
 
   const handleLaunchCampaign = () => {
     if (!form) return;
-    navigate(`/dashboard/submit?custom_form_id=${form.id}`);
+    navigate(`/dashboard/submit-iklan?custom_form_id=${form.id}`);
   };
 
   const filteredResponses = responses.filter(r => {

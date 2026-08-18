@@ -29,13 +29,24 @@ const PPN_RATE = 0.11;
 // Masa berlaku voucher (WIB). ISO ini WAJIB sama dengan src/utils/constants.ts.
 const ILKOMUNY_VALID_UNTIL = '2026-12-31T17:00:00Z';
 const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
+const JFUSUHUD_VALID_UNTIL = '2026-08-31T17:00:00Z';
 
-function ilkomunyExpired() {
-  return Date.now() >= Date.parse(ILKOMUNY_VALID_UNTIL);
+// `atMs` = "sah pada kapan". Di sini ia BUKAN kemewahan: fungsi di bawah
+// menghitung ulang harga setiap kali pembayaran dibuat, lalu mengoreksi
+// total_cost di DB ke angka server. Kalau kevalidan voucher dinilai pada jam
+// pembayaran, order yang dipesan sewaktu voucher masih hidup akan ditagih lebih
+// mahal daripada ringkasan yang disetujui pemesannya. Karena itu pemanggilnya
+// meneruskan created_at order, bukan Date.now().
+function ilkomunyExpired(atMs = Date.now()) {
+  return atMs >= Date.parse(ILKOMUNY_VALID_UNTIL);
 }
 
-function jfufebExpired() {
-  return Date.now() >= Date.parse(JFUFEB_VALID_UNTIL);
+function jfufebExpired(atMs = Date.now()) {
+  return atMs >= Date.parse(JFUFEB_VALID_UNTIL);
+}
+
+function jfusuhudExpired(atMs = Date.now()) {
+  return atMs >= Date.parse(JFUSUHUD_VALID_UNTIL);
 }
 
 function calculatePpn(dpp) {
@@ -51,7 +62,7 @@ function calculateAdCostPerDay(questionCount) {
   return 500000;
 }
 
-function calculateDiscount(voucherCode, adCost, incentiveCost, duration) {
+export function calculateDiscount(voucherCode, adCost, incentiveCost, duration, atMs = Date.now()) {
   if (!voucherCode) return 0;
   const code = voucherCode.toUpperCase();
 
@@ -65,8 +76,8 @@ function calculateDiscount(voucherCode, adCost, incentiveCost, duration) {
   // dan "sekali pakai" (ditegakkan via voucher_redemptions, bukan di sini).
   // Cermin dari src/utils/cost-calculator.ts — WAJIB identik.
   if (code === 'JFUFEB' || code === 'ILKOMUNY') {
-    if (code === 'JFUFEB' && jfufebExpired()) return 0;
-    if (code === 'ILKOMUNY' && ilkomunyExpired()) return 0;
+    if (code === 'JFUFEB' && jfufebExpired(atMs)) return 0;
+    if (code === 'ILKOMUNY' && ilkomunyExpired(atMs)) return 0;
     if (duration === 7) return adCost > 1000000 ? adCost - 1000000 : 0;
     const cap = 300000 * duration; // Rp 300.000/hari
     return adCost > cap ? adCost - cap : 0;
@@ -78,14 +89,25 @@ function calculateDiscount(voucherCode, adCost, incentiveCost, duration) {
     'JFUTANIA', 'JFUEDO', 'JFURAISA', 'JFUANA', 'JFUSALSA', 'JFUNATALIA',
     'JFUSUHUD',
   ];
+  // JFUSUHUD ikut daftar 10% tapi punya batas sendiri (s/d 31 Agu 2026).
+  if (code === 'JFUSUHUD' && jfusuhudExpired(atMs)) return 0;
   if (tenPercentCodes.includes(code)) return adCost * 0.1;
 
   return 0;
 }
 
+// Instan yang dipakai untuk menilai kevalidan voucher: tanggal order LAHIR.
+// Baris tanpa created_at (atau dengan nilai tak terbaca) jatuh ke "sekarang" —
+// bukan ke "tidak pernah kedaluwarsa" — supaya data rusak tidak berubah jadi
+// diskon abadi.
+function orderInstant(sub) {
+  const parsed = Date.parse(sub?.created_at ?? '');
+  return Number.isNaN(parsed) ? Date.now() : parsed;
+}
+
 // Mirrors calculateTotalCost(SurveyFormData) but takes the snake_case DB row.
 // Returns { subtotal, ppn, total } — `total` (subtotal + PPN) is what gets charged.
-function computeTotalCostFromSubmission(sub) {
+export function computeTotalCostFromSubmission(sub) {
   const questionCount = Number(sub.question_count) || 0;
   const duration = Number(sub.duration) || 0;
   const winnerCount = Number(sub.winner_count) || 0;
@@ -106,7 +128,7 @@ function computeTotalCostFromSubmission(sub) {
     subtotal = adCostBase + kilatAddon + incentiveCost;
   } else {
     const adCost = calculateAdCostPerDay(questionCount) * duration;
-    const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration);
+    const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration, orderInstant(sub));
     subtotal = adCost + incentiveCost - discount;
   }
 
@@ -313,7 +335,7 @@ export async function onRequest(context) {
       });
     } else {
       const adCostBase = calculateAdCostPerDay(noteQuestionCount);
-      const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteWinnerCount * notePrizePerWinner, noteDuration);
+      const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteWinnerCount * notePrizePerWinner, noteDuration, orderInstant(sub));
       const discountedPerDay = discount > 0 && noteDuration > 0 ? Math.max(0, adCostBase - Math.ceil(discount / noteDuration)) : adCostBase;
       if (adCostBase > 0 && noteDuration > 0) {
         noteItems.push({

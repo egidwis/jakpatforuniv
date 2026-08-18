@@ -12,13 +12,14 @@ import {
   aggregateCustomers,
   mergeProfileOnlyCustomers,
   customerTier,
+  customerDisplayId,
   orderTime,
 } from './customers/types';
 import { CustomerListRow } from './customers/CustomerListRow';
 import { CustomerDetailSheet } from './customers/CustomerDetailSheet';
 import { fetchProfileNames } from '../utils/profileNames';
 
-type TierTab = 'all' | 'vip' | 'returning' | 'new';
+type TierTab = 'all' | 'vip' | 'returning' | 'new' | 'unpaid';
 
 export function CustomersPage() {
   const [submissions, setSubmissions] = useState<RawSubmission[]>([]);
@@ -86,7 +87,7 @@ export function CustomersPage() {
 
   // Tab counts come from the full list — search must not change them
   const tierCounts = useMemo(() => {
-    const counts = { vip: 0, returning: 0, new: 0 };
+    const counts = { vip: 0, returning: 0, new: 0, unpaid: 0 };
     customers.forEach((c) => {
       const tier = customerTier(c);
       if (tier === 'vvip' || tier === 'vip') counts.vip += 1;
@@ -104,14 +105,24 @@ export function CustomersPage() {
       });
     }
     if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      result = result.filter(c =>
-        c.name.toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q) ||
-        c.university.toLowerCase().includes(q) ||
-        c.phone.includes(q) ||
-        c.invoiceNames.some((n) => n.name.toLowerCase().includes(q))
-      );
+      const q = searchTerm.toLowerCase().trim();
+      const cleanQ = q.replace(/^#/, '');
+      result = result.filter((c) => {
+        const displayId = customerDisplayId(c).toLowerCase();
+        const authId = (c.authUserId || '').toLowerCase();
+        const key = c.key.toLowerCase();
+        return (
+          displayId.includes(cleanQ) ||
+          authId.includes(cleanQ) ||
+          key.includes(cleanQ) ||
+          c.name.toLowerCase().includes(q) ||
+          c.email.toLowerCase().includes(q) ||
+          c.university.toLowerCase().includes(q) ||
+          c.phone.includes(q) ||
+          c.invoiceNames.some((n) => n.name.toLowerCase().includes(q)) ||
+          c.submissions.some((s) => s.id.toLowerCase().includes(cleanQ))
+        );
+      });
     }
     // Sort logic
     if (sortBy === 'name_asc') {
@@ -169,7 +180,7 @@ export function CustomersPage() {
                 className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-[11px] font-semibold pl-2.5 pr-1.5 py-1 transition-colors hover:bg-slate-700"
                 title="Hapus filter tier"
               >
-                Tier: {tierTab === 'vip' ? 'VIP/VVIP' : tierTab === 'returning' ? 'Returning' : 'New'}
+                Tier: {tierTab === 'vip' ? 'VIP/VVIP' : tierTab === 'returning' ? 'Returning' : tierTab === 'new' ? 'Client Baru (Paid)' : 'Belum Paid'}
                 <X className="w-3 h-3 ml-0.5" />
               </button>
             )}
@@ -185,7 +196,7 @@ export function CustomersPage() {
                     <ListFilter className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 bg-white p-1 border shadow-md rounded-md z-50">
+                <DropdownMenuContent align="end" className="w-56 bg-white p-1 border shadow-md rounded-md z-50">
                   <DropdownMenuItem
                     onClick={() => setTierTab('all')}
                     className={cn(
@@ -202,7 +213,7 @@ export function CustomersPage() {
                       tierTab === 'vip' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
                     )}
                   >
-                    <span>VIP/VVIP</span>
+                    <span>VIP / VVIP</span>
                     <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
                       {tierCounts.vip}
                     </span>
@@ -226,9 +237,21 @@ export function CustomersPage() {
                       tierTab === 'new' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
                     )}
                   >
-                    <span>New</span>
+                    <span>Client Baru (Sudah Paid)</span>
                     <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
                       {tierCounts.new}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setTierTab('unpaid')}
+                    className={cn(
+                      'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
+                      tierTab === 'unpaid' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                    )}
+                  >
+                    <span>Belum Paid (Rp 0)</span>
+                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
+                      {tierCounts.unpaid}
                     </span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -312,6 +335,7 @@ export function CustomersPage() {
             {/* Sticky column header — widths mirror CustomerListRow */}
             <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
               <span className="hidden md:block w-[110px] shrink-0">ID</span>
+              <span className="w-12 shrink-0 text-center">Status</span>
               <button
                 type="button"
                 onClick={cycleNameSort}
@@ -325,7 +349,6 @@ export function CustomersPage() {
               <span className="hidden lg:block flex-1 min-w-[220px] shrink-0">University</span>
               <span className="hidden sm:block w-[70px] shrink-0 text-center">Orders</span>
               <span className="hidden sm:block w-[110px] shrink-0 text-right">Spent</span>
-              <span className="w-[92px] shrink-0">Status</span>
               <span className="w-4 shrink-0" />
             </div>
             {loading ? (

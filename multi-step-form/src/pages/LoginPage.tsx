@@ -3,15 +3,18 @@ import { useAuth } from '../context/AuthContext';
 import { signInWithGoogle, signInWithPassword, signUp } from '../utils/supabase';
 import { Navigate, useLocation, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import logoMark from '../assets/Jakpat Navbar Logo.webp';
 import { ACADEMIC_STATUS_OPTIONS, DEPARTMENT_OPTIONS, UNIVERSITY_OPTIONS, REFERRAL_SOURCE_OPTIONS, collapseReferralSource } from '../constants/biodata';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { useLanguage } from '../i18n/LanguageContext';
 
-const inputClass = "flex h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 dark:bg-gray-900 dark:border-gray-700";
+const inputClass = "flex h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 hover:bg-slate-50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-jfu-primary/10 focus:border-jfu-primary transition-all disabled:opacity-50 dark:bg-gray-900 dark:border-gray-700 dark:text-white";
 
 export default function LoginPage() {
     const { session, loading } = useAuth();
+    const { t } = useLanguage();
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [mode, setMode] = useState<'login' | 'signup'>('login');
 
@@ -40,7 +43,7 @@ export default function LoginPage() {
             await signInWithGoogle();
         } catch (error) {
             console.error('Login error:', error);
-            toast.error('Failed to login with Google');
+            toast.error('Gagal masuk dengan Google');
             setIsLoggingIn(false);
         }
     };
@@ -48,7 +51,7 @@ export default function LoginPage() {
     const handleEmailAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!email || !password) {
-            toast.error('Please fill in all fields');
+            toast.error('Mohon isi email dan password');
             return;
         }
         if (mode === 'signup') {
@@ -90,113 +93,134 @@ export default function LoginPage() {
                         ? collapseReferralSource(referralSource, referralSourceOther)
                         : undefined,
                 });
-                toast.success('Registration successful! Please check your email to verify your account.');
+                toast.success('Pendaftaran berhasil! Silakan cek email Anda untuk verifikasi.');
                 setMode('login'); // Switch to login after signup
             }
         } catch (error: any) {
             console.error('Auth error:', error);
-            toast.error(error.message || 'Authentication failed');
+            toast.error(error.message || 'Autentikasi gagal');
             setIsLoggingIn(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 from-blue-50 to-indigo-50 dark:bg-gray-900 px-4">
-            {/* Background Decor */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-200/20 rounded-full blur-3xl -translate-y-1/2"></div>
-                <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-200/20 rounded-full blur-3xl translate-y-1/2"></div>
-            </div>
+        <div className="min-h-screen w-full flex flex-col justify-between bg-[#f8fafc] dark:bg-gray-900 px-4 py-8 selection:bg-blue-100 selection:text-jfu-primary">
+            <div className="flex-1 flex items-center justify-center py-4">
+                <div className="w-full max-w-md bg-white dark:bg-gray-800 border border-slate-200/90 dark:border-gray-700 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_-4px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden p-6 sm:p-8">
+                    {/* Brand Header */}
+                    <div className="flex flex-col items-center text-center mb-6">
+                    <Link to="/dashboard" className="inline-block mb-3 hover:opacity-90 transition-opacity">
+                        <img src={logoMark} alt="Jakpat for Universities" className="h-8 md:h-9 w-auto object-contain" />
+                    </Link>
+                    <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+                        {mode === 'login' ? t('authWelcomeBack') : t('authCreateAccount')}
+                    </h1>
+                    <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                        {mode === 'login' ? t('authLoginSubtitle') : t('authSignupSubtitle')}
+                    </p>
+                </div>
 
-            <Card className="w-full max-w-md border-0 shadow-xl bg-white/80 backdrop-blur-sm dark:bg-gray-800/80">
-                <CardHeader className="text-center space-y-2 pb-6">
-                    <div className="mx-auto w-16 h-16 flex items-center justify-center mb-2">
-                        <img src="/favicon.webp" alt="Jakpat Logo" className="w-16 h-16 object-contain" />
-                    </div>
-                    <CardTitle className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                        {mode === 'login' ? 'Welcome Back' : 'Create Account'}
-                    </CardTitle>
-                    <CardDescription className="text-gray-500 dark:text-gray-400">
-                        {mode === 'login' ? 'Masuk ke dashboard Jakpat for Universities' : 'Sign up to start your journey'}
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                {/* Segmented Control Switcher */}
+                <div className="[display:grid] grid-cols-2 p-1 bg-slate-100/90 dark:bg-gray-700/60 rounded-xl mb-6 border border-slate-200/60 dark:border-gray-600">
+                    <button
+                        type="button"
+                        onClick={() => setMode('login')}
+                        className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                            mode === 'login'
+                                ? 'bg-white dark:bg-gray-800 text-slate-900 dark:text-white shadow-2xs'
+                                : 'text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200'
+                        }`}
+                    >
+                        {t('authTabLogin')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setMode('signup')}
+                        className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                            mode === 'signup'
+                                ? 'bg-white dark:bg-gray-800 text-slate-900 dark:text-white shadow-2xs'
+                                : 'text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200'
+                        }`}
+                    >
+                        {t('authTabSignup')}
+                    </button>
+                </div>
 
+                <div className="space-y-4">
+                    {/* Google Login Button */}
                     <Button
                         variant="outline"
-                        className="w-full h-11 relative overflow-hidden group transition-all border-gray-300 hover:border-gray-400 hover:bg-gray-50 text-gray-700 font-medium"
+                        className="w-full h-11 relative overflow-hidden group transition-all border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 bg-white text-slate-700 font-bold rounded-xl shadow-2xs flex items-center justify-center gap-2.5"
                         onClick={handleGoogleLogin}
                         disabled={isLoggingIn}
                         type="button"
                     >
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2">
-                            <svg className="w-5 h-5" viewBox="0 0 24 24">
-                                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                            </svg>
-                        </div>
-                        <span className="font-semibold">
-                            Continue with Google
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                        </svg>
+                        <span className="text-xs font-bold">
+                            {mode === 'login' ? t('authLoginWithGoogle') : t('authSignupWithGoogle')}
                         </span>
                     </Button>
 
-                    <div className="relative">
+                    <div className="relative my-2">
                         <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-gray-200 dark:border-gray-700" />
+                            <span className="w-full border-t border-slate-200 dark:border-gray-700" />
                         </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-white/80 dark:bg-gray-800/80 px-2 text-gray-500 backdrop-blur-sm">Or continue with</span>
+                        <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
+                            <span className="bg-white dark:bg-gray-800 px-3 text-slate-400 font-semibold">{t('authOrWithEmail')}</span>
                         </div>
                     </div>
 
-                    <form onSubmit={handleEmailAuth} className="space-y-4">
+                    <form onSubmit={handleEmailAuth} className="space-y-3.5">
                         {mode === 'signup' && (
                             <>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Full Name</label>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-700 dark:text-gray-300">{t('authFullName')}</label>
                                     <input
                                         type="text"
                                         value={fullName} onChange={e => setFullName(e.target.value)}
                                         className={inputClass}
-                                        placeholder="John Doe"
+                                        placeholder={t('authFullNamePlaceholder')}
                                         disabled={isLoggingIn}
                                     />
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">No Telepon</label>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-700 dark:text-gray-300">{t('authWhatsApp')}</label>
                                     <input
                                         type="tel"
                                         value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}
                                         className={inputClass}
-                                        placeholder="08xxxxxxxxxx"
+                                        placeholder={t('authWhatsAppPlaceholder')}
                                         disabled={isLoggingIn}
                                     />
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div className="space-y-1.5">
-                                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Universitas</label>
+                                <div className="[display:grid] grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-slate-700 dark:text-gray-300">{t('authUniversity')}</label>
                                         <input
                                             type="text"
                                             list="university-options"
                                             value={university} onChange={e => setUniversity(e.target.value)}
                                             className={inputClass}
-                                            placeholder="Ketik atau pilih universitas"
+                                            placeholder={t('authUniversityPlaceholder')}
                                             disabled={isLoggingIn}
                                         />
                                         <datalist id="university-options">
                                             {UNIVERSITY_OPTIONS.map(opt => <option key={opt} value={opt} />)}
                                         </datalist>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Jurusan</label>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-slate-700 dark:text-gray-300">{t('authDepartment')}</label>
                                         <input
                                             type="text"
                                             list="department-options"
                                             value={department} onChange={e => setDepartment(e.target.value)}
                                             className={inputClass}
-                                            placeholder="Ketik atau pilih jurusan"
+                                            placeholder={t('authDepartmentPlaceholder')}
                                             disabled={isLoggingIn}
                                         />
                                         <datalist id="department-options">
@@ -204,29 +228,29 @@ export default function LoginPage() {
                                         </datalist>
                                     </div>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Status Akademik</label>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-700 dark:text-gray-300">{t('authAcademicStatus')}</label>
                                     <select
                                         value={status} onChange={e => setStatus(e.target.value)}
                                         className={inputClass}
                                         disabled={isLoggingIn}
                                     >
-                                        <option value="">Pilih status akademik</option>
+                                        <option value="">{t('authAcademicStatusPlaceholder')}</option>
                                         {ACADEMIC_STATUS_OPTIONS.map(opt => (
                                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                                         ))}
                                     </select>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                        Dari mana Anda mengetahui kami? <span className="font-normal text-gray-400">(opsional)</span>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-700 dark:text-gray-300">
+                                        {t('authReferralSource')} <span className="font-normal text-slate-400">({t('optional') || 'opsional'})</span>
                                     </label>
                                     <select
                                         value={referralSource} onChange={e => setReferralSource(e.target.value)}
                                         className={inputClass}
                                         disabled={isLoggingIn}
                                     >
-                                        <option value="">Pilih salah satu</option>
+                                        <option value="">{t('authReferralSourcePlaceholder')}</option>
                                         {REFERRAL_SOURCE_OPTIONS.map(opt => (
                                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                                         ))}
@@ -235,74 +259,71 @@ export default function LoginPage() {
                                         <input
                                             type="text"
                                             value={referralSourceOther} onChange={e => setReferralSourceOther(e.target.value)}
-                                            className={inputClass}
-                                            placeholder="Sebutkan sumbernya"
+                                            className={`${inputClass} mt-1.5`}
+                                            placeholder={t('authReferralSourceOther')}
                                             disabled={isLoggingIn}
                                         />
                                     )}
                                 </div>
                             </>
                         )}
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Email</label>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-700 dark:text-gray-300">{t('authEmail')}</label>
                             <input
                                 type="email"
                                 value={email} onChange={e => setEmail(e.target.value)}
-                                className="flex h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 dark:bg-gray-900 dark:border-gray-700"
-                                placeholder="name@example.com"
+                                className={inputClass}
+                                placeholder={t('authEmailPlaceholder')}
                                 disabled={isLoggingIn}
                             />
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                             <div className="flex items-center justify-between">
-                                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Password</label>
+                                <label className="text-xs font-bold text-slate-700 dark:text-gray-300">{t('authPassword')}</label>
                                 {mode === 'login' && (
                                     <Link
                                         to="/forgot-password"
-                                        className="text-xs font-semibold text-blue-600 hover:text-blue-500"
+                                        className="text-xs font-bold text-jfu-primary hover:underline"
                                     >
-                                        Lupa password?
+                                        {t('authForgotPassword')}
                                     </Link>
                                 )}
                             </div>
                             <input
                                 type="password"
                                 value={password} onChange={e => setPassword(e.target.value)}
-                                className="flex h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 dark:bg-gray-900 dark:border-gray-700"
-                                placeholder="••••••••"
+                                className={inputClass}
+                                placeholder={t('authPasswordPlaceholder')}
                                 disabled={isLoggingIn}
                             />
                         </div>
 
                         <Button
-                            className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            className="w-full h-11 bg-gradient-to-r from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary text-white font-bold rounded-xl shadow-xs hover:shadow transition-all text-sm gap-1.5 mt-2"
                             type="submit"
                             disabled={isLoggingIn}
                         >
-                            {isLoggingIn ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                            {mode === 'login' ? 'Sign In' : 'Create Account'}
+                            {isLoggingIn ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <>
+                                    <span>{mode === 'login' ? t('authSubmitLogin') : t('authSubmitSignup')}</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </>
+                            )}
                         </Button>
                     </form>
-
-                    <div className="text-center text-sm">
-                        {mode === 'login' ? (
-                            <>
-                                Don't have an account?{' '}
-                                <button onClick={() => setMode('signup')} className="font-semibold text-blue-600 hover:text-blue-500 underline decoration-blue-600/30">
-                                    Sign up
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                Already have an account?{' '}
-                                <button onClick={() => setMode('login')} className="font-semibold text-blue-600 hover:text-blue-500 underline decoration-blue-600/30">
-                                    Sign in
-                                </button>
-                            </>
-                        )}
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            </div>
+
+            {/* Clean bottom footer */}
+            <footer className="w-full max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 pb-2 text-xs text-slate-400 border-t border-slate-200/60 dark:border-gray-800">
+                <p>© {new Date().getFullYear()} Jakpat for Universities. All rights reserved.</p>
+                <div className="flex items-center gap-2">
+                    <LanguageSwitcher />
+                </div>
+            </footer>
         </div>
     );
 }

@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { Chip } from '../ui/chip';
 import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
@@ -21,7 +24,19 @@ export function CustomerDetailSheet({
   onOpenChange,
   variant = 'sheet',
 }: CustomerDetailSheetProps) {
+  const [copiedId, setCopiedId] = useState(false);
+
   if (!customer) return null;
+
+  const handleCopyId = (idStr: string) => {
+    navigator.clipboard.writeText(idStr)
+      .then(() => {
+        setCopiedId(true);
+        toast.success('Customer ID disalin');
+        setTimeout(() => setCopiedId(false), 2000);
+      })
+      .catch(() => toast.error('Gagal menyalin ID'));
+  };
 
   const subtitle = (
     <>
@@ -45,11 +60,20 @@ export function CustomerDetailSheet({
         <dl className="space-y-2 text-sm">
           <div className="flex items-center justify-between gap-3">
             <dt className="text-gray-500 shrink-0">Customer ID</dt>
-            <dd
-              className="text-gray-900 text-right font-mono text-xs min-w-0 truncate"
-              title={customer.authUserId ?? customer.key}
-            >
-              {customer.authUserId ?? customer.key}
+            <dd className="text-right min-w-0">
+              <button
+                type="button"
+                onClick={() => handleCopyId(customer.authUserId ?? customer.key)}
+                className="group/copy inline-flex items-center gap-1.5 font-mono text-xs text-gray-700 bg-gray-50 hover:bg-blue-50 hover:text-blue-700 px-2 py-0.5 rounded border border-gray-200 hover:border-blue-300 transition-colors max-w-full"
+                title="Klik untuk menyalin Customer ID"
+              >
+                <span className="truncate">{customer.authUserId ?? customer.key}</span>
+                {copiedId ? (
+                  <Check className="w-3 h-3 text-green-600 shrink-0" />
+                ) : (
+                  <Copy className="w-3 h-3 text-gray-400 group-hover/copy:text-blue-600 shrink-0 transition-colors" />
+                )}
+              </button>
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3">

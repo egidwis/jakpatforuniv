@@ -479,7 +479,7 @@ export const FormBuilderPage: React.FC = () => {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
-                      onClick={() => formId && navigate(`/dashboard/submit?custom_form_id=${formId}`)}
+                      onClick={() => formId && navigate(`/dashboard/submit-iklan?custom_form_id=${formId}`)}
                       className="cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5 mr-2" /> Sebar via Jakpat
