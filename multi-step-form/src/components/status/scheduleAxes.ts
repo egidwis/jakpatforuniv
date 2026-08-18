@@ -109,6 +109,14 @@ export function scheduleFromSubmission(submission: FormSubmission): AdScheduleEn
         ordinal: 1,
         isExtension: false,
         sourceId: submission.id || '',
+        // Jaring pengaman, bukan jalur normal: sejak sql/51 setiap order PUNYA
+        // baris ordinal 1, jadi `firstScheduleOf()` hampir selalu menang dan
+        // baris ini tidak terpakai. Kalau toh terpakai (cermin belum sempat
+        // ditulis saat halaman dimuat), tampilkan bentuk LAMA — 8 hex pertama
+        // id order — supaya peneliti melihat kode yang sudah ia kenal alih-alih
+        // kolom kosong. Sengaja bukan string acak: kode ini boleh usang, tapi
+        // tidak boleh membingungkan support.
+        bookingId: (submission.id || '').slice(0, 8).toUpperCase(),
         startDate: asInstant(submission.start_date),
         endDate: asInstant(submission.end_date),
         duration: submission.duration ?? null,

@@ -625,7 +625,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                         className="rounded-xl border border-slate-200/80 bg-slate-50/40 divide-y divide-slate-100 overflow-hidden shadow-2xs"
                     >
                         {cards.map((card) => {
-                            const shortId = `#${card.info.id.slice(0, 8).toUpperCase()}`;
+                            const shortId = `#${card.info.bookingId}`;
                             /* Booking ID diredam untuk kartu yang belum aktif
                                (review) maupun yang sudah mati (dibatalkan). */
                             const mutedId = card.booking.state === 'in_review' || card.booking.state === 'cancelled';
@@ -647,7 +647,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                             <span>Booking ID: </span>
                                             <span className="font-mono">{shortId}</span>
                                         </span>
-                                        <CopyOrderIdButton id={card.info.id} />
+                                        <CopyOrderIdButton id={card.info.bookingId} />
                                         <span className="flex-1" />
                                         <ScheduleChip card={card} />
                                     </AccordionPrimitive.Trigger>

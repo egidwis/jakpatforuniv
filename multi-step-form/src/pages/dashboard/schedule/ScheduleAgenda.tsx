@@ -97,9 +97,12 @@ function EntryRow({
         {isKilat && <Zap className="inline w-3 h-3 ml-0.5 -mt-0.5 fill-amber-500 text-amber-500" />}
       </div>
 
-      {/* ID order — bentuk yang sama persis dengan kolom ID di Submissions. */}
+      {/* Booking ID JADWAL — sejak sql/51 kode yang sama persis dengan yang
+          dilihat & disalin peneliti. Sebelumnya baris ini menampilkan
+          `submissionId`, yang untuk jadwal ke-2 dst. BUKAN kode yang dikutip
+          peneliti ke support. Jangan kembalikan ke id apa pun. */}
       <span className={cn(COL.id, 'font-mono text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 truncate')}>
-        #{entry.submissionId.slice(0, 8)}
+        #{entry.bookingId}
       </span>
 
       {/* Survei + peneliti + university */}

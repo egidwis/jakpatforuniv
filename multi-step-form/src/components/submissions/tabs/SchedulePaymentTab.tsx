@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Check, CalendarPlus } from 'lucide-react';
+import { AlertTriangle, CalendarPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
-  fetchAdSchedules, fetchSchedulePayments, releaseScheduleSlot, supabase,
+  fetchAdSchedules, fetchSchedulePayments, markScheduleAsPaid, releaseScheduleSlot, supabase,
   type AdScheduleEntry, type SchedulePayment,
 } from '@/utils/supabase';
+import { formatIDR } from '@/utils/currency';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 import { ScheduleCardList, ScheduleCardSkeleton } from './ScheduleCardList';
@@ -37,7 +38,6 @@ export function SchedulePaymentTab({
   onEditSchedule,
   onCreateInvoice,
   onCreateSchedule,
-  onPaymentStatusChange,
   onExtendCreated,
   reloadKey = 0,
   initialSubView = null,
@@ -56,7 +56,6 @@ export function SchedulePaymentTab({
    * jadi kalender harus membaca kolam yang benar sejak awal.
    */
   onCreateSchedule: (isExtraAd: boolean) => void;
-  onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
   onExtendCreated: () => void;
@@ -66,7 +65,6 @@ export function SchedulePaymentTab({
   initialSubView?: 'schedule' | 'payment' | null;
   onInitialSubViewConsumed?: () => void;
 }) {
-  const [isConfirmPaymentOpen, setIsConfirmPaymentOpen] = useState(false);
   const [schedules, setSchedules] = useState<AdScheduleEntry[]>([]);
   const [payments, setPayments] = useState<Map<string, SchedulePayment>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
@@ -175,14 +173,32 @@ export function SchedulePaymentTab({
     }
   }, [reload, onExtendCreated]);
 
-  // ⚠️ `updatePaymentStatus` masih melunasi SELURUH invoice order (menyaring
-  // `form_submission_id` saja). Untuk order berjadwal SATU itu tidak berbeda —
-  // "semua tagihan order" persis sama dengan "tagihan jadwal ini" — jadi
-  // tombolnya boleh masuk kartu. Untuk order berjadwal banyak ia akan berbohong,
-  // jadi tombolnya pindah ke luar beserta peringatan cakupannya. Penyempitan ke
-  // `schedule_id` ada di Task 11.
+  // Pelunasan manual berlingkup SATU jadwal sejak sql/51 (`schedule_id`), jadi
+  // tombolnya tinggal di dalam kartu untuk SEMUA order — tidak lagi hanya yang
+  // berjadwal satu, dan tidak lagi perlu peringatan cakupan di luar kartu.
   const isSingleSchedule = schedules.length === 1;
-  const canMarkPaidInCard = isSingleSchedule && !lifecycle.isPaid;
+
+  /**
+   * Jadwal yang sedang menunggu konfirmasi "Tandai Lunas".
+   *
+   * ⚠️ Disimpan sebagai ENTRY, bukan boolean. Dialognya menyebut jadwal mana
+   * yang akan dilunasi, dan yang dikirim ke `markScheduleAsPaid()` adalah entry
+   * inilah — bukan `schedules[0]`. Footgun uang: kalau ini kembali jadi boolean,
+   * admin mengklik kartu #2 dan yang lunas adalah #1.
+   */
+  const [pendingPaid, setPendingPaid] = useState<AdScheduleEntry | null>(null);
+
+  const handleMarkPaid = useCallback(async (entry: AdScheduleEntry) => {
+    try {
+      await markScheduleAsPaid(entry);
+      toast.success(`Jadwal #${entry.bookingId} ditandai lunas.`);
+      setPendingPaid(null);
+      reload();
+      onExtendCreated();
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menandai lunas');
+    }
+  }, [reload, onExtendCreated]);
 
   /**
    * "Jadwal Iklan Baru" — memesan jendela tayang BERIKUTNYA untuk order yang sama.
@@ -240,7 +256,7 @@ export function SchedulePaymentTab({
             onEditSchedule={onEditSchedule}
             onCreateSchedule={onCreateSchedule}
             onCreateInvoice={onCreateInvoice}
-            onMarkPaid={canMarkPaidInCard ? () => setIsConfirmPaymentOpen(true) : null}
+            onMarkPaid={lifecycle.isPaid ? null : (entry) => setPendingPaid(entry)}
             onCancel={(entry) => void handleCancelSchedule(entry)}
             onReleaseSlot={(entry) => void handleReleaseSlot(entry)}
           />
@@ -257,61 +273,54 @@ export function SchedulePaymentTab({
           </Button>
         )}
 
-        {!isSingleSchedule && !lifecycle.isPaid && schedules.length > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 space-y-2">
-            <p className="text-[11px] text-amber-900 leading-snug">
-              Order ini punya <strong>{schedules.length} jadwal</strong>. Tombol di bawah melunasi
-              <strong> seluruh</strong> tagihan order sekaligus — belum bisa per jadwal, jadi ia
-              sengaja tidak ditaruh di dalam kartu.
-            </p>
-            <Button
-              size="sm"
-              className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => setIsConfirmPaymentOpen(true)}
-            >
-              <Check className="w-3.5 h-3.5 mr-1.5" /> Tandai seluruh order lunas
-            </Button>
-          </div>
-        )}
+        {/* Peringatan "tombol ini melunasi seluruh order" DIBONGKAR bersama
+            sebabnya (sql/51): pelunasan kini per `schedule_id`, jadi tombol di
+            dalam kartu sudah jujur untuk order berjadwal banyak sekalipun.
 
-        {/* Order tanpa satu pun jadwal tetap butuh jalan masuk ke Mark as Paid —
-            tapi itu persis "pembayaran yatim" yang Task 10 ada untuk menutup,
-            jadi tidak diberi jalan pintas baru di sini. */}
+            Order tanpa satu pun jadwal tetap TIDAK diberi jalan masuk ke sini —
+            itu persis "pembayaran yatim" yang Task 10 ada untuk menutup, dan
+            sekarang tertutup secara struktural: tidak ada kartu, tidak ada
+            tombol. */}
       </DetailSheetSection>
 
-      <Dialog open={isConfirmPaymentOpen} onOpenChange={setIsConfirmPaymentOpen}>
+      <Dialog open={!!pendingPaid} onOpenChange={(open) => { if (!open) setPendingPaid(null); }}>
         <DialogContent
           className="sm:max-w-[360px] p-6 text-center"
           style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
         >
           <DialogHeader className="space-y-1 text-center sm:text-center">
             <DialogTitle className="text-base font-bold text-gray-900 leading-snug">
-              Tandai Submission Sebagai Lunas?
+              Tandai Jadwal Iklan {pendingPaid?.ordinal} Lunas?
             </DialogTitle>
             <DialogDescription className="text-xs text-amber-600 font-semibold leading-relaxed">
               Pastikan dana transfer manual benar-benar sudah diterima.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="text-[11px] text-gray-500 bg-slate-50/80 border border-slate-100 rounded-lg p-3.5 leading-relaxed">
-            Tindakan ini akan mengupdate status submission dan <span className="font-semibold text-gray-700">semua invoice/transaksi terkait menjadi lunas (paid)</span>.
+          {/* Booking ID dipajang eksplisit: dialog yang cuma bilang "jadwal ini"
+              tidak bisa diadu dengan bukti transfer yang ada di tangan admin. */}
+          <div className="text-[11px] text-gray-500 bg-slate-50/80 border border-slate-100 rounded-lg p-3.5 leading-relaxed space-y-1.5">
+            <p>
+              Yang dilunasi hanya tagihan{' '}
+              <span className="font-mono font-semibold text-gray-700">#{pendingPaid?.bookingId}</span>
+              {!isSingleSchedule && <> — jadwal lain pada order ini <span className="font-semibold text-gray-700">tidak ikut berubah</span></>}.
+            </p>
+            {pendingPaid && pendingPaid.totalCost > 0 && (
+              <p className="font-semibold text-gray-700">{formatIDR(pendingPaid.totalCost)}</p>
+            )}
           </div>
 
           <div className="flex justify-center gap-3">
             <Button
               variant="outline"
-              onClick={() => setIsConfirmPaymentOpen(false)}
+              onClick={() => setPendingPaid(null)}
               className="text-xs font-semibold h-9 px-5 text-gray-600 border-gray-200 hover:bg-gray-50"
             >
               Batal
             </Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 px-5"
-              onClick={() => {
-                onPaymentStatusChange(submission.id, 'paid');
-                setIsConfirmPaymentOpen(false);
-                reload();
-              }}
+              onClick={() => { if (pendingPaid) void handleMarkPaid(pendingPaid); }}
             >
               Ya, Tandai Lunas
             </Button>

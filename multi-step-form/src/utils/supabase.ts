@@ -678,7 +678,72 @@ export const getFormSubmissionById = async (id: string) => {
   }
 };
 
-// Fungsi untuk update status pembayaran
+/**
+ * Tandai SATU jadwal lunas — pelunasan manual oleh admin.
+ *
+ * ⚠️ INI YANG MENGGANTIKAN `updatePaymentStatus` DI KARTU JADWAL, dan bedanya
+ * bukan kosmetik. `updatePaymentStatus` menyaring `form_submission_id` saja,
+ * jadi pada order berjadwal banyak ia melunasi tagihan jadwal LAIN sekaligus —
+ * termasuk jadwal yang uangnya belum pernah diterima. Fungsi ini menyaring
+ * `schedule_id` (sql/51), jadi cakupannya persis kartu yang diklik.
+ *
+ * Efek sampingnya sengaja dibuat IDENTIK dengan jalur webhook DOKU, supaya
+ * pelunasan manual dan pelunasan otomatis tidak meninggalkan baris yang
+ * berbeda bentuk:
+ *
+ *   ordinal 1  → form_submissions.payment_status='paid', submission_status='paid'
+ *   ordinal ≥2 → form_submissions_extend.payment_status='paid',
+ *                submission_status='scheduled'
+ *
+ * `'scheduled'` untuk perpanjangan BUKAN pilihan bebas: `cron_activate_extends()`
+ * (sql/36) hanya mengangkat baris `scheduled` + `paid` jadi `live`. Menulis
+ * `'paid'` ke sana membuat iklannya tidak pernah tayang.
+ *
+ * ⚠️ Penjaga kolom uang (`guard_extend_payment_columns`, sql/33) hanya
+ * meloloskan `service_role` atau `product@jakpat.net`. Admin lain akan ditolak
+ * DB — itu perilaku yang sudah ada sejak sql/33, bukan yang dibawa fungsi ini.
+ */
+export const markScheduleAsPaid = async (entry: AdScheduleEntry) => {
+  const paidPatch = { status: 'paid', payment_method: 'manual' };
+
+  const { error: invErr } = await supabase
+    .from('invoices')
+    .update(paidPatch)
+    .eq('schedule_id', entry.id)
+    .in('status', ['pending', 'expired']);
+  if (invErr) throw invErr;
+
+  const { error: txnErr } = await supabase
+    .from('transactions')
+    .update({ ...paidPatch, payment_channel: 'MANUAL_VERIFIED' })
+    .eq('schedule_id', entry.id)
+    .in('status', ['pending', 'expired']);
+  if (txnErr) throw txnErr;
+
+  if (entry.isExtension) {
+    const { error } = await supabase
+      .from('form_submissions_extend')
+      .update({ payment_status: 'paid', submission_status: 'scheduled' })
+      .eq('id', entry.sourceId);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('form_submissions')
+      .update({ payment_status: 'paid', submission_status: 'paid' })
+      .eq('id', entry.sourceId);
+    if (error) throw error;
+  }
+};
+
+/**
+ * Ubah status pembayaran seluruh ORDER.
+ *
+ * ⚠️ CAKUPANNYA ORDER, BUKAN JADWAL — ia melunasi/membatalkan setiap invoice
+ * dan transaksi yang `form_submission_id`-nya cocok, apa pun jadwal pemiliknya.
+ * Itu benar untuk dropdown status di tabel Submissions (yang memang berbicara
+ * tentang order), dan SALAH untuk tombol di kartu jadwal. Untuk yang terakhir
+ * pakai `markScheduleAsPaid()`.
+ */
 export const updatePaymentStatus = async (id: string, status: string) => {
   try {
     const { data, error } = await supabase
@@ -913,6 +978,8 @@ export const getAllFormSubmissions = async () => {
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const SHORT_ID_RE = /^[0-9a-fA-F]{8}$/;
+/** Bentuk `booking_id` (sql/51): 8 karakter, alfabet tanpa `0 O 1 I L U`. */
+const BOOKING_ID_RE = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
 
 /**
  * Rentang uuid yang memuat seluruh nilai berawalan `hex` (8 hex pertama).
@@ -928,33 +995,60 @@ const uuidPrefixRange = (hex: string): [string, string] => [
 ];
 
 /**
- * Order mana yang Booking ID-nya cocok — lewat cermin `ad_schedules`.
+ * Order mana yang kode-nya cocok — lewat cermin `ad_schedules`.
  *
- * ⚠️ BOOKING ID PENELITI BUKAN SELALU ID SUBMISSION. Yang tampil di dashboard
- * peneliti adalah `ad_schedules.source_id` (`SchedulePhase.tsx`), dan kolom itu
- * berpindah tabel: id `form_submissions` untuk jadwal ke-1, id
- * `form_submissions_extend` untuk jadwal ke-2 dst. Terukur di produksi
- * 2026-08-17: dari 13 Booking ID jadwal lanjutan, NOL yang bisa ditemukan lewat
- * pencocokan `form_submissions.id` saja. Peneliti mengutip kodenya ke support,
- * admin mengetiknya di kotak pencarian, hasilnya kosong — tanpa error, cuma
- * "tidak ada hasil", jadi tidak ada yang sadar pencariannya yang salah.
+ * ⚠️ TIGA BENTUK HARUS TETAP BISA DICARI, dan itu disengaja:
  *
- * Satu lookup ke `source_id` menutupi KEDUA bentuk sekaligus, karena baris
- * ordinal 1 memang punya `source_id = submission_id`.
+ *   1. `booking_id` (sql/51)   — bentuk BARU, yang dilihat peneliti & admin
+ *   2. id `form_submissions`   — Booking ID lama untuk jadwal ke-1
+ *   3. id `form_submissions_extend` — Booking ID lama untuk jadwal ke-2 dst.
  *
- * Task 11 akan menggantikan ini dengan kolom `booking_id` yang opaque dan abadi;
- * sampai saat itu, inilah pemetaannya.
+ * Bentuk 2 & 3 sudah beredar berbulan-bulan di WhatsApp, email, dan tangkapan
+ * layar; support akan menerima kutipannya lama setelah kolom baru mendarat.
+ * Keduanya ditutup oleh SATU lookup ke `source_id`, karena baris ordinal 1
+ * memang punya `source_id = submission_id`.
+ *
+ * Riwayat kenapa bentuk 3 pernah hilang sama sekali: sampai 2026-08-17 kotak
+ * pencarian admin hanya mencocokkan `form_submissions.id`, jadi dari 13 Booking
+ * ID jadwal lanjutan NOL yang bisa ditemukan. Peneliti mengutip kodenya, admin
+ * mengetiknya, hasilnya kosong — tanpa error, cuma "tidak ada hasil", jadi
+ * tidak ada yang sadar pencariannya yang salah.
+ *
+ * ⚠️ Bentuk 1 dan bentuk 2/3 BISA TUMPANG TINDIH. Sebuah `booking_id` yang
+ * kebetulan hanya memakai karakter hex (mis. `23456789`) juga lolos
+ * `SHORT_ID_RE` — sekitar 1 dari 580 kode. Karena itu keduanya TIDAK dipilih
+ * salah satu: yang cocok dicari semua, lalu hasilnya digabung.
  */
 const submissionIdsForBookingId = async (
-  cleanHex: string,
-  isFullUuid: boolean
+  cleanCode: string,
+  isFullUuid: boolean,
+  isHexId: boolean
 ): Promise<string[]> => {
+  const upper = cleanCode.toUpperCase();
+  const found = new Set<string>();
+
+  if (BOOKING_ID_RE.test(upper)) {
+    const { data, error } = await supabase
+      .from('ad_schedules')
+      .select('submission_id')
+      .eq('booking_id', upper);
+    if (error) {
+      console.warn('Pencarian booking_id gagal; jatuh kembali ke bentuk lama.', error);
+    } else {
+      for (const r of data || []) if (r.submission_id) found.add(r.submission_id);
+    }
+  }
+
+  if (!isFullUuid && !isHexId) {
+    return Array.from(found);
+  }
+
   let q = supabase.from('ad_schedules').select('submission_id');
 
   if (isFullUuid) {
-    q = q.eq('source_id', cleanHex);
+    q = q.eq('source_id', cleanCode);
   } else {
-    const [lo, hi] = uuidPrefixRange(cleanHex);
+    const [lo, hi] = uuidPrefixRange(cleanCode);
     q = q.gte('source_id', lo).lte('source_id', hi);
   }
 
@@ -968,12 +1062,11 @@ const submissionIdsForBookingId = async (
       'Pencarian Booking ID: lookup ad_schedules gagal, jatuh kembali ke id submission saja.',
       error
     );
-    return [];
+    return Array.from(found);
   }
 
-  return Array.from(
-    new Set((data || []).map((r: any) => r.submission_id).filter(Boolean))
-  );
+  for (const r of (data || []) as any[]) if (r.submission_id) found.add(r.submission_id);
+  return Array.from(found);
 };
 
 // Fungsi untuk mendapatkan form submissions dengan pagination
@@ -998,22 +1091,40 @@ export const getFormSubmissionsPaginated = async (
     const cleanHex = searchQuery.replace(/#/g, '').trim();
     const isFullUuid = UUID_RE.test(cleanHex);
     const isShortId = SHORT_ID_RE.test(cleanHex);
-    const isIdSearch = !!searchQuery && (isFullUuid || isShortId);
+    const isBookingId = BOOKING_ID_RE.test(cleanHex.toUpperCase());
+    const isHexId = isFullUuid || isShortId;
+    const isIdSearch = !!searchQuery && (isHexId || isBookingId);
 
     if (isIdSearch) {
-      const [lo, hi] = uuidPrefixRange(cleanHex);
-      const viaSchedule = await submissionIdsForBookingId(cleanHex, isFullUuid);
+      const viaSchedule = await submissionIdsForBookingId(cleanHex, isFullUuid, isShortId);
 
-      if (viaSchedule.length > 0) {
-        // Cabang langsung TETAP DIPERTAHANKAN di samping hasil cermin: 6 order
-        // belum punya baris `ad_schedules` sama sekali (terukur 2026-08-17), dan
-        // menyerahkan pencarian sepenuhnya ke cermin akan menghilangkan mereka.
-        const direct = isFullUuid ? `id.eq.${cleanHex}` : `and(id.gte.${lo},id.lte.${hi})`;
+      // Cabang langsung ke `form_submissions.id` hanya masuk akal untuk bentuk
+      // hex — sebuah `booking_id` tidak pernah jadi awalan uuid yang sah.
+      const direct = isFullUuid
+        ? `id.eq.${cleanHex}`
+        : isShortId
+          ? (() => { const [lo, hi] = uuidPrefixRange(cleanHex); return `and(id.gte.${lo},id.lte.${hi})`; })()
+          : null;
+
+      if (viaSchedule.length > 0 && direct) {
+        // Keduanya digabung, bukan dipilih salah satu: cermin menutupi jadwal
+        // ke-2 dst. dan `booking_id`, sementara cabang langsung menutupi order
+        // yang cerminnya belum sempat ditulis.
         query = query.or(`${direct},id.in.(${viaSchedule.join(',')})`);
-      } else if (isFullUuid) {
-        query = query.eq('id', cleanHex);
+      } else if (viaSchedule.length > 0) {
+        query = query.in('id', viaSchedule);
+      } else if (direct) {
+        if (isFullUuid) {
+          query = query.eq('id', cleanHex);
+        } else {
+          const [lo, hi] = uuidPrefixRange(cleanHex);
+          query = query.gte('id', lo).lte('id', hi);
+        }
       } else {
-        query = query.gte('id', lo).lte('id', hi);
+        // Bentuk booking_id yang tidak cocok apa pun. Tanpa cabang ini query
+        // pulang tanpa filter dan menampilkan SELURUH order seolah semuanya
+        // cocok — gagal yang jauh lebih menyesatkan daripada "tidak ada hasil".
+        return { data: [], count: 0 };
       }
     } else if (searchQuery) {
       query = query.or(`title.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`);
@@ -2250,6 +2361,21 @@ export interface AdScheduleEntry {
   ordinal: number;
   isExtension: boolean;
   /**
+   * Kode jadwal yang dikutip peneliti DAN admin — 8 karakter, alfabet tanpa
+   * `0 O 1 I L U`, ditampilkan sebagai `#K3M9PQ7T`.
+   *
+   * ⚠️ Sebelum sql/51 kedua permukaan menyebut jadwal yang sama dengan kode
+   * BERBEDA: peneliti melihat 8 hex pertama `sourceId`, admin melihat 8 hex
+   * pertama `submissionId`. Untuk jadwal ke-2 dst. keduanya tidak pernah sama,
+   * jadi kode yang dikutip peneliti ke support tidak bisa dicari admin sama
+   * sekali (13 dari 13 gagal, tanpa error). Kolom ini yang menyatukannya —
+   * jangan pernah menurunkan tampilan dari `id`/`sourceId`/`submissionId` lagi.
+   *
+   * ⚠️ JANGAN turunkan dari `ordinal`: `resync_ad_schedule_ordinals()` (sql/41)
+   * menomori ulang jadwal lanjutan begitu ada yang disisipkan lebih awal.
+   */
+  bookingId: string;
+  /**
    * Baris SUMBER-nya: id `form_submissions` untuk ordinal 1, id
    * `form_submissions_extend` untuk sisanya. Inilah kunci yang dipakai
    * `transactions.extend_id` / `invoices.extend_id`, jadi ia yang menautkan
@@ -2395,7 +2521,7 @@ export const fetchAdSchedules = async (
   let q = supabase
     .from('ad_schedules')
     .select(`
-      id, submission_id, ordinal, source_table, source_id,
+      id, submission_id, ordinal, source_table, source_id, booking_id,
       start_date, end_date, duration,
       status, review_status, payment_status,
       distribution_type, kilat_slot_hour,
@@ -2485,6 +2611,7 @@ export const fetchAdSchedules = async (
       ordinal: row.ordinal,
       isExtension: row.source_table === 'form_submissions_extend',
       sourceId: row.source_id,
+      bookingId: row.booking_id,
       startDate: row.start_date,
       endDate: row.end_date,
       duration: row.duration,

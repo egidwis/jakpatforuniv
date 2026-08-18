@@ -52,7 +52,11 @@ export interface ScheduleCard {
     startDate: Date | null;
     endDate: Date | null;
     info: {
-        id: string;
+        /** Kode yang dilihat & disalin peneliti, dan yang dicari admin — kolom
+         * `ad_schedules.booking_id` (sql/51). Sengaja MENGGANTIKAN `id` yang dulu
+         * di sini: field itu berisi `sourceId`, yang untuk jadwal ke-2 dst. bukan
+         * kode yang sama dengan yang ditampilkan admin. */
+        bookingId: string;
         createdAt: string | null;
         /** Kolom `duration` APA ADANYA. Dipakai untuk UANG saja (harga memang
          * dihitung dari durasi yang dipesan). JANGAN dipakai menjawab "berapa hari
@@ -181,9 +185,7 @@ export function buildScheduleCards(
             startDate: oStart,
             endDate: oEnd,
             info: {
-                // `sourceId` dan bukan `first.id`: yang sudah beredar di WhatsApp
-                // dan email peneliti adalah id ORDER, bukan id baris cermin.
-                id: first.sourceId,
+                bookingId: first.bookingId,
                 createdAt: first.createdAt,
                 duration: first.duration ?? 0,
                 airingDays: airingDaysOf(first).length,
@@ -250,7 +252,7 @@ export function buildScheduleCards(
             startDate: start,
             endDate: end,
             info: {
-                id: s.sourceId,
+                bookingId: s.bookingId,
                 createdAt: s.createdAt,
                 duration: s.duration ?? 0,
                 airingDays: airingDaysOf(s).length,

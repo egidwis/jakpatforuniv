@@ -215,7 +215,8 @@ export function ScheduleEntryDrawer({
   const isLate = !isPaid && airingYmd ? isPaymentTooLateForDate(airingYmd) : false;
 
   const subtitle = [
-    `#${entry.submissionId.slice(0, 8)}`,
+    // Booking ID JADWAL, bukan id order — sama dengan yang dilihat peneliti (sql/51).
+    `#${entry.bookingId}`,
     entry.researcherName,
     entry.university || null,
   ]

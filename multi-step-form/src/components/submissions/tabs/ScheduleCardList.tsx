@@ -109,7 +109,8 @@ function ScheduleDateTitle({ entry }: { entry: AdScheduleEntry }) {
 interface CardActions {
   onEditSchedule: (entry: AdScheduleEntry) => void;
   onCreateInvoice: (entry: AdScheduleEntry) => void;
-  onMarkPaid: (() => void) | null;
+  /** Menerima `entry`: pelunasan berlingkup SATU jadwal sejak sql/51. */
+  onMarkPaid: ((entry: AdScheduleEntry) => void) | null;
   /** null = jadwal ini tidak boleh dibatalkan dari sini. */
   onCancel: ((entry: AdScheduleEntry) => void) | null;
   /** "Lepaskan Slot" — lepaskan slot jadwal jika belum dibayar. */
@@ -278,7 +279,7 @@ function PaymentSection({
                   size="sm"
                   variant="outline"
                   className="h-7 text-[11px] text-emerald-700 hover:bg-emerald-50 border-emerald-300 bg-white"
-                  onClick={actions.onMarkPaid}
+                  onClick={() => actions.onMarkPaid!(entry)}
                 >
                   <Check className="w-3 h-3 mr-1.5" /> Tandai Lunas
                 </Button>
@@ -374,7 +375,7 @@ function PaymentSection({
               <Button
                 size="sm"
                 className="h-6 px-2 text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={actions.onMarkPaid}
+                onClick={() => actions.onMarkPaid!(entry)}
               >
                 <Check className="w-3 h-3 mr-1" /> Tandai Lunas
               </Button>
@@ -569,15 +570,14 @@ export function ScheduleCardList({
    */
   onCancel: ((entry: AdScheduleEntry) => void) | null;
   /**
-   * null = tombolnya tidak boleh dirender di dalam kartu.
+   * null = tombolnya tidak boleh dirender di dalam kartu (order sudah lunas).
    *
-   * ⚠️ `updatePaymentStatus` masih menyaring `form_submission_id` saja, jadi ia
-   * melunasi SELURUH invoice order. Untuk order berjadwal satu itu tidak
-   * berbeda — "semua tagihan order" persis "tagihan jadwal ini". Untuk order
-   * berjadwal banyak ia berbohong, jadi pemanggil mengirim null dan tombolnya
-   * pindah ke luar beserta peringatannya. Penyempitannya ada di Task 11.
+   * Sejak sql/51 pelunasan berlingkup SATU jadwal lewat `markScheduleAsPaid()`,
+   * jadi tombolnya tinggal di dalam kartu untuk SEMUA order — bukan lagi hanya
+   * yang berjadwal satu. Peringatan "melunasi seluruh order" yang dulu berdiri
+   * di luar kartu sudah dibongkar bersama sebabnya.
    */
-  onMarkPaid: (() => void) | null;
+  onMarkPaid: ((entry: AdScheduleEntry) => void) | null;
   /**
    * "Hapus dari list" — melepas slot SATU jadwal yang batas bayarnya lewat.
    *

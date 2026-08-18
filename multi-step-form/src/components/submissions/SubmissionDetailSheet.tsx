@@ -136,7 +136,6 @@ export function SubmissionDetailSheet({
   isScheduled,
   onOpenChange,
   onStatusChange,
-  onPaymentStatusChange,
   onEditFormDetails,
   onEditCriteria,
   onOpenPageBuilder,
@@ -338,7 +337,6 @@ export function SubmissionDetailSheet({
           onEditSchedule={(entry) => setSubView({ kind: 'edit', entry })}
           onCreateInvoice={(entry) => setSubView({ kind: 'invoice', entry })}
           onCreateSchedule={(isExtraAd) => setSubView({ kind: 'create', isExtraAd })}
-          onPaymentStatusChange={onPaymentStatusChange}
           onEditFormDetails={onEditFormDetails}
           onConvertDistribution={onConvertDistribution}
           onExtendCreated={onExtendCreated}
