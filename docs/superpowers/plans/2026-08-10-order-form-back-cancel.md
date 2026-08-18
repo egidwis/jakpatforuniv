@@ -1,5 +1,31 @@
 # Back per-step + Cancel order — Implementation Plan
 
+> ## ✅ SELESAI — commit `3663bed` di `feat/dashboard-soft-dna-navbar`, belum di-merge
+> Disimpan sebagai catatan sejarah. Jangan dieksekusi ulang. Kotak centang di
+> bawah sengaja dibiarkan kosong — status yang berlaku adalah banner ini.
+> Indeks seluruh rencana ada di [`README.md`](README.md).
+>
+> **Koreksi pasca-eksekusi 2026-08-18 (baca sebelum apa pun di bawah):**
+>
+> 1. **Bar floating tidak lagi ada "di setiap step".** Revamp visual order form
+>    2026-08-18 mempersempitnya ke **Step 1 (layar isian) dan Step 2 saja**.
+>    Keputusan pemilik produk: begitu user menyeberang ke Step 3, layar jadwal →
+>    bayar dibiarkan bersih supaya fokusnya satu. **Konsekuensi yang diterima
+>    sadar:** tombol `X` "Batalkan Pesanan" tidak terjangkau dari Step 3/4 — jalan
+>    keluarnya lewat tombol "Kembali" per-step (Task 3) ke Step 2, baru batalkan
+>    di sana. Skenario 5 & 6 di Task 5 di bawah karena itu dibaca **"di step mana
+>    pun bar-nya tampil"**, bukan "di setiap step".
+> 2. **Angka baseline `63` di Global Constraints sudah basi.** Diukur ulang
+>    2026-08-18 di puncak branch: **60**. Aturannya tidak berubah — nol error baru
+>    di berkas yang disentuh rencana ini.
+> 3. **Kepemilikan `isHeaderVisible` diperbaiki 2026-08-18.** Sempat ada dua
+>    penulis untuk satu state (`MultiStepForm` bergantung `currentStep`,
+>    `StepSurveyDetails` bergantung `flowState`), sehingga bar muncul atau hilang
+>    tergantung arah user tiba di layar yang sama — dan saat ia muncul di Step 1,
+>    ia menutupi baris tombol Kembali/Lanjut yang lahir dari Task 1. Sekarang
+>    `isHeaderVisible` adalah **nilai turunan**, anak hanya melapor lewat
+>    `setIsStep1HeaderAllowed`, dan padding `pb-*` ikut nilai yang sama.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a contextual "Back" button next to each step's primary CTA in the order form, and turn the floating bar's back arrow into a "Cancel order" action with a confirmation dialog that discards the draft and returns to the dashboard.
@@ -906,6 +932,7 @@ Expected: `63`.
 
 Run: `cd multi-step-form && npx tsc -b 2>&1 | grep -c "error TS"`
 Expected: `63` (identical to the pre-change baseline measured at the start of this plan).
+**Basi — baseline sekarang `60`, lihat koreksi no. 2 di kepala berkas.**
 
 - [ ] **Step 2: Confirm the dev server is serving the changes**
 
@@ -920,8 +947,9 @@ Walk through every scenario from the design spec's Testing section (`docs/superp
 2. Step 1 → Lanjutkan → Step 2 → click Back → back on Step 1, form 1's data intact.
 3. Step 2 → Lanjutkan (schedule path) → Step 3 → click Back → back on Step 2.
 4. Step 2 → upgrade to Kilat → Step 4 → click Back → back on Step 2, Kilat upgrade undone (same as the old arrow's behavior on step 4).
-5. On any step → click the `X` in the floating bar → dialog appears → click "Tidak, Lanjutkan Mengisi" → dialog closes, step/form unchanged.
-6. On any step → click `X` → "Ya, Batalkan Pesanan" → redirected to `/dashboard`; open a new order → starts clean on Step 1 (old draft does not reappear).
+5. On any step **where the floating bar is shown** (Step 1 form screen, Step 2 — see koreksi no. 1) → click the `X` in the floating bar → dialog appears → click "Tidak, Lanjutkan Mengisi" → dialog closes, step/form unchanged.
+6. Same steps → click `X` → "Ya, Batalkan Pesanan" → redirected to `/dashboard`; open a new order → starts clean on Step 1 (old draft does not reappear).
+7. **Baru 2026-08-18:** Step 1 pilih metode → bar tersembunyi; pilih "Isi manual" → bar muncul **dan tidak menutupi** baris tombol Kembali/Lanjut; maju ke Step 2 → bar tetap; **Kembali ke Step 1 → bar masih muncul** (dulu hilang); maju ke Step 3/4 → bar hilang, konten tidak menyisakan ruang kosong di bawah.
 
 - [ ] **Step 4: Report results to the user and ask before committing**
 

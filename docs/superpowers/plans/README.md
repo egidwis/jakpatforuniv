@@ -3,7 +3,7 @@
 Folder ini berisi rencana implementasi yang ditulis sebelum eksekusi. Sebagian sudah
 selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sekali.
 
-**Diperbarui 2026-08-17.**
+**Diperbarui 2026-08-18.**
 
 > Rencana **bukan** status berjalan. Untuk "di mana posisi kita sekarang", baca
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — itu titik masuk resmi
@@ -51,12 +51,63 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 > [Task 11](2026-08-08-task-11-ad-schedules-otoritatif.md), supaya kodenya tidak berganti dua
 > kali. Detail di "00E" pada [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
 
+> ⚠️ **2026-08-18 — revamp visual order form (Step 1–4) menyerempet dua rencana.**
+> Keduanya sudah diselesaikan, tidak ada yang menggantung:
+>
+> 1. **Bar floating dipersempit ke Step 1 & 2**, atas keputusan pemilik produk: begitu user
+>    menyeberang ke Step 3 ia sedang di jalur jadwal → bayar dan layarnya dibiarkan bersih.
+>    Ini membatalkan kriteria terima "di setiap step" milik
+>    [back-cancel Task 5 §5–6](2026-08-10-order-form-back-cancel.md) — **rencananya sudah
+>    diralat**, bukan kodenya. Jalan keluar dari Step 3/4 tetap ada lewat tombol "Kembali"
+>    per-step ke Step 2. Sekalian diperbaiki: `isHeaderVisible` sempat punya **dua penulis**
+>    (`MultiStepForm` ↔ `StepSurveyDetails`) sehingga bar muncul/hilang tergantung arah user
+>    tiba, dan saat muncul di Step 1 ia menutupi baris tombolnya sendiri. Sekarang nilai
+>    turunan, satu pemilik.
+> 2. **`handleSelect` di `StepSchedule` berhenti menulis ke `formData`** — tanggal baru
+>    mendarat di draft saat dikonfirmasi. Ini **memperkuat**, bukan melanggar, koreksi no. 3
+>    di kepala [order-flow-reorder](2026-08-09-order-flow-reorder.md): rewind `currentStep`
+>    tetap tidak diperlukan. Guard draft di `MultiStepForm` **tetap dipakai** — jalur Kilat
+>    (Step 4 → Step 2) masih memarkir tanggal di draft. Trade-off yang diterima sadar:
+>    reload tab di Step 3 kini menghapus tanggal yang belum dikunci.
+>
+> Copy tombol Step 3 dikembalikan ke **"Kunci Jadwal & Lanjut Bayar"** — kata "kunci" milik
+> tombol yang benar-benar mengunci slot, bukan tombol Step 2 yang hanya mengantar ke sana.
+
+> ⚠️ **2026-08-18 — `JFUSUHUD` sekarang punya tanggal mati, dan itu menutup pintu Kilat.**
+> Voucher itu selama ini tidak punya masa berlaku di kode sama sekali; "berakhir ~16 Agustus"
+> hanyalah kesepakatan lisan. Sejak commit hari ini ia **berlaku s/d 31 Agu 2026** (mati
+> 1 Sep 00.00 WIB), dan karena ia satu-satunya pembawa `isKilatEligible`, tombol upgrade Kilat
+> ikut hilang saat itu — **disengaja**, lihat [rencana menu Kilat](2026-08-18-kilat-menu-mandiri.md).
+>
+> Dua hal ikut dibetulkan karena tanggal mati tanpa keduanya berbahaya:
+>
+> 1. **Kevalidan voucher dinilai pada tanggal order LAHIR, bukan jam pembayaran.**
+>    `create-payment.js` menghitung ulang harga tiap pembayaran lalu diam-diam mengoreksi
+>    `total_cost` di DB ke angka server — jadi tanpa ini, order yang dipesan sewaktu voucher
+>    masih hidup akan **ditagih lebih mahal** dari ringkasan yang disetujui pemesannya. Jebakan
+>    yang sama sudah terpasang untuk ILKOMUNY (31 Des 2026) dan JFUFEB (20 Feb 2027); ketiganya
+>    kini aman.
+> 2. **Pesan voucher yang masih berlaku menyebut tanggal berakhirnya**, supaya peneliti tahu
+>    sebelum kehilangan dan bukan pada 1 September saat kodenya berhenti bekerja.
+>
+> ⚠️ **Ia menumpang `feat/dashboard-soft-dna-navbar`, bukan branch sendiri dari `main`.**
+> Konsekuensinya batas 31 Agustus **baru berlaku saat branch itu di-merge** — dan branch itu
+> masih ⛔ ditahan tanpa tanggal. Kalau tenggatnya mepet, commit-nya harus di-cherry-pick ke
+> branch rilis tersendiri.
+>
+> Repo ini juga akhirnya punya test runner: **vitest** (`npm test`), dengan aturan penamaan
+> `*.spec.ts` untuk suite vitest dan `*.test.ts` untuk lima skrip mandiri lama yang tetap
+> dijalankan lewat `esbuild … | node`. Suite pertamanya menjaga paritas harga klien–server yang
+> selama ini hanya dijaga komentar.
+
 ## Daftar rencana
 
 | Rencana | Status | Ringkas |
 |---|---|---|
 | [2026-08-10-doku-webhook-silent-failure](2026-08-10-doku-webhook-silent-failure.md) | ✅ **kode selesai & teruji lokal 2026-08-10** · ⛔ **`sql/54` belum diterapkan, belum di-deploy** | Webhook DOKU dulu balas 200 walau tulis DB gagal — pembayaran hilang diam-diam (insiden Nur Fitriana, Rp 499.500). Sebabnya semua `fetch` ke PostgREST tidak memeriksa `res.ok`. Sekarang: `sbFetch` + cek jumlah baris berubah, kunci service-role fail-closed, balas 500 supaya DOKU retry (dibatasi 5x), jejak permanen di `doku_webhook_events` (`sql/54`), email admin, banner di halaman Keuangan. **Cloudflare Observability TIDAK tersedia untuk Pages** — itu sebabnya loggingnya di Supabase. **Jalur uang — rilis sendiri; terapkan `sql/54` SEBELUM deploy** |
 | [2026-08-09-order-flow-reorder](2026-08-09-order-flow-reorder.md) | ✅ **committed di branch 2026-08-10, belum di-merge** · 🔴 **`sql/48` sudah jalan di prod & sedang membakar email** | Wizard order user dibalik: Detail → Ringkasan → Jadwal & Bayar (dulu Jadwal sebelum Review); layar jadwal+countdown digabung, kedaluwarsa pulih di tempat; P0 kebocoran data anon (`sql/47`); dua email transisi via pg_cron/pg_net (`sql/48`). Verifikasi 6 skenario baru lewat code-trace, klik manual di browser masih PR. **Baca kotak koreksi 2026-08-10 di kepalanya** — tiga hal menyimpang dari badan dokumen |
+| [2026-08-10-order-form-back-cancel](2026-08-10-order-form-back-cancel.md) | ✅ **selesai, commit `3663bed` di branch, belum di-merge** | Tiap step order form dapat tombol "Kembali" di sebelah CTA-nya, dan panah mundur di bar floating berubah jadi `X` "Batalkan Pesanan" berdialog konfirmasi (buang draft → `/dashboard`). **Baca kotak koreksi 2026-08-18 di kepalanya** — bar floating kini hanya di Step 1 & 2, jadi `X`-nya tidak terjangkau dari Step 3/4 (disengaja) |
+| [2026-08-18-kilat-menu-mandiri](2026-08-18-kilat-menu-mandiri.md) | ⬜ **ditunda sadar; satu keputusan produk masih terbuka** | JFU Kilat pindah dari upgrade berpagar voucher jadi **menu tersendiri** di dashboard peneliti, terbuka untuk semua dengan antrean tanggal seperti Iklan. Sebagian besar antreannya **sudah ada** (kuota 8/hari, kalender Kilat, papan admin) — yang kurang pintunya. Belum bisa jadi rencana tugas-per-tugas: siapa yang memilih jam gelombang belum diputuskan. Mencatat satu lubang nyata: **aturan Senin–Jumat cuma hidup di picker admin** |
 | [2026-08-09-task-13-tagihan-fleksibel-per-jadwal](2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) | ⬜ **disetujui; terkunci di belakang Task 11** | Satu jadwal boleh punya **beberapa invoice** — tagihan susulan jadi piutang yang terlihat dan tidak pernah menghentikan iklan yang sedang tayang. Plus **batal reservasi per jadwal** (status `cancelled` sudah ada di DB, tinggal dipakai) dan **Extra Ad jadi sifat jadwal**, bukan sifat order. **Jalur uang — rilis sendiri.** Butuh `schedule_id` dari Task 11 langkah 1b. **Sejak 2026-08-18 ia juga pembuka Phase 4** — harga per jadwal yang dilahirkannya adalah yang selama ini hilang dari tombol "Jadwalkan Iklan Lagi" |
 | [2026-08-08-task-11-ad-schedules-otoritatif](2026-08-08-task-11-ad-schedules-otoritatif.md) | ⬜ **disetujui; kini terkunci HANYA oleh merge + deploy** | `ad_schedules` jadi otoritatif; `form_submissions_extend` jadi view lalu pensiun. Menambah `booking_id` (kode jadwal yang dikutip peneliti) dan `schedule_id` di invoices/transactions. **Jalur uang — rilis sendiri.** Menyusut 2026-08-08: langkah 3 kehilangan dua pemanggil, langkah 5 tinggal identifier |
 | [2026-08-05-phase-3-jadwal-iklan-terpadu](2026-08-05-phase-3-jadwal-iklan-terpadu.md) | ✅ **selesai di branch — sisa: adu visual + deploy** | Judulnya sudah basi (baca kotak koreksi di kepalanya). Task 9A+9B ✅, papan Schedule bertab ✅, drawer digabung ✅, Page Calendar pensiun ✅ |
