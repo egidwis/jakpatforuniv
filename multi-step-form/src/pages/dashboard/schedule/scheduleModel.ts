@@ -395,13 +395,32 @@ export function matchesFilter(e: AdScheduleEntry, f: FilterState, now: number): 
 
   if (f.service !== 'all' && (e.distributionType || 'regular') !== f.service) return false;
 
-  if (f.query.trim()) {
-    const q = f.query.trim().toLowerCase();
-    if (!e.title.toLowerCase().includes(q) && !e.researcherName.toLowerCase().includes(q)) {
-      return false;
-    }
-  }
+  if (!matchesQuery(e, f.query)) return false;
+
   return true;
+}
+
+/**
+ * Pencarian teks bebas untuk papan Schedule — judul, nama peneliti, atau
+ * Booking ID. Satu-satunya tempat perbandingan ini ditulis; `matchesFilter`
+ * (dipakai untuk daftar tersaring) dan hitungan pil di `ScheduleBoardPage.tsx`
+ * WAJIB lewat sini, jangan menyalin ulang. Sebelumnya keduanya punya salinan
+ * sendiri-sendiri yang TIDAK mengenal Booking ID — search bar mengaku bisa
+ * mencari apa saja tapi diam-diam hanya membaca dua kolom.
+ *
+ * `#` di depan dibuang sebelum dibandingkan supaya admin yang menempel
+ * `#K3M9PQ7T` dari kartu jadwal (tempat kodenya ditampilkan berawalan `#`)
+ * tetap dapat hasil — `bookingId` sendiri tidak pernah menyimpan `#`.
+ */
+export function matchesQuery(e: AdScheduleEntry, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const needle = q.startsWith('#') ? q.slice(1) : q;
+  return (
+    e.title.toLowerCase().includes(q) ||
+    e.researcherName.toLowerCase().includes(q) ||
+    e.bookingId.toLowerCase().includes(needle)
+  );
 }
 
 /**

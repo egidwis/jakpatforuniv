@@ -30,8 +30,15 @@
 > tidak pernah punya policy `UPDATE` — sudah begitu jauh sebelum Task 11,
 > berlaku untuk setiap tulisan status transaksi dari dashboard admin.
 > Ditambal `sql/59` + backfill 6 baris. **Diuji di browser 2026-08-19 —
-> "Tandai Lunas" & "Tandai belum lunas" dua-duanya hijau.** Sisa checklist
-> §00K (booking ID & pencarian) masih ⬜ **belum diuji di browser**. Semua
+> "Tandai Lunas" & "Tandai belum lunas" dua-duanya hijau, Booking ID
+> dikonfirmasi sama di dua sisi.**
+>
+> 🟢 **Search bar papan Schedule ternyata tidak mengenal Booking ID — ditutup
+> 2026-08-19, lihat §00M.** Logikanya sempat digandakan dua tempat (daftar
+> tersaring vs hitungan pil), sekarang satu fungsi (`matchesQuery()`) untuk
+> keduanya. Sekalian: tombol salin Booking ID ditambahkan di tabel
+> `ScheduleAgenda.tsx`. ⬜ **Belum diuji di browser.** Pencarian tiga bentuk di
+> tabel Submissions (§00K) masih terpisah dan masih ⬜ belum diuji. Semua
 > commit di atas **belum di-push** ke `origin/main`.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
@@ -141,12 +148,15 @@ daftar ini bukan formalitas.
       jadwal ke-1 **tidak ikut** berubah. Ini inti Deploy A; sebelum `sql/51`
       satu klik melunasi seluruh order. **Diuji 2026-08-19 — menemukan DUA bug
       uang yang tidak terlihat sebelumnya, keduanya ditutup. Baca §00L.**
-- [ ] **Booking ID sama di dua sisi** — kode yang dilihat peneliti di dashboard
+- [x] **Booking ID sama di dua sisi** — kode yang dilihat peneliti di dashboard
       identik dengan yang dilihat admin di papan Schedule. Sebelumnya peneliti
       melihat `#E284351B` dan admin `#078e561b` untuk jadwal yang sama.
-- [ ] **Pencarian admin menerima tiga bentuk** — `booking_id`, id submission,
-      id extend. ⚠️ Satu `booking_id` produksi juga cocok dengan `SHORT_ID_RE`
-      (1 dari 1016), jadi hasilnya **digabung**, bukan dipilih salah satu.
+      **Dikonfirmasi user 2026-08-19.**
+- [ ] **Pencarian admin (tabel Submissions) menerima tiga bentuk** — `booking_id`,
+      id submission, id extend. ⚠️ Satu `booking_id` produksi juga cocok dengan
+      `SHORT_ID_RE` (1 dari 1016), jadi hasilnya **digabung**, bukan dipilih
+      salah satu. Belum diuji — jangan tertukar dengan pencarian papan Schedule
+      di §00M, itu search bar yang BEDA dan sudah selesai.
 
 ⚠️ **Jangan turunkan tampilan dari `ordinal`.** `resync_ad_schedule_ordinals()`
 menomori ulang begitu jadwal disisipkan dengan tanggal lebih awal — kode
@@ -239,6 +249,35 @@ tandai→batalkan→tandai lagi tidak meninggalkan baris nyasar.
    `payment_id`, bukan `schedule_id`.** `schedule_id` mengumpulkan semua
    percobaan bayar (termasuk yang gagal dan SAH tetap `pending`);
    `payment_id` adalah pasangan tunggal yang benar-benar ditulis bersama.
+
+### 00M. ✅ Search bar papan Schedule tidak mengenal Booking ID — ditutup, + salin ID di tabel (2026-08-19)
+
+Ditemukan sesudah Booking ID dikonfirmasi sama di dua sisi (item checklist
+§00K di atas): search bar di papan Schedule (`ScheduleBoardPage.tsx`) hanya
+membaca `title`/`researcherName`. Bukan lubang kecil — **logikanya digandakan
+dua kali** (sekali di `matchesFilter()` untuk daftar tersaring, sekali lagi
+inline di `chipCounts` untuk angka pil), dan kedua salinan sama-sama tidak
+menyebut `bookingId`. Persis pola yang sudah dua kali membakar sesi ini
+(`sync_ad_schedule_from_submission` vs `sql/49`, lalu invoices vs transactions):
+dua tempat menulis aturan yang sama tanpa satu sumber, salah satunya
+tertinggal.
+
+Ditutup dengan **satu** fungsi (`matchesQuery()`, baru di `scheduleModel.ts`)
+yang dipakai kedua tempat — bukan menambal masing-masing salinan. Ia juga
+membuang awalan `#` sebelum membandingkan, supaya admin yang menempel
+`#K3M9PQ7T` langsung dari kartu jadwal tetap dapat hasil (`bookingId` sendiri
+tidak pernah menyimpan `#`).
+
+**Sekalian:** tombol salin (ikon `Copy`) ditambahkan di kolom ID
+`ScheduleAgenda.tsx` — sebelumnya Booking ID cuma bisa dibaca, tidak bisa
+disalin langsung dari tabel. `stopPropagation()` dipasang di tombolnya karena
+seluruh baris punya `onClick` sendiri (buka drawer); tanpa itu menyalin ID
+juga ikut membuka drawer.
+
+⬜ **Belum diuji di browser** — cek: ketik Booking ID (dengan/tanpa `#`) di
+search bar papan Schedule → jadwalnya muncul; klik ikon salin di tabel →
+toast "Booking ID disalin!" dan clipboard berisi kode TANPA `#`, drawer TIDAK
+ikut terbuka.
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 

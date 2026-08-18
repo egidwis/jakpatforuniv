@@ -21,7 +21,7 @@ import { AdsWeekBoard } from './schedule/AdsWeekBoard';
 import { ScheduleEntryDrawer } from './schedule/ScheduleEntryDrawer';
 import {
   CANCELLED_CHIPS, CHIP_ORDER, chipKindOf, computeAlerts, groupByDay, holdStateOf,
-  isUnscheduled, matchesFilter, tokenForChip,
+  isUnscheduled, matchesFilter, matchesQuery, tokenForChip,
   type ChipKind, type FilterState,
 } from './schedule/scheduleModel';
 import { PageBuilderModal } from '@/components/PageBuilder/PageBuilderModal';
@@ -149,10 +149,7 @@ export function ScheduleBoardPage({
       // pencarian — supaya angkanya menjawab "kalau kupilih ini, berapa yang
       // muncul", bukan angka global yang tidak berhubungan dengan layar.
       if (service !== 'all' && (e.distributionType || 'regular') !== service) continue;
-      if (query.trim()) {
-        const q = query.trim().toLowerCase();
-        if (!e.title.toLowerCase().includes(q) && !e.researcherName.toLowerCase().includes(q)) continue;
-      }
+      if (!matchesQuery(e, query)) continue;
       const kind = chipKindOf(e, now);
       counts.set(kind, (counts.get(kind) || 0) + 1);
     }
@@ -420,7 +417,7 @@ export function ScheduleBoardPage({
               <div className="flex-1 min-w-[200px] max-w-md relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
-                  placeholder="Cari judul survei atau peneliti..."
+                  placeholder="Cari judul, peneliti, atau Booking ID..."
                   className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}

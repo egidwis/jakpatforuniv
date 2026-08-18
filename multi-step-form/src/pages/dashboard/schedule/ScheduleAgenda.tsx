@@ -1,7 +1,8 @@
-import { ChevronRight, Zap } from 'lucide-react';
+import { ChevronRight, Copy, Zap } from 'lucide-react';
 import { Chip } from '@/components/ui/chip';
 import { cn } from '@/lib/utils';
 import type { AdScheduleEntry } from '@/utils/supabase';
+import { copyToClipboard } from '@/components/submissions/types';
 import {
   agendaChipOf, tokenForChip, formatWibTime, formatWibShort,
   isUnscheduled, needsBannerSwap, type DayEntry, type DayGroup,
@@ -32,7 +33,7 @@ export const dayGroupDomId = (ymd: string) => `sched-day-${ymd}`;
 /** Lebar kolom dipusatkan di sini supaya header dan baris tidak bisa bergeser sendiri-sendiri. */
 const COL = {
   time: 'w-[58px] shrink-0',
-  id: 'w-[84px] shrink-0 hidden lg:block',
+  id: 'w-[108px] shrink-0 hidden lg:block',
   survey: 'flex-1 min-w-0',
   period: 'w-[132px] shrink-0 hidden md:block',
   page: 'w-[64px] shrink-0 hidden sm:block text-right',
@@ -101,9 +102,26 @@ function EntryRow({
           dilihat & disalin peneliti. Sebelumnya baris ini menampilkan
           `submissionId`, yang untuk jadwal ke-2 dst. BUKAN kode yang dikutip
           peneliti ke support. Jangan kembalikan ke id apa pun. */}
-      <span className={cn(COL.id, 'font-mono text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 truncate')}>
-        #{entry.bookingId}
-      </span>
+      <div className={cn(COL.id, 'flex items-center gap-1')}>
+        <span className="font-mono text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 truncate">
+          #{entry.bookingId}
+        </span>
+        {/* `stopPropagation()`: baris ini seluruhnya `onClick={onOpen}` —
+            tanpa ini, menyalin ID juga membuka drawer. Disalin TANPA `#`,
+            sama seperti `CopyOrderIdButton` di dashboard peneliti. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            copyToClipboard(entry.bookingId, 'Booking ID disalin!');
+          }}
+          title="Salin Booking ID"
+          aria-label="Salin Booking ID"
+          className="shrink-0 p-0.5 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+        >
+          <Copy className="w-3 h-3" />
+        </button>
+      </div>
 
       {/* Survei + peneliti + university */}
       <div className={cn(COL.survey, 'flex flex-col leading-tight')}>
