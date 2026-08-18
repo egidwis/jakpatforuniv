@@ -3,16 +3,17 @@
 > **Titik masuk untuk pekerjaan Jadwal Iklan.** Baca ini dulu sebelum membuka
 > rencana mana pun. Diperbarui 2026-08-18.
 >
-> ✅ **Penahanan merge DICABUT — `feat/dashboard-soft-dna-navbar` sudah masuk
-> `main` (2026-08-18).** Rem 2026-08-09 dipasang selama pemilik produk memeriksa
-> flow order; pemeriksaan itu tuntas (§00D audit, §00G keputusan Phase 4, §00H
-> merge terakhir). Urutan rilis yang selama ini antre di belakangnya kini jalan.
+> ✅ **Rilis Soft DNA sudah tayang (2026-08-18).** Penahanan 2026-08-09 dicabut,
+> `feat/dashboard-soft-dna-navbar` di-merge (`f217d58`), dipush, dan dideploy.
+> Endpoint `/api/notify-ad-live` **terbukti tayang** — probe POST tanpa kunci
+> membalas `401` (gerbang menolak), bukan `405` (route hilang) seperti 10 Agustus.
 >
-> 🔴 **Deploy belum selesai saat build hijau — ada satu langkah tangan sesudahnya.**
-> Cron `notify-primary-ads-live` **masih direm** sejak 2026-08-10 (diverifikasi
-> 2026-08-18: `cron.job` cuma berisi `activate-extends`). Selama ia mati, nol
-> email "iklan mulai tayang" terkirim — dideploy atau tidak. §00A punya perintah
-> menghidupkannya kembali beserta cara membuktikan jalurnya benar-benar hidup.
+> 🔴 **SATU LANGKAH RILIS MASIH TERTINGGAL — cron notifikasi belum dijadwalkan.**
+> Diverifikasi 2026-08-18 17.15 WIB: `cron.job` masih hanya berisi
+> `activate-extends`. Kodenya sudah tayang, tapi tidak ada yang memanggilnya.
+> **4 order sedang tayang tanpa email**, tiga di antaranya mulai hari ini pukul
+> 15.00. Perintah menghidupkannya ada di §00A — jalankan, lalu buktikan lewat
+> `net._http_response`.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -113,15 +114,21 @@ order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomat
 
 ### 00A. 🟡 Cron notifikasi direm sejak 2026-08-10 — hidupkan lagi SESUDAH deploy
 
-> **Keadaan per 2026-08-18 (diverifikasi langsung ke produksi):**
+> **Keadaan per 2026-08-18 17.15 WIB — SESUDAH deploy (diverifikasi langsung
+> ke produksi):**
 >
-> - **Rem masih terpasang.** `cron.job` hanya memuat `activate-extends`;
->   `notify-primary-ads-live` tidak ada. Opsi A di bawah memang dijalankan
->   2026-08-10, jadi **tidak ada lagi yang terbakar sejak itu** — tapi juga nol
->   email terkirim selama delapan hari.
-> - **3 order sedang tayang dengan `live_notified_at IS NULL`.** Ketiganya akan
->   dikirimi email pada cron pertama setelah rem dilepas. Bukan ledakan, tapi
->   ketahuilah bahwa tiga email berangkat sekaligus.
+> - ✅ **Endpoint sudah tayang.** POST tanpa kunci ke
+>   `https://submit.jakpatforuniv.com/api/notify-ad-live` membalas **401**
+>   (gerbang rahasia menolak) — bukan lagi **405** seperti 10 Agustus. Probe ini
+>   aman diulang kapan saja: gerbangnya berjalan sebelum apa pun, jadi tidak ada
+>   email terkirim dan tidak ada baris tersentuh.
+> - 🔴 **Rem cron MASIH terpasang.** `cron.job` tetap hanya memuat
+>   `activate-extends`. Setengah rilis: yang mengerjakan sudah ada, yang
+>   memanggil belum. **Ini satu-satunya langkah rilis yang belum dikerjakan.**
+> - **4 order sedang tayang dengan `live_notified_at IS NULL`** — `72ec157b`
+>   (15–22 Agu), `f6b905d1`, `77790fe4`, `234b70ad` (tiga terakhir mulai
+>   **hari ini 15.00**). Keempatnya dikirimi email pada cron pertama setelah rem
+>   dilepas. Empat email berangkat sekaligus; itu wajar, bukan tanda kebocoran.
 > - ⚠️ **Opsi B di bawah sudah menjadi no-op — jangan berharap apa pun darinya.**
 >   Ketiga order yang terbakar 10 Agustus (`0cdd8ab4` 8–11 Agu, `f9b73a58` dan
 >   `8b7bd9c1` keduanya 9–10 Agu) **jendela tayangnya sudah lewat**, dan guard
@@ -129,8 +136,8 @@ order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomat
 >   `live_notified_at` mereka tidak akan menghasilkan email apa pun. Ketiga email
 >   itu hilang permanen; kalau perlu, susulkan manual di luar sistem.
 >
-> Urutan yang benar saat rilis: **deploy dulu, baru jadwalkan ulang cron-nya.**
-> Menjadwalkan lebih dulu mengulang persis insiden aslinya.
+> Syarat urutannya — deploy dulu, baru jadwalkan — **sudah terpenuhi**: deploy
+> selesai dan terbukti. Menjadwalkan sekarang aman.
 
 **Ditemukan 2026-08-10 saat audit pra-merge.** Riwayat lengkapnya dipertahankan di
 bawah karena pelajarannya masih berlaku untuk migrasi berikutnya.
@@ -289,6 +296,33 @@ terlindungi presedens stage yang menaruh live/page_scheduled/completed di atasny
 baru, dan tiga error lama ikut hilang (termasuk `ui/Dialog.tsx` yang di-*rename* jadi
 `dialog.tsx` supaya cocok dengan 14 import yang semuanya huruf kecil; build Linux dulu
 rawan gagal di sini). Build produksi lolos.
+
+### 00I. 🟡 Rilis Soft DNA dideploy 2026-08-18 — hijau, kurang satu langkah
+
+**Yang sudah terbukti.** Merge `f217d58` dipush (tip `835aea1` sesudah menyatu
+dengan dua commit rekan) dan dideploy. Route Functions-nya hidup: POST tanpa kunci
+ke `/api/notify-ad-live` membalas **401**, bukan **405** — pembeda yang persis
+dipakai saat mendiagnosis insiden 10 Agustus.
+
+**Yang belum.** Cron `notify-primary-ads-live` belum dijadwalkan ulang. Lihat
+§00A; ini satu-satunya sisa checklist rilis.
+
+**Yang belum bisa dibuktikan, dan jangan diklaim beres sebelum ada buktinya:**
+
+| Hal | Kenapa belum terbukti | Bukti yang ditunggu |
+|---|---|---|
+| Perbaikan webhook DOKU (`sql/54`) | `doku_webhook_events` **masih 0 baris** — belum ada pembayaran masuk sejak deploy. Tabel kosong tidak membedakan "kode benar, belum ada trafik" dari "kode tidak menulis" | Satu pembayaran DOKU apa pun. Baris pertama yang muncul membuktikan jalurnya; kalau ada order jadi `paid` **tanpa** baris di sini, justru itu alarm |
+| `CRON_NOTIFY_SECRET` di env Cloudflare | Balasan `401` muncul untuk dua sebab berbeda — kunci tidak diset, atau kunci salah — dan keduanya tak bisa dibedakan dari luar | `net._http_response` = **200** sesudah cron dijadwalkan. `401` di sana berarti env-nya tidak cocok dengan Vault |
+| Email Resend benar-benar sampai | Akun sempat suspended 10 Agustus. `200` hanya membuktikan endpoint hidup | Satu email diterima peneliti, atau dashboard Resend |
+
+**Commit yang menyusul rilis** (sudah tayang, di luar lingkup branch Soft DNA):
+`ee7b057` dot indicator di tabel submissions · `4267c01` dot disembunyikan untuk
+page completed + badge audit "tandai lunas" · `bf26145` ajakan JFU Form di helper
+text input tautan manual · `d391fdd` `@fontsource/plus-jakarta-sans` dipasang.
+
+⚠️ **Uji manual pasca-deploy masih menganggur seluruhnya** — §00F dan §00H
+mencatat daftarnya, dan tidak satu pun sudah diklik. Rilis ini besar (81 commit);
+sampai ada yang mengkliknya, "hijau" baru berarti build lolos, bukan flow benar.
 
 ### 00H. ✅ Tarikan `main` kedua + merge ke `main` — penahanan dicabut (2026-08-18)
 

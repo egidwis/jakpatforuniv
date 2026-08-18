@@ -1,6 +1,6 @@
 # Reorder Flow Order + Perbaikan Hasil Audit
 
-> ## ✅ SELESAI — commit 2026-08-10, masuk `main` 2026-08-18 (belum dideploy)
+> ## ✅ SELESAI — commit 2026-08-10, dideploy 2026-08-18 (uji manual belum dijalankan)
 > Disimpan sebagai catatan sejarah. Jangan dieksekusi ulang. Indeks seluruh
 > rencana ada di [`README.md`](README.md).
 >

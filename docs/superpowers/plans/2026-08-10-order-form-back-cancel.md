@@ -1,6 +1,6 @@
 # Back per-step + Cancel order — Implementation Plan
 
-> ## ✅ SELESAI — commit `3663bed`, masuk `main` 2026-08-18 (belum dideploy)
+> ## ✅ SELESAI — commit `3663bed`, dideploy 2026-08-18 (uji manual belum dijalankan)
 > Disimpan sebagai catatan sejarah. Jangan dieksekusi ulang. Kotak centang di
 > bawah sengaja dibiarkan kosong — status yang berlaku adalah banner ini.
 > Indeks seluruh rencana ada di [`README.md`](README.md).
