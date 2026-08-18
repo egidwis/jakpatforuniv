@@ -111,6 +111,8 @@ interface CardActions {
   onCreateInvoice: (entry: AdScheduleEntry) => void;
   /** Menerima `entry`: pelunasan berlingkup SATU jadwal sejak sql/51. */
   onMarkPaid: ((entry: AdScheduleEntry) => void) | null;
+  /** Batalkan pelunasan manual. Tombolnya hanya tampil kalau `payment.paymentChannel === 'MANUAL_VERIFIED'` — lihat gerbang di `unmarkScheduleAsPaid`. */
+  onUnmarkPaid: ((entry: AdScheduleEntry) => void) | null;
   /** null = jadwal ini tidak boleh dibatalkan dari sini. */
   onCancel: ((entry: AdScheduleEntry) => void) | null;
   /** "Lepaskan Slot" — lepaskan slot jadwal jika belum dibayar. */
@@ -242,6 +244,25 @@ function PaymentSection({
             </div>
           </div>
         </div>
+
+        {/*
+          ⚠️ Gerbangnya SENGAJA lebih sempit dari `isManual` di atas. `isManual`
+          juga bernilai true untuk `!payment` (order dibayar di luar sistem,
+          tidak ada baris `transactions` sama sekali — tidak ada apa pun untuk
+          dibalik) dan untuk kombinasi longgar lain. Undo hanya boleh muncul
+          kalau `unmarkScheduleAsPaid()` punya sesuatu YANG PASTI bisa
+          dibalikkan: baris `transactions` yang literal ditulis fungsi itu
+          sendiri (`payment_channel === 'MANUAL_VERIFIED'`, sql/59).
+        */}
+        {actions.onUnmarkPaid && payment?.paymentChannel === 'MANUAL_VERIFIED' && (
+          <button
+            type="button"
+            className="text-[11px] font-medium text-slate-400 hover:text-red-600 hover:underline transition-colors"
+            onClick={() => actions.onUnmarkPaid!(entry)}
+          >
+            Tandai belum lunas
+          </button>
+        )}
       </div>
     );
   }
@@ -551,7 +572,7 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, payments, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onCancel, onReleaseSlot,
+  entries, payments, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancel, onReleaseSlot,
 }: {
   entries: AdScheduleEntry[];
   payments: Map<string, SchedulePayment>;
@@ -578,6 +599,14 @@ export function ScheduleCardList({
    * di luar kartu sudah dibongkar bersama sebabnya.
    */
   onMarkPaid: ((entry: AdScheduleEntry) => void) | null;
+  /**
+   * null = tombol "Tandai belum lunas" tidak boleh dirender.
+   *
+   * Kartunya sendiri menyempitkan lagi ke `payment.paymentChannel ===
+   * 'MANUAL_VERIFIED'` — lihat komentar di `unmarkScheduleAsPaid()` kenapa
+   * gerbang itu harus seketat itu.
+   */
+  onUnmarkPaid: ((entry: AdScheduleEntry) => void) | null;
   /**
    * "Hapus dari list" — melepas slot SATU jadwal yang batas bayarnya lewat.
    *
@@ -657,7 +686,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onCancel, onReleaseSlot }}
+          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancel, onReleaseSlot }}
         />
       ))}
     </div>

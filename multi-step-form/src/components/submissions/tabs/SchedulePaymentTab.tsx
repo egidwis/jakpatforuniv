@@ -5,7 +5,7 @@ import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
-  fetchAdSchedules, fetchSchedulePayments, markScheduleAsPaid, releaseScheduleSlot, supabase,
+  fetchAdSchedules, fetchSchedulePayments, markScheduleAsPaid, unmarkScheduleAsPaid, releaseScheduleSlot, supabase,
   type AdScheduleEntry, type SchedulePayment,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
@@ -201,6 +201,29 @@ export function SchedulePaymentTab({
   }, [reload, onExtendCreated]);
 
   /**
+   * Batalkan pelunasan manual. Tombolnya di kartu sudah digerbang ke
+   * `payment.paymentChannel === 'MANUAL_VERIFIED'` (lihat `ScheduleCardList`),
+   * jadi konfirmasi teks di sini boleh sesederhana ini — tidak ada baris yang
+   * benar-benar dibayar lewat DOKU yang bisa lolos ke jalur ini.
+   */
+  const handleUnmarkPaid = useCallback(async (entry: AdScheduleEntry) => {
+    const ok = window.confirm(
+      `Batalkan status lunas jadwal #${entry.bookingId}?\n\n` +
+      'Tagihan jadwal ini kembali jadi "menunggu bayar". Ini hanya membalik ' +
+      'pelunasan yang ditandai manual — bukan pembayaran lewat DOKU.'
+    );
+    if (!ok) return;
+    try {
+      await unmarkScheduleAsPaid(entry);
+      toast.success(`Jadwal #${entry.bookingId} kembali "menunggu bayar".`);
+      reload();
+      onExtendCreated();
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal membatalkan status lunas');
+    }
+  }, [reload, onExtendCreated]);
+
+  /**
    * "Jadwal Iklan Baru" — memesan jendela tayang BERIKUTNYA untuk order yang sama.
    *
    * ⚠️ PAGAR `!existingPage` SENGAJA TIDAK ADA DI SINI. Sampai Phase 3 syaratnya
@@ -257,6 +280,7 @@ export function SchedulePaymentTab({
             onCreateSchedule={onCreateSchedule}
             onCreateInvoice={onCreateInvoice}
             onMarkPaid={lifecycle.isPaid ? null : (entry) => setPendingPaid(entry)}
+            onUnmarkPaid={(entry) => void handleUnmarkPaid(entry)}
             onCancel={(entry) => void handleCancelSchedule(entry)}
             onReleaseSlot={(entry) => void handleReleaseSlot(entry)}
           />

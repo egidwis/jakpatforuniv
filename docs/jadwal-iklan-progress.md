@@ -21,8 +21,16 @@
 > 🟢 **Task 11 Deploy A SUDAH TAYANG (2026-08-18).** `sql/51` hijau di
 > produksi; `booking_id` (1016 baris, nol NULL) dan "Tandai Lunas" per jadwal
 > di-merge ke `main` lewat fast-forward bersih, dipush, dan dideploy.
-> ⬜ **Belum diuji di browser** — tiga klik yang menunggu ada di §00K.
 > Menemukan satu regresi yang memblokir Deploy B — lihat §00J.
+>
+> 🟢 **Uji browser "Tandai Lunas" (2026-08-19) MENEMUKAN DUA BUG UANG
+> TERSEMBUNYI, keduanya ditutup — lihat §00L.** `invoices` tidak punya kolom
+> `payment_method` (400 sejak `sql/51` tayang), dan yang lebih besar:
+> `transactions` **tidak pernah bisa di-UPDATE dari browser** karena RLS-nya
+> tidak pernah punya policy `UPDATE` — sudah begitu jauh sebelum Task 11,
+> berlaku untuk setiap tulisan status transaksi dari dashboard admin.
+> Ditambal `sql/59` + backfill 6 baris. Sisa checklist §00K (booking ID &
+> pencarian) masih ⬜ **belum diuji di browser**.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -127,9 +135,10 @@ daftar ini bukan formalitas.
 
 **Tiga klik yang menunggu** — urut dari yang paling mahal kalau salah:
 
-- [ ] **"Tandai Lunas" pada jadwal ke-2** order berjadwal banyak → tagihan
+- [x] **"Tandai Lunas" pada jadwal ke-2** order berjadwal banyak → tagihan
       jadwal ke-1 **tidak ikut** berubah. Ini inti Deploy A; sebelum `sql/51`
-      satu klik melunasi seluruh order.
+      satu klik melunasi seluruh order. **Diuji 2026-08-19 — menemukan DUA bug
+      uang yang tidak terlihat sebelumnya, keduanya ditutup. Baca §00L.**
 - [ ] **Booking ID sama di dua sisi** — kode yang dilihat peneliti di dashboard
       identik dengan yang dilihat admin di papan Schedule. Sebelumnya peneliti
       melihat `#E284351B` dan admin `#078e561b` untuk jadwal yang sama.
@@ -144,6 +153,84 @@ diberikan tidak pernah dihitung ulang; itulah gunanya.
 
 ⛔ **Deploy B menunggu dua hal:** daftar di atas hijau, **dan** uji paritas
 `sql/46` §7(1) hijau satu siklus penuh.
+
+### 00L. 🟢 Dua bug uang tersembunyi ditemukan saat uji "Tandai Lunas" — ditutup 2026-08-19
+
+Mengklik item pertama checklist §00K (yang paling mahal kalau salah) langsung
+menabrak `400` di konsol browser. Menelusurinya membuka DUA lapis bug, bukan
+satu — dan lapis kedua jauh lebih tua dan lebih luas dari lapis pertama.
+
+**Lapis 1 — `invoices` tidak punya kolom `payment_method`.**
+`markScheduleAsPaid()` (baru, `sql/51`) dan `updatePaymentStatus()` (lama,
+dropdown status di tabel Submissions) sama-sama menulis `{ status: 'paid',
+payment_method: 'manual' }` ke `invoices` — padahal kolom itu **cuma ada di
+`transactions`**. PostgREST menolak `42703` sebelum menyentuh satu baris pun.
+Di `updatePaymentStatus()` errornya bahkan **tidak pernah diperiksa**, jadi
+bug ini sudah lama gagal diam-diam setiap kali dropdown itu dipakai. Ditutup:
+patch invoices/transactions dipisah sesuai skema masing-masing, mengikuti
+pola yang sudah dipakai `functions/api/doku/webhook.js` (`status` + `paid_at`
+untuk invoices, `payment_method`/`payment_channel` untuk transactions).
+
+**Lapis 2 — `transactions` TIDAK PERNAH bisa di-UPDATE dari browser, sejak
+RLS-nya ada.** Sesudah Lapis 1 ditutup, `invoices` berhasil jadi `paid` tapi
+`transactions` pasangannya **tetap `pending`**. Sebabnya: `transactions` punya
+RLS aktif (`relrowsecurity=true`) tapi **nol policy `UPDATE`** — cuma ada
+`Admin/Users Insert Transactions` dan `Admin/Users Select Transactions`.
+Bandingkan `invoices`, yang punya `Admin Update Invoices` sejak
+`24_secure_invoices_rls.sql`. Tanpa policy UPDATE, RLS menolak default, dan
+Supabase JS **tidak melempar error** saat itu terjadi — `.update()` tanpa
+`.select()` cuma diam-diam kena 0 baris, tidak bisa dibedakan dari "memang
+tidak ada yang cocok".
+
+⚠️ **Dampaknya jauh lebih luas dari tombol "Tandai Lunas".** Setiap tulisan
+`transactions.status` dari dashboard admin kena gerbang yang sama, sejak dulu:
+`updatePaymentStatus()`, dan tiga titik lain di `supabase.ts` yang menandai
+`'expired'` (`releaseScheduleSlot`, `prepareSubmissionForReschedule`,
+`closePaymentLink`). Webhook DOKU tidak kena karena ia pakai `service_role`
+(melewati RLS) — itu sebabnya jalur pembayaran normal kelihatan baik-baik saja
+selama ini.
+
+**Ditutup lewat `sql/59`:**
+
+| Langkah | Hasil |
+|---|---|
+| Policy `Admin Update Transactions` | dipasang, bentuk identik `Admin Update Invoices` (`product@jakpat.net`) |
+| Backfill anomali (`invoices.status='paid'` tapi `transactions.status` bukan `paid`/`completed`) | **6 baris**, tertua 2026-01-15 |
+| Verifikasi ulang | **0** anomali tersisa |
+
+⚠️ **Backfill dipasangkan lewat `payment_id`, BUKAN `schedule_id`.** Satu
+jadwal bisa punya puluhan baris percobaan bayar gagal yang memang SAH tetap
+`pending` selamanya (sampai 29 baris untuk satu jadwal, per audit Task 11).
+Join lewat `schedule_id` awalnya menghitung ~60 "anomali" — hampir semuanya
+percobaan gagal yang normal. `payment_id` adalah pasangan yang benar-benar
+ditulis bersama oleh setiap alur pembayaran; join lewat situ menemukan angka
+sebenarnya: 6.
+
+**Fitur baru sebagai penutup lingkaran: tombol teks "Tandai belum lunas".**
+Muncul di kartu jadwal HANYA kalau `payment.paymentChannel ===
+'MANUAL_VERIFIED'` — satu-satunya nilai yang ditulis `markScheduleAsPaid()`
+sendiri, tidak pernah oleh webhook DOKU. Sengaja lebih ketat dari `isManual`
+(badge audit di kartu yang sama), yang juga bernilai true untuk `!payment`
+(order dibayar di luar sistem, tidak ada apa pun untuk dibalik). Baliknya
+`unmarkScheduleAsPaid()`, bukan tebakan — persis bentuk yang dipakai
+`InvoiceForm.tsx` saat menerbitkan tagihan baru (`payment_status: 'pending',
+submission_status: 'waiting_payment'`).
+
+⚠️ **Tiga pelajaran yang berlaku untuk tabel RLS berikutnya, bukan cuma
+`transactions`:**
+
+1. **INSERT + SELECT ada bukan berarti UPDATE ada.** Cek eksplisit: `select
+   cmd, count(*) from pg_policies where tablename='<tabel>' group by cmd` —
+   kalau `UPDATE` tidak muncul di hasilnya, setiap tulisan dari browser ke
+   tabel itu diam-diam tidak pernah terjadi.
+2. **`.update()` tanpa `.select()` tidak melempar error saat RLS menyaring
+   habis barisnya.** Untuk jalur uang, tambahkan `.select()` dan periksa
+   panjang array-nya, atau terima risikonya secara sadar — jangan biarkan itu
+   jadi kejutan yang ditemukan berbulan-bulan kemudian.
+3. **Untuk mendeteksi anomali `invoices` vs `transactions`, pasangkan lewat
+   `payment_id`, bukan `schedule_id`.** `schedule_id` mengumpulkan semua
+   percobaan bayar (termasuk yang gagal dan SAH tetap `pending`);
+   `payment_id` adalah pasangan tunggal yang benar-benar ditulis bersama.
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 

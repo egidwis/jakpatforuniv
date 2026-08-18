@@ -704,18 +704,19 @@ export const getFormSubmissionById = async (id: string) => {
  * DB — itu perilaku yang sudah ada sejak sql/33, bukan yang dibawa fungsi ini.
  */
 export const markScheduleAsPaid = async (entry: AdScheduleEntry) => {
-  const paidPatch = { status: 'paid', payment_method: 'manual' };
-
+  // `invoices` TIDAK punya kolom `payment_method` — hanya `transactions` yang
+  // punya. Patch-nya harus terpisah per skema; menyamakannya (seperti versi
+  // lama) membuat PostgREST menolak update invoices dengan 400 PGRST204.
   const { error: invErr } = await supabase
     .from('invoices')
-    .update(paidPatch)
+    .update({ status: 'paid', paid_at: new Date().toISOString() })
     .eq('schedule_id', entry.id)
     .in('status', ['pending', 'expired']);
   if (invErr) throw invErr;
 
   const { error: txnErr } = await supabase
     .from('transactions')
-    .update({ ...paidPatch, payment_channel: 'MANUAL_VERIFIED' })
+    .update({ status: 'paid', payment_method: 'manual', payment_channel: 'MANUAL_VERIFIED' })
     .eq('schedule_id', entry.id)
     .in('status', ['pending', 'expired']);
   if (txnErr) throw txnErr;
@@ -730,6 +731,59 @@ export const markScheduleAsPaid = async (entry: AdScheduleEntry) => {
     const { error } = await supabase
       .from('form_submissions')
       .update({ payment_status: 'paid', submission_status: 'paid' })
+      .eq('id', entry.sourceId);
+    if (error) throw error;
+  }
+};
+
+/**
+ * Batalkan pelunasan manual — invers `markScheduleAsPaid()`.
+ *
+ * ⚠️ GERBANGNYA SENGAJA LEBIH KETAT DARI `markScheduleAsPaid`. Dipanggil hanya
+ * kalau `payment.paymentChannel === 'MANUAL_VERIFIED'` (dicek di pemanggil,
+ * `ScheduleCardList.tsx`) — itu satu-satunya nilai yang ditulis fungsi ini
+ * sendiri, tidak pernah oleh webhook DOKU (`functions/api/doku/webhook.js`
+ * menulis kode kanal ASLI dari DOKU, bukan string ini). Filter
+ * `.eq('payment_channel', 'MANUAL_VERIFIED')` di `transactions` mengulang
+ * pemeriksaan itu di level DB supaya tidak mungkin membalik transaksi yang
+ * sungguh dibayar lewat gateway hanya karena berbagi `schedule_id` dengan
+ * percobaan bayar lain.
+ *
+ * Target baliknya BUKAN tebakan — persis bentuk yang dipakai `InvoiceForm.tsx`
+ * saat menerbitkan tagihan baru (`submission_status: 'waiting_payment',
+ * payment_status: 'pending'`), dan `create-payment.js` hanya memblokir
+ * penerbitan ulang saat `payment_status IN ('paid','expired')` — 'pending'
+ * aman, order bisa ditagih lagi tanpa halangan.
+ *
+ * `payment_method`/`payment_channel` dikosongkan (bukan ditebak balik ke
+ * 'doku') karena kita tidak tahu — dan tidak boleh berpura-pura tahu — cara
+ * bayar SEBELUM ditandai lunas manual.
+ */
+export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry) => {
+  const { error: invErr } = await supabase
+    .from('invoices')
+    .update({ status: 'pending', paid_at: null })
+    .eq('schedule_id', entry.id)
+    .eq('status', 'paid');
+  if (invErr) throw invErr;
+
+  const { error: txnErr } = await supabase
+    .from('transactions')
+    .update({ status: 'pending', payment_method: null, payment_channel: null })
+    .eq('schedule_id', entry.id)
+    .eq('payment_channel', 'MANUAL_VERIFIED');
+  if (txnErr) throw txnErr;
+
+  if (entry.isExtension) {
+    const { error } = await supabase
+      .from('form_submissions_extend')
+      .update({ payment_status: 'pending', submission_status: 'waiting_payment' })
+      .eq('id', entry.sourceId);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('form_submissions')
+      .update({ payment_status: 'pending', submission_status: 'waiting_payment' })
       .eq('id', entry.sourceId);
     if (error) throw error;
   }
@@ -754,19 +808,27 @@ export const updatePaymentStatus = async (id: string, status: string) => {
 
     if (error) throw error;
 
-    // If marked as paid, also update any pending invoices/transactions for this submission
+    // If marked as paid, also update any pending invoices/transactions for this submission.
+    //
+    // ⚠️ `invoices` TIDAK punya kolom `payment_method` — hanya `transactions`
+    // punya. Sebelumnya kedua update ini terkena `payment_method` yang sama
+    // DAN hasilnya tidak diperiksa, jadi update invoices ditolak PostgREST
+    // (400 PGRST204) secara diam-diam sejak fungsi ini ditulis: form_submissions
+    // dan transactions berubah jadi 'paid', invoices tidak pernah ikut.
     if (status === 'paid') {
-      await supabase
+      const { error: invErr } = await supabase
         .from('invoices')
-        .update({ status: 'paid', payment_method: 'manual' })
+        .update({ status: 'paid', paid_at: new Date().toISOString() })
         .eq('form_submission_id', id)
         .in('status', ['pending', 'expired']);
+      if (invErr) throw invErr;
 
-      await supabase
+      const { error: txnErr } = await supabase
         .from('transactions')
         .update({ status: 'paid', payment_method: 'manual', payment_channel: 'MANUAL_VERIFIED' })
         .eq('form_submission_id', id)
         .in('status', ['pending', 'expired']);
+      if (txnErr) throw txnErr;
     }
 
     return data[0];
