@@ -489,6 +489,39 @@ disembunyikan** — peneliti berhak melihat bahwa slotnya sudah dilepas.
 - **Membersihkan penanda `[EXTRA_AD]` dari `admin_notes`.** Berhenti ditulis, tetap dibaca.
 - **`DROP COLUMN survey_pages.is_extra_ad`.** Tetap ada sebagai turunan.
 
+## Yang dibuka rencana ini — Phase 4 (ditambahkan 2026-08-18)
+
+**Keputusan pemilik produk 2026-08-18: tombol "Jadwalkan Iklan Lagi" di dashboard peneliti
+(Phase 4) menunggu rencana ini selesai.** Sampai 2026-08-17 dokumen proyek mencatat
+prasyarat Phase 4 hanya `reward_pools` (Task 8B-2). Itu tidak lengkap.
+
+Penyelidikan 2026-08-17 menemukan yang sebenarnya mengunci: **tidak ada harga untuk jadwal
+ke-2.** [`ScheduleForm.tsx:333`](../../../multi-step-form/src/components/schedule/ScheduleForm.tsx#L333)
+menulis `total_cost: 0`; nilainya diketik admin belakangan di `InvoiceForm`, tanpa rumus
+dan tanpa validasi. Dari 13 baris `form_submissions_extend` di produksi, **7 bernilai `0`
+atau di bawah Rp 10.000** — sisa uji coba, sebagian berstatus `paid`. Tidak ada yang bisa
+dipakai ulang di sana, dan `cost-calculator` hanya melayani order pertama.
+
+Rencana inilah yang melahirkannya, lewat tiga hal yang memang sudah ada di dalamnya:
+
+| Langkah di sini | Yang dibutuhkan Phase 4 |
+|---|---|
+| 1c `schedule_billing()` + langkah 2 | Harga & tagihan per jadwal jadi angka yang bisa dihitung, bukan diketik |
+| Langkah 4 — Extra Ad jadi sifat jadwal | Keputusan reguler-vs-extra itu **per tanggal**; jadwal #2 bisa jatuh di hari yang kuota reguler-nya penuh sementara jadwal #1 tidak |
+| Voucher jadi milik tagihan (keputusan 2026-08-09) | Peneliti bisa memakai voucher untuk jadwal barunya tanpa menyentuh tagihan jadwal lama |
+
+Dua prasyarat Phase 4 yang **tidak** dijawab rencana ini dan tetap berdiri sendiri:
+
+- **`reward_pools` (Task 8B-2).** `fetchBatchContext` memaksa keputusan hadiah — jadwal yang
+  berakhir di batch undian baru wajib mendanai pool baru; yang jatuh di batch berjalan pakai
+  `additional_prize_per_winner`. Flow order utama tidak pernah menanyakan ini.
+- **Perpanjangan order Kilat** — di luar cakupan Task 11 maupun rencana ini. Phase 4 harus
+  menyembunyikan CTA-nya untuk order Kilat.
+
+Konteks lengkap, termasuk temuan bahwa **separuh hilir Phase 4 sudah jadi** (state
+`awaiting_invoice` sudah dirender dua bahasa, tombol bayar per kartu sudah berfungsi) dan
+opsi "ajukan, bukan pesan" yang sengaja tidak diambil: `docs/jadwal-iklan-progress.md` §00G.
+
 ## Prasyarat sebelum mulai
 
 - [ ] Branch `feat/dashboard-soft-dna-navbar` di-merge ke `main` dan **dideploy**

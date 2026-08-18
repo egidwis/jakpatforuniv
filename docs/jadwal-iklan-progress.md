@@ -27,7 +27,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ prasyarat: `reward_pools` (8B-2, **`sql/50`** — `46` dipakai Task 9A, `47`/`48` dipakai order-flow reorder, `49` dipakai perbaikan jam tayang kustom, semua 2026-08-10) |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ **sesudah Task 13** (pemilik produk 2026-08-18 — §00G). Prasyarat: `reward_pools` (8B-2, **`sql/50`** — `46` dipakai Task 9A, `47`/`48` dipakai order-flow reorder, `49` dipakai perbaikan jam tayang kustom, semua 2026-08-10) **dan harga per jadwal dari Task 13** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
 Baca §00A sebelum melakukan apa pun. `sql/47` dan `sql/48` **sudah diterapkan ke
@@ -264,6 +264,84 @@ baru, dan tiga error lama ikut hilang (termasuk `ui/Dialog.tsx` yang di-*rename*
 `dialog.tsx` supaya cocok dengan 14 import yang semuanya huruf kecil; build Linux dulu
 rawan gagal di sini). Build produksi lolos.
 
+### 00G. 🔒 Phase 4 ("Jadwalkan Iklan Lagi") diputuskan menunggu Task 13 (2026-08-18)
+
+**Keputusan pemilik produk 2026-08-18: tombol swalayan baru dinyalakan SESUDAH Task 13.**
+Bukan sesudah Task 11, dan bukan sesudah `reward_pools` saja seperti yang tercatat di
+dokumen ini sejak 2026-08-04. Prasyaratnya diperbarui di tiga tempat: baris Phase 4 di
+§"Ringkasan cepat", `[4]` di urutan rilis
+[`plans/README.md`](superpowers/plans/README.md), dan roadmap Phase 4 di
+[`2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md).
+
+**Kenapa BUKAN Task 11 — ini yang paling mudah salah disimpulkan.** Task 11 langkah 2
+sengaja mengubah `form_submissions_extend` jadi view dengan `INSTEAD OF` trigger supaya
+seluruh penulis lama tetap jalan tanpa disentuh. Jadi kode Phase 4 yang ditulis hari ini
+akan **selamat melewati Task 11 tanpa diedit**. Task 11 tidak memblokir Phase 4; ia cuma
+merapikan identitas (`booking_id`) dan tautan tagihannya (`schedule_id`).
+
+**Yang benar-benar mengunci: sistem tidak punya harga untuk jadwal ke-2.**
+[`ScheduleForm.tsx:333`](../multi-step-form/src/components/schedule/ScheduleForm.tsx#L333)
+menulis `total_cost: 0` saat membuat jadwal; harganya diketik admin belakangan di
+`InvoiceForm`. Tidak ada satu pun jalur yang menghitungnya — `cost-calculator` hanya
+melayani order pertama. Terukur di produksi 2026-08-17 atas seluruh 13 baris
+`form_submissions_extend`:
+
+| `total_cost` | Jumlah |
+|---|---|
+| Masuk akal (Rp 200.000 – Rp 3.191.250) | **6** |
+| `0`, atau di bawah Rp 10.000 (`1.000`, `1.110`, `1.110`, `1.103`) | **7** |
+
+Tujuh dari tiga belas bukan harga. Itu bukan data kotor yang perlu dibersihkan — itu
+potret bahwa kolomnya memang diisi tangan tanpa validasi, dan **tidak ada rumus di
+baliknya untuk dipakai ulang.** Task 13 yang melahirkan harga per jadwal (invoice jadi
+sumber kebenaran, Extra Ad jadi sifat jadwal, voucher jadi milik tagihan).
+
+**Lapisan kedua: keputusan hadiah yang belum pernah ditanyakan ke peneliti.**
+`fetchBatchContext` ([`ScheduleForm.tsx:50`](../multi-step-form/src/components/schedule/ScheduleForm.tsx#L50))
+bercabang di batch undian tujuan — jadwal yang berakhir di batch baru **wajib** mendanai
+pool hadiah baru (`prize_per_winner` × `winner_count`); yang jatuh di batch berjalan pakai
+`additional_prize_per_winner`. Keduanya sudah terpakai di produksi (5 baris
+`is_new_month=true`; satu baris top-up Rp 10.000). Flow order utama tidak pernah
+menanyakan ini karena ia selalu batch pertama. Inilah lubang yang `reward_pools` (8B-2)
+obati — jadi prasyarat lama tetap berlaku, ia cuma bukan satu-satunya.
+
+**Tiga risiko sisanya tumbuh seiring volume, bukan penghalang mutlak:**
+
+| | |
+|---|---|
+| `updatePaymentStatus` ([`supabase.ts:681`](../multi-step-form/src/utils/supabase.ts#L681)) masih menyaring `form_submission_id` saja | "Tandai Lunas" melunasi **seluruh** invoice order, termasuk milik jadwal lain. Task 11 langkah 4 mempersempitnya ke `schedule_id` |
+| Booking ID masih beda antara admin & peneliti | Pencarian sudah ditambal (§00E); **tampilannya belum**. Task 11 (`booking_id`) yang menyatukan |
+| Perpanjangan order Kilat | Eksplisit di luar cakupan Task 11 — butuh pemilih gelombang, bukan rentang hari. Phase 4 harus menyembunyikan CTA-nya untuk order Kilat |
+
+#### Temuan yang menghemat waktu saat Phase 4 benar-benar dikerjakan
+
+**Separuh HILIR-nya sudah jadi, lengkap, dan sudah dua bahasa.** Begitu sebuah baris jadwal
+ada tapi invoice-nya belum terbit,
+[`airingPeriods.ts:230`](../multi-step-form/src/components/status/airingPeriods.ts#L230)
+otomatis menjatuhkannya ke `awaiting_invoice` — chip abu-abu, label "Menunggu
+Tagihan"/"Awaiting Invoice", plus kalimat SLA yang sudah ditulis di
+`deriveOrderUiState.ts:292` ("slot sudah dipesan, menunggu admin menerbitkan tagihan
+(maksimal 1 hari kerja)"). Sesudah admin menerbitkan tagihan, tombol "Bayar Sekarang" per
+kartu muncul sendiri dan **sudah berfungsi** lewat `fetchSchedulePayments`. Yang hilang
+cuma hulunya.
+
+Konsekuensinya: ada **versi "ajukan, bukan pesan"** yang secara teknis bisa dikirim tanpa
+menunggu apa pun — peneliti memilih rentang tanggal, barisnya lahir tanpa invoice, admin
+memberi harga persis seperti hari ini, nol logika uang baru. Kuota slot pun sudah aman:
+`fetchSlotAvailability` sudah menghitung extend
+([`supabase.ts:1462`](../multi-step-form/src/utils/supabase.ts#L1462)).
+**Sengaja tidak diambil 2026-08-18** — ia menambah antrean kerja manual admin alih-alih
+menguranginya, dan permintaannya belum cukup besar (13 jadwal lanjutan seumur hidup, 11
+order, dari 244 order selesai/tayang ≈ 4,5%). Dicatat di sini supaya kalau permintaannya
+melonjak sebelum Task 13 selesai, opsi ini tidak perlu ditemukan ulang.
+
+⚠️ **Kalau versi itu suatu saat diambil, ada satu keputusan yang wajib dijawab dulu:
+siapa pemegang slotnya.** [`slotHold.ts:44`](../multi-step-form/src/utils/slotHold.ts#L44)
+hanya melepas otomatis yang `slot_booked_by === 'user'`, dan lepasnya setelah 1 jam —
+pengajuan yang menunggu admin sampai besok pasti kehilangan slotnya. Menandainya
+`'admin'` menyelesaikan itu tapi membuka pintu peneliti menyerobot tanggal tanpa batas
+waktu. Tidak ada jawaban default yang benar; ini keputusan produk.
+
 ### 00F. ✅ `main` (JFU Form) di-merge ke branch Soft DNA (2026-08-17)
 
 **Insiden yang ditemukan saat menyiapkan merge — order produksi mati 4 hari.**
@@ -300,8 +378,17 @@ dalamnya. Yang perlu disesuaikan:
 | 2 | StepSchedule | **StepCheckout** |
 | 3 | StepCheckout | **StepSchedule** |
 
-**Gerbang:** `tsc -b` **37 → 37**, nol error baru (satu error warisan `main` di
+**Gerbang:** `tsc -b` **nol error baru** (satu error warisan `main` di
 `QuestionLogicBuilder.tsx` sekalian dibereskan); `npm run build` lolos.
+
+⚠️ **Koreksi angka 2026-08-18.** Sesi merge mencatat "37 → 37". Perbandingannya benar —
+sama-sama `tsc -b` polos, sebelum & sesudah — tapi **angka mutlaknya salah**: `tsc -b`
+bersifat inkremental dan hanya melaporkan error untuk proyek yang ia bangun ulang, jadi 37
+itu hasil sebagian. Diukur ulang dengan `tsc -b --force` di worktree terpisah:
+`6ba4123` (tip sebelum merge) = **60**, `4893c10` (commit merge) = **60**. Nol error baru
+tetap berlaku. **Pakai `--force` untuk angka gerbang**, atau angkanya akan berbeda-beda
+tergantung isi cache. (Angka **75** yang tercatat di rencana Task 11 & 13 berasal dari era
+pengukuran lain dan belum diadu ulang dengan metode ini.)
 
 ⚠️ **Belum diuji di browser.** Yang paling perlu diklik: CTA "Sebar via Jakpat" → prefill →
 lanjut sampai bayar, dan satu order Google Form biasa untuk memastikan `custom_form_id`
@@ -349,7 +436,7 @@ admin sedang membuka bulan lain. Tanpa ini perbaikan di atas nyaris tak terasa. 
 | 13 Booking ID jadwal lanjutan | **13/13** memetakan ke tepat satu order yang benar (sebelumnya 0) |
 | Ambiguitas prefiks 8-hex | **998 kode, 0 ambigu** — tidak ada kode yang menunjuk >1 order |
 | Sintaks PostgREST | `and()` bersarang di `or=()`, rentang prefiks uuid, dan input HURUF BESAR diuji langsung ke server produksi |
-| `tsc -b` | 37 error sebelum, **37 sesudah** — nol error baru, nol hilang |
+| `tsc -b` | **nol error baru, nol hilang** (angka mutlak "37" yang tercatat di sini semula hasil build inkremental sebagian — lihat koreksi di §00F) |
 | `npm run build` | lolos |
 
 ⚠️ **Belum diuji di browser.** Yang dikerjakan baru typecheck, build, dan simulasi SQL atas
@@ -1054,13 +1141,18 @@ berubah serentak. 8B-2 keluar dari urutan ini — ia pindah jadi prasyarat Phase
 | **10** | Satukan aturan waktu & pembayaran | Cutoff 13.00/14.00 WIB berlaku seragam ke semua jadwal; `transactions`/`invoices` pakai `schedule_id`; **"Mark as Paid" jadi per-jadwal** (sekarang order-level dan bisa menandai lunas order tanpa jadwal sama sekali — 3 dari 522 order terukur begitu). |
 | **11** | Pindahkan pembaca, lalu contract | ⚠️ View kompatibilitas WAJIB ada sebelum tabel aslinya disentuh, bukan sesudah. **Diperkecil oleh 8B-1:** `respondents.js` tidak lagi membaca `form_submissions_extend` sama sekali (query massalnya diganti RPC). Sisa pembaca serverless tinggal dua — `functions/api/storage-cleanup.js:74` dan `functions/api/doku/webhook.js:497,516` — plus pembaca di `src/`. |
 | **12** | Istilah — semua jadi "Jadwal Iklan 1/2/3" | 🟡 **Separuh, sengaja.** Copy yang dibaca peneliti & admin ✅ selesai 2026-08-08. Sisa: identifier kode (`ExtendSection`, `FormSubmissionExtend`, `entity_type='extend'`) — menunggu Task 11 langkah 5, karena selama tabelnya masih bernama itu penggantian cuma memindahkan kebingungan. Plus nama item invoice `'Extend Iklan (ads)'` yang menunggu finance. Berhenti di API: nama field publik (`period_batch`, `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut berganti. |
-| **13** | Tagihan fleksibel per jadwal | ⬜ **Disetujui 2026-08-09, terkunci di belakang Task 11.** Satu jadwal boleh punya beberapa invoice: tagihan susulan jadi **piutang yang terlihat** dan **tidak pernah menghentikan iklan yang sedang tayang**. Plus **batal reservasi per jadwal** dan **`is_extra_ad` pindah ke `ad_schedules`** (hari ini ia sifat ORDER — lihat jebakan no. 17). Sumber kebenaran uang pindah dari `ad_schedules.total_cost` ke invoice, yang sekalian membunuh `hasEverPaid`. Rencana lengkap: [`2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md`](superpowers/plans/2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) |
+| **13** | Tagihan fleksibel per jadwal | ⬜ **Disetujui 2026-08-09, terkunci di belakang Task 11.** Satu jadwal boleh punya beberapa invoice: tagihan susulan jadi **piutang yang terlihat** dan **tidak pernah menghentikan iklan yang sedang tayang**. Plus **batal reservasi per jadwal** dan **`is_extra_ad` pindah ke `ad_schedules`** (hari ini ia sifat ORDER — lihat jebakan no. 17). Sumber kebenaran uang pindah dari `ad_schedules.total_cost` ke invoice, yang sekalian membunuh `hasEverPaid`. **Sejak 2026-08-18 ia juga pembuka Phase 4** — harga per jadwal yang dilahirkannya adalah yang selama ini hilang (§00G). Rencana lengkap: [`2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md`](superpowers/plans/2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) |
 
 Setelah Phase 2: **Phase 3** (tab "Jadwal Iklan" terpadu di admin) menyusut jadi
 mapper biasa, dan **Phase 4** (tombol "Jadwalkan Iklan Lagi" di dashboard user)
 baru masuk akal dikerjakan. Dikerjakan **sebelum** Phase 2 rampung, Phase 3 justru
 jadi adapter di atas dua model jadwal yang masih berbeda — persis pekerjaan yang
 Phase 2 ada untuk menghapusnya. Rinciannya di §2 "Yang menunggu tindakan".
+
+⚠️ **Phase 4 menunggu Task 13, bukan Task 11** (pemilik produk 2026-08-18). Task 11
+tidak memblokirnya — view kompatibilitasnya membuat kode Phase 4 selamat tanpa diedit.
+Yang mengunci adalah **harga jadwal ke-2 yang belum pernah ada rumusnya**, dan itu
+lahir di Task 13. Bukti + prasyarat lengkapnya di §00G.
 
 ---
 
@@ -1354,6 +1446,21 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
     `updateScheduleDates()` karena itu menurunkan tanggalnya lewat `toWibYmd()`.
     Invariannya dikunci uji di `airing-window.test.ts` §7 (00.00 · 03.00 · 06.59
     · 07.00 · 15.00 · 23.30).
+
+23. **`total_cost` pada jadwal ke-2 dst. adalah angka ketikan tangan, bukan harga
+    yang dihitung.** `ScheduleForm.handleSaveCreate` menulis `total_cost: 0`; nilai
+    sebenarnya diketik admin belakangan di `InvoiceForm`, tanpa validasi dan tanpa
+    rumus. Terukur 2026-08-17 atas seluruh 13 baris `form_submissions_extend`:
+    **7 di antaranya `0` atau di bawah Rp 10.000** (`1.000`, `1.110`, `1.110`,
+    `1.103`) — sisa uji coba yang tidak pernah dibersihkan, sebagian bahkan
+    berstatus `paid`.
+
+    Dua akibat langsung. **(a)** Jangan pakai kolom ini untuk statistik uang,
+    laporan, atau rata-rata harga — jumlahkan invoice. Task 13 memang memindahkan
+    sumber kebenaran uang ke invoice dan mengembalikan arti `total_cost` jadi
+    "harga saat dipesan". **(b)** Jangan berasumsi ada rumus harga jadwal ke-2
+    yang tinggal dipanggil ulang: `cost-calculator` hanya melayani order pertama.
+    Ini penemuan yang menunda Phase 4 ke belakang Task 13 — lihat §00G.
 
 ---
 

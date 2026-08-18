@@ -37,7 +37,7 @@
 | Phase 1B | Beri tahu jalur review-manual soal weekend/hari libur admin | ⬜ Backlog, tidak memblokir Phase 2 — beda file (`StepCheckout.tsx`, `airing-window.ts`) |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 **Rencana ini** — Task 8 ✅, 8B-1 ✅ live, 8C ✅, 8D 🟡, 9–12 ⬜ |
 | Phase 3 | Tab "Jadwal Iklan" terpadu di admin | ⬜ Setelah Phase 2 — butuh baris data yang setara, bukan adapter. **Prasyarat: Task 8D** (`ad_schedules` harus mengenali Kilat lebih dulu) |
-| Phase 4 | Aktifkan **"jadwalkan iklan lagi" di dashboard user** | ⬜ Roadmap — lihat di bawah. **Prasyarat: `reward_pools` (Task 8B-2)** |
+| Phase 4 | Aktifkan **"jadwalkan iklan lagi" di dashboard user** | ⬜ Roadmap — lihat di bawah. **Prasyarat: `reward_pools` (Task 8B-2) _dan_ Task 13** (diperbarui 2026-08-18) |
 | Phase 5 | Aktifkan **Kilat di dashboard user** | ⬜ Roadmap — setelah Phase 4 |
 
 ### Roadmap Phase 4 & 5 (ditambahkan 2026-08-04)
@@ -51,6 +51,20 @@ sepanjang sejarah, `additional_prize_per_winner` masih 0 di semua baris (terukur
   pilih tanggal → sistem mengenali batch tujuan → invoice → bayar. **Prasyaratnya
   `reward_pools` (Task 8B-2)**, karena begitu jalur ini terbuka, tiga lubang laten di
   Task 8B-2 berubah dari "belum pernah terjadi" jadi rutin sekaligus.
+
+  > ⚠️ **Diperbarui 2026-08-18 — `reward_pools` bukan satu-satunya prasyarat.**
+  > Pemilik produk memutuskan Phase 4 dijalankan **sesudah Task 13**. Yang terlewat
+  > saat baris di atas ditulis: langkah "→ invoice →" itu **tidak punya harga**.
+  > `ScheduleForm.handleSaveCreate` menulis `total_cost: 0` dan admin mengetik nilainya
+  > belakangan di `InvoiceForm` — tanpa rumus, tanpa validasi. Dari 13 baris
+  > `form_submissions_extend` di produksi, 7 bernilai `0` atau di bawah Rp 10.000.
+  > `cost-calculator` hanya melayani order pertama. Task 13 yang melahirkan harga per
+  > jadwal (plus Extra Ad per tanggal dan voucher per tagihan, yang dua-duanya juga
+  > dibutuhkan jalur ini). Bukti & prasyarat lengkap:
+  > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) §00G.
+  >
+  > Perlu diketahui juga: **Task 11 tidak memblokir Phase 4.** View kompatibilitas di
+  > langkah 2-nya membuat kode Phase 4 yang ditulis hari ini selamat tanpa diedit.
 - **Phase 5 — Kilat untuk user.** Slot Kilat (8/11/14/17 WIB, 2 kuota/slot, Senin–Jumat)
   sekarang hanya bisa dipesan lewat jembatan admin. Membukanya ke user menumpang alur yang
   sama dengan Phase 4, jadi ia menyusul, bukan paralel.
