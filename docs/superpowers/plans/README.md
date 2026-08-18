@@ -90,10 +90,10 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 > 2. **Pesan voucher yang masih berlaku menyebut tanggal berakhirnya**, supaya peneliti tahu
 >    sebelum kehilangan dan bukan pada 1 September saat kodenya berhenti bekerja.
 >
-> ⚠️ **Ia menumpang `feat/dashboard-soft-dna-navbar`, bukan branch sendiri dari `main`.**
-> Konsekuensinya batas 31 Agustus **baru berlaku saat branch itu di-merge** — dan branch itu
-> masih ⛔ ditahan tanpa tanggal. Kalau tenggatnya mepet, commit-nya harus di-cherry-pick ke
-> branch rilis tersendiri.
+> ✅ **Sudah tidak menumpang apa pun.** Ia lahir di `feat/dashboard-soft-dna-navbar`, dan
+> branch itu **di-merge ke `main` 2026-08-18** sesudah penahanannya dicabut. Batas 31 Agustus
+> berlaku begitu `main` dideploy — cherry-pick yang dulu disiapkan sebagai jalan darurat
+> tidak jadi diperlukan. Sisa tenggatnya **13 hari** terhitung dari tanggal merge.
 >
 > Repo ini juga akhirnya punya test runner: **vitest** (`npm test`), dengan aturan penamaan
 > `*.spec.ts` untuk suite vitest dan `*.test.ts` untuk lima skrip mandiri lama yang tetap
@@ -104,9 +104,9 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 
 | Rencana | Status | Ringkas |
 |---|---|---|
-| [2026-08-10-doku-webhook-silent-failure](2026-08-10-doku-webhook-silent-failure.md) | ✅ **kode selesai & teruji lokal 2026-08-10** · ⛔ **`sql/54` belum diterapkan, belum di-deploy** | Webhook DOKU dulu balas 200 walau tulis DB gagal — pembayaran hilang diam-diam (insiden Nur Fitriana, Rp 499.500). Sebabnya semua `fetch` ke PostgREST tidak memeriksa `res.ok`. Sekarang: `sbFetch` + cek jumlah baris berubah, kunci service-role fail-closed, balas 500 supaya DOKU retry (dibatasi 5x), jejak permanen di `doku_webhook_events` (`sql/54`), email admin, banner di halaman Keuangan. **Cloudflare Observability TIDAK tersedia untuk Pages** — itu sebabnya loggingnya di Supabase. **Jalur uang — rilis sendiri; terapkan `sql/54` SEBELUM deploy** |
-| [2026-08-09-order-flow-reorder](2026-08-09-order-flow-reorder.md) | ✅ **committed di branch 2026-08-10, belum di-merge** · 🔴 **`sql/48` sudah jalan di prod & sedang membakar email** | Wizard order user dibalik: Detail → Ringkasan → Jadwal & Bayar (dulu Jadwal sebelum Review); layar jadwal+countdown digabung, kedaluwarsa pulih di tempat; P0 kebocoran data anon (`sql/47`); dua email transisi via pg_cron/pg_net (`sql/48`). Verifikasi 6 skenario baru lewat code-trace, klik manual di browser masih PR. **Baca kotak koreksi 2026-08-10 di kepalanya** — tiga hal menyimpang dari badan dokumen |
-| [2026-08-10-order-form-back-cancel](2026-08-10-order-form-back-cancel.md) | ✅ **selesai, commit `3663bed` di branch, belum di-merge** | Tiap step order form dapat tombol "Kembali" di sebelah CTA-nya, dan panah mundur di bar floating berubah jadi `X` "Batalkan Pesanan" berdialog konfirmasi (buang draft → `/dashboard`). **Baca kotak koreksi 2026-08-18 di kepalanya** — bar floating kini hanya di Step 1 & 2, jadi `X`-nya tidak terjangkau dari Step 3/4 (disengaja) |
+| [2026-08-10-doku-webhook-silent-failure](2026-08-10-doku-webhook-silent-failure.md) | ✅ **kode selesai & teruji lokal 2026-08-10** · ✅ **`sql/54` sudah diterapkan** (diverifikasi di prod 2026-08-18) · ⬜ **belum di-deploy** | Webhook DOKU dulu balas 200 walau tulis DB gagal — pembayaran hilang diam-diam (insiden Nur Fitriana, Rp 499.500). Sebabnya semua `fetch` ke PostgREST tidak memeriksa `res.ok`. Sekarang: `sbFetch` + cek jumlah baris berubah, kunci service-role fail-closed, balas 500 supaya DOKU retry (dibatasi 5x), jejak permanen di `doku_webhook_events` (`sql/54`), email admin, banner di halaman Keuangan. **Cloudflare Observability TIDAK tersedia untuk Pages** — itu sebabnya loggingnya di Supabase. **Jalur uang — rilis sendiri; terapkan `sql/54` SEBELUM deploy** |
+| [2026-08-09-order-flow-reorder](2026-08-09-order-flow-reorder.md) | ✅ **masuk `main` 2026-08-18** · 🟡 **cron `sql/48` direm sejak 2026-08-10 — hidupkan lagi SESUDAH deploy** | Wizard order user dibalik: Detail → Ringkasan → Jadwal & Bayar (dulu Jadwal sebelum Review); layar jadwal+countdown digabung, kedaluwarsa pulih di tempat; P0 kebocoran data anon (`sql/47`); dua email transisi via pg_cron/pg_net (`sql/48`). Verifikasi 6 skenario baru lewat code-trace, klik manual di browser masih PR. **Baca kotak koreksi 2026-08-10 di kepalanya** — tiga hal menyimpang dari badan dokumen |
+| [2026-08-10-order-form-back-cancel](2026-08-10-order-form-back-cancel.md) | ✅ **selesai, commit `3663bed`, masuk `main` 2026-08-18** | Tiap step order form dapat tombol "Kembali" di sebelah CTA-nya, dan panah mundur di bar floating berubah jadi `X` "Batalkan Pesanan" berdialog konfirmasi (buang draft → `/dashboard`). **Baca kotak koreksi 2026-08-18 di kepalanya** — bar floating kini hanya di Step 1 & 2, jadi `X`-nya tidak terjangkau dari Step 3/4 (disengaja) |
 | [2026-08-18-kilat-menu-mandiri](2026-08-18-kilat-menu-mandiri.md) | ⬜ **ditunda sadar; satu keputusan produk masih terbuka** | JFU Kilat pindah dari upgrade berpagar voucher jadi **menu tersendiri** di dashboard peneliti, terbuka untuk semua dengan antrean tanggal seperti Iklan. Sebagian besar antreannya **sudah ada** (kuota 8/hari, kalender Kilat, papan admin) — yang kurang pintunya. Belum bisa jadi rencana tugas-per-tugas: siapa yang memilih jam gelombang belum diputuskan. Mencatat satu lubang nyata: **aturan Senin–Jumat cuma hidup di picker admin** |
 | [2026-08-09-task-13-tagihan-fleksibel-per-jadwal](2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) | ⬜ **disetujui; terkunci di belakang Task 11** | Satu jadwal boleh punya **beberapa invoice** — tagihan susulan jadi piutang yang terlihat dan tidak pernah menghentikan iklan yang sedang tayang. Plus **batal reservasi per jadwal** (status `cancelled` sudah ada di DB, tinggal dipakai) dan **Extra Ad jadi sifat jadwal**, bukan sifat order. **Jalur uang — rilis sendiri.** Butuh `schedule_id` dari Task 11 langkah 1b. **Sejak 2026-08-18 ia juga pembuka Phase 4** — harga per jadwal yang dilahirkannya adalah yang selama ini hilang dari tombol "Jadwalkan Iklan Lagi" |
 | [2026-08-08-task-11-ad-schedules-otoritatif](2026-08-08-task-11-ad-schedules-otoritatif.md) | ⬜ **disetujui; kini terkunci HANYA oleh merge + deploy** | `ad_schedules` jadi otoritatif; `form_submissions_extend` jadi view lalu pensiun. Menambah `booking_id` (kode jadwal yang dikutip peneliti) dan `schedule_id` di invoices/transactions. **Jalur uang — rilis sendiri.** Menyusut 2026-08-08: langkah 3 kehilangan dua pemanggil, langkah 5 tinggal identifier |
@@ -123,20 +123,23 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 **Deploy → Task 11 → Task 13 → Phase 4.** Bukan satu deploy besar sesudah Phase 4.
 
 ```
-[1] merge feat/dashboard-soft-dna-navbar → main → DEPLOY
+[1] merge feat/dashboard-soft-dna-navbar → main ✅ 2026-08-18 → DEPLOY ⬅️ DI SINI
       isinya: revamp visual + Phase 2 Task 9 & 12(copy) + Phase 3 penuh
               + reorder flow order user (2026-08-09-order-flow-reorder, ✅ 2026-08-10)
               + P0 kebocoran data anon (sql/47) + email transisi (sql/48, pg_cron/pg_net)
       gerbang: adu visual di browser · cron_activate_extends() diawasi
                · 6 skenario order-flow diklik manual (baru diverifikasi via code-trace)
-      🔴 DEPLOY INI SEKARANG PUNYA TENGGAT, bukan cuma antrean. sql/47+48 sudah
-         jalan di prod tanpa kodenya; cron notify-primary-ads-live MEMBAKAR
-         penanda live_notified_at tiap 15 menit (3 order sudah hilang emailnya,
-         405 = route belum ada). Rem cron-nya atau deploy — progress doc §00A.
-      ⛔ DITAHAN 2026-08-09 — pemilik produk masih memeriksa beberapa hal
-         sebelum merge. Jangan merge tanpa aba-aba eksplisit.
-      sesudah deploy: net._http_response harus 200 (bukan 405/401), lalu
-         pulihkan live_notified_at 3 order terbakar — §00A
+      ✅ penahanan 2026-08-09 DICABUT 2026-08-18; merge selesai, tree bersih
+      🔴 SESUDAH DEPLOY, JADWALKAN ULANG cron notify-primary-ads-live. Ia direm
+         2026-08-10 supaya berhenti membakar live_notified_at, dan rem itu masih
+         terpasang (diverifikasi 2026-08-18: cron.job cuma activate-extends).
+         Selama mati = nol email "iklan mulai tayang", dideploy atau tidak.
+         Urutannya deploy DULU baru jadwalkan — terbalik = insiden aslinya.
+         3 order yang sedang tayang akan dikirimi email pada run pertama.
+      sesudah deploy: net._http_response harus 200 (bukan 405/401) — §00A
+      ⚠️ pemulihan 3 order terbakar 10 Agu kini NO-OP: jendela tayangnya sudah
+         lewat dan guard-nya mensyaratkan end_date > now(). Email itu hilang
+         permanen; susulkan manual kalau perlu — §00A
 [2] Task 11        branch baru dari main · JALUR UANG, rilis sendiri
 [3] Task 13        tagihan fleksibel per jadwal · JALUR UANG, rilis sendiri
 [4] Phase 4        tombol "Jadwalkan Iklan Lagi" swalayan di dashboard peneliti

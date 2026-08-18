@@ -1,11 +1,18 @@
 # Jadwal Iklan — Status Berjalan
 
 > **Titik masuk untuk pekerjaan Jadwal Iklan.** Baca ini dulu sebelum membuka
-> rencana mana pun. Diperbarui 2026-08-17.
+> rencana mana pun. Diperbarui 2026-08-18.
 >
-> ⛔ **Merge `feat/dashboard-soft-dna-navbar` → `main` DITAHAN (2026-08-09).**
-> Pemilik produk masih memeriksa beberapa hal. Jangan merge tanpa aba-aba
-> eksplisit — seluruh urutan rilis di bawah menunggu di belakangnya.
+> ✅ **Penahanan merge DICABUT — `feat/dashboard-soft-dna-navbar` sudah masuk
+> `main` (2026-08-18).** Rem 2026-08-09 dipasang selama pemilik produk memeriksa
+> flow order; pemeriksaan itu tuntas (§00D audit, §00G keputusan Phase 4, §00H
+> merge terakhir). Urutan rilis yang selama ini antre di belakangnya kini jalan.
+>
+> 🔴 **Deploy belum selesai saat build hijau — ada satu langkah tangan sesudahnya.**
+> Cron `notify-primary-ads-live` **masih direm** sejak 2026-08-10 (diverifikasi
+> 2026-08-18: `cron.job` cuma berisi `activate-extends`). Selama ia mati, nol
+> email "iklan mulai tayang" terkirim — dideploy atau tidak. §00A punya perintah
+> menghidupkannya kembali beserta cara membuktikan jalurnya benar-benar hidup.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -104,10 +111,29 @@ mengosongkannya (keduanya butuh Task 11).
 **Belum dikerjakan:** uji manual di browser (urutannya di rencana), dan keputusan atas **4
 order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomatis.
 
-### 00A. 🔴 `sql/48` sudah jalan di prod tanpa endpoint-nya — email "iklan mulai tayang" TERBAKAR
+### 00A. 🟡 Cron notifikasi direm sejak 2026-08-10 — hidupkan lagi SESUDAH deploy
 
-**Ditemukan 2026-08-10 saat audit pra-merge. Ini gerbang deploy paling mendesak
-di halaman ini, dan ia punya tenggat jam, bukan hari.**
+> **Keadaan per 2026-08-18 (diverifikasi langsung ke produksi):**
+>
+> - **Rem masih terpasang.** `cron.job` hanya memuat `activate-extends`;
+>   `notify-primary-ads-live` tidak ada. Opsi A di bawah memang dijalankan
+>   2026-08-10, jadi **tidak ada lagi yang terbakar sejak itu** — tapi juga nol
+>   email terkirim selama delapan hari.
+> - **3 order sedang tayang dengan `live_notified_at IS NULL`.** Ketiganya akan
+>   dikirimi email pada cron pertama setelah rem dilepas. Bukan ledakan, tapi
+>   ketahuilah bahwa tiga email berangkat sekaligus.
+> - ⚠️ **Opsi B di bawah sudah menjadi no-op — jangan berharap apa pun darinya.**
+>   Ketiga order yang terbakar 10 Agustus (`0cdd8ab4` 8–11 Agu, `f9b73a58` dan
+>   `8b7bd9c1` keduanya 9–10 Agu) **jendela tayangnya sudah lewat**, dan guard
+>   fungsinya mensyaratkan `airing_instant_of_date(end_date) > now()`. Mengosongkan
+>   `live_notified_at` mereka tidak akan menghasilkan email apa pun. Ketiga email
+>   itu hilang permanen; kalau perlu, susulkan manual di luar sistem.
+>
+> Urutan yang benar saat rilis: **deploy dulu, baru jadwalkan ulang cron-nya.**
+> Menjadwalkan lebih dulu mengulang persis insiden aslinya.
+
+**Ditemukan 2026-08-10 saat audit pra-merge.** Riwayat lengkapnya dipertahankan di
+bawah karena pelajarannya masih berlaku untuk migrasi berikutnya.
 
 `sql/48` menjadwalkan cron `notify-primary-ads-live` tiap 15 menit. Fungsinya
 mem-`POST` ke `https://submit.jakpatforuniv.com/api/notify-ad-live` lewat pg_net,
@@ -263,6 +289,55 @@ terlindungi presedens stage yang menaruh live/page_scheduled/completed di atasny
 baru, dan tiga error lama ikut hilang (termasuk `ui/Dialog.tsx` yang di-*rename* jadi
 `dialog.tsx` supaya cocok dengan 14 import yang semuanya huruf kecil; build Linux dulu
 rawan gagal di sini). Build produksi lolos.
+
+### 00H. ✅ Tarikan `main` kedua + merge ke `main` — penahanan dicabut (2026-08-18)
+
+**`main` bergerak lagi sesudah §00F.** Tiga commit baru (`2b0053b`, `733782f`,
+`3f3c699`): import Google Form lewat tautan di Ask JFU AI, blok gambar di form
+builder, promo bar JFU Form, dan **navigasi dashboard mobile-first**. Ditarik ke
+branch lebih dulu supaya konfliknya diselesaikan di sana, bukan saat merge balik.
+
+**Enam file konflik, tiga jenis penyelesaian.**
+
+| File | Penyelesaian |
+|---|---|
+| `MultiStepForm`, `UnifiedHeader`, `ChatPage`, `StatusPage` | Ambil sisi branch. Perubahan `main` di keempatnya **hanya** membuang hamburger + `toggleSidebar`, dan branch sudah membuangnya lebih dulu lewat `AppNav`. Diverifikasi: `toggleSidebar`/`useOutletContext` nol kemunculan di **kedua** sisi, jadi tidak ada konsumen yang ditinggalkan |
+| `StepOneMethodSelection` | Gabung. Layout accordion branch tetap; promo bar JFU Form dari `main` dibawa masuk, lalu diselaraskan ke Soft DNA dan diangkat ke i18n (5 kunci × 2 locale) — versinya di `main` memakai gradien indigo-ungu dan copy Indonesia hardcoded |
+| `DashboardLayout` | Ambil sisi branch (`AppNav`) |
+
+⚠️ **Merge ini MENGHAPUS bottom tab bar mobile yang `main` tambahkan di `2b0053b`.**
+Bukan konflik teks — dua sistem navigasi utuh yang saling meniadakan: `main` =
+sidebar desktop + tab bar bawah; branch = `AppNav` sticky atas + sheet mobile.
+Keduanya tidak bisa hidup berdampingan apa adanya, karena hamburger `AppNav` akan
+mengulang tujuan yang sama persis dengan tab bar di bawahnya.
+
+**Keputusan pemilik produk 2026-08-18: `AppNav` saja.** Alasannya bukan umur
+branch, melainkan cakupan: `AppNav` menampung switch bahasa, profil, dan sign out;
+tab bar `main` hanya memindahkan halaman dan menjejalkan profil sebagai tab kelima.
+Membuang `AppNav` berarti ketiga fungsi itu kehilangan rumah. **Nol destinasi
+hilang** — `/dashboard`, `/dashboard/forms`, `/dashboard/chat`, profil, dan sign
+out semuanya ada di `AppNav`; `/dashboard/submit` dicapai lewat kartu masuk di
+`/dashboard`.
+
+Kalau nanti tab bar diinginkan kembali (opsi hybrid: `AppNav` untuk identitas +
+tab bar untuk perpindahan, hamburger mobile dilepas), markupnya masih utuh di
+`git show 2b0053b -- multi-step-form/src/components/DashboardLayout.tsx`.
+
+**Penomoran migrasi tidak bentrok.** `main` menambah `sql/58`; branch memakai
+`49`/`54`/`55`. Deret `50`–`53` tetap kosong sesuai reservasi di §Peta dokumen.
+
+**Gerbang:** `tsc -b --force` = **60 error**, identik baseline pra-merge (nol
+tambahan — pakai `--force`, lihat peringatan di §00F); **14/14** uji lolos;
+`npm run build` ✓.
+
+**Seluruh migrasi 45–58 sudah ada di produksi** — diverifikasi satu per satu
+2026-08-18, termasuk `sql/54` (`doku_webhook_events`) dan `sql/55` (`display_order`
+NULL) yang sempat tercatat belum diterapkan. Jadi deploy ini **tidak** membawa
+lubang DB-mendahului-kode baru; sebaliknya, ia menutup yang lama (§00A, §00B).
+
+⚠️ **Belum diuji di browser.** Uji manual yang tertunda dari §00F masih berlaku,
+plus dua yang baru: navigasi mobile sesudah tab bar `main` dihapus, dan promo bar
+JFU Form di jalur bahasa Inggris.
 
 ### 00G. 🔒 Phase 4 ("Jadwalkan Iklan Lagi") diputuskan menunggu Task 13 (2026-08-18)
 
@@ -1475,6 +1550,6 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — judulnya sudah basi; baca kotak koreksi di kepalanya sebelum mengeksekusi apa pun dari sana |
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
-| [`superpowers/plans/2026-08-09-order-flow-reorder.md`](superpowers/plans/2026-08-09-order-flow-reorder.md) | **Rencana reorder flow order user** — Ringkasan sebelum Jadwal, gabung layar jadwal+bayar, P0 kebocoran anon, dua email transisi. ✅ committed 2026-08-10, belum di-merge. **Tidak termasuk daftar Task 8–13 di atas** — workstream terpisah yang menumpang branch yang sama |
+| [`superpowers/plans/2026-08-09-order-flow-reorder.md`](superpowers/plans/2026-08-09-order-flow-reorder.md) | **Rencana reorder flow order user** — Ringkasan sebelum Jadwal, gabung layar jadwal+bayar, P0 kebocoran anon, dua email transisi. ✅ committed 2026-08-10, masuk `main` 2026-08-18. **Tidak termasuk daftar Task 8–13 di atas** — workstream terpisah yang menumpang branch yang sama |
 | `multi-step-form/sql/36`–`49` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup. `46` = Task 9A (dua sumbu); `47`/`48` dipakai reorder flow order (P0 anon + email transisi); `49` dipakai perbaikan bug jam tayang kustom ordinal 1 (**bukan** `reward_pools` — tabrakan nomor ditemukan 2026-08-10, dua kali). `reward_pools` bergeser jadi `sql/50` |
 | `multi-step-form/sql/54` | **Di luar alur Jadwal Iklan.** `doku_webhook_events` — jejak permanen notifikasi DOKU, dari insiden webhook 2026-08-10 ([rencananya](superpowers/plans/2026-08-10-doku-webhook-silent-failure.md)). Sengaja mengambil `54` dan bukan `50`, supaya tiga rencana yang sudah mengklaim `50`–`53` (`reward_pools`, Task 11, Task 13) tidak perlu bergeser untuk keempat kalinya — migrasi-migrasi itu saling independen, jadi urutan penerapan tidak jadi soal. **Nomor bebas berikutnya untuk pekerjaan Jadwal Iklan tetap `50`.** |
