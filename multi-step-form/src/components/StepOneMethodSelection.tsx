@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, ChevronDown, ChevronRight, Download, UserCheck, Zap } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Bot, ChevronDown, ChevronRight, Download, Sparkles, UserCheck, Zap } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
 import { InfoTooltip } from '@/components/status/InfoTooltip';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -8,6 +9,13 @@ import { useLanguage } from '../i18n/LanguageContext';
 interface StepOneMethodSelectionProps {
   onSelectMethod: (method: 'google' | 'manual') => void;
 }
+
+// Value proposition JFU Form yang bergantian di promo bar bawah
+const JFU_FORM_VALUE_PROPS = [
+  'alternatif Qualtrics & SurveyMonkey',
+  'tinggal chat, AI yang susunin pertanyaannya',
+  'survei bisa "loncat" otomatis sesuai jawaban'
+];
 
 /**
  * Body "pilih jalur review" dari kartu pintu-masuk Iklan Survei — dirender
@@ -31,6 +39,21 @@ interface StepOneMethodSelectionProps {
  */
 export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectionProps) {
   const { t } = useLanguage();
+  const navigate = useNavigate();
+
+  const [valuePropIndex, setValuePropIndex] = useState(0);
+  const [isValuePropVisible, setIsValuePropVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsValuePropVisible(false);
+      setTimeout(() => {
+        setValuePropIndex(prev => (prev + 1) % JFU_FORM_VALUE_PROPS.length);
+        setIsValuePropVisible(true);
+      }, 300);
+    }, 2800);
+    return () => clearInterval(interval);
+  }, []);
 
   const reviewNoteTooltipContent = (
     <span className="leading-relaxed">
@@ -129,6 +152,27 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
           <ChevronRight className="w-4 h-4 shrink-0 text-gray-400" />
         </button>
       </div>
+
+      {/* Promo JFU Form — dibawa dari main. Ini satu-satunya ajakan arah balik
+          (iklan → bikin form); arah sebaliknya sudah ada lewat CTA "Sebar via
+          Jakpat" di /dashboard/forms. Warnanya sengaja kontras terhadap kartu:
+          bar ini memang dimaksudkan menonjol, bukan menyatu. */}
+      <button
+        type="button"
+        onClick={() => navigate('/dashboard/forms')}
+        className="mt-4 w-full flex flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-semibold rounded-full px-5 py-3 shadow-md shadow-indigo-500/20 transition-all"
+      >
+        <Sparkles className="w-4 h-4 shrink-0" />
+        <span className="whitespace-nowrap">Bikin survei baru? Coba JFU Form —</span>
+        <span
+          className={`transition-opacity duration-300 ${isValuePropVisible ? 'opacity-100' : 'opacity-0'}`}
+        >
+          {JFU_FORM_VALUE_PROPS[valuePropIndex]}
+        </span>
+        <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-wide">
+          Gratis
+        </span>
+      </button>
 
       <div className="mt-5 pt-4 border-t border-gray-100 flex justify-center">
         <Link

@@ -23,7 +23,8 @@ export const QuestionLogicBuilder: React.FC<QuestionLogicBuilderProps> = ({
 
   // Available source blocks (blocks BEFORE current block). Matrix is excluded —
   // its answer is a per-row object, not the flat string/array these rules compare against.
-  const availableSourceBlocks = allBlocks.filter((b, idx) => idx < blockIndex && b.type !== 'matrix');
+  // Image is excluded too — it's decorative and has no answer at all.
+  const availableSourceBlocks = allBlocks.filter((b, idx) => idx < blockIndex && b.type !== 'matrix' && b.type !== 'image');
   // All blocks for jump_to target
   const availableTargetBlocks = allBlocks.filter(b => b.id !== block.id);
 

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { QuestionBlock } from '../../utils/customForms';
 import type { ChatMessage, AiAction } from '../../utils/formAiAgent';
 import { sendFormAiPrompt } from '../../utils/formAiAgent';
+import { extractFormInfoWithWorker, extractFormInfoFallback, isWorkerSupported } from '../../utils/worker-service';
 import { useAuth } from '../../context/AuthContext';
 import {
   Sparkles,
@@ -13,10 +14,20 @@ import {
   MinusCircle,
   Edit3,
   Paperclip,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Link as LinkIcon
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
+
+// Contoh prompt yang bergantian di placeholder input kosong
+const PLACEHOLDER_EXAMPLES = [
+  'Buatkan aku survey tentang kepuasan pelanggan...',
+  'Convert link Google Form ini jadi form JFU...',
+  'Tambahkan pertanyaan rating 1-5 di akhir...'
+];
+
+const GOOGLE_FORM_LINK_REGEX = /https?:\/\/(?:docs\.google\.com\/forms|forms\.gle)\/\S+/i;
 
 interface FormAiAssistantDrawerProps {
   isOpen: boolean;
@@ -37,7 +48,9 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputPrompt, setInputPrompt] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState('AI sedang merancang form...');
   const [attachedFile, setAttachedFile] = useState<{ name: string; content: string } | null>(null);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -51,7 +64,27 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
     }
   }, [messages, isOpen]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPlaceholderIndex(prev => (prev + 1) % PLACEHOLDER_EXAMPLES.length);
+    }, 3200);
+    return () => clearInterval(interval);
+  }, []);
+
   if (!isOpen) return null;
+
+  // Ambil judul/deskripsi/pertanyaan dari link Google Form publik (tanpa perlu
+  // login) lewat Web Worker + proxy CORS, dengan fallback jika worker gagal.
+  const scrapeGoogleForm = async (url: string) => {
+    if (isWorkerSupported()) {
+      try {
+        return await extractFormInfoWithWorker(url);
+      } catch (err) {
+        console.warn('Worker extraction failed, falling back:', err);
+      }
+    }
+    return extractFormInfoFallback(url);
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -91,8 +124,41 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
     setInputPrompt('');
     setAttachedFile(null);
     setLoading(true);
+    setLoadingLabel('AI sedang merancang form...');
 
     try {
+      let effectiveFileContext = file ? { fileName: file.name, content: file.content } : undefined;
+
+      // Kalau user tempel link Google Form langsung di chat (bukan attach file),
+      // baca isinya dulu lewat scraper publik, lalu suntikkan sebagai context AI.
+      const googleFormUrl = !file ? text.match(GOOGLE_FORM_LINK_REGEX)?.[0] : undefined;
+      if (googleFormUrl) {
+        setLoadingLabel('Membaca Google Form...');
+        try {
+          const info = await scrapeGoogleForm(googleFormUrl);
+          effectiveFileContext = {
+            fileName: `Google Form: ${info.title || 'Untitled Form'}`,
+            content: JSON.stringify(
+              { title: info.title, description: info.description, questions: info.apiData?.questions || [] },
+              null,
+              2
+            )
+          };
+          setLoadingLabel('AI sedang merancang form...');
+        } catch (scrapeErr) {
+          console.error('Google Form scrape failed:', scrapeErr);
+          const errorMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            sender: 'ai',
+            text: 'Gagal membaca link Google Form itu — mungkin form-nya tidak publik, atau linknya tidak valid. Pastikan akses form-nya "Siapa saja yang memiliki link", atau coba upload sebagai .csv.',
+            timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+          return;
+        }
+      }
+
       // Format chat history for OpenRouter
       const history = messages.map(m => ({
         role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
@@ -103,7 +169,7 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
       const aiResponse = await sendFormAiPrompt(
         history,
         formState,
-        file ? { fileName: file.name, content: file.content } : undefined
+        effectiveFileContext
       );
 
       const aiMessage: ChatMessage = {
@@ -119,6 +185,13 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
       if (aiResponse.actions && aiResponse.actions.length > 0) {
         onApplyActions(aiResponse.actions);
         toast.success('Perubahan dari AI telah diterapkan ke formulir!');
+
+        // Di mobile/tablet (bottom sheet), auto-tutup sebentar setelah AI selesai
+        // supaya user langsung lihat hasilnya di canvas — bukan harus sadar
+        // sendiri untuk menutup sheet-nya secara manual.
+        if (window.innerWidth < 1024) {
+          setTimeout(() => onClose(), 900);
+        }
       }
     } catch (err) {
       const errorMessage: ChatMessage = {
@@ -230,7 +303,7 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
                     handleSend();
                   }
                 }}
-                placeholder="Ask me anything (e.g. Buatkan survei kepuasan mahasiswa...)"
+                placeholder={PLACEHOLDER_EXAMPLES[placeholderIndex]}
                 rows={3}
                 className="w-full text-xs bg-transparent border-none focus:outline-none resize-none text-gray-800 dark:text-white placeholder-gray-400"
               />
@@ -244,7 +317,7 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
                   title="Import .CSV dari form lain (G-Form, dan lainnya)"
                 >
                   <Paperclip className="w-3.5 h-3.5 shrink-0" />
-                  <span className="text-[11px] font-medium">Import CSV</span>
+                  <span className="text-[11px] font-medium">Import dari Form lain (Gform, dll) .CSV</span>
                 </Button>
                 <Button
                   type="button"
@@ -260,6 +333,10 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
                   )}
                 </Button>
               </div>
+              <p className="flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500 pt-2">
+                <LinkIcon className="w-3 h-3 shrink-0" />
+                Atau tempel link Google Form publik langsung di sini
+              </p>
             </div>
 
             {/* Suggested Prompts */}
@@ -306,8 +383,8 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
               >
                 <div
                   className={`max-w-[90%] rounded-2xl p-3.5 text-xs leading-relaxed ${isUser
-                      ? 'bg-blue-600 text-white rounded-br-none shadow-sm'
-                      : 'bg-gray-100 dark:bg-gray-700/80 text-gray-800 dark:text-gray-200 rounded-bl-none border border-gray-200/60 dark:border-gray-600'
+                    ? 'bg-blue-600 text-white rounded-br-none shadow-sm'
+                    : 'bg-gray-100 dark:bg-gray-700/80 text-gray-800 dark:text-gray-200 rounded-bl-none border border-gray-200/60 dark:border-gray-600'
                     }`}
                 >
                   <p className="whitespace-pre-line">{m.text}</p>
@@ -328,7 +405,7 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
         {loading && (
           <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 dark:bg-gray-700/40 p-3 rounded-2xl max-w-[80%]">
             <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-            <span>AI sedang merancang form...</span>
+            <span>{loadingLabel}</span>
           </div>
         )}
         <div ref={chatBottomRef} />
