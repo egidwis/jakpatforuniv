@@ -210,12 +210,13 @@ export function SubmissionDetailSheet({
     ? (lifecycle.isActuallyExpired ? 'gray' : 'red')
     : null;
 
-  const isKilat = submission?.distribution_type === 'kilat';
-  const needsBannerUpdate = !isKilat && existingPage && (
+   const isKilat = submission?.distribution_type === 'kilat';
+  const isCompleted = lifecycle.stage === 'completed' || lifecycle.pageStatus === 'completed';
+  const needsBannerUpdate = !isKilat && !isCompleted && existingPage && (
     isPlaceholderBannerUrl(existingPage.banner_url) ||
     Boolean(existingPage.requires_banner_update)
   );
-  const isPageUnpublishedWhenDue = !isKilat && existingPage && lifecycle.canBuildPage && !existingPage.is_published;
+  const isPageUnpublishedWhenDue = !isKilat && !isCompleted && existingPage && lifecycle.canBuildPage && !existingPage.is_published;
   const pageDotType: 'red' | null = (needsBannerUpdate || isPageUnpublishedWhenDue) ? 'red' : null;
 
   const tabBar = (

@@ -693,13 +693,13 @@ export const updatePaymentStatus = async (id: string, status: string) => {
     if (status === 'paid') {
       await supabase
         .from('invoices')
-        .update({ status: 'paid' })
+        .update({ status: 'paid', payment_method: 'manual' })
         .eq('form_submission_id', id)
         .in('status', ['pending', 'expired']);
 
       await supabase
         .from('transactions')
-        .update({ status: 'paid' })
+        .update({ status: 'paid', payment_method: 'manual', payment_channel: 'MANUAL_VERIFIED' })
         .eq('form_submission_id', id)
         .in('status', ['pending', 'expired']);
     }
@@ -2530,6 +2530,8 @@ export interface SchedulePayment {
   /** Berapa kali dicoba bayar. 76 jadwal di produksi punya lebih dari satu. */
   attempts: number;
   hasEverPaid: boolean;
+  paymentMethod?: string | null;
+  paymentChannel?: string | null;
 }
 
 /**
@@ -2563,7 +2565,7 @@ export const fetchSchedulePayments = async (
 ): Promise<Map<string, SchedulePayment>> => {
   const { data, error } = await supabase
     .from('transactions')
-    .select('payment_id, payment_url, amount, status, entity_type, extend_id, created_at')
+    .select('payment_id, payment_url, amount, status, entity_type, extend_id, created_at, payment_method, payment_channel')
     .eq('form_submission_id', submissionId)
     .order('created_at', { ascending: false });
 
@@ -2584,6 +2586,7 @@ export const fetchSchedulePayments = async (
     const txs = bySource.get(s.sourceId);
     if (!txs || txs.length === 0) continue;
     const unpaid = txs.find((t) => !['paid', 'completed'].includes(t.status));
+    const paidTx = txs.find((t) => ['paid', 'completed'].includes(t.status)) || txs[0];
     out.set(s.id, {
       status: txs[0].status,
       paymentId: txs[0].payment_id || null,
@@ -2591,6 +2594,8 @@ export const fetchSchedulePayments = async (
       amount: Number(txs[0].amount || 0),
       attempts: txs.length,
       hasEverPaid: txs.some((t) => ['paid', 'completed'].includes(t.status)),
+      paymentMethod: paidTx?.payment_method || null,
+      paymentChannel: paidTx?.payment_channel || null,
     });
   }
   return out;

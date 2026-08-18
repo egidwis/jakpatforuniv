@@ -175,6 +175,12 @@ function PaymentSection({
   // urutannya terbalik, jadwal yang sudah lunas malah menampilkan ajakan
   // "Terbitkan tagihan" lengkap dengan tombolnya.
   if (state === 'paid') {
+    const isManual =
+      !payment ||
+      payment.paymentMethod === 'manual' ||
+      payment.paymentChannel === 'MANUAL_VERIFIED' ||
+      (!payment.paymentChannel && payment.paymentMethod !== 'doku');
+
     return (
       <div className="space-y-2 pt-1 border-t border-slate-200">
         <div className="flex items-center justify-between gap-2">
@@ -198,10 +204,18 @@ function PaymentSection({
                   <span className="truncate">{payment.paymentId}</span>
                 </span>
               )}
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex items-center gap-2 text-xs flex-wrap">
                 <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
                   <Check className="w-3.5 h-3.5" /> Lunas
                 </span>
+                {isManual && (
+                  <span
+                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                    title="Audit: Pembayaran ditandai lunas manual (Tandai Lunas oleh Admin, bukan dari gateway DOKU)"
+                  >
+                    Tandai Lunas
+                  </span>
+                )}
                 {!payment && (
                   <span className="text-[10px] text-slate-400">tanpa catatan tagihan di sistem</span>
                 )}

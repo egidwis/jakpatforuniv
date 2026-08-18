@@ -37,10 +37,12 @@ export function PageTab({
 }) {
   const [copied, setCopied] = useState(false);
   const isKilat = submission.distribution_type === 'kilat';
+  const isCompleted = lifecycle.stage === 'completed' || lifecycle.pageStatus === 'completed';
 
   // Check if banner needs admin update (either default placeholder or new prize period)
   const needsBannerUpdate =
     !isKilat &&
+    !isCompleted &&
     Boolean(
       existingPage &&
         (isPlaceholderBannerUrl(existingPage.banner_url) ||

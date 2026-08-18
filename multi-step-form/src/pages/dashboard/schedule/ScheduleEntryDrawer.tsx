@@ -834,8 +834,18 @@ export function ScheduleEntryDrawer({
                   <div>
                     <p className="text-xs font-bold text-slate-900">
                       {isPaid ? (
-                        <span className="text-emerald-700 flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5 text-emerald-600" /> Lunas · {formatIDR(entry.totalCost)}
+                        <span className="text-emerald-700 flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5 text-emerald-600" /> Lunas · {formatIDR(entry.totalCost)}
+                          </span>
+                          {(!payment || payment.paymentMethod === 'manual' || payment.paymentChannel === 'MANUAL_VERIFIED' || (!payment.paymentChannel && payment.paymentMethod !== 'doku')) && (
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                              title="Audit: Pembayaran ditandai lunas manual (Tandai Lunas oleh Admin)"
+                            >
+                              Tandai Lunas
+                            </span>
+                          )}
                         </span>
                       ) : isLate ? (
                         <span className="text-red-700">Slot Expired (Terlewat)</span>
