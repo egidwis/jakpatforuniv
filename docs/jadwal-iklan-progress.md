@@ -195,11 +195,48 @@ order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomat
 > | `live_notified_at = null` ×4 | `72ec157b`, `f6b905d1`, `77790fe4`, `234b70ad` pulih |
 > | Verifikasi | cron off, **9 order** menunggu email dengan jendela masih berjalan |
 >
-> **Langkah berikutnya BUKAN kode.** Pasang `RESEND_API_KEY` di environment
-> **Production** project Pages `jakpatforuniv-submit`. Anehnya tujuh tempat lain
-> memakai variabel bernama sama (`send-submission-email`,
-> `send-invoice-ready-email`) — dugaan terkuat: ia terpasang hanya di Preview,
-> atau terhapus saat `CRON_NOTIFY_SECRET` ditambahkan.
+> **DIPERIKSA LANGSUNG LEWAT API CLOUDFLARE 2026-08-18 — variabelnya memang
+> TIDAK PERNAH ADA.** Production punya 17 variabel, `RESEND_API_KEY` bukan
+> salah satunya; Preview kosong total. Jadi bukan salah environment.
+>
+> **Dan dampaknya jauh lebih luas dari cron ini.** Empat jalur email memakai
+> variabel itu, dan tiga di antaranya mati tanpa suara:
+>
+> | Jalur | Fallback | Akibat |
+> |---|---|---|
+> | `send-submission-email` | ⚠️ kunci HARDCODED di repo sejak Feb 2026 | jalan — lewat rahasia bocor |
+> | `send-invoice-ready-email` | tidak ada | mati; pemanggilnya menelan error (**8 tagihan** 18 Agu) |
+> | `notify-ad-live` | tidak ada | mati — inilah 500 di atas |
+> | `doku/_webhook-alert` | tidak ada | **mati, `return` diam-diam** |
+>
+> Baris terakhir yang paling mahal: alarm itu dibangun justru untuk kegagalan
+> senyap webhook DOKU (insiden Rp 499.500), lalu ikut senyap.
+>
+> ✅ **SUDAH DIPERBAIKI SECARA STRUKTURAL** (commit `5c18c64`): keempat
+> pemanggil kini lewat satu adapter `functions/api/_mail.js`, provider dipilih
+> lewat `MAIL_PROVIDER`. Kunci hardcoded dibuang — ⚠️ **cabut juga di dashboard
+> Resend**, ia sudah beredar di git sejak Februari.
+>
+> **Keputusan provider 2026-08-18: Brevo, sementara.** Akun Resend kena suspend
+> dan sedang diurus; Cloudflare Email Sending tertutup karena akun ada di
+> **Workers Free** (kirim ke penerima sembarang butuh Workers Paid — 3.000
+> email/bln, sementara kebutuhan nyata hanya **~310/bln**: 107 order + 113
+> invoice + 90 mulai tayang dalam 30 hari terakhir).
+>
+> **Yang masih dibutuhkan sebelum email hidup lagi:**
+>
+> 1. Akun Brevo + otentikasi domain `jakpatforuniv.com` → rekaman DNS-nya
+>    ditulis ke zone lewat API (zone ada di akun Cloudflare yang sama)
+> 2. Secret `BREVO_API_KEY` dan variabel `MAIL_PROVIDER=brevo` di Pages
+> 3. **Deploy ulang** — ⚠️ Pages Functions hanya membaca secret yang sudah ada
+>    SEBELUM deployment; menyetelnya saja tidak cukup
+> 4. Probe `/api/notify-ad-live?k=…` dengan body `{}` → **400 `Missing email`**
+>    berarti jalur email sudah hidup; **baru** jadwalkan cron
+>
+> ⚠️ **Apex `jakpatforuniv.com` tidak punya MX sama sekali** (terverifikasi) —
+> jadi tidak ada email staf di domain ini yang bisa rusak saat SPF apex
+> ditambahkan untuk Brevo. `send.` milik Resend sengaja tidak disentuh supaya
+> pemulihan Resend nanti tidak perlu membongkar apa pun.
 >
 > **Urutan aman sesudah diperbaiki** — probe dulu, jadwalkan belakangan:
 >
