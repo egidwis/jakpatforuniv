@@ -20,7 +20,6 @@ export function DashboardLayout() {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
 
@@ -43,8 +42,6 @@ export function DashboardLayout() {
     await signOut();
     navigate('/login');
   };
-
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const navItems = [
     {
@@ -70,26 +67,22 @@ export function DashboardLayout() {
     }
   ];
 
+  // Bottom tab bar (mobile only) mirrors the sidebar's destinations, plus Profil.
+  const mobileNavItems = [
+    ...navItems,
+    { label: 'Profil', path: '/dashboard/profile', icon: <User className="w-5 h-5" /> }
+  ];
+
+  // Full-screen editors manage their own mobile chrome (sticky toolbar, AI bottom
+  // sheet) — a second fixed bottom bar here would collide with those.
+  const hideMobileNav = /^\/dashboard\/forms\/(new|[^/]+\/edit)$/.test(location.pathname);
+
   const isProfileActive = location.pathname.startsWith('/dashboard/profile');
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col md:flex-row">
-      {/* Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-
-      {/* Desktop Sidebar & Mobile Drawer */}
-      <aside
-        className={`
-          fixed top-0 left-0 h-screen w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 z-50
-          transition-transform duration-200 flex flex-col justify-between
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        `}
-      >
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex fixed top-0 left-0 h-screen w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 z-50 flex-col justify-between">
         <div className="flex flex-col h-full">
           {/* Logo Branding */}
           <div className="p-6 border-b border-gray-100 dark:border-gray-700">
@@ -117,7 +110,6 @@ export function DashboardLayout() {
                   }
                 `}
                 style={location.pathname.startsWith(item.path) ? { backgroundColor: 'rgba(0, 145, 255, 0.06)', color: '#0091ff' } : {}}
-                onClick={() => setIsSidebarOpen(false)}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   {item.icon}
@@ -146,7 +138,6 @@ export function DashboardLayout() {
             <div className="flex items-center gap-2">
               <Link
                 to="/dashboard/profile"
-                onClick={() => setIsSidebarOpen(false)}
                 title="Lihat Profil"
                 className={`
                   flex items-center gap-3 flex-1 min-w-0 px-2 py-2 rounded-lg transition-all duration-150 group
@@ -198,7 +189,7 @@ export function DashboardLayout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0 md:pl-64">
+      <main className={`flex-1 min-w-0 md:pl-64 ${hideMobileNav ? '' : 'pb-16 md:pb-0'}`}>
         {profileIncomplete && location.pathname !== '/dashboard/profile' && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-center">
             <span className="text-xs text-amber-800">
@@ -210,8 +201,35 @@ export function DashboardLayout() {
             </span>
           </div>
         )}
-        <Outlet context={{ isSidebarOpen, toggleSidebar }} />
+        <Outlet />
       </main>
+
+      {/* Mobile Bottom Tab Bar */}
+      {!hideMobileNav && (
+        <nav className="flex md:!hidden fixed bottom-0 inset-x-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 pb-[env(safe-area-inset-bottom)]">
+          {mobileNavItems.map((item) => {
+            const isActive = location.pathname.startsWith(item.path);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium"
+                style={{ color: isActive ? '#0091ff' : undefined }}
+              >
+                <span className={isActive ? '' : 'text-gray-500 dark:text-gray-400'}>{item.icon}</span>
+                <span className={`truncate max-w-full px-1 ${isActive ? 'font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {item.label}
+                </span>
+                {item.badge && (
+                  <span className="text-[8px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 px-1 rounded-full uppercase tracking-wider leading-tight">
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }

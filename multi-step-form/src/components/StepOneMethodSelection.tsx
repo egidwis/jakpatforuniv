@@ -1,12 +1,36 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
-import { Zap, CheckCircle2, Clock, Info } from 'lucide-react';
+import { Zap, CheckCircle2, Clock, Info, Sparkles } from 'lucide-react';
 
 interface StepOneMethodSelectionProps {
   onSelectMethod: (method: 'google' | 'manual') => void;
 }
 
+// Value proposition JFU Form yang bergantian di promo bar bawah
+const JFU_FORM_VALUE_PROPS = [
+  'custom survey pakai AI',
+  'logic lengkap',
+  'bisa import dari platform survey lain'
+];
+
 export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectionProps) {
   const { t } = useLanguage();
+  const navigate = useNavigate();
+
+  const [valuePropIndex, setValuePropIndex] = useState(0);
+  const [isValuePropVisible, setIsValuePropVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsValuePropVisible(false);
+      setTimeout(() => {
+        setValuePropIndex(prev => (prev + 1) % JFU_FORM_VALUE_PROPS.length);
+        setIsValuePropVisible(true);
+      }, 300);
+    }, 2800);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="method-selection-container">
@@ -102,6 +126,24 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
           </div>
         </div>
       </div>
+
+      {/* JFU Form Builder Promo Bar */}
+      <button
+        type="button"
+        onClick={() => navigate('/dashboard/forms')}
+        className="w-full flex flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-semibold rounded-full px-5 py-3 shadow-md shadow-indigo-500/20 transition-all"
+      >
+        <Sparkles className="w-4 h-4 shrink-0" />
+        <span className="whitespace-nowrap">Bikin survei baru? Coba JFU Form —</span>
+        <span
+          className={`transition-opacity duration-300 ${isValuePropVisible ? 'opacity-100' : 'opacity-0'}`}
+        >
+          {JFU_FORM_VALUE_PROPS[valuePropIndex]}
+        </span>
+        <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-wide">
+          Gratis
+        </span>
+      </button>
 
       {/* Info Notice removed - moved to subtitle */}
     </div>

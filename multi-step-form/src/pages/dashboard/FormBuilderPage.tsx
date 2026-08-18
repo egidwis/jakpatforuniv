@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import type { QuestionBlock, QuestionType } from '../../utils/customForms';
@@ -27,7 +27,8 @@ import {
   FileText,
   Sparkles,
   Cloud,
-  Send
+  Send,
+  EyeOff
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import {
@@ -64,6 +65,24 @@ export const FormBuilderPage: React.FC = () => {
   const [autoSaveState, setAutoSaveState] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const isInitialLoad = useRef(true);
+  const titleInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the form-title textarea to fit its content (no horizontal clipping,
+  // no fixed-height ancestor to clip a 2nd+ line — useLayoutEffect avoids a flash
+  // of clipped text before the height adjusts). Re-measures once web fonts finish
+  // loading too, since an initial measurement against a fallback font can leave
+  // the box a line short once the real (usually wider/taller) font swaps in.
+  useLayoutEffect(() => {
+    const el = titleInputRef.current;
+    const resize = () => {
+      if (el) {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      }
+    };
+    resize();
+    document.fonts?.ready?.then(resize);
+  }, [title]);
 
   useEffect(() => {
     if (formId) {
@@ -263,25 +282,25 @@ export const FormBuilderPage: React.FC = () => {
         const blockType = (act.block.type as QuestionType) || 'short_text';
         const newBlock: QuestionBlock = blockType === 'page_break'
           ? {
-              id: crypto.randomUUID(),
-              type: 'page_break',
-              label: act.block.label || '',
-              description: '',
-              required: false
-            }
+            id: crypto.randomUUID(),
+            type: 'page_break',
+            label: act.block.label || '',
+            description: '',
+            required: false
+          }
           : {
-              id: crypto.randomUUID(),
-              type: blockType,
-              label: act.block.label || 'Question Title',
-              description: act.block.description || '',
-              required: !!act.block.required,
-              options: act.block.options || (blockType === 'multiple_choice' || blockType === 'checkbox' || blockType === 'matrix' ? ['Option 1', 'Option 2'] : undefined),
-              rows: act.block.rows || (blockType === 'matrix' ? [{ id: crypto.randomUUID(), label: 'Baris 1' }, { id: crypto.randomUUID(), label: 'Baris 2' }] : undefined),
-              maxScale: act.block.maxScale || 5,
-              carryForwardFromBlockId: act.block.carryForwardFromBlockId,
-              logicMatchMode: act.block.logicMatchMode,
-              logicRules: act.block.logicRules as QuestionBlock['logicRules']
-            };
+            id: crypto.randomUUID(),
+            type: blockType,
+            label: act.block.label || 'Question Title',
+            description: act.block.description || '',
+            required: !!act.block.required,
+            options: act.block.options || (blockType === 'multiple_choice' || blockType === 'checkbox' || blockType === 'matrix' ? ['Option 1', 'Option 2'] : undefined),
+            rows: act.block.rows || (blockType === 'matrix' ? [{ id: crypto.randomUUID(), label: 'Baris 1' }, { id: crypto.randomUUID(), label: 'Baris 2' }] : undefined),
+            maxScale: act.block.maxScale || 5,
+            carryForwardFromBlockId: act.block.carryForwardFromBlockId,
+            logicMatchMode: act.block.logicMatchMode,
+            logicRules: act.block.logicRules as QuestionBlock['logicRules']
+          };
         setBlocks(prev => {
           const next = [...prev];
           const insertAt = typeof act.index === 'number'
@@ -353,11 +372,10 @@ export const FormBuilderPage: React.FC = () => {
               </h1>
               <div className="flex items-center gap-2">
                 <span
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                    status === 'published'
-                      ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                      : 'bg-amber-50 text-amber-600 border border-amber-200'
-                  }`}
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${status === 'published'
+                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                    : 'bg-amber-50 text-amber-600 border border-amber-200'
+                    }`}
                 >
                   {status === 'published' ? 'Published' : 'Draft'}
                 </span>
@@ -395,14 +413,13 @@ export const FormBuilderPage: React.FC = () => {
               variant="outline"
               size="sm"
               onClick={() => setIsAiDrawerOpen(!isAiDrawerOpen)}
-              className={`text-xs flex items-center gap-1.5 font-semibold transition-all ${
-                isAiDrawerOpen
-                  ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/50 dark:text-purple-200'
-                  : 'text-purple-700 bg-purple-50 hover:bg-purple-100 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800'
-              }`}
+              className={`text-xs flex items-center gap-1.5 font-semibold transition-all ${isAiDrawerOpen
+                ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/50 dark:text-purple-200'
+                : 'text-purple-700 bg-purple-50 hover:bg-purple-100 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800'
+                }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              Ask AI <span className="text-[9px] bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-200 px-1 py-0.2 rounded font-bold">Beta</span>
+              <span className="hidden sm:inline">Ask JFU</span> <span className="text-[9px] bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-200 px-1 py-0.2 rounded font-bold">AI</span>
             </Button>
 
             {status === 'published' ? (
@@ -412,9 +429,9 @@ export const FormBuilderPage: React.FC = () => {
                   size="sm"
                   disabled={saving}
                   onClick={() => handleSave('draft')}
-                  className="text-xs text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                  className="text-xs text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center gap-1.5"
                 >
-                  Unpublish
+                  <EyeOff className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Unpublish</span>
                 </Button>
 
                 <Button
@@ -430,9 +447,9 @@ export const FormBuilderPage: React.FC = () => {
                   <DropdownMenuTrigger asChild>
                     <Button
                       size="sm"
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 hidden sm:flex items-center gap-1.5"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 flex items-center gap-1.5"
                     >
-                      <Send className="w-3.5 h-3.5" /> Sebar
+                      <Send className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Sebar</span>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -471,23 +488,23 @@ export const FormBuilderPage: React.FC = () => {
                   size="sm"
                   disabled={saving}
                   onClick={() => handleSave('draft')}
-                  className="text-xs text-gray-700 dark:text-gray-200"
+                  className="text-xs text-gray-700 dark:text-gray-200 flex items-center gap-1"
                 >
-                  <Save className="w-3.5 h-3.5 mr-1" /> Simpan Draft
+                  <Save className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Simpan Draft</span>
                 </Button>
 
                 <Button
                   size="sm"
                   disabled={saving}
                   onClick={() => handleSave('published')}
-                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20"
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 flex items-center gap-1"
                 >
                   {saving ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <Globe className="w-3.5 h-3.5 mr-1" />
+                    <Globe className="w-3.5 h-3.5" />
                   )}
-                  Publish Form
+                  <span className="hidden sm:inline">Publish Form</span>
                 </Button>
               </>
             )}
@@ -504,12 +521,16 @@ export const FormBuilderPage: React.FC = () => {
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-xs overflow-hidden">
               <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
               <div className="p-6 space-y-4">
-                <input
-                  type="text"
+                <textarea
+                  ref={titleInputRef}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.preventDefault();
+                  }}
                   placeholder="Judul Form / Survei..."
-                  className="w-full text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none pb-2 transition-all"
+                  rows={1}
+                  className="w-full text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-600 focus:outline-none pb-2 transition-all resize-none overflow-hidden leading-snug break-words"
                 />
                 <textarea
                   value={description}

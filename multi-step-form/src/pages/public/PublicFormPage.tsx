@@ -377,7 +377,7 @@ export const PublicFormPage: React.FC = () => {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto space-y-8 pt-6 px-4">
+      <div className="max-w-2xl space-y-8 pt-6 px-4 sm:px-8">
         {/* Header */}
         <div className="space-y-3 pb-6 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center justify-between gap-2">

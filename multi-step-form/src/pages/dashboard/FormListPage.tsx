@@ -16,9 +16,9 @@ import {
   Loader2,
   CheckCircle2,
   Search,
-  BarChart3,
-  FileSpreadsheet
+  BarChart3
 } from 'lucide-react';
+import emptyFormIllustration from '../../assets/illustration JFU form.png';
 import { Button } from '../../components/ui/button';
 import {
   DropdownMenu,
@@ -197,7 +197,11 @@ export const FormListPage: React.FC = () => {
         </div>
       ) : filteredForms.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center">
-          <FileSpreadsheet className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <img
+            src={emptyFormIllustration}
+            alt=""
+            className="w-40 sm:w-48 h-auto mx-auto mb-4"
+          />
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {searchQuery ? 'Form tidak ditemukan.' : 'Belum ada form. Klik "+ New form" untuk membuat baru.'}
           </p>
@@ -212,7 +216,7 @@ export const FormListPage: React.FC = () => {
               <div
                 key={form.id}
                 onClick={() => navigate(`/dashboard/forms/${form.id}/edit`)}
-                className="group relative bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-200/80 dark:border-gray-700/80 hover:border-gray-300 dark:hover:border-gray-600 rounded-xl px-4 py-3 transition-all flex items-center justify-between gap-4 cursor-pointer shadow-2xs"
+                className="group relative bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-200/80 dark:border-gray-700/80 hover:border-gray-300 dark:hover:border-gray-600 rounded-xl px-4 py-3 transition-all flex flex-col sm:!flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 cursor-pointer shadow-2xs"
               >
                 {/* Left Title */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -222,7 +226,7 @@ export const FormListPage: React.FC = () => {
                 </div>
 
                 {/* Right Metadata & Action Buttons */}
-                <div className="flex items-center gap-3 shrink-0 text-xs">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0 text-xs w-full sm:!w-auto justify-between sm:!justify-end">
                   {/* Status & Submissions info */}
                   <div className="flex items-center gap-1.5 text-gray-400 font-normal">
                     <span
@@ -241,7 +245,7 @@ export const FormListPage: React.FC = () => {
                   </div>
 
                   {/* Inline Quick Action Buttons (Show on Hover / Desktop) */}
-                  <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity bg-white dark:bg-gray-800 pl-2">
+                  <div className="flex items-center gap-1 flex-wrap opacity-90 sm:group-hover:opacity-100 transition-opacity bg-white dark:bg-gray-800 sm:pl-2">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -252,7 +256,7 @@ export const FormListPage: React.FC = () => {
                       className="h-7 text-xs text-gray-700 dark:text-gray-200 hover:text-blue-600 px-2 flex items-center gap-1 font-semibold rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                       title="Edit Form"
                     >
-                      <Edit3 className="w-3.5 h-3.5" /> Edit
+                      <Edit3 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Edit</span>
                     </Button>
 
                     <Button
@@ -290,7 +294,7 @@ export const FormListPage: React.FC = () => {
                           className="h-7 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 px-2 flex items-center gap-1 font-semibold rounded-lg"
                           title="Sebarkan survei"
                         >
-                          <Send className="w-3.5 h-3.5" /> Sebar
+                          <Send className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Sebar</span>
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>

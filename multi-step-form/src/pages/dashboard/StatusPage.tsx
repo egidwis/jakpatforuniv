@@ -6,9 +6,9 @@ import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, MessageCircle, AlertCircle, Trash2, Menu, Gift, Users, Link as LinkIcon, CreditCard, ExternalLink } from 'lucide-react';
+import { FileText, MessageCircle, AlertCircle, Trash2, Gift, Users, Link as LinkIcon, CreditCard, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link, useSearchParams, useOutletContext, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ProgressTracker, getStatusSteps, getCurrentStepIndex, normalizeScheduleDate, computeEffectiveExtendStatus, type ExtendPaymentInfo } from '@/components/ProgressTracker';
 import { AiringPeriodsBar } from '@/components/AiringPeriodsBar';
@@ -17,7 +17,6 @@ import { UserExtendHistory } from '@/components/UserExtendHistory';
 export function StatusPage() {
     const { user } = useAuth();
     const { t } = useLanguage();
-    const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
     const navigate = useNavigate();
     const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
     const [loading, setLoading] = useState(true);
@@ -299,17 +298,8 @@ export function StatusPage() {
         <div className="p-6 md:p-8 max-w-6xl mx-auto">
             {/* Floating Mobile Header */}
             <div className="fixed top-4 left-4 right-4 z-40 md:hidden">
-                <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-between">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={toggleSidebar}
-                        className="-ml-2 h-9 w-9"
-                    >
-                        <Menu className="w-5 h-5 text-gray-700" />
-                    </Button>
+                <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-center">
                     <span className="text-sm font-semibold text-gray-700">Track Status</span>
-                    <div className="w-9" />
                 </div>
             </div>
             <div className="h-14 md:hidden" />{/* Spacer for floating header */}

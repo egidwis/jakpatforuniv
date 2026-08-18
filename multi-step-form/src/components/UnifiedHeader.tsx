@@ -3,17 +3,16 @@ import { calculateTotalCost, isManualVerificationVoucher } from '../utils/cost-c
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useMemo } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { Menu, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface UnifiedHeaderProps {
     currentStep: number;
     formData: SurveyFormData;
-    onToggleSidebar: () => void;
     onReset?: () => void;
 }
 
-export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset }: UnifiedHeaderProps) {
+export function UnifiedHeader({ currentStep, formData, onReset }: UnifiedHeaderProps) {
     const { t } = useLanguage();
     // ILKOMUNY yang sudah dipakai akun ini → jangan tampilkan harga diskon.
     const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
@@ -54,18 +53,8 @@ export function UnifiedHeader({ currentStep, formData, onToggleSidebar, onReset 
                 <div className="w-full max-w-5xl mx-auto px-6 py-4">
                     <div className="flex items-center justify-between">
 
-                        {/* LEFT: Menu & Mini Stepper */}
+                        {/* LEFT: Mini Stepper */}
                         <div className="flex items-center gap-2 md:gap-4">
-                            {/* Hamburger Menu (Mobile Only) */}
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="md:hidden mr-0 -ml-2"
-                                onClick={onToggleSidebar}
-                            >
-                                <Menu className="w-5 h-5 md:w-6 md:h-6 text-gray-700" />
-                            </Button>
-
                             <div className="flex items-center gap-0.5 md:gap-1">
                                 {steps.map((step, idx) => {
                                     const isCompleted = displayStep > step.number;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getFormSubmissionsByUser, deleteFormSubmission, getOwnProfile } from '../utils/supabase';
 import { expandReferralSource } from '../constants/biodata';
@@ -12,8 +12,7 @@ import { StepSurveyDetails } from './StepSurveyDetails';
 import { StepSchedule } from './StepSchedule';
 import { StepCheckout } from './StepCheckout';
 import { UnifiedHeader } from './UnifiedHeader';
-import { Menu, Loader2 } from 'lucide-react';
-import { Button } from './ui/button';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Fungsi untuk mendapatkan tanggal hari ini dalam format YYYY-MM-DD
@@ -95,7 +94,6 @@ import { useLanguage } from '../i18n/LanguageContext';
 export function MultiStepForm() {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isPrefillLoading, setIsPrefillLoading] = useState(() => !!searchParams.get('custom_form_id'));
@@ -381,22 +379,12 @@ export function MultiStepForm() {
         <UnifiedHeader
           currentStep={currentStep}
           formData={formData}
-          onToggleSidebar={toggleSidebar}
           onReset={handleReset}
         />
       ) : (
         <div className="fixed top-4 left-4 right-4 z-40 md:hidden">
-          <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleSidebar}
-              className="-ml-2 h-9 w-9"
-            >
-              <Menu className="w-5 h-5 text-gray-700" />
-            </Button>
+          <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-center">
             <span className="text-sm font-semibold text-gray-700">Dashboard</span>
-            <div className="w-9" /> {/* spacer to center title */}
           </div>
         </div>
       )}

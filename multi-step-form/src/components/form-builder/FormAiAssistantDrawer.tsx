@@ -119,6 +119,13 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
       if (aiResponse.actions && aiResponse.actions.length > 0) {
         onApplyActions(aiResponse.actions);
         toast.success('Perubahan dari AI telah diterapkan ke formulir!');
+
+        // Di mobile/tablet (bottom sheet), auto-tutup sebentar setelah AI selesai
+        // supaya user langsung lihat hasilnya di canvas — bukan harus sadar
+        // sendiri untuk menutup sheet-nya secara manual.
+        if (window.innerWidth < 1024) {
+          setTimeout(() => onClose(), 900);
+        }
       }
     } catch (err) {
       const errorMessage: ChatMessage = {
@@ -244,7 +251,7 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
                   title="Import .CSV dari form lain (G-Form, dan lainnya)"
                 >
                   <Paperclip className="w-3.5 h-3.5 shrink-0" />
-                  <span className="text-[11px] font-medium">Import CSV</span>
+                  <span className="text-[11px] font-medium">Import dari Form lain (Gform, dll) .CSV</span>
                 </Button>
                 <Button
                   type="button"
@@ -306,8 +313,8 @@ export const FormAiAssistantDrawer: React.FC<FormAiAssistantDrawerProps> = ({
               >
                 <div
                   className={`max-w-[90%] rounded-2xl p-3.5 text-xs leading-relaxed ${isUser
-                      ? 'bg-blue-600 text-white rounded-br-none shadow-sm'
-                      : 'bg-gray-100 dark:bg-gray-700/80 text-gray-800 dark:text-gray-200 rounded-bl-none border border-gray-200/60 dark:border-gray-600'
+                    ? 'bg-blue-600 text-white rounded-br-none shadow-sm'
+                    : 'bg-gray-100 dark:bg-gray-700/80 text-gray-800 dark:text-gray-200 rounded-bl-none border border-gray-200/60 dark:border-gray-600'
                     }`}
                 >
                   <p className="whitespace-pre-line">{m.text}</p>

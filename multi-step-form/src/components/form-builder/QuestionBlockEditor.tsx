@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useLayoutEffect } from 'react';
 import type { QuestionBlock, QuestionType } from '../../utils/customForms';
 import {
   Type,
@@ -86,13 +86,20 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
   const labelInputRef = useRef<HTMLTextAreaElement>(null);
   const savedSelectionRef = useRef<number | null>(null);
 
-  // Auto-grow the question-label textarea to fit its content (no horizontal clipping on mobile)
-  useEffect(() => {
+  // Auto-grow the question-label textarea to fit its content (no horizontal clipping on
+  // mobile) — useLayoutEffect avoids a flash of clipped text before height adjusts.
+  // Re-measures once web fonts finish loading too, since an initial measurement
+  // against a fallback font can leave the box a line short once the real font swaps in.
+  useLayoutEffect(() => {
     const el = labelInputRef.current;
-    if (el) {
-      el.style.height = 'auto';
-      el.style.height = `${el.scrollHeight}px`;
-    }
+    const resize = () => {
+      if (el) {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      }
+    };
+    resize();
+    document.fonts?.ready?.then(resize);
   }, [block.label]);
 
   // @mention autocomplete state for the question-label input

@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { HelpCircle, Send, Bot, Menu } from 'lucide-react';
-import { useOutletContext, useSearchParams } from 'react-router-dom';
+import { HelpCircle, Send, Bot } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
 import { supabase, getOrCreateChatSession, getChatMessages, saveChatMessage } from '@/utils/supabase';
@@ -17,8 +17,6 @@ import ReactMarkdown from 'react-markdown';
 
 export function ChatPage() {
     const { user } = useAuth();
-    const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
-
 
     const defaultFaqs = [
         {
@@ -351,17 +349,8 @@ ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
         <div className="p-6 md:p-8 max-w-6xl mx-auto h-screen md:h-[calc(100vh-4rem)] flex flex-col">
             {/* Floating Mobile Header */}
             <div className="fixed top-4 left-4 right-4 z-40 md:hidden">
-                <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-between">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={toggleSidebar}
-                        className="-ml-2 h-9 w-9"
-                    >
-                        <Menu className="w-5 h-5 text-gray-700" />
-                    </Button>
+                <div className="backdrop-blur-md bg-white/80 border border-gray-100 shadow-sm rounded-2xl px-4 py-2.5 flex items-center justify-center">
                     <span className="text-sm font-semibold text-gray-700">Support</span>
-                    <div className="w-9" />
                 </div>
             </div>
             <div className="h-16 shrink-0 md:hidden" />{/* Spacer for floating header */}
