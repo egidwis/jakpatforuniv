@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, AlertCircle, Lock } from 'lucide-react';
+import { ArrowLeft, Loader2, Info, Lock } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { SectionLabel } from './SurveyFieldRow';
 import { SchedulePicker } from './SchedulePicker';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
 import { isBookingClosedForDate } from '../utils/airing-window';
 
 interface StepScheduleProps {
   formData: SurveyFormData;
-  updateFormData: (data: Partial<SurveyFormData>) => void;
   /**
    * Apa yang terjadi setelah tanggal dikunci. Mode reguler menulis order lalu
    * pindah ke halaman pembayaran; mode kilat kembali ke Ringkasan. Mengembalikan
@@ -30,7 +28,7 @@ interface StepScheduleProps {
  * satu layar; secara alamat mereka terpisah karena Fase B punya dua pintu masuk
  * "kembali setelah pergi" yang tidak bisa dilayani state wizard.
  */
-export function StepSchedule({ formData, updateFormData, onConfirm, onBack, mode = 'regular' }: StepScheduleProps) {
+export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: StepScheduleProps) {
   const { t } = useLanguage();
   const availability = useSlotAvailability(mode);
 
@@ -43,8 +41,8 @@ export function StepSchedule({ formData, updateFormData, onConfirm, onBack, mode
 
   const handleSelect = (ymd: string) => {
     setSelected(ymd);
-    // Ikut ditulis ke draft supaya reload tab tidak menghapus pilihan.
-    updateFormData({ startDate: ymd, startTime: '15:00' });
+    // Tanggal hanya ditulis ke formData saat onConfirm — di sini cukup
+    // local state agar Step 2 tidak melihat tanggal yang belum ter-lock.
   };
 
   const handleConfirm = async () => {
@@ -55,7 +53,6 @@ export function StepSchedule({ formData, updateFormData, onConfirm, onBack, mode
     if (isBookingClosedForDate(selected)) {
       toast.error(t('slotErrorPastCutoff'));
       setSelected(null);
-      updateFormData({ startDate: '', startTime: '' });
       return;
     }
     if (!availability.isRangeAvailable(selected, duration)) {
@@ -76,30 +73,36 @@ export function StepSchedule({ formData, updateFormData, onConfirm, onBack, mode
   return (
     <div className="max-w-3xl mx-auto space-y-3.5 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
-        <div className="flex items-center justify-between">
-          <SectionLabel>{mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleStepLabel')}</SectionLabel>
-          {availability.isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
-        </div>
-
-        <div>
-          <h2 className="text-lg md:text-xl font-bold text-gray-900">{t('scheduleTitle')}</h2>
-          <p className="text-sm text-gray-500 mt-1 leading-relaxed">
-            {t('scheduleSubtitle', { days: `${duration} ${t('days')}` })}
+        {/* Title + subtitle grouped so gap between them is tight */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            {/* Kilat bukan iklan, jadi judul reguler ("kapan iklanmu tayang")
+                salah alamat di sini. Wording-nya dikembalikan lewat judul yang
+                sudah ada, bukan dengan menambah label baru. */}
+            <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
+              {mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleTitle')}
+            </h2>
+            {availability.isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+          </div>
+          <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
+            {t('scheduleSubtitle')}
           </p>
         </div>
 
-        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-sm">
-          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{t('scheduleCutoffNote')}</span>
+        {/* Calendar picker wrapped in card */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-4 shadow-2xs">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span>{t('scheduleCutoffNote')}</span>
+          </div>
+          <SchedulePicker
+            availability={availability}
+            duration={duration}
+            mode={mode}
+            value={selected}
+            onChange={handleSelect}
+          />
         </div>
-
-        <SchedulePicker
-          availability={availability}
-          duration={duration}
-          mode={mode}
-          value={selected}
-          onChange={handleSelect}
-        />
       </div>
 
       <div className="space-y-2 pb-4">
@@ -108,7 +111,7 @@ export function StepSchedule({ formData, updateFormData, onConfirm, onBack, mode
             type="button"
             onClick={onBack}
             disabled={isConfirming}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-3.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ArrowLeft className="w-4 h-4" />
             {t('backButton')}
@@ -116,16 +119,16 @@ export function StepSchedule({ formData, updateFormData, onConfirm, onBack, mode
           <button
             onClick={handleConfirm}
             disabled={!selected || availability.isLoading || isConfirming}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 text-base font-bold text-white shadow-lg transition-all hover:bg-blue-700 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
           >
             {isConfirming ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
                 {t('lockingSlotLoading')}
               </>
             ) : (
               <>
-                <Lock size={18} />
+                <Lock size={15} />
                 {mode === 'kilat' ? t('scheduleConfirmKilatCta') : t('scheduleLockCta')}
                 <span aria-hidden="true">→</span>
               </>

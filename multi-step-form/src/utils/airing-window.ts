@@ -100,6 +100,22 @@ export function toAiringEndIso(ymd: string, days: number, hourWib: number = AIRI
     return new Date(start.getTime() + days * 86400000).toISOString();
 }
 
+/**
+ * Hari tayang TERAKHIR — bukan akhir jendela tayang.
+ *
+ * `toAiringEndIso` mengembalikan batas yang EKSKLUSIF: 15.00 WIB di hari
+ * setelah tayang berhenti. Itu benar untuk `end_date` di database, dan
+ * `airingDaysOf()` memang menghitungnya begitu. Tapi begitu angka yang sama
+ * ditulis ke layar sebagai ujung rentang telanjang — "1 – 8 Sep" untuk pesanan
+ * 7 hari — ia terbaca satu hari lebih panjang daripada yang dibayar.
+ *
+ * Layar memakai helper ini, database tetap memakai `toAiringEndIso`. Keduanya
+ * diturunkan dari `ymd` yang sama, jadi tidak bisa berselisih.
+ */
+export function toAiringLastDayIso(ymd: string, days: number, hourWib: number = AIRING_HOUR_WIB, minuteWib: number = 0): string {
+    return toAiringEndIso(ymd, Math.max(days, 1) - 1, hourWib, minuteWib);
+}
+
 /** Batas pelunasan agar jadwal `ymd` masih bisa dikejar: 14.00 WIB = 07:00 UTC. */
 export function paymentCutoffInstant(ymd: string): Date {
     return wibInstant(ymd, PAYMENT_CUTOFF_HOUR_WIB);

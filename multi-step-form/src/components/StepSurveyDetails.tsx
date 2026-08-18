@@ -190,11 +190,6 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
       return false;
     }
 
-    if (!formData.description) {
-      toast.error(t('errorSurveyDescriptionEmpty'));
-      return false;
-    }
-
     if (formData.questionCount <= 0) {
       toast.error(t('errorQuestionCountZero'));
       return false;

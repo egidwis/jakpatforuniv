@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } from '../utils/airing-window';
+import { CalendarCheck, Clock } from 'lucide-react';
+import { isBookingClosedForDate, toAiringStartIso, toAiringLastDayIso, toLocalYmd } from '../utils/airing-window';
 import type { SlotAvailability } from '../hooks/useSlotAvailability';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -51,10 +52,8 @@ export function SchedulePicker({
   const selectedIndex = value ? dates.findIndex((d) => toLocalYmd(d) === value) : -1;
 
   return (
-    <div className="space-y-3">
-      <label className="text-sm font-medium text-gray-700">{t('slotStartDateLabel')}</label>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 py-1">
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 sm:gap-3 py-1">
         {dates.map((date, i) => {
           const ymd = toLocalYmd(date);
           const baseCount = counts[ymd] || 0;
@@ -147,17 +146,39 @@ export function AiringSummary({ ymd, duration }: { ymd: string; duration: number
     d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
 
   const start = new Date(toAiringStartIso(ymd));
-  const end = new Date(toAiringEndIso(ymd, Math.max(duration, 1)));
+  // Hari tayang terakhir, bukan batas eksklusif — lihat `toAiringLastDayIso`.
+  const end = new Date(toAiringLastDayIso(ymd, Math.max(duration, 1)));
+  const isSingleDay = fmt(start) === fmt(end);
 
   return (
-    <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
-      <p className="text-sm text-blue-900 leading-relaxed">
-        {t('schedulePickerSummary', {
-          start: fmt(start),
-          days: `${duration} ${t('days')}`,
-          end: fmt(end),
-        })}
-      </p>
+    <div className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-3.5 md:p-4 transition-all duration-200 animate-in fade-in slide-in-from-top-1 shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        {/* Left: Icon + Micro-label + Bold Date Range */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-100/80 text-jfu-primary flex items-center justify-center shrink-0 shadow-2xs">
+            <CalendarCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              {t('scheduleEstimatedTitle')}
+            </span>
+            <div className="text-sm md:text-base font-bold text-slate-900 leading-snug">
+              {isSingleDay ? fmt(start) : `${fmt(start)} – ${fmt(end)}`}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Badges for Airing Time & Duration */}
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-200/80 shadow-2xs">
+            <Clock className="w-3.5 h-3.5 text-slate-400" />
+            {t('airingStartsAt')}
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 shadow-2xs">
+            {t('airingDurationBadge', { days: `${duration} ${t('days')}` })}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,9 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getFormSubmissionById, releaseExpiredSlot, rebookSlotForSubmission } from '../utils/supabase';
+import {
+  getFormSubmissionById,
+  releaseExpiredSlot,
+  rebookSlotForSubmission,
+  getInvoicesByFormSubmissionId,
+  getTransactionsByFormSubmissionId,
+} from '../utils/supabase';
 import { createPayment } from '../utils/payment';
 import { toast } from 'sonner';
-import { CreditCard, AlertTriangle, Clock, ArrowRight, CheckCircle, ArrowLeft, CalendarCheck, Lock, Loader2 } from 'lucide-react';
+import {
+  CreditCard,
+  AlertTriangle,
+  Clock,
+  ArrowRight,
+  CheckCircle,
+  ArrowLeft,
+  CalendarCheck,
+  Lock,
+  Loader2,
+  Info,
+  FileText,
+  ExternalLink,
+} from 'lucide-react';
 import type { FormSubmission } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
@@ -11,10 +30,12 @@ import {
   paymentCutoffInstant,
   toWibYmd,
   isBookingClosedForDate,
+  toAiringStartIso,
+  toAiringLastDayIso,
 } from '../utils/airing-window';
 import { slotReleaseDeadline } from '../utils/slotHold';
 import { airingDayCount } from './dashboard/schedule/scheduleModel';
-import { SchedulePicker, AiringSummary } from '../components/SchedulePicker';
+import { SchedulePicker } from '../components/SchedulePicker';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
 
 /**
@@ -36,6 +57,7 @@ export function PaymentCheckoutPage() {
   const { t } = useLanguage();
 
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
+  const [invoicePaymentId, setInvoicePaymentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState<number>(3600);
   const [isExpired, setIsExpired] = useState(false);
@@ -89,6 +111,18 @@ export function PaymentCheckoutPage() {
       }
 
       setSubmission(data);
+
+      // Fetch invoice / transaction payment ID if exists
+      try {
+        const [invoices, txs] = await Promise.all([
+          getInvoicesByFormSubmissionId(submissionId),
+          getTransactionsByFormSubmissionId(submissionId),
+        ]);
+        const matchedPaymentId = invoices?.[0]?.payment_id || txs?.[0]?.payment_id || null;
+        setInvoicePaymentId(matchedPaymentId);
+      } catch (e) {
+        console.error('Failed to load invoice payment ID:', e);
+      }
 
       if (data.payment_status === 'paid') {
         navigate('/dashboard?payment_status=paid');
@@ -316,11 +350,24 @@ export function PaymentCheckoutPage() {
     ? toWibYmd(normalizeScheduleDate(submission.start_date))
     : null;
 
+  // Rentang tayang untuk slip. Ujungnya diambil dari helper yang sama dengan
+  // yang dipakai ringkasan di layar jadwal, supaya kedua layar tidak bisa
+  // menyebut tanggal akhir yang berbeda untuk order yang sama.
+  const fmtSlipDate = (d: Date) =>
+    d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
+  // Keduanya diturunkan dari `startYmd` yang sudah dinormalkan ke WIB, bukan
+  // dari kolom mentah — kalau tidak, ujung dan pangkal rentang bisa memakai
+  // dua penafsiran zona waktu yang berbeda untuk baris yang sama.
+  const airingStartLabel = startYmd ? fmtSlipDate(new Date(toAiringStartIso(startYmd))) : null;
+  const airingLastDayLabel = startYmd
+    ? fmtSlipDate(new Date(toAiringLastDayIso(startYmd, airingDays)))
+    : null;
+
   return (
     <div className="min-h-screen bg-gray-50/50 pb-12">
       {/* Header back — bar kedua yang menempel di bawah AppNav */}
       <div className="sticky top-14 md:top-16 z-30 bg-gray-50/90 backdrop-blur-md border-b border-gray-200/70">
-        <div className="max-w-xl mx-auto px-4 h-12 flex items-center">
+        <div className={`${isExpired ? 'max-w-3xl' : 'max-w-xl'} mx-auto px-4 h-12 flex items-center`}>
           <button
             onClick={() => navigate('/dashboard')}
             className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors -ml-1 px-1 py-2"
@@ -331,7 +378,7 @@ export function PaymentCheckoutPage() {
         </div>
       </div>
 
-      <div className="max-w-xl mx-auto px-6 pt-8">
+      <div className={`${isExpired ? 'max-w-3xl' : 'max-w-xl'} mx-auto px-6 pt-8`}>
         {isExpired ? (
           /* ── Kedaluwarsa: kalender hidup kembali DI TEMPAT ───────────────── */
           <div className="space-y-3.5 animate-in fade-in duration-300">
@@ -349,185 +396,221 @@ export function PaymentCheckoutPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-gray-900">{t('rebookPickTitle')}</h3>
-                {availability.isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
+              {/* Title + subtitle grouped with tight spacing */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
+                    {t('rebookPickTitle')}
+                  </h2>
+                  {availability.isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                </div>
+                <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
+                  {t('scheduleSubtitle')}
+                </p>
               </div>
 
-              <SchedulePicker
-                availability={availability}
-                duration={submission.duration || 1}
-                mode={submission.distribution_type === 'kilat' ? 'kilat' : 'regular'}
-                value={repickDate}
-                onChange={setRepickDate}
-              />
+              {/* Calendar picker wrapped in card */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-4 shadow-2xs">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>{t('scheduleCutoffNote')}</span>
+                </div>
+                <SchedulePicker
+                  availability={availability}
+                  duration={submission.duration || 1}
+                  mode={submission.distribution_type === 'kilat' ? 'kilat' : 'regular'}
+                  value={repickDate}
+                  onChange={setRepickDate}
+                />
+              </div>
             </div>
 
-            <button
-              onClick={handleRebook}
-              disabled={!repickDate || isRebooking || availability.isLoading}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-base shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isRebooking ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  {t('lockingSlotLoading')}
-                </>
-              ) : (
-                <>
-                  <Lock size={18} />
-                  {t('rebookCta')}
-                </>
-              )}
-            </button>
+            <div className="space-y-2 pb-4">
+              <button
+                onClick={handleRebook}
+                disabled={!repickDate || isRebooking || availability.isLoading}
+                className="w-full h-11 sm:h-12 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary text-white font-bold text-sm sm:text-base shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isRebooking ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {t('lockingSlotLoading')}
+                  </>
+                ) : (
+                  <>
+                    <Lock size={15} />
+                    <span>{t('rebookCta')}</span>
+                    <span aria-hidden="true">→</span>
+                  </>
+                )}
+              </button>
 
-            <p className="text-xs text-gray-500 text-center leading-relaxed">{t('scheduleHoldHint')}</p>
+              <p className="text-xs text-gray-500 text-center leading-relaxed px-4">{t('scheduleHoldHint')}</p>
+            </div>
           </div>
         ) : (
           /* ── Fase B: jadwal terkunci, tinggal dibayar ────────────────────── */
-          <>
-            <div className="mb-6">
-              <h1 className="text-xl md:text-2xl font-bold text-gray-900">{t('paymentPhaseTitle')}</h1>
-              <p className="text-gray-500 text-sm mt-1 leading-relaxed">{t('paymentPhaseSubtitle')}</p>
-            </div>
-
-            {/* Kalender mengatup jadi satu blok — penegasan mundur supaya
-                perpindahan dari layar sebelumnya terasa menyambung, bukan
-                berganti halaman. */}
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 mb-3.5">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                  <CalendarCheck size={18} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-emerald-900">{t('scheduleLockedLabel')}</p>
-                  {startYmd ? (
-                    <p className="text-sm text-emerald-800 mt-0.5 leading-relaxed">
-                      {t('scheduleLockedDetail', {
-                        date: new Date(submission.start_date!).toLocaleDateString('id-ID', {
-                          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta',
-                        }),
-                        days: `${airingDays} ${t('days')}`,
-                      })}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-emerald-800 mt-0.5">{submission.title}</p>
-                  )}
-                </div>
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-5 text-left animate-in fade-in duration-300">
+            {/* Header: Title + Subtitle + Timer Badge */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <h1 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
+                  {t('paymentPhaseTitle')}
+                </h1>
+                <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
+                  {t('paymentPhaseSubtitle')}
+                </p>
               </div>
+
+              {/* Timer Countdown Badge (Dark Slate / Navy modern badge) */}
+              {hasHoldDeadline ? (
+                <div className="inline-flex items-center gap-1.5 bg-slate-900 text-white px-3.5 py-1.5 rounded-xl shrink-0 shadow-2xs">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-xs text-slate-300 font-medium">{t('timerLabelHold')}</span>
+                  <span className="font-mono font-bold text-sm tracking-wider text-white">
+                    {formatTime(timeLeft)}
+                  </span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 bg-slate-800 text-white px-3.5 py-1.5 rounded-xl shrink-0 shadow-2xs">
+                  <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-xs text-slate-300 font-medium">{t('slotHeldByAdminLabel')}</span>
+                </div>
+              )}
             </div>
 
             {/* Batas 14.00 WIB lewat — tanggalnya tidak terkejar, TAPI slotnya
                 tidak dilepas. Pembayaran sengaja tetap dibuka: admin menagih
-                order seperti ini secara manual, lalu menjadwalkan ulang. */}
+                order seperti ini secara manual, lalu menjadwalkan ulang. Tanpa
+                peringatan ini user membayar tanpa tahu tanggalnya sudah geser. */}
             {isTooLateToday && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 mb-3.5">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                    <AlertTriangle size={18} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-amber-900">{t('paymentPastCutoffTitle')}</p>
-                    <p className="text-sm text-amber-800 mt-0.5 leading-relaxed">
-                      {t('paymentPastCutoffBody')}
-                    </p>
-                  </div>
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 px-3.5 py-3 shadow-2xs">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold text-amber-900">{t('paymentPastCutoffTitle')}</p>
+                  <p className="text-xs text-amber-800 leading-relaxed">{t('paymentPastCutoffBody')}</p>
                 </div>
               </div>
             )}
 
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
-              {/* Hitung mundur hanya ada kalau slotnya memang bisa lepas
-                  sendiri — yaitu reservasi mandiri. Jadwal yang dibuat admin
-                  tidak punya umur, dan menampilkan angka yang berjalan untuknya
-                  adalah janji yang tidak ditepati siapa pun. */}
-              {hasHoldDeadline ? (
-                <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-5 h-5 opacity-80" />
-                    <span className="font-medium text-sm">{t('timerLabelHold')}</span>
-                  </div>
-                  <div className="text-2xl font-mono font-bold tracking-wider bg-black/20 px-3 py-1 rounded-lg shadow-inner">
-                    {formatTime(timeLeft)}
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-slate-700 text-white px-6 py-4 flex items-center gap-3">
-                  <Lock className="w-5 h-5 opacity-80" />
-                  <span className="font-medium text-sm">{t('slotHeldByAdminLabel')}</span>
+            {/* Single Ticket Slip (Fintech Style) */}
+            <div className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 md:p-5 space-y-3.5 text-left shadow-2xs">
+              {/* Row 1: Survey Title + Duration */}
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-sm md:text-base font-bold text-gray-900 leading-snug line-clamp-2">
+                  {submission.title || 'Untitled Form'}
+                </h3>
+                <span className="shrink-0 inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                  {airingDays} {t('days')}
+                </span>
+              </div>
+
+              {/* Row 2: Airing schedule */}
+              {startYmd && (
+                <div className="flex items-center gap-2 text-xs md:text-sm text-slate-600">
+                  <CalendarCheck className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span className="font-medium">
+                    {airingStartLabel}
+                    {airingLastDayLabel !== airingStartLabel && ` – ${airingLastDayLabel}`}
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-slate-500">{t('airingStartsAt')}</span>
                 </div>
               )}
 
-              <div className="p-6 md:p-8 space-y-4">
-                <p className="text-xs text-gray-500 leading-relaxed text-center">
-                  {hasHoldDeadline ? t('timerConsequenceNote') : t('slotHeldByAdminNote')}
-                </p>
-
-                <div className="space-y-3 bg-gray-50 p-5 rounded-xl border border-gray-100">
-                  <h4 className="text-sm font-semibold text-gray-900">{submission.title}</h4>
-                  <div className="flex justify-between items-end pt-3 border-t border-gray-200 border-dashed">
-                    <div>
-                      <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
-                        {t('checkoutTotalLabel')}
+              {/* Row 3: Dashed divider + Total & Invoice */}
+              <div className="border-t border-dashed border-slate-200/90 pt-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      {t('checkoutTotalLabel')}
+                    </span>
+                    <div className="flex flex-wrap items-baseline gap-1.5">
+                      <span className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight">
+                        Rp {new Intl.NumberFormat('id-ID').format(submission.total_cost || 0)}
                       </span>
                       {submission.ppn_amount != null && (
-                        <span className="text-[10px] text-gray-400">{t('totalIncludesTax')}</span>
+                        <span className="text-[11px] text-slate-400 font-normal">
+                          ({t('totalIncludesTax')})
+                        </span>
                       )}
                     </div>
-                    <span className="text-xl font-bold text-blue-600">
-                      Rp {new Intl.NumberFormat('id-ID').format(submission.total_cost || 0)}
-                    </span>
                   </div>
+
+                  {/* Invoice link — muncul hanya kalau invoice-nya memang sudah
+                      ada. `/invoices/:paymentId` mencari baris transaksi lewat
+                      kolom `payment_id`, dan baris itu baru lahir saat tombol
+                      bayar ditekan untuk pertama kali. Sebelum itu tidak ada id
+                      yang bisa dipakai: memaksakan id submission ke sini hanya
+                      mendaratkan user di halaman "Invoice not found". */}
+                  {invoicePaymentId && (
+                    <a
+                      href={`/invoices/${invoicePaymentId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-white hover:bg-slate-50 border border-slate-200/90 px-3 py-2 rounded-xl transition-colors shadow-2xs shrink-0"
+                    >
+                      <FileText size={13} className="text-blue-500" />
+                      <span>{t('viewInvoiceLink')}</span>
+                      <ExternalLink size={11} className="opacity-70" />
+                    </a>
+                  )}
                 </div>
-
-                <button
-                  onClick={handleProceedPayment}
-                  disabled={isProcessingPayment}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                >
-                  {isProcessingPayment ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                      {t('checkoutProcessing')}
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard size={20} />
-                      {t('checkoutPayNow')}
-                      <ArrowRight size={20} className="ml-1 opacity-80" />
-                    </>
-                  )}
-                </button>
-
-                <p className="text-xs text-gray-500 leading-relaxed text-center">{t('checkoutPaymentInfo')}</p>
-
-                <button
-                  onClick={handleCheckPayment}
-                  disabled={isCheckingPayment}
-                  className="w-full py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60"
-                >
-                  {isCheckingPayment ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
-                      {t('checkoutCheckingStatus')}
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle size={16} className="text-gray-400" />
-                      {t('checkoutAlreadyPaid')}
-                    </>
-                  )}
-                </button>
               </div>
             </div>
 
-            {startYmd && (
-              <div className="mt-3.5">
-                <AiringSummary ymd={startYmd} duration={airingDays} />
-              </div>
-            )}
-          </>
+            {/* Actions */}
+            <div className="space-y-2.5 pt-1">
+              <button
+                onClick={handleProceedPayment}
+                disabled={isProcessingPayment}
+                className="w-full h-11 sm:h-12 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary text-white font-bold text-sm sm:text-base shadow-xs hover:shadow transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isProcessingPayment ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {t('checkoutProcessing')}
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={17} />
+                    <span>{t('checkoutPayNow')}</span>
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleCheckPayment}
+                disabled={isCheckingPayment}
+                className="w-full h-10 sm:h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-white hover:bg-slate-50/80 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs sm:text-sm shadow-2xs transition-all disabled:opacity-60 cursor-pointer"
+              >
+                {isCheckingPayment ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                    {t('checkoutCheckingStatus')}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={15} className="text-slate-400" />
+                    <span>{t('checkoutAlreadyPaid')}</span>
+                  </>
+                )}
+              </button>
+
+              {/* Apa yang terjadi kalau angka di atas habis. Hitung mundur
+                  tanpa akibat yang dinyatakan hanya menakuti — bagian "detail
+                  surveimu tetap tersimpan" justru yang paling perlu dibaca. */}
+              <p className="text-[11px] text-slate-400 text-center leading-relaxed pt-1">
+                {hasHoldDeadline ? t('timerConsequenceNote') : t('slotHeldByAdminNote')}
+              </p>
+
+              <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+                {t('checkoutPaymentInfo')}
+              </p>
+            </div>
+          </div>
         )}
       </div>
     </div>

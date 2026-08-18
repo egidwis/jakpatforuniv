@@ -130,7 +130,20 @@ export function MultiStepForm() {
     return merged;
   });
 
-  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  // Step 1 punya sub-layar (pilih metode / import Google Form) yang sengaja
+  // tampil tanpa bar floating. Hanya StepSurveyDetails yang tahu sedang di
+  // sub-layar mana, jadi ia yang melaporkannya ke sini.
+  const [isStep1HeaderAllowed, setIsStep1HeaderAllowed] = useState(false);
+
+  // Bar floating hidup di Step 1 (layar isian) dan Step 2 (Ringkasan) saja.
+  // Sejak Step 3 user sudah masuk jalur jadwal -> bayar, dan layarnya sengaja
+  // dibiarkan bersih supaya fokusnya satu: pilih tanggal lalu bayar.
+  //
+  // Nilai TURUNAN, bukan state. Versi sebelumnya dua efek saling menimpa satu
+  // state yang sama -- satu bergantung `currentStep`, satu bergantung
+  // `flowState` milik anak -- sehingga bar muncul atau hilang tergantung dari
+  // arah mana user tiba di layar yang sama.
+  const isHeaderVisible = currentStep === 2 || (currentStep === 1 && isStep1HeaderAllowed);
 
   // ILKOMUNY yang sudah dipakai akun ini → diskonnya tidak berlaku lagi.
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
@@ -272,14 +285,6 @@ export function MultiStepForm() {
     loadUserData();
   }, [user]);
 
-  // Reset header visibility when changing steps (ensure it shows up for steps 2,3,4)
-  useEffect(() => {
-    if (currentStep > 1) {
-      setIsHeaderVisible(true);
-    }
-  }, [currentStep]);
-
-
   /*
    * Skema step: 1 = Detail Survei, 2 = Ringkasan, 3 = Jadwal Tayang,
    * 4 = Jadwal Kilat.
@@ -415,9 +420,10 @@ export function MultiStepForm() {
 
   return (
     <div className="multi-step-form">
-      {/* Bar step floating di bawah layar (desktop & mobile). Saat
-          disembunyikan (pemilihan metode / import GForm) AppNav sendiri
-          sudah jadi header halaman. */}
+      {/* Bar step floating di bawah layar (desktop & mobile). Ia sengaja
+          absen di dua tempat: sub-layar Step 1 (pemilihan metode / import
+          GForm), di mana AppNav sendiri sudah jadi header halaman; dan sejak
+          Step 3, supaya layar jadwal -> bayar tidak punya jalan keluar samping. */}
       {isHeaderVisible && (
         <UnifiedHeader
           formData={formData}
@@ -425,9 +431,10 @@ export function MultiStepForm() {
         />
       )}
 
-      {/* Form Content — pb besar supaya tombol navigasi step terakhir tidak
-          tertutup bar step yang floating di bawah. */}
-      <div className="form-content mt-8 max-w-5xl mx-auto px-6 pb-32 md:pb-36">
+      {/* Form Content — pb besar supaya tombol navigasi tidak tertutup bar
+          floating, tapi hanya saat bar-nya memang muncul. Ikut `isHeaderVisible`
+          dan bukan nomor step, supaya keduanya tidak bisa berbeda pendapat. */}
+      <div className={`form-content mt-8 max-w-5xl mx-auto px-6 ${isHeaderVisible ? 'pb-32 md:pb-36' : 'pb-12'}`}>
         {/* Lebaran Holiday Banner — auto-hides after 25 Mar 2026 12:00 WIB */}
         {(() => {
           const bannerExpiry = new Date('2026-03-25T05:00:00Z'); // 12:00 WIB
@@ -455,7 +462,7 @@ export function MultiStepForm() {
             formData={formData}
             updateFormData={updateFormData}
             nextStep={nextStep}
-            onHeaderVisibilityChange={setIsHeaderVisible}
+            onHeaderVisibilityChange={setIsStep1HeaderAllowed}
           />
         )}
 
@@ -474,16 +481,19 @@ export function MultiStepForm() {
         {currentStep === 3 && (
           <StepSchedule
             formData={formData}
-            updateFormData={updateFormData}
             onConfirm={(ymd) => submitOrderAndRoute({ startDate: ymd, startTime: '15:00' })}
-            onBack={prevStep}
+            onBack={() => {
+              // Jadwal belum ter-lock — bersihkan agar Step 2 tahu bahwa
+              // user masih perlu memilih jadwal, bukan langsung submit.
+              updateFormData({ startDate: '', endDate: '', startTime: '' });
+              prevStep();
+            }}
           />
         )}
 
         {currentStep === 4 && (
           <StepSchedule
             formData={formData}
-            updateFormData={updateFormData}
             mode="kilat"
             onBack={handleKilatBack}
             onConfirm={async (ymd) => {

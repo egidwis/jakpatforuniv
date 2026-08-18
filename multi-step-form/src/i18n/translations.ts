@@ -181,7 +181,6 @@ export const translations = {
     backButton: "Back",
 
     // Schedule picker (see the "Order flow" block below for the screen copy)
-    slotStartDateLabel: "Ad Start Date",
     slotClosedTodayLabel: "Closed",
     slotErrorPastCutoff: "Today's booking cut-off (13:00 WIB) has passed. Please choose another date.",
     slotErrorNoDate: "Please select a start date for your ad.",
@@ -260,7 +259,7 @@ export const translations = {
     prizePerWinnerHint: "This prize is raffled among respondents who complete your survey. It exists to lift willingness to answer, so longer surveys usually need a bigger prize.",
     slotOutlook: "At {days}, {open} of the next 14 days are still open as a start date.",
     slotOutlookNone: "At {days}, none of the next 14 days can fit a run right now. Try a shorter duration.",
-    continueToSummary: "Continue to Summary",
+    continueToSummary: "Continue to Payment Details",
 
     // Step 2 — Summary
     summaryTitle: "Review your order",
@@ -277,25 +276,24 @@ export const translations = {
     voucherManualVerifyBody2: "has to be verified by our team first. That is why your order goes into the review queue (max 2 working days) and the airing date is picked after verification is done, not now. Nothing is charged at this step.",
 
     // Step 3 — Schedule (phase A)
-    scheduleStepLabel: "Schedule & Payment",
     scheduleTitle: "Choose when your ad airs",
-    scheduleSubtitle: "Your ad starts airing at 15:00 WIB on the date you pick, then runs for {days}.",
-    scheduleCutoffNote: "Bookings for today close at 13:00 WIB — dates past their cut-off are greyed out.",
+    scheduleSubtitle: "Your ad starts airing at 15:00 WIB on your selected date.",
+    scheduleCutoffNote: "Bookings for today close at 13:00 WIB.",
     scheduleLockCta: "Lock Schedule & Pay",
     scheduleConfirmKilatCta: "Use This Kilat Date",
     scheduleHoldHint: "The slot is held for 1 hour after you lock it, so you have time to complete the payment.",
     scheduleKilatHint: "You'll confirm the order summary once more before paying.",
-    schedulePickerSummary: "Airs from {start} at 15:00 WIB, runs for {days}, and finishes {end}.",
+    scheduleEstimatedTitle: "Estimated Airing Schedule",
+    airingStartsAt: "Starts 15:00 WIB",
+    airingDurationBadge: "Airing for {days}",
     lockingSlotLoading: "Locking your slot...",
     sendingForReviewLoading: "Sending your survey...",
     slotLockedSuccess: "Slot locked. Complete the payment to keep it.",
 
     // Phase B — countdown on the payment page
     paymentPhaseTitle: "Complete your payment",
-    paymentPhaseSubtitle: "Your date is locked. The slot stays yours for as long as the timer below is running.",
-    scheduleLockedLabel: "Schedule locked",
-    scheduleLockedDetail: "{date}, starts 15:00 WIB — runs for {days}",
-    timerLabelHold: "Slot held — time left",
+    paymentPhaseSubtitle: "Pay before the time runs out to secure your airing slot.",
+    timerLabelHold: "Time left:",
     timerLabelCutoff: "Today's payment cut-off (14:00 WIB) — time left",
     timerConsequenceNote: "If the time runs out, the slot is released to other advertisers. Your survey details stay saved.",
     // Jadwal yang dibuat admin tidak punya umur — lihat utils/slotHold.ts.
@@ -393,7 +391,7 @@ export const translations = {
     errorInsufficientPermissionsDesc: "Please check ALL permission boxes so we can review your form. Don't worry, we only read the file you select.",
 
     // Success Messages - StepOneFormFields
-    successImportedFromGoogleDrive: "Data successfully imported from Google Drive",
+    successImportedFromGoogleDrive: "Data successfully reviewed and imported into the system",
 
     // Section Titles - StepOne
     surveyInformation: "Survey Information",
@@ -885,7 +883,6 @@ export const translations = {
     backButton: "Kembali",
 
     // Pemilih jadwal (copy layarnya ada di blok "Flow order" di bawah)
-    slotStartDateLabel: "Tanggal Mulai Iklan",
     slotClosedTodayLabel: "Tutup",
     slotErrorPastCutoff: "Batas pemesanan hari ini (13.00 WIB) sudah lewat. Silakan pilih tanggal lain.",
     slotErrorNoDate: "Silakan pilih tanggal mulai iklan Anda.",
@@ -965,7 +962,7 @@ export const translations = {
     prizePerWinnerHint: "Hadiah ini diundi ke responden yang mengisi surveimu. Fungsinya menaikkan minat mengisi, jadi survei yang lebih panjang biasanya perlu hadiah lebih besar.",
     slotOutlook: "Dengan durasi {days}, {open} dari 14 hari ke depan masih bisa jadi tanggal mulai.",
     slotOutlookNone: "Dengan durasi {days}, belum ada tanggal mulai yang muat dalam 14 hari ke depan. Coba durasi yang lebih pendek.",
-    continueToSummary: "Lanjut ke Ringkasan",
+    continueToSummary: "Lanjut ke Detail Pembayaran",
 
     // Langkah 2 — Ringkasan
     summaryTitle: "Periksa pesananmu",
@@ -982,25 +979,24 @@ export const translations = {
     voucherManualVerifyBody2: "perlu diverifikasi tim kami dulu. Karena itu pesananmu masuk antrean pengecekan (maks. 2 hari kerja) dan jadwal tayang dipilih setelah verifikasi selesai, bukan sekarang. Belum ada pembayaran di tahap ini.",
 
     // Langkah 3 — Jadwal (Fase A)
-    scheduleStepLabel: "Jadwal & Bayar",
     scheduleTitle: "Pilih kapan iklanmu tayang",
-    scheduleSubtitle: "Iklan mulai tayang pukul 15.00 WIB di tanggal yang kamu pilih, lalu berjalan {days}.",
-    scheduleCutoffNote: "Pemesanan untuk hari ini ditutup pukul 13.00 WIB — tanggal yang sudah lewat batas tampil redup.",
+    scheduleSubtitle: "Iklan mulai tayang pukul 15.00 WIB sesuai tanggal yang kamu pilih.",
+    scheduleCutoffNote: "Pemesanan untuk hari ini ditutup pukul 13.00 WIB.",
     scheduleLockCta: "Kunci Jadwal & Lanjut Bayar",
     scheduleConfirmKilatCta: "Pakai Tanggal Kilat Ini",
     scheduleHoldHint: "Slot ditahan 1 jam setelah dikunci supaya kamu sempat menyelesaikan pembayaran.",
     scheduleKilatHint: "Kamu akan mengonfirmasi ringkasan pesanan sekali lagi sebelum membayar.",
-    schedulePickerSummary: "Tayang mulai {start} pukul 15.00 WIB, berjalan {days}, dan selesai {end}.",
+    scheduleEstimatedTitle: "Estimasi Jadwal Tayang",
+    airingStartsAt: "Mulai 15.00 WIB",
+    airingDurationBadge: "{days} Tayang",
     lockingSlotLoading: "Mengunci slotmu...",
     sendingForReviewLoading: "Mengirim surveimu...",
     slotLockedSuccess: "Jadwal terkunci. Selesaikan pembayaran untuk mengamankannya.",
 
     // Fase B — countdown di halaman pembayaran
     paymentPhaseTitle: "Selesaikan pembayaran",
-    paymentPhaseSubtitle: "Jadwalmu sudah terkunci. Slot ini tetap milikmu selama waktu di bawah masih berjalan.",
-    scheduleLockedLabel: "Jadwal terkunci",
-    scheduleLockedDetail: "{date}, mulai 15.00 WIB — berjalan {days}",
-    timerLabelHold: "Slot ditahan — sisa",
+    paymentPhaseSubtitle: "Bayar sebelum batas waktu untuk mengamankan slot tayang.",
+    timerLabelHold: "Sisa waktu:",
     timerLabelCutoff: "Batas bayar hari ini (14.00 WIB) — sisa",
     timerConsequenceNote: "Kalau waktunya habis, slot dilepas untuk pemesan lain. Detail surveimu tetap tersimpan.",
     // Jadwal yang dibuat admin tidak punya umur — lihat utils/slotHold.ts.
@@ -1098,7 +1094,7 @@ export const translations = {
     errorInsufficientPermissionsDesc: "Mohon centang SEMUA kotak izin agar kami dapat me-review form Anda. Jangan khawatir, kami hanya membaca file yang Anda pilih saja.",
 
     // Success Messages - StepOneFormFields
-    successImportedFromGoogleDrive: "Data berhasil diimport dari Google Drive",
+    successImportedFromGoogleDrive: "Data berhasil ditinjau dan diimpor ke dalam sistem",
 
     // Section Titles - StepOne
     surveyInformation: "Informasi Survey",

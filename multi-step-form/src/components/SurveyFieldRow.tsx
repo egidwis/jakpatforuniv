@@ -49,7 +49,7 @@ export const fieldInputClass =
 export const fieldRowListClass = 'mt-2 flex flex-col gap-2';
 
 /** Lebar kolom label dibagi rata di semua baris (compact & default) supaya nilai sebaris X. */
-const FIELD_LABEL_WIDTH = 'w-[150px] shrink-0 md:w-[165px]';
+const FIELD_LABEL_WIDTH = 'w-[150px] shrink-0 md:w-[175px]';
 
 function rowShell(hasError?: boolean, readOnly?: boolean) {
   return (

@@ -256,6 +256,32 @@ export function StepOneFormFields({
     </span>
   );
 
+  const durationTooltip = (
+    <span className="leading-relaxed">
+      {t('surveyDurationHint')}
+    </span>
+  );
+
+  const criteriaTooltip = (
+    <span className="leading-relaxed">
+      {t('respondentCriteriaHelp')
+        .split('*')
+        .map((part, index) =>
+          index % 2 === 1 ? (
+            <strong key={index} className="font-semibold text-white">{part}</strong>
+          ) : (
+            part
+          )
+        )}
+    </span>
+  );
+
+  const prizeTooltip = (
+    <span className="leading-relaxed">
+      {t('prizePerWinnerHint')}
+    </span>
+  );
+
   // Durasi memakai kondisi ganda milik desain lama: error tampil dari state
   // `errors` SETELAH submit, tapi juga langsung saat angka di luar 1–30.
   const durationOutOfRange =
@@ -440,10 +466,25 @@ export function StepOneFormFields({
           </FieldRow>
         </div>
 
+        {/* Switch to Google Form — jika mode manual */}
+        {!isGoogleImport && onSwitchToGoogle && (
+          <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-center gap-x-1 text-xs md:text-sm text-gray-500">
+            <span>{t('troubleFillingManual')}</span>
+            <button
+              type="button"
+              onClick={onSwitchToGoogle}
+              className="font-semibold text-jfu-primary hover:underline"
+            >
+              {t('importFromGoogleForm')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* CARD 2 — KONFIGURASI IKLAN & REWARD */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
         {/* SEKSI 2 — KONFIGURASI IKLAN */}
-        <div className="mt-6">
-          <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
-        </div>
+        <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
 
         <div className={fieldRowListClass}>
           <FieldRow
@@ -452,6 +493,7 @@ export function StepOneFormFields({
             htmlFor="duration"
             required
             compact
+            tooltip={durationTooltip}
             error={
               durationHasError
                 ? formData.duration > 30
@@ -459,27 +501,19 @@ export function StepOneFormFields({
                   : t('errorDurationZero')
                 : undefined
             }
-            /* Jangkar historis, bukan janji — angkanya membantu memilih durasi
-               tanpa pernah menjadi target yang bisa ditagih. */
             hint={
-              <span className="flex flex-col gap-1">
-                <span className="flex items-start gap-1.5 text-gray-500">
-                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
-                  <span>{t('surveyDurationHint')}</span>
+              openStartDays !== null ? (
+                <span
+                  className={`font-medium ${openStartDays <= 2 ? 'text-amber-600' : 'text-gray-500'}`}
+                >
+                  {openStartDays === 0
+                    ? t('slotOutlookNone', { days: `${Math.max(formData.duration || 1, 1)} ${t('days').toLowerCase()}` })
+                    : t('slotOutlook', {
+                        days: `${Math.max(formData.duration || 1, 1)} ${t('days').toLowerCase()}`,
+                        open: openStartDays,
+                      })}
                 </span>
-                {openStartDays !== null && (
-                  <span
-                    className={`pl-5 font-medium ${openStartDays <= 2 ? 'text-amber-600' : 'text-gray-600'}`}
-                  >
-                    {openStartDays === 0
-                      ? t('slotOutlookNone', { days: `${Math.max(formData.duration || 1, 1)} ${t('days').toLowerCase()}` })
-                      : t('slotOutlook', {
-                          days: `${Math.max(formData.duration || 1, 1)} ${t('days').toLowerCase()}`,
-                          open: openStartDays,
-                        })}
-                  </span>
-                )}
-              </span>
+              ) : undefined
             }
           >
             <input
@@ -508,23 +542,8 @@ export function StepOneFormFields({
             htmlFor="criteriaResponden"
             required
             counter={`${formData.criteriaResponden?.length || 0}/300`}
+            tooltip={criteriaTooltip}
             error={attemptedSubmit ? errors.criteriaResponden : undefined}
-            hint={
-              <span className="flex items-start gap-1.5 text-gray-500">
-                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
-                <span>
-                  {t('respondentCriteriaHelp')
-                    .split('*')
-                    .map((part, index) =>
-                      index % 2 === 1 ? (
-                        <strong key={index} className="font-semibold text-gray-600">{part}</strong>
-                      ) : (
-                        part
-                      )
-                    )}
-                </span>
-              </span>
-            }
           >
             <textarea
               id="criteriaResponden"
@@ -544,25 +563,10 @@ export function StepOneFormFields({
           </FieldBlock>
         </div>
 
-        {/* Switch to Google Form — jika mode manual */}
-        {!isGoogleImport && onSwitchToGoogle && (
-          <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-center gap-x-1 text-xs md:text-sm text-gray-500">
-            <span>{t('troubleFillingManual')}</span>
-            <button
-              type="button"
-              onClick={onSwitchToGoogle}
-              className="font-semibold text-jfu-primary hover:underline"
-            >
-              {t('importFromGoogleForm')}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* CARD 2 — PENGATURAN INSENTIF */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
         {/* SEKSI 3 — PENGATURAN INSENTIF */}
-        <SectionLabel>{t('incentiveSettings')}</SectionLabel>
+        <div className="mt-6">
+          <SectionLabel>{t('incentiveSettings')}</SectionLabel>
+        </div>
 
         <div className={fieldRowListClass}>
           <FieldRow
@@ -571,28 +575,21 @@ export function StepOneFormFields({
             htmlFor="prizePerWinner"
             required
             compact
-            labelWidth="w-[150px] md:w-[320px]"
+            labelWidth="w-[150px] md:w-[220px]"
+            tooltip={prizeTooltip}
             error={
               formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
                 ? t('errorMinPrize')
                 : undefined
             }
-            /* Menjelaskan PERAN hadiah, bukan cuma nominalnya — itu yang
-               membuat angka rekomendasi di bawahnya masuk akal. */
             hint={
-              <span className="flex flex-col gap-1 text-gray-500">
-                <span className="flex items-start gap-1.5">
-                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
-                  <span>{t('prizePerWinnerHint')}</span>
+              formData.prizePerWinner >= 25000 && formData.questionCount > 0 ? (
+                <span className="font-medium text-gray-500">
+                  {t('recommendation')}: Rp{' '}
+                  {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}
+                  {t('perWinner')}
                 </span>
-                {formData.prizePerWinner >= 25000 && formData.questionCount > 0 && (
-                  <span className="pl-5 font-medium text-gray-600">
-                    {t('recommendation')}: Rp{' '}
-                    {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}
-                    {t('perWinner')}
-                  </span>
-                )}
-              </span>
+              ) : undefined
             }
           >
             <span className="mr-1.5 shrink-0 text-sm text-gray-400">Rp</span>
@@ -619,7 +616,7 @@ export function StepOneFormFields({
             htmlFor="winnerCount"
             required
             compact
-            labelWidth="w-[150px] md:w-[320px]"
+            labelWidth="w-[150px] md:w-[220px]"
             tooltip={winnerTooltip}
             error={
               formData.winnerCount > 0 && formData.winnerCount < 2 ? t('errorMinWinners') : undefined

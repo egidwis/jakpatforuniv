@@ -5,7 +5,6 @@ import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useMemo, useState } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { X, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
-import { Button } from './ui/button';
 
 interface UnifiedHeaderProps {
     formData: SurveyFormData;
@@ -43,16 +42,16 @@ export function UnifiedHeader({ formData, onCancelConfirmed }: UnifiedHeaderProp
                         <div className="flex items-center justify-between">
 
                             {/* LEFT: Kembali + judul produk statis. */}
-                            <div className="flex items-center gap-2 md:gap-3">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="mr-0 -ml-2 text-gray-500 hover:text-red-600 hover:bg-red-50"
+                            <div className="flex items-center gap-2.5 md:gap-3">
+                                <button
+                                    type="button"
                                     onClick={() => setIsCancelDialogOpen(true)}
+                                    className="w-8 h-8 rounded-xl bg-slate-100/90 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200/90 hover:border-rose-200 flex items-center justify-center transition-all duration-150 cursor-pointer shrink-0 shadow-2xs"
                                     title="Batalkan Pesanan"
+                                    aria-label="Batalkan Pesanan"
                                 >
-                                    <X className="w-5 h-5" />
-                                </Button>
+                                    <X className="w-4 h-4" />
+                                </button>
 
                                 <span className="text-sm md:text-base font-bold text-gray-900">
                                     {t('productAdsTitle')}
@@ -63,7 +62,7 @@ export function UnifiedHeader({ formData, onCancelConfirmed }: UnifiedHeaderProp
                             <button
                                 type="button"
                                 onClick={() => setIsExpanded(prev => !prev)}
-                                className="group text-right focus:outline-none flex items-center gap-2 -mr-2 p-1.5 md:p-2 rounded-xl hover:bg-gray-100/60 transition-colors"
+                                className="group text-right focus:outline-none flex items-center gap-2.5 -mr-1 p-1 md:p-1.5 rounded-xl hover:bg-slate-50 transition-colors"
                             >
                                 <div>
                                     <div className="flex items-center justify-end gap-1">
@@ -74,11 +73,11 @@ export function UnifiedHeader({ formData, onCancelConfirmed }: UnifiedHeaderProp
                                             Cost
                                         </p>
                                     </div>
-                                    <p className="text-sm md:text-lg font-bold text-jfu-primary">
+                                    <p className="text-sm md:text-lg font-bold text-jfu-primary leading-tight">
                                         Rp{formatRupiah(calculation.totalCost)}
                                     </p>
                                 </div>
-                                <span className="w-6 h-6 rounded-full bg-blue-50 text-jfu-primary flex items-center justify-center group-hover:bg-blue-100 transition-colors shrink-0">
+                                <span className="w-8 h-8 rounded-xl bg-blue-50/80 text-jfu-primary border border-blue-100/90 group-hover:bg-blue-100/90 group-hover:border-blue-200 flex items-center justify-center transition-all shrink-0 shadow-2xs">
                                     {isExpanded ? (
                                         <ChevronDown className="w-4 h-4" />
                                     ) : (

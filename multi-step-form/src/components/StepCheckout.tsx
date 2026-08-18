@@ -22,7 +22,6 @@ import {
   CreditCard,
   Send,
   ArrowLeft,
-  ArrowRight,
   ExternalLink,
   CalendarCheck,
   Zap,
@@ -172,7 +171,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
       toast.error(t('errorTermsRequired'));
       return false;
     }
-    if (!formData.title || !formData.description || !formData.questionCount || !formData.duration) {
+    if (!formData.title || !formData.questionCount || !formData.duration) {
       toast.error(t('errorCompleteAllSurveyData'));
       return false;
     }
@@ -218,13 +217,6 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
   return (
     <div className="max-w-xl mx-auto space-y-3.5">
       <div className="space-y-3.5">
-        {/* Judul layar — membuka dengan menegaskan bahwa belum ada uang yang
-            berpindah, karena itu kecemasan utama di titik ini. */}
-        <div className="pb-1">
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900">{t('summaryTitle')}</h2>
-          <p className="text-sm text-gray-500 mt-1 leading-relaxed">{t('summarySubtitle')}</p>
-        </div>
-
         {/* Warning Banner for Personal Data Detection */}
         {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
           <div className="p-4 rounded-xl bg-amber-100/50 border border-amber-200/60 flex flex-col gap-2 mb-6">
@@ -258,9 +250,6 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
                 <h4 className="text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
                   {t('voucherManualVerifyTitle')}
                 </h4>
-                {/* Versi lama banner ini tidak pernah menyebut jadwal sama
-                    sekali, padahal justru itu konsekuensi terbesarnya: pemakai
-                    voucher ini tidak akan melihat pemilih tanggal hari ini. */}
                 <p className="text-sm text-blue-800 leading-relaxed">
                   {t('voucherManualVerifyBody1')} <strong>{formData.voucherCode?.toUpperCase()}</strong>{' '}
                   {t('voucherManualVerifyBody2')}
@@ -270,8 +259,8 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
           </div>
         )}
 
-        {/* SECTION: SURVEY OVERVIEW (ORDER REQUEST) */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-3.5">
+        {/* SECTION: SURVEY OVERVIEW (HIGHLIGHT CARD - MODERN GRADIENT) */}
+        <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-100/50 via-sky-50/60 to-indigo-100/40 p-5 md:p-6 shadow-sm overflow-hidden space-y-3.5">
           <div className="flex items-center justify-between">
             <SectionLabel>{t('orderOverviewTitle')}</SectionLabel>
             {formData.isKilatUpgrade && (
@@ -302,8 +291,8 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
               )}
             </div>
 
-            {/* Spec & Reward Bar (Option 2: Compact Inline Meta) */}
-            <div className="flex flex-wrap items-center gap-y-1.5 gap-x-2 text-xs font-medium text-gray-700 bg-gray-50/80 px-3.5 py-2.5 rounded-xl border border-gray-200/60 shadow-2xs">
+            {/* Spec & Reward Bar (Compact Inline Meta) */}
+            <div className="flex flex-wrap items-center gap-y-1.5 gap-x-2 text-xs font-medium text-gray-700 bg-white/90 px-3.5 py-2.5 rounded-xl border border-blue-100 shadow-2xs">
               <span className="flex items-center gap-1">
                 <FileText size={13} className="text-gray-400 shrink-0" />
                 <span>{formData.questionCount} Qs</span>
@@ -323,7 +312,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
 
             {/* Release Schedule (If Auto Approval) */}
             {isAutoApproval && formData.startDate && (
-              <div className="flex items-center gap-2 text-xs text-blue-800 bg-blue-50/80 px-3.5 py-2 rounded-xl border border-blue-100">
+              <div className="flex items-center gap-2 text-xs text-blue-800 bg-white/90 px-3.5 py-2 rounded-xl border border-blue-100">
                 <CalendarCheck size={14} className="text-blue-500 shrink-0" />
                 <div>
                   <span className="font-semibold">{t('releaseSchedule')}: </span>
@@ -342,7 +331,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
 
             {/* Kriteria Responden */}
             {formData.criteriaResponden && (
-              <div className="flex items-start gap-2 text-xs text-gray-700 bg-gray-50/80 p-3 rounded-xl border border-gray-200/60 shadow-2xs">
+              <div className="flex items-start gap-2 text-xs text-gray-700 bg-white/90 p-3 rounded-xl border border-blue-100 shadow-2xs">
                 <Target size={14} className="text-rose-500 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-semibold text-gray-900">Kriteria Responden: </span>
@@ -353,7 +342,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
 
             {/* Mode JFU Kilat Active Banner */}
             {formData.isKilatUpgrade && (
-              <div className="border-t border-dashed border-gray-150 pt-3 mt-2 w-full flex flex-col gap-1">
+              <div className="border-t border-dashed border-blue-200/60 pt-3 mt-2 w-full flex flex-col gap-1">
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-2 text-xs text-amber-800 font-bold">
                     <Zap size={14} className="fill-amber-500 text-amber-500 shrink-0" />
@@ -692,16 +681,14 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
           </div>
         </div>
 
-        {/* ACTION — satu tombol, tiga takdir. Tiap takdir menyebutkan apa yang
-            terjadi berikutnya persis di bawah tombolnya, supaya tidak ada
-            langkah yang datang tanpa diumumkan. */}
+        {/* ACTION — satu tombol, tiga takdir. */}
         <div className="pt-1 pb-12 space-y-2.5">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onBack}
               disabled={isSubmitting}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-3.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-60 disabled:pointer-events-none"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-60 disabled:pointer-events-none"
             >
               <ArrowLeft className="w-4 h-4" />
               {t('backButton')}
@@ -710,44 +697,37 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
               type="button"
               onClick={handlePrimaryAction}
               disabled={isSubmitting}
-              className={`
-            flex-1 px-8 py-3.5 rounded-xl text-white font-bold text-base shadow-lg transition-all duration-200 flex items-center justify-center gap-2
-            ${isSubmitting
-                  ? 'opacity-60 cursor-not-allowed pointer-events-none'
-                  : 'hover:shadow-xl hover:-translate-y-0.5'
-                }
-            ${!isAutoApproval
-                  ? 'bg-amber-500 hover:bg-amber-600'
-                  : 'shadow-lg hover:shadow-xl'
-                }
-          `}
-              style={isAutoApproval ? { background: 'linear-gradient(135deg, #0091ff 0%, #0077cc 100%)', boxShadow: '0 4px 12px rgba(0, 145, 255, 0.3)' } : {}}
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-colors ${
+                !isAutoApproval
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-jfu-primary hover:bg-jfu-dark'
+              } disabled:cursor-not-allowed disabled:opacity-50`}
             >
               {isSubmitting ? (
-              <>
-                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                {t('processing')}
-              </>
-            ) : !isAutoApproval ? (
-              <>
-                <Send size={18} />
-                {t('summaryCtaReview')}
-              </>
-            ) : needsSchedule ? (
-              <>
-                <CalendarCheck size={18} />
-                {t('summaryCtaSchedule')}
-                <ArrowRight size={18} className="opacity-80" />
-              </>
-            ) : (
-              <>
-                <CreditCard size={18} />
-                {t('summaryCtaPay')}
-              </>
-            )}
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {t('processing')}
+                </>
+              ) : !isAutoApproval ? (
+                <>
+                  <Send size={15} />
+                  {t('summaryCtaReview')}
+                </>
+              ) : needsSchedule ? (
+                <>
+                  <CalendarCheck size={15} />
+                  {t('summaryCtaSchedule')}
+                  <span aria-hidden="true">→</span>
+                </>
+              ) : (
+                <>
+                  <CreditCard size={15} />
+                  {t('summaryCtaPay')}
+                </>
+              )}
             </button>
           </div>
 

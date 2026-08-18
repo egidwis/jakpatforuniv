@@ -90,7 +90,7 @@ export async function submitOrder({
 }: SubmitOrderArgs): Promise<FormSubmission & { id: string }> {
   if (!formData.termsAccepted) throw new OrderSubmitError('terms');
 
-  if (!formData.title || !formData.description || !formData.questionCount || !formData.duration) {
+  if (!formData.title || !formData.questionCount || !formData.duration) {
     throw new OrderSubmitError('survey_incomplete');
   }
   if (!formData.fullName || !formData.fullName.trim()) throw new OrderSubmitError('name');
@@ -166,7 +166,7 @@ export async function submitOrder({
   const submissionData: FormSubmission = {
     survey_url: formData.surveyUrl,
     title: formData.title,
-    description: formData.description,
+    description: formData.description || '',
     question_count: formData.questionCount,
     criteria_responden: formData.criteriaResponden,
     duration: formData.duration,
