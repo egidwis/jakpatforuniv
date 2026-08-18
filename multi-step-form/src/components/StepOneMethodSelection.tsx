@@ -10,12 +10,15 @@ interface StepOneMethodSelectionProps {
   onSelectMethod: (method: 'google' | 'manual') => void;
 }
 
-// Value proposition JFU Form yang bergantian di promo bar bawah
-const JFU_FORM_VALUE_PROPS = [
-  'alternatif Qualtrics & SurveyMonkey',
-  'tinggal chat, AI yang susunin pertanyaannya',
-  'survei bisa "loncat" otomatis sesuai jawaban'
-];
+// Value proposition JFU Form yang bergantian di promo bar bawah.
+// Yang berputar adalah KUNCI-nya, bukan teksnya — supaya bar ikut bahasa aktif
+// tanpa memaksa interval di bawah bergantung pada `t` (yang berubah identitas
+// tiap kali bahasa diganti, dan akan me-restart rotasinya).
+const JFU_FORM_PROP_KEYS = [
+  'jfuFormPromoProp1',
+  'jfuFormPromoProp2',
+  'jfuFormPromoProp3'
+] as const;
 
 /**
  * Body "pilih jalur review" dari kartu pintu-masuk Iklan Survei — dirender
@@ -48,7 +51,7 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
     const interval = setInterval(() => {
       setIsValuePropVisible(false);
       setTimeout(() => {
-        setValuePropIndex(prev => (prev + 1) % JFU_FORM_VALUE_PROPS.length);
+        setValuePropIndex(prev => (prev + 1) % JFU_FORM_PROP_KEYS.length);
         setIsValuePropVisible(true);
       }, 300);
     }, 2800);
@@ -153,25 +156,45 @@ export function StepOneMethodSelection({ onSelectMethod }: StepOneMethodSelectio
         </button>
       </div>
 
-      {/* Promo JFU Form — dibawa dari main. Ini satu-satunya ajakan arah balik
-          (iklan → bikin form); arah sebaliknya sudah ada lewat CTA "Sebar via
-          Jakpat" di /dashboard/forms. Warnanya sengaja kontras terhadap kartu:
-          bar ini memang dimaksudkan menonjol, bukan menyatu. */}
+      {/* Promo JFU Form — satu-satunya ajakan arah balik (iklan → bikin form);
+          arah sebaliknya sudah ada lewat CTA "Sebar via Jakpat" di
+          /dashboard/forms.
+
+          Sengaja TIDAK berbentuk seperti dua baris metode di atas: ini bukan
+          cara memesan iklan, jadi latarnya bertintal jfu-primary alih-alih
+          putih ber-border seperti baris pilihan. Versi main memakai gradien
+          indigo-ungu; di dalam kartu Soft DNA itu terbaca sebagai elemen dari
+          produk lain, bukan tawaran dari halaman yang sama.
+
+          Value prop turun ke baris kedua (di main ia menyambung satu baris di
+          belakang tanda pisah), jadi copy lead-nya tidak lagi berakhir dengan
+          em dash yang menggantung. */}
       <button
         type="button"
         onClick={() => navigate('/dashboard/forms')}
-        className="mt-4 w-full flex flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-semibold rounded-full px-5 py-3 shadow-md shadow-indigo-500/20 transition-all"
+        className="mt-4 w-full flex items-center gap-3 px-4 md:px-5 py-3 min-h-11 rounded-xl border border-jfu-primary/15 bg-jfu-primary/[0.05] text-left hover:bg-jfu-primary/[0.09] hover:border-jfu-primary/25 transition-colors"
       >
-        <Sparkles className="w-4 h-4 shrink-0" />
-        <span className="whitespace-nowrap">Bikin survei baru? Coba JFU Form —</span>
-        <span
-          className={`transition-opacity duration-300 ${isValuePropVisible ? 'opacity-100' : 'opacity-0'}`}
-        >
-          {JFU_FORM_VALUE_PROPS[valuePropIndex]}
+        <span className={`${iconBoxChild} bg-white text-jfu-primary border border-jfu-primary/15`}>
+          <Sparkles className="w-4 h-4" />
         </span>
-        <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-wide">
-          Gratis
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-bold text-[#1a1a1a]">{t('jfuFormPromoLead')}</span>
+            <span className="rounded-full bg-jfu-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-jfu-primary">
+              {t('jfuFormPromoFree')}
+            </span>
+          </span>
+          {/* Tinggi baris dikunci lewat min-h supaya bar tidak berdenyut naik
+              turun saat value prop yang lebih panjang masuk. */}
+          <span className="block min-h-4 mt-0.5">
+            <span
+              className={`text-xs leading-relaxed text-gray-500 transition-opacity duration-300 ${isValuePropVisible ? 'opacity-100' : 'opacity-0'}`}
+            >
+              {t(JFU_FORM_PROP_KEYS[valuePropIndex])}
+            </span>
+          </span>
         </span>
+        <ChevronRight className="w-4 h-4 shrink-0 text-jfu-primary/50" />
       </button>
 
       <div className="mt-5 pt-4 border-t border-gray-100 flex justify-center">
