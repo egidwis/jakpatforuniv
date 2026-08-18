@@ -2,7 +2,37 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> ## ⬜ BELUM DIMULAI — TERKUNCI PRASYARAT
+> ## 🟡 DEPLOY A SELESAI DI KODE (2026-08-18) — BACA KOTAK INI DULU
+>
+> Rencana ini **dipecah jadi dua rilis** dan sebagian badannya sudah usang. Rencana
+> eksekusi yang berlaku ada di riwayat commit `eb336cf` + `7b3450a`; yang di bawah tetap
+> dipertahankan sebagai alasan desain, bukan sebagai daftar tugas.
+>
+> **Yang berubah dari rencana 8 Agustus:**
+>
+> | | |
+> |---|---|
+> | Bentuk rilis | **Dua deploy.** A = aditif (`sql/51`, ✅ diterapkan & hijau). B = swap view (`sql/52`, belum mulai) |
+> | Langkah 5 (rename identifier) | **Dikeluarkan dari Task 11** — ditunda sampai sesudah `DROP VIEW` |
+> | `ExtendSection.tsx` | **Sudah tidak ada.** Dipecah jadi `schedule/ScheduleForm.tsx`, `schedule/InvoiceForm.tsx`, `submissions/tabs/SchedulePaymentTab.tsx`. Langkah 3 no. 7 dan langkah 5 menunjuk berkas yang tidak ada |
+> | `'Extend Iklan (ads)'` | **Sudah hilang sendiri** — seluruh item invoice kini `'Jakpat for Universities (ads)'`. Peringatan "beri tahu finance" **tidak berlaku lagi** |
+> | Baseline gate | **61**, diukur `tsc -b --force` 2026-08-18. Angka **75** di bawah keliru; lihat §00F progress doc |
+>
+> **Satu lubang yang tidak ada di rencana ini dan wajib ada:** `schedule_id` untuk baris
+> BARU. Rencana hanya menyebut backfill, padahal satu-satunya penulis baris
+> `invoices`/`transactions` adalah `create-payment.js` yang mengirim
+> `entity_type`/`extend_id` saja — tiap tagihan baru akan lahir `NULL` sampai langkah 3
+> selesai. Ditutup oleh trigger `derive_schedule_id()` di `sql/51`, yang dibuang lagi di
+> langkah 3.
+>
+> ⚠️ **Regresi yang ditemukan saat eksekusi dan memblokir langkah 2:** `sql/49` membatalkan
+> perbaikan `sql/46` — cabang `DELETE` di `sync_ad_schedule_from_submission()` kembali,
+> jadi mengosongkan tanggal menghapus baris cermin. Terukur 1001 order vs 986 baris
+> ordinal 1. Sudah diperbaiki di `sql/51` bagian 0. **Jangan jalankan `sql/52` sebelum uji
+> paritas `sql/46` §7(1) hijau** — kalau tidak, "Hapus dari list" akan menghapus jadwal
+> beserta `booking_id`-nya.
+>
+> ## ⬜ BELUM DIMULAI — TERKUNCI PRASYARAT (status per 2026-08-08, sudah lewat)
 > Disetujui pemilik produk 2026-08-08. **Jangan mulai sebelum Phase 3 mendarat di `main`
 > dan dideploy** — lihat §"Prasyarat sebelum mulai" di bawah. Status berjalan selalu di
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).

@@ -8,12 +8,22 @@
 > Endpoint `/api/notify-ad-live` **terbukti tayang** — probe POST tanpa kunci
 > membalas `401` (gerbang menolak), bukan `405` (route hilang) seperti 10 Agustus.
 >
-> 🔴 **SATU LANGKAH RILIS MASIH TERTINGGAL — cron notifikasi belum dijadwalkan.**
-> Diverifikasi 2026-08-18 17.15 WIB: `cron.job` masih hanya berisi
-> `activate-extends`. Kodenya sudah tayang, tapi tidak ada yang memanggilnya.
-> **4 order sedang tayang tanpa email**, tiga di antaranya mulai hari ini pukul
-> 15.00. Perintah menghidupkannya ada di §00A — jalankan, lalu buktikan lewat
-> `net._http_response`.
+> 🔴 **CRON NOTIFIKASI DICOBA 2026-08-18 20.45 WIB DAN GAGAL — `RESEND_API_KEY`
+> TIDAK ADA DI CLOUDFLARE.** Cron dijadwalkan, menyala, dan `net._http_response`
+> membalas **500 `{"error":"Email service not configured"}`** ×4. Itu memberi
+> tahu dua hal sekaligus: gerbang `CRON_NOTIFY_SECRET` **lolos** (kalau tidak,
+> 401), dan `env.RESEND_API_KEY` tidak terlihat oleh `notify-ad-live.js`.
+> Cron sudah **di-unschedule lagi**, dan keempat order yang sempat tertandai
+> **sudah dipulihkan** (`live_notified_at = null`) — jendelanya masih terbuka,
+> jadi kali ini pemulihannya nyata, bukan no-op seperti 10 Agustus.
+> **Tindakan berikutnya milik pemilik Cloudflare**, bukan kode: pasang
+> `RESEND_API_KEY` di environment Production project `jakpatforuniv-submit`,
+> probe manual, baru jadwalkan ulang. Rinciannya di §00A.
+>
+> 🟢 **Task 11 Deploy A selesai di kode (2026-08-18).** `sql/51` diterapkan &
+> hijau di produksi; `booking_id` dan "Tandai Lunas" per jadwal ada di commit
+> `eb336cf`+`7b3450a`. **Belum dideploy dan belum diuji di browser.**
+> Menemukan satu regresi yang memblokir Deploy B — lihat §00J.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -62,6 +72,46 @@ branch itu. Lihat §2.
 ---
 
 ## Yang menunggu tindakan
+
+### 00J. 🟢 `sql/49` diam-diam membatalkan perbaikan `sql/46` — ditemukan & diperbaiki 2026-08-18
+
+**Ini yang paling penting dibawa ke migrasi berikutnya**, karena mekanismenya akan
+terulang: dua migrasi `CREATE OR REPLACE` fungsi yang sama di berkas berbeda, dan git
+**tidak** menganggapnya konflik. Yang terakhir dijalankan menang tanpa peringatan.
+
+`sql/46` §3 membuang cabang `DELETE` dari `sync_ad_schedule_from_submission()` dan
+menjadikan aturannya total: **satu order = satu baris ordinal 1, selalu**, dengan uji
+paritas §7(1) `COUNT(*) WHERE ordinal=1` = `COUNT(*) FROM form_submissions`.
+
+`sql/49` menulis ulang fungsi yang sama untuk menambah cabang jam kustom. Kepalanya
+berbunyi *"SALINAN UTUH sql/46 (versi terakhir fungsi ini), dengan SATU cabang
+tambahan"* — tapi badan yang disalin adalah badan **`sql/45`**, dan cabang `DELETE` ikut
+terbawa. Niatnya tertulis benar; yang disalin salah.
+
+| | |
+|---|---|
+| Terukur sebelum perbaikan | **1001 order, 986 baris ordinal 1** — 15 hilang |
+| Lahir SESUDAH `sql/46` diterapkan | **10 dari 15**, tiga di antaranya 18 Agustus |
+| Semuanya | `start_date IS NULL` — order yang belum dijadwalkan |
+
+**Kenapa ini memblokir Deploy B.** Kepala `sql/46` sudah menuliskannya sepuluh hari
+sebelum kejadian: *"admin yang mengosongkan tanggal diam-diam menghapus baris cermin.
+Sesudah Task 11 — ketika `ad_schedules` jadi otoritatif — yang terhapus adalah jadwalnya
+sendiri."* Dan jalurnya hidup: `releaseScheduleSlot()` ("Hapus dari list") **memang**
+bekerja dengan mengosongkan tanggal. Sesudah `sql/52`, klik itu akan menghapus jadwal
+beserta `booking_id` yang mungkin sudah dikutip peneliti ke support.
+
+**Sudah diperbaiki** di `sql/51` bagian 0, diterapkan & diverifikasi: 1001 = 1001,
+cabang `DELETE` hilang, sidik waktu **identik** sebelum/sesudah (nol jadwal bergeser),
+dan uji hidup membuktikan mengosongkan tanggal kini mempertahankan baris **beserta**
+`booking_id`-nya.
+
+⚠️ **Gerbang untuk `sql/52`:** jalankan uji paritas `sql/46` §7(1) lebih dulu. Kalau
+selisihnya bukan nol, jangan terapkan `sql/52`.
+
+⚠️ **`sync_ad_schedule_from_extend()` tidak kena** — `DELETE` di sana ada di bawah
+`TG_OP = 'DELETE'`, yaitu baris yang memang benar-benar dihapus. Itu benar; jangan ikut
+"diperbaiki".
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 
@@ -112,7 +162,62 @@ mengosongkannya (keduanya butuh Task 11).
 **Belum dikerjakan:** uji manual di browser (urutannya di rencana), dan keputusan atas **4
 order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomatis.
 
-### 00A. 🟡 Cron notifikasi direm sejak 2026-08-10 — hidupkan lagi SESUDAH deploy
+### 00A. 🔴 Cron notifikasi — DICOBA 2026-08-18 dan GAGAL di `RESEND_API_KEY`
+
+> **HASIL PERCOBAAN 2026-08-18 20.45 WIB. Baca ini sebelum riwayat di bawahnya.**
+>
+> Cron dijadwalkan (`jobid 3`), menyala tepat waktu, `cron.job_run_details`
+> melaporkan `succeeded` — dan tetap **nol email terkirim**. Buktinya cuma ada di
+> satu tempat:
+>
+> ```
+> net._http_response → 500 ×4  {"error":"Email service not configured"}
+> ```
+>
+> **Yang diberitahukan angka 500 itu, tepatnya:**
+>
+> | | |
+> |---|---|
+> | Gerbang `CRON_NOTIFY_SECRET` | ✅ **LOLOS** — kalau tidak cocok jawabannya 401, dan gerbang itu berjalan sebelum apa pun |
+> | Route & parse body | ✅ ada — cek `RESEND_API_KEY` letaknya *sesudah* `await request.json()` |
+> | `env.RESEND_API_KEY` | ❌ **tidak terlihat** oleh `functions/api/notify-ad-live.js` baris 29-33 |
+>
+> **Ini pengulangan pola 10 Agustus dengan penyebab berbeda**, dan sekali lagi
+> karena `notify_primary_ads_live()` menyetel `live_notified_at = now()` tanpa
+> menunggu respons (pg_net async — memang desainnya, tertulis di kepala `sql/48`).
+>
+> **Bedanya menentukan, dan kali ini kabarnya baik:** jendela tayang keempat order
+> **masih terbuka**, jadi pemulihannya nyata. Sudah dikerjakan:
+>
+> | Aksi | Hasil |
+> |---|---|
+> | `cron.unschedule('notify-primary-ads-live')` | rem terpasang lagi — 3 order yang mulai tayang 19–20 Agu tidak ikut terbakar |
+> | `live_notified_at = null` ×4 | `72ec157b`, `f6b905d1`, `77790fe4`, `234b70ad` pulih |
+> | Verifikasi | cron off, **9 order** menunggu email dengan jendela masih berjalan |
+>
+> **Langkah berikutnya BUKAN kode.** Pasang `RESEND_API_KEY` di environment
+> **Production** project Pages `jakpatforuniv-submit`. Anehnya tujuh tempat lain
+> memakai variabel bernama sama (`send-submission-email`,
+> `send-invoice-ready-email`) — dugaan terkuat: ia terpasang hanya di Preview,
+> atau terhapus saat `CRON_NOTIFY_SECRET` ditambahkan.
+>
+> **Urutan aman sesudah diperbaiki** — probe dulu, jadwalkan belakangan:
+>
+> ```
+> POST https://submit.jakpatforuniv.com/api/notify-ad-live?k=<CRON_NOTIFY_SECRET>
+> body: {}
+> ```
+>
+> Balasan **400 `Missing email`** = kunci Resend sudah terbaca, aman menjadwalkan.
+> Balasan **500** = belum. Probe ini tidak menyentuh satu baris pun.
+>
+> ⚠️ **Pelajaran yang berlaku untuk tiap cron pg_net berikutnya:** `succeeded` di
+> `cron.job_run_details` hanya berarti SQL-nya jalan, bukan HTTP-nya berhasil.
+> Satu-satunya bukti ada di `net._http_response` — dan isinya dipangkas berkala,
+> jadi periksa dalam hitungan menit, bukan hari.
+
+<details>
+<summary>Riwayat 2026-08-10 — insiden pertama (dipertahankan, pelajarannya masih berlaku)</summary>
 
 > **Keadaan per 2026-08-18 17.15 WIB — SESUDAH deploy (diverifikasi langsung
 > ke produksi):**
@@ -212,6 +317,15 @@ suspended 2026-08-10 dan form reaktivasinya baru dikirim. `200` dari
 `sql/43` cuma menunggu; `sql/48` menghabiskan. Aturan turunannya: kalau sebuah
 fungsi menandai baris sebelum tahu hasilnya, **jadwalnya menyusul deploy**, bukan
 mendahuluinya — atau tanda itu dipasang dari respons, bukan dari pengiriman.
+
+</details>
+
+⚠️ **Catatan 2026-08-18 atas peringatan Resend di atas.** Akun Resend yang sempat
+suspended 10 Agustus **bukan** penyebab kegagalan hari ini: pesan `500` berbunyi
+`Email service not configured`, dan cabang itu menyala dari `!env.RESEND_API_KEY` —
+sebelum satu pun panggilan ke Resend terjadi. Status akun tetap perlu dipastikan
+**sesudah** variabelnya terpasang, karena `200` dari endpoint hanya membuktikan
+endpoint-nya hidup, bukan emailnya sampai.
 
 ### 00B. 🟡 `sql/47` juga mendahului kodenya — dampaknya kecil dan diam
 

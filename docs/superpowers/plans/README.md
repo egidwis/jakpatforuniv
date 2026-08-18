@@ -109,7 +109,7 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 | [2026-08-10-order-form-back-cancel](2026-08-10-order-form-back-cancel.md) | ✅ **selesai, commit `3663bed`, masuk `main` 2026-08-18** | Tiap step order form dapat tombol "Kembali" di sebelah CTA-nya, dan panah mundur di bar floating berubah jadi `X` "Batalkan Pesanan" berdialog konfirmasi (buang draft → `/dashboard`). **Baca kotak koreksi 2026-08-18 di kepalanya** — bar floating kini hanya di Step 1 & 2, jadi `X`-nya tidak terjangkau dari Step 3/4 (disengaja) |
 | [2026-08-18-kilat-menu-mandiri](2026-08-18-kilat-menu-mandiri.md) | ⬜ **ditunda sadar; satu keputusan produk masih terbuka** | JFU Kilat pindah dari upgrade berpagar voucher jadi **menu tersendiri** di dashboard peneliti, terbuka untuk semua dengan antrean tanggal seperti Iklan. Sebagian besar antreannya **sudah ada** (kuota 8/hari, kalender Kilat, papan admin) — yang kurang pintunya. Belum bisa jadi rencana tugas-per-tugas: siapa yang memilih jam gelombang belum diputuskan. Mencatat satu lubang nyata: **aturan Senin–Jumat cuma hidup di picker admin** |
 | [2026-08-09-task-13-tagihan-fleksibel-per-jadwal](2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) | ⬜ **disetujui; terkunci di belakang Task 11** | Satu jadwal boleh punya **beberapa invoice** — tagihan susulan jadi piutang yang terlihat dan tidak pernah menghentikan iklan yang sedang tayang. Plus **batal reservasi per jadwal** (status `cancelled` sudah ada di DB, tinggal dipakai) dan **Extra Ad jadi sifat jadwal**, bukan sifat order. **Jalur uang — rilis sendiri.** Butuh `schedule_id` dari Task 11 langkah 1b. **Sejak 2026-08-18 ia juga pembuka Phase 4** — harga per jadwal yang dilahirkannya adalah yang selama ini hilang dari tombol "Jadwalkan Iklan Lagi" |
-| [2026-08-08-task-11-ad-schedules-otoritatif](2026-08-08-task-11-ad-schedules-otoritatif.md) | ⬜ **disetujui; kini terkunci HANYA oleh merge + deploy** | `ad_schedules` jadi otoritatif; `form_submissions_extend` jadi view lalu pensiun. Menambah `booking_id` (kode jadwal yang dikutip peneliti) dan `schedule_id` di invoices/transactions. **Jalur uang — rilis sendiri.** Menyusut 2026-08-08: langkah 3 kehilangan dua pemanggil, langkah 5 tinggal identifier |
+| [2026-08-08-task-11-ad-schedules-otoritatif](2026-08-08-task-11-ad-schedules-otoritatif.md) | 🟡 **DEPLOY A selesai di kode 2026-08-18** (`sql/51` ✅ diterapkan & hijau; commit `eb336cf`+`7b3450a`) · ⬜ **belum dideploy, belum diuji browser** · ⬜ **Deploy B belum mulai** | **Dipecah jadi dua rilis** — baca kotak koreksi di kepalanya. A (aditif, reversible): `booking_id` menyatukan kode yang dilihat admin & peneliti, `schedule_id` + trigger penurunnya, "Tandai Lunas" per jadwal, `UNIQUE` di `survey_pages`. B (tak reversibel): `form_submissions_extend` jadi view. Langkah 5 (rename identifier) **dikeluarkan** ke belakang `DROP VIEW`. ⚠️ Menemukan regresi `sql/49`-membatalkan-`sql/46` yang **memblokir B** — sudah diperbaiki di `sql/51` bagian 0, lihat §00J progress doc |
 | [2026-08-05-phase-3-jadwal-iklan-terpadu](2026-08-05-phase-3-jadwal-iklan-terpadu.md) | ✅ **selesai di branch — sisa: adu visual + deploy** | Judulnya sudah basi (baca kotak koreksi di kepalanya). Task 9A+9B ✅, papan Schedule bertab ✅, drawer digabung ✅, Page Calendar pensiun ✅ |
 | [2026-08-03-jadwal-iklan-redesign](2026-08-03-jadwal-iklan-redesign.md) | 🟡 **tinggal Task 10 & 11** | Rencana Phase 2 lengkap. Task 8/8B-1/8C/8D live; 9 ✅ dan 12 🟡 selesai di branch, belum tayang |
 | [2026-08-03-phase-0-test-checklist](2026-08-03-phase-0-test-checklist.md) | ⬜ **belum dijalankan** | Checklist uji manual pasca-deploy Phase 0. §2/§3/§5 wajib. Tidak memblokir apa pun, tapi belum pernah dijalankan |
@@ -133,12 +133,16 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
       ✅ /api/notify-ad-live TERBUKTI TAYANG: POST tanpa kunci balas 401
          (bukan 405 seperti 10 Agu). Probe ini aman diulang — gerbang jalan
          sebelum apa pun, nol email terkirim, nol baris tersentuh.
-      🔴 SISA SATU: cron notify-primary-ads-live BELUM dijadwalkan. Kodenya
-         tayang tapi tak ada yang memanggil. 4 order sedang tayang tanpa email
-         (3 mulai 18 Agu 15.00). Syarat urutan "deploy dulu" sudah terpenuhi,
-         jadi menjadwalkan sekarang aman — §00A
-      lalu buktikan: net._http_response harus 200 (401 = env Cloudflare beda
-         dengan Vault; 405 = route hilang, tidak mungkin lagi sekarang)
+      🔴 SISA SATU: cron notify-primary-ads-live. DICOBA 18 Agu 20.45 WIB dan
+         GAGAL — net._http_response balas 500 "Email service not configured".
+         Gerbang CRON_NOTIFY_SECRET LOLOS (bukan 401); yang hilang
+         env.RESEND_API_KEY di Cloudflare Pages. Cron sudah di-unschedule lagi
+         dan 4 order yang tertandai sudah dipulihkan — jendelanya masih
+         terbuka, jadi kali ini pemulihannya nyata. Tindakan berikutnya milik
+         pemilik Cloudflare, bukan kode — §00A
+      ⚠️ cron.job_run_details "succeeded" TIDAK membuktikan apa pun: ia
+         succeeded juga saat 405 (10 Agu) dan saat 500 (18 Agu). Satu-satunya
+         bukti ada di net._http_response, dan isinya dipangkas berkala
       ⚠️ pemulihan 3 order terbakar 10 Agu NO-OP: jendelanya sudah lewat dan
          guard-nya mensyaratkan end_date > now(). Hilang permanen — §00A
       ⚠️ webhook DOKU (sql/54) BELUM terbukti: doku_webhook_events masih 0 baris,
