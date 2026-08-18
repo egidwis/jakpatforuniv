@@ -51,7 +51,7 @@ export function AppNav() {
     const isTheFormActive = location.pathname.startsWith('/dashboard/forms');
 
     return (
-        <header className="sticky top-0 z-40 h-14 md:h-16 bg-white/90 backdrop-blur shadow-[0_4px_20px_rgba(25,118,210,0.08)]">
+        <header className="sticky top-0 z-40 h-14 md:h-16 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)]">
             <div className="max-w-5xl mx-auto h-full px-4 md:px-6 flex items-center justify-between gap-4">
                 {/* Logo & Brand */}
                 <Link
@@ -66,56 +66,66 @@ export function AppNav() {
                 </Link>
 
                 {/* Right Side Items Container */}
-                <div className="flex flex-1 items-center justify-end gap-2 lg:gap-4">
+                <div className="flex flex-1 items-center justify-end gap-3 lg:gap-6 h-full">
                     {isDesktop ? (
                         /* DESKTOP NAV - Rata Kanan dengan Avatar */
-                        <div className="flex items-center gap-5 lg:gap-6 shrink-0">
-                            <nav className="flex items-center gap-4 lg:gap-5">
+                        <div className="flex items-center gap-4 lg:gap-6 shrink-0 h-full">
+                            <nav className="flex items-center gap-4 lg:gap-6 h-full">
                                 {/* My Order */}
                                 <Link
                                     to="/dashboard"
-                                    className={`text-sm font-medium transition-colors ${
+                                    className={`relative flex items-center gap-2 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
                                         isMyOrdersActive
-                                            ? 'text-jfu-primary font-semibold'
-                                            : 'text-gray-600 hover:text-jfu-primary'
+                                            ? 'text-jfu-primary'
+                                            : 'text-slate-500 hover:text-slate-800'
                                     }`}
                                 >
-                                    {t('navMyOrder')}
+                                    <ShoppingBag className={`w-4 h-4 shrink-0 transition-colors ${isMyOrdersActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
+                                    <span>{t('navMyOrder')}</span>
+                                    {isMyOrdersActive && (
+                                        <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
+                                    )}
                                 </Link>
 
-                                {/* The Form — sejak merge JFU Form (2026-08-17) ini pintu
-                                    masuk pembuat form JFU. Dulu <span> mati berbadge "Soon";
-                                    fiturnya sekarang nyata, jadi badge-nya jadi "Beta". */}
+                                {/* The Form */}
                                 <Link
                                     to="/dashboard/forms"
-                                    className={`relative inline-flex items-center text-sm font-medium transition-colors ${
+                                    className={`relative flex items-center gap-2 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
                                         isTheFormActive
-                                            ? 'text-jfu-primary font-semibold'
-                                            : 'text-gray-600 hover:text-jfu-primary'
+                                            ? 'text-jfu-primary'
+                                            : 'text-slate-500 hover:text-slate-800'
                                     }`}
                                 >
+                                    <FileText className={`w-4 h-4 shrink-0 transition-colors ${isTheFormActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
                                     <span>{t('navTheForm')}</span>
-                                    <span className="ml-1 -mt-2.5 px-1 py-0.5 text-[9px] font-bold leading-none rounded bg-amber-100 text-amber-700 uppercase tracking-tighter border border-amber-200/80">
+                                    <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-amber-100 text-amber-800 uppercase tracking-tight border border-amber-200/80">
                                         Beta
                                     </span>
+                                    {isTheFormActive && (
+                                        <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
+                                    )}
                                 </Link>
 
                                 {/* Chat Mimin */}
                                 <Link
                                     to="/dashboard/chat"
-                                    className={`text-sm font-medium transition-colors ${
+                                    className={`relative flex items-center gap-2 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
                                         isChatActive
-                                            ? 'text-jfu-primary font-semibold'
-                                            : 'text-gray-600 hover:text-jfu-primary'
+                                            ? 'text-jfu-primary'
+                                            : 'text-slate-500 hover:text-slate-800'
                                     }`}
                                 >
-                                    {t('navChatMimin')}
+                                    <MessageCircle className={`w-4 h-4 shrink-0 transition-colors ${isChatActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
+                                    <span>{t('navChatMimin')}</span>
+                                    {isChatActive && (
+                                        <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
+                                    )}
                                 </Link>
                             </nav>
 
                             {/* Avatar Dropdown */}
                             <DropdownMenu>
-                                <DropdownMenuTrigger className="flex items-center gap-1 rounded-full p-0.5 hover:bg-jfu-primary/[0.08] transition-colors outline-none">
+                                <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-full p-1 hover:bg-slate-100 transition-colors outline-none">
                                     <span className="w-8 h-8 rounded-full bg-jfu-primary/10 border border-jfu-primary/20 flex items-center justify-center overflow-hidden shrink-0">
                                         {user?.user_metadata?.avatar_url && !avatarError ? (
                                             <img

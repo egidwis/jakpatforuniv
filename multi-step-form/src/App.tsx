@@ -142,14 +142,16 @@ function AppContent() {
         <Route path="/f/:formId" element={<PublicFormPage />} />
         <Route path="/f/:username/:slug" element={<PublicFormPage />} />
 
-        {/* Public Routes - Wrapped in Container */}
+        {/* Auth Routes - Standalone Full Screen with unified background */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+        {/* Public Content Routes - Wrapped in Container */}
         <Route path="*" element={
           <PublicLayout>
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/payment-success" element={<PaymentSuccessPage />} />
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
               <Route path="/payment-retry" element={<PaymentRetryPage />} />

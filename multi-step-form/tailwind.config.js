@@ -11,7 +11,7 @@ export default {
   			jakarta: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif']
   		},
   		boxShadow: {
-  			card: '0 8px 32px rgba(0,0,0,0.06)',
+  			card: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04)',
   			glow: '0 8px 25px rgba(25,118,210,0.3)'
   		},
   		borderRadius: {
@@ -25,7 +25,7 @@ export default {
   				light: '#42A5F5',
   				dark: '#1565C0',
   				sky: '#0091ff',
-  				bg: '#fdfdf8'
+  				bg: '#f8fafc'
   			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',

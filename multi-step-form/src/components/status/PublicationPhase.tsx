@@ -18,7 +18,7 @@ export function getPublicationChip(cards: ScheduleCard[], t: (key: TranslationKe
     if (!picked) return null;
     const style = extendStatusStyle(picked.state);
     return (
-        <span className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${style.bg} ${style.text}`}>
+        <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 ${style.bg} ${style.text}`}>
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
             {t(extendStatusLabelKey(picked.state))}
         </span>
@@ -29,18 +29,18 @@ function PublicationRow({ card }: { card: ScheduleCard }) {
     const { t } = useLanguage();
     const style = extendStatusStyle(card.publication.state);
     return (
-        <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 text-sm bg-white hover:bg-slate-50/50 transition-colors">
             <span className="flex items-center gap-2 min-w-0">
                 {/* Dua baris, bukan satu: chip status memakan sisi kanan, jadi
                     di mobile keterangan jam tidak muat disandingkan. */}
                 <span className="flex flex-col min-w-0">
-                    <span className="text-[#1a1a1a] truncate">{card.dateRange}</span>
+                    <span className="text-slate-900 font-semibold truncate text-xs sm:text-sm">{card.dateRange}</span>
                     {card.dateRange !== '—' && (
-                        <span className="text-[11px] text-gray-500">{t('airingStartTimeNote')}</span>
+                        <span className="text-[11px] text-slate-500 font-medium">{t('airingStartTimeNote')}</span>
                     )}
                 </span>
             </span>
-            <span className={`flex items-center gap-1.5 text-xs font-semibold shrink-0 ${style.text}`}>
+            <span className={`flex items-center gap-1.5 text-xs font-bold shrink-0 ${style.text}`}>
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
                 {t(extendStatusLabelKey(card.publication.state))}
             </span>
@@ -62,7 +62,7 @@ export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
 
     if (!pageInfo?.slug && paidCards.length === 0) {
         return (
-            <p className="text-sm text-gray-400 rounded-xl border border-dashed border-gray-200 px-3 py-4 text-center">
+            <p className="text-sm text-slate-400 rounded-xl border border-dashed border-slate-300 bg-slate-50/40 px-3 py-4 text-center">
                 {t('publicationEmptyState')}
             </p>
         );
@@ -71,25 +71,25 @@ export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
     return (
         <div className="space-y-3">
             {paidCards.length > 0 && (
-                <div className="rounded-xl border border-gray-100 divide-y divide-gray-100">
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/40 divide-y divide-slate-100 overflow-hidden shadow-2xs">
                     {paidCards.map((card) => (
                         <PublicationRow key={card.key} card={card} />
                     ))}
                 </div>
             )}
             {pageInfo?.slug && (
-                <div className="flex items-center justify-between gap-2 px-0.5">
+                <div className="flex items-center justify-between gap-2 px-1">
                     <a
                         href={`/pages/${pageInfo.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs font-medium text-jfu-primary hover:underline min-w-0"
+                        className="flex items-center gap-1.5 text-xs font-semibold text-jfu-primary hover:text-jfu-dark hover:underline min-w-0"
                     >
                         <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">{t('adPageLinkLabel')}</span>
                     </a>
                     {typeof pageInfo.views === 'number' && (
-                        <span className="flex items-center gap-1 text-[11px] font-semibold text-jfu-primary shrink-0">
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-jfu-primary shrink-0 bg-blue-50 border border-blue-200/70 px-2 py-0.5 rounded-full">
                             <Eye className="w-3.5 h-3.5" />
                             {new Intl.NumberFormat('id-ID').format(pageInfo.views)} {t('viewsUnit')}
                         </span>

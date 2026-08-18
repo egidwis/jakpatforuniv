@@ -78,22 +78,22 @@ export function getReviewChip(first: AdScheduleEntry, t: (key: TranslationKey) =
     const state = reviewStateOf(first);
     if (state === 'rejected') {
         return (
-            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-amber-50 border-amber-200 text-amber-800">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-rose-50 border-rose-200/80 text-rose-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
                 {t('reviewChipRejected')}
             </span>
         );
     }
     if (state === 'pending') {
         return (
-            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-blue-50 border-blue-200 text-blue-700">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-sky-50 border-sky-200/80 text-sky-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
                 {t('reviewChipPending')}
             </span>
         );
     }
     return (
-        <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 bg-emerald-50 border-emerald-200 text-emerald-700">
+        <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-emerald-50 border-emerald-200/80 text-emerald-700">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             {t('reviewChipApproved')}
         </span>
@@ -215,19 +215,19 @@ export function ReviewPhase({ submission, first, onDelete, onDataUpdated, active
 
     return (
         <>
-            <Accordion type="single" collapsible defaultValue={active ? 'review' : undefined} className="rounded-xl border border-gray-100 divide-y divide-gray-100">
-                <AccordionItem value="review" className="border-b-0 px-3">
+            <Accordion type="single" collapsible defaultValue={active ? 'review' : undefined} className="rounded-xl border border-slate-200/80 bg-slate-50/40 divide-y divide-slate-100 overflow-hidden shadow-2xs">
+                <AccordionItem value="review" className="border-b-0 px-3.5">
                     <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
-                        <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-2 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all">
+                        <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-2 min-h-11 py-2.5 min-w-0 text-left font-medium hover:bg-slate-100/40 transition-colors">
                             <span className="flex items-center gap-1.5 min-w-0 text-sm">
                                 <ReviewMethodChip auto={showsAutoMethod} />
                             </span>
                             <span className="flex-1 min-w-2" />
                             {getReviewChip(first, t)}
                         </AccordionPrimitive.Trigger>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
+                        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200" />
                     </AccordionPrimitive.Header>
-                    <AccordionContent className="pb-3 pt-1.5 space-y-3">
+                    <AccordionContent className="pb-4 pt-1.5 space-y-3.5 bg-white -mx-3.5 px-3.5 border-t border-slate-100">
                         {rejected && (
                             <div className="rounded-xl border p-4 border-amber-200/90 bg-amber-50/60 shadow-xs space-y-3.5">
                                 <div className="flex items-start gap-2.5">

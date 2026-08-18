@@ -46,24 +46,24 @@ export function ProductCardGrid() {
                 const Icon = product.icon;
                 const inner = (
                     <>
-                        <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-gray-100 text-gray-400' : 'bg-jfu-primary/[0.08] text-jfu-primary'}`}>
+                        <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
                             <Icon className="w-5 h-5" />
                         </span>
                         <span className="min-w-0 flex-1">
                             <span className="flex items-center gap-2">
-                                <span className={`text-sm font-bold ${product.comingSoon ? 'text-gray-500' : 'text-[#1a1a1a]'}`}>
+                                <span className={`text-sm font-bold ${product.comingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
                                     {t(product.titleKey)}
                                 </span>
                                 {product.comingSoon && (
-                                    <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                                    <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-[10px] font-bold text-slate-500">
                                         {t('comingSoon')}
                                     </span>
                                 )}
                             </span>
-                            <span className={`block text-xs mt-0.5 leading-relaxed ${product.comingSoon ? 'text-gray-400' : 'text-[#666]'}`}>
+                            <span className={`block text-xs mt-0.5 leading-relaxed ${product.comingSoon ? 'text-slate-400' : 'text-slate-600'}`}>
                                 {/* Hook membingkai produk sebagai pilihan strategi (reach vs
                                     speed), bukan sekadar metode distribusi. */}
-                                <span className={`font-semibold ${product.comingSoon ? 'text-gray-500' : 'text-jfu-primary'}`}>
+                                <span className={`font-bold ${product.comingSoon ? 'text-slate-500' : 'text-jfu-primary'}`}>
                                     {t(product.hookKey)}
                                 </span>{' '}
                                 {t(product.descKey)}
@@ -77,7 +77,7 @@ export function ProductCardGrid() {
                         <div
                             key={product.id}
                             aria-disabled="true"
-                            className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-4"
+                            className="flex items-center gap-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4"
                         >
                             {inner}
                         </div>
@@ -85,16 +85,14 @@ export function ProductCardGrid() {
                 }
 
                 if (product.comingSoon) {
-                    // Coming soon tapi klikabel — menuju halaman edukasi produknya,
-                    // dengan tampilan tetap redup supaya hirarki produk utama terjaga.
                     return (
                         <Link
                             key={product.id}
                             to={product.to}
-                            className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-4 hover:bg-white hover:border-gray-300 hover:shadow-sm transition-all"
+                            className="flex items-center gap-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all"
                         >
                             {inner}
-                            <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                            <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
                         </Link>
                     );
                 }
@@ -103,13 +101,10 @@ export function ProductCardGrid() {
                     <Link
                         key={product.id}
                         to={product.to}
-                        // Tanpa hover:-translate-y — kartu ini bersarang rapat di dalam
-                        // card luar "Buat Order"; mengangkatnya bikin border dalam &
-                        // luar bertumpuk/glitchy. Cukup shadow + border yang menguat.
-                        className="flex items-center gap-3 rounded-xl border border-jfu-primary/25 bg-white p-4 shadow-sm hover:shadow-card hover:border-jfu-primary/40 transition-shadow"
+                        className="flex items-center gap-3.5 rounded-xl border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_0_rgba(0,0,0,0.02)] hover:border-jfu-primary/40 hover:bg-blue-50/15 transition-all group"
                     >
                         {inner}
-                        <ChevronRight className="w-4 h-4 text-jfu-primary/50 shrink-0" />
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                     </Link>
                 );
             })}
@@ -121,10 +116,6 @@ export function ProductCardGrid() {
  * Hub produk di homepage — jalur masuk "Buat Order" setelah menu itu keluar
  * dari navbar. Bisa dikolaps jadi strip "➕ Buat Order Baru" yang selalu
  * terlihat, sehingga affordance untuk order tidak pernah hilang.
- *
- * Hanya dirender saat user punya order — saat belum ada order, empty state
- * Order Saya-lah yang menampilkan ProductCardGrid (satu pintu masuk, tanpa
- * duplikasi CTA). Default collapsed; toggle manual diingat lintas sesi.
  */
 export function CreateOrderCards() {
     const { t } = useLanguage();
@@ -135,43 +126,40 @@ export function CreateOrderCards() {
     };
 
     return (
-        // Wadah putih (border/shadow/radius) menempel di Root, bukan di
-        // Trigger — jadi bentuknya persisten dari pill collapsed sampai
-        // card terbuka; hanya konten & tinggi di dalamnya yang berubah.
         <AccordionPrimitive.Root
             type="single"
             collapsible
             value={open ? 'products' : ''}
             onValueChange={handleOpenChange}
-            className="mb-5 rounded-2xl border border-jfu-primary/[0.12] bg-white shadow-card overflow-hidden"
+            className="mb-5 rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors overflow-hidden"
         >
             <AccordionPrimitive.Item value="products">
                 <AccordionPrimitive.Trigger
-                    // Tint hover cuma untuk state pill (collapsed) — saat terbuka baris
-                    // judul bukan target klik utama, jadi tidak perlu ikut ter-highlight.
-                    className={`w-full flex items-center transition-colors ${open
-                        ? 'justify-between px-4 pt-4 pb-2 text-left'
-                        : 'min-h-11 justify-center gap-2 px-4 py-2.5 hover:bg-jfu-primary/[0.04]'
+                    className={`w-full flex items-center transition-all ${open
+                        ? 'justify-between px-5 pt-4 pb-2 text-left'
+                        : 'min-h-12 justify-center gap-2.5 px-5 py-3 hover:bg-slate-50/80 group'
                         }`}
                 >
                     {open ? (
                         <>
-                            <span className="text-sm font-bold text-[#1a1a1a] dark:text-white">{t('navCreateOrder')}</span>
-                            <span className="flex items-center justify-center w-8 h-8 rounded-full text-gray-400 hover:text-jfu-primary hover:bg-jfu-primary/[0.08] transition-colors">
+                            <span className="text-sm font-bold text-slate-900 dark:text-white">{t('navCreateOrder')}</span>
+                            <span className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:text-jfu-primary hover:bg-blue-50 transition-colors">
                                 <ChevronDown className="w-4 h-4 transition-transform duration-200 rotate-180" />
                             </span>
                         </>
                     ) : (
                         <>
-                            <Plus className="w-4 h-4 text-jfu-primary" />
-                            <span className="text-sm font-semibold text-jfu-primary">{t('createNewOrder')}</span>
-                            <ChevronDown className="w-4 h-4 text-jfu-primary/60 transition-transform duration-200" />
+                            <span className="w-5 h-5 rounded-full bg-blue-50 text-jfu-primary flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <Plus className="w-3.5 h-3.5" />
+                            </span>
+                            <span className="text-sm font-bold text-slate-800 group-hover:text-jfu-primary transition-colors">{t('createNewOrder')}</span>
+                            <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-jfu-primary transition-colors" />
                         </>
                     )}
                 </AccordionPrimitive.Trigger>
 
                 <AccordionPrimitive.Content className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                    <div className="px-4 pb-4">
+                    <div className="px-5 pb-5 pt-1">
                         <ProductCardGrid />
                     </div>
                 </AccordionPrimitive.Content>

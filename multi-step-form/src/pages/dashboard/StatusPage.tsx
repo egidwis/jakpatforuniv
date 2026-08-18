@@ -366,21 +366,21 @@ export function StatusPage() {
                     </div>
                     {/* Skeleton mengikuti anatomi kartu Soft DNA */}
                     {[1, 2].map((i) => (
-                        <div key={i} className="border border-jfu-primary/[0.12] shadow-card overflow-hidden bg-white" style={{ borderRadius: '20px' }}>
-                            <div className="p-5 space-y-2 border-b border-gray-100">
+                        <div key={i} className="border border-slate-200/90 shadow-xs overflow-hidden bg-white rounded-2xl">
+                            <div className="p-5 md:p-6 space-y-2 border-b border-slate-100">
                                 <div className="flex justify-between items-center">
-                                    <Skeleton className="h-6 w-24 rounded-full bg-gray-100" />
-                                    <Skeleton className="h-7 w-28 rounded-full bg-gray-100" />
+                                    <Skeleton className="h-6 w-24 rounded-full bg-slate-100" />
+                                    <Skeleton className="h-7 w-28 rounded-full bg-slate-100" />
                                 </div>
-                                <Skeleton className="h-6 w-3/4 bg-gray-100" />
+                                <Skeleton className="h-6 w-3/4 bg-slate-100" />
                             </div>
-                            <div className="p-5 space-y-4">
-                                <Skeleton className="h-20 w-full rounded-2xl bg-gray-100" />
+                            <div className="p-5 md:p-6 space-y-4">
+                                <Skeleton className="h-20 w-full rounded-2xl bg-slate-100" />
                                 <div className="space-y-3">
                                     {[1, 2, 3].map((s) => (
                                         <div key={s} className="flex items-center gap-3">
-                                            <Skeleton className="h-8 w-8 rounded-full bg-gray-100" />
-                                            <Skeleton className="h-3 w-32 bg-gray-100" />
+                                            <Skeleton className="h-8 w-8 rounded-full bg-slate-100" />
+                                            <Skeleton className="h-3 w-32 bg-slate-100" />
                                         </div>
                                     ))}
                                 </div>
@@ -459,13 +459,13 @@ export function StatusPage() {
 
                 {submissions.length === 0 ? (
                     /* Empty state = halaman landing user baru, rasa kartu landing page */
-                    <Card className="border border-jfu-primary/[0.12] overflow-hidden shadow-card" style={{ borderRadius: '20px' }}>
+                    <Card className="border border-slate-200/90 overflow-hidden shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] rounded-2xl">
                         <CardContent className="flex flex-col items-center justify-center py-12 text-center px-6 bg-white">
-                            <div className="w-14 h-14 bg-jfu-primary/[0.08] rounded-full flex items-center justify-center mb-4">
+                            <div className="w-14 h-14 bg-blue-50 text-jfu-primary rounded-2xl flex items-center justify-center mb-4 border border-blue-100">
                                 <span className="text-2xl" aria-hidden="true">🚀</span>
                             </div>
-                            <h3 className="text-lg font-bold text-[#1a1a1a]">{t('noOrdersTitle')}</h3>
-                            <p className="text-[#666] max-w-sm mt-2 mb-6 text-sm">
+                            <h3 className="text-lg font-bold text-slate-900">{t('noOrdersTitle')}</h3>
+                            <p className="text-slate-500 max-w-sm mt-2 mb-6 text-sm">
                                 {t('noSubmissionsDesc')}
                             </p>
 
@@ -481,7 +481,7 @@ export function StatusPage() {
                 ) : (
                     <div className="space-y-4">
                         {filtered.length === 0 ? (
-                            <p className="text-sm text-gray-400 text-center py-10">{t('noOrdersInFilter')}</p>
+                            <p className="text-sm text-slate-400 text-center py-10">{t('noOrdersInFilter')}</p>
                         ) : (
                             <div className="space-y-4">
                                 {filtered.map(({ submission, pays, ui }) => {
@@ -490,16 +490,8 @@ export function StatusPage() {
                                     const activePhase = getActiveDashboardPhase(ui.currentStep);
                                     const reachedPhase = activePhase ?? 3;
                                     return (
-                                        /* Kartu Soft DNA (pola comparison-card landing): putih, border
-                                           nyaris tak terlihat, soft shadow lebar, pemisah header tipis.
-                                           borderRadius inline karena .rounded-lg legacy styles.css menang
-                                           di cascade atas utilitas radius Tailwind pada <Card>. */
-                                        <Card key={submission.id} className="overflow-hidden border border-jfu-primary/[0.12] shadow-card hover:shadow-xl transition-shadow" style={{ borderRadius: '20px' }}>
-                                            {/* A. Header minimal: chip tipe produk + judul saja. Identitas
-                                                survei (link, jumlah pertanyaan, kriteria, status review) dan
-                                                semua info lain kini hidup di fase masing-masing di bawah
-                                                (satu info satu rumah, tanpa stepper). */}
-                                            <CardHeader className="bg-white pb-3 space-y-2.5 border-b border-gray-100">
+                                        <Card key={submission.id} className="overflow-hidden border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] hover:border-slate-300 transition-colors duration-150 rounded-2xl">
+                                            <CardHeader className="bg-white p-5 md:p-6 pb-4 md:pb-5 space-y-2.5 border-b border-slate-100">
                                                 <div>
                                                     <Chip
                                                         variant={submission.distribution_type === 'kilat' ? 'amber' : 'blue'}
@@ -508,12 +500,12 @@ export function StatusPage() {
                                                         {submission.distribution_type === 'kilat' ? `⚡ ${t('productKilatTitle')}` : t('productAdsTitle')}
                                                     </Chip>
                                                 </div>
-                                                <CardTitle className="text-base md:text-lg font-bold text-[#1a1a1a] leading-snug line-clamp-2" title={submission.title}>
+                                                <CardTitle className="text-base md:text-lg font-bold text-slate-900 leading-snug line-clamp-2" title={submission.title}>
                                                     {submission.title}
                                                 </CardTitle>
                                             </CardHeader>
 
-                                            <CardContent className="pt-4 pb-4 bg-white">
+                                            <CardContent className="p-5 md:p-6 pt-5 bg-white">
                                                 <Phase number={1} title={t('phaseReviewTitle')} active={reachedPhase >= 1} lineActive={reachedPhase >= 2}>
                                                     <ReviewPhase
                                                         submission={submission}
@@ -538,15 +530,15 @@ export function StatusPage() {
                                                 </Phase>
 
                                                 {/* F. Footer: baris chat rata kanan (deep-link ke Mimin dengan konteks order) */}
-                                                <div className="border-t border-gray-100 mt-3" />
-                                                <div className="flex justify-end mt-1 -mb-1">
+                                                <div className="border-t border-slate-100 mt-4 pt-3" />
+                                                <div className="flex justify-end">
                                                     <Link
                                                         to={`/dashboard/chat?message=${encodeURIComponent(`Saya ingin bertanya tentang order "${submission.title}"`)}`}
-                                                        className="min-h-11 inline-flex items-center gap-2 rounded-lg px-3 text-sm text-[#666] hover:text-jfu-primary hover:bg-jfu-primary/[0.06] transition-colors"
+                                                        className="min-h-10 inline-flex items-center gap-2 rounded-xl px-3 text-xs font-semibold text-slate-600 hover:text-jfu-primary hover:bg-blue-50/50 transition-colors"
                                                     >
-                                                        <MessageCircle className="w-4 h-4 shrink-0" />
+                                                        <MessageCircle className="w-4 h-4 shrink-0 text-slate-400" />
                                                         <span>{t('chatAboutOrder')}</span>
-                                                        <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                                                        <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
                                                     </Link>
                                                 </div>
                                             </CardContent>

@@ -68,9 +68,9 @@ function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: Tr
  * trigger untuk kartu yang sama). Hanya choose_schedule/awaiting_invoice/
  * too_late_today (di luar enum shared) yang dapat warna sendiri. */
 function bookingStatusStyle(state: ScheduleCard['booking']['state']): { bg: string; text: string; dot: string } {
-    if (state === 'choose_schedule') return { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' };
-    if (state === 'awaiting_invoice') return { bg: 'bg-gray-50 border-gray-200', text: 'text-gray-500', dot: 'bg-gray-400' };
-    if (state === 'too_late_today') return { bg: 'bg-rose-50 border-rose-200', text: 'text-rose-600', dot: 'bg-rose-400' };
+    if (state === 'choose_schedule') return { bg: 'bg-amber-50 border-amber-200/80', text: 'text-amber-800', dot: 'bg-amber-500' };
+    if (state === 'awaiting_invoice') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
+    if (state === 'too_late_today') return { bg: 'bg-rose-50 border-rose-200/80', text: 'text-rose-700', dot: 'bg-rose-500' };
     return extendStatusStyle(state);
 }
 
@@ -83,7 +83,7 @@ function ScheduleChip({ card }: { card: ScheduleCard }) {
     if (card.booking.state === 'in_review') return null;
     const style = bookingStatusStyle(card.booking.state);
     return (
-        <span className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${style.bg} ${style.text}`}>
+        <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 ${style.bg} ${style.text}`}>
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
             {bookingStatusLabel(card.booking.state, t)}
         </span>
@@ -133,7 +133,7 @@ function CopyOrderIdButton({ id }: { id: string }) {
  * yang sudah berjalan. Dipakai di semua titik yang dulu hardcode `#1a1a1a`,
  * supaya tidak ada value yang ketinggalan hitam sendirian.
  */
-const valueTone = (muted?: boolean) => (muted ? 'text-gray-400' : 'text-[#1a1a1a]');
+const valueTone = (muted?: boolean) => (muted ? 'text-slate-400' : 'text-slate-900');
 
 interface RowDef {
     key: string;
@@ -193,11 +193,11 @@ function RowGrid({ rows, muted }: { rows: RowDef[]; muted?: boolean }) {
         <dl className="[display:grid] grid-cols-[auto_1fr] sm:grid-cols-[9.5rem_1fr] gap-x-3 gap-y-2.5 items-start">
             {rows.map((row) => (
                 <Fragment key={row.key}>
-                    <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap pt-0.5 pr-1">
-                        <span className="text-gray-400 shrink-0">{row.icon}</span>
+                    <dt className="flex items-center gap-1.5 text-xs text-slate-500 font-medium whitespace-nowrap pt-0.5 pr-1">
+                        <span className="text-slate-400 shrink-0">{row.icon}</span>
                         {row.label}
                     </dt>
-                    <dd className={`text-sm font-medium min-w-0 break-words ${valueTone(muted)}`}>{row.value}</dd>
+                    <dd className={`text-sm font-semibold min-w-0 break-words ${valueTone(muted)}`}>{row.value}</dd>
                 </Fragment>
             ))}
         </dl>
@@ -208,8 +208,8 @@ function Section({ label, sublabel, children }: { label: string; sublabel?: Reac
     return (
         <div>
             <div className="mb-2.5">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">{label}</p>
-                {sublabel && <p className="text-xs text-gray-400 font-normal mt-0.5">{sublabel}</p>}
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                {sublabel && <p className="text-xs text-slate-500 font-normal mt-0.5">{sublabel}</p>}
             </div>
             {children}
         </div>
@@ -225,9 +225,9 @@ function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean 
     if (info.mode === 'new_pool') {
         const text = `@${formatIDR(info.prizePerWinner!)} · ${info.winnerCount} ${t('winner')}`;
         return (
-            <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center gap-1.5">
                 <span className={valueTone(muted)}>{text}</span>
-                <Badge variant="outline" className="text-[10px] text-amber-700 bg-amber-50 border-amber-200 font-normal py-0">
+                <Badge variant="outline" className="text-[10px] text-amber-800 bg-amber-50 border-amber-200/80 font-bold py-0">
                     {t('incentiveNewPeriod')}
                 </Badge>
             </span>
@@ -235,17 +235,17 @@ function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean 
     }
     if (info.mode === 'accumulated') {
         return (
-            <span className={`font-medium ${valueTone(muted)}`}>+{formatIDR(info.additionalPrize!)}</span>
+            <span className={`font-semibold ${valueTone(muted)}`}>+{formatIDR(info.additionalPrize!)}</span>
         );
     }
-    return <span className="text-xs text-gray-500 font-normal">{t('incentiveNoAdditionNote')}</span>;
+    return <span className="text-xs text-slate-500 font-normal">{t('incentiveNoAdditionNote')}</span>;
 }
 
-const iconCls = 'w-3.5 h-3.5 text-gray-400 shrink-0';
+const iconCls = 'w-3.5 h-3.5 text-slate-400 shrink-0';
 const ctaButtonClass = 'max-md:w-full min-h-9 text-xs px-4 justify-center whitespace-nowrap';
-const ctaRoyal = 'rounded-full font-semibold text-white bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 hover:from-jfu-primary hover:to-jfu-light transition-all';
-const ctaSoftRose = 'rounded-full font-semibold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 shadow-sm transition-all gap-1.5';
-const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-700 border border-amber-300 hover:bg-amber-50 hover:text-amber-800 shadow-sm transition-all gap-1.5';
+const ctaRoyal = 'rounded-full font-bold text-white bg-gradient-to-r from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary shadow-xs hover:shadow transition-all';
+const ctaSoftRose = 'rounded-full font-semibold bg-white text-rose-700 border border-rose-300 hover:bg-rose-50 shadow-2xs transition-all gap-1.5';
+const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-800 border border-amber-300 hover:bg-amber-50 shadow-2xs transition-all gap-1.5';
 
 function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const { t } = useLanguage();
@@ -363,59 +363,59 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
 
     return (
         <Section label={t('sectionBookingPayment')}>
-            <div className={`rounded-xl border border-gray-200/80 bg-gray-50/60 p-3.5 space-y-2 text-xs ${muted ? 'opacity-60' : ''}`}>
+            <div className={`rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 space-y-2.5 text-xs ${muted ? 'opacity-60' : ''}`}>
                 <div className="flex justify-between items-center">
-                    <span className="text-gray-600">
-                        {t('adCostLabel')} <span className="text-[11px] text-gray-400 font-normal">({questionCount} Qs | {formatIDR(costPerDay)}{isKilat ? ' rate' : ` × ${duration} hari`})</span>
+                    <span className="text-slate-600 font-medium">
+                        {t('adCostLabel')} <span className="text-[11px] text-slate-400 font-normal">({questionCount} Qs | {formatIDR(costPerDay)}{isKilat ? ' rate' : ` × ${duration} hari`})</span>
                     </span>
-                    <span className="font-medium text-gray-900">
+                    <span className="font-semibold text-slate-900">
                         {formatIDR(adCost)}
                     </span>
                 </div>
                 {kilatAddon > 0 && (
                     <div className="flex justify-between items-center">
-                        <span className="text-gray-600 flex items-center gap-1">
+                        <span className="text-slate-600 font-medium flex items-center gap-1">
                             <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> Add-on JFU Kilat
                         </span>
-                        <span className="font-medium text-amber-600">{formatIDR(kilatAddon)}</span>
+                        <span className="font-semibold text-amber-600">{formatIDR(kilatAddon)}</span>
                     </div>
                 )}
                 {discount > 0 && (
                     <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Diskon ({voucherCode})</span>
-                        <span className="font-medium text-emerald-600">-{formatIDR(discount)}</span>
+                        <span className="text-slate-600 font-medium">Diskon ({voucherCode})</span>
+                        <span className="font-semibold text-emerald-600">-{formatIDR(discount)}</span>
                     </div>
                 )}
                 {incentiveCost > 0 && (
                     <div className="flex justify-between items-center">
-                        <span className="text-gray-600">
-                            {t('totalRewardLabel')} {prizePerWinner > 0 && winnerCount > 0 && <span className="text-[11px] text-gray-400 font-normal">({formatIDR(prizePerWinner)} × {winnerCount} {t('winner')})</span>}
+                        <span className="text-slate-600 font-medium">
+                            {t('totalRewardLabel')} {prizePerWinner > 0 && winnerCount > 0 && <span className="text-[11px] text-slate-400 font-normal">({formatIDR(prizePerWinner)} × {winnerCount} {t('winner')})</span>}
                         </span>
-                        <span className="font-medium text-gray-900">{formatIDR(incentiveCost)}</span>
+                        <span className="font-semibold text-slate-900">{formatIDR(incentiveCost)}</span>
                     </div>
                 )}
 
-                <div className="flex justify-between items-center pt-2 border-t border-gray-200/60 mt-1 text-gray-600">
+                <div className="flex justify-between items-center pt-2 border-t border-slate-200/80 mt-1 text-slate-600 font-medium">
                     <span>Subtotal (DPP)</span>
-                    <span className="font-medium text-gray-900">{formatIDR(subtotal)}</span>
+                    <span className="font-semibold text-slate-900">{formatIDR(subtotal)}</span>
                 </div>
-                <div className="flex justify-between items-center text-gray-600">
+                <div className="flex justify-between items-center text-slate-600 font-medium">
                     <span>PPN (11%)</span>
-                    <span className="font-medium text-gray-900">{formatIDR(ppn)}</span>
+                    <span className="font-semibold text-slate-900">{formatIDR(ppn)}</span>
                 </div>
-                <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-1 text-sm">
-                    <span className="text-[#1a1a1a] font-semibold">{t('totalPaymentLabel')}</span>
-                    <span className="font-bold text-blue-600">{formatIDR(grandTotal)}</span>
+                <div className="flex justify-between items-center pt-2.5 border-t border-slate-200 mt-1 text-sm bg-white/60 -mx-4 -mb-1 px-4 py-2 rounded-b-lg">
+                    <span className="text-slate-900 font-bold">{t('totalPaymentLabel')}</span>
+                    <span className="font-extrabold text-base text-jfu-primary">{formatIDR(grandTotal)}</span>
                 </div>
 
-                <div className="flex justify-between items-center pt-2 border-t border-gray-200/60 mt-1 text-xs">
-                    <span className="text-gray-500">{b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel')}</span>
+                <div className="flex justify-between items-center pt-2 text-xs">
+                    <span className="text-slate-500 font-medium">{b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel')}</span>
                     {b.isPaidForLabel && b.invoicePaymentId ? (
                         <a
                             href={`/invoices/${b.invoicePaymentId}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                            className="font-semibold text-jfu-primary hover:text-jfu-dark hover:underline inline-flex items-center gap-1"
                         >
                             <FileText className="w-3.5 h-3.5" />
                             {t('viewReceiptLink')}
@@ -426,22 +426,22 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
                             href={`/invoices/${b.invoicePaymentId}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                            className="font-semibold text-jfu-primary hover:text-jfu-dark hover:underline inline-flex items-center gap-1"
                         >
                             <FileText className="w-3.5 h-3.5" />
                             {t('viewInvoiceLink')}
                             <ExternalLink className="w-3 h-3 ml-0.5" />
                         </a>
                     ) : b.state === 'expired' ? (
-                        <span className="text-rose-600/80 italic font-normal">{t('invoiceExpired')}</span>
+                        <span className="text-rose-600 italic font-medium">{t('invoiceExpired')}</span>
                     ) : b.state === 'too_late_today' ? (
-                        <span className="text-rose-600/80 italic font-normal">{t('invoicePaymentClosedToday')}</span>
+                        <span className="text-rose-600 italic font-medium">{t('invoicePaymentClosedToday')}</span>
                     ) : b.state === 'choose_schedule' ? (
-                        <span className="text-gray-400 italic font-normal">{t('invoiceAwaitingSchedule')}</span>
+                        <span className="text-slate-400 italic font-normal">{t('invoiceAwaitingSchedule')}</span>
                     ) : b.state === 'cancelled' ? (
-                        <span className="text-gray-400 italic font-normal">{t('invoiceCancelled')}</span>
+                        <span className="text-slate-400 italic font-normal">{t('invoiceCancelled')}</span>
                     ) : (
-                        <span className="text-gray-400 italic font-normal">{t('invoiceAwaitingIssue')}</span>
+                        <span className="text-slate-400 italic font-normal">{t('invoiceAwaitingIssue')}</span>
                     )}
                 </div>
             </div>
@@ -455,8 +455,8 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
 
     if (b.state === 'in_review') {
         return (
-            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50/80">
-                <p className="text-sm text-gray-600 leading-relaxed">
+            <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
+                <p className="text-sm text-slate-600 leading-relaxed font-medium">
                     {t('scheduleEmptyPending')}
                 </p>
             </div>
@@ -464,8 +464,8 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'awaiting_invoice') {
         return (
-            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50/80">
-                <p className="text-sm text-gray-600 leading-relaxed">
+            <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
+                <p className="text-sm text-slate-600 leading-relaxed font-medium">
                     {card.kind === 'extend' ? t('calloutAwaitingInvoiceSchedule') : t('calloutAwaitingInvoice')}
                 </p>
             </div>
@@ -473,13 +473,13 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'choose_schedule') {
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/50 shadow-sm">
+            <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/70 shadow-2xs">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
                         <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
                         <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 leading-snug">{t('bannerTitleChooseSchedule')}</p>
-                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{t('bannerSubChooseSchedule')}</p>
+                            <p className="text-sm font-bold text-slate-900 leading-snug">{t('bannerTitleChooseSchedule')}</p>
+                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubChooseSchedule')}</p>
                         </div>
                     </div>
                     <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
@@ -503,13 +503,13 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
             : t('bannerTitleWaitingPayment');
 
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/50 shadow-sm">
+            <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/70 shadow-2xs">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
                         <CreditCard className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
                         <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 leading-snug">{bannerTitle}</p>
-                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{t('bannerSubWaitingPayment')}</p>
+                            <p className="text-sm font-bold text-slate-900 leading-snug">{bannerTitle}</p>
+                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubWaitingPayment')}</p>
                         </div>
                     </div>
                     {b.payUrl && (
@@ -538,13 +538,13 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'expired') {
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/50 shadow-sm">
+            <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/70 shadow-2xs">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                         <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 leading-snug">{t('bannerTitleExpired')}</p>
-                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">
+                            <p className="text-sm font-bold text-slate-900 leading-snug">{t('bannerTitleExpired')}</p>
+                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
                                 {card.kind === 'extend' ? t('scheduleExpiredHint') : t('bannerSubExpired')}
                             </p>
                         </div>
@@ -563,13 +563,13 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'too_late_today') {
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/50 shadow-sm">
+            <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/70 shadow-2xs">
                 <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
                         <Clock className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                         <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 leading-snug">{t('bannerTitleTooLateToday')}</p>
-                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{t('bannerSubTooLateToday')}</p>
+                            <p className="text-sm font-bold text-slate-900 leading-snug">{t('bannerTitleTooLateToday')}</p>
+                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubTooLateToday')}</p>
                         </div>
                     </div>
                     {card.kind === 'original' && (
@@ -586,8 +586,8 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
     }
     if (b.state === 'cancelled') {
         return (
-            <div className="rounded-xl border p-3.5 border-gray-200 bg-gray-50/80">
-                <p className="text-sm text-gray-600 leading-relaxed">
+            <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
+                <p className="text-sm text-slate-600 leading-relaxed font-medium">
                     {t('calloutCancelledSchedule')}
                 </p>
             </div>
@@ -609,7 +609,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                 /* Satu-satunya order tanpa kartu jadwal adalah yang ditolak —
                    order yang masih direview sudah punya kartunya sendiri
                    (Booking ID terbit sejak submit, lihat `buildScheduleCards`). */
-                <p className="text-sm text-gray-400 rounded-xl border border-dashed border-gray-200 px-3 py-4 text-center">
+                <p className="text-sm text-slate-400 rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center">
                     {t('scheduleEmptyRejected')}
                 </p>
             ) : (
@@ -618,7 +618,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                         type="single"
                         collapsible
                         defaultValue={active ? pickDefaultExpandedKey(cards) : undefined}
-                        className="rounded-xl border border-gray-100 divide-y divide-gray-100"
+                        className="rounded-xl border border-slate-200/80 bg-slate-50/40 divide-y divide-slate-100 overflow-hidden shadow-2xs"
                     >
                         {cards.map((card) => {
                             const shortId = `#${card.info.id.slice(0, 8).toUpperCase()}`;
@@ -632,14 +632,14 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                terduga lawan styles.css legacy. */
                             const pendingReview = card.booking.state === 'in_review';
                             return (
-                            <AccordionItem key={card.key} value={card.key} className="border-b-0 px-3">
+                            <AccordionItem key={card.key} value={card.key} className="border-b-0 px-3.5">
                                 <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
                                     <AccordionPrimitive.Trigger
                                         aria-label={`${card.label} Booking ID: ${shortId}`}
-                                        className="flex flex-1 items-center gap-1 min-h-11 py-2.5 min-w-0 text-left font-medium transition-all"
+                                        className="flex flex-1 items-center gap-1.5 min-h-11 py-2.5 min-w-0 text-left font-medium hover:bg-slate-100/40 transition-colors"
                                     >
                                         {/* Tampilkan "Booking ID: #ID" pada tiap kartu */}
-                                        <span className={`text-xs font-bold shrink-0 ${mutedId ? 'text-gray-400' : 'text-[#1a1a1a]'}`}>
+                                        <span className={`text-xs font-bold shrink-0 ${mutedId ? 'text-slate-400' : 'text-slate-900'}`}>
                                             <span>Booking ID: </span>
                                             <span className="font-mono">{shortId}</span>
                                         </span>
@@ -647,9 +647,9 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                         <span className="flex-1" />
                                         <ScheduleChip card={card} />
                                     </AccordionPrimitive.Trigger>
-                                    <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
+                                    <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200" />
                                 </AccordionPrimitive.Header>
-                                <AccordionContent className="pb-3 pt-1.5 space-y-4">
+                                <AccordionContent className="pb-4 pt-1.5 space-y-4 bg-white -mx-3.5 px-3.5 border-t border-slate-100">
                                     <ScheduleBanner card={card} onReschedule={onReschedule} />
                                     <InfoSection card={card} muted={pendingReview} />
                                     <BookingSection card={card} submission={submission} muted={pendingReview} />
@@ -658,15 +658,32 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                             );
                         })}
                     </Accordion>
-                    <div className="mt-2.5">
+                    {/* Phase 4 — sengaja masih mati. Menyalakannya menunggu **Task 13**,
+                        bukan Task 11 (pemilik produk 2026-08-18).
+
+                        Yang mengunci: sistem tidak punya harga untuk jadwal ke-2.
+                        `ScheduleForm.handleSaveCreate` menulis `total_cost: 0` dan admin
+                        mengetik nilainya belakangan di `InvoiceForm` — tanpa rumus, tanpa
+                        validasi; 7 dari 13 baris `form_submissions_extend` di produksi
+                        bernilai 0 atau di bawah Rp 10.000. `cost-calculator` hanya melayani
+                        order pertama. Task 13 yang melahirkan harga per jadwal.
+
+                        Separuh HILIR-nya sudah jadi: begitu sebuah baris jadwal ada tanpa
+                        invoice, `airingPeriods.ts` menjatuhkannya ke `awaiting_invoice`
+                        (chip + copy dua bahasa + SLA), dan tombol bayar per kartu di
+                        `BookingSection` sudah berfungsi. Yang hilang cuma hulunya.
+
+                        Alasan lengkap, termasuk opsi "ajukan, bukan pesan" yang sengaja
+                        tidak diambil: `docs/jadwal-iklan-progress.md` §00G. */}
+                    <div className="mt-3">
                         <Button
                             variant="outline"
                             onClick={() => toast.info(t('scheduleAgainComingSoon'))}
-                            className="w-full text-xs font-semibold text-gray-500 border-dashed border-gray-300 bg-gray-50/50 hover:bg-gray-100/80 hover:border-gray-400 hover:text-gray-600 rounded-xl min-h-10 px-3.5 gap-2 transition-all shadow-none justify-center"
+                            className="w-full text-xs font-semibold text-slate-600 border border-dashed border-slate-300 bg-slate-50/60 hover:bg-slate-100/80 hover:border-slate-400 hover:text-slate-700 rounded-xl min-h-11 px-4 gap-2 transition-all shadow-none justify-center"
                         >
-                            <Plus className="w-4 h-4 shrink-0 text-gray-400" />
+                            <Plus className="w-4 h-4 shrink-0 text-slate-400" />
                             <span>{t('scheduleAdAgain')}</span>
-                            <span className="text-[10px] font-medium text-gray-500 bg-gray-200/60 border border-gray-300/60 px-2 py-0.5 rounded-full ml-1 shrink-0">
+                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-200/80 border border-slate-300/80 px-2 py-0.5 rounded-full ml-1 shrink-0">
                                 {t('comingSoonBadge')}
                             </span>
                         </Button>

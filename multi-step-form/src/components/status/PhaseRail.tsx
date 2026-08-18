@@ -27,19 +27,21 @@ interface PhaseProps {
 export function Phase({ number, title, chip, isLast, active = true, lineActive, children }: PhaseProps) {
     const lineOn = lineActive ?? active;
     return (
-        <div className={`relative pl-8 ${isLast ? '' : 'pb-5'}`}>
+        <div className={`relative pl-8 sm:pl-9 ${isLast ? '' : 'pb-6'}`}>
             {!isLast && (
-                <div className={`absolute left-[11px] top-6 bottom-0 w-px ${lineOn ? 'bg-jfu-primary' : 'bg-gray-200'}`} />
+                <div className={`absolute left-[11px] top-6 bottom-0 w-0.5 rounded-full ${lineOn ? 'bg-jfu-primary/40' : 'bg-slate-200'}`} />
             )}
             <div
-                className={`absolute left-0 top-0 w-[22px] h-[22px] rounded-full border flex items-center justify-center text-[11px] font-bold ${
-                    active ? 'bg-jfu-primary/10 border-jfu-primary/20 text-jfu-primary' : 'bg-gray-50 border-gray-200 text-gray-400'
+                className={`absolute left-0 top-0 w-6 h-6 rounded-full border flex items-center justify-center text-xs font-extrabold transition-colors ${
+                    active 
+                        ? 'bg-blue-50 border-blue-300/80 text-jfu-primary ring-2 ring-blue-50' 
+                        : 'bg-slate-100 border-slate-200 text-slate-400'
                 }`}
             >
                 {number}
             </div>
-            <div className="flex items-center justify-between gap-2 min-h-[22px] mb-2.5">
-                <h3 className={`text-sm font-bold ${active ? 'text-[#1a1a1a]' : 'text-gray-400'}`}>{title}</h3>
+            <div className="flex items-center justify-between gap-2 min-h-[24px] mb-2.5">
+                <h3 className={`text-sm font-bold tracking-tight ${active ? 'text-slate-900' : 'text-slate-400'}`}>{title}</h3>
                 {chip}
             </div>
             {children}
