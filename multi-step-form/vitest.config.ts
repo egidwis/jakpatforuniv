@@ -15,6 +15,8 @@ export default defineConfig({
     //
     // Batasnya aturan penamaan, bukan daftar berkas, supaya tidak perlu
     // dirawat setiap kali ada tes baru.
-    include: ['src/**/*.spec.ts'],
+    // `functions/` ikut karena adapter email (functions/api/_mail.js) memutuskan
+    // seluruh email transaksional jalan atau tidak — dan pernah gagal diam-diam.
+    include: ['src/**/*.spec.ts', 'functions/**/*.spec.ts'],
   },
 });

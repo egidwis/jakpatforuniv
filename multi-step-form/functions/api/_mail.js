@@ -29,7 +29,9 @@
  *
  * ENV
  * ---
- *   MAIL_PROVIDER           'resend' | 'brevo' | 'cloudflare'   (default: 'resend')
+ *   MAIL_PROVIDER           'resend' | 'brevo' | 'cloudflare'
+ *                           Boleh dikosongkan KALAU hanya satu provider yang
+ *                           punya kredensial — lihat resolveProvider().
  *   MAIL_PROVIDER_FALLBACK  sama, opsional — dicoba HANYA kalau yang utama gagal
  *   MAIL_FROM               'Nama <alamat@domain>'  (default: alamat lama)
  *
@@ -160,9 +162,56 @@ const PROVIDERS = {
  * @returns {Promise<{ ok: boolean, provider: string, id?: string|null,
  *                     status?: number, error?: unknown }>}
  */
+/** Provider mana yang punya kredensial lengkap di env ini. */
+function credentialledProviders(env) {
+  const has = [];
+  if (env.RESEND_API_KEY) has.push('resend');
+  if (env.BREVO_API_KEY) has.push('brevo');
+  if (env.CF_EMAIL_API_TOKEN && env.CF_ACCOUNT_ID) has.push('cloudflare');
+  return has;
+}
+
+/**
+ * Tentukan provider utama.
+ *
+ * `MAIL_PROVIDER` selalu menang kalau diisi — konfigurasi eksplisit tidak boleh
+ * ditebak-tebak. Yang ditangani di sini adalah kasus SETENGAH TERKONFIGURASI:
+ * kunci provider sudah dipasang tapi sakelarnya lupa.
+ *
+ * ⚠️ Ini bukan kenyamanan, ini pencegahan insiden. Pemasangan Brevo 2026-08-18
+ * berhenti tepat di sini: BREVO_API_KEY terpasang, MAIL_PROVIDER tidak, dan
+ * default lama ('resend') membuat SELURUH email gagal dengan pesan yang menuduh
+ * kunci yang memang sengaja sudah dicabut. Kegagalan yang menunjuk ke arah yang
+ * salah persis penyakit yang berkas ini ada untuk menyembuhkan.
+ *
+ * Ditebak HANYA kalau tidak ambigu — tepat satu provider berkredensial. Kalau
+ * ada dua atau lebih (mis. Resend pulih di sebelah Brevo), diamnya konfigurasi
+ * jadi kesalahan yang harus dilaporkan, bukan koin yang dilempar.
+ */
+function resolveProvider(env) {
+  const explicit = (env.MAIL_PROVIDER || '').toLowerCase().trim();
+  if (explicit) return explicit;
+
+  const available = credentialledProviders(env);
+  if (available.length === 1) {
+    console.warn(
+      `[mail] MAIL_PROVIDER tidak diset — memakai '${available[0]}' karena hanya ` +
+      `itu yang punya kredensial. Set MAIL_PROVIDER supaya tidak bergantung tebakan.`
+    );
+    return available[0];
+  }
+  if (available.length > 1) {
+    console.error(
+      `[mail] MAIL_PROVIDER tidak diset dan ADA ${available.length} provider ` +
+      `berkredensial (${available.join(', ')}). Menolak menebak — set MAIL_PROVIDER.`
+    );
+  }
+  return 'resend';
+}
+
 export async function sendMail(env, msg) {
   const from = parseFrom(env.MAIL_FROM);
-  const primary = (env.MAIL_PROVIDER || 'resend').toLowerCase();
+  const primary = resolveProvider(env);
   const fallback = (env.MAIL_PROVIDER_FALLBACK || '').toLowerCase();
 
   const run = async (name) => {
