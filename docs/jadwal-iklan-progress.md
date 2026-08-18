@@ -37,9 +37,20 @@
 > 2026-08-19, lihat §00M.** Logikanya sempat digandakan dua tempat (daftar
 > tersaring vs hitungan pil), sekarang satu fungsi (`matchesQuery()`) untuk
 > keduanya. Sekalian: tombol salin Booking ID ditambahkan di tabel
-> `ScheduleAgenda.tsx`. ⬜ **Belum diuji di browser.** Pencarian tiga bentuk di
-> tabel Submissions (§00K) masih terpisah dan masih ⬜ belum diuji. Semua
-> commit di atas **belum di-push** ke `origin/main`.
+> `ScheduleAgenda.tsx`. Pencarian tiga bentuk di tabel Submissions (§00K)
+> sudah diuji dan hijau.
+>
+> 🟢 **TASK 11 SELESAI — DEPLOY B MENDARAT 2026-08-19 (`sql/52`), lihat §00N.**
+> `form_submissions_extend` kini VIEW di atas `ad_schedules`; `ad_schedules`
+> resmi otoritatif untuk jadwal ke-2 dst. Sidik jari 21 kolom × 15 baris
+> **identik sebelum & sesudah**, dan sudah dibuktikan cocok SEBELUM `DROP TABLE`
+> dijalankan. RLS sekalian diperketat (`security_invoker = true`) atas keputusan
+> pemilik produk. ⚠️ Tiga jebakan ditemukan & ditutup — yang terpenting: **view
+> baru mewarisi hak penuh untuk `anon` dari default privileges Supabase**, dan
+> **pengetatan RLS diam-diam merusak kuota slot**. Rinciannya di §00N; jangan
+> mengulang tabel serupa tanpa membacanya.
+> ⬜ **Belum diuji di browser & belum dideploy.** `sql/52` sudah di DB produksi,
+> perubahan frontend-nya belum tayang.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -278,6 +289,78 @@ juga ikut membuka drawer.
 search bar papan Schedule → jadwalnya muncul; klik ikon salin di tabel →
 toast "Booking ID disalin!" dan clipboard berisi kode TANPA `#`, drawer TIDAK
 ikut terbuka.
+
+### 00N. 🟢 DEPLOY B SELESAI — `form_submissions_extend` kini VIEW (`sql/52`, 2026-08-19)
+
+**`ad_schedules` resmi otoritatif untuk jadwal ke-2 dst.** Tabel
+`form_submissions_extend` sudah tidak ada; namanya kini view di atas
+`ad_schedules`, ditulis lewat tiga trigger `INSTEAD OF`.
+
+**Cara derisking-nya — pola yang layak diulang:** sidik jari 21 kolom × 15
+baris diukur DUA KALI *sebelum* apa pun dihapus — sekali dari tabel, sekali
+dari SELECT yang persis akan jadi badan view-nya. Keduanya
+`1798a75e9750611d14178e45be2387ef`. Jadi bentuk view-nya sudah **terbukti**,
+bukan diharapkan, sebelum `DROP TABLE` dijalankan. Sesudah migrasi + seluruh
+uji tulis + pembersihan, sidik jarinya **tetap** angka yang sama.
+
+| Verifikasi | Hasil |
+|---|---|
+| Sidik jari sebelum vs sesudah | **identik** (`1798a75e…`) |
+| Tipe kolom (`total_cost` tetap `integer`) | ✅ cast `::INTEGER` bekerja |
+| `cron_activate_extends()` | bersih, **0** status bergeser |
+| INSERT lewat view | ordinal **4** (resync jalan), `booking_id` terbit, `period_batch` terisi |
+| Rentang beririsan | **ditolak**, pesan sama persis seperti dulu |
+| Kolom uang: non-admin / admin | **ditolak** / **lolos** |
+| Tulisan cermin ordinal 1 sbg non-admin | **lolos** — prinsip `sql/41` terjaga |
+| DELETE lewat view + paritas | bersih, `0` / `0` |
+| `get_batch_rewards_bulk` | utuh, termasuk batch dari jadwal ke-2 |
+
+**Keputusan pemilik produk: RLS DIPERKETAT** (`security_invoker = true`).
+Dulu `authenticated` bisa baca-tulis extend SIAPA PUN (`qual = true`); kini
+bacaan tunduk RLS `ad_schedules` — peneliti hanya jadwalnya sendiri, admin
+semua. Tulisan ikut menyempit: sebelum `INSTEAD OF` menyala, Postgres
+meng-SELECT baris untuk membentuk OLD, dan SELECT itu berjalan sebagai
+pemanggil.
+
+⚠️ **TIGA JEBAKAN YANG DITEMUKAN SAAT MENGERJAKAN — semuanya sudah ditutup,
+dan semuanya akan terulang di tabel berikutnya kalau tidak dibaca:**
+
+1. **`anon` mewarisi hak penuh atas view baru, tanpa satu baris GRANT pun.**
+   Supabase memasang `ALTER DEFAULT PRIVILEGES … GRANT ALL ON TABLES TO anon`
+   di skema `public`. Terukur langsung setelah `CREATE VIEW`: `anon` punya
+   **7 privilege** termasuk INSERT/UPDATE/DELETE. Bacaannya memang tetap
+   kosong (RLS), **tapi tulisannya lolos** — `INSTEAD OF`-nya `SECURITY
+   DEFINER`, jadi menulis sebagai `postgres` dan melewati RLS. Di tabel lama
+   lubang ini tertutup karena tulisan `anon` dihadang RLS langsung.
+   **Tidak memberi grant TIDAK CUKUP; harus `REVOKE ALL … FROM anon`.**
+
+2. **Memperketat RLS diam-diam merusak kuota slot.** `fetchSlotAvailability()`
+   menghitung kuota 2-iklan-per-hari dan HARUS melihat jadwal semua orang.
+   Dengan view yang tunduk RLS, peneliti cuma melihat miliknya sendiri →
+   tanggal penuh tampak kosong → kuota tertembus. **Bugnya senyap:** tidak ada
+   error, cuma angka yang salah. Ditutup dengan RPC `get_extend_slot_occupancy()`
+   (SECURITY DEFINER, hanya memapar kolom yang dibutuhkan kalender).
+   *Catatan konsistensi:* `form_submissions` sendiri sudah terbuka untuk semua
+   pengguna login — policy **"User View Own Submissions" ber-`qual = true`**,
+   namanya menyesatkan. Pengetatan menyeluruh adalah pekerjaan tersendiri.
+
+3. **`assert_no_schedule_overlap()` tidak bisa dipindah apa adanya.** Ia
+   bercabang di `TG_TABLE_NAME` dan membaca `NEW.submission_status`/`NEW.id` —
+   nama kolom yang tidak ada di `ad_schedules` (`status`, `source_id`).
+   Intinya dipecah jadi `assert_schedule_window_free()`, dipanggil dua pihak,
+   **bukan disalin dua kali**. `guard_extend_payment_columns()` sebaliknya
+   BISA dipindah apa adanya (keempat kolomnya bernama sama), tapi wajib
+   dipagari `source_table` supaya tidak menjatuhkan cermin ordinal 1.
+
+**Rollback** tersedia: `form_submissions_extend_legacy` (15 baris) masih ada.
+⚠️ Baris yang lahir SESUDAH `sql/52` hanya ada di `ad_schedules` — salin manual
+dulu kalau benar-benar harus mundur. Boleh dibuang setelah satu siklus rilis
+tenang.
+
+⬜ **Belum diuji di browser & BELUM DIDEPLOY.** Yang wajib diklik: "Jadwal
+Iklan Baru" (INSERT lewat view), ubah tagihan di `InvoiceForm` sebagai admin,
+dan **alur pesan tanggal sebagai peneliti** — yang terakhir itu yang
+membuktikan RPC kuota slot bekerja dari sisi non-admin.
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 

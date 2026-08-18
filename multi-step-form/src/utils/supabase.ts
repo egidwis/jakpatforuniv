@@ -1585,12 +1585,18 @@ const getDateString = (date: Date) => {
 };
 
 /**
- * Extend statuses that occupy a daily slot: everything except 'cancelled'
- * (never airs) and 'completed' (already aired). Kept as an allow-list rather
- * than a deny-list so a new status has to be classified deliberately.
- * Source of truth for the full set: sql/19_create_extend_table.sql.
+ * Status jadwal lanjutan yang MENAHAN slot harian — `waiting_payment`, `paid`,
+ * `scheduled`, `live`: semuanya kecuali `cancelled` (tidak pernah tayang) dan
+ * `completed` (sudah selesai tayang). Daftar-izin, bukan daftar-tolak, supaya
+ * status baru harus diklasifikasikan dengan sengaja.
+ *
+ * ⚠️ SEJAK sql/52 DAFTARNYA HIDUP DI SATU TEMPAT SAJA: badan fungsi DB
+ * `get_extend_slot_occupancy()`. Dulu ia juga jadi konstanta di berkas ini dan
+ * dikirim sebagai filter `.in(...)`; sesudah kuota dihitung lewat RPC,
+ * menyimpan salinannya di sini berarti dua tempat menulis satu aturan — pola
+ * yang sudah tiga kali jadi bug di proyek ini (sql/49 vs sql/46, invoices vs
+ * transactions, matchesFilter vs chipCounts). Ubah daftarnya di migrasi DB.
  */
-const SLOT_OCCUPYING_EXTEND_STATUSES = ['waiting_payment', 'paid', 'scheduled', 'live'];
 
 /**
  * One airing window competing for a day's capacity, regardless of whether it
@@ -1666,13 +1672,19 @@ export const fetchSlotAvailability = async (
         .not('start_date', 'is', null)
         .not('submission_status', 'in', '("rejected","spam","in_review","completed")')
         .eq('distribution_type', distributionType),
-      supabase
-        .from('form_submissions_extend')
-        .select('id, submission_id, start_date, end_date, submission_status, payment_status, slot_booked_by, slot_reserved_at, form_submissions!inner(title, admin_notes, distribution_type)')
-        .not('start_date', 'is', null)
-        .not('end_date', 'is', null)
-        .in('submission_status', SLOT_OCCUPYING_EXTEND_STATUSES)
-        .eq('form_submissions.distribution_type', distributionType),
+      // ⚠️ LEWAT RPC, BUKAN SELECT LANGSUNG — dan itu wajib sejak sql/52.
+      //
+      // `form_submissions_extend` kini VIEW ber-`security_invoker = true`, jadi
+      // bacaannya tunduk RLS `ad_schedules`: peneliti hanya melihat jadwalnya
+      // SENDIRI. Kuota slot justru harus menghitung jadwal SEMUA ORANG — dengan
+      // SELECT langsung, tanggal yang sebenarnya penuh tampak kosong dan order
+      // baru menembus kuota 2-per-slot. `get_extend_slot_occupancy()` SECURITY
+      // DEFINER, memapar hanya kolom yang dibutuhkan kalender.
+      //
+      // Filter statusnya dikunci di badan fungsi DB dan harus tetap sama dengan
+      // SLOT_OCCUPYING_EXTEND_STATUSES di atas — kalau salah satu berubah,
+      // ubah keduanya.
+      supabase.rpc('get_extend_slot_occupancy', { p_distribution_type: distributionType }),
     ]);
 
     if (submissionsResult.error) throw submissionsResult.error;
@@ -1691,23 +1703,21 @@ export const fetchSlotAvailability = async (
       adminNotes: row.admin_notes,
     }));
 
-    const fromExtends: SlotOccupancy[] = (extendsResult.data || []).map((row: any) => {
-      // PostgREST returns the embedded parent as an object for a to-one
-      // relationship, but older typings surface it as an array — accept both.
-      const parent = Array.isArray(row.form_submissions) ? row.form_submissions[0] : row.form_submissions;
-      return {
-        id: row.id,
-        submissionId: row.submission_id,
-        title: parent?.title || 'Untitled Ad',
-        startDate: row.start_date,
-        endDate: row.end_date,
-        status: row.submission_status,
-        paymentStatus: row.payment_status,
-        slotBookedBy: row.slot_booked_by,
-        slotReservedAt: row.slot_reserved_at,
-        adminNotes: parent?.admin_notes ?? null,
-      };
-    });
+    // `get_extend_slot_occupancy()` sudah men-JOIN induknya di dalam DB, jadi
+    // `title`/`admin_notes` datang sebagai kolom datar — tidak ada lagi objek
+    // tersemat PostgREST yang perlu dibongkar di sini.
+    const fromExtends: SlotOccupancy[] = (extendsResult.data || []).map((row: any) => ({
+      id: row.id,
+      submissionId: row.submission_id,
+      title: row.title || 'Untitled Ad',
+      startDate: row.start_date,
+      endDate: row.end_date,
+      status: row.submission_status,
+      paymentStatus: row.payment_status,
+      slotBookedBy: row.slot_booked_by,
+      slotReservedAt: row.slot_reserved_at,
+      adminNotes: row.admin_notes ?? null,
+    }));
 
     const activeSlots = [...fromSubmissions, ...fromExtends].filter(holdsSlot);
 
