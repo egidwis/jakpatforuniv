@@ -29,8 +29,10 @@
 > `transactions` **tidak pernah bisa di-UPDATE dari browser** karena RLS-nya
 > tidak pernah punya policy `UPDATE` — sudah begitu jauh sebelum Task 11,
 > berlaku untuk setiap tulisan status transaksi dari dashboard admin.
-> Ditambal `sql/59` + backfill 6 baris. Sisa checklist §00K (booking ID &
-> pencarian) masih ⬜ **belum diuji di browser**.
+> Ditambal `sql/59` + backfill 6 baris. **Diuji di browser 2026-08-19 —
+> "Tandai Lunas" & "Tandai belum lunas" dua-duanya hijau.** Sisa checklist
+> §00K (booking ID & pencarian) masih ⬜ **belum diuji di browser**. Semua
+> commit di atas **belum di-push** ke `origin/main`.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -215,6 +217,12 @@ sendiri, tidak pernah oleh webhook DOKU. Sengaja lebih ketat dari `isManual`
 `unmarkScheduleAsPaid()`, bukan tebakan — persis bentuk yang dipakai
 `InvoiceForm.tsx` saat menerbitkan tagihan baru (`payment_status: 'pending',
 submission_status: 'waiting_payment'`).
+
+✅ **Diuji di browser 2026-08-19 — "Tandai Lunas" dan "Tandai belum lunas"
+dua-duanya berjalan baik.** Bukan cuma tidak error: gerbang ketat
+`payment_channel === 'MANUAL_VERIFIED'` terbukti bekerja seperti dirancang —
+tombol undo muncul tepat untuk jadwal yang ditandai lunas manual, dan siklus
+tandai→batalkan→tandai lagi tidak meninggalkan baris nyasar.
 
 ⚠️ **Tiga pelajaran yang berlaku untuk tabel RLS berikutnya, bukan cuma
 `transactions`:**
