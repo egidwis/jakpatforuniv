@@ -363,7 +363,8 @@ dan semuanya akan terulang di tabel berikutnya kalau tidak dibaca:**
    BISA dipindah apa adanya (keempat kolomnya bernama sama), tapi wajib
    dipagari `source_table` supaya tidak menjatuhkan cermin ordinal 1.
 
-**Rollback** tersedia: `form_submissions_extend_legacy` (15 baris) masih ada.
+**Rollback** tersedia: `form_submissions_extend_legacy` (15 baris) masih ada,
+**kini di skema `backup`, bukan `public`** (dipindah `sql/61` — lihat di bawah).
 ⚠️ Baris yang lahir SESUDAH `sql/52` hanya ada di `ad_schedules` — salin manual
 dulu kalau benar-benar harus mundur. Boleh dibuang setelah satu siklus rilis
 tenang.
@@ -382,7 +383,7 @@ sisi non-admin.
 | `booking_id` NULL | **0** |
 | `transactions` / `invoices` tanpa `schedule_id` | **0 / 0** — trigger penurun A2 masih menutup semua penulis |
 | View vs `ad_schedules(source_table='form_submissions_extend')` | **15 / 15** |
-| `form_submissions_extend_legacy` | 15 baris, masih ada (jalan pulang) |
+| `form_submissions_extend_legacy` | 15 baris, masih ada (jalan pulang) — dipindah ke skema `backup` oleh `sql/61`, sidik jari tetap `1798a75e…` |
 | `is_trigger_updatable/insertable/deletable` di view | **YES / YES / YES** — PostgREST menerima PATCH & POST, jadi jalur `webhook.js` STEP 5 sah |
 
 🎉 **`sql/54` akhirnya terbukti.** `doku_webhook_events` yang sejak dibuat
@@ -398,6 +399,66 @@ ujung-ke-ujung tetap utuh di atas view.
 pernah dilewati sejak view berdiri. Secara struktur aman (`service_role`
 di-GRANT, view trigger-updatable), tapi **pantau baris `doku_webhook_events`
 ber-`entity_type='extend'` yang pertama** alih-alih menganggapnya terbukti.
+
+#### 🔴 Jebakan (1) punya KEMBARAN yang luput — ditutup `sql/61` (2026-08-19)
+
+Security Advisor menyalakan **satu ERROR**: *RLS Disabled in Public →
+`public.form_submissions_extend_legacy`*. Bukan tabel extend yang bocor —
+view-nya justru terbukti aman (`anon` → `permission denied for view`). Yang
+bocor adalah **snapshot jalan-pulang** yang dibuat bagian 1 `sql/52` sendiri.
+
+Sebabnya jebakan (1) di atas, plus satu sifat yang belum tercatat di mana pun:
+
+> **`CREATE TABLE ... AS SELECT` tidak mewarisi RLS maupun policy dari tabel
+> sumbernya.** Snapshot lahir `relrowsecurity = false`, nol policy — padahal
+> sumbernya punya empat policy. Lalu default privileges Supabase
+> menempelkan tujuh privilege `anon` di atasnya, gratis.
+
+Ironinya: REVOKE yang benar sudah ditulis di bagian 7 `sql/52`, untuk view-nya.
+Bagian 1 ditulis **sebelum** temuan itu muncul dan tidak ikut disapu. Satu
+migrasi bisa menutup sebuah lubang di satu paragraf dan membukanya di paragraf
+lain — gerbangnya harus per-objek, bukan per-berkas.
+
+**Terukur sebagai `anon` sebelum perbaikan** (di dalam transaksi yang
+dibatalkan, jadi tidak ada data yang berubah):
+
+| Uji sebagai `anon` | Sebelum | Sesudah `sql/61` |
+|---|---|---|
+| `SELECT` snapshot | **15 baris**, agregat `total_cost` 6.316.683 | `permission denied for schema backup` |
+| `UPDATE` kolom uang | **15 baris tertulis** | idem — tak terjangkau |
+| Lewat PostgREST | terekspos (`public` + anon key ada di bundel frontend) | skema `backup` di luar permukaan API |
+
+Peredam yang kebetulan berlaku: `admin_notes` dan `voucher_code` NULL di
+kelima belas baris, dan tidak ada nama/email di tabel ini. Tulisan `anon` juga
+tidak menjalar ke data hidup (snapshot CTAS tidak punya trigger maupun FK) —
+tapi ia bisa merusak jalan pulang `sql/52`.
+
+**Kenapa pindah skema, bukan sekadar `ENABLE RLS`:** snapshot rollback tidak
+punya alasan untuk terlihat dari API. Selama ia duduk di `public` ia akan
+selalu diekspos PostgREST *dan* mewarisi default privilege `anon` setiap kali
+dibuat ulang. Pindah mencabut kedua sifat itu di sumbernya. Terverifikasi
+sebelum menerapkan: `pg_default_acl` untuk anon/authenticated **hanya**
+terpasang di `public` — tidak ada entri lintas skema, jadi `backup` tidak
+mewarisi jebakannya. RLS tetap dinyalakan sebagai sabuk kedua.
+
+⚠️ **`backup` tidak boleh ditambahkan ke Exposed schemas** (Dashboard >
+Settings > API). Seluruh perbaikan ini bergantung pada itu.
+
+| Verifikasi `sql/61` | Hasil |
+|---|---|
+| Lokasi + RLS | `backup` / **true** |
+| Sisa hak `anon` + `authenticated` | **0** |
+| `USAGE` skema untuk anon/authenticated | **false / false** |
+| Sidik jari 15 baris pasca-pindah | **`1798a75e9750611d14178e45be2387ef`** — identik dengan kepala `sql/52` |
+| `public.form_submissions_extend` (view) | **15** — tak tersentuh |
+| Security Advisor | **ERROR 0** (sisa: INFO `rls_enabled_no_policy`, memang yang dituju) |
+
+**Aturan yang berlaku mulai sekarang:** snapshot/tabel jalan-pulang dibuat
+**langsung di `backup`**, tidak pernah di `public`. Bentuk amannya sudah
+ditempel di bagian 1 `sql/52` supaya tidak perlu diingat-ingat.
+
+⬜ Snapshotnya sendiri **boleh di-DROP** setelah `sql/52` melewati satu siklus
+rilis tenang; per 2026-08-19 baru sehari, jadi ditahan dulu.
 
 ### 00O. 🟢 TASK 13 RILIS 1 — uang per jadwal jadi jujur (`sql/53`, 2026-08-19)
 

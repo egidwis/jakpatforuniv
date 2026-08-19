@@ -17,6 +17,21 @@ interface StepScheduleProps {
   onConfirm: (ymd: string) => Promise<boolean> | boolean;
   onBack: () => void;
   mode?: 'regular' | 'kilat';
+  /**
+   * Ke mana "mundur" pergi.
+   *
+   * `'step'` (bawaan): tombol Kembali ke langkah wizard sebelumnya — benar
+   * untuk order baru, yang memang punya Ringkasan di belakangnya.
+   *
+   * `'orders'`: tautan teks "Kembali ke Order Saya". Dipakai saat layar ini
+   * dimasuki lewat JADWAL ULANG dari My Order: order-nya sudah ada, tidak ada
+   * Ringkasan yang sah untuk dikembalikan — mundur ke step 2 menampilkan layar
+   * submit untuk order yang sedang di-reset, dan CTA-nya bisa melahirkan order
+   * kembar. Pemanggil WAJIB membuang draft reschedule di `onBack`-nya sendiri;
+   * draft berniat-reschedule yang tertinggal adalah akar insiden survei
+   * tertimpa (lihat resolveSubmissionMode).
+   */
+  exitMode?: 'step' | 'orders';
 }
 
 /**
@@ -28,7 +43,7 @@ interface StepScheduleProps {
  * satu layar; secara alamat mereka terpisah karena Fase B punya dua pintu masuk
  * "kembali setelah pergi" yang tidak bisa dilayani state wizard.
  */
-export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: StepScheduleProps) {
+export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', exitMode = 'step' }: StepScheduleProps) {
   const { t } = useLanguage();
   const availability = useSlotAvailability(mode);
 
@@ -137,16 +152,29 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: 
       </div>
 
       <div className="space-y-2 pb-4">
-        <div className="flex items-center gap-3">
+        {exitMode === 'orders' && (
           <button
             type="button"
             onClick={onBack}
             disabled={isConfirming}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed px-1 py-1"
           >
             <ArrowLeft className="w-4 h-4" />
-            {t('backButton')}
+            {t('backToOrders')}
           </button>
+        )}
+        <div className="flex items-center gap-3">
+          {exitMode === 'step' && (
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={isConfirming}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {t('backButton')}
+            </button>
+          )}
           <button
             onClick={handleConfirm}
             disabled={!selected || availability.isLoading || isConfirming}

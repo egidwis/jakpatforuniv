@@ -250,6 +250,11 @@ Inti rilis ini, dan satu-satunya langkah yang tidak reversibel dengan mudah.
 
 1. **Snapshot** — `CREATE TABLE form_submissions_extend_legacy AS SELECT * FROM form_submissions_extend`.
    Ini jaring pengaman, bukan formalitas: 12 baris, gratis, dan satu-satunya jalan pulang.
+   🔴 **Terbukti kurang saat dijalankan (2026-08-19):** CTAS tidak mewarisi RLS/policy,
+   dan tabel baru di `public` langsung mewarisi hak penuh `anon` dari default privileges
+   Supabase — snapshotnya terbaca *dan* tertulis dari internet. Ditutup `sql/61` dengan
+   memindahkannya ke skema `backup`. **Buat snapshot langsung di `backup`**, jangan di
+   `public`. Lihat `docs/jadwal-iklan-progress.md` Sec.00N.
 2. **Lepas 2 FK lama** (`invoices_extend_id_fkey`, `transactions_extend_id_fkey`).
    Kolomnya tetap; hanya constraint-nya yang dilepas, karena FK tidak boleh menunjuk view.
 3. **Pindahkan 4 trigger** dari tabel lama ke `ad_schedules` — ini yang paling mudah

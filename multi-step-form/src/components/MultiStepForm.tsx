@@ -482,12 +482,30 @@ export function MultiStepForm() {
           <StepSchedule
             formData={formData}
             onConfirm={(ymd) => submitOrderAndRoute({ startDate: ymd, startTime: '15:00' })}
-            onBack={() => {
-              // Jadwal belum ter-lock — bersihkan agar Step 2 tahu bahwa
-              // user masih perlu memilih jadwal, bukan langsung submit.
-              updateFormData({ startDate: '', endDate: '', startTime: '' });
-              prevStep();
-            }}
+            /*
+              Jadwal ulang mendarat LANGSUNG di sini (StatusPage menulis draft
+              currentStep 3) — step 2 di belakangnya adalah Ringkasan submit
+              untuk order yang sedang di-reset, dan CTA-nya bisa melahirkan
+              order kembar. Mundurnya karena itu keluar ke My Order, lewat
+              `cancelOrder` supaya draft ber-`isReschedule` ikut TERBUANG:
+              draft semacam itu yang tertinggal pernah menimpa survei lain
+              (insiden Tri/NISMA — lihat resolveSubmissionMode).
+
+              `prepareForReschedule` yang sudah telanjur jalan tidak apa-apa
+              dibiarkan: slot memang sudah dilepas, ordernya tinggal memilih
+              jadwal lagi dari My Order kapan pun.
+            */
+            exitMode={formData.isReschedule ? 'orders' : 'step'}
+            onBack={
+              formData.isReschedule
+                ? cancelOrder
+                : () => {
+                    // Jadwal belum ter-lock — bersihkan agar Step 2 tahu bahwa
+                    // user masih perlu memilih jadwal, bukan langsung submit.
+                    updateFormData({ startDate: '', endDate: '', startTime: '' });
+                    prevStep();
+                  }
+            }
           />
         )}
 
