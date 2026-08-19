@@ -200,7 +200,10 @@ export function deriveOrderUiState(
      *
      * Yang membuatnya 'cutoff' pada slot milik peneliti adalah keadaan lain:
      * `slot_booked_by='user'` dengan `slot_reserved_at` NULL atau tidak bisa
-     * diurai. `slotReleaseDeadline` mengembalikan `null` di situ — slotnya
+     * diurai. Terukur 2026-08-19: **0 dari 68** baris user-booked seperti itu,
+     * jadi cabang 'cutoff' hari ini JARING PENGAMAN, bukan jalur hidup —
+     * dipertahankan karena kalau keadaan itu muncul, kalimat 'slot' yang akan
+     * berbohong. `slotReleaseDeadline` mengembalikan `null` di situ — slotnya
      * TIDAK pernah lepas sendiri (dipagari eksplisit di `slotHold.test.ts`) —
      * sehingga satu-satunya batas yang tersisa memang cutoff-nya. Di situ
      * kalimat 'cutoff' justru yang benar, dan kalimat 'slot' akan berbohong.

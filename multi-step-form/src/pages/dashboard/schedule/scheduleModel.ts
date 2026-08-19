@@ -72,9 +72,14 @@ export function chipKindOf(e: AdScheduleEntry, now: number = Date.now()): ChipKi
   if (e.reviewStatus === 'rejected') return 'rejected';
   if (e.reviewStatus === 'spam') return 'spam';
   // ⚠️ DI ATAS SEMUA CABANG SUMBU TAYANG. Jadwal yang dibatalkan tidak boleh
-  // dibaca 'live'/'paid'/'approved' hanya karena kolom lamanya belum disapu:
-  // tanpa cabang ini 133 baris produksi terbaca "Approved" dan — lewat
-  // `occupiesSlot` — ikut MEMAKAN kuota hari yang sebenarnya sudah bebas.
+  // dibaca 'live'/'paid'/'approved' hanya karena kolom lamanya belum disapu.
+  //
+  // Terukur 2026-08-19: dari 136 baris berstatus 'cancelled', 135 datang dari
+  // order rejected/spam dan sudah ditangkap dua cabang di atas. Yang butuh
+  // cabang INI cuma 1 — baris perpanjangan, yang review_status-nya diwarisi
+  // induk 'approved' sehingga dulu jatuh ke 'approved' dan lewat
+  // `occupiesSlot` ikut memakan kuota hari yang sebenarnya sudah bebas.
+  // Satu baris hari ini; SETIAP pembatalan slot sesudah sql/62 lewat sini.
   if (e.status === 'cancelled') return 'cancelled';
   if (e.status === 'live') return 'live';
   if (e.status === 'scheduled') return 'page_scheduled';

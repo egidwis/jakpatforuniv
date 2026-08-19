@@ -260,7 +260,11 @@ export async function onRequest(context) {
     // ── Jendela yang DITAGIHKAN — dibaca dari `ad_schedules`, BUKAN dari
     //    `form_submissions`.
     //
-    // ⚠️ INI BUKAN KERAPIAN, INI SYARAT HIDUP TAGIHANNYA.
+    // ⚠️ INI BUKAN KERAPIAN, INI SYARAT HIDUP TAGIHANNYA — TERUKUR, BUKAN TEORI.
+    // Diverifikasi ke produksi 2026-08-19 atas order d696325a:
+    //   form_submissions.start_date = 'date'        -> 2026-08-29 00:00:00+00
+    //   ad_schedules.start_date     = 'timestamptz' -> 2026-08-29 08:00:00+00
+    // Perbandingannya berbeda, jadi tagihannya BENAR-BENAR akan lahir basi.
     // `schedule_billing.is_stale` (sql/60) membandingkan `billed_start_date`
     // dengan `ad_schedules.start_date`. Kolom itu TIMESTAMPTZ berisi instant
     // tayang (15.00 WIB = 08:00 UTC), sedangkan `form_submissions.start_date`

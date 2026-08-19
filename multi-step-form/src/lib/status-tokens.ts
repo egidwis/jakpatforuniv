@@ -27,10 +27,23 @@ export type LifecycleStage =
   | "page_scheduled"
   | "live"
   /**
-   * Dibatalkan. 133 baris `ad_schedules` sudah memakainya di produksi jauh
-   * sebelum union ini mengenalnya — dan karena `chipKindOf` tidak punya
-   * cabangnya, semuanya terbaca "Approved" DAN ikut memakan kuota slot.
-   * Menambahkannya di sini yang memaksa setiap permukaan menamainya.
+   * Dibatalkan.
+   *
+   * Terukur di produksi 2026-08-19 — 136 baris `ad_schedules.status =
+   * 'cancelled'`, dan rinciannya penting:
+   *
+   *   135 dari `form_submissions` (119 spam + 16 rejected). Mereka lahir dari
+   *       `airing_status_of()` yang memetakan rejected/spam -> 'cancelled',
+   *       jadi `review_status`-nya rejected/spam dan dua cabang PERTAMA
+   *       `chipKindOf` sudah menangkapnya. Tidak pernah salah label.
+   *     1 dari `form_submissions_extend`. Mirror extend menulis status APA
+   *       ADANYA (tanpa airing_status_of) sementara `review_status` diwarisi
+   *       induk yang 'approved' — jadi baris ini jatuh ke cabang terakhir,
+   *       terbaca "Approved", dan lewat `occupiesSlot()` ikut MEMAKAN KUOTA.
+   *
+   * Jadi nilai union ini bukan "memperbaiki 136 baris" melainkan: memberi
+   * pembatalan sebuah nama, supaya `slot_cancelled` (sql/62) punya tempat
+   * mendarat dan setiap permukaan DIPAKSA menamainya oleh type-checker.
    */
   | "cancelled"
 

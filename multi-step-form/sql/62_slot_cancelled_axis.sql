@@ -144,6 +144,31 @@ COMMIT;
 --     SELECT airing_status_of('cancelled', true) AS masih_requested;  -- requested
 --
 -- ============================================================================
+-- HASIL VERIFIKASI — dijalankan 2026-08-19 SESUDAH diterapkan
+-- ============================================================================
+--
+--   (1) airing_status_of('slot_cancelled', true)  -> cancelled   ✓
+--       airing_status_of('slot_cancelled', false) -> cancelled   ✓
+--       review_status_of('slot_cancelled')        -> approved    ✓
+--   (2) baris memakai 'slot_cancelled' ............ 0            ✓
+--   (3) cermin menyimpang ......................... 0            ✓
+--   (4) airing_status_of('cancelled', true) ....... requested    ✓ (dismissal utuh)
+--
+--   Invarian uang tidak bergerak sesudah migrasi:
+--     piutang total ............... Rp 20.482.163
+--     tagihan basi ................ 0
+--     outstanding tanpa tagihan
+--       terbuka ................... 0
+--     billed < paid ............... 0
+--     anon boleh EXECUTE .......... false
+--
+--   Rincian 'cancelled' yang SUDAH ada (terukur, mengoreksi angka 133 di
+--   dokumen rencana): 136 baris — 119 spam + 16 rejected dari
+--   `form_submissions`, semuanya sudah benar lewat sumbu review; dan 1 baris
+--   `form_submissions_extend` yang DULU terbaca "Approved" sekaligus memakan
+--   kuota. Hanya baris terakhir itu yang diperbaiki chip 'cancelled'.
+--
+-- ============================================================================
 -- YANG BERGANTUNG PADA MIGRASI INI
 -- ============================================================================
 --
