@@ -174,6 +174,14 @@ function InvoiceRow({
    */
   const isBillable = !inv.isPaid && !inv.isDead && !inv.isSuperseded && inv.source === 'invoice';
 
+  /**
+   * ⚠️ CORETAN PADA NOMINAL BERARTI SATU HAL SAJA: ANGKA INI TIDAK IKUT
+   * DIHITUNG. Jangan dipakai untuk "link-nya sudah mati" — itu pertanyaan
+   * lain, dan mencampurnya membuat kartu mencoret Rp 1.440.000 lalu tetap
+   * menjumlahkannya di "belum masuk" tepat di atasnya.
+   */
+  const countsTowardBilled = inv.isPaid || isBillable;
+
   /** Masih bisa dibayar lewat link-nya. */
   const canPay = isBillable && !isLate;
 
@@ -266,7 +274,9 @@ function InvoiceRow({
       <div className="text-right shrink-0 space-y-1">
         <div className={cn(
           'text-xs font-bold tabular-nums',
-          isStruck ? 'text-slate-400 line-through' : 'text-slate-900',
+          !countsTowardBilled ? 'text-slate-400 line-through'
+            : isStruck ? 'text-slate-500'
+            : 'text-slate-900',
         )}>
           {formatIDR(inv.amount)}
         </div>
@@ -294,7 +304,13 @@ function InvoiceRow({
             {canCancel && actions.onCancelInvoice && (
               <button
                 type="button"
-                className="text-[10px] font-medium text-slate-400 hover:text-red-600 hover:underline transition-colors"
+                /*
+                  ⚠️ AKSI TIDAK IKUT DIREDUPKAN BERSAMA BARISNYA. Versi
+                  pertama memakai `text-slate-400` — warna yang sama dengan
+                  isi baris yang dicoret — sehingga tautannya terbaca sebagai
+                  keterangan, bukan tombol, dan dilaporkan "tidak ada".
+                */
+                className="text-[10px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2 decoration-red-300 hover:decoration-red-600 transition-colors"
                 onClick={() => actions.onCancelInvoice!(inv)}
               >
                 Batalkan tagihan
