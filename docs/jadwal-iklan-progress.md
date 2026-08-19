@@ -490,10 +490,40 @@ Schedule — ia menerima Booking ID sejak §00M.
 | # | Booking ID | Yang harus terlihat | Kenapa ini ujinya |
 |---|---|---|---|
 | 1 | **`76XKVW5P`** | **dua baris** tagihan, kepala **"Rp 1.531.800 ditagih"** | Kode lama memakai transaksi TERBARU sebagai nominal kartu, yaitu **Rp 61.050** — jadwal yang menerima Rp 1.531.800 tampil sebagai Rp 61.050. Jadwal ini **lunas penuh**, jadi ia memang tetap bilang "Lunas"; yang diuji **angkanya**, bukan labelnya |
-| 2 | **`5FJ9J4Q6`** | **"Rp 2.880.000 ditagih · Rp 1.440.000 belum masuk"** | Inilah yang **berhenti** bilang "Lunas". `hasEverPaid` dulu bernilai true karena satu invoice-nya lunas, padahal Rp 1.440.000 masih menggantung |
-| 3 | **`5FJ9J4Q6`** lagi | batalkan invoice yang menggantung → kartu balik **"Lunas"** | Ia punya **invoice kembar Rp 1.440.000 di hari yang sama**, satu lunas satu menggantung — kasus yang persis jadi alasan "Batalkan tagihan" ada |
+| 2 | ✅ **`5FJ9J4Q6`** | **"Rp 2.880.000 ditagih · Rp 1.440.000 belum masuk"** | Inilah yang **berhenti** bilang "Lunas". `hasEverPaid` dulu bernilai true karena satu invoice-nya lunas, padahal Rp 1.440.000 masih menggantung |
+| 3 | ✅ **`5FJ9J4Q6`** lagi | batalkan invoice yang menggantung → kartu balik **"Lunas"** | Ia punya **invoice kembar Rp 1.440.000 di hari yang sama**, satu lunas satu menggantung — kasus yang persis jadi alasan "Batalkan tagihan" ada |
 | 4 | **`T25FVETF`** (atau `7F8CBKEF`, `RT4ZHEPN`) | Rp 2.525.000 **lunas** | **Uji REGRESI, bukan fitur baru.** Jadwal ini hanya punya `transactions`. Kode lama juga membacanya, jadi ia tidak pernah Rp 0 — tapi ia AKAN jadi Rp 0 kalau rencana Task 13 diterapkan harfiah (`invoices` saja). Kalau tampil Rp 0 atau "belum ada tagihan", itu bug |
-| 5 | mana saja yang punya tagihan menggantung | **"Tagih Susulan" disabled** | Peneliti hanya melihat tagihan terakhir; tagihan kedua akan menyembunyikan yang pertama |
+| 5 | ✅ mana saja yang punya tagihan menggantung | **"Tagih Susulan" disabled** | Peneliti hanya melihat tagihan terakhir; tagihan kedua akan menyembunyikan yang pertama |
+
+**Hasil uji 2/3/5 (2026-08-19, di produksi):** `a8e8233f-…` jadi `cancelled`,
+daftar tetap **3 baris**, `billed` Rp 2.880.000 → Rp 1.440.000, `outstanding`
+Rp 1.440.000 → **0**, `open_count` 1 → **0**. Piutang seluruh sistem
+Rp 21.922.163 → Rp 20.482.163. Kedua invarian tetap **0/0**. Pasangan di
+`transactions` ikut dibatalkan, jadi tidak ada baris yatim yang menghidupkan
+tagihan itu lagi.
+
+⚠️ **DUA BUG UI DITEMUKAN SAAT UJI INI — keduanya kelas yang sama: memakai
+satu sinyal untuk dua pertanyaan.**
+
+1. **Aksi ikut diredupkan bersama barisnya.** Gerbang aksi memakai `isStruck`,
+   yang memuat `isLate` — jadi tagihan yang lewat batas bayar, **persis yang
+   ingin dibatalkan admin**, tidak punya tombolnya sama sekali. Aksi kini
+   dipecah per pertanyaan: `canPay` (hidup DAN belum lewat batas) vs
+   `canCancel` (tagihan sungguhan, belum dibayar, belum mati — terlewat dan
+   tersusul TETAP boleh).
+
+2. **Coretan pada nominal dipakai untuk dua arti.** Baris `isLate` dicoret
+   seolah tidak dihitung, sementara kepala kartu menuliskan angka yang sama
+   sebagai "belum masuk". Sebabnya `isLate` diturunkan di KLIEN dari tanggal
+   tayang, sedangkan `schedule_billing_summary` tidak tahu apa-apa soal itu —
+   dan DB-lah yang benar, karena admin memang masih menagihnya di luar sistem.
+   Aturannya kini satu: **coretan pada nominal = angka ini tidak ikut
+   dihitung**; baris terlewat hanya diredupkan, dan labelnya dieja lengkap
+   *"Batas bayar terlewat — masih dihitung piutang"*.
+
+   Ikut diperbaiki: tautan aksi tidak lagi `text-slate-400` — warna yang sama
+   dengan isi baris yang diredupkan, sehingga ia terbaca sebagai keterangan
+   dan sempat dilaporkan "tidak ada" padahal sudah dirender.
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 
