@@ -100,6 +100,21 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
 
   return (
     <div className="max-w-3xl mx-auto space-y-3.5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Jalan keluar diletakkan DI ATAS kartu, sejajar dengan halaman bayar:
+          ia menjawab "aku ada di mana dan bagaimana keluar", pertanyaan yang
+          muncul SEBELUM isinya dibaca — bukan aksi yang bersaing dengan CTA
+          di bawah. */}
+      {exitMode === 'orders' && (
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isConfirming}
+          className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed -ml-1 px-1 py-1"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          {t('backToOrders')}
+        </button>
+      )}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
         {/* Title + subtitle grouped so gap between them is tight */}
         <div className="space-y-1">
@@ -152,17 +167,6 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
       </div>
 
       <div className="space-y-2 pb-4">
-        {exitMode === 'orders' && (
-          <button
-            type="button"
-            onClick={onBack}
-            disabled={isConfirming}
-            className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed px-1 py-1"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            {t('backToOrders')}
-          </button>
-        )}
         <div className="flex items-center gap-3">
           {exitMode === 'step' && (
             <button
