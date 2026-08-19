@@ -1004,7 +1004,11 @@ WHERE completed_notified_at IS NOT NULL;` memulihkan persis.
 
 ---
 
-### 00S. 🔴→🟢 Audit Task 1–13 — tiga bug jalur uang + dua lubang izin (`sql/66`, 2026-08-20)
+### 00S. 🟢 Audit Task 1–13 — tiga bug jalur uang + dua lubang izin (`sql/66` + deploy, 2026-08-20)
+
+> **SELESAI 2026-08-20.** `sql/66` diterapkan ke produksi, dan seluruh perbaikan
+> kode (A1, A2, A7, A3, A5, A6) sudah **dideploy dari `main`** oleh pemilik
+> produk. Yang tersisa hanya verifikasi lapangan — daftarnya di kaki bagian ini.
 
 Audit implementasi Task 1–13, bukan penulisan fitur baru. Semua angka diukur
 langsung ke produksi (`zewuzezbmrmpttysjvpg`).
@@ -1035,6 +1039,19 @@ ringkasan yang sudah disetujui peneliti. Akibatnya dobel: DOKU menagih angka itu
 
 Terpapar saat ditemukan: **8 order JFUSUHUD belum lunas** (dipesan 6 Jul–17 Agu)
 + 1 JFUFEB. Tenggat nyata: JFUSUHUD mati **1 September 2026**.
+
+> **Tapi ia tidak pernah sempat menyala — dan itu kebetulan, bukan desain.**
+> Jendela selisihnya hanya terbuka untuk order yang **lahir sebelum** masa
+> voucher habis lalu **dibayar sesudahnya**. Hanya tiga voucher yang punya
+> tenggat sama sekali, dan per 2026-08-20 ketiganya masih hidup: `JFUSUHUD`
+> 31 Agu 2026, `ILKOMUNY` 31 Des 2026, `JFUFEB` 20 Feb 2027. Jadi `Date.now()`
+> dan `created_at` masih memberi vonis yang sama untuk **setiap** order yang
+> pernah ada (22 JFUSUHUD, 7 JFUFEB, 2 ILKOMUNY).
+>
+> **Nol peneliti pernah ditagih di atas harga yang disetujui.** Perbaikannya
+> mendarat **11 hari** sebelum yang pertama akan menyala. Yang perlu diingat
+> bukan angkanya melainkan bentuknya: bug ini duduk tenang berbulan-bulan
+> dengan tesnya hijau, dan yang menahan kerugiannya cuma kalender.
 
 **Perbaikan.** Daftar kolomnya diangkat jadi `SUBMISSION_SELECT_COLUMNS` yang
 diekspor, dan `select=` dibangun darinya. Penjaganya
@@ -1194,23 +1211,38 @@ bukan dari catatan.
   peneliti tidak pernah menyisipkan `transactions` dari klien, dan mengubahnya
   hanya bisa **melebarkan** izin tulis di jalur uang.
 
-#### Yang masih menunggu deploy
+#### Sudah dideploy — dan yang belum terbukti
 
-`sql/66` sudah hidup di produksi. **A1, A2, A7, A3, A5, A6 semuanya masih di
-kode** — dan deploy di proyek ini manual (`npm run deploy`). Sampai itu
-dijalankan, A1 masih menagih order JFUSUHUD di atas harga yang disetujui.
+`sql/66` diterapkan ke produksi 2026-08-20, dan **seluruh perbaikan kode
+dideploy dari `main`** di hari yang sama. Tidak ada lagi jarak antara DB dan
+kode untuk rilis ini.
 
-Regresi yang wajib ikut diuji sesudah deploy — dua permukaan yang dokumen ini
-sendiri tandai belum pernah disentuh manusia dan berubah di rilis ini:
+**Yang sudah terbukti** semuanya milik `sql/66`, dan diuji sebagai peneliti
+sungguhan (tabel di atas). **Yang belum terbukti adalah seluruh sisi kode.**
+Bedanya penting: A1 dijaga tes otomatis yang sudah dibuktikan merah-kalau-rusak,
+tapi A2 dan A7 hidup di endpoint webhook yang **tidak punya test harness sama
+sekali** — satu-satunya buktinya adalah pembayaran sungguhan.
+
+Regresi yang wajib ikut diuji — dua permukaan yang dokumen ini sendiri tandai
+belum pernah disentuh manusia dan berubah di rilis ini:
 
 - **Dashboard peneliti** (§00O): order dengan tagihan menggantung → tombol bayar
   menunjuk tagihan itu; order lunas sebagian → tidak tertulis "Lunas"; order
   berjadwal ke-2 → tagihannya tidak tertukar.
-- **A2 + A7 di jalur nyata** (endpoint ini tanpa test harness): order dengan 2
-  jadwal, terbitkan tagihan di keduanya lewat "Tagih Susulan", **bayar yang lebih
-  tua**. Harapkan jadwal itu lunas, jadwal satunya tidak ikut berpindah, dan
-  `doku_webhook_events` berisi `http_status` 200 / `outcome` `ok`. Baris
-  `write_failed` di sana berarti A7 belum tertutup.
+- **A2 + A7 di jalur nyata**: order dengan 2 jadwal, terbitkan tagihan di
+  keduanya lewat "Tagih Susulan", **bayar yang lebih tua**. Harapkan jadwal itu
+  lunas, jadwal satunya tidak ikut berpindah, dan `doku_webhook_events` berisi
+  `http_status` 200 / `outcome` `ok`. Baris `write_failed` di sana berarti A7
+  belum tertutup.
+- **A1 sesudah 1 September 2026.** Ini satu-satunya butir yang tidak bisa
+  diverifikasi hari ini, karena jendela selisihnya belum terbuka. Begitu
+  September masuk, buat pembayaran untuk salah satu order JFUSUHUD yang lahir
+  Agustus dan pastikan `amount` masih harga saat dipesan. Kalau ia naik, berarti
+  yang dideploy bukan versi ini.
+
+> **Pemantauan termurah untuk rilis ini** adalah `doku_webhook_events`
+> (`sql/54`) — ia yang membuat A7 berisik alih-alih sunyi. Kalau hanya satu hal
+> yang sempat dilihat sesudah deploy, lihat itu.
 
 ---
 
