@@ -95,7 +95,12 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: 
             <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
               {mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleTitle')}
             </h2>
-            {availability.isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            {/* Muat PERTAMA diceritakan skeleton kalendernya, bukan spinner ini —
+                dua indikator untuk satu keadaan cuma bising. Spinner tinggal
+                untuk pemuatan ulang, saat kalendernya sudah berisi. */}
+            {availability.isLoading && availability.isReady && (
+              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+            )}
             {/* Gagal memuat harus KELIHATAN. Sebelumnya kegagalan hanya masuk
                 console.error, jadi layar tampak normal padahal angka slotnya
                 nol semua — mustahil dibedakan dari "semua tanggal kosong". */}

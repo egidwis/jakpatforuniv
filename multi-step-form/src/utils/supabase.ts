@@ -33,6 +33,76 @@ console.log('Running in offline mode:', isPlaceholderUrl || isPlaceholderKey);
 // Buat Supabase client dengan URL dan key yang valid
 export const supabase = createClient(validSupabaseUrl, validSupabaseKey);
 
+// ─────────────────────────────────────────────────────────────
+// PEREDAM PERMINTAAN KEMBAR
+//
+// `auth.getUser()` SELALU memanggil /auth/v1/user lewat jaringan — beda dengan
+// `getSession()` yang membaca storage. Tiap helper di bawah memanggilnya
+// sendiri-sendiri, dan tiap komponen memanggil helper-nya sendiri-sendiri,
+// jadi satu kali muat halaman menembakkan permintaan yang sama berkali-kali.
+// Terukur di produksi 2026-08-19: `user` 4x dan `profiles` 4x dalam SATU kali
+// muat — keduanya dari `getOwnProfile()` yang dipanggil DashboardLayout,
+// MultiStepForm, StepCheckout, dan ProfileForm.
+//
+// Diperbaiki di HELPER-nya, bukan di tiap pemanggil: menyuruh empat komponen
+// saling menunggu berarti menaruh satu aturan di empat tempat, dan komponen
+// kelima nanti tidak akan tahu aturannya.
+//
+// Kegagalan TIDAK di-cache — `inFlight` dilepas lewat finally, jadi percobaan
+// berikutnya benar-benar mencoba lagi.
+// ─────────────────────────────────────────────────────────────
+
+const REQUEST_COALESCE_TTL_MS = 30_000;
+
+function createCoalescer<T>(ttlMs: number = REQUEST_COALESCE_TTL_MS) {
+  let inFlight: Promise<T> | null = null;
+  let cached: { at: number; value: T } | null = null;
+  return {
+    run(fetcher: () => Promise<T>): Promise<T> {
+      if (cached && Date.now() - cached.at < ttlMs) return Promise.resolve(cached.value);
+      if (inFlight) return inFlight;
+      inFlight = fetcher()
+        .then((value) => {
+          cached = { at: Date.now(), value };
+          return value;
+        })
+        .finally(() => {
+          inFlight = null;
+        });
+      return inFlight;
+    },
+    clear() {
+      cached = null;
+      inFlight = null;
+    },
+  };
+}
+
+type AuthUser = Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user'];
+
+const authUserCoalescer = createCoalescer<AuthUser>();
+
+/** Pengganti tunggal `auth.getUser()` — jawaban sama, satu putaran jaringan. */
+export const getAuthUser = async (): Promise<AuthUser> =>
+  authUserCoalescer.run(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user;
+  });
+
+const ownProfileCoalescer = createCoalescer<any>();
+
+/**
+ * ⚠️ Callback SINKRON — jangan pernah memanggil fungsi Supabase async di
+ * dalamnya. `onAuthStateChange` memegang lock auth selagi callback berjalan;
+ * memanggil balik ke supabase-js dari sini adalah deadlock yang terdokumentasi.
+ * Di sini isinya cuma membuang cache.
+ */
+supabase.auth.onAuthStateChange(() => {
+  authUserCoalescer.clear();
+  ownProfileCoalescer.clear();
+  voucherBlockedCoalescers.forEach((c) => c.clear());
+});
+
 /**
  * Rewrites a Supabase Storage public URL to use our Cloudflare CDN proxy.
  * This eliminates Supabase cached egress costs since Cloudflare serves from its own cache.
@@ -112,7 +182,7 @@ export const signOut = async () => {
 
 export const getCurrentUser = async () => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getAuthUser();
     return user;
   } catch (error: any) {
     console.error('Error getting current user:', error);
@@ -194,26 +264,30 @@ export const isProfileComplete = (profile: ResearcherProfile | null): boolean =>
   );
 };
 
-export const getOwnProfile = async (): Promise<ResearcherProfile | null> => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, phone_number, university, department, status, referral_source')
-      .eq('id', user.id)
-      .maybeSingle();
-    if (error) throw error;
-    return data as ResearcherProfile | null;
-  } catch (error: any) {
-    console.error('Error fetching own profile:', error);
-    return null;
-  }
-};
+export const getOwnProfile = async (): Promise<ResearcherProfile | null> =>
+  ownProfileCoalescer.run(async () => {
+    try {
+      const user = await getAuthUser();
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, phone_number, university, department, status, referral_source')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data as ResearcherProfile | null;
+    } catch (error: any) {
+      console.error('Error fetching own profile:', error);
+      return null;
+    }
+  });
 
 export const updateOwnProfile = async (updates: Partial<Omit<ResearcherProfile, 'id' | 'email'>>) => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error('Not authenticated');
+  // Cache dibuang DULU: kalau update berhasil tapi pembuangannya terlewat,
+  // ProfileForm memuat ulang dan mendapat datanya sendiri yang sudah basi.
+  ownProfileCoalescer.clear();
   const { error } = await supabase
     .from('profiles')
     .update(updates)
@@ -245,7 +319,7 @@ export interface VoucherRedemption {
  * karena gangguan sesaat.
  */
 export const hasRedeemedVoucher = async (code: string): Promise<boolean> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return false;
   const { data, error } = await supabase
     .from('voucher_redemptions')
@@ -269,7 +343,7 @@ export const hasRedeemedVoucher = async (code: string): Promise<boolean> => {
  * tetap diperbolehkan bila order lama dibatalkan admin / gagal / kadaluarsa.
  */
 export const hasActiveVoucherSubmission = async (code: string): Promise<boolean> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return false;
   const { data, error } = await supabase
     .from('form_submissions')
@@ -284,6 +358,32 @@ export const hasActiveVoucherSubmission = async (code: string): Promise<boolean>
     s.payment_status !== 'failed' &&
     s.payment_status !== 'expired' &&
     s.submission_status !== 'cancelled');
+};
+
+const voucherBlockedCoalescers = new Map<string, ReturnType<typeof createCoalescer<boolean>>>();
+
+/**
+ * Apakah voucher sekali-pakai `code` sudah terpakai oleh akun yang login.
+ *
+ * Menyatukan `hasRedeemedVoucher` + `hasActiveVoucherSubmission` menjadi SATU
+ * pertanyaan, dengan peredam per kode.
+ *
+ * Sebabnya terukur: `useIlkomunyBlocked` dipasang di EMPAT komponen sekaligus
+ * (StepCheckout, UnifiedHeader, Sidebar, MultiStepForm) karena total harga
+ * muncul di empat tempat. Tiap instance menjalankan kedua cek itu sendiri, jadi
+ * satu kali muat halaman menembakkan `voucher_redemptions` dan
+ * `form_submissions` masing-masing empat kali untuk jawaban yang identik.
+ */
+export const isVoucherBlockedForAccount = async (code: string): Promise<boolean> => {
+  const key = code.toUpperCase();
+  let coalescer = voucherBlockedCoalescers.get(key);
+  if (!coalescer) {
+    coalescer = createCoalescer<boolean>();
+    voucherBlockedCoalescers.set(key, coalescer);
+  }
+  return coalescer.run(async () =>
+    (await hasRedeemedVoucher(key)) || (await hasActiveVoucherSubmission(key)),
+  );
 };
 
 /**

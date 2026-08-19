@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { hasRedeemedVoucher, hasActiveVoucherSubmission } from '../utils/supabase';
+import { isVoucherBlockedForAccount } from '../utils/supabase';
 
 /**
  * True bila kode voucher yang diberikan adalah ILKOMUNY DAN akun yang login sudah
@@ -23,7 +23,7 @@ export function useIlkomunyBlocked(voucherCode: string | undefined): boolean {
       return;
     }
     (async () => {
-      const u = (await hasRedeemedVoucher('ILKOMUNY')) || (await hasActiveVoucherSubmission('ILKOMUNY'));
+      const u = await isVoucherBlockedForAccount('ILKOMUNY');
       if (!cancelled) setUsed(u);
     })();
     return () => { cancelled = true; };
