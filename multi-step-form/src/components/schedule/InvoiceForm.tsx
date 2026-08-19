@@ -287,13 +287,14 @@ export function InvoiceForm({
         memo: note.trim(),
         items: items.map(({ name, qty, price, category }) => ({ name, qty, price, category })),
       };
-      // Voucher dicatat di sini, bukan di kolom sendiri — `invoices` dan
-      // `transactions` belum punya `voucher_code`, dan menambahkannya butuh
-      // migrasi yang nomornya sudah dialokasikan ke Task 11 & 13. Untuk tagihan
-      // manual ini cukup: `amount`-nya sudah final (server tidak menghitung
-      // ulang), jadi catatan ini murni jejak audit "kenapa angkanya segini".
-      if (appliedVoucher.trim()) noteData.voucher_code = appliedVoucher.trim().toUpperCase();
+      // ⚠️ Voucher TIDAK lagi dititipkan di `note`. Sejak sql/53 ia punya kolom
+      // sendiri di `invoices` dan `transactions` — voucher milik TAGIHAN, bukan
+      // order, jadi dua jadwal di order yang sama boleh berbeda. Menulis ke dua
+      // tempat sekaligus berarti dua sumber kebenaran; titipan lama di `note`
+      // sudah di-backfill ke kolomnya oleh migrasi itu.
       if (entry.isExtension) noteData.extend_id = entry.sourceId;
+
+      const voucherCode = appliedVoucher.trim() ? appliedVoucher.trim().toUpperCase() : null;
 
       const paymentResponse = await createManualInvoice({
         formSubmissionId: submission.id,
@@ -319,6 +320,7 @@ export function InvoiceForm({
         ppn_rate: PPN_RATE,
         ppn_amount: ppn,
         status: 'pending',
+        voucher_code: voucherCode,
         ...attribution,
       };
       await createInvoice(invoiceData);
@@ -334,6 +336,7 @@ export function InvoiceForm({
         status: 'pending',
         payment_url: paymentResponse.invoice_url,
         note: JSON.stringify(noteData),
+        voucher_code: voucherCode,
         ...attribution,
       };
       await createTransaction(transactionData);

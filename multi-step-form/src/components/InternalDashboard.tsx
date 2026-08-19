@@ -317,6 +317,25 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
             return normalizeDate(b.created_at) - normalizeDate(a.created_at);
           });
 
+          /**
+           * ⚠️ `hasEverPaid` DI SINI SENGAJA TETAP `.some(paid)` — JANGAN
+           * DISERAGAMKAN DENGAN `ScheduleBilling.isSettled`.
+           *
+           * Namanya sama dengan yang dibuang dari `fetchSchedulePayments`
+           * (Task 13), tapi pertanyaannya berbeda. Yang ini berlingkup ORDER
+           * dan cuma dipakai satu hal: apakah hitung mundur "slot kedaluwarsa"
+           * boleh tampil (`CampaignActions.tsx`). Pertanyaannya "apakah ada
+           * uang yang pernah masuk?" — dan untuk itu `.some(paid)` memang
+           * jawaban yang benar.
+           *
+           * Menggantinya dengan `isSettled` akan memunculkan "Expired / <1h"
+           * pada order yang baru lunas sebagian, lalu slotnya dilepas padahal
+           * pembayarannya sudah diterima. Itu regresi, bukan perbaikan.
+           *
+           * Yang berbohong dan sudah diperbaiki adalah pemakaian per-JADWAL:
+           * di sana satu invoice lunas dipakai mengumumkan "Lunas" walau masih
+           * ada tagihan susulan terbuka.
+           */
           const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean, latestPaymentId?: string | null }> = {};
 
           if (mergedTx.length > 0) {

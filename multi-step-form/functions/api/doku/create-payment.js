@@ -213,16 +213,45 @@ export async function onRequest(context) {
         `prize_per_winner=${sub.prize_per_winner}, voucher_code=${sub.voucher_code}, distribution_type=${sub.distribution_type}. ` +
         `Correcting DB to server value.`
       );
-      const fixRes = await fetch(
-        `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}`,
-        {
-          method: 'PATCH',
-          headers: { ...sbHeaders, Prefer: 'return=minimal' },
-          body: JSON.stringify({ total_cost: amount, subtotal, ppn_amount: ppn }),
-        }
+      // ⚠️ KOREKSI INI BERHENTI BEGITU JADWALNYA SUDAH PERNAH DITAGIH.
+      //
+      // Sejak Task 13 `total_cost` berarti HARGA SAAT DIPESAN, bukan "yang
+      // ditagih" — yang ditagih hidup di `invoices`/`transactions` dan boleh
+      // lebih dari satu (tagihan susulan). Menimpa `total_cost` di sini akan
+      // menurunkan angka itu balik ke tarif hari ini secara diam-diam, di
+      // jalur uang, tepat setelah admin menaikkannya lewat InvoiceForm.
+      //
+      // Untuk order yang BELUM pernah ditagih, koreksinya tetap benar dan
+      // tetap jalan: itu pertahanan terhadap `total_cost` kiriman klien.
+      const billedRes = await fetch(
+        `${supabaseUrl}/rest/v1/invoices?form_submission_id=eq.${encodeURIComponent(formSubmissionId)}&select=id&limit=1`,
+        { headers: sbHeaders }
       );
-      if (!fixRes.ok) {
-        console.error(`[create-payment] Failed to correct total_cost (status ${fixRes.status})`);
+      const billedRows = billedRes.ok ? await billedRes.json() : null;
+      const hasBeenBilled = Array.isArray(billedRows) && billedRows.length > 0;
+
+      if (!billedRes.ok) {
+        // Gagal memastikan = jangan menimpa. Menebak "belum pernah ditagih"
+        // saat cek-nya gagal adalah cara kehilangan angka tagihan admin.
+        console.error(
+          `[create-payment] Could not verify existing invoices (status ${billedRes.status}); skipping total_cost correction.`
+        );
+      } else if (hasBeenBilled) {
+        console.warn(
+          `[create-payment] Schedule already billed — leaving total_cost at ${storedTotalCost} (server value ${amount}).`
+        );
+      } else {
+        const fixRes = await fetch(
+          `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}`,
+          {
+            method: 'PATCH',
+            headers: { ...sbHeaders, Prefer: 'return=minimal' },
+            body: JSON.stringify({ total_cost: amount, subtotal, ppn_amount: ppn }),
+          }
+        );
+        if (!fixRes.ok) {
+          console.error(`[create-payment] Failed to correct total_cost (status ${fixRes.status})`);
+        }
       }
     }
 
@@ -355,6 +384,8 @@ export async function onRequest(context) {
       });
     }
 
+    const voucherApplied = String(sub.voucher_code || '').trim() || null;
+
     // 5. Persist BOTH rows via service_role (bypasses RLS).
     //    `amount` is the PPN-inclusive grand total; subtotal/ppn_rate/ppn_amount
     //    record the tax breakdown for reconciliation and invoice rendering.
@@ -369,6 +400,12 @@ export async function onRequest(context) {
       status: 'pending',
       payment_url: paymentUrl,
       note: JSON.stringify({ items: noteItems }),
+      // Voucher milik TAGIHAN sejak sql/53. Yang dicatat adalah kode yang
+      // BENAR-BENAR dipakai `computeTotalCostFromSubmission` untuk menghitung
+      // `amount` di atas — termasuk kalau ia tidak cocok dengan voucher mana
+      // pun dan karenanya tidak memberi potongan. Ini jejak audit "kenapa
+      // angkanya segini", bukan klaim bahwa vouchernya sah.
+      voucher_code: voucherApplied,
     };
     const invoiceRow = {
       form_submission_id: formSubmissionId,
@@ -379,6 +416,7 @@ export async function onRequest(context) {
       ppn_rate: PPN_RATE,
       ppn_amount: ppn,
       status: 'pending',
+      voucher_code: voucherApplied,
     };
 
     const [txRes, invRes] = await Promise.all([

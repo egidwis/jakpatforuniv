@@ -6,7 +6,7 @@ import {
 import { Button } from '../../ui/button';
 import { Skeleton } from '../../ui/skeleton';
 import { cn } from '@/lib/utils';
-import type { AdScheduleEntry, SchedulePayment } from '@/utils/supabase';
+import type { AdScheduleEntry, ScheduleBilling, ScheduleInvoice } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
 import { copyToClipboard } from '../types';
 import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
@@ -29,22 +29,37 @@ import { deriveScheduleMoney } from './scheduleMoney';
 // begitu; admin melihat order yang sama sebaiknya melihat kerangka yang sama.
 // ─────────────────────────────────────────────────────────────
 
-type CardState = 'cancelled' | 'choose_schedule' | 'awaiting_invoice' | 'waiting_payment' | 'paid';
+type CardState =
+  | 'cancelled' | 'choose_schedule' | 'awaiting_invoice'
+  | 'waiting_payment' | 'partially_paid' | 'paid';
 
-function cardStateOf(entry: AdScheduleEntry, payment: SchedulePayment | undefined): CardState {
+/**
+ * ⚠️ `isSettled`, BUKAN "ada yang pernah lunas".
+ *
+ * Pendahulunya memakai `payment.hasEverPaid` — satu invoice lunas sudah cukup
+ * untuk mengumumkan "Lunas". Begitu satu jadwal boleh punya beberapa tagihan
+ * itu jadi kebohongan uang: `76XKVW5P` dibayar Rp 1.470.750 lalu ditagih
+ * Rp 61.050 lagi, dan kartunya tetap berkata lunas. `partially_paid` adalah
+ * keadaan yang dulu tidak punya nama.
+ */
+function cardStateOf(entry: AdScheduleEntry, billing: ScheduleBilling | undefined): CardState {
   if (entry.reviewStatus === 'rejected' || entry.reviewStatus === 'spam' || entry.status === 'cancelled') {
     return 'cancelled';
   }
   if (isUnscheduled(entry)) {
     return 'choose_schedule';
   }
-  const isPaid = payment?.hasEverPaid || ['paid', 'completed'].includes(entry.paymentStatus || '') || ['paid', 'completed'].includes(entry.status || '');
-  if (isPaid) {
+  if (billing?.isSettled) return 'paid';
+  // Sebagian order dibayar DI LUAR SISTEM dan tidak pernah punya baris tagihan
+  // (lihat memo payment-status-not-proof-of-payment). Untuk mereka status di
+  // baris jadwalnya satu-satunya bukti yang ada.
+  if (!billing?.invoices.length
+      && (['paid', 'completed'].includes(entry.paymentStatus || '')
+          || ['paid', 'completed'].includes(entry.status || ''))) {
     return 'paid';
   }
-  if (payment?.paymentId || payment?.paymentUrl) {
-    return 'waiting_payment';
-  }
+  if (billing && billing.paid > 0) return 'partially_paid';
+  if (billing?.invoices.length) return 'waiting_payment';
   return 'awaiting_invoice';
 }
 
@@ -62,9 +77,10 @@ function needsBilling(e: AdScheduleEntry): boolean {
 }
 
 /** Jadwal yang masih menunggu tindakan admin — inilah yang dibuka duluan. */
-function needsWork(e: AdScheduleEntry, p: SchedulePayment | undefined): boolean {
-  const state = cardStateOf(e, p);
-  return state === 'choose_schedule' || state === 'awaiting_invoice' || state === 'waiting_payment';
+function needsWork(e: AdScheduleEntry, b: ScheduleBilling | undefined): boolean {
+  const state = cardStateOf(e, b);
+  return state === 'choose_schedule' || state === 'awaiting_invoice'
+      || state === 'waiting_payment' || state === 'partially_paid';
 }
 
 /**
@@ -77,9 +93,9 @@ function needsWork(e: AdScheduleEntry, p: SchedulePayment | undefined): boolean 
  * terbuka. Admin tidak perlu klik-klik ekstra pada 90% kasus harian, tapi tetap
  * punya kendali untuk mencari apa yang macet.
  */
-function pickDefaultOpen(entries: AdScheduleEntry[], payments: Map<string, SchedulePayment>): string | null {
+function pickDefaultOpen(entries: AdScheduleEntry[], billings: Map<string, ScheduleBilling>): string | null {
   if (entries.length <= 1) return entries[0]?.id ?? null;
-  return entries.find((e) => needsWork(e, payments.get(e.id)))?.id ?? null;
+  return entries.find((e) => needsWork(e, billings.get(e.id)))?.id ?? null;
 }
 
 function ScheduleDateTitle({ entry }: { entry: AdScheduleEntry }) {
@@ -111,29 +127,175 @@ interface CardActions {
   onCreateInvoice: (entry: AdScheduleEntry) => void;
   /** Menerima `entry`: pelunasan berlingkup SATU jadwal sejak sql/51. */
   onMarkPaid: ((entry: AdScheduleEntry) => void) | null;
-  /** Batalkan pelunasan manual. Tombolnya hanya tampil kalau `payment.paymentChannel === 'MANUAL_VERIFIED'` — lihat gerbang di `unmarkScheduleAsPaid`. */
+  /** Batalkan pelunasan manual. Tombolnya hanya tampil kalau `billing.paymentChannel === 'MANUAL_VERIFIED'` — lihat gerbang di `unmarkScheduleAsPaid`. */
   onUnmarkPaid: ((entry: AdScheduleEntry) => void) | null;
+  /**
+   * Batalkan SATU tagihan yang belum dibayar. Berlingkup tagihan, bukan
+   * jadwal: jadwalnya tetap berdiri dan slotnya tidak dilepas.
+   */
+  onCancelInvoice: ((inv: ScheduleInvoice) => void) | null;
   /** null = jadwal ini tidak boleh dibatalkan dari sini. */
   onCancel: ((entry: AdScheduleEntry) => void) | null;
   /** "Lepaskan Slot" — lepaskan slot jadwal jika belum dibayar. */
   onReleaseSlot: ((entry: AdScheduleEntry) => void) | null;
 }
 
+/** Satu baris tagihan di dalam daftar. */
+function InvoiceRow({
+  inv, index, total, entry, actions,
+}: {
+  inv: ScheduleInvoice;
+  index: number;
+  total: number;
+  entry: AdScheduleEntry;
+  actions: CardActions;
+}) {
+  const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
+  const isLate = !inv.isPaid && ymd ? isPaymentTooLateForDate(ymd) : false;
+  const cutoff = ymd ? paymentCutoffInstant(ymd) : null;
+
+  // Checkout yang ditinggalkan: baris `transactions` pending tanpa invoice.
+  // Ia BUKAN tagihan — nol rupiah pernah ditagihkan — tapi tetap ditampilkan
+  // supaya admin tahu peneliti sempat membuka halaman bayar.
+  const isAbandoned = !inv.isPaid && !inv.isDead && inv.source === 'transaction';
+  const isStruck = inv.isDead || inv.isSuperseded || isAbandoned || isLate;
+  const invoiceUrl = inv.paymentId ? `/invoices/${inv.paymentId}` : null;
+
+  const label =
+    inv.isPaid ? null
+    : inv.status.toLowerCase() === 'cancelled' ? 'Tagihan dibatalkan'
+    : inv.isDead ? 'Kedaluwarsa'
+    : inv.isSuperseded ? 'Tersusul tagihan baru'
+    : isAbandoned ? 'Checkout ditinggalkan'
+    : isLate ? 'Batas bayar terlewat'
+    : null;
+
+  return (
+    <div className={cn('p-2.5 flex items-start justify-between gap-3', isStruck && 'bg-slate-50/60')}>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {total > 1 && (
+            <span className="text-[10px] font-bold text-slate-400 tabular-nums shrink-0">#{index + 1}</span>
+          )}
+          {invoiceUrl && !isStruck ? (
+            <a
+              href={invoiceUrl} target="_blank" rel="noopener noreferrer"
+              className="text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1 truncate"
+              title="Buka halaman invoice"
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span className="truncate">{inv.paymentId}</span>
+              <ExternalLink className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+            </a>
+          ) : (
+            <span className={cn(
+              'text-xs font-semibold inline-flex items-center gap-1 truncate',
+              isStruck ? 'text-slate-400' : 'text-slate-700',
+            )}>
+              <FileText className={cn('w-3.5 h-3.5 shrink-0', isStruck ? 'text-slate-300' : 'text-slate-400')} />
+              <span className={cn('truncate', isStruck && 'line-through opacity-70')}>{inv.paymentId}</span>
+            </span>
+          )}
+
+          {inv.paymentUrl && !inv.isPaid && !isStruck && (
+            <button
+              type="button"
+              onClick={() => copyToClipboard(inv.paymentUrl!, 'Link bayar berhasil disalin!')}
+              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              title="Salin link bayar"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap text-[10px]">
+          {inv.isPaid && (
+            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 text-xs">
+              <Check className="w-3.5 h-3.5" /> Lunas
+            </span>
+          )}
+          {inv.isPaid && inv.paymentChannel === 'MANUAL_VERIFIED' && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 rounded font-bold bg-amber-50 text-amber-800 border border-amber-200"
+              title="Audit: ditandai lunas manual oleh admin, bukan dari gateway DOKU"
+            >
+              Tandai Lunas
+            </span>
+          )}
+          {label && <span className="font-medium text-slate-500">{label}</span>}
+          {!inv.isPaid && !isStruck && cutoff && (
+            <span className="text-slate-500">
+              Batas: <strong className="font-semibold text-slate-700">{formatWibShort(cutoff.toISOString())}</strong>
+            </span>
+          )}
+          {inv.attempts > 1 && (
+            <span className="text-slate-400" title="Percobaan bayar untuk tagihan ini">
+              {inv.attempts} percobaan
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="text-right shrink-0 space-y-1">
+        <div className={cn(
+          'text-xs font-bold tabular-nums',
+          isStruck ? 'text-slate-400 line-through' : 'text-slate-900',
+        )}>
+          {formatIDR(inv.amount)}
+        </div>
+
+        {inv.isPaid && inv.paymentId && (
+          <a
+            href={`/invoices/${inv.paymentId}`} target="_blank" rel="noopener noreferrer"
+            className="text-xs font-semibold text-emerald-700 hover:underline inline-flex items-center gap-1"
+          >
+            Kuitansi <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+
+        {!inv.isPaid && !isStruck && (
+          <div className="flex flex-col items-end gap-1">
+            {actions.onMarkPaid && (
+              <Button
+                size="sm"
+                className="h-6 px-2 text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => actions.onMarkPaid!(entry)}
+              >
+                <Check className="w-3 h-3 mr-1" /> Tandai Lunas
+              </Button>
+            )}
+            {actions.onCancelInvoice && inv.source === 'invoice' && inv.paymentId && (
+              <button
+                type="button"
+                className="text-[10px] font-medium text-slate-400 hover:text-red-600 hover:underline transition-colors"
+                onClick={() => actions.onCancelInvoice!(inv)}
+              >
+                Batalkan tagihan
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
- * Tagihan & pembayaran untuk SATU jadwal.
+ * Tagihan & pembayaran untuk SATU jadwal — sebuah DAFTAR.
  *
- * ⚠️ SATU TAGIHAN, BUKAN DAFTAR. `SchedulePayment` sengaja memuat satu
- * pembayaran per jadwal: sebelum `schedule_id` (Task 11) ada, beberapa baris
- * `transactions` untuk satu jadwal adalah PERCOBAAN BAYAR BERULANG, bukan
- * tagihan terpisah — merendernya sebagai daftar akan menjumlahkan ulang uang
- * yang sama. Tampilan multi-invoice yang sebenarnya adalah pekerjaan Task 13;
- * rancangannya sudah dicatat di rencana itu.
+ * ⚠️ Pendahulunya (`PaymentSection`) sengaja BUKAN daftar, dan komentarnya
+ * menjelaskan kenapa: sebelum `schedule_id` ada, beberapa baris untuk satu
+ * jadwal tidak bisa dibedakan dari percobaan bayar berulang. Task 11
+ * memberikan penautan itu dan `sql/53` memisahkan keduanya di SQL, jadi
+ * larangan tersebut sudah kedaluwarsa — dan dihapus bersama komponennya
+ * supaya tidak terbaca sebagai aturan yang masih berlaku.
  */
-function PaymentSection({
-  entry, payment, state, actions,
+function BillingSection({
+  entry, billing, state, actions,
 }: {
   entry: AdScheduleEntry;
-  payment: SchedulePayment | undefined;
+  billing: ScheduleBilling | undefined;
   state: CardState;
   actions: CardActions;
 }) {
@@ -168,120 +330,38 @@ function PaymentSection({
     );
   }
 
+  const invoices = billing?.invoices ?? [];
   const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
-  const isLate = !payment?.hasEverPaid && state !== 'paid' && ymd ? isPaymentTooLateForDate(ymd) : false;
-  const cutoff = ymd ? paymentCutoffInstant(ymd) : null;
+  const isLate = state !== 'paid' && ymd ? isPaymentTooLateForDate(ymd) : false;
 
-  // ⚠️ CABANG LUNAS WAJIB DI ATAS CABANG "BELUM ADA TAGIHAN", JANGAN DIBALIK.
-  // Sebagian order dibayar di luar sistem dan tidak pernah punya baris
-  // `transactions` (lihat memo payment-status-not-proof-of-payment). Kalau
-  // urutannya terbalik, jadwal yang sudah lunas malah menampilkan ajakan
-  // "Terbitkan tagihan" lengkap dengan tombolnya.
-  if (state === 'paid') {
-    const isManual =
-      !payment ||
-      payment.paymentMethod === 'manual' ||
-      payment.paymentChannel === 'MANUAL_VERIFIED' ||
-      (!payment.paymentChannel && payment.paymentMethod !== 'doku');
-
-    return (
-      <div className="space-y-2 pt-1 border-t border-slate-200">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-bold text-slate-700 inline-flex items-center gap-1.5">
-            <CreditCard className="w-3.5 h-3.5 text-slate-500" />
-            Tagihan &amp; Pembayaran
-          </span>
-          {payment && payment.attempts > 1 && (
-            <span className="text-[10px] font-medium text-slate-400" title="Jumlah percobaan bayar untuk jadwal ini">
-              {payment.attempts} percobaan bayar
+  // ⚠️ CABANG "BELUM ADA TAGIHAN" DIUKUR DARI DAFTAR YANG KOSONG, BUKAN DARI
+  // KEADAAN KARTU. Sebagian order dibayar di luar sistem dan tidak pernah punya
+  // baris tagihan sama sekali (lihat memo payment-status-not-proof-of-payment);
+  // untuk mereka `cardStateOf` sudah mengembalikan 'paid' lewat status baris
+  // jadwal, jadi mereka tidak pernah sampai ke ajakan "Terbitkan tagihan".
+  if (invoices.length === 0) {
+    if (state === 'paid') {
+      return (
+        <div className="space-y-2 pt-1 border-t border-slate-200">
+          <SectionHeader count={0} />
+          <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+              <Check className="w-3.5 h-3.5" /> Lunas
             </span>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-          <div className="p-2.5 flex items-center justify-between gap-3 bg-slate-50/40">
-            <div className="min-w-0 flex-1 space-y-1">
-              {payment?.paymentId && (
-                <span className="text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 truncate">
-                  <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span className="truncate">{payment.paymentId}</span>
-                </span>
-              )}
-              <div className="flex items-center gap-2 text-xs flex-wrap">
-                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
-                  <Check className="w-3.5 h-3.5" /> Lunas
-                </span>
-                {isManual && (
-                  <span
-                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
-                    title="Audit: Pembayaran ditandai lunas manual (Tandai Lunas oleh Admin, bukan dari gateway DOKU)"
-                  >
-                    Tandai Lunas
-                  </span>
-                )}
-                {!payment && (
-                  <span className="text-[10px] text-slate-400">tanpa catatan tagihan di sistem</span>
-                )}
-              </div>
-            </div>
-
-            <div className="text-right shrink-0 space-y-1">
-              {payment && payment.amount > 0 && (
-                <div className="text-xs font-bold text-slate-900 tabular-nums">
-                  {formatIDR(payment.amount)}
-                </div>
-              )}
-              {payment?.paymentId && (
-                <a
-                  href={`/invoices/${payment.paymentId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold text-emerald-700 hover:underline inline-flex items-center gap-1"
-                >
-                  Kuitansi <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-            </div>
+            <span className="text-[10px] text-slate-400">tanpa catatan tagihan di sistem</span>
           </div>
         </div>
+      );
+    }
 
-        {/*
-          ⚠️ Gerbangnya SENGAJA lebih sempit dari `isManual` di atas. `isManual`
-          juga bernilai true untuk `!payment` (order dibayar di luar sistem,
-          tidak ada baris `transactions` sama sekali — tidak ada apa pun untuk
-          dibalik) dan untuk kombinasi longgar lain. Undo hanya boleh muncul
-          kalau `unmarkScheduleAsPaid()` punya sesuatu YANG PASTI bisa
-          dibalikkan: baris `transactions` yang literal ditulis fungsi itu
-          sendiri (`payment_channel === 'MANUAL_VERIFIED'`, sql/59).
-        */}
-        {actions.onUnmarkPaid && payment?.paymentChannel === 'MANUAL_VERIFIED' && (
-          <button
-            type="button"
-            className="text-[11px] font-medium text-slate-400 hover:text-red-600 hover:underline transition-colors"
-            onClick={() => actions.onUnmarkPaid!(entry)}
-          >
-            Tandai belum lunas
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // Belum ada tagihan sama sekali untuk jadwal ini.
-  if (!payment?.paymentId && !payment?.paymentUrl) {
     return (
       <div className="space-y-2 pt-1 border-t border-slate-200">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-bold text-slate-700 inline-flex items-center gap-1.5">
-            <CreditCard className="w-3.5 h-3.5 text-slate-500" />
-            Tagihan &amp; Pembayaran
-          </span>
-        </div>
+        <SectionHeader count={0} />
         <div className={cn(
-          "rounded-lg border px-3 py-2.5 space-y-2",
-          isLate ? "border-red-200 bg-red-50/60" : "border-amber-200 bg-amber-50/60"
+          'rounded-lg border px-3 py-2.5 space-y-2',
+          isLate ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60',
         )}>
-          <p className={cn("text-[11px] leading-snug", isLate ? "text-red-900" : "text-amber-900")}>
+          <p className={cn('text-[11px] leading-snug', isLate ? 'text-red-900' : 'text-amber-900')}>
             {isLate
               ? 'Batas waktu pembayaran untuk slot ini sudah terlewat. Silakan buat jadwal baru.'
               : 'Slot tayang sudah dipesan. Terbitkan tagihan supaya peneliti bisa membayar.'}
@@ -312,107 +392,103 @@ function PaymentSection({
     );
   }
 
-  const paymentId = payment.paymentId;
-  const invoiceUrl = paymentId ? `/invoices/${paymentId}` : null;
+  const b = billing!;
+  // Aturan SATU TAGIHAN TERBUKA PER JADWAL. Bukan kerapian: peneliti hanya
+  // melihat tagihan TERAKHIR, jadi menerbitkan tagihan kedua selagi ada yang
+  // menggantung akan menyembunyikan yang pertama dari orang yang harus
+  // membayarnya. Penjaga keduanya ada di DB (`schedule_billing_summary`).
+  const canTopUp = b.openInvoice === null;
 
   return (
     <div className="space-y-2 pt-1 border-t border-slate-200">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-bold text-slate-700 inline-flex items-center gap-1.5">
-          <CreditCard className="w-3.5 h-3.5 text-slate-500" />
-          Tagihan &amp; Pembayaran
-        </span>
-        {payment.attempts > 1 && (
-          <span className="text-[10px] font-medium text-slate-400" title="Jumlah percobaan bayar untuk jadwal ini">
-            {payment.attempts} percobaan bayar
+      <SectionHeader count={invoices.length} />
+
+      {b.billed > 0 && (
+        <div className="flex items-center justify-between gap-2 text-[11px] px-0.5">
+          <span className="text-slate-500">
+            <strong className="font-semibold text-slate-700 tabular-nums">{formatIDR(b.billed)}</strong> ditagih
           </span>
-        )}
+          {b.outstanding > 0 ? (
+            <span className="font-semibold text-amber-700 tabular-nums">
+              {formatIDR(b.outstanding)} belum masuk
+            </span>
+          ) : (
+            <span className="font-semibold text-emerald-700">Lunas seluruhnya</span>
+          )}
+        </div>
+      )}
+
+      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
+        {invoices.map((inv, i) => (
+          <InvoiceRow
+            key={inv.paymentId ?? `${inv.createdAt}-${i}`}
+            inv={inv}
+            index={i}
+            total={invoices.length}
+            entry={entry}
+            actions={actions}
+          />
+        ))}
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-        <div className={cn(
-          "p-2.5 flex items-center justify-between gap-3",
-          isLate ? "bg-slate-50/80" : "bg-white"
-        )}>
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {isLate ? (
-                <span
-                  className="text-xs font-semibold text-slate-400 inline-flex items-center gap-1 truncate cursor-not-allowed"
-                  title="Batas bayar terlewat — invoice sudah tidak berlaku"
-                >
-                  <FileText className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                  <span className="truncate line-through opacity-70">{paymentId}</span>
-                </span>
-              ) : (
-                <>
-                  {invoiceUrl && (
-                    <a
-                      href={invoiceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1 truncate"
-                      title="Buka halaman invoice"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                      <span className="truncate">{paymentId}</span>
-                      <ExternalLink className="w-2.5 h-2.5 text-blue-400 shrink-0" />
-                    </a>
-                  )}
+      <div className="flex items-center justify-between gap-2">
+        {actions.onCreateInvoice && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canTopUp}
+            title={canTopUp
+              ? 'Terbitkan tagihan tambahan untuk jadwal ini'
+              : 'Masih ada tagihan yang belum dibayar. Peneliti hanya melihat tagihan terakhir, jadi tagihan baru akan menyembunyikannya.'}
+            className="h-7 text-[11px] border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            onClick={() => actions.onCreateInvoice(entry)}
+          >
+            <CreditCard className="w-3 h-3 mr-1.5" /> Tagih Susulan
+          </Button>
+        )}
 
-                  {payment.paymentUrl && (
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(payment.paymentUrl!, 'Link bayar berhasil disalin!')}
-                      className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                      title="Salin link bayar"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="text-[10px] text-slate-500">
-              {isLate ? (
-                <span className="font-semibold text-red-600">Batas bayar terlewat</span>
-              ) : cutoff ? (
-                <span>Batas: <strong className="font-semibold text-slate-700">{formatWibShort(cutoff.toISOString())}</strong></span>
-              ) : (
-                <span className="text-amber-700 font-medium">Menunggu pembayaran</span>
-              )}
-            </div>
-          </div>
-
-          <div className="text-right shrink-0 space-y-1">
-            <div className={cn(
-              "text-xs font-bold tabular-nums",
-              isLate ? "text-slate-400 line-through" : "text-slate-900"
-            )}>
-              {formatIDR(payment.amount)}
-            </div>
-            {actions.onMarkPaid && !isLate && (
-              <Button
-                size="sm"
-                className="h-6 px-2 text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={() => actions.onMarkPaid!(entry)}
-              >
-                <Check className="w-3 h-3 mr-1" /> Tandai Lunas
-              </Button>
-            )}
-          </div>
-        </div>
+        {/*
+          ⚠️ Gerbangnya SENGAJA sempit. Undo hanya boleh muncul kalau
+          `unmarkScheduleAsPaid()` punya sesuatu YANG PASTI bisa dibalikkan:
+          baris `transactions` yang literal ditulis fungsi itu sendiri
+          (`payment_channel === 'MANUAL_VERIFIED'`, sql/59). Pelunasan lewat
+          gateway DOKU tidak pernah memakai nilai itu.
+        */}
+        {actions.onUnmarkPaid && b.paymentChannel === 'MANUAL_VERIFIED' && (
+          <button
+            type="button"
+            className="text-[11px] font-medium text-slate-400 hover:text-red-600 hover:underline transition-colors"
+            onClick={() => actions.onUnmarkPaid!(entry)}
+          >
+            Tandai belum lunas
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
+function SectionHeader({ count }: { count: number }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[11px] font-bold text-slate-700 inline-flex items-center gap-1.5">
+        <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+        Tagihan &amp; Pembayaran
+      </span>
+      {count > 1 && (
+        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full px-1.5 py-0.5 tabular-nums">
+          {count}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ScheduleCard({
-  entry, payment, submission, isOpen, isOnly, onToggle, actions,
+  entry, billing, submission, isOpen, isOnly, onToggle, actions,
 }: {
   entry: AdScheduleEntry;
-  payment: SchedulePayment | undefined;
+  billing: ScheduleBilling | undefined;
   submission: {
     questionCount?: number | null;
     question_count?: number | null;
@@ -425,12 +501,12 @@ function ScheduleCard({
   actions: CardActions;
 }) {
   const money = deriveScheduleMoney(entry, submission);
-  const state = cardStateOf(entry, payment);
+  const state = cardStateOf(entry, billing);
   const isKilat = entry.distributionType === 'kilat';
   const isBookedByUser = entry.slotBookedBy?.toLowerCase() === 'user' || entry.slotBookedBy?.toLowerCase() === 'customer';
   const actor = isBookedByUser ? 'Customer' : 'Admin';
   const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
-  const isLate = !payment?.hasEverPaid && state !== 'paid' && ymd ? isPaymentTooLateForDate(ymd) : false;
+  const isLate = state !== 'paid' && state !== 'partially_paid' && ymd ? isPaymentTooLateForDate(ymd) : false;
 
   const summary = (
     <div className="min-w-0 flex-1 space-y-1">
@@ -498,7 +574,7 @@ function ScheduleCard({
         <p className="text-[11px] text-slate-400 italic">{money.note}</p>
       )}
 
-      <PaymentSection entry={entry} payment={payment} state={state} actions={actions} />
+      <BillingSection entry={entry} billing={billing} state={state} actions={actions} />
 
       {/* Aksi jadwal: Ganti Jadwal / Buat Jadwal Baru di kiri, Lepaskan Slot di kanan (hanya jika belum bayar) */}
       {state !== 'cancelled' && (
@@ -518,7 +594,7 @@ function ScheduleCard({
             {isLate ? 'Buat Jadwal Baru' : isUnscheduled(entry) ? 'Pilih Jadwal' : 'Ganti Jadwal'}
           </Button>
 
-          {actions.onReleaseSlot && !payment?.hasEverPaid && state !== 'paid' && (
+          {actions.onReleaseSlot && !billing?.paid && state !== 'paid' && (
             <Button
               size="sm"
               variant="outline"
@@ -530,7 +606,7 @@ function ScheduleCard({
             </Button>
           )}
 
-          {actions.onCancel && entry.isExtension && !payment?.hasEverPaid && (
+          {actions.onCancel && entry.isExtension && !billing?.paid && (
             <Button
               size="sm"
               variant="outline"
@@ -572,10 +648,10 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, payments, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancel, onReleaseSlot,
+  entries, billings, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancel, onReleaseSlot,
 }: {
   entries: AdScheduleEntry[];
-  payments: Map<string, SchedulePayment>;
+  billings: Map<string, ScheduleBilling>;
   submission: { questionCount?: number | null; distribution_type?: string | null; submission_status?: string | null; status?: string | null };
   onEditSchedule: (entry: AdScheduleEntry) => void;
   onCreateSchedule?: (isExtraAd: boolean) => void;
@@ -591,6 +667,16 @@ export function ScheduleCardList({
    */
   onCancel: ((entry: AdScheduleEntry) => void) | null;
   /**
+   * Batalkan SATU tagihan yang belum dibayar — bukan jadwalnya.
+   *
+   * ⚠️ Jangan disamakan dengan `onCancel` di atas. Yang ini berlingkup
+   * TAGIHAN: jadwalnya tetap berdiri, slotnya tidak dilepas, dan tagihan lain
+   * di jadwal yang sama tidak tersentuh. Ia ada karena tagihan yang salah
+   * terbit sebelumnya tidak punya jalan keluar sama sekali — 194 invoice
+   * `pending` menggantung di produksi saat fitur ini dibuat.
+   */
+  onCancelInvoice: ((inv: ScheduleInvoice) => void) | null;
+  /**
    * null = tombolnya tidak boleh dirender di dalam kartu (order sudah lunas).
    *
    * Sejak sql/51 pelunasan berlingkup SATU jadwal lewat `markScheduleAsPaid()`,
@@ -602,7 +688,7 @@ export function ScheduleCardList({
   /**
    * null = tombol "Tandai belum lunas" tidak boleh dirender.
    *
-   * Kartunya sendiri menyempitkan lagi ke `payment.paymentChannel ===
+   * Kartunya sendiri menyempitkan lagi ke `billing.paymentChannel ===
    * 'MANUAL_VERIFIED'` — lihat komentar di `unmarkScheduleAsPaid()` kenapa
    * gerbang itu harus seketat itu.
    */
@@ -617,17 +703,17 @@ export function ScheduleCardList({
    */
   onReleaseSlot: ((entry: AdScheduleEntry) => void) | null;
 }) {
-  const [openId, setOpenId] = useState<string | null>(() => pickDefaultOpen(entries, payments));
+  const [openId, setOpenId] = useState<string | null>(() => pickDefaultOpen(entries, billings));
   const isOnly = entries.length === 1;
 
   const summary = useMemo(() => {
     const billed = entries.reduce((sum, e) => sum + e.totalCost, 0);
     const unpaid = entries.filter((e) => {
-      const s = cardStateOf(e, payments.get(e.id));
+      const s = cardStateOf(e, billings.get(e.id));
       return s !== 'paid' && s !== 'cancelled';
     }).length;
     return { billed, unpaid };
-  }, [entries, payments]);
+  }, [entries, billings]);
 
   if (entries.length === 0) {
     const isSpamOrRejected =
@@ -681,12 +767,12 @@ export function ScheduleCardList({
         <ScheduleCard
           key={e.id}
           entry={e}
-          payment={payments.get(e.id)}
+          billing={billings.get(e.id)}
           submission={submission}
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancel, onReleaseSlot }}
+          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancel, onReleaseSlot }}
         />
       ))}
     </div>

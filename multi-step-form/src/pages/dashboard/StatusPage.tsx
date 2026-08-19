@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, dismissRejectedSubmission, prepareForReschedule, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, dismissRejectedSubmission, prepareForReschedule, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
 import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
@@ -143,7 +143,6 @@ export function StatusPage() {
                             // Separate the survey's own transaction from extend transactions,
                             // which share the same form_submission_id (entity_type='extend').
                             const mainTx = transactions.filter((tx) => tx.entity_type !== 'extend');
-                            const extendTx = transactions.filter((tx) => tx.entity_type === 'extend');
 
                             if (mainTx.length > 0) {
                                 const paidTx = mainTx.find((tx) => tx.status === 'completed' || tx.status === 'paid');
@@ -157,20 +156,37 @@ export function StatusPage() {
                             }
 
                             // Peta pembayaran per jadwal, dikunci `sourceId`.
-                            // `extend_id` MEMANG `sourceId` jadwal ke-2 dst. —
-                            // itu kunci yang sama yang dipakai cermin, jadi
-                            // tidak ada penerjemahan di sini.
+                            //
+                            // ⚠️ DULU INI MENGAMBIL TRANSAKSI PERTAMA YANG
+                            // KEBETULAN COCOK. Sejak satu jadwal boleh punya
+                            // beberapa tagihan (Task 13), "yang pertama" bisa
+                            // saja tagihan lama yang sudah lunas — dan tombol
+                            // bayar peneliti akan menunjuk ke sana, bukan ke
+                            // tagihan yang sedang menunggu dibayar.
+                            //
+                            // `schedule_billing_bulk` (sql/53) yang memutuskan
+                            // mana yang terbuka, dengan aturan yang sama persis
+                            // dengan layar admin. Peneliti tetap hanya melihat
+                            // SATU tagihan — keputusan pemilik produk — tapi
+                            // sekarang tagihan yang benar.
                             const payMap: SchedulePaymentMap = {};
-                            extendTx.forEach((tx) => {
-                                if (tx.extend_id && !payMap[tx.extend_id]) {
-                                    payMap[tx.extend_id] = {
-                                        paymentUrl: tx.payment_url || null,
-                                        paymentId: tx.payment_id || null,
-                                        status: tx.status || null,
-                                        amount: tx.amount || 0,
+                            try {
+                                const billings = await fetchScheduleBilling(submission.id);
+                                billings.forEach((b) => {
+                                    const shown = b.openInvoice ?? b.invoices.find((i) => i.isPaid) ?? null;
+                                    payMap[b.sourceId] = {
+                                        paymentUrl: b.openInvoice?.paymentUrl || null,
+                                        paymentId: shown?.paymentId || null,
+                                        // `isSettled`, bukan "ada yang pernah lunas":
+                                        // jadwal yang masih menyisakan tagihan
+                                        // susulan harus tetap terbaca menunggu bayar.
+                                        status: b.isSettled ? 'paid' : (shown?.status || null),
+                                        amount: b.billed || shown?.amount || 0,
                                     };
-                                }
-                            });
+                                });
+                            } catch (e) {
+                                console.error(`Gagal memuat tagihan per jadwal untuk ${submission.id}:`, e);
+                            }
                             schedPayments[submission.id] = payMap;
                         } catch (e) {
                             console.error(`Error fetching transactions for ${submission.id}:`, e);

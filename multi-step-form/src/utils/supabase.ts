@@ -377,6 +377,8 @@ export interface Transaction {
   note?: string;
   entity_type?: 'submission' | 'extend';
   extend_id?: string;
+  /** Voucher milik TAGIHAN, bukan order (sql/53). NULL = tanpa voucher. */
+  voucher_code?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -394,6 +396,8 @@ export interface Invoice {
   status: string;
   entity_type?: 'submission' | 'extend';
   extend_id?: string;
+  /** Voucher milik TAGIHAN, bukan order (sql/53). NULL = tanpa voucher. */
+  voucher_code?: string | null;
   created_at?: string;
   expires_at?: string;
   paid_at?: string;
@@ -787,6 +791,55 @@ export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry) => {
       .eq('id', entry.sourceId);
     if (error) throw error;
   }
+};
+
+/**
+ * Batalkan SATU tagihan — bukan jadwalnya, bukan pembayarannya.
+ *
+ * Sebelum ini tidak ada jalan keluar untuk tagihan yang salah terbit: ia
+ * menggantung selamanya. Akibatnya terukur di produksi saat fitur ini dibuat —
+ * 194 invoice `pending` di 146 jadwal, dan cacat seperti `V3M9285H` yang punya
+ * tagihan Rp 370.000 DAN Rp 3.700.000 di hari yang sama (satu nol kelebihan).
+ *
+ * Sesudah dibatalkan: statusnya `cancelled` (rank 2 di `payment_status_rank`,
+ * sql/53), jadi ia otomatis keluar dari `billed` dan membebaskan penjaga "satu
+ * tagihan terbuka per jadwal". Barisnya TIDAK dihapus — kartu tetap
+ * menampilkannya dicoret, karena riwayat tagihan adalah catatan uang.
+ *
+ * ⚠️ HANYA UNTUK TAGIHAN YANG BELUM DIBAYAR. Filter `.eq('status','pending')`
+ * mengulang syarat itu di level DB. Membatalkan tagihan lunas bukan
+ * pembatalan, melainkan REFUND — dan refund diurus finance di luar sistem
+ * (keputusan pemilik produk 2026-08-09).
+ *
+ * ⚠️ INI TIDAK MEMATIKAN LINK DOKU. Kami tidak memanggil API pembatalan DOKU,
+ * jadi VA yang sudah terbit masih bisa dibayar dari sisi bank. Kalau uangnya
+ * sungguh datang, webhook tetap mencatatnya dan tagihan ini hidup lagi sebagai
+ * lunas. Itu DISENGAJA: uang yang benar-benar diterima harus selalu menang
+ * atas status di layar — kebalikannya berarti kehilangan pembayaran.
+ *
+ * Mengembalikan jumlah baris yang benar-benar berubah. ⚠️ Jangan buang nilai
+ * itu: `.update()` tanpa `.select()` TIDAK melempar error saat RLS menyaring
+ * hasilnya jadi nol baris — persis cara "Tandai Lunas" gagal diam-diam selama
+ * berbulan-bulan sebelum `sql/59`.
+ */
+export const cancelInvoice = async (paymentId: string): Promise<number> => {
+  const { data: invRows, error: invErr } = await supabase
+    .from('invoices')
+    .update({ status: 'cancelled' })
+    .eq('payment_id', paymentId)
+    .eq('status', 'pending')
+    .select('id');
+  if (invErr) throw invErr;
+
+  const { data: txnRows, error: txnErr } = await supabase
+    .from('transactions')
+    .update({ status: 'cancelled' })
+    .eq('payment_id', paymentId)
+    .eq('status', 'pending')
+    .select('id');
+  if (txnErr) throw txnErr;
+
+  return (invRows?.length || 0) + (txnRows?.length || 0);
 };
 
 /**
@@ -2719,82 +2772,134 @@ export const fetchAdSchedules = async (
   });
 };
 
-/** Pembayaran milik SATU jadwal, bukan satu order. */
-export interface SchedulePayment {
-  /** Status transaksi terbaru untuk jadwal ini. */
-  status: string | null;
+/** Satu PERISTIWA TAGIHAN — satu `payment_id`, bukan satu baris tabel. */
+export interface ScheduleInvoice {
   paymentId: string | null;
-  paymentUrl: string | null;
   amount: number;
-  /** Berapa kali dicoba bayar. 76 jadwal di produksi punya lebih dari satu. */
+  status: string;
+  paymentUrl: string | null;
+  createdAt: string;
+  /** `invoice` = admin menagih. `transaction` = orang membuka halaman bayar. */
+  source: 'invoice' | 'transaction';
+  voucherCode: string | null;
+  /** Percobaan bayar untuk tagihan INI saja. */
   attempts: number;
-  hasEverPaid: boolean;
-  paymentMethod?: string | null;
-  paymentChannel?: string | null;
+  /**
+   * Masih menggantung, tapi ada pembayaran lunas yang lebih baru di jadwal
+   * yang sama — tanda ia diterbitkan ulang. Tetap ditampilkan (sejarah tidak
+   * dihapus) tapi tidak dihitung sebagai piutang.
+   */
+  isSuperseded: boolean;
+  paymentMethod: string | null;
+  paymentChannel: string | null;
+  isPaid: boolean;
+  /** expired / failed / cancelled — sudah tidak bisa dibayar. */
+  isDead: boolean;
 }
 
-/**
- * Peta jadwal -> pembayarannya, untuk satu order.
- *
- * ⚠️ INI YANG MEMBUAT PEMBAYARAN BOLEH MASUK KE DALAM KARTU JADWAL.
- * `transactions` sudah membedakan pemiliknya sejak lama lewat `entity_type` +
- * `extend_id` — 617 baris 'submission' dan 10 baris 'extend' per 2026-08-08,
- * `entity_type` konsisten 100%. Jadi menautkan pembayaran ke jadwal bukan
- * kemampuan baru; ia sudah ada dan belum pernah dipakai di layar admin.
- *
- * Kuncinya `sourceId`, bukan `submissionId`: sebuah order berjadwal banyak
- * punya beberapa transaksi, dan memakai `submissionId` akan menempelkan
- * pembayaran jadwal #2 ke kartu jadwal #1.
- *
- * Task 11 akan menggantikan pencocokan ini dengan kolom `schedule_id` yang
- * eksplisit; sampai saat itu bentuk lama inilah satu-satunya penautnya.
- *
- * ⚠️ SATU PEMBAYARAN PER JADWAL — JANGAN DIJADIKAN DAFTAR SEBELUM TASK 11.
- * Beberapa baris untuk satu `sourceId` di data hari ini adalah PERCOBAAN BAYAR
- * BERULANG, bukan tagihan terpisah: 82 sumber punya >1 baris, dan pada 33 di
- * antaranya menjumlahkan `amount` melebihi yang benar-benar dibayar (satu order
- * nyata: lunas Rp 1.150.000, jumlah semua baris Rp 3.450.000). Karena itu
- * `amount` di sini adalah nilai transaksi TERBARU dan `attempts` hanya
- * mencacah percobaan. Rancangan multi-invoice per jadwal ada di rencana
- * Task 13 dan butuh `schedule_id` dari Task 11 lebih dulu.
- */
-export const fetchSchedulePayments = async (
-  submissionId: string,
-  schedules: AdScheduleEntry[],
-): Promise<Map<string, SchedulePayment>> => {
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('payment_id, payment_url, amount, status, entity_type, extend_id, created_at, payment_method, payment_channel')
-    .eq('form_submission_id', submissionId)
-    .order('created_at', { ascending: false });
+/** Ringkasan uang SATU jadwal. */
+export interface ScheduleBilling {
+  /**
+   * Kunci yang dipakai dashboard peneliti (`airingPeriods.ts`): id
+   * `form_submissions` untuk ordinal 1, id jadwal untuk sisanya. Datang dari
+   * DB supaya aturan penurunannya tidak disalin lagi di klien.
+   */
+  sourceId: string;
+  /** Terbaru dulu. Memuat SEMUA peristiwa, termasuk yang mati & tersusul. */
+  invoices: ScheduleInvoice[];
+  billed: number;
+  paid: number;
+  outstanding: number;
+  /** Sudah ditagih dan lunas. Menggantikan `hasEverPaid` yang berbohong. */
+  isSettled: boolean;
+  /** Satu-satunya tagihan yang masih menunggu dibayar, kalau ada. */
+  openInvoice: ScheduleInvoice | null;
+  /** Dari pembayaran lunas terakhir — gerbang aksi "Tandai belum lunas". */
+  paymentMethod: string | null;
+  paymentChannel: string | null;
+}
 
+const DEAD_PAYMENT_STATUSES = ['expired', 'failed', 'cancelled'];
+const PAID_PAYMENT_STATUSES = ['paid', 'completed'];
+
+/**
+ * Peta jadwal -> uangnya, untuk satu order. Satu round-trip, bukan N.
+ *
+ * ⚠️ SATU JADWAL BOLEH PUNYA BEBERAPA TAGIHAN — dan itu sudah terjadi di
+ * lapangan sebelum fitur ini ada. `76XKVW5P` dibayar Rp 1.470.750 lalu
+ * Rp 61.050; `43MG75Y5` Rp 1.000.000 lalu Rp 500.000. Pendahulu fungsi ini
+ * (`fetchSchedulePayments`) melipat semuanya jadi SATU objek ber-`hasEverPaid`,
+ * jadi 14 jadwal beruang sungguhan mengumumkan "Lunas" padahal bersisa.
+ *
+ * ⚠️ AGREGASINYA DI SQL, BUKAN DI SINI. `schedule_billing_bulk()` (sql/53)
+ * menggabungkan `invoices` + `transactions` ber-kunci `payment_id`. Alasannya
+ * bukan performa:
+ *
+ *   - `invoices` SENDIRIAN tidak cukup. 190 jadwal di produksi hanya punya
+ *     `transactions` — 79 di antaranya lunas, senilai Rp 44.759.000. 185 dari
+ *     sejarah (`create-payment.js` baru menulis `invoices` sejak 2026-07-01),
+ *     5 sisanya karena sisipan invoice-nya boleh gagal diam-diam.
+ *   - `transactions` SENDIRIAN juga tidak. Pending di sana adalah checkout
+ *     yang ditinggalkan, bukan tagihan: 121 peristiwa senilai Rp 1,08 miliar.
+ *
+ * Aturan lengkapnya ada di kepala `sql/53_schedule_billing.sql`. Jangan
+ * menyalinnya ke sini — ini pembaca, bukan pemilik aturan.
+ */
+export const fetchScheduleBilling = async (
+  submissionId: string,
+): Promise<Map<string, ScheduleBilling>> => {
+  const { data, error } = await supabase
+    .rpc('schedule_billing_bulk', { p_submission_id: submissionId });
   if (error) throw error;
 
-  const bySource = new Map<string, any[]>();
-  for (const tx of data || []) {
-    // entity_type 'extend' -> milik baris form_submissions_extend tertentu.
-    // Selain itu -> jadwal pertama, yang source_id-nya adalah id submission.
-    const key = tx.entity_type === 'extend' && tx.extend_id ? tx.extend_id : submissionId;
-    const list = bySource.get(key);
-    if (list) list.push(tx);
-    else bySource.set(key, [tx]);
+  const rows = (data || []) as any[];
+  const bySchedule = new Map<string, ScheduleInvoice[]>();
+  const sourceIds = new Map<string, string>();
+
+  for (const r of rows) {
+    const status = String(r.status || '');
+    const inv: ScheduleInvoice = {
+      paymentId: r.payment_id ?? null,
+      amount: Number(r.amount || 0),
+      status,
+      paymentUrl: r.payment_url ?? null,
+      createdAt: r.created_at,
+      source: r.source === 'invoice' ? 'invoice' : 'transaction',
+      voucherCode: r.voucher_code ?? null,
+      attempts: Number(r.attempts || 0),
+      isSuperseded: !!r.is_superseded,
+      paymentMethod: r.payment_method ?? null,
+      paymentChannel: r.payment_channel ?? null,
+      isPaid: PAID_PAYMENT_STATUSES.includes(status.toLowerCase()),
+      isDead: DEAD_PAYMENT_STATUSES.includes(status.toLowerCase()),
+    };
+    if (r.source_id) sourceIds.set(r.schedule_id, r.source_id);
+    const list = bySchedule.get(r.schedule_id);
+    if (list) list.push(inv);
+    else bySchedule.set(r.schedule_id, [inv]);
   }
 
-  const out = new Map<string, SchedulePayment>();
-  for (const s of schedules) {
-    const txs = bySource.get(s.sourceId);
-    if (!txs || txs.length === 0) continue;
-    const unpaid = txs.find((t) => !['paid', 'completed'].includes(t.status));
-    const paidTx = txs.find((t) => ['paid', 'completed'].includes(t.status)) || txs[0];
-    out.set(s.id, {
-      status: txs[0].status,
-      paymentId: txs[0].payment_id || null,
-      paymentUrl: unpaid?.payment_url || txs[0].payment_url || null,
-      amount: Number(txs[0].amount || 0),
-      attempts: txs.length,
-      hasEverPaid: txs.some((t) => ['paid', 'completed'].includes(t.status)),
-      paymentMethod: paidTx?.payment_method || null,
-      paymentChannel: paidTx?.payment_channel || null,
+  const out = new Map<string, ScheduleBilling>();
+  for (const [scheduleId, invoices] of bySchedule) {
+    // Cerminan `live` di schedule_billing_summary() — kalau salah satu
+    // berubah, ubah keduanya. Sengaja tidak dua round-trip demi satu angka.
+    const live = invoices.filter(
+      (i) => i.isPaid || (i.source === 'invoice' && !i.isDead && !i.isSuperseded),
+    );
+    const billed = live.reduce((sum, i) => sum + i.amount, 0);
+    const paid = live.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
+    const lastPaid = invoices.find((i) => i.isPaid);
+
+    out.set(scheduleId, {
+      sourceId: sourceIds.get(scheduleId) ?? scheduleId,
+      invoices,
+      billed,
+      paid,
+      outstanding: billed - paid,
+      isSettled: billed > 0 && billed - paid <= 0,
+      openInvoice: live.find((i) => !i.isPaid) ?? null,
+      paymentMethod: lastPaid?.paymentMethod ?? null,
+      paymentChannel: lastPaid?.paymentChannel ?? null,
     });
   }
   return out;
