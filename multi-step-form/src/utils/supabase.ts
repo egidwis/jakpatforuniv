@@ -2469,12 +2469,29 @@ export const prepareForReschedule = async (submissionId: string) => {
 
     if (subError) throw subError;
 
-    // 2. Mark all pending transactions as expired
+    // 2. Matikan tagihan yang menggantung — HANYA milik jadwal yang dipindah.
+    //
+    // ⚠️ DULU BERLINGKUP SELURUH ORDER (`form_submission_id` saja). Itu benar
+    // ketika satu order = satu jadwal; sejak Task 11 tidak lagi. Peneliti yang
+    // memindahkan jadwal #1 ikut mematikan tagihan jadwal #2 yang tidak
+    // disentuh sama sekali — dan admin tidak diberi tahu apa pun.
+    //
+    // Fungsi ini hanya memindahkan jadwal PERTAMA (ia mengosongkan tanggal di
+    // `form_submissions`), jadi lingkupnya ordinal 1.
+    //
     // DOKU payments auto-expire via payment_due_date — no manual link closure needed.
+    const { data: firstSchedule } = await supabase
+      .from('ad_schedules')
+      .select('id')
+      .eq('submission_id', submissionId)
+      .eq('ordinal', 1)
+      .maybeSingle();
+
     const { data: pendingTxs } = await supabase
       .from('transactions')
       .select('id, payment_id')
       .eq('form_submission_id', submissionId)
+      .eq('schedule_id', firstSchedule?.id ?? '00000000-0000-0000-0000-000000000000')
       .eq('status', 'pending');
 
     if (pendingTxs && pendingTxs.length > 0) {
