@@ -102,7 +102,22 @@ export function deriveLifecycle(
     ))
   );
   const hasValidSchedule = (isScheduled || (isLegacyActive && !legacyEnded)) && !isActuallyExpired;
-  const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && hasValidSchedule;
+  /**
+   * ⚠️ `hasOpenInvoice`, BUKAN `hasInvoices`.
+   *
+   * `awaiting_payment` menggerakkan banner Info yang berbunyi "Invoice tagihan
+   * sudah diterbitkan, menunggu pelunasan". Diukur dari `hasInvoices` kalimat
+   * itu jadi bohong begitu tagihannya mati: baris tagihan tidak pernah
+   * dihapus, jadi order yang dijadwalkan ulang menyimpan baris kedaluwarsa
+   * selamanya dan terus mengaku menunggu pembayaran — sementara tab Jadwal &
+   * Bayar, yang membaca tagihan hidup lewat `schedule_billing`, menunjukkan
+   * tidak ada apa pun untuk dibayar. Dua layar, satu order, dua jawaban.
+   *
+   * Dengan tagihan hidup sebagai ukuran, order itu jatuh ke `reserved` /
+   * `reserved_expiring` — "Siap Terbitkan Tagihan" — yang memang tindakan
+   * yang admin perlu lakukan.
+   */
+  const isPending = !isPaid && paymentData.hasOpenInvoice && !isRejectedEvent && hasValidSchedule;
   const canBuildPage = isPaid || isLegacyActive;
   const canReserveSlot = RESERVABLE_STATUSES.includes(submission.submission_status || '') || isLegacyActive;
   const canPay = (isScheduled || isLegacyActive) && !isRejectedEvent;

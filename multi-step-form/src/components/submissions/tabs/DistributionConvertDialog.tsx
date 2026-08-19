@@ -58,7 +58,7 @@ export function DistributionConvertDialog({
   const previewSubtotal = convertTarget === 'kilat' ? previewKilatSubtotal : previewRegularSubtotal;
   const previewTotal = previewSubtotal + calculatePpn(previewSubtotal);
 
-  const hasPendingInvoice = paymentData?.hasInvoices && paymentData?.latestStatus === 'pending';
+  const hasPendingInvoice = paymentData?.hasOpenInvoice;
 
   const handleConfirm = async () => {
     setIsConverting(true);

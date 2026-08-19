@@ -59,7 +59,23 @@ function cardStateOf(entry: AdScheduleEntry, billing: ScheduleBilling | undefine
     return 'paid';
   }
   if (billing && billing.paid > 0) return 'partially_paid';
-  if (billing?.invoices.length) return 'waiting_payment';
+  /**
+   * ⚠️ "ADA BARIS TAGIHAN" BUKAN "ADA TAGIHAN HIDUP".
+   *
+   * Versi sebelumnya memakai `invoices.length`, dan barisnya tidak pernah
+   * dihapus — sesudah peneliti menjadwalkan ulang, satu-satunya tagihan yang
+   * tersisa sudah kedaluwarsa tapi kartunya tetap berkata "menunggu
+   * pembayaran". Admin disuruh menunggu uang yang tidak mungkin datang: tidak
+   * ada satu pun link yang masih bisa dibayar.
+   *
+   * Kartunya juga sudah menampilkan "Rp 0 ditagih" untuk keadaan itu — dua
+   * pernyataan yang saling membantah di satu kartu yang sama.
+   *
+   * `openInvoice` (tagihan admin yang belum lunas, tidak mati, tidak tersusul,
+   * tidak basi) menjawab pertanyaan yang sebenarnya. Yang lewat batas bayar
+   * TETAP terhitung terbuka — itu piutang, bukan tagihan mati.
+   */
+  if (billing?.openInvoice) return 'waiting_payment';
   return 'awaiting_invoice';
 }
 
@@ -448,6 +464,9 @@ function BillingSection({
   // menggantung akan menyembunyikan yang pertama dari orang yang harus
   // membayarnya. Penjaga keduanya ada di DB (`schedule_billing_summary`).
   const canTopUp = b.openInvoice === null;
+  // Ada riwayat tagihan, tapi semuanya sudah mati dan nol rupiah masuk —
+  // yang dibutuhkan tagihan PERTAMA yang sungguhan, bukan susulan.
+  const needsFreshInvoice = state === 'awaiting_invoice';
 
   return (
     <div className="space-y-2 pt-1 border-t border-slate-200">
@@ -481,19 +500,40 @@ function BillingSection({
         ))}
       </div>
 
+      {/*
+        Semua barisnya mati dan tidak ada uang yang masuk. Tanpa kalimat ini
+        admin cuma melihat daftar coretan lalu harus menyimpulkan sendiri
+        bahwa gilirannya yang bertindak — dan tombolnya berbunyi "Tagih
+        Susulan", padahal tidak ada tagihan pertama yang bisa disusuli.
+      */}
+      {needsFreshInvoice && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+          <p className="text-[11px] leading-snug text-amber-900">
+            Tidak ada tagihan yang masih bisa dibayar
+            {isLate ? '' : ' — terbitkan tagihan baru supaya peneliti bisa melanjutkan'}.
+          </p>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-2">
         {actions.onCreateInvoice && (
           <Button
             size="sm"
-            variant="outline"
+            variant={needsFreshInvoice ? 'default' : 'outline'}
             disabled={!canTopUp}
             title={canTopUp
               ? 'Terbitkan tagihan tambahan untuk jadwal ini'
               : 'Masih ada tagihan yang belum dibayar. Peneliti hanya melihat tagihan terakhir, jadi tagihan baru akan menyembunyikannya.'}
-            className="h-7 text-[11px] border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className={cn(
+              'h-7 text-[11px] disabled:opacity-50',
+              needsFreshInvoice
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+            )}
             onClick={() => actions.onCreateInvoice(entry)}
           >
-            <CreditCard className="w-3 h-3 mr-1.5" /> Tagih Susulan
+            <CreditCard className="w-3 h-3 mr-1.5" />
+            {needsFreshInvoice ? 'Terbitkan Tagihan' : 'Tagih Susulan'}
           </Button>
         )}
 

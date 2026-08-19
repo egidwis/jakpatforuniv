@@ -88,7 +88,7 @@ function getStatusBannerConfig(
     case 'reserved_expiring':
       return {
         title: 'Slot Jadwal Dipesan · Siap Terbitkan Tagihan',
-        description: 'Slot tayang sudah dipesan. Terbitkan tagihan (invoice Mayar) supaya peneliti dapat membayar.',
+        description: 'Slot tayang sudah dipesan dan belum ada tagihan yang bisa dibayar. Terbitkan tagihan supaya peneliti dapat melanjutkan.',
         action: {
           label: 'Terbitkan Tagihan',
           icon: CreditCard,
