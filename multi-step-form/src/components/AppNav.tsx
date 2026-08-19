@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, User, ChevronDown, Globe, Menu, ShoppingBag, FileText, MessageCircle } from 'lucide-react';
+import { LogOut, User, ChevronDown, Globe, Menu, ShoppingBag, FileText, MessageCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -49,6 +49,7 @@ export function AppNav() {
     // Termasuk /forms/new, /forms/:id/edit, dan /forms/:id/responses — seluruh
     // pembuat form hidup di bawah prefix ini.
     const isTheFormActive = location.pathname.startsWith('/dashboard/forms');
+    const isAnalyzerActive = location.pathname.startsWith('/dashboard/analyzer');
 
     return (
         <header className="sticky top-0 z-40 h-14 md:h-16 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)]">
@@ -102,6 +103,25 @@ export function AppNav() {
                                         Beta
                                     </span>
                                     {isTheFormActive && (
+                                        <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
+                                    )}
+                                </Link>
+
+                                {/* AI Analyzer */}
+                                <Link
+                                    to="/dashboard/analyzer"
+                                    className={`relative flex items-center gap-1.5 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
+                                        isAnalyzerActive
+                                            ? 'text-jfu-primary'
+                                            : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    <Sparkles className={`w-4 h-4 shrink-0 transition-colors ${isAnalyzerActive ? 'text-indigo-600' : 'text-slate-400'}`} />
+                                    <span>Data Analyzer</span>
+                                    <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-tight border border-indigo-200/80">
+                                        AI
+                                    </span>
+                                    {isAnalyzerActive && (
                                         <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
                                     )}
                                 </Link>
@@ -240,6 +260,25 @@ export function AppNav() {
                                                 </div>
                                                 <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
                                                     Beta
+                                                </span>
+                                            </Link>
+                                        </SheetClose>
+
+                                        <SheetClose asChild>
+                                            <Link
+                                                to="/dashboard/analyzer"
+                                                className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                                    isAnalyzerActive
+                                                        ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
+                                                        : 'text-gray-700 hover:bg-gray-100'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <Sparkles className="w-4 h-4 text-indigo-600" />
+                                                    <span>Data Analyzer</span>
+                                                </div>
+                                                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                                                    AI
                                                 </span>
                                             </Link>
                                         </SheetClose>
