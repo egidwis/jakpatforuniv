@@ -2361,10 +2361,34 @@ export const releaseScheduleSlot = async (entry: {
   });
 
   if (mine.length > 0) {
-    await supabase
+    const { error } = await supabase
       .from('transactions')
       .update({ status: 'expired', updated_at: new Date().toISOString() })
       .in('id', mine.map((t) => t.id));
+    if (error) throw error;
+  }
+
+  // ⚠️ `invoices` IKUT DIMATIKAN — sebelumnya TIDAK, dan itu meninggalkan
+  // tagihan hantu. Satu tagihan hidup di DUA tabel; melewatkan satu membuat
+  // barisnya bertahan `pending` selamanya walau slotnya sudah dilepas.
+  // Kelas bug yang sama dengan `payment_method` di markScheduleAsPaid: satu
+  // konsep, dua tabel, hanya satu diperbarui.
+  //
+  // Penautannya lewat `payment_id` transaksi yang baru saja di-expire, bukan
+  // `schedule_id` — supaya HANYA tagihan yang benar-benar berpasangan dengan
+  // percobaan bayar ini yang tersentuh.
+  if (mine.length > 0) {
+    const { data: pids } = await supabase
+      .from('transactions').select('payment_id').in('id', mine.map((t) => t.id));
+    const paymentIds = (pids || []).map((r: any) => r.payment_id).filter(Boolean);
+    if (paymentIds.length > 0) {
+      const { error } = await supabase
+        .from('invoices')
+        .update({ status: 'expired' })
+        .in('payment_id', paymentIds)
+        .eq('status', 'pending');
+      if (error) throw error;
+    }
   }
 
   return true;
@@ -2449,15 +2473,37 @@ export const prepareForReschedule = async (submissionId: string) => {
     // DOKU payments auto-expire via payment_due_date — no manual link closure needed.
     const { data: pendingTxs } = await supabase
       .from('transactions')
-      .select('id')
+      .select('id, payment_id')
       .eq('form_submission_id', submissionId)
       .eq('status', 'pending');
 
     if (pendingTxs && pendingTxs.length > 0) {
-      await supabase
+      const { error } = await supabase
         .from('transactions')
         .update({ status: 'expired', updated_at: new Date().toISOString() })
         .in('id', pendingTxs.map(t => t.id));
+      if (error) throw error;
+    }
+
+    // ⚠️ `invoices` IKUT DIMATIKAN — sebelumnya TIDAK.
+    //
+    // Terlihat di produksi pada order `W2XPPGF5` (2026-08-19): sesudah
+    // dijadwalkan ulang, `transactions` berbunyi `expired` sementara
+    // `invoices` untuk `payment_id` YANG SAMA masih `pending`. Peneliti
+    // membuka halaman invoice dan melihat tagihan tertanggal kemarin yang
+    // link bayarnya sudah mati — tanpa tanda apa pun bahwa ia kedaluwarsa.
+    //
+    // Menjadwalkan ulang TIDAK menerbitkan tagihan baru (dan memang tidak
+    // seharusnya — harganya bisa berubah, dan itu keputusan admin). Yang
+    // wajib terjadi adalah tagihan lamanya berhenti tampak hidup.
+    const pendingPaymentIds = (pendingTxs || []).map((t: any) => t.payment_id).filter(Boolean);
+    if (pendingPaymentIds.length > 0) {
+      const { error } = await supabase
+        .from('invoices')
+        .update({ status: 'expired' })
+        .in('payment_id', pendingPaymentIds)
+        .eq('status', 'pending');
+      if (error) throw error;
     }
 
     return true;
