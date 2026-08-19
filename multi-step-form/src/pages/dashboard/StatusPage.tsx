@@ -196,6 +196,7 @@ export function StatusPage() {
                                         // susulan harus tetap terbaca menunggu bayar.
                                         status: b.isSettled ? 'paid' : (shown?.status || null),
                                         amount: b.billed || shown?.amount || 0,
+                                        staleBilledFor: b.openInvoice ? null : (b.staleInvoice?.billedStartDate ?? null),
                                     };
                                 });
                             } catch (e) {

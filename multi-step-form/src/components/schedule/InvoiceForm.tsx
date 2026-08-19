@@ -321,6 +321,11 @@ export function InvoiceForm({
         ppn_amount: ppn,
         status: 'pending',
         voucher_code: voucherCode,
+        // Jendela yang DITAGIHKAN, dibekukan saat tagihan terbit. Kalau
+        // jadwalnya kemudian pindah, `schedule_billing` menandai tagihan ini
+        // basi saat dibaca — itu yang menutup balapan admin-vs-peneliti
+        // tanpa mengunci apa pun (sql/60).
+        billed_start_date: entry.startDate ?? null,
         ...attribution,
       };
       await createInvoice(invoiceData);
@@ -337,6 +342,7 @@ export function InvoiceForm({
         payment_url: paymentResponse.invoice_url,
         note: JSON.stringify(noteData),
         voucher_code: voucherCode,
+        billed_start_date: entry.startDate ?? null,
         ...attribution,
       };
       await createTransaction(transactionData);

@@ -169,7 +169,7 @@ export async function onRequest(context) {
     const subRes = await fetch(
       `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}` +
         `&select=id,total_cost,title,full_name,email,phone_number,payment_status,slot_booked_by,slot_reserved_at` +
-        `,question_count,duration,winner_count,prize_per_winner,voucher_code,distribution_type&limit=1`,
+        `,question_count,duration,winner_count,prize_per_winner,voucher_code,distribution_type,start_date&limit=1`,
       { headers: sbHeaders }
     );
     const subs = await subRes.json();
@@ -386,6 +386,14 @@ export async function onRequest(context) {
 
     const voucherApplied = String(sub.voucher_code || '').trim() || null;
 
+    // Jendela yang DITAGIHKAN, dibekukan saat tagihan terbit (sql/60). Kalau
+    // jadwalnya kemudian pindah — misalnya peneliti menjadwalkan ulang tepat
+    // saat halaman bayar ini dibuka — `schedule_billing` menandai tagihan ini
+    // basi saat dibaca, dan tak ada yang bisa membayar jendela yang sudah
+    // tidak ada. Melewatkannya di SINI membuat seluruh jalur swalayan kebal
+    // dari pemeriksaan itu.
+    const billedStartDate = sub.start_date || null;
+
     // 5. Persist BOTH rows via service_role (bypasses RLS).
     //    `amount` is the PPN-inclusive grand total; subtotal/ppn_rate/ppn_amount
     //    record the tax breakdown for reconciliation and invoice rendering.
@@ -406,6 +414,7 @@ export async function onRequest(context) {
       // pun dan karenanya tidak memberi potongan. Ini jejak audit "kenapa
       // angkanya segini", bukan klaim bahwa vouchernya sah.
       voucher_code: voucherApplied,
+      billed_start_date: billedStartDate,
     };
     const invoiceRow = {
       form_submission_id: formSubmissionId,
@@ -417,6 +426,7 @@ export async function onRequest(context) {
       ppn_amount: ppn,
       status: 'pending',
       voucher_code: voucherApplied,
+      billed_start_date: billedStartDate,
     };
 
     const [txRes, invRes] = await Promise.all([

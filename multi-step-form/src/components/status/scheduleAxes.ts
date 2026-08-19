@@ -53,6 +53,15 @@ export interface SchedulePaymentInfo {
     /** Status transaksi: pending | paid | expired | failed */
     status: string | null;
     amount: number;
+    /**
+     * Tanggal tayang yang DITAGIHKAN tagihan basi terakhir, ISO — atau null.
+     *
+     * Terisi hanya kalau jadwalnya berpindah sesudah tagihan itu terbit
+     * (sql/60). Peneliti tidak tahu apa-apa soal balapan admin-vs-peneliti
+     * yang menyebabkannya, jadi layar HARUS menyebut tanggalnya: tanpa itu
+     * tombol bayarnya sekadar hilang dan orangnya tidak tahu menunggu apa.
+     */
+    staleBilledFor: string | null;
 }
 
 export type SchedulePaymentMap = Record<string, SchedulePaymentInfo>;

@@ -158,7 +158,7 @@ function InvoiceRow({
   // Ia BUKAN tagihan — nol rupiah pernah ditagihkan — tapi tetap ditampilkan
   // supaya admin tahu peneliti sempat membuka halaman bayar.
   const isAbandoned = !inv.isPaid && !inv.isDead && inv.source === 'transaction';
-  const isStruck = inv.isDead || inv.isSuperseded || isAbandoned || isLate;
+  const isStruck = inv.isDead || inv.isSuperseded || inv.isStale || isAbandoned || isLate;
   const invoiceUrl = inv.paymentId ? `/invoices/${inv.paymentId}` : null;
 
   /**
@@ -172,7 +172,8 @@ function InvoiceRow({
    * menjumlahkannya di "belum masuk" — tampak seperti bug padahal keduanya
    * benar untuk pertanyaan masing-masing. Karena itu labelnya dieja lengkap.
    */
-  const isBillable = !inv.isPaid && !inv.isDead && !inv.isSuperseded && inv.source === 'invoice';
+  const isBillable = !inv.isPaid && !inv.isDead && !inv.isSuperseded && !inv.isStale
+    && inv.source === 'invoice';
 
   /**
    * ⚠️ CORETAN PADA NOMINAL BERARTI SATU HAL SAJA: ANGKA INI TIDAK IKUT
@@ -200,6 +201,13 @@ function InvoiceRow({
     : inv.status.toLowerCase() === 'cancelled' ? 'Tagihan dibatalkan'
     : inv.isDead ? 'Kedaluwarsa'
     : inv.isSuperseded ? 'Tersusul tagihan baru'
+    // Jadwalnya pindah sesudah tagihan ini terbit (sql/60). Tanggal LAMA-nya
+    // disebut supaya admin bisa mencocokkan dengan tagihan yang terlanjur
+    // dikirim ke peneliti — kalimat yang sama muncul di layar peneliti.
+    : inv.isStale ? `Jadwal berubah — ditagihkan untuk ${
+        inv.billedStartDate
+          ? new Date(inv.billedStartDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+          : 'tanggal lain'}`
     : isAbandoned ? 'Checkout ditinggalkan'
     : isLate ? 'Batas bayar terlewat — masih dihitung piutang'
     : null;

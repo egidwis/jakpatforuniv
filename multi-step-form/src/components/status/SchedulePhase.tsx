@@ -32,6 +32,7 @@ import type { FormSubmission } from '@/utils/supabase';
 import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount, calculatePpn, getKilatAddonCost, voucherInstantOf } from '@/utils/cost-calculator';
 import {
     pickDefaultExpandedKey,
+    fmtShort,
     type ScheduleCard,
     type IncentiveInfo,
 } from './airingPeriods';
@@ -467,6 +468,45 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
         );
     }
     if (b.state === 'awaiting_invoice') {
+        /*
+          ⚠️ JELASKAN KENAPA, JANGAN CUMA MENYEMBUNYIKAN TOMBOLNYA.
+          Kalau jadwal ini dipindah sesudah tagihannya terbit, tagihan lama
+          berhenti berlaku (sql/60) dan yang baru belum ada. Tanpa keterangan
+          ini peneliti hanya melihat tombol bayarnya lenyap — dan tidak ada
+          apa pun di layar yang memberi tahu ia harus menunggu tagihan baru,
+          apalagi bahwa link lama di emailnya tidak boleh dibayar.
+          Tanggal lamanya DISEBUT supaya ia bisa mencocokkan sendiri dengan
+          email tagihan yang sudah terlanjur diterima.
+        */
+        if (b.staleBilledFor) {
+            return (
+                <div className="rounded-xl border p-3.5 border-amber-200/80 bg-amber-50/70">
+                    <div className="flex items-start gap-2.5">
+                        <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                        <div className="min-w-0 space-y-1">
+                            <p className="text-sm font-bold text-slate-900 leading-snug">
+                                Tagihan lama sudah tidak berlaku
+                            </p>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                Tagihan sebelumnya diterbitkan untuk jadwal{' '}
+                                <strong className="font-semibold text-slate-900">
+                                    {fmtShort(b.staleBilledFor)}
+                                </strong>
+                                , sedangkan jadwal kamu sekarang{' '}
+                                <strong className="font-semibold text-slate-900">{card.dateRange}</strong>.
+                                Karena tanggalnya berubah, tagihan itu dibatalkan otomatis.
+                            </p>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                <strong className="font-semibold text-slate-900">Jangan bayar link lama</strong>{' '}
+                                yang mungkin sudah kamu terima — pembayarannya tidak akan
+                                dihitung untuk jadwal baru ini. Tim kami akan menerbitkan
+                                tagihan pengganti sesuai tanggal barunya.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
         return (
             <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
                 <p className="text-sm text-slate-600 leading-relaxed font-medium">

@@ -379,6 +379,8 @@ export interface Transaction {
   extend_id?: string;
   /** Voucher milik TAGIHAN, bukan order (sql/53). NULL = tanpa voucher. */
   voucher_code?: string | null;
+  /** Jendela tayang yang ditagihkan, dibekukan saat terbit (sql/60). */
+  billed_start_date?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -398,6 +400,8 @@ export interface Invoice {
   extend_id?: string;
   /** Voucher milik TAGIHAN, bukan order (sql/53). NULL = tanpa voucher. */
   voucher_code?: string | null;
+  /** Jendela tayang yang ditagihkan, dibekukan saat terbit (sql/60). */
+  billed_start_date?: string | null;
   created_at?: string;
   expires_at?: string;
   paid_at?: string;
@@ -2858,6 +2862,13 @@ export interface ScheduleInvoice {
   isPaid: boolean;
   /** expired / failed / cancelled — sudah tidak bisa dibayar. */
   isDead: boolean;
+  /** Jendela tayang yang ditagihkan baris ini saat ia terbit. */
+  billedStartDate: string | null;
+  /**
+   * Jadwalnya sudah berpindah sejak tagihan ini terbit, jadi ia menagih
+   * jendela yang tidak ada lagi. Uang yang SUDAH masuk tidak pernah basi.
+   */
+  isStale: boolean;
 }
 
 /** Ringkasan uang SATU jadwal. */
@@ -2880,6 +2891,12 @@ export interface ScheduleBilling {
   /** Dari pembayaran lunas terakhir — gerbang aksi "Tandai belum lunas". */
   paymentMethod: string | null;
   paymentChannel: string | null;
+  /**
+   * Tagihan basi TERBARU, kalau ada. Dipakai untuk menjelaskan kepada peneliti
+   * kenapa tagihannya hilang — tanpa ini layar cuma berhenti menampilkan
+   * tombol bayar dan orangnya tidak tahu harus menunggu apa.
+   */
+  staleInvoice: ScheduleInvoice | null;
 }
 
 const DEAD_PAYMENT_STATUSES = ['expired', 'failed', 'cancelled'];
@@ -2935,6 +2952,8 @@ export const fetchScheduleBilling = async (
       paymentChannel: r.payment_channel ?? null,
       isPaid: PAID_PAYMENT_STATUSES.includes(status.toLowerCase()),
       isDead: DEAD_PAYMENT_STATUSES.includes(status.toLowerCase()),
+      billedStartDate: r.billed_start_date ?? null,
+      isStale: !!r.is_stale,
     };
     if (r.source_id) sourceIds.set(r.schedule_id, r.source_id);
     const list = bySchedule.get(r.schedule_id);
@@ -2947,7 +2966,8 @@ export const fetchScheduleBilling = async (
     // Cerminan `live` di schedule_billing_summary() — kalau salah satu
     // berubah, ubah keduanya. Sengaja tidak dua round-trip demi satu angka.
     const live = invoices.filter(
-      (i) => i.isPaid || (i.source === 'invoice' && !i.isDead && !i.isSuperseded),
+      (i) => i.isPaid
+        || (i.source === 'invoice' && !i.isDead && !i.isSuperseded && !i.isStale),
     );
     const billed = live.reduce((sum, i) => sum + i.amount, 0);
     const paid = live.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
@@ -2963,6 +2983,7 @@ export const fetchScheduleBilling = async (
       openInvoice: live.find((i) => !i.isPaid) ?? null,
       paymentMethod: lastPaid?.paymentMethod ?? null,
       paymentChannel: lastPaid?.paymentChannel ?? null,
+      staleInvoice: invoices.find((i) => i.isStale) ?? null,
     });
   }
   return out;
