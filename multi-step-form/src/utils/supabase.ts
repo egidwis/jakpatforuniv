@@ -1899,15 +1899,40 @@ export const fetchSlotAvailability = async (
     const subIds = Array.from(new Set(activeSlots.map((s) => s.submissionId)));
     let extraAdMap: Record<string, boolean> = {};
     if (subIds.length > 0) {
+      /*
+        ⚠️ WAJIB DIPOTONG. Komentar di `selectSurveyPagesByIds` dulu menyebut
+        pemanggil ini "hari ini masih aman — 317 id". Ternyata tidak: dengan
+        317 UUID, `.in()` menyusun URL ±12 KB, dan permintaannya MENGGANTUNG —
+        preflight lolos, permintaan aslinya tidak pernah kembali. Terlihat di
+        produksi 2026-08-19 sebagai "Mengunci slotmu..." yang berputar tanpa
+        henti: `submitOrder` memanggil ulang fungsi ini untuk memeriksa
+        kapasitas, dan tersangkut di sini.
+
+        Menggantung lebih buruk daripada gagal — tidak ada error yang bisa
+        ditangkap, jadi seluruh penguncian slot ikut berhenti tanpa jejak.
+      */
       const tPages = Date.now();
-      const { data: pages } = await supabase
-        .from('survey_pages')
-        .select('submission_id, is_extra_ad')
-        .in('submission_id', subIds);
-      warnIfSlow(`survey_pages in(${subIds.length} id)`, tPages);
-      if (pages) {
-        pages.forEach((p: any) => { extraAdMap[p.submission_id] = !!p.is_extra_ad; });
+      try {
+        const pages = await selectSurveyPagesByIds<{ submission_id: string; is_extra_ad: boolean }>(
+          'submission_id, is_extra_ad',
+          subIds,
+        );
+        pages.forEach((p) => { extraAdMap[p.submission_id] = !!p.is_extra_ad; });
+      } catch (err) {
+        /*
+          Kegagalan di sini sengaja DIMAAFKAN, seperti versi sebelumnya.
+          `extraAdMap` hanya memutuskan sebuah slot masuk kuota reguler atau
+          kuota iklan tambahan. Peta kosong berarti iklan tambahan ikut dihitung
+          reguler — tanggal tampak LEBIH penuh dari sebenarnya. Itu arah yang
+          aman; melempar di sini akan mematikan seluruh pembacaan ketersediaan
+          demi angka yang cuma menghaluskan hitungan.
+
+          `selectSurveyPagesByIds` melempar (beda dari kode lama yang
+          mengabaikan `error` diam-diam), jadi peredamnya harus di sini.
+        */
+        console.warn('[slot-availability] peta is_extra_ad gagal, lanjut tanpa itu:', err);
       }
+      warnIfSlow(`survey_pages in(${subIds.length} id)`, tPages);
     }
 
     const regularCounts: Record<string, number> = {};
@@ -2786,11 +2811,14 @@ const IN_FILTER_CHUNK = 200;
 /**
  * `.in('submission_id', ids)` yang tidak bisa meledak karena jumlah id.
  *
- * Dipakai di mana pun daftar id-nya tumbuh seiring umur produk. Satu-satunya
- * pemanggil `survey_pages` lain yang tersisa (peta `is_extra_ad` di
- * `fetchSlotAvailability`) hari ini masih aman — 317 id — karena ia disaring
- * status aktif, jadi daftarnya menyusut lagi saat order selesai. Yang tidak
- * pernah menyusut hanya pemanggil di bawah ini.
+ * Dipakai di mana pun daftar id-nya tumbuh seiring umur produk.
+ *
+ * ⚠️ KOREKSI 2026-08-19. Catatan sebelumnya di sini menyatakan pemanggil
+ * `survey_pages` satunya (peta `is_extra_ad` di `fetchSlotAvailability`)
+ * "masih aman — 317 id" karena disaring status aktif. Itu SALAH: 317 id sudah
+ * cukup untuk menggantungkan permintaannya, dan akibatnya penguncian slot
+ * berhenti total. "Menyusut lagi saat order selesai" bukan jaminan — ia hanya
+ * menunda ambangnya. Kini pemanggil itu ikut lewat sini.
  */
 const selectSurveyPagesByIds = async <T>(columns: string, ids: string[]): Promise<T[]> => {
   const chunks: string[][] = [];
