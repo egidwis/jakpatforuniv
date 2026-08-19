@@ -711,8 +711,27 @@ halaman iklan. Untuk jadwal ke-2 dst. `deadline` selalu `null`, jadi kalimat itu
 menyebut "batas waktu" yang tidak ditampilkan di mana pun.
 
 Terukur: dari jadwal yang sedang menunggu bayar, **2 admin-booked : 1 user-booked** —
-kalimat yang salah tampil untuk mayoritasnya. Sekarang tiga kalimat, dipilih dari
-`deadlineCause`.
+kalimat yang salah tampil untuk mayoritasnya.
+
+**Aturan pemilik produk 2026-08-19 — jam hanya untuk slot milik peneliti:**
+
+| `slot_booked_by` | Tenggat ditampilkan? | Kalimatnya |
+|---|---|---|
+| `user` | **ya**, jam WIB di judul banner | konsekuensi sesuai `deadlineCause` (slot lepas / tanggal harus diganti) |
+| `admin` / NULL / jadwal ke-2 dst. | **tidak** | *"Jadwal iklan memiliki slot terbatas setiap harinya. Lakukan pembayaran sebelum slotnya terpenuhi."* |
+
+Alasannya: **slot yang dipesan admin dilepas MANUAL lewat dashboard admin, kapan
+saja.** Tidak ada jam yang jujur bisa disebut untuknya, jadi jangan mengarang satu.
+Kasus hari-H tetap tertangani keadaan `too_late_today` yang terpisah.
+
+⚠️ Gerbangnya `isUserBooked`, **bukan** `paymentDeadlineCause`. Peneliti yang memesan
+pukul 13.50 untuk hari itu juga punya cutoff lebih awal daripada hold 1 jam-nya, jadi
+`cause`-nya berbunyi `'cutoff'` padahal slotnya miliknya sendiri dan memang lepas
+otomatis — memakai `cause` sebagai gerbang akan memberinya pesan admin.
+
+Ditegakkan di `deriveOrderUiState` (satu tempat), jadi baris konteks chat ikut
+berhenti menyebut jam untuk slot admin — dan berhenti mengklaim "slot dilepas jika
+lewat" saat sebabnya cutoff.
 
 ⚠️ **Masih dibiarkan (sengaja):** jadwal ke-2 dst. tidak menampilkan tenggat sama
 sekali walau batas 14.00 WIB tetap berlaku untuk mereka. Mengisinya tanpa ikut

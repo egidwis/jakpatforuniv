@@ -551,19 +551,20 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
           jadi satu kalimat dipakai untuk ketiga keadaan — dan ia hanya benar
           untuk salah satunya:
             'slot'   -> reservasi peneliti sendiri, lepas 1 jam. Benar.
-            'cutoff' -> batas 14.00 WIB. Slot TIDAK dilepas (aturannya ada di
-                        slotHold.ts, dan jadwal yang dipesan admin memang tidak
-                        pernah lepas sendiri); yang habis adalah waktu kami
-                        menyiapkan halaman iklan. Kalimat lama menakuti peneliti
-                        dengan konsekuensi yang tidak akan terjadi.
-            null     -> jadwal ke-2 dst.: tidak ada tenggat yang ditampilkan
-                        sama sekali, jadi jangan menyebut tenggat apa pun.
+            'cutoff' -> batas 14.00 WIB pada slot milik peneliti sendiri. Slot
+                        TIDAK dilepas (aturannya ada di slotHold.ts); yang habis
+                        adalah waktu kami menyiapkan halaman iklan.
+            null     -> slot dipesan admin, atau jadwal ke-2 dst. `deadline`
+                        sengaja dikosongkan di `deriveOrderUiState`: pelepasannya
+                        MANUAL lewat dashboard admin, jadi tidak ada jam yang
+                        jujur bisa disebut. Yang benar adalah alasannya —
+                        slotnya terbatas dan bisa habis.
         */
         const deadlineSubKey = b.deadlineCause === 'slot'
             ? 'bannerSubWaitingPaymentSlot'
             : b.deadlineCause === 'cutoff'
                 ? 'bannerSubWaitingPaymentCutoff'
-                : 'bannerSubWaitingPaymentPlain';
+                : 'bannerSubWaitingPaymentSlotsLimited';
 
         return (
             <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/70 shadow-2xs">

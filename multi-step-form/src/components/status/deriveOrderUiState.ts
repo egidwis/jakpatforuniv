@@ -177,8 +177,25 @@ export function deriveOrderUiState(
     // Ambil yang paling awal — batas mana pun yang lebih dulu tiba, itu yang
     // jujur ditampilkan ke user.
     const candidateDeadlines = [slotDeadline, cutoffDeadline].filter((d): d is Date => !!d);
+    /**
+     * ⚠️ JAM HANYA DISEBUT UNTUK SLOT YANG DIPESAN PENELITI SENDIRI.
+     * Aturan pemilik produk 2026-08-19.
+     *
+     * Slot yang dipesan admin dilepas MANUAL lewat dashboard admin, kapan saja
+     * — tidak ada jam yang jujur bisa disebut untuknya. Menampilkan batas
+     * 14.00 WIB di situ mengarang tenggat yang bukan tenggat: lewat jam itu
+     * slotnya TIDAK lepas (lihat `slotHold.ts`), yang habis cuma waktu admin
+     * menyiapkan halaman iklan — dan kasus hari-H sudah ditangani keadaan
+     * `too_late_today` yang terpisah. Gantinya peneliti diberi alasan yang
+     * benar-benar berlaku: slotnya terbatas dan bisa habis.
+     *
+     * Diukur dari `isUserBooked`, BUKAN dari `paymentDeadlineCause`. Peneliti
+     * yang memesan pukul 13.50 untuk hari itu juga punya cutoff lebih awal
+     * daripada hold 1 jam-nya, jadi `cause` akan berbunyi 'cutoff' padahal
+     * slotnya miliknya sendiri dan memang lepas otomatis.
+     */
     const paymentDeadline =
-        currentStep === 2 && !isExpired && !isTooLateToday && candidateDeadlines.length > 0
+        isUserBooked && currentStep === 2 && !isExpired && !isTooLateToday && candidateDeadlines.length > 0
             ? new Date(Math.min(...candidateDeadlines.map((d) => d.getTime())))
             : null;
     // Kalau keduanya jatuh di detik yang sama, `slot` yang dipakai — reservasi
@@ -317,8 +334,13 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
     }
 
     if (ui.callout === 'payment' && ui.paymentDeadline) {
+        // Akibatnya beda, jadi jangan satu kalimat: batas 14.00 WIB TIDAK
+        // melepas slot, ia hanya membuat tanggalnya tidak terkejar.
+        const akibat = ui.paymentDeadlineCause === 'slot'
+            ? 'slot dilepas jika lewat'
+            : 'lewat dari itu tanggal tayangnya harus diganti';
         lines.push(
-            `- Pembayaran: menunggu, batas waktu ${ui.paymentDeadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB hari ini (slot dilepas jika lewat)`
+            `- Pembayaran: menunggu, batas waktu ${ui.paymentDeadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB hari ini (${akibat})`
         );
     } else if (ui.callout === 'payment') {
         lines.push(`- Pembayaran: menunggu (link pembayaran tersedia di halaman Order Saya)`);
