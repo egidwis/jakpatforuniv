@@ -52,6 +52,16 @@
 > ✅ **Sudah diuji di browser & dideploy 2026-08-19.** Kalender slot admin dan
 > peneliti kini cocok — itu buktinya RPC `get_extend_slot_occupancy()` bekerja
 > dari sisi non-admin.
+>
+> 🟢 **TASK 13 RILIS 1 SELESAI DI KODE — `sql/53` DITERAPKAN, lihat §00O.**
+> Uang per jadwal jadi agregat tagihan; `hasEverPaid` dibuang dari jalur
+> per-jadwal. Tiga premis rencana Task 13 batal saat diukur — yang terpenting:
+> **membaca `invoices` saja akan menghapus Rp 44.759.000 dari layar**, dan
+> **percobaan bayar TIDAK berbagi `payment_id`** (satu jadwal punya 29
+> `payment_id` berbeda senilai Rp 9,8 juta untuk harga Rp 350.000). Piutang
+> total turun Rp 1.106.009.261 → Rp 21.922.163. Fitur **"Batalkan tagihan"**
+> ditambahkan atas permintaan pemilik produk, di luar cakupan rencana asli.
+> ⬜ Belum diuji di browser, belum dideploy.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -388,6 +398,97 @@ ujung-ke-ujung tetap utuh di atas view.
 pernah dilewati sejak view berdiri. Secara struktur aman (`service_role`
 di-GRANT, view trigger-updatable), tapi **pantau baris `doku_webhook_events`
 ber-`entity_type='extend'` yang pertama** alih-alih menganggapnya terbukti.
+
+### 00O. 🟢 TASK 13 RILIS 1 — uang per jadwal jadi jujur (`sql/53`, 2026-08-19)
+
+**Satu jadwal boleh punya beberapa tagihan, dan kartunya berhenti berbohong.**
+`hasEverPaid` (`.some(paid)`) dihapus dari jalur per-jadwal.
+
+⚠️ **Ini bukan bug hipotetis — ia sudah salah hari ini.** Tagihan susulan sudah
+terjadi di lapangan, dikerjakan manual, jauh sebelum fitur ini ada:
+
+| Booking ID | Dibayar | `total_cost` |
+|---|---|---|
+| `76XKVW5P` | Rp 1.470.750 **lalu** Rp 61.050 | 1.470.750 |
+| `43MG75Y5` | Rp 1.000.000 **lalu** Rp 500.000 | 1.900.000 |
+| `F6WCSWJB` | Rp 1.276.500 **lalu** Rp 410.700 | 410.700 |
+
+14 jadwal beruang sungguhan punya >1 invoice lunas, dan semuanya mengumumkan
+"Lunas" walau bersisa.
+
+**TIGA PREMIS RENCANA TASK 13 YANG BATAL SAAT DIUKUR** — semuanya tercatat
+lengkap di kepala [`sql/53`](../multi-step-form/sql/53_schedule_billing.sql):
+
+1. **"Sumber kebenaran uang = invoice" menghapus Rp 44.759.000.** 190 jadwal
+   hanya punya `transactions`, 79 di antaranya lunas. 185 dari sebelum
+   `create-payment.js` mulai menulis `invoices` (2026-07-01, commit `36ed0eb`);
+   **5 sisanya bertanggal sesudah itu** karena kedua sisipan dijalankan lewat
+   `Promise.all` dan kegagalannya hanya DICATAT — endpoint tetap balas 200.
+   Jadi "tiap transaksi punya invoice" tidak pernah jadi invarian.
+   → Keputusan pemilik produk: **gabungan, kunci `payment_id`**.
+
+2. **Percobaan bayar TIDAK berbagi `payment_id`.** Rencana menyatakan
+   sebaliknya. `3DNWE9PS` punya **29 `payment_id` berbeda** senilai Rp 9.800.000
+   untuk jadwal berharga Rp 350.000 — tiap klik "bayar" menerbitkan nomor DOKU
+   baru. Yang menahan penggelembungan bukan dedup, melainkan aturan bahwa
+   **pending di `transactions` itu keranjang yang ditinggalkan, bukan tagihan**
+   (121 peristiwa, Rp 1,08 miliar — 98% dari total).
+
+3. **"Pending" ≠ "piutang".** 194 invoice pending menggantung, `expires_at`
+   kosong di 194 dari 194. Aturan yang dipilih: sebuah pending berhenti jadi
+   piutang kalau ada pembayaran lunas **yang lebih baru** di jadwal yang sama
+   (tanda ia diterbitkan ulang). Faktual, bukan ambang umur yang dikarang —
+   sengaja TIDAK memakai "pending tua = mati", karena antrean "perlu ditagih"
+   masih memuat entri Maret–Juni yang sungguh ditagih.
+
+**Hasilnya:** piutang total **Rp 1.106.009.261 → Rp 21.922.163**. Dua invarian
+dijaga dan keduanya 0: nol jadwal ber-`outstanding` tanpa tagihan terbuka, nol
+jadwal yang `paid`-nya melebihi `billed`.
+
+**Fitur baru atas permintaan pemilik produk** (rencana asli menaruhnya di luar
+cakupan): **"Batalkan tagihan"** per invoice. Sebelumnya tagihan yang salah
+terbit tidak punya jalan keluar sama sekali — itulah asal 194 baris di atas.
+Contoh yang langsung terbantu: **`V3M9285H` punya tagihan Rp 370.000 DAN
+Rp 3.700.000 di hari yang sama** (satu nol kelebihan), dan `5FJ9J4Q6` punya
+invoice kembar yang satu lunas satu menggantung. Barisnya **tidak dihapus**,
+hanya dicoret — riwayat tagihan adalah catatan uang.
+
+⚠️ **Membatalkan tagihan tidak mematikan link DOKU.** Kami tidak memanggil API
+pembatalan DOKU, jadi VA yang sudah terbit masih bisa dibayar dari sisi bank.
+Kalau uangnya sungguh masuk, webhook tetap mencatatnya dan tagihannya hidup
+lagi sebagai lunas. **Itu disengaja** — uang yang benar-benar diterima harus
+selalu menang atas status di layar.
+
+**Keputusan teknis yang menyimpang dari rencana, dan alasannya:**
+
+- **`SECURITY INVOKER`, bukan `DEFINER`.** Kebalikan `get_extend_slot_occupancy`
+  (sql/52) yang DEFINER karena kuota slot harus melihat jadwal semua orang.
+  Uang kebalikannya: hanya boleh terlihat pemiliknya, dan RLS
+  `invoices`/`transactions` sudah mengerjakannya. DEFINER di sini akan membuka
+  riwayat uang semua orang ke siapa pun yang bisa menebak satu UUID.
+- **`hasEverPaid` di `InternalDashboard` SENGAJA dibiarkan `.some(paid)`.**
+  Namanya sama, pertanyaannya beda: ia menjawab "adakah uang yang pernah
+  masuk?" untuk hitung mundur slot di `CampaignActions`, bukan "sudah lunas?".
+  Menyeragamkannya akan memunculkan "Expired" pada order yang lunas sebagian
+  lalu melepas slot yang sudah dibayar. Alasannya ditulis di tempatnya.
+
+Ikut ditutup: `create-payment.js` berhenti menimpa `total_cost` untuk jadwal
+yang sudah pernah ditagih (temuan C rencana Task 13 — terverifikasi masih
+hidup, lognya berbunyi *"Correcting DB to server value"*), dan voucher pindah
+dari titipan JSON di `transactions.note` ke kolomnya sendiri.
+
+⚠️ **Backfill voucher HANYA dari `note`, bukan dari `form_submissions`.** Kolom
+`form_submissions.voucher_code` isian bebas peneliti: dari 131 baris terisi ada
+`-`, `tidak ada`, `111111111111`, dan beberapa nomor telepon. Ia bukan kode
+kupon tervalidasi.
+
+Gerbang: `tsc -b --force` **61** (baseline), `npm run build` hijau, 25/25 uji.
+
+⬜ **Belum diuji di browser & belum dideploy.** Yang wajib diklik: buka
+`76XKVW5P` (harus tampil dua baris tagihan, berhenti bilang "Lunas"), buka satu
+jadwal yang hanya punya `transactions` (nominalnya harus muncul, bukan Rp 0),
+"Tagih Susulan" harus disabled selama ada tagihan menggantung, dan
+"Batalkan tagihan" pada satu invoice pending.
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 
