@@ -551,9 +551,13 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
           jadi satu kalimat dipakai untuk ketiga keadaan — dan ia hanya benar
           untuk salah satunya:
             'slot'   -> reservasi peneliti sendiri, lepas 1 jam. Benar.
-            'cutoff' -> batas 14.00 WIB pada slot milik peneliti sendiri. Slot
-                        TIDAK dilepas (aturannya ada di slotHold.ts); yang habis
-                        adalah waktu kami menyiapkan halaman iklan.
+            'cutoff' -> slot milik peneliti yang TIDAK punya tenggat lepas:
+                        `slot_reserved_at` NULL/rusak, jadi `slotReleaseDeadline`
+                        null dan slotnya tidak pernah lepas sendiri. Batas yang
+                        tersisa cuma 14.00 WIB, dan itu tidak melepas slot — yang
+                        habis adalah waktu kami menyiapkan halaman iklan.
+                        BUKAN "dipesan lewat jam 13.00": pemesanan hari-H sudah
+                        ditutup 13.00, jadi hold 1 jam selalu tiba lebih dulu.
             null     -> slot dipesan admin, atau jadwal ke-2 dst. `deadline`
                         sengaja dikosongkan di `deriveOrderUiState`: pelepasannya
                         MANUAL lewat dashboard admin, jadi tidak ada jam yang

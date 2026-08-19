@@ -724,10 +724,30 @@ Alasannya: **slot yang dipesan admin dilepas MANUAL lewat dashboard admin, kapan
 saja.** Tidak ada jam yang jujur bisa disebut untuknya, jadi jangan mengarang satu.
 Kasus hari-H tetap tertangani keadaan `too_late_today` yang terpisah.
 
-⚠️ Gerbangnya `isUserBooked`, **bukan** `paymentDeadlineCause`. Peneliti yang memesan
-pukul 13.50 untuk hari itu juga punya cutoff lebih awal daripada hold 1 jam-nya, jadi
-`cause`-nya berbunyi `'cutoff'` padahal slotnya miliknya sendiri dan memang lepas
-otomatis — memakai `cause` sebagai gerbang akan memberinya pesan admin.
+⚠️ Gerbangnya `isUserBooked`, **bukan** `paymentDeadlineCause` — tapi alasan yang
+pertama kali kutulis di sini SALAH dan sudah dicabut. Aku menulis "peneliti yang
+memesan pukul 13.50"; itu mustahil. Batas pemesanan hari-H 13.00 WIB **memang
+ditegakkan**, di ketiga jalur yang bisa menulis `slot_booked_by='user'`:
+
+| Penulis | Penjaga |
+|---|---|
+| `submitOrder.ts:207` | `throw OrderSubmitError('past_cutoff')` tepat sebelum INSERT (baris 120) |
+| `rebookSlotForSubmission` | `handleRebook` memblokir + toast (`PaymentCheckoutPage.tsx:306`) |
+| `ScheduleForm.tsx:299` | menulis `slot_booked_by: 'admin'`, jadi bukan slot peneliti |
+
+Karena reservasi mandiri untuk hari ini selalu terjadi sebelum 13.00, hold 1 jamnya
+selalu berakhir sebelum 14.00 — **cutoff tidak pernah menang karena jam**.
+
+Cabang `'cutoff'` tetap dipertahankan karena ia hidup lewat pintu lain:
+`slot_booked_by='user'` dengan `slot_reserved_at` **NULL atau rusak**.
+`slotReleaseDeadline` mengembalikan `null` di situ — slotnya tidak pernah lepas
+sendiri, keadaan yang dipagari eksplisit oleh dua tes di `slotHold.test.ts` — jadi
+satu-satunya batas yang tersisa memang cutoff-nya, dan kalimat `'slot'` justru yang
+akan berbohong di sana.
+
+⚠️ Semua penjaga 13.00 itu **client-side**; tidak ada CHECK maupun trigger di DB.
+Belum sempat diukur berapa baris produksi yang `slot_booked_by='user'` tapi
+`slot_reserved_at` NULL — koneksi DB putus di sesi ini.
 
 Ditegakkan di `deriveOrderUiState` (satu tempat), jadi baris konteks chat ikut
 berhenti menyebut jam untuk slot admin — dan berhenti mengklaim "slot dilepas jika

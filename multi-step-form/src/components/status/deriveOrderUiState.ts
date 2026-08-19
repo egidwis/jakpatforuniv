@@ -189,10 +189,21 @@ export function deriveOrderUiState(
      * `too_late_today` yang terpisah. Gantinya peneliti diberi alasan yang
      * benar-benar berlaku: slotnya terbatas dan bisa habis.
      *
-     * Diukur dari `isUserBooked`, BUKAN dari `paymentDeadlineCause`. Peneliti
-     * yang memesan pukul 13.50 untuk hari itu juga punya cutoff lebih awal
-     * daripada hold 1 jam-nya, jadi `cause` akan berbunyi 'cutoff' padahal
-     * slotnya miliknya sendiri dan memang lepas otomatis.
+     * Diukur dari `isUserBooked`, BUKAN dari `paymentDeadlineCause` — keduanya
+     * TIDAK sama, dan yang membedakan bukan jam pemesanan.
+     *
+     * Pemesanan hari-H sudah tertutup 13.00 WIB (`isBookingClosedForDate`,
+     * ditegakkan keras di `submitOrder` sebelum INSERT dan di `handleRebook`),
+     * jadi reservasi mandiri untuk hari ini selalu berakhir sebelum 14.00 —
+     * hold 1 jam-nya SELALU tiba lebih dulu daripada cutoff. Untuk tanggal di
+     * masa depan apalagi. Jadi `cause` tidak pernah 'cutoff' gara-gara jam.
+     *
+     * Yang membuatnya 'cutoff' pada slot milik peneliti adalah keadaan lain:
+     * `slot_booked_by='user'` dengan `slot_reserved_at` NULL atau tidak bisa
+     * diurai. `slotReleaseDeadline` mengembalikan `null` di situ — slotnya
+     * TIDAK pernah lepas sendiri (dipagari eksplisit di `slotHold.test.ts`) —
+     * sehingga satu-satunya batas yang tersisa memang cutoff-nya. Di situ
+     * kalimat 'cutoff' justru yang benar, dan kalimat 'slot' akan berbohong.
      */
     const paymentDeadline =
         isUserBooked && currentStep === 2 && !isExpired && !isTooLateToday && candidateDeadlines.length > 0
