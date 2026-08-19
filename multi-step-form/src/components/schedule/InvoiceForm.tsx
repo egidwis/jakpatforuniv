@@ -117,8 +117,16 @@ export function InvoiceForm({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   // Voucher milik TAGIHAN, bukan order — jadi ia state form, dan tidak pernah
   // ditulis balik ke `form_submissions.voucher_code`. Order hanya jadi nilai
-  // awalnya. Menaikkannya jadi kolom `invoices.voucher_code` (dan mengajari
-  // `create-payment.js` membacanya) adalah Task 13.
+  // awalnya.
+  //
+  // Kolom `invoices.voucher_code`/`transactions.voucher_code` sudah lahir
+  // (sql/53) dan diisi di bawah, jadi separuh catatan lama di sini SUDAH
+  // selesai. Yang BELUM: `create-payment.js` masih membaca
+  // `form_submissions.voucher_code`, bukan voucher tagihannya. Jendelanya
+  // sempit — selama tagihan admin masih hidup, blok pemakaian ulang di sana
+  // memulangkan tagihan itu apa adanya — tapi kalau tagihan admin sudah
+  // kedaluwarsa dan peneliti menekan "Bayar Sekarang", tagihan barunya lahir
+  // dengan voucher ORDER, bukan voucher yang admin pilih.
   const [voucher, setVoucher] = useState(submission.voucher_code || '');
   const [appliedVoucher, setAppliedVoucher] = useState(submission.voucher_code || '');
 
