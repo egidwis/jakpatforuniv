@@ -2,6 +2,7 @@ import type { LifecycleStage } from '../../lib/status-tokens';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { toWibYmd, isPaymentTooLateForDate } from '../../utils/airing-window';
 import { isPlaceholderBannerUrl } from '../../utils/page-banner';
+import { isSlotHoldReleased } from '../../utils/slotHold';
 
 // ─────────────────────────────────────────────────────────────
 // Single source of truth for submission lifecycle derivation.
@@ -70,11 +71,35 @@ export function deriveLifecycle(
   const isUserBookedUnpaid = submission.slot_booked_by === 'user' && reservedAtTime > 0 && !isPaid && !paymentData.hasEverPaid;
   const startYmd = submission.start_date ? toWibYmd(new Date(submission.start_date)) : null;
   const isScheduleLate = !isPaid && !paymentData.hasEverPaid && Boolean(startYmd && isPaymentTooLateForDate(startYmd, new Date(now)));
+  // ⚠️ TRANSAKSI YANG MATI BUKAN BUKTI SLOTNYA MATI.
+  //
+  // `paymentData.latestStatus` adalah status transaksi TERBARU, apa pun
+  // keadaannya — dan ia tidak pernah bergerak lagi setelah percobaan bayar
+  // gagal. Kalau peneliti kemudian menjadwalkan ulang, ia mendapat reservasi
+  // baru yang sah TANPA membuat transaksi baru, jadi sinyal ini macet di
+  // 'expired' selamanya dan admin melihat "Slot Kedaluwarsa" untuk slot yang
+  // sebenarnya masih ditahan.
+  //
+  // Terlihat di W2XPPGF5 (2026-08-19): peneliti menjadwalkan ulang 08.42,
+  // hold berlaku sampai 09.42, dashboard peneliti benar menampilkan tombol
+  // bayar — sementara tab Info admin sudah berteriak kedaluwarsa.
+  //
+  // Umur reservasi punya SATU sumber, `utils/slotHold.ts`. Sinyal pembayaran
+  // hanya boleh ikut bicara kalau tidak ada reservasi hidup.
+  const holdReleased = isSlotHoldReleased(
+    { slotBookedBy: submission.slot_booked_by, slotReservedAt: submission.slot_reserved_at },
+    now,
+  );
+  const hasLiveHold = submission.slot_booked_by === 'user' && reservedAtTime > 0 && !holdReleased;
+
   const isActuallyExpired = !isPaid && !paymentData.hasEverPaid && (
-    paymentData.latestStatus === 'expired' ||
-    submission.payment_status === 'expired' ||
-    (submission.slot_booked_by === 'user' && reservedAtTime > 0 && now > reservedAtTime + 3600_000) ||
-    isScheduleLate
+    // Tanggalnya tidak terkejar lagi — berlaku walau reservasinya masih hidup.
+    isScheduleLate ||
+    holdReleased ||
+    (!hasLiveHold && (
+      paymentData.latestStatus === 'expired' ||
+      submission.payment_status === 'expired'
+    ))
   );
   const hasValidSchedule = (isScheduled || (isLegacyActive && !legacyEnded)) && !isActuallyExpired;
   const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && hasValidSchedule;
