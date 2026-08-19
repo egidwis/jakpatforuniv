@@ -128,10 +128,10 @@ export const CsvUploadDropzone: React.FC<CsvUploadDropzoneProps> = ({ onDataLoad
 
           <div>
             <h3 className="text-lg font-bold text-gray-900 mb-1">
-              Upload File CSV Hasil Survei
+              Upload File CSV Hasil Respon Survei
             </h3>
             <p className="text-sm text-gray-500 max-w-md mx-auto">
-              Tarik dan lepas file <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-mono text-xs">.csv</code> hasil export Google Form, Qualtrics, atau spreadsheet di sini.
+              Tarik dan lepas file <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-mono text-xs">.csv</code> berisi baris respon/jawaban responden (export Google Form, Qualtrics, Excel, dsb).
             </p>
           </div>
 
@@ -140,7 +140,7 @@ export const CsvUploadDropzone: React.FC<CsvUploadDropzoneProps> = ({ onDataLoad
               type="button"
               className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-md shadow-indigo-500/20 transition-all"
             >
-              Pilih File CSV
+              Pilih File CSV Respon
             </button>
           </div>
 
@@ -150,7 +150,7 @@ export const CsvUploadDropzone: React.FC<CsvUploadDropzoneProps> = ({ onDataLoad
             </span>
             <span>•</span>
             <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Siap Bab 4 Skripsi
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Siap Laporan Riset &amp; Skripsi
             </span>
           </div>
         </div>

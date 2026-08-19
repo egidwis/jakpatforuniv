@@ -352,7 +352,7 @@ export const AnalyzerCanvas: React.FC<AnalyzerCanvasProps> = ({
             <div className="mt-3.5 pt-3.5 border-t border-gray-100 bg-indigo-50/30 -mx-5 -mb-5 md:-mx-6 md:-mb-6 p-4 rounded-b-2xl">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
-                  <FileText className="w-3 h-3" /> Narasi Bab 4 (Siap Copy)
+                  <FileText className="w-3 h-3" /> Narasi Hasil Analisis (Siap Copy)
                 </span>
                 <button
                   type="button"

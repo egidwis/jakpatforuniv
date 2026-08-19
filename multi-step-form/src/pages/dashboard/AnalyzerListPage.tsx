@@ -83,10 +83,10 @@ export const AnalyzerListPage: React.FC = () => {
               <span>JFU Survey Data Analyzer · AI Copilot</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white mb-2">
-              Olah Data Survei &amp; Buat Bab 4 Skripsi Instan
+              Olah Data Respon Survei &amp; Buat Laporan Riset Instan
             </h1>
             <p className="text-sm text-indigo-100/80 leading-relaxed">
-              Upload file CSV kuesioner Anda, dapatkan tabulasi silang, visualisasi grafik, dan draf narasi akademik Bab 4 yang siap di-copy ke laporan penelitian.
+              Upload file CSV hasil respon survei Anda, dapatkan tabulasi silang, visualisasi grafik interaktif, dan draf narasi analitik yang siap di-copy ke laporan penelitian, jurnal, maupun skripsi.
             </p>
           </div>
 
@@ -108,7 +108,7 @@ export const AnalyzerListPage: React.FC = () => {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Project Analisis Saya</h2>
-          <p className="text-xs text-gray-500">Daftar canvas data survei yang pernah Anda buat</p>
+          <p className="text-xs text-gray-500">Daftar canvas olah data survei yang pernah Anda buat</p>
         </div>
       </div>
 
@@ -124,7 +124,7 @@ export const AnalyzerListPage: React.FC = () => {
           </div>
           <h3 className="text-base font-bold text-gray-900 mb-1">Belum Ada Project Analisis</h3>
           <p className="text-xs text-gray-500 max-w-md mx-auto mb-6">
-            Upload file CSV kuesioner Anda untuk mulai menganalisis korelasi, membuat tabulasi silang, dan menyusun draf narasi skripsi dengan AI.
+            Upload file CSV hasil respon survei Anda untuk mulai menganalisis korelasi, membuat tabulasi silang, dan menyusun narasi hasil riset dengan AI.
           </p>
           <button
             type="button"
@@ -132,7 +132,7 @@ export const AnalyzerListPage: React.FC = () => {
             className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md shadow-indigo-500/20 transition-all inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Upload CSV &amp; Mulai Analisis
+            Upload CSV Respon &amp; Mulai Analisis
           </button>
         </div>
       ) : (

@@ -320,7 +320,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     scheduleSave(projectTitle, datasetSummary, canvasBlocks, updated, rawRows);
   };
 
-  // 6. Copy All Narasi Bab 4
+  // 6. Copy All Narasi
   const handleCopyAllNarratives = () => {
     const narratives = canvasBlocks
       .filter(b => b.narrative)
@@ -335,7 +335,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     navigator.clipboard.writeText(narratives)
       .then(() => {
         setCopiedAll(true);
-        toast.success('Seluruh draf narasi Bab 4 berhasil disalin!');
+        toast.success('Seluruh draf narasi laporan riset berhasil disalin!');
         setTimeout(() => setCopiedAll(false), 2500);
       })
       .catch(() => toast.error('Gagal menyalin teks'));
@@ -369,7 +369,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
             JFU Survey Data Analyzer
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900">
-            Upload Dataset untuk Memulai Analisis
+            Upload Data Respon Survei untuk Memulai
           </h1>
           <p className="text-sm text-gray-500 max-w-md mx-auto mt-1">
             Data Anda diproses secara aman di sisi klien browser dan siap diolah bersama AI Copilot.
@@ -436,7 +436,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
             className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-all inline-flex items-center gap-1.5 shrink-0 border border-indigo-200/50"
           >
             {copiedAll ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedAll ? 'Tersalin' : 'Copy Seluruh Bab 4'}</span>
+            <span>{copiedAll ? 'Tersalin' : 'Copy Semua Narasi'}</span>
           </button>
 
           <button
