@@ -1,4 +1,5 @@
-import { ExternalLink, Eye } from 'lucide-react';
+import { ExternalLink, Eye, Sparkles, Lightbulb, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
@@ -59,6 +60,8 @@ function PublicationRow({ card }: { card: ScheduleCard }) {
 export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
     const { t } = useLanguage();
     const paidCards = cards.filter((c) => c.booking.state === 'paid');
+    const hasCompleted = paidCards.some((c) => c.publication.state === 'completed');
+    const hasLiveOrScheduled = !hasCompleted && paidCards.some((c) => c.publication.state === 'live' || c.publication.state === 'scheduled');
 
     if (!pageInfo?.slug && paidCards.length === 0) {
         return (
@@ -77,6 +80,44 @@ export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
                     ))}
                 </div>
             )}
+
+            {/* Hint saat survei sedang tayang / terjadwal */}
+            {hasLiveOrScheduled && (
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-[11px] text-amber-900 leading-relaxed shadow-2xs">
+                    <Lightbulb className="w-4 h-4 text-amber-600 shrink-0" />
+                    <p>
+                        Respon responden sedang dihimpun. Setelah selesai, Anda bisa langsung mengolah visualisasi &amp; draf laporan riset di{' '}
+                        <Link to="/dashboard/analyzer" className="font-bold underline text-amber-950 hover:text-indigo-600">
+                            Data Analyzer AI
+                        </Link>.
+                    </p>
+                </div>
+            )}
+
+            {/* CTA Card saat survei selesai ditayangkan */}
+            {hasCompleted && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-indigo-50/90 border border-indigo-100 text-xs shadow-2xs">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-600 shrink-0 mt-0.5">
+                            <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <p className="font-bold text-indigo-950">Survei telah selesai ditayangkan?</p>
+                            <p className="text-indigo-800/80 text-[11px] leading-relaxed mt-0.5">
+                                Export CSV respon kuesioner Anda dan olah grafik, tabulasi silang, serta draf narasi riset dengan AI.
+                            </p>
+                        </div>
+                    </div>
+                    <Link
+                        to="/dashboard/analyzer/new"
+                        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-all shadow-xs active:scale-95"
+                    >
+                        <span>Olah Data</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                </div>
+            )}
+
             {pageInfo?.slug && (
                 <div className="flex items-center justify-between gap-2 px-1">
                     <a

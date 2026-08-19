@@ -21,6 +21,8 @@ import { ProfilePage } from './pages/dashboard/ProfilePage';
 import { FormListPage } from './pages/dashboard/FormListPage';
 import { FormBuilderPage } from './pages/dashboard/FormBuilderPage';
 import { FormResponsesPage } from './pages/dashboard/FormResponsesPage';
+import { AnalyzerListPage } from './pages/dashboard/AnalyzerListPage';
+import { AnalyzerWorkspacePage } from './pages/dashboard/AnalyzerWorkspacePage';
 import { PublicFormPage } from './pages/public/PublicFormPage';
 import { getSubdomainUsername } from './utils/subdomain';
 import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
@@ -133,6 +135,8 @@ function AppContent() {
           <Route path="forms/new" element={<FormBuilderPage />} />
           <Route path="forms/:formId/edit" element={<FormBuilderPage />} />
           <Route path="forms/:formId/responses" element={<FormResponsesPage />} />
+          <Route path="analyzer" element={<AnalyzerListPage />} />
+          <Route path="analyzer/:id" element={<AnalyzerWorkspacePage />} />
           <Route path="chat" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="payment/:submissionId" element={<PaymentCheckoutPage />} />
