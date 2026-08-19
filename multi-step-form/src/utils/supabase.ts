@@ -3043,6 +3043,12 @@ export interface ScheduleInvoice {
   isPaid: boolean;
   /** expired / failed / cancelled — sudah tidak bisa dibayar. */
   isDead: boolean;
+  /**
+   * Persis `pending`, bukan "bukan lunas dan bukan mati". Cerminan
+   * `payment_status_rank(...) = 1` di sql/53 — status tak dikenal ber-rank 0
+   * dan sengaja TIDAK masuk sini.
+   */
+  isPending: boolean;
   /** Jendela tayang yang ditagihkan baris ini saat ia terbit. */
   billedStartDate: string | null;
   /**
@@ -3082,6 +3088,18 @@ export interface ScheduleBilling {
 
 const DEAD_PAYMENT_STATUSES = ['expired', 'failed', 'cancelled'];
 const PAID_PAYMENT_STATUSES = ['paid', 'completed'];
+/**
+ * Cerminan `payment_status_rank(...) = 1` di sql/53 — status "menggantung".
+ *
+ * ⚠️ BUKAN sama dengan "bukan lunas dan bukan mati". Status yang TIDAK DIKENAL
+ * ber-rank 0 di SQL dan karenanya bukan `live`; salinan TS di bawah dulu
+ * memakai `!isDead` sehingga status tak dikenal ikut terhitung sebagai tagihan
+ * hidup. Selisihnya nol baris hari ini karena kosakata status produksi masih
+ * lengkap di kedua daftar — tapi status baru pertama yang lahir hanya di satu
+ * sisi akan membuat angka uang di layar berbeda dari angka di database, tanpa
+ * satu pun error.
+ */
+const PENDING_PAYMENT_STATUSES = ['pending'];
 
 /**
  * Peta jadwal -> uangnya, untuk satu order. Satu round-trip, bukan N.
@@ -3133,6 +3151,7 @@ export const fetchScheduleBilling = async (
       paymentChannel: r.payment_channel ?? null,
       isPaid: PAID_PAYMENT_STATUSES.includes(status.toLowerCase()),
       isDead: DEAD_PAYMENT_STATUSES.includes(status.toLowerCase()),
+      isPending: PENDING_PAYMENT_STATUSES.includes(status.toLowerCase()),
       billedStartDate: r.billed_start_date ?? null,
       isStale: !!r.is_stale,
     };
@@ -3148,7 +3167,7 @@ export const fetchScheduleBilling = async (
     // berubah, ubah keduanya. Sengaja tidak dua round-trip demi satu angka.
     const live = invoices.filter(
       (i) => i.isPaid
-        || (i.source === 'invoice' && !i.isDead && !i.isSuperseded && !i.isStale),
+        || (i.isPending && i.source === 'invoice' && !i.isSuperseded && !i.isStale),
     );
     const billed = live.reduce((sum, i) => sum + i.amount, 0);
     const paid = live.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0);

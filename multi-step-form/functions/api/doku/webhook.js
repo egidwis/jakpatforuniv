@@ -666,27 +666,92 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   // ====================================================================
   // STEP 2: Update invoice status by payment_id
   // ====================================================================
-  const invoiceUpdateData = await sbPatchExpectingRows(
-    sb,
-    `invoices?payment_id=eq.${encodedInvoice}`,
+  //
+  // 0 baris di sini SAH — alasannya persis sama dengan STEP 1a, dan dulu blok
+  // ini tidak mengikutinya. `sbPatchExpectingRows` MELEMPAR saat 0 baris cocok,
+  // padahal ada satu kelas pembayaran yang barisnya memang hanya ada di
+  // `transactions`: `create-payment.js` baru mulai menulis `invoices` sejak
+  // 2026-07-01, dan sisipan gandanya boleh gagal separuh. Terukur 2026-08-19:
+  // 243 transaksi tanpa invoice pasangan, 162 masih `pending`.
+  //
+  // Akibat lemparannya bukan kecil: write_failed -> HTTP 500 -> DOKU retry 5x
+  // -> menyerah. Uang sudah diterima, `form_submissions.payment_status` tidak
+  // pernah berpindah, dan ordernya terdampar sampai ada manusia turun tangan.
+  //
+  // Jadi: 0 baris ditoleransi HANYA kalau STEP 1a menemukan transaksinya.
+  // Kalau dua-duanya kosong, itu kegagalan sungguhan — biarkan melempar.
+  const invoicePatchRes = await sbFetch(
+    `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}`,
     {
-      status: appStatus === 'completed' ? 'paid' : appStatus,
-      paid_at: appStatus === 'completed' ? new Date().toISOString() : null
+      method: 'PATCH',
+      headers: { ...sb.headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify({
+        status: appStatus === 'completed' ? 'paid' : appStatus,
+        paid_at: appStatus === 'completed' ? new Date().toISOString() : null
+      })
     },
     'STEP 2 PATCH invoices'
   );
-  console.log('Invoice PATCH berhasil:', JSON.stringify(invoiceUpdateData));
+  const invoiceUpdateData = await invoicePatchRes.json();
+  const paidInvoice = Array.isArray(invoiceUpdateData) && invoiceUpdateData.length > 0
+    ? invoiceUpdateData[0]
+    : null;
+  const paidTransaction = Array.isArray(updatedTransactions) && updatedTransactions.length > 0
+    ? updatedTransactions[0]
+    : null;
+
+  if (!paidInvoice && !paidTransaction) {
+    // Tidak terjangkau lewat STEP 1 (yang sudah pulang lebih awal kalau kedua
+    // tabel kosong), tapi ditulis eksplisit supaya invariannya dijaga mesin,
+    // bukan diingat orang.
+    throw new Error(
+      `STEP 2 PATCH invoices tidak mengubah baris apa pun dan STEP 1a juga tidak ` +
+      `menemukan transaksi untuk ${invoiceNumber}`
+    );
+  }
+  if (!paidInvoice) {
+    console.warn(
+      `[Webhook] ${invoiceNumber} tidak punya baris invoices — dilanjutkan dari transactions saja.`
+    );
+  }
+  console.log('Invoice PATCH:', JSON.stringify(invoiceUpdateData));
 
   // ====================================================================
-  // STEP 3: Get the LATEST invoice for this form_submission_id
+  // STEP 3: Apakah JADWAL INI lunas? — bukan "apakah ORDER ini lunas?"
   // ====================================================================
+  //
+  // Dulu blok ini mengambil `invoices?form_submission_id=eq.…` terbaru tanpa
+  // filter apa pun, lalu STEP 4 memakai statusnya untuk menulis
+  // `payment_status`. Sebelum Task 13 itu hampir selalu benar karena satu order
+  // hanya punya satu tagihan hidup. Sekarang tidak: `canTopUp` di
+  // ScheduleCardList berlingkup PER JADWAL, jadi satu order boleh punya dua
+  // tagihan terbuka sekaligus.
+  //
+  // Bayar yang lebih tua -> yang terpungut yang lebih baru dan masih `pending`
+  // -> order ditulis `pending` PADAHAL UANGNYA MASUK, dan `submission_status`
+  // tidak pernah jadi 'paid'. Yang ikut mati di hilirnya: ensure_survey_page()
+  // (halaman iklan tidak lahir), notify_primary_ads_live() +
+  // notify_primary_ads_completed() (keduanya menyaring payment_status='paid'),
+  // dan gerbang 409 di create-payment.
+  //
+  // Baris yang BARUSAN dibayar sudah ada di tangan lewat `return=representation`
+  // di STEP 2 — termasuk `schedule_id`-nya. Dipakai, bukan diambil ulang.
+  const paidScheduleId = paidInvoice?.schedule_id ?? paidTransaction?.schedule_id ?? null;
+  // Baris lama sebelum sql/51 ber-schedule_id NULL. Untuk mereka pertahankan
+  // perilaku lama supaya tidak ada regresi pada data historis.
+  const scopeFilter = paidScheduleId
+    ? `schedule_id=eq.${encodeURIComponent(paidScheduleId)}`
+    : `form_submission_id=eq.${formSubmissionId}`;
   const latestInvoiceRes = await sbFetch(
-    `${sb.url}/rest/v1/invoices?form_submission_id=eq.${formSubmissionId}&order=created_at.desc&limit=1`,
+    `${sb.url}/rest/v1/invoices?${scopeFilter}&order=created_at.desc&limit=1`,
     { headers: sb.headers },
     'STEP 3 SELECT invoice terbaru'
   );
   const latestInvoices = await latestInvoiceRes.json();
-  console.log('Latest invoice SELECT:', JSON.stringify(latestInvoices));
+  console.log(
+    `Latest invoice SELECT (lingkup: ${paidScheduleId ? `schedule ${paidScheduleId}` : `order ${formSubmissionId}`}):`,
+    JSON.stringify(latestInvoices)
+  );
 
   // ====================================================================
   // STEP 4: Determine form payment_status from latest invoice
@@ -703,9 +768,7 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   // ====================================================================
   // STEP 5: Route update based on entity_type (extend vs submission)
   // ====================================================================
-  const txn = Array.isArray(updatedTransactions) && updatedTransactions.length > 0
-    ? updatedTransactions[0]
-    : null;
+  const txn = paidTransaction;
   const isExtendPayment = txn && txn.entity_type === 'extend' && txn.extend_id;
 
   if (isExtendPayment) {
