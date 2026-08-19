@@ -255,13 +255,91 @@ export async function onRequest(context) {
       }
     }
 
+    const dueDate = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
+
+    // ── Jendela yang DITAGIHKAN — dibaca dari `ad_schedules`, BUKAN dari
+    //    `form_submissions`.
+    //
+    // ⚠️ INI BUKAN KERAPIAN, INI SYARAT HIDUP TAGIHANNYA.
+    // `schedule_billing.is_stale` (sql/60) membandingkan `billed_start_date`
+    // dengan `ad_schedules.start_date`. Kolom itu TIMESTAMPTZ berisi instant
+    // tayang (15.00 WIB = 08:00 UTC), sedangkan `form_submissions.start_date`
+    // bertipe DATE — terangkat jadi 00:00 UTC. Menulis yang kedua membuat
+    // SETIAP tagihan swalayan lahir langsung basi: dikeluarkan dari `live`,
+    // `openInvoice` null, dan peneliti tidak akan pernah bisa membayar.
+    // `InvoiceForm` (tagihan admin) sudah membaca dari `ad_schedules`; jalur
+    // ini tertinggal.
+    let billedStartDate = sub.start_date || null;
+    try {
+      const schedRes = await fetch(
+        `${supabaseUrl}/rest/v1/ad_schedules?submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
+        `&ordinal=eq.1&select=start_date&limit=1`,
+        { headers: sbHeaders }
+      );
+      if (schedRes.ok) {
+        const rows = await schedRes.json();
+        if (Array.isArray(rows) && rows[0]?.start_date) billedStartDate = rows[0].start_date;
+      } else {
+        console.warn(`[create-payment] Could not read ad_schedules (status ${schedRes.status}); falling back to form_submissions.start_date.`);
+      }
+    } catch (e) {
+      console.warn('[create-payment] ad_schedules lookup failed; falling back to form_submissions.start_date:', e);
+    }
+
+    // ── PAKAI ULANG TAGIHAN YANG MASIH HIDUP ─────────────────────────────
+    //
+    // Sejak tagihan diterbitkan saat slot DIKUNCI (bukan saat tombol bayar
+    // ditekan), endpoint ini dipanggil lebih dari sekali untuk satu jadwal:
+    // saat halaman bayar dibuka, dan lagi tiap kali dimuat ulang. Tanpa blok
+    // ini tiap panggilan melahirkan `payment_id` baru — terukur 29 untuk satu
+    // order — dan aturan SATU TAGIHAN TERBUKA PER JADWAL langsung runtuh.
+    //
+    // Syarat pakai-ulang sengaja ketat: nominal sama, jendela tayang yang
+    // ditagihkan sama (kalau jadwalnya pindah, tagihan lama memang HARUS
+    // diganti), dan linknya terbukti masih hidup lewat `expires_at`. NULL
+    // `expires_at` = baris lama yang umurnya tak bisa dibuktikan → jangan
+    // dipakai ulang; lebih baik terbitkan baru daripada mengirim peneliti ke
+    // halaman DOKU yang sudah mati.
+    try {
+      const liveRes = await fetch(
+        `${supabaseUrl}/rest/v1/invoices?form_submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
+        `&status=eq.pending&select=payment_id,invoice_url,amount,billed_start_date,expires_at` +
+        `&order=created_at.desc&limit=10`,
+        { headers: sbHeaders }
+      );
+      if (liveRes.ok) {
+        const rows = await liveRes.json();
+        const sameInstant = (a, b) => {
+          if (!a || !b) return a === b;
+          const ta = new Date(a).getTime(), tb = new Date(b).getTime();
+          return Number.isFinite(ta) && Number.isFinite(tb) && ta === tb;
+        };
+        const reusable = (Array.isArray(rows) ? rows : []).find((r) =>
+          r.invoice_url &&
+          Number(r.amount) === amount &&
+          sameInstant(r.billed_start_date, billedStartDate) &&
+          r.expires_at && new Date(r.expires_at).getTime() > Date.now()
+        );
+        if (reusable) {
+          console.log(`[create-payment] Reusing live bill ${reusable.payment_id} for ${formSubmissionId}`);
+          return json({ payment_url: reusable.invoice_url, payment_id: reusable.payment_id, reused: true }, 200);
+        }
+      } else {
+        console.warn(`[create-payment] Could not check live bills (status ${liveRes.status}); minting a new one.`);
+      }
+    } catch (e) {
+      console.warn('[create-payment] Live-bill check failed; minting a new one:', e);
+    }
+
     // 2. Invoice number — same self-service format (JFU-<8chars>-<ts>).
     const invoiceNumber = `JFU-${String(formSubmissionId).substring(0, 8)}-${Date.now()}`;
+    // Umur link DOKU, disimpan supaya pakai-ulang di atas punya bukti — bukan
+    // tebakan dari `created_at` + durasi permintaan yang sedang berjalan.
+    const expiresAt = new Date(Date.now() + dueDate * 60000).toISOString();
 
     // 3. Build DOKU checkout payload.
     const resolvedOrigin = origin || new URL(request.url).origin;
     const sacId = env.VITE_DOKU_SAC_JFU_ID || env.DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595';
-    const dueDate = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
 
     const dokuPayload = {
       order: {
@@ -386,13 +464,7 @@ export async function onRequest(context) {
 
     const voucherApplied = String(sub.voucher_code || '').trim() || null;
 
-    // Jendela yang DITAGIHKAN, dibekukan saat tagihan terbit (sql/60). Kalau
-    // jadwalnya kemudian pindah — misalnya peneliti menjadwalkan ulang tepat
-    // saat halaman bayar ini dibuka — `schedule_billing` menandai tagihan ini
-    // basi saat dibaca, dan tak ada yang bisa membayar jendela yang sudah
-    // tidak ada. Melewatkannya di SINI membuat seluruh jalur swalayan kebal
-    // dari pemeriksaan itu.
-    const billedStartDate = sub.start_date || null;
+    // `billedStartDate` sudah dibekukan di atas, dari `ad_schedules`.
 
     // 5. Persist BOTH rows via service_role (bypasses RLS).
     //    `amount` is the PPN-inclusive grand total; subtotal/ppn_rate/ppn_amount
@@ -427,6 +499,7 @@ export async function onRequest(context) {
       status: 'pending',
       voucher_code: voucherApplied,
       billed_start_date: billedStartDate,
+      expires_at: expiresAt,
     };
 
     const [txRes, invRes] = await Promise.all([

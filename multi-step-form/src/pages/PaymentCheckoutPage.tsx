@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   getFormSubmissionById,
   releaseExpiredSlot,
   rebookSlotForSubmission,
-  getInvoicesByFormSubmissionId,
-  getTransactionsByFormSubmissionId,
+  fetchScheduleBilling,
 } from '../utils/supabase';
 import { createPayment } from '../utils/payment';
 import { toast } from 'sonner';
@@ -57,7 +56,12 @@ export function PaymentCheckoutPage() {
   const { t } = useLanguage();
 
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
+  /** `payment_id` tagihan yang MASIH HIDUP untuk jadwal ini — bukan baris mana pun. */
   const [invoicePaymentId, setInvoicePaymentId] = useState<string | null>(null);
+  /** Link DOKU tagihan hidup itu. Ada = "Bayar Sekarang" tinggal membukanya. */
+  const [livePayUrl, setLivePayUrl] = useState<string | null>(null);
+  /** Order yang sudah pernah dicoba diterbitkan tagihannya otomatis di sesi ini. */
+  const mintAttemptedFor = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState<number>(3600);
   const [isExpired, setIsExpired] = useState(false);
@@ -112,16 +116,25 @@ export function PaymentCheckoutPage() {
 
       setSubmission(data);
 
-      // Fetch invoice / transaction payment ID if exists
+      /*
+        ⚠️ TAGIHAN YANG HIDUP UNTUK JADWAL INI — bukan `invoices[0]`.
+
+        Versi sebelumnya mengambil baris terbaru milik seluruh ORDER, tanpa
+        saringan status maupun jadwal. Sesudah peneliti menjadwalkan ulang,
+        yang tersisa adalah tagihan lama yang sudah kedaluwarsa — dan link
+        "Lihat invoice" memajangnya sebagai tagihan berjalan, lengkap dengan
+        tanggal terbit yang sudah lewat. Pola yang sama sudah dibersihkan di
+        kartu admin dan dashboard peneliti; halaman ini yang terakhir.
+      */
       try {
-        const [invoices, txs] = await Promise.all([
-          getInvoicesByFormSubmissionId(submissionId),
-          getTransactionsByFormSubmissionId(submissionId),
-        ]);
-        const matchedPaymentId = invoices?.[0]?.payment_id || txs?.[0]?.payment_id || null;
-        setInvoicePaymentId(matchedPaymentId);
+        const billings = await fetchScheduleBilling(submissionId);
+        const own = [...billings.values()].find((b) => b.sourceId === submissionId) ?? null;
+        setInvoicePaymentId(own?.openInvoice?.paymentId ?? null);
+        setLivePayUrl(own?.openInvoice?.paymentUrl ?? null);
       } catch (e) {
-        console.error('Failed to load invoice payment ID:', e);
+        console.error('Failed to load live billing:', e);
+        setInvoicePaymentId(null);
+        setLivePayUrl(null);
       }
 
       if (data.payment_status === 'paid') {
@@ -227,31 +240,112 @@ export function PaymentCheckoutPage() {
     return () => clearInterval(poll);
   }, [isExpired, submissionId, isLoading, navigate]);
 
+  /**
+   * Umur link DOKU mengikuti umur reservasinya. Untuk jadwal admin — yang
+   * tidak punya umur — dulu baris ini membaca `slot_reserved_at!` yang NULL
+   * dan mengirim "Invalid Date" ke DOKU. Jalur itu baru benar-benar terpakai
+   * sejak halaman ini berhenti menganggap jadwal admin kedaluwarsa, jadi
+   * fallback-nya wajib ada.
+   *
+   * Diangkat jadi fungsi sendiri karena kini ada DUA pemanggil: penerbitan
+   * otomatis saat halaman dibuka, dan tombol bayar.
+   */
+  const billExpiryFor = useCallback((sub: FormSubmission): Date => {
+    const releaseAt = slotReleaseDeadline({
+      slotBookedBy: sub.slot_booked_by,
+      slotReservedAt: sub.slot_reserved_at,
+    });
+    const cutoffMs = sub.start_date
+      ? paymentCutoffInstant(toWibYmd(normalizeScheduleDate(sub.start_date))).getTime()
+      : null;
+    // Batas bayar hari tayang selagi masih di depan; kalau sudah lewat,
+    // 7 hari — sama dengan tagihan manual admin (utils/payment.ts).
+    const fallback =
+      cutoffMs !== null && cutoffMs > Date.now()
+        ? cutoffMs
+        : Date.now() + 7 * 24 * 60 * 60 * 1000;
+    return new Date(releaseAt ?? fallback);
+  }, []);
+
+  /*
+    ── TAGIHAN TERBIT SAAT SLOT DIKUNCI, BUKAN SAAT TOMBOL BAYAR DITEKAN ──
+
+    Keputusan pemilik produk 2026-08-19 (opsi A). Sebelumnya `createPayment`
+    hanya berjalan dari tombol bayar, jadi antara "Kunci Jadwal" dan klik itu
+    tidak ada satu pun baris tagihan: admin melihat "belum ada tagihan" dengan
+    tombol "Terbitkan Tagihan" AKTIF. Kalau admin menekannya lalu peneliti
+    menekan bayar, lahir DUA tagihan terbuka untuk satu jadwal — persis yang
+    dilarang aturan satu-tagihan-terbuka-per-jadwal (sql/53).
+
+    Halaman ini adalah tujuan otomatis sesudah penguncian, jadi menerbitkan di
+    sini setara "saat dikunci" tanpa perlu menambah pemicu di dua tempat
+    (wizard dan rebook) yang nanti bisa berselisih.
+
+    Umur link tidak berubah: ia SUDAH dipatok ke `slot_reserved_at + 1 jam`,
+    bukan ke saat diklik — jadi menerbitkan lebih awal tidak memotong waktu
+    peneliti sedetik pun.
+
+    Kegagalan DOKU TIDAK boleh merusak halaman: kalau gagal, tombol bayar
+    tetap bisa menerbitkan sendiri seperti dulu. Karena itu diam-diam.
+  */
+  useEffect(() => {
+    if (!submission?.id || isLoading || isExpired || isTooLateToday) return;
+    if (invoicePaymentId) return;                       // sudah ada yang hidup
+    if (['paid', 'completed'].includes(submission.payment_status || '')) return;
+    /*
+      ⚠️ SATU PERCOBAAN PER ORDER, DIJAGA REF.
+      Sukses menerbitkan memicu `loadSubmission`, yang membalik `isLoading` dan
+      menjalankan efek ini lagi. Biasanya tidak apa-apa: `invoicePaymentId`
+      sudah terisi, jadi ia langsung keluar. Tapi kalau tagihan yang baru
+      terbit TIDAK terbaca hidup — misalnya INSERT `invoices` gagal dan hanya
+      baris `transactions` yang lahir, yang mana `create-payment` cuma mencatat
+      dan tidak menggagalkan — syarat keluarnya tak pernah terpenuhi dan
+      halaman ini akan menerbitkan tagihan berulang-ulang ke DOKU.
+    */
+    if (mintAttemptedFor.current === submission.id) return;
+    mintAttemptedFor.current = submission.id;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await createPayment({
+          formSubmissionId: submission.id!,
+          amount: submission.total_cost || 0,
+          customerInfo: {
+            title: submission.title || 'Survey',
+            fullName: submission.full_name || 'Pengguna',
+            email: submission.email || 'user@example.com',
+            phoneNumber: submission.phone_number || '-',
+          },
+          expiredAt: billExpiryFor(submission).toISOString(),
+        });
+        if (!cancelled) await loadSubmission();
+      } catch (e) {
+        // Sengaja senyap — tombol bayar masih jadi jaring pengamannya.
+        console.warn('[payment] Gagal menerbitkan tagihan otomatis:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+    // `loadSubmission` sengaja tidak jadi dependency: ia memicu ulang efek ini
+    // lewat state yang ia sendiri ubah.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submission?.id, invoicePaymentId, isLoading, isExpired, isTooLateToday]);
+
   const handleProceedPayment = async () => {
     if (!submission?.id || isExpired) return;
+
+    // Tagihannya sudah terbit saat slot dikunci — tinggal dibuka. Tanpa await
+    // di jalur ini, jadi tidak ada urusan popup blocker sama sekali.
+    if (livePayUrl) {
+      window.open(livePayUrl, '_blank');
+      return;
+    }
+
     setIsProcessingPayment(true);
 
     let paymentWindow: Window | null = null;
     try {
-      // Umur link DOKU mengikuti umur reservasinya. Untuk jadwal admin —
-      // yang tidak punya umur — dulu baris ini membaca `slot_reserved_at!`
-      // yang NULL dan mengirim "Invalid Date" ke DOKU. Jalur itu baru
-      // benar-benar terpakai sejak halaman ini berhenti menganggap jadwal
-      // admin kedaluwarsa, jadi fallback-nya wajib ada.
-      const releaseAt = slotReleaseDeadline({
-        slotBookedBy: submission.slot_booked_by,
-        slotReservedAt: submission.slot_reserved_at,
-      });
-      const cutoffMs = submission.start_date
-        ? paymentCutoffInstant(toWibYmd(normalizeScheduleDate(submission.start_date))).getTime()
-        : null;
-      // Batas bayar hari tayang selagi masih di depan; kalau sudah lewat,
-      // 7 hari — sama dengan tagihan manual admin (utils/payment.ts).
-      const fallback =
-        cutoffMs !== null && cutoffMs > Date.now()
-          ? cutoffMs
-          : Date.now() + 7 * 24 * 60 * 60 * 1000;
-      const expirationDate = new Date(releaseAt ?? fallback);
+      const expirationDate = billExpiryFor(submission);
 
       // Tab baru dibuka di awal supaya tidak kena popup blocker (ada await di bawah)
       paymentWindow = window.open('about:blank', '_blank');
