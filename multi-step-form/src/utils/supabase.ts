@@ -1722,6 +1722,21 @@ export const fetchSlotAvailability = async (
   details: Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>>;
 }> => {
   try {
+    /*
+      Kanari kueri lambat. Kalender ini menggantung >15 detik di produksi
+      (2026-08-19) dan `Promise.all` membuat ketiga kakinya tidak bisa
+      dibedakan: yang terlihat cuma "semuanya lambat". Ambang 3 detik dipilih
+      karena statement_timeout Supabase untuk peran authenticated ada di
+      bawahnya — kaki yang melewatinya berarti tidak sedang menunggu kueri,
+      melainkan menunggu KONEKSI (pool habis) atau lock.
+    */
+    const t0 = Date.now();
+    const warnIfSlow = (leg: string, startedAt: number) => {
+      const ms = Date.now() - startedAt;
+      if (ms > 3000) console.warn(`[slot-availability] ${leg} lambat: ${ms}ms`);
+      return ms;
+    };
+
     const [submissionsResult, extendsResult] = await Promise.all([
       supabase
         .from('form_submissions')
@@ -1743,6 +1758,7 @@ export const fetchSlotAvailability = async (
       // ubah keduanya.
       supabase.rpc('get_extend_slot_occupancy', { p_distribution_type: distributionType }),
     ]);
+    warnIfSlow('form_submissions + get_extend_slot_occupancy', t0);
 
     if (submissionsResult.error) throw submissionsResult.error;
     if (extendsResult.error) throw extendsResult.error;
@@ -1783,10 +1799,12 @@ export const fetchSlotAvailability = async (
     const subIds = Array.from(new Set(activeSlots.map((s) => s.submissionId)));
     let extraAdMap: Record<string, boolean> = {};
     if (subIds.length > 0) {
+      const tPages = Date.now();
       const { data: pages } = await supabase
         .from('survey_pages')
         .select('submission_id, is_extra_ad')
         .in('submission_id', subIds);
+      warnIfSlow(`survey_pages in(${subIds.length} id)`, tPages);
       if (pages) {
         pages.forEach((p: any) => { extraAdMap[p.submission_id] = !!p.is_extra_ad; });
       }
