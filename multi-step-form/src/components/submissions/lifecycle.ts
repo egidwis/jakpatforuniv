@@ -146,6 +146,11 @@ export function deriveLifecycle(
   let stage: LifecycleStage;
   if (displayStatus === 'rejected') stage = 'rejected';
   else if (displayStatus === 'spam') stage = 'spam';
+  // Sejajar dengan rejected/spam: keputusan manusia yang menghentikan order,
+  // jadi ia menang atas sumbu tayang maupun sumbu uang. Papan Schedule sudah
+  // menamainya lewat `chipKindOf`; daftar Submissions tidak boleh memberi nama
+  // lain untuk baris yang sama.
+  else if (displayStatus === 'cancelled') stage = 'cancelled';
   else if (pageStatus === 'live' || (!isKilat && submission.status === 'live' && !legacyEnded)) stage = 'live';
   else if (pageStatus === 'scheduled') stage = 'page_scheduled';
   else if (

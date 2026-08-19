@@ -26,6 +26,13 @@ export type LifecycleStage =
   | "completed"
   | "page_scheduled"
   | "live"
+  /**
+   * Dibatalkan. 133 baris `ad_schedules` sudah memakainya di produksi jauh
+   * sebelum union ini mengenalnya — dan karena `chipKindOf` tidak punya
+   * cabangnya, semuanya terbaca "Approved" DAN ikut memakan kuota slot.
+   * Menambahkannya di sini yang memaksa setiap permukaan menamainya.
+   */
+  | "cancelled"
 
 export interface StatusToken {
   label: string
@@ -36,6 +43,7 @@ export interface StatusToken {
 
 export const STATUS_TOKENS: Record<LifecycleStage, StatusToken> = {
   in_review: { label: "Need Review", variant: "blue", dot: true },
+  cancelled: { label: "Dibatalkan", variant: "slate" },
   approved: { label: "Approved", variant: "indigo" },
   rejected: { label: "Rejected", variant: "red" },
   spam: { label: "Spam", variant: "orange" },
@@ -84,5 +92,5 @@ export const AIRING_STATUS_TOKENS: Record<string, StatusToken> = {
   scheduled: STATUS_TOKENS.page_scheduled,
   live: STATUS_TOKENS.live,
   completed: STATUS_TOKENS.completed,
-  cancelled: { label: "Dibatalkan", variant: "slate" },
+  cancelled: STATUS_TOKENS.cancelled,
 }

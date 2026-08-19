@@ -48,6 +48,16 @@ function getStatusBannerConfig(
         containerClass: 'bg-blue-50/70 border-blue-200/80 text-blue-950',
       };
 
+    // Keputusan manusia yang menghentikan order — bukan kegagalan review dan
+    // bukan kegagalan bayar, jadi tidak ada aksi yang ditawarkan di sini.
+    // Slotnya sudah bebas (`occupiesSlot` mengecualikannya sejak chip ini ada).
+    case 'cancelled':
+      return {
+        title: 'Order Dibatalkan',
+        description: 'Order ini dibatalkan dan tidak lagi menempati slot tayang. Riwayat jadwal serta tagihannya tetap tersimpan.',
+        containerClass: 'bg-slate-50 border-slate-200 text-slate-800',
+      };
+
     case 'rejected':
       return {
         title: 'Menunggu Perbaikan Peneliti',

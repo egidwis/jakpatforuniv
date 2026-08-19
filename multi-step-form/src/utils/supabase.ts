@@ -1842,7 +1842,12 @@ export const fetchSlotAvailability = async (
         .from('form_submissions')
         .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status, admin_notes, distribution_type')
         .not('start_date', 'is', null)
-        .not('submission_status', 'in', '("rejected","spam","in_review","completed")')
+        // ⚠️ 'cancelled' IKUT DIKELUARKAN. Order yang dibatalkan tidak menahan
+        // slot — `occupiesSlot()` di papan kapasitas sudah mengecualikannya,
+        // dan kalau kalender pemesanan tidak ikut, kedua permukaan itu
+        // berselisih: admin melihat hari kosong, peneliti ditolak karena penuh.
+        // `get_extend_slot_occupancy()` sudah mengecualikannya sejak sql/52.
+        .not('submission_status', 'in', '("rejected","spam","in_review","completed","cancelled")')
         .eq('distribution_type', distributionType),
       // ⚠️ LEWAT RPC, BUKAN SELECT LANGSUNG — dan itu wajib sejak sql/52.
       //
