@@ -96,6 +96,43 @@ export function calculateDiscount(voucherCode, adCost, incentiveCost, duration, 
   return 0;
 }
 
+// ── Kolom form_submissions yang DIBACA endpoint ini ─────────────────────────
+//
+// ⚠️ DAFTAR INI BAGIAN DARI JALUR HARGA, BUKAN KERAPIAN.
+//
+// `created_at` pernah hilang dari sini sementara `orderInstant()` di bawah
+// membacanya. Gagalnya sunyi dan mahal: `Date.parse(undefined ?? '')` = NaN,
+// jatuh ke `Date.now()`, jadi voucher dinilai pada JAM BAYAR, bukan pada
+// tanggal order LAHIR. Terukur: order JFUSUHUD yang dipesan 20 Agu 2026 lalu
+// dibayar 2 Sep ditagih 2.553.000 alih-alih 2.319.900 — Rp 233.100 di atas
+// ringkasan yang disetujui peneliti. Blok koreksi total_cost di bawah lalu
+// menaikkan angka di DB ke nilai salah itu.
+//
+// Dijaga `src/utils/create-payment-select.spec.ts`: tes itu MEMPROYEKSIKAN baris uji
+// lewat daftar ini sebelum menghitung harga, jadi mencabut kolom mana pun yang
+// dipakai jalur harga langsung membuatnya merah. Menguji
+// `computeTotalCostFromSubmission` sendirian TIDAK cukup — itulah cara bug ini
+// lolos review pertama kali.
+export const SUBMISSION_SELECT_COLUMNS = [
+  'id',
+  'created_at',
+  'total_cost',
+  'title',
+  'full_name',
+  'email',
+  'phone_number',
+  'payment_status',
+  'slot_booked_by',
+  'slot_reserved_at',
+  'question_count',
+  'duration',
+  'winner_count',
+  'prize_per_winner',
+  'voucher_code',
+  'distribution_type',
+  'start_date',
+];
+
 // Instan yang dipakai untuk menilai kevalidan voucher: tanggal order LAHIR.
 // Baris tanpa created_at (atau dengan nilai tak terbaca) jatuh ke "sekarang" —
 // bukan ke "tidak pernah kedaluwarsa" — supaya data rusak tidak berubah jadi
@@ -168,8 +205,7 @@ export async function onRequest(context) {
     // 1. Read the submission — source of truth for amount and customer details.
     const subRes = await fetch(
       `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}` +
-        `&select=id,total_cost,title,full_name,email,phone_number,payment_status,slot_booked_by,slot_reserved_at` +
-        `,question_count,duration,winner_count,prize_per_winner,voucher_code,distribution_type,start_date&limit=1`,
+        `&select=${SUBMISSION_SELECT_COLUMNS.join(',')}&limit=1`,
       { headers: sbHeaders }
     );
     const subs = await subRes.json();
@@ -330,7 +366,15 @@ export async function onRequest(context) {
     // `openInvoice` null, dan peneliti tidak akan pernah bisa membayar.
     // `InvoiceForm` (tagihan admin) sudah membaca dari `ad_schedules`; jalur
     // ini tertinggal.
-    let billedStartDate = sub.start_date || null;
+    //
+    // ⚠️ GAGALNYA JATUH KE `null`, BUKAN KE `sub.start_date`.
+    // Paragraf di atas baru saja menjelaskan bahwa `form_submissions.start_date`
+    // membuat tagihan lahir langsung basi — memakainya sebagai cadangan berarti
+    // memilih keadaan rusak itu justru di saat kita paling tidak tahu apa-apa.
+    // `sql/60` sudah menetapkan NULL = "tidak diketahui" = TIDAK PERNAH basi,
+    // jadi tagihannya tetap bisa dibayar; yang hilang cuma deteksi basi untuk
+    // satu baris. Itu kehilangan yang jauh lebih murah.
+    let billedStartDate = null;
     try {
       const schedRes = await fetch(
         `${supabaseUrl}/rest/v1/ad_schedules?submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
@@ -340,11 +384,12 @@ export async function onRequest(context) {
       if (schedRes.ok) {
         const rows = await schedRes.json();
         if (Array.isArray(rows) && rows[0]?.start_date) billedStartDate = rows[0].start_date;
+        else console.warn(`[create-payment] ad_schedules ordinal 1 kosong untuk ${formSubmissionId}; billed_start_date dibiarkan NULL.`);
       } else {
-        console.warn(`[create-payment] Could not read ad_schedules (status ${schedRes.status}); falling back to form_submissions.start_date.`);
+        console.warn(`[create-payment] Could not read ad_schedules (status ${schedRes.status}); billed_start_date dibiarkan NULL.`);
       }
     } catch (e) {
-      console.warn('[create-payment] ad_schedules lookup failed; falling back to form_submissions.start_date:', e);
+      console.warn('[create-payment] ad_schedules lookup failed; billed_start_date dibiarkan NULL:', e);
     }
 
     // ── PAKAI ULANG TAGIHAN YANG MASIH HIDUP ─────────────────────────────
@@ -602,6 +647,46 @@ export async function onRequest(context) {
         !invRes.ok ? `invoices ${invRes.status}: ${await invRes.text().catch(() => '?')}` : null,
       ].filter(Boolean).join(' | ');
       console.error(`[create-payment] Gagal mencatat tagihan ${invoiceNumber} — ${detail}`);
+
+      /*
+        ⚠️ SUKSES SEPARUH LEBIH BURUK DARI GAGAL TOTAL — BERSIHKAN.
+
+        `Promise.all` tidak atomik: satu sisipan bisa berhasil sementara yang
+        lain gagal. Balas 502 dan tinggalkan barisnya, dan yang tersisa adalah
+        baris yatim yang tidak pernah dibersihkan siapa pun:
+
+          - invoices yatim  -> piutang selamanya di dashboard admin, untuk
+            tagihan yang tidak pernah benar-benar terbit;
+          - transactions yatim -> kelas A7 di webhook, dan ini yang terburuk:
+            link DOKU-nya SUDAH DIBUAT di atas dan masih hidup, jadi barisnya
+            bisa benar-benar dibayar. Terukur 2026-08-19: 243 transaksi tanpa
+            invoice pasangan.
+
+        `payment_id` unik per percobaan, jadi DELETE ini hanya bisa mengenai
+        baris yang barusan kita tulis sendiri. Kegagalannya ditelan: percobaan
+        ini sudah gagal, dan gagal membersihkan tidak boleh mengubah jawaban
+        yang diterima peneliti.
+      */
+      const cleanupTarget = txRes.ok ? 'transactions' : (invRes.ok ? 'invoices' : null);
+      if (cleanupTarget) {
+        try {
+          const delRes = await fetch(
+            `${supabaseUrl}/rest/v1/${cleanupTarget}?payment_id=eq.${encodeURIComponent(invoiceNumber)}`,
+            { method: 'DELETE', headers: { ...sbHeaders, Prefer: 'return=minimal' } }
+          );
+          if (!delRes.ok) {
+            console.error(
+              `[create-payment] Baris ${cleanupTarget} yatim ${invoiceNumber} GAGAL dihapus ` +
+              `(status ${delRes.status}) — butuh pembersihan manual.`
+            );
+          } else {
+            console.warn(`[create-payment] Baris ${cleanupTarget} yatim ${invoiceNumber} dihapus.`);
+          }
+        } catch (delErr) {
+          console.error(`[create-payment] Pembersihan ${cleanupTarget} yatim ${invoiceNumber} gagal:`, delErr);
+        }
+      }
+
       return json({
         error: 'Pembayaran tidak dapat dicatat. Silakan coba lagi.',
         detail,
