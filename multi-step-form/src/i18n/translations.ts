@@ -691,7 +691,12 @@ export const translations = {
 
     // Banners with CTA
     bannerTitleWaitingPayment: "Complete Payment",
-    bannerSubWaitingPayment: "Pay before the deadline to keep your reserved slot from being released.",
+    // Tiga sebab, tiga akibat berbeda. Satu kalimat untuk ketiganya berbohong
+    // pada dua di antaranya — batas 14.00 WIB TIDAK melepas slot, dan jadwal
+    // yang dipesan admin tidak pernah lepas sendiri sama sekali.
+    bannerSubWaitingPaymentSlot: "Pay before the deadline to keep your reserved slot from being released.",
+    bannerSubWaitingPaymentCutoff: "Pay before the deadline so we still have time to prepare this airing date. Your slot stays reserved, but past that the date has to be changed.",
+    bannerSubWaitingPaymentPlain: "Complete the payment so we can prepare this airing schedule.",
     bannerTitleChooseSchedule: "Review Approved — Pick Ad Schedule",
     bannerSubChooseSchedule: "Please select an available airing date and time slot for your survey.",
     bannerTitleExpired: "Payment Deadline Expired",
@@ -1461,7 +1466,9 @@ export const translations = {
 
     // Banners with CTA
     bannerTitleWaitingPayment: "Selesaikan Pembayaran",
-    bannerSubWaitingPayment: "Bayar sebelum batas waktu agar reservasi slot tidak dilepas ke pengguna lain.",
+    bannerSubWaitingPaymentSlot: "Bayar sebelum batas waktu agar reservasi slot tidak dilepas ke pengguna lain.",
+    bannerSubWaitingPaymentCutoff: "Bayar sebelum batas waktu agar jadwal tayang ini masih sempat kami siapkan. Slotmu tidak dilepas, tapi lewat dari itu tanggalnya harus diganti.",
+    bannerSubWaitingPaymentPlain: "Selesaikan pembayaran agar jadwal tayang ini bisa kami siapkan.",
     bannerTitleChooseSchedule: "Review Disetujui — Pilih Jadwal Penayangan",
     bannerSubChooseSchedule: "Silakan tentukan tanggal dan gelombang tayang yang tersedia untuk survei Anda.",
     bannerTitleExpired: "Batas Waktu Pembayaran Kedaluwarsa",

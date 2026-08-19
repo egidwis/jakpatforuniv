@@ -682,11 +682,42 @@ Kartu tanpa tagihan hidup juga berhenti menawarkan **"Tagih Susulan"** — tidak
 tagihan pertama yang bisa disusuli — dan menawarkan **"Terbitkan Tagihan"** beserta
 alasannya.
 
-⚠️ **Yang masih terbuka dan bukan bagian perbaikan ini:** peneliti yang menjadwalkan
-ulang tanpa menyelesaikan checkout melihat *"menunggu admin menerbitkan tagihan
-(maksimal 1 hari kerja)"*, sementara `SLOT_HOLD_MS` melepas slotnya **1 jam**
-kemudian. Janji di layar tidak bisa ditepati sistem. `d696325a` melewati tenggat itu
-13 menit sebelum perbaikan ini di-commit.
+#### ❌ KOREKSI: "1 hari kerja vs 1 jam" BUKAN kontradiksi — 2026-08-19
+
+Sempat dicatat di sini sebagai bug terbuka. **Salah, dan sudah diverifikasi salah.**
+`calloutAwaitingInvoice` ("maksimal 1 hari kerja") hanya bisa tampil kalau
+`awaitingInvoice` true, dan
+[`deriveOrderUiState.ts:151`](multi-step-form/src/components/status/deriveOrderUiState.ts#L151)
+mensintesis `/dashboard/payment/:id` untuk **setiap** order `slot_booked_by='user'`
+di step 2. Jadi kartu ordinal 1 hanya sampai ke `awaiting_invoice` kalau slotnya
+**dipesan admin** — dan slot admin tidak pernah lepas sendiri (`slotReleaseDeadline`
+mengembalikan `null` kecuali `slotBookedBy === 'user'`). Janjinya ditepati.
+
+Untuk jadwal ke-2 dst. copy-nya beda (`calloutAwaitingInvoiceSchedule`) dan tidak
+menjanjikan waktu apa pun; terukur **0** jadwal ordinal >1 yang `slot_booked_by='user'`.
+
+#### 🟢 Yang SUNGGUHAN berbohong: satu kalimat tenggat untuk tiga akibat — ditutup 2026-08-19
+
+Ditemukan saat memverifikasi koreksi di atas. `booking.deadlineCause`
+(`'slot' | 'cutoff' | null`) sudah dihitung sejak lama, dibawa sampai ke
+`ScheduleCard`, dan **tidak pernah dirender**. Akibatnya satu kalimat dipakai untuk
+ketiga keadaan:
+
+> "Bayar sebelum batas waktu agar reservasi slot tidak dilepas ke pengguna lain."
+
+Benar hanya untuk `'slot'`. Untuk `'cutoff'` (batas 14.00 WIB) **slot tidak dilepas**
+— aturan itu eksplisit di `slotHold.ts`; yang habis adalah waktu admin menyiapkan
+halaman iklan. Untuk jadwal ke-2 dst. `deadline` selalu `null`, jadi kalimat itu
+menyebut "batas waktu" yang tidak ditampilkan di mana pun.
+
+Terukur: dari jadwal yang sedang menunggu bayar, **2 admin-booked : 1 user-booked** —
+kalimat yang salah tampil untuk mayoritasnya. Sekarang tiga kalimat, dipilih dari
+`deadlineCause`.
+
+⚠️ **Masih dibiarkan (sengaja):** jadwal ke-2 dst. tidak menampilkan tenggat sama
+sekali walau batas 14.00 WIB tetap berlaku untuk mereka. Mengisinya tanpa ikut
+membawa keadaan `too_late_today` akan memunculkan tenggat yang lewat tanpa
+mengubah apa pun — menukar kelalaian dengan kontradiksi baru.
 
 ### 00A. 🟢 Cron notifikasi — SELESAI 2026-08-18 lewat Brevo
 

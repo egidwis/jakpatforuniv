@@ -545,6 +545,25 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
         const bannerTitle = deadlineTime
             ? `${t('bannerTitleWaitingPayment')} (${deadlineTime})`
             : t('bannerTitleWaitingPayment');
+        /*
+          ⚠️ AKIBAT TENGGATNYA BEDA, JADI KALIMATNYA HARUS BEDA.
+          `deadlineCause` sudah dihitung sejak lama tapi tidak pernah dirender,
+          jadi satu kalimat dipakai untuk ketiga keadaan — dan ia hanya benar
+          untuk salah satunya:
+            'slot'   -> reservasi peneliti sendiri, lepas 1 jam. Benar.
+            'cutoff' -> batas 14.00 WIB. Slot TIDAK dilepas (aturannya ada di
+                        slotHold.ts, dan jadwal yang dipesan admin memang tidak
+                        pernah lepas sendiri); yang habis adalah waktu kami
+                        menyiapkan halaman iklan. Kalimat lama menakuti peneliti
+                        dengan konsekuensi yang tidak akan terjadi.
+            null     -> jadwal ke-2 dst.: tidak ada tenggat yang ditampilkan
+                        sama sekali, jadi jangan menyebut tenggat apa pun.
+        */
+        const deadlineSubKey = b.deadlineCause === 'slot'
+            ? 'bannerSubWaitingPaymentSlot'
+            : b.deadlineCause === 'cutoff'
+                ? 'bannerSubWaitingPaymentCutoff'
+                : 'bannerSubWaitingPaymentPlain';
 
         return (
             <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/70 shadow-2xs">
@@ -553,7 +572,7 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
                         <CreditCard className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
                         <div className="min-w-0">
                             <p className="text-sm font-bold text-slate-900 leading-snug">{bannerTitle}</p>
-                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubWaitingPayment')}</p>
+                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t(deadlineSubKey)}</p>
                         </div>
                     </div>
                     {b.payUrl && (
