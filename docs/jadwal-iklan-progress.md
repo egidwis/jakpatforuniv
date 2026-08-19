@@ -83,7 +83,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | 🔓 **TERBUKA sejak 2026-08-19** — Task 13 selesai di branch, harga per jadwal sudah ada. Prasyarat yang MASIH menggantung: `reward_pools` (8B-2, **`sql/50`**) |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | 🔓 **TERBUKA & jadi pekerjaan berikutnya** — Task 13 sudah tayang 2026-08-19, harga per jadwal tersedia. ⚠️ Prasyarat `reward_pools` (8B-2, `sql/50`) **belum ada di mana pun** — diperiksa 2026-08-19: tabelnya NULL di produksi dan berkas `sql/50` belum pernah ditulis |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -912,6 +912,91 @@ daripada gagal menghormati admin yang sengaja mengosongkan voucher.
 seluruh baris order**, termasuk nama, email, telepon, dan universitas peneliti lain.
 `sql/47` hanya menutup `anon`. Migrasi ini kebetulan melepas satu pembacanya
 (kalender ketersediaan), tapi lubangnya tetap terbuka. Bukan bagian Task 13.
+
+---
+
+### 00R. 🔴→🟢 Email "iklan selesai" tidak pernah terkirim sekali pun (`sql/65`, 2026-08-19)
+
+Ditemukan saat merge `main` menjelang deploy Task 13. **Bukan bagian Task 13** —
+ia datang dari `sql/60b_ad_completed_notifications` (fitur JFU AI Analyzer).
+
+#### Kenapa tidak ada yang tahu
+
+`notify_primary_ads_completed()` menyaring dengan **huruf besar**:
+
+```sql
+WHERE fs.submission_status IN ('APPROVED', 'PUBLISHED', 'COMPLETED')
+  AND fs.payment_status = 'PAID'
+```
+
+Kosakata sistem ini huruf kecil. Terukur: saringan itu cocok dengan **0 baris**.
+`'PUBLISHED'` bahkan bukan nilai yang pernah ada di kolom itu dalam huruf apa pun.
+
+> **Diamnya yang paling mahal.** Bug ini tidak muncul di `cron.job_run_details`
+> (job-nya sukses tiap hari), tidak di `net._http_response` (tidak pernah ada
+> permintaan), dan tidak di log endpoint (tidak pernah dipanggil). Satu-satunya
+> gejalanya adalah email yang **tidak datang** — dan tidak ada yang memantau itu.
+>
+> Kalau ada satu hal yang dibawa pulang dari §00R: **cron yang "selalu sukses"
+> bukan bukti apa-apa.** Yang membuktikan cuma barisnya berkurang.
+
+#### Dua bug yang ikut ketemu
+
+**Jam berakhirnya dihitung rumus yang beda.** Versi lama memakai
+`airing_instant_of_date()` untuk SEMUA order, mengabaikan jam tayang kustom dan
+Kilat. Ironisnya `notify_primary_ads_live()` sudah memuat peringatan persis soal
+ini di badannya — *"urutan cabang SAMA PERSIS dengan
+`sync_ad_schedule_from_submission()`; menyimpang berarti email terkirim padahal
+papan Schedule masih bilang belum tayang"* — dan fungsi 'completed' menyimpang.
+Menyentuh 1 order berjam kustom dan 14 Kilat.
+
+**Tidak ada batas mundur.** Memperbaiki bug pertama sendirian akan mengirim
+**181 email** "penayangan baru selesai" dalam satu jalannya cron: 166 untuk iklan
+yang berakhir >7 hari lalu, 101 >30 hari, yang tertua **26 Mei 2026**. Kalimatnya
+bohong untuk iklan yang berakhir tiga bulan lalu, dan volumenya membahayakan
+reputasi pengirim Brevo.
+
+#### Yang diterapkan
+
+| | |
+|---|---|
+| saringan | daftar-**tolak** (`NOT IN rejected/spam/cancelled/slot_cancelled`), bukan daftar-izin — status baru terus lahir di proyek ini, dan daftar-izin diam-diam berhenti mengenali order yang sah |
+| jam berakhir | custom → kilat → bawaan, urutan yang sama dengan mirror & notifikasi 'live' |
+| batas mundur | **7 hari**. Berakhir lebih lama → ditandai TANPA dikirim. Cron mati sebulan hanya mengirim minggu terakhir |
+| tunggakan | **531 baris ditandai tanpa email** (keputusan pemilik produk). Bukan 181: saringannya sengaja lebih lebar dari syarat kirim, supaya order batal yang dihidupkan lagi tidak mendadak memenuhi syarat |
+| atomisitas | peredam + perbaikan di **satu transaksi**, jadi tidak ada jendela di mana saringan yang benar hidup tanpa peredamnya |
+
+Cadangan URL **dipertahankan** (beda dari fungsi 'live' yang gagal-tertutup):
+`notify_ad_completed_url` tidak ada di vault, jadi menghapusnya akan mematikan
+fitur ini untuk kedua kalinya dengan cara berbeda.
+
+Verifikasi sesudah diterapkan: tunggakan dibungkam **531**, tunggakan tersisa
+**0**, masih tayang **7**, fungsi masih huruf besar **false**. Fungsinya
+dijalankan sekali langsung — **0 permintaan HTTP**, 0 antrean. Yang dibuktikan
+itu bukan "email terkirim", melainkan ia **berjalan sampai habis tanpa
+exception**, hal yang tidak pernah bisa dipastikan sebelumnya.
+
+#### ⚠️ Yang MASIH belum terbukti, dan batas yang sengaja tidak ditambal
+
+**Belum ada satu pun email sungguhan yang terkirim lewat jalur ini.** Buktinya
+baru ada saat salah satu dari **7 iklan** yang masih tayang berakhir. Saat itu
+periksa `net._http_response` **segera** — retensinya beberapa jam saja.
+
+Penandaan tetap terjadi **tanpa memeriksa hasil kiriman**. `net.http_post`
+asinkron: jawabannya mendarat belakangan, jadi tidak ada status yang bisa
+diperiksa di transaksi itu; pola yang sama dipakai `notify_primary_ads_live()`.
+Kalau endpointnya mati, ordernya tetap ditandai dan emailnya hilang permanen —
+**persis insiden `sql/48`** (§00A). Yang menahannya hari ini cuma satu hal:
+endpointnya sudah tayang. Membuat pola ini benar-benar aman perlu tabel antrean
++ penyapu yang membaca `net._http_response`; itu pekerjaan tersendiri.
+
+Untuk iklan pertama yang berakhir, **catat id-nya lebih dulu** supaya
+`completed_notified_at`-nya bisa dikosongkan manual kalau emailnya gagal.
+
+**Rollback** (aman hanya SELAMA belum ada email sungguhan terkirim — sesudah itu
+ia berubah jadi perintah kirim-ulang): `completed_notified_at` bernilai 0 baris
+sebelum `sql/65`, jadi `UPDATE form_submissions SET completed_notified_at = NULL
+WHERE completed_notified_at IS NOT NULL;` memulihkan persis.
 
 ---
 
