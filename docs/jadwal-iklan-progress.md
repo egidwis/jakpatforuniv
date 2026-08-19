@@ -598,6 +598,96 @@ mengosongkannya (keduanya butuh Task 11).
 **Belum dikerjakan:** uji manual di browser (urutannya di rencana), dan keputusan atas **4
 order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomatis.
 
+### 00P. 🟢 Balapan admin-vs-peneliti + "tagihan hidup" (`sql/60`, 2026-08-19)
+
+**Keputusan pemilik produk: PENELITI YANG MENANG.** Saat pembayaran kedaluwarsa,
+admin bisa menerbitkan tagihan ulang tepat ketika peneliti menjadwalkan ulang.
+Slot adalah barang langkanya; tagihan cuma turunan dari jadwal. Menerbitkan ulang
+tagihan gratis, mengembalikan uang tidak — dan sistem ini **tidak punya alur refund**.
+
+**Dinilai saat DIBACA, bukan dikunci saat MENULIS.** Kunci optimistis (bandingkan
+`updated_at` jadwal sebelum menyimpan) menutup urutan "peneliti dulu, admin
+menyusul" tapi **tidak** menutup yang benar-benar bersamaan: tagihan yang mendarat
+sesudah sapuan expiry tetap lolos dan bertahan hidup menunjuk jendela yang sudah
+tidak ada — peneliti bisa **membayar penuh untuk slot yang sudah pindah**.
+Menyimpan jendela yang DITAGIHKAN (`billed_start_date`) lalu membandingkannya saat
+dibaca membuat pertanyaan "apakah tagihan ini masih berlaku?" **tidak punya jendela
+balapan sama sekali**. Polanya sama dengan `is_superseded` di `sql/53`.
+
+    is_stale = status BUKAN lunas
+               AND billed_start_date IS NOT NULL
+               AND ad_schedules.start_date IS NOT NULL
+               AND billed_start_date <> ad_schedules.start_date
+
+Dua pengecualian yang disengaja: **uang yang sudah masuk tidak pernah basi**, dan
+**baris lama tidak pernah basi** (`billed_start_date` NULL = "tidak diketahui",
+bukan "tidak cocok"). Membackfill dari `ad_schedules.start_date` hari ini akan
+menyatakan 400+ tagihan lama sah selamanya ATAU membatalkan semuanya sekaligus,
+tergantung arah tebakan.
+
+⚠️ **`billed_start_date` punya DUA penulis dan keduanya wajib**: `InvoiceForm.tsx`
+(tagihan manual admin) dan `create-payment.js` (swalayan peneliti). Melewatkan satu
+membuat seluruh jalur itu kebal dari pemeriksaan.
+
+Peneliti mendapat keterangannya sendiri — ia tidak tahu apa-apa soal balapan ini:
+tanggal lama disebut (supaya cocok dengan email tagihan yang terlanjur diterima),
+sebabnya dijelaskan, dan **"jangan bayar link lama"** dinyatakan eksplisit — itu
+satu-satunya kalimat yang benar-benar mencegah kehilangan uang.
+
+**Verifikasi sesudah diterapkan:** piutang tetap Rp 20.482.163, `stale_count` 0 di
+semua jadwal (benar — semua baris lama NULL), kedua invarian 0, `anon` tidak bisa
+EXECUTE. Nol pergerakan memang hasil yang diinginkan: migrasi ini memasang alatnya.
+Disimulasikan di `5FJ9J4Q6` — menggeser jadwalnya membuat 2 dari 3 peristiwa basi
+dan yang lunas tetap utuh.
+
+#### 🔴 `sql/60` sempat tidak bisa dijalankan ulang — diperbaiki 2026-08-19
+
+Versi pertama berkasnya hanya memuat `ALTER TABLE` lalu menulis *"definisi lengkap
+ada di riwayat git commit ini"* — padahal DDL ketiga fungsinya **tidak ikut sama
+sekali**. Produksi punya `is_stale`, repo tidak. Klon baru yang menjalankan `sql/53`
+lalu `sql/60` mendapat fungsi versi `sql/53`, dan frontend yang membaca
+`is_stale`/`stale_count` mati tanpa ada yang salah ketik. Definisi lengkapnya
+sekarang ada di berkasnya, disalin verbatim dari `pg_get_functiondef` produksi.
+**Migrasi harus bisa dijalankan ulang dari nol; komentar tidak bisa.**
+(Belum dijalankan ulang ke produksi — produksi sudah memuatnya.)
+
+#### 🟢 "Ada baris tagihan" bukan "ada tagihan hidup" — ditutup 2026-08-19
+
+Dilaporkan dari lapangan: order `d696325a` menampilkan **dua jawaban berbeda untuk
+satu pertanyaan**. Tab Info berkata *"Invoice tagihan sudah diterbitkan, menunggu
+pelunasan"*; tab Jadwal & Bayar cuma menampilkan satu baris tercoret. Yang menyuruh
+menunggu itu yang salah — tidak ada satu pun link yang masih bisa dibayar.
+
+Sebabnya sama di kedua tempat, ditulis dua kali:
+
+| Tempat | Ukuran lama | Ukuran benar |
+|---|---|---|
+| `lifecycle.ts` → banner Info | `paymentData.hasInvoices` | `paymentData.hasOpenInvoice` |
+| `ScheduleCardList.cardStateOf` | `billing.invoices.length` | `billing.openInvoice` |
+
+Keduanya menghitung **baris**, bukan tagihan yang hidup. Baris tagihan tidak pernah
+dihapus, jadi begitu satu tagihan mati keduanya berbohong selamanya. Kartunya bahkan
+sudah menampilkan **"Rp 0 ditagih"** di layar yang sama — dua pernyataan yang saling
+membantah di satu kartu.
+
+Yang lewat batas bayar **tetap** terhitung terbuka: itu piutang, bukan tagihan mati.
+
+Terukur sebelum diubah: **1 order** di seluruh basis data yang semua tagihannya mati
+tanpa uang masuk — persis yang dilaporkan. Di tingkat jadwal **101** jadwal berpindah
+`waiting_payment` → `awaiting_invoice`; semuanya yang tagihan hidupnya cuma `pending`
+di `transactions`, yaitu checkout yang ditinggalkan, dan kartunya memang sudah
+menampilkan Rp 0 untuk mereka.
+
+Kartu tanpa tagihan hidup juga berhenti menawarkan **"Tagih Susulan"** — tidak ada
+tagihan pertama yang bisa disusuli — dan menawarkan **"Terbitkan Tagihan"** beserta
+alasannya.
+
+⚠️ **Yang masih terbuka dan bukan bagian perbaikan ini:** peneliti yang menjadwalkan
+ulang tanpa menyelesaikan checkout melihat *"menunggu admin menerbitkan tagihan
+(maksimal 1 hari kerja)"*, sementara `SLOT_HOLD_MS` melepas slotnya **1 jam**
+kemudian. Janji di layar tidak bisa ditepati sistem. `d696325a` melewati tenggat itu
+13 menit sebelum perbaikan ini di-commit.
+
 ### 00A. 🟢 Cron notifikasi — SELESAI 2026-08-18 lewat Brevo
 
 > **SELESAI 2026-08-18 23.28 WIB. Baca kotak ini; sisanya riwayat.**
