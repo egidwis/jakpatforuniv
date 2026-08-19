@@ -99,10 +99,12 @@ export function AdsWeekBoard({
     return map;
   }, [entries, now]);
 
-  const hasExtra = useMemo(
-    () => entries.some((e) => e.isExtraAd && e.distributionType !== 'kilat'),
-    [entries]
-  );
+  // Saringan `distributionType !== 'kilat'` yang dulu ada di sini DIBUANG
+  // (sql/63): Kilat tidak bisa lagi ber-`isExtraAd`, dijamin CHECK + trigger di
+  // database. Menyaringnya lagi hanya menyembunyikan pelanggaran seandainya
+  // jaminan itu bocor — dan baris di `byCell` sudah melewatkan Kilat sejak awal,
+  // jadi barisnya akan tampil kosong, bukan salah.
+  const hasExtra = useMemo(() => entries.some((e) => e.isExtraAd), [entries]);
 
   const headerLabel =
     `${days[0].toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })} – ` +

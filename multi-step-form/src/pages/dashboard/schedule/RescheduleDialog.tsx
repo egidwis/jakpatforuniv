@@ -47,6 +47,7 @@ export function RescheduleDialog({
           mode="edit"
           submissionId={entry.submissionId}
           entry={entry}
+          isKilatOrder={isKilat}
           columns={7}
           onCancel={() => onOpenChange(false)}
           onDone={() => { onOpenChange(false); onDone(); }}

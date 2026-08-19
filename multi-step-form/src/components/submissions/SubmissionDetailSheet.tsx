@@ -417,6 +417,7 @@ export function SubmissionDetailSheet({
         submissionId={submission.id}
         entry={subView.kind === 'edit' ? subView.entry : undefined}
         isExtraAd={subView.kind === 'create' ? subView.isExtraAd : undefined}
+        isKilatOrder={submission.distribution_type === 'kilat'}
         currentPrizePerWinner={submission.prize_per_winner || 0}
         currentWinnerCount={submission.winnerCount || 0}
         columns={4}

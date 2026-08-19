@@ -528,6 +528,15 @@ export interface FormSubmissionExtend {
   ppn_amount?: number;         // PPN 11%
   voucher_code?: string;
   admin_notes?: string;
+  /**
+   * Kolam kuota jadwal INI. Dibawa view sejak sql/63.
+   *
+   * Dihilangkan (undefined) berarti "warisi jadwal ordinal 1", BUKAN "reguler"
+   * — `extend_view_insert()` yang memutuskannya di DB. Mengirim `false` secara
+   * eksplisit untuk jadwal ke-2 sebuah iklan tambahan akan memindahkannya ke
+   * kolam reguler dan menjual satu slot reguler lebih banyak dari yang ada.
+   */
+  is_extra_ad?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -1676,6 +1685,32 @@ export const updateScheduleDates = async (
 };
 
 /**
+ * Memindahkan satu jadwal antara kolam kuota REGULER dan TAMBAHAN.
+ *
+ * Lewat RPC, dan itu bukan pilihan gaya: `ad_schedules` TIDAK punya policy
+ * UPDATE sama sekali (hanya SELECT untuk pemilik/admin, plus service_role).
+ * Setiap tulisan dari dashboard melewati view atau trigger SECURITY DEFINER —
+ * dan jadwal ordinal 1 tidak ada di view mana pun. Tanpa `set_schedule_extra_ad`
+ * togglenya mustahil justru untuk jadwal PERTAMA, yang dimiliki 21 dari 21
+ * order tambahan hari ini.
+ *
+ * Berlaku untuk SATU jadwal, tidak menular ke saudaranya. Itu memang inti
+ * sql/63: sebelumnya flagnya per-order dan tidak ada cara menyatakan "jadwal
+ * ke-2 ini tambahan, yang pertama reguler".
+ *
+ * DB menolak KERAS kalau jadwalnya Kilat. Biarkan pesannya naik apa adanya ke
+ * toast: "JFU Kilat tidak punya kuota iklan tambahan" menjelaskan aturannya
+ * jauh lebih baik daripada "Gagal menyimpan".
+ */
+export const setScheduleExtraAd = async (scheduleId: string, isExtraAd: boolean) => {
+  const { error } = await supabase.rpc('set_schedule_extra_ad', {
+    p_schedule_id: scheduleId,
+    p_is_extra: isExtraAd,
+  });
+  if (error) throw error;
+};
+
+/**
  * Pindahkan jendela tayang sebuah jadwal KE-2 DST. (`form_submissions_extend`).
  *
  * Kembaran `updateScheduleDates` untuk tabel yang satunya, dan sengaja dipisah
@@ -1771,7 +1806,16 @@ type SlotOccupancy = {
   paymentStatus: string | null;
   slotBookedBy: string | null;
   slotReservedAt: string | null;
-  adminNotes: string | null;
+  /**
+   * Kolam kuota jadwal INI, dari `ad_schedules.is_extra_ad` (sql/63).
+   *
+   * ⚠️ TIDAK ADA LAGI CADANGAN `admin_notes LIKE '[EXTRA_AD]'` di sini, dan itu
+   * disengaja. Backfill sql/63 sudah menyerap penanda teks itu ke kolomnya —
+   * membacanya lagi hanya bisa MENAMBAH baris yang sengaja dikeluarkan, yaitu
+   * order Kilat ber-'[EXTRA_AD]'. Kilat tidak punya kolam tambahan; melemparnya
+   * ke `extraCounts` membuatnya lolos dari kuota Kilat tanpa jejak.
+   */
+  isExtraAd: boolean;
 };
 
 /**
@@ -1796,10 +1840,19 @@ const holdsSlot = (slot: SlotOccupancy) => {
  * Also handles user-booked slots timeout (1 hour), hiding expired slots.
  *
  * Counts BOTH the first schedule and every extend. Extends used to be invisible
- * here, so a date could be sold past MAX_REGULAR_ADS_PER_DAY. Extends carry no
+ * here, so a date could be sold past MAX_REGULAR_ADS_PER_DAY.
+ *
+ * ⚠️ KOREKSI sql/63. Catatan lama di sini berbunyi "extends carry no
  * distribution_type or is_extra_ad of their own — both are inherited from the
- * parent submission, so a kilat extend never eats a regular slot and an extra
- * ad's extend stays in extraCounts.
+ * parent submission". Separuhnya masih benar (`distribution_type` memang
+ * diturunkan dari induk), separuhnya TIDAK LAGI: sejak sql/63 setiap jadwal
+ * memiliki `is_extra_ad`-nya sendiri, dan jadwal ke-2 sebuah order boleh
+ * berbeda kolam dari jadwal pertamanya. Pewarisan tetap ada, tapi ia kini
+ * cuma NILAI AWAL yang ditulis `extend_view_insert()` saat jadwal lahir —
+ * bukan aturan yang berlaku selamanya.
+ *
+ * Kedua kakinya lewat RPC SECURITY DEFINER. Kuota harus menghitung jadwal
+ * SEMUA ORANG, sementara RLS klien hanya memapar milik sendiri.
  */
 export const fetchSlotAvailability = async (
   excludeSubmissionId?: string,
@@ -1838,17 +1891,16 @@ export const fetchSlotAvailability = async (
     };
 
     const [submissionsResult, extendsResult] = await Promise.all([
-      supabase
-        .from('form_submissions')
-        .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status, admin_notes, distribution_type')
-        .not('start_date', 'is', null)
-        // ⚠️ 'cancelled' IKUT DIKELUARKAN. Order yang dibatalkan tidak menahan
-        // slot — `occupiesSlot()` di papan kapasitas sudah mengecualikannya,
-        // dan kalau kalender pemesanan tidak ikut, kedua permukaan itu
-        // berselisih: admin melihat hari kosong, peneliti ditolak karena penuh.
-        // `get_extend_slot_occupancy()` sudah mengecualikannya sejak sql/52.
-        .not('submission_status', 'in', '("rejected","spam","in_review","completed","cancelled","slot_cancelled")')
-        .eq('distribution_type', distributionType),
+      // ⚠️ LEWAT RPC SEJAK sql/63, dulu SELECT langsung ke `form_submissions`.
+      //
+      // Pemicunya `is_extra_ad`: kolom itu hidup di `ad_schedules`, yang RLS-nya
+      // membatasi peneliti ke ordernya sendiri. Saringannya IDENTIK dengan query
+      // lama — termasuk pengecualian 'cancelled'/'slot_cancelled', tanpanya
+      // kalender pemesanan dan papan kapasitas berselisih: admin melihat hari
+      // kosong, peneliti ditolak karena penuh — dan `start_date`/`end_date`
+      // tetap DATE, bukan TIMESTAMPTZ cermin, supaya tidak ada perubahan
+      // perilaku tanggal yang menyelinap.
+      supabase.rpc('get_submission_slot_occupancy', { p_distribution_type: distributionType }),
       // ⚠️ LEWAT RPC, BUKAN SELECT LANGSUNG — dan itu wajib sejak sql/52.
       //
       // `form_submissions_extend` kini VIEW ber-`security_invoker = true`, jadi
@@ -1863,7 +1915,7 @@ export const fetchSlotAvailability = async (
       // ubah keduanya.
       supabase.rpc('get_extend_slot_occupancy', { p_distribution_type: distributionType }),
     ]);
-    warnIfSlow('form_submissions + get_extend_slot_occupancy', t0);
+    warnIfSlow('get_submission_slot_occupancy + get_extend_slot_occupancy', t0);
 
     if (submissionsResult.error) throw submissionsResult.error;
     if (extendsResult.error) throw extendsResult.error;
@@ -1878,7 +1930,7 @@ export const fetchSlotAvailability = async (
       paymentStatus: row.payment_status,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
-      adminNotes: row.admin_notes,
+      isExtraAd: !!row.is_extra_ad,
     }));
 
     // `get_extend_slot_occupancy()` sudah men-JOIN induknya di dalam DB, jadi
@@ -1894,51 +1946,10 @@ export const fetchSlotAvailability = async (
       paymentStatus: row.payment_status,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
-      adminNotes: row.admin_notes ?? null,
+      isExtraAd: !!row.is_extra_ad,
     }));
 
     const activeSlots = [...fromSubmissions, ...fromExtends].filter(holdsSlot);
-
-    // is_extra_ad lives on the page, so it is looked up per submission and
-    // applies to that submission's extends too.
-    const subIds = Array.from(new Set(activeSlots.map((s) => s.submissionId)));
-    let extraAdMap: Record<string, boolean> = {};
-    if (subIds.length > 0) {
-      /*
-        ⚠️ WAJIB DIPOTONG. Komentar di `selectSurveyPagesByIds` dulu menyebut
-        pemanggil ini "hari ini masih aman — 317 id". Ternyata tidak: dengan
-        317 UUID, `.in()` menyusun URL ±12 KB, dan permintaannya MENGGANTUNG —
-        preflight lolos, permintaan aslinya tidak pernah kembali. Terlihat di
-        produksi 2026-08-19 sebagai "Mengunci slotmu..." yang berputar tanpa
-        henti: `submitOrder` memanggil ulang fungsi ini untuk memeriksa
-        kapasitas, dan tersangkut di sini.
-
-        Menggantung lebih buruk daripada gagal — tidak ada error yang bisa
-        ditangkap, jadi seluruh penguncian slot ikut berhenti tanpa jejak.
-      */
-      const tPages = Date.now();
-      try {
-        const pages = await selectSurveyPagesByIds<{ submission_id: string; is_extra_ad: boolean }>(
-          'submission_id, is_extra_ad',
-          subIds,
-        );
-        pages.forEach((p) => { extraAdMap[p.submission_id] = !!p.is_extra_ad; });
-      } catch (err) {
-        /*
-          Kegagalan di sini sengaja DIMAAFKAN, seperti versi sebelumnya.
-          `extraAdMap` hanya memutuskan sebuah slot masuk kuota reguler atau
-          kuota iklan tambahan. Peta kosong berarti iklan tambahan ikut dihitung
-          reguler — tanggal tampak LEBIH penuh dari sebenarnya. Itu arah yang
-          aman; melempar di sini akan mematikan seluruh pembacaan ketersediaan
-          demi angka yang cuma menghaluskan hitungan.
-
-          `selectSurveyPagesByIds` melempar (beda dari kode lama yang
-          mengabaikan `error` diam-diam), jadi peredamnya harus di sini.
-        */
-        console.warn('[slot-availability] peta is_extra_ad gagal, lanjut tanpa itu:', err);
-      }
-      warnIfSlow(`survey_pages in(${subIds.length} id)`, tPages);
-    }
 
     const regularCounts: Record<string, number> = {};
     const extraCounts: Record<string, number> = {};
@@ -1956,8 +1967,7 @@ export const fetchSlotAvailability = async (
         const endDay = new Date(slot.endDate);
         endDay.setHours(0, 0, 0, 0);
 
-        const isExtra = extraAdMap[slot.submissionId] || (slot.adminNotes || '').includes('[EXTRA_AD]');
-        const targetCounts = isExtra ? extraCounts : regularCounts;
+        const targetCounts = slot.isExtraAd ? extraCounts : regularCounts;
 
         // end-exclusive: the end date is the hand-over day, not an aired day
         while (current < endDay) {
@@ -1970,7 +1980,7 @@ export const fetchSlotAvailability = async (
           details[dateStr].push({
             id: slot.id,
             title: slot.title,
-            isExtra,
+            isExtra: slot.isExtraAd,
             status: slot.status
           });
 
@@ -2050,7 +2060,9 @@ export const fetchKilatSlotAvailability = async (
       paymentStatus: row.payment_status,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
-      adminNotes: null,
+      // Kilat, jadi selalu false — sql/63 menjadikannya jaminan skema, bukan
+      // sekadar kebiasaan: Kilat tidak punya kolam iklan tambahan.
+      isExtraAd: false,
     });
     if (!holds) return;
 
@@ -2305,7 +2317,9 @@ export const fetchKilatSchedule = async (
       paymentStatus: row.payment_status,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
-      adminNotes: null,
+      // Kilat, jadi selalu false — sql/63 menjadikannya jaminan skema, bukan
+      // sekadar kebiasaan: Kilat tidak punya kolam iklan tambahan.
+      isExtraAd: false,
     }))
     .map((row: any) => ({
       id: row.id,
@@ -2786,11 +2800,17 @@ export interface AdScheduleEntry {
   pageStatus: 'none' | 'draft' | 'published' | 'kilat';
   /**
    * Iklan tambahan — kuotanya KOLAM SENDIRI (`MAX_EXTRA_ADS_PER_DAY`), terpisah
-   * dari kuota reguler. Ikut dari `survey_pages.is_extra_ad`, jadi ia gratis:
-   * query halaman memang sudah dijalankan untuk `pageStatus`.
+   * dari kuota reguler. Menggabungkannya ke satu kuota akan membuat hari dengan
+   * 4 reguler + 2 tambahan terbaca "6/4" — panik yang tidak berdasar.
    *
-   * Menggabungkannya ke satu kuota akan membuat hari dengan 4 reguler + 2
-   * tambahan terbaca "6/4" — panik yang tidak berdasar.
+   * Sejak sql/63 datang dari `ad_schedules.is_extra_ad`, PER JADWAL. Sebelumnya
+   * dari `survey_pages.is_extra_ad`, satu baris per ORDER — yang berarti jadwal
+   * ke-2 tidak pernah bisa berbeda kolam dari jadwal pertama, dan tidak ada
+   * tempat menyimpan pilihan admin.
+   *
+   * Selalu `false` untuk Kilat: kolam tambahan adalah kolam di KALENDER iklan,
+   * dan Kilat dijual lewat slot jam. Dijamin skema (CHECK + trigger), jadi
+   * pemanggil tidak perlu menyaring kilat lagi sendiri.
    */
   isExtraAd: boolean;
   /**
@@ -2879,7 +2899,7 @@ export const fetchAdSchedules = async (
       id, submission_id, ordinal, source_table, source_id, booking_id,
       start_date, end_date, duration,
       status, review_status, payment_status,
-      distribution_type, kilat_slot_hour,
+      distribution_type, kilat_slot_hour, is_extra_ad,
       total_cost, subtotal, ppn_amount, voucher_code,
       prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
       slot_booked_by, slot_reserved_at, created_at,
@@ -2931,19 +2951,17 @@ export const fetchAdSchedules = async (
   // perlu dibayar untuk menjawab "banner mana yang masih bawaan".
   const pageBySubmission = new Map<
     string,
-    { published: boolean; isExtraAd: boolean; placeholderBanner: boolean }
+    { published: boolean; placeholderBanner: boolean }
   >();
   if (regularIds.length > 0) {
     const pages = await selectSurveyPagesByIds<{
       submission_id: string;
       is_published: boolean | null;
-      is_extra_ad: boolean | null;
       banner_url: string | null;
-    }>('submission_id, is_published, is_extra_ad, banner_url', regularIds);
+    }>('submission_id, is_published, banner_url', regularIds);
     for (const p of pages) {
       pageBySubmission.set(p.submission_id, {
         published: !!p.is_published,
-        isExtraAd: !!p.is_extra_ad,
         placeholderBanner: isPlaceholderBannerUrl(p.banner_url),
       });
     }
@@ -2992,7 +3010,7 @@ export const fetchAdSchedules = async (
       submissionCreatedAt: row.form_submissions?.created_at || new Date().toISOString(),
       createdAt: row.created_at || null,
       pageStatus,
-      isExtraAd: page?.isExtraAd ?? false,
+      isExtraAd: !!row.is_extra_ad,
       // Hanya bermakna untuk halaman yang BENAR-BENAR ada. Kilat dan order tanpa
       // halaman keduanya false — lihat komentar di AdScheduleEntry.
       pageBannerIsPlaceholder: pageStatus === 'none' || pageStatus === 'kilat'
