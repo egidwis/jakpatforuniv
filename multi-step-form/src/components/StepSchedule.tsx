@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Info, Lock } from 'lucide-react';
+import { ArrowLeft, Loader2, Info, Lock, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { SchedulePicker } from './SchedulePicker';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
@@ -55,6 +55,19 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: 
       setSelected(null);
       return;
     }
+    /*
+      ⚠️ KOSONG BUKAN LOWONG.
+      `isRangeAvailable` membaca `counts[ymd] || 0`, jadi selama ketersediaan
+      belum terbaca ia menjawab TRUE untuk SETIAP tanggal — termasuk yang
+      sudah penuh. Tanpa gerbang ini, pengambilan data yang gagal atau
+      menggantung berubah dari "kalender belum siap" menjadi "kalender bilang
+      semuanya lowong", dan tanggal penuh pun ikut terkunci.
+    */
+    if (!availability.isReady) {
+      toast.error(t('slotErrorAvailabilityUnknown'));
+      void availability.reload();
+      return;
+    }
     if (!availability.isRangeAvailable(selected, duration)) {
       toast.error(t('slotErrorFull'));
       return;
@@ -83,6 +96,19 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: 
               {mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleTitle')}
             </h2>
             {availability.isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            {/* Gagal memuat harus KELIHATAN. Sebelumnya kegagalan hanya masuk
+                console.error, jadi layar tampak normal padahal angka slotnya
+                nol semua — mustahil dibedakan dari "semua tanggal kosong". */}
+            {!availability.isLoading && availability.hasError && (
+              <button
+                type="button"
+                onClick={() => void availability.reload()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t('slotAvailabilityRetry')}
+              </button>
+            )}
           </div>
           <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
             {t('scheduleSubtitle')}

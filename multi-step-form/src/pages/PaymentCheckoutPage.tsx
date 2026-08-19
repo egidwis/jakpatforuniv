@@ -309,6 +309,15 @@ export function PaymentCheckoutPage() {
       return;
     }
     const days = submission.duration || 1;
+    // Sama seperti di StepSchedule: `counts` kosong menjawab "lowong" untuk
+    // semua tanggal. Jalur ini bahkan tidak punya pemeriksaan ulang di server
+    // (`rebookSlotForSubmission` hanya menolak order yang sudah lunas), jadi
+    // gerbang ini satu-satunya yang berdiri.
+    if (!availability.isReady) {
+      toast.error(t('slotErrorAvailabilityUnknown'));
+      void availability.reload();
+      return;
+    }
     if (!availability.isRangeAvailable(repickDate, days)) {
       toast.error(t('slotErrorFull'));
       return;
