@@ -515,10 +515,34 @@ export async function onRequest(context) {
       }),
     ]);
 
+    /*
+      ⚠️ GAGAL MENULIS = GAGAL, BUKAN CATATAN KECIL.
+
+      Sebelumnya blok ini hanya `console.error` lalu tetap mengembalikan 200
+      beserta payment_url. Artinya link DOKU yang bisa DIBAYAR dikirim ke
+      peneliti sementara tagihannya tidak tercatat di mana pun — persis kelas
+      kegagalan yang sudah membakar proyek ini di webhook DOKU (fetch ke
+      PostgREST yang tak pernah memeriksa `res.ok`).
+
+      Sejak tagihan terbit saat slot dikunci, kegagalan senyap ini juga yang
+      membuat opsi A tampak "tidak jalan": endpoint sukses, halaman bayar
+      tenang, admin tidak melihat tagihan apa pun, dan tidak ada satu pun
+      pesan error yang menjelaskan kenapa.
+
+      Penyebab paling sering: `SUPABASE_SERVICE_ROLE_KEY` tidak ada sehingga
+      key-nya jatuh ke anon — dan RLS `invoices` (sql/24) menolak INSERT-nya.
+    */
     if (!txRes.ok || !invRes.ok) {
-      console.error(
-        `[create-payment] DB insert issue — tx:${txRes.status} inv:${invRes.status} for ${invoiceNumber}`
-      );
+      const detail = [
+        !txRes.ok ? `transactions ${txRes.status}: ${await txRes.text().catch(() => '?')}` : null,
+        !invRes.ok ? `invoices ${invRes.status}: ${await invRes.text().catch(() => '?')}` : null,
+      ].filter(Boolean).join(' | ');
+      console.error(`[create-payment] Gagal mencatat tagihan ${invoiceNumber} — ${detail}`);
+      return json({
+        error: 'Pembayaran tidak dapat dicatat. Silakan coba lagi.',
+        detail,
+        payment_id: invoiceNumber,
+      }, 502);
     }
 
     return json({ payment_url: paymentUrl, payment_id: invoiceNumber }, 200);
