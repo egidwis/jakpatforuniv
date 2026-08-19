@@ -161,13 +161,39 @@ function InvoiceRow({
   const isStruck = inv.isDead || inv.isSuperseded || isAbandoned || isLate;
   const invoiceUrl = inv.paymentId ? `/invoices/${inv.paymentId}` : null;
 
+  /**
+   * ⚠️ DICORET ≠ TIDAK DITAGIHKAN. `isLate` diturunkan dari tanggal tayang di
+   * KLIEN; `schedule_billing_summary` (sql/53) tidak tahu apa-apa soal itu dan
+   * tetap menghitung tagihan pending sebagai piutang — dan itu benar, karena
+   * admin memang masih menagihnya di luar sistem. Coretan di sini hanya
+   * berarti "link bayar ini sudah tidak berguna untuk slot tersebut".
+   *
+   * Kalau kedua arti itu dicampur, kartu mencoret satu baris lalu tetap
+   * menjumlahkannya di "belum masuk" — tampak seperti bug padahal keduanya
+   * benar untuk pertanyaan masing-masing. Karena itu labelnya dieja lengkap.
+   */
+  const isBillable = !inv.isPaid && !inv.isDead && !inv.isSuperseded && inv.source === 'invoice';
+
+  /** Masih bisa dibayar lewat link-nya. */
+  const canPay = isBillable && !isLate;
+
+  /**
+   * ⚠️ PEMBATALAN JUSTRU PALING DIBUTUHKAN PADA BARIS YANG DICORET.
+   * Versi pertama fitur ini menyembunyikan SELURUH aksi saat `isStruck`, jadi
+   * tagihan yang lewat batas bayar — persis yang ingin dibersihkan admin —
+   * tidak punya tombolnya sama sekali. Syaratnya cuma: ia tagihan sungguhan
+   * (dari `invoices`), belum dibayar, dan belum mati. Terlewat dan tersusul
+   * TETAP boleh dibatalkan.
+   */
+  const canCancel = !inv.isPaid && !inv.isDead && inv.source === 'invoice' && !!inv.paymentId;
+
   const label =
     inv.isPaid ? null
     : inv.status.toLowerCase() === 'cancelled' ? 'Tagihan dibatalkan'
     : inv.isDead ? 'Kedaluwarsa'
     : inv.isSuperseded ? 'Tersusul tagihan baru'
     : isAbandoned ? 'Checkout ditinggalkan'
-    : isLate ? 'Batas bayar terlewat'
+    : isLate ? 'Batas bayar terlewat — masih dihitung piutang'
     : null;
 
   return (
@@ -254,9 +280,9 @@ function InvoiceRow({
           </a>
         )}
 
-        {!inv.isPaid && !isStruck && (
+        {(canPay || canCancel) && (
           <div className="flex flex-col items-end gap-1">
-            {actions.onMarkPaid && (
+            {canPay && actions.onMarkPaid && (
               <Button
                 size="sm"
                 className="h-6 px-2 text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -265,7 +291,7 @@ function InvoiceRow({
                 <Check className="w-3 h-3 mr-1" /> Tandai Lunas
               </Button>
             )}
-            {actions.onCancelInvoice && inv.source === 'invoice' && inv.paymentId && (
+            {canCancel && actions.onCancelInvoice && (
               <button
                 type="button"
                 className="text-[10px] font-medium text-slate-400 hover:text-red-600 hover:underline transition-colors"
