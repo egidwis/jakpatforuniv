@@ -905,13 +905,17 @@ Hanya voucher tagihan yang **berisi** yang menang; kolomnya baru lahir di `sql/5
 jadi baris lebih tua NULL, dan menyita diskon dari baris-baris itu lebih merusak
 daripada gagal menghormati admin yang sengaja mengosongkan voucher.
 
-#### ⚠️ Temuan sampingan yang BELUM ditutup
+#### ⚠️ Temuan sampingan — DITUTUP di §00S (`sql/66`, 2026-08-20)
 
 `form_submissions` punya policy `"User View Own Submissions"` dengan
 `USING (true)` untuk peran `authenticated` — **setiap akun yang login bisa membaca
 seluruh baris order**, termasuk nama, email, telepon, dan universitas peneliti lain.
 `sql/47` hanya menutup `anon`. Migrasi ini kebetulan melepas satu pembacanya
 (kalender ketersediaan), tapi lubangnya tetap terbuka. Bukan bagian Task 13.
+
+> **Menyusul: lubangnya ternyata dua.** Audit §00S menemukan dua policy INSERT
+> `WITH CHECK (true)` yang membuat pengetatan `sql/11c` tidak pernah berlaku.
+> Ketiganya dicabut `sql/66` — baca §00S untuk angka dan verifikasinya.
 
 ---
 
@@ -997,6 +1001,216 @@ Untuk iklan pertama yang berakhir, **catat id-nya lebih dulu** supaya
 ia berubah jadi perintah kirim-ulang): `completed_notified_at` bernilai 0 baris
 sebelum `sql/65`, jadi `UPDATE form_submissions SET completed_notified_at = NULL
 WHERE completed_notified_at IS NOT NULL;` memulihkan persis.
+
+---
+
+### 00S. 🔴→🟢 Audit Task 1–13 — tiga bug jalur uang + dua lubang izin (`sql/66`, 2026-08-20)
+
+Audit implementasi Task 1–13, bukan penulisan fitur baru. Semua angka diukur
+langsung ke produksi (`zewuzezbmrmpttysjvpg`).
+
+> **Bentuk yang sama, untuk ketiga kalinya: perbaikan ditulis, tesnya hijau,
+> tapi perbaikannya tidak pernah benar-benar berlaku — dan gagalnya sunyi.**
+>
+> | perbaikan | tesnya menguji | yang sebenarnya rusak |
+> |---|---|---|
+> | masa berlaku JFUSUHUD | `computeTotalCostFromSubmission` | `select=` pemanggilnya |
+> | `sql/11c` pengetatan INSERT | policy yang ditulisnya | dua policy `true` yang tidak pernah di-DROP |
+> | `sql/47` pembatasan `anon` | GRANT kolom `anon` | premisnya soal `authenticated` |
+>
+> Ketiganya lolos review dengan cara yang sama: **yang diuji fungsinya, bukan
+> pemanggilnya.** Tes baru di rilis ini sengaja dibentuk sebaliknya.
+
+#### A1 🔴 Voucher dinilai pada jam bayar, bukan tanggal order lahir
+
+`orderInstant()` membaca `sub.created_at`, tapi `select=` di
+`create-payment.js` tidak pernah meminta kolom itu. `Date.parse(undefined ?? '')`
+= `NaN` → jatuh ke `Date.now()`. Seluruh mekanisme `atMs` yang ditulis khusus
+untuk masa berlaku voucher tidak pernah menerima nilai yang benar.
+
+Terukur dengan menjalankan fungsinya: order lahir 20 Agu 2026, dibayar 2 Sep →
+seharusnya **2.319.900**, produksi **2.553.000**. Selisih **Rp 233.100** di atas
+ringkasan yang sudah disetujui peneliti. Akibatnya dobel: DOKU menagih angka itu,
+**dan** blok koreksi menaikkan `total_cost` di DB ke nilai salah tersebut.
+
+Terpapar saat ditemukan: **8 order JFUSUHUD belum lunas** (dipesan 6 Jul–17 Agu)
++ 1 JFUFEB. Tenggat nyata: JFUSUHUD mati **1 September 2026**.
+
+**Perbaikan.** Daftar kolomnya diangkat jadi `SUBMISSION_SELECT_COLUMNS` yang
+diekspor, dan `select=` dibangun darinya. Penjaganya
+`src/utils/create-payment-select.spec.ts`: ia **memproyeksikan** baris uji lewat
+daftar itu — persis seperti PostgREST — sebelum menghitung harga. Dibuktikan
+merah: mencabut `created_at` dari daftar membuat 3 dari 5 tesnya gagal.
+
+#### A2 🔴 Webhook menyimpulkan status bayar dari "invoice terbaru se-ORDER"
+
+STEP 2 menandai invoice yang benar-benar dibayar lunas, lalu STEP 3 membuang
+informasi itu dan mengambil ulang `invoices?form_submission_id=eq.…` terbaru —
+tanpa filter `schedule_id`. STEP 4 memakai status baris itu untuk menulis
+`payment_status`.
+
+Sebelum Task 13 itu hampir selalu benar (satu tagihan hidup per order). Sekarang
+tidak: `canTopUp` berlingkup **per jadwal**, jadi satu order boleh punya dua
+tagihan terbuka. Bayar yang lebih tua → order ditulis `pending` **padahal uangnya
+masuk**. Yang ikut mati di hilirnya: `ensure_survey_page()` (halaman iklan tidak
+lahir), `notify_primary_ads_live()`, `notify_primary_ads_completed()`, dan
+gerbang 409 di create-payment.
+
+**Laten, belum pernah menyala.** Saat diukur: 41 jadwal punya tagihan terbuka,
+**1 order** sudah punya tagihan terbuka di >1 jadwal. Task 13 yang membuat
+kondisi ini rutin, bukan langka. (Satu order yang tampak seperti gejalanya,
+`7fb09c39`, ternyata baris manual Mayar Januari 2026 — bukan ini.)
+
+**Perbaikan.** STEP 2 sudah memakai `return=representation`, jadi baris yang
+barusan dibayar **beserta `schedule_id`-nya** sudah ada di tangan. STEP 3 kini
+memfilter `schedule_id=eq.…` dari baris itu; `schedule_id` NULL (baris sebelum
+`sql/51`) tetap memakai `form_submission_id` supaya data lama tidak berubah
+perilakunya. Pertanyaannya sekarang **"apakah jadwal ini lunas?"**, bukan
+"apakah order ini lunas?".
+
+#### A7 🔴 Webhook 500 untuk pembayaran yang barisnya hanya ada di `transactions`
+
+Ditemukan saat menelusuri A2. STEP 1a **sengaja** menoleransi 0 baris (Skenario
+B, ada komentarnya). Tapi STEP 2 memakai `sbPatchExpectingRows` pada `invoices`,
+yang **melempar** saat 0 baris cocok → `write_failed` → HTTP 500 → DOKU retry 5×
+→ menyerah. `payment_status` tidak pernah berpindah.
+
+Terukur: **243 transaksi tanpa invoice pasangan, 162 masih `pending`** (terbaru
+2026-07-14). Yang membuat kelasnya tetap hidup adalah A6 di bawah.
+
+**Perbaikan.** STEP 2 mengikuti alasan yang sama dengan STEP 1a: `sbFetch` biasa,
+0 baris sah **hanya kalau STEP 1a menemukan transaksinya**. Dua-duanya kosong
+tetap melempar.
+
+#### A5 + A6 🟡 Dua fail-open di create-payment
+
+**A5 — `billed_start_date` jatuh ke keadaan rusak.** Kalau lookup `ad_schedules`
+gagal, kodenya jatuh ke `form_submissions.start_date` — dan komentar tepat di
+atasnya sendiri menjelaskan bahwa nilai itu membuat tagihan **lahir langsung
+basi** sehingga peneliti tidak akan pernah bisa membayar. Sekarang jatuh ke
+**`null`**; `sql/60` sudah menetapkan NULL = tidak diketahui = tidak pernah basi.
+
+**A6 — sisipan `Promise.all` bisa separuh.** Satu sukses satu gagal → balas 502,
+baris yang sukses tetap tinggal. Invoice yatim jadi piutang selamanya;
+**transaksi yatim melahirkan A7 dengan link DOKU yang masih hidup** — itulah
+sumber 243 baris di atas. Sekarang baris yang berhasil di-DELETE lewat
+`payment_id` (unik per percobaan) sebelum 502 dibalas.
+
+#### A3 🟡 Dua salinan aturan `live` tidak identik
+
+SQL memakai `payment_status_rank(status) = 1` (hanya `'pending'`); TS memakai
+`!isDead` — apa pun yang bukan lunas/mati, **termasuk status tak dikenal**
+(rank 0). Komentar di kedua sisi menuntut mereka identik.
+
+**Laten, 0 baris terdampak** — seluruh kosakata status produksi ada di kedua
+daftar. Ini kebersihan, bukan bug hidup: yang dijaga adalah status baru pertama
+yang lahir hanya di satu sisi. TS kini punya `isPending` eksplisit.
+
+#### B1 🔴 `form_submissions` terbuka untuk setiap akun yang login — INSERT-nya juga
+
+§00Q mencatat sisi SELECT. Produksi menunjukkan lubangnya **dua**:
+
+| cmd | policy | ekspresi |
+|---|---|---|
+| SELECT | `User View Own Submissions` | `true` 🔴 namanya menyesatkan |
+| INSERT | `User Insert Own Submissions` | `true` 🔴 |
+| INSERT | `Users Can Insert Submissions` | `true` 🔴 |
+
+Policy permissive di-OR-kan, jadi satu policy longgar mengalahkan semua yang
+ketat. **`sql/11c` ditulis persis untuk menutup sisi INSERT, tapi kedua policy
+longgarnya tidak pernah di-DROP** — jadi pengetatannya tidak pernah berlaku:
+akun mana pun bisa menyisipkan order atas nama `auth_user_id` orang lain.
+
+**Ketiganya tidak ada di `sql/`.** Dibuat di luar repo. Karena itu `sql/README.md`
+sekarang menyatakan eksplisit: berkas migrasi **bukan** sumber kebenaran RLS
+produksi — baca `pg_policies`.
+
+Diukur sebelum DROP: dari 1006 order, 695 punya `auth_user_id`, 12 tanpa
+`auth_user_id` tapi emailnya punya akun (tertangkap cabang fallback), dan 299
+tanpa `auth_user_id` yang emailnya **tidak punya akun sama sekali**. Nol baris
+yatim. Prasyarat yang membuatnya murah sekarang: `sql/63` sudah memindahkan
+kedua kaki `fetchSlotAvailability` ke RPC `SECURITY DEFINER`.
+
+#### B2 🟠 Peneliti yang email order-nya beda dari email akun tidak bisa melihat tagihannya
+
+Ditemukan saat memeriksa dampak B1. Policy SELECT `invoices` (`sql/24`) dan
+`transactions` mengunci kepemilikan pada **email**, sementara `form_submissions`
+sudah pindah ke `auth_user_id` sejak `sql/11`. Order yang `auth_user_id`-nya
+cocok tapi emailnya berbeda **terlihat di dashboard tapi tagihannya kosong**.
+
+Terukur: **16 order**, 9 punya invoice, **2 belum lunas dengan tagihan `pending`**
+(`c1d195a5`, `91bd5fb2`) — dua peneliti yang saat itu tidak punya tombol bayar
+sama sekali. Ini **pra-Task 13**, tapi Task 13 menjadikan `schedule_billing_bulk`
+(SECURITY INVOKER) jalur utama dashboard peneliti, jadi ia mewarisi lubang ini
+bulat-bulat — persis di permukaan yang §00O tandai *"belum pernah disentuh
+manusia"*.
+
+Arahnya dua-duanya benar. Selain melebar untuk pemilik sah, ia juga
+**menyempit**: 8 order punya email yang dimiliki akun **lain**, dan akun itu
+selama ini bisa membaca tagihan order yang bukan miliknya. Setelah B1 ia tidak
+lagi bisa membaca ordernya — tanpa B2 ia masih bisa membaca uangnya.
+
+> ⚠️ **B1 dan B2 harus berpasangan.** Sub-query di dalam policy tetap tunduk RLS
+> `form_submissions`, jadi menerapkan B1 sendirian mempersempit apa yang bisa
+> dilihat `EXISTS`-nya. Diterapkan dalam **satu transaksi**.
+
+#### Yang diterapkan — `sql/66`, produksi 2026-08-20
+
+Verifikasi dijalankan sebagai peneliti sungguhan (`set_config` JWT + `role`),
+bukan sebagai `postgres`:
+
+| bukti | hasil |
+|---|---|
+| policy `true` tersisa di `form_submissions`/`invoices`/`transactions` | **0** |
+| `select count(*) from form_submissions` sebagai peneliti | **1** (ordernya sendiri), sebelumnya 1006 |
+| tagihan `pending` `c1d195a5` / `91bd5fb2` terlihat oleh pemiliknya | **2** / **1**, sebelumnya 0 |
+| `get_submission_slot_occupancy()` / `get_extend_slot_occupancy()` | **413** / **4** baris — SECURITY DEFINER tetap bekerja |
+| INSERT order dengan `auth_user_id` akun lain | **ditolak RLS** |
+
+Kaki kalender itu yang paling penting dijaga: kalau ia jatuh, **gagalnya sunyi**
+— angkanya salah, tanpa satu pun error.
+
+#### A4 🟡 Kebersihan migrasi
+
+`59_survey_analyses.sql` → **`59b_survey_analyses.sql`** (mengikuti konvensi
+`60b` yang sudah ada). Ditambahkan **`multi-step-form/sql/README.md`**: urutan
+terap, aturan penomoran, daftar tabrakan nomor yang diketahui (22/23/31 sengaja
+dibiarkan — tidak ada urutan yang mengikat di antara pasangannya), penjelasan
+bahwa `50` **dipesan** untuk `reward_pools` dan bukan berkas hilang, serta
+status terap 51–66 yang **diverifikasi ke produksi** dengan memeriksa objeknya,
+bukan dari catatan.
+
+#### Yang ditemukan tapi TIDAK ditutup
+
+- **`qual = true` untuk `authenticated`** juga ada di `chat_messages`,
+  `chat_sessions` (keduanya bernama "Admins can view all…" tapi tidak dibatasi
+  admin), `doku_payouts`, dan `campaign_links` (`ALL`). Bukan bagian Task 1–13.
+- **STEP 5 webhook merutekan extend dari `transactions` saja.** STEP 1b membaca
+  `entity_type`/`extend_id` dari `invoices` tapi tidak pernah memakainya, jadi
+  extend yang dibayar lewat invoice admin tanpa baris `transactions` akan
+  di-PATCH ke `form_submissions`. **Nol baris hari ini**: seluruh 12 invoice
+  `entity_type='extend'` punya transaksi pasangan.
+- **`Users Insert Transactions`** masih berbasis email. Sengaja tidak disentuh —
+  peneliti tidak pernah menyisipkan `transactions` dari klien, dan mengubahnya
+  hanya bisa **melebarkan** izin tulis di jalur uang.
+
+#### Yang masih menunggu deploy
+
+`sql/66` sudah hidup di produksi. **A1, A2, A7, A3, A5, A6 semuanya masih di
+kode** — dan deploy di proyek ini manual (`npm run deploy`). Sampai itu
+dijalankan, A1 masih menagih order JFUSUHUD di atas harga yang disetujui.
+
+Regresi yang wajib ikut diuji sesudah deploy — dua permukaan yang dokumen ini
+sendiri tandai belum pernah disentuh manusia dan berubah di rilis ini:
+
+- **Dashboard peneliti** (§00O): order dengan tagihan menggantung → tombol bayar
+  menunjuk tagihan itu; order lunas sebagian → tidak tertulis "Lunas"; order
+  berjadwal ke-2 → tagihannya tidak tertukar.
+- **A2 + A7 di jalur nyata** (endpoint ini tanpa test harness): order dengan 2
+  jadwal, terbitkan tagihan di keduanya lewat "Tagih Susulan", **bayar yang lebih
+  tua**. Harapkan jadwal itu lunas, jadwal satunya tidak ikut berpindah, dan
+  `doku_webhook_events` berisi `http_status` 200 / `outcome` `ok`. Baris
+  `write_failed` di sana berarti A7 belum tertutup.
 
 ---
 
