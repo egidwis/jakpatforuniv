@@ -46,17 +46,45 @@ export async function onRequestPost(context) {
 
         const result = await sendMail(env, {
             to: email,
-            subject: 'Iklan surveimu mulai tayang hari ini 🎉',
+            subject: '[Jakpat for Univ] Iklan surveimu mulai tayang hari ini 🚀',
             html: `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <p>Halo Kak <strong>${name}</strong>,</p>
-            <p>Survei${surveyLine} sekarang sudah mulai tayang di Jakpat for Universities.</p>
-            ${windowLine}
-            <p>Kamu bisa memantau perkembangan respondennya kapan saja lewat Order Saya.</p>
-            <br>
-            <p>Semoga hasil risetmu optimal 😊</p>
-            <p>Salam,</p>
-            <p><strong>Tim Jakpat for Universities</strong></p>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; color: #1e293b; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
+            <div style="margin-bottom: 24px;">
+              <span style="font-size: 13px; font-weight: 700; color: #4f46e5; letter-spacing: 0.5px; text-transform: uppercase;">Jakpat for Universities</span>
+              <h2 style="margin: 6px 0 0; font-size: 20px; font-weight: 800; color: #0f172a;">Iklan Survei Mulai Ditayangkan! 🚀</h2>
+            </div>
+            
+            <p style="font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 16px;">
+              Halo Kak <strong>${name}</strong>,
+            </p>
+            <p style="font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 16px;">
+              Kuesioner survei${surveyLine} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.
+            </p>
+            
+            ${windowLine ? `<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; border-radius: 8px; padding: 14px 16px; margin: 18px 0; font-size: 13px; color: #334155;">${windowLine}</div>` : ''}
+
+            <!-- Teaser JFU AI Analyzer -->
+            <div style="background: linear-gradient(135deg, #eef2ff 0%, #faf5ff 100%); border: 1px solid #c7d2fe; border-radius: 12px; padding: 18px; margin: 24px 0;">
+              <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 16px; margin-right: 6px;">💡</span>
+                <strong style="font-size: 13px; color: #3730a3;">Tips Riset & Olah Data:</strong>
+              </div>
+              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #4338ca;">
+                Sambil menunggu respon terkumpul, ketahui bahwa setelah penayangan selesai nanti, Anda bisa langsung mengolah visualisasi grafik, tabulasi silang, dan draf narasi untuk <strong>skripsi, riset, maupun jurnal</strong> secara otomatis menggunakan <strong>JFU AI Analyzer</strong>.
+              </p>
+            </div>
+
+            <div style="margin: 28px 0 20px; text-align: center;">
+              <a href="https://jakpatforuniv.com/dashboard/orders" style="display: inline-block; background-color: #4f46e5; color: #ffffff; font-size: 13px; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 10px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);">
+                Pantau Status Penayangan &rarr;
+              </a>
+            </div>
+            
+            <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0 16px;" />
+            <p style="font-size: 12px; color: #64748b; margin: 0; line-height: 1.5;">
+              Semoga proses pengumpulan data berjalan lancar dan hasil riset optimal.<br>
+              <strong>Tim Jakpat for Universities</strong>
+            </p>
           </div>
         `
         });
