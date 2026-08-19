@@ -5,7 +5,7 @@ import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
-  fetchAdSchedules, fetchScheduleBilling, markScheduleAsPaid, unmarkScheduleAsPaid, cancelInvoice, releaseScheduleSlot, supabase,
+  fetchAdSchedules, fetchScheduleBilling, markScheduleAsPaid, unmarkScheduleAsPaid, cancelInvoice, cancelSchedule,
   type AdScheduleEntry, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
@@ -113,31 +113,6 @@ export function SchedulePaymentTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSubView, isLoading, schedules]);
 
-  /**
-   * Batalkan jadwal perpanjangan.
-   *
-   * ⚠️ SENGAJA SAMA PERSIS dengan tombol lama di ExtendSection — status jadi
-   * `cancelled`, `payment_status` jadi `failed`, tidak lebih. Ia TIDAK
-   * melewatkan transaksi pending jadi `expired` dan TIDAK melepas
-   * `slot_booked_by`; keduanya memang belum pernah dilakukan. Memperbaikinya di
-   * rilis ini berarti menyelundupkan kemampuan baru ke dalam pemindahan
-   * permukaan — versi benarnya adalah Task 13 Langkah 3.
-   */
-  const handleCancelSchedule = useCallback(async (entry: AdScheduleEntry) => {
-    if (!confirm('Yakin ingin membatalkan jadwal iklan ini?')) return;
-    try {
-      const { error } = await supabase
-        .from('form_submissions_extend')
-        .update({ submission_status: 'cancelled', payment_status: 'failed' })
-        .eq('id', entry.sourceId);
-      if (error) throw error;
-      toast.success('Jadwal iklan dibatalkan');
-      reload();
-      onExtendCreated();
-    } catch (err: any) {
-      toast.error(err?.message || 'Gagal membatalkan jadwal');
-    }
-  }, [reload, onExtendCreated]);
 
   /**
    * "Hapus dari list" — lepaskan slot jadwal yang batas bayarnya sudah lewat.
@@ -152,26 +127,28 @@ export function SchedulePaymentTab({
    * `occupiesSlot()` false → kuota hari itu bebas. Ordernya sendiri tetap utuh
    * dan bisa dijadwalkan lagi kapan saja.
    */
-  const handleReleaseSlot = useCallback(async (entry: AdScheduleEntry) => {
+  const handleCancelSchedule = useCallback(async (entry: AdScheduleEntry) => {
     const when = entry.startDate
       ? new Date(entry.startDate).toLocaleDateString('id-ID', {
           day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta',
         })
       : 'tanggal ini';
     const ok = confirm(
-      `Lepaskan slot ${when}?\n\n` +
-      'Jadwalnya dikosongkan dan kuota hari itu kembali bisa dijual. ' +
-      'Ordernya TIDAK dihapus — ia pindah ke daftar "belum dijadwalkan" dan ' +
-      'bisa dijadwalkan lagi kapan saja.'
+      `Batalkan jadwal ${when}?\n\n` +
+      'Kuota hari itu langsung bebas dijual lagi, dan tagihan yang masih ' +
+      'menggantung untuk jadwal ini ikut dimatikan.\n\n' +
+      'Tanggalnya TETAP tercatat sebagai riwayat — jadi nanti masih bisa ' +
+      'dijawab "jadwal mana yang dibatalkan, untuk tanggal apa". Ordernya ' +
+      'tidak dihapus dan bisa dijadwalkan ulang kapan saja.'
     );
     if (!ok) return;
     try {
-      await releaseScheduleSlot(entry);
-      toast.success('Slot dilepas. Order pindah ke "belum dijadwalkan".');
+      await cancelSchedule(entry);
+      toast.success('Jadwal dibatalkan. Kuota tanggalnya sudah bebas.');
       reload();
       onExtendCreated();
     } catch (err: any) {
-      toast.error(err?.message || 'Gagal melepas slot');
+      toast.error(err?.message || 'Gagal membatalkan jadwal');
     }
   }, [reload, onExtendCreated]);
 
@@ -321,8 +298,7 @@ export function SchedulePaymentTab({
             onMarkPaid={lifecycle.isPaid ? null : (entry) => setPendingPaid(entry)}
             onUnmarkPaid={(entry) => void handleUnmarkPaid(entry)}
             onCancelInvoice={(inv) => void handleCancelInvoice(inv)}
-            onCancel={(entry) => void handleCancelSchedule(entry)}
-            onReleaseSlot={(entry) => void handleReleaseSlot(entry)}
+            onCancelSchedule={(entry) => void handleCancelSchedule(entry)}
           />
         )}
 

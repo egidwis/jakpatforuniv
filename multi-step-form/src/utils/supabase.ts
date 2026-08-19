@@ -1847,7 +1847,7 @@ export const fetchSlotAvailability = async (
         // dan kalau kalender pemesanan tidak ikut, kedua permukaan itu
         // berselisih: admin melihat hari kosong, peneliti ditolak karena penuh.
         // `get_extend_slot_occupancy()` sudah mengecualikannya sejak sql/52.
-        .not('submission_status', 'in', '("rejected","spam","in_review","completed","cancelled")')
+        .not('submission_status', 'in', '("rejected","spam","in_review","completed","cancelled","slot_cancelled")')
         .eq('distribution_type', distributionType),
       // ⚠️ LEWAT RPC, BUKAN SELECT LANGSUNG — dan itu wajib sejak sql/52.
       //
@@ -2406,31 +2406,39 @@ export const releaseExpiredSlot = async (submissionId: string) => {
 };
 
 /**
- * Lepaskan slot SATU jadwal atas keputusan admin — "Hapus dari list".
+ * Batalkan SATU jadwal atas keputusan admin — dan SIMPAN tanggalnya.
  *
- * Bedanya dengan `releaseExpiredSlot` bukan pada apa yang ditulis, melainkan
- * pada SIAPA yang dilepas: fungsi ini berlingkup satu baris jadwal, bukan satu
- * order. Untuk order berjadwal satu keduanya identik; untuk order berjadwal
- * banyak, `releaseExpiredSlot` akan ikut mematikan tagihan jadwal lain.
+ * Berlingkup satu baris jadwal, bukan satu order. Untuk order berjadwal satu
+ * keduanya identik; untuk order berjadwal banyak, `releaseExpiredSlot` akan
+ * ikut mematikan tagihan jadwal lain.
  *
- * ⚠️ FONDASI TASK 13 LANGKAH 3. Penautan jadwal→pembayaran di sini memakai
- * aturan yang sama persis dengan `fetchSchedulePayments`: `entity_type =
- * 'extend'` + `extend_id` untuk ordinal ≥2, sisanya milik ordinal 1. Itulah
- * satu-satunya sambungan yang perlu ditukar ke `schedule_id` begitu Task 11
- * mendarat — sisa fungsi ini tidak berubah.
+ * ⚠️ TANGGALNYA SENGAJA DIPERTAHANKAN — INI PERUBAHAN DARI VERSI SEBELUMNYA.
  *
- * ⚠️ KENAPA TANGGALNYA DIKOSONGKAN, BUKAN DIBERI STATUS 'cancelled'.
- * Rancangan Task 13 mempertahankan tanggal dan menulis `status = 'cancelled'`.
- * Itu benar SESUDAH Task 11, tapi mustahil hari ini: `submission_status` masih
- * memikul dua sumbu sekaligus, jadi menulis 'cancelled' ke sana menghapus
- * informasi review ("dulu approved atau belum?"), dan `airing_status_of()`
- * (sql/46) tidak mengenal 'cancelled' sebagai MASUKAN — ia memetakannya jadi
- * 'requested', membuat jadwal yang dilepas tampak seperti permintaan aktif.
- * Mengosongkan tanggal mencapai tujuan yang sama tanpa migrasi: `isUnscheduled()`
- * jadi true → keluar dari antrean "perlu ditagih", dan `occupiesSlot()` jadi
- * false → kuota harinya bebas.
+ * Versi lama MENGOSONGKAN `start_date`/`end_date` dan menyimpan larangan
+ * panjang di sini: menulis 'cancelled' katanya mustahil karena
+ * `airing_status_of()` (sql/46) memetakannya jadi 'requested', sehingga jadwal
+ * yang dibatalkan tampak seperti permintaan aktif. Larangan itu BENAR saat
+ * ditulis dan sudah TIDAK berlaku sejak `sql/62`: sumbu tayang kini punya
+ * `slot_cancelled` sendiri, terpisah dari `'cancelled'` yang sudah dipakai
+ * `dismissRejectedSubmission()` untuk penyingkiran oleh peneliti.
+ *
+ * Mengosongkan tanggal memang membebaskan kuota, tapi dengan ongkos yang baru
+ * terasa belakangan: RIWAYATNYA IKUT TERHAPUS. Tidak ada lagi cara menjawab
+ * "jadwal mana yang kami batalkan, dan untuk tanggal apa" — padahal itu
+ * pertanyaan pertama yang muncul saat peneliti menghubungi bantuan. Sekarang
+ * tanggalnya tinggal; yang membebaskan kuota adalah STATUSNYA, lewat
+ * `occupiesSlot()` yang mengecualikan chip 'cancelled'.
+ *
+ * ⚠️ Kosakata sumbernya beda, dan itu disengaja (lihat kepala sql/62):
+ *   ordinal 1 → `form_submissions.submission_status = 'slot_cancelled'`
+ *   ordinal ≥2 → `form_submissions_extend.submission_status = 'cancelled'`
+ * Keduanya mendarat sebagai `ad_schedules.status = 'cancelled'` — satu konsep,
+ * satu representasi, di tabel yang dibaca semua layar.
+ *
+ * Penautan jadwal→pembayaran memakai aturan yang sama dengan `fetchScheduleBilling`:
+ * `entity_type = 'extend'` + `extend_id` untuk ordinal ≥2, sisanya milik ordinal 1.
  */
-export const releaseScheduleSlot = async (entry: {
+export const cancelSchedule = async (entry: {
   submissionId: string;
   sourceId: string;
   isExtension: boolean;
@@ -2439,7 +2447,7 @@ export const releaseScheduleSlot = async (entry: {
   // Penjaga yang sama dengan releaseExpiredSlot: yang sudah lunas tidak
   // pernah dilepas dari sini, apa pun yang diklik admin.
   if (['paid', 'completed'].includes(entry.paymentStatus || '')) {
-    throw new Error('Jadwal yang sudah lunas tidak bisa dilepas dari sini.');
+    throw new Error('Jadwal yang sudah lunas tidak bisa dibatalkan dari sini.');
   }
 
   // ⚠️ Penjaga lunas diulang DI DALAM query, bukan cuma dari `entry` yang bisa
@@ -2449,14 +2457,15 @@ export const releaseScheduleSlot = async (entry: {
   const unpaidOnly = '("paid","completed")';
 
   if (entry.isExtension) {
-    // ⚠️ `submission_status` TIDAK disentuh. CHECK di form_submissions_extend
-    // hanya menerima waiting_payment|paid|scheduled|live|completed|cancelled —
-    // 'slot_reserved' ditolak, dan 'cancelled' salah dipetakan (lihat atas).
+    // CHECK di form_submissions_extend menerima
+    // waiting_payment|paid|scheduled|live|completed|cancelled — dan di tabel
+    // ini `submission_status` MEMANG kosakata sumbu tayang, jadi 'cancelled'
+    // langsung tepat. Mirror menulisnya apa adanya ke `ad_schedules.status`.
     const { data, error } = await supabase
       .from('form_submissions_extend')
       .update({
-        start_date: null,
-        end_date: null,
+        submission_status: 'cancelled',
+        // Tanggal TETAP. Yang dilepas adalah tahanannya, bukan riwayatnya.
         slot_booked_by: null,
         slot_reserved_at: null,
         updated_at: new Date().toISOString(),
@@ -2466,18 +2475,21 @@ export const releaseScheduleSlot = async (entry: {
       .select('id');
     if (error) throw error;
     if (!data || data.length === 0) {
-      throw new Error('Jadwal ini sudah lunas atau sudah dilepas. Muat ulang dulu.');
+      throw new Error('Jadwal ini sudah lunas atau sudah dibatalkan. Muat ulang dulu.');
     }
   } else {
     const { data, error } = await supabase
       .from('form_submissions')
       .update({
-        start_date: null,
-        end_date: null,
+        // `slot_cancelled`, BUKAN `cancelled` — nilai kedua itu sudah dipakai
+        // `dismissRejectedSubmission()` untuk penyingkiran oleh peneliti, dan
+        // melipat keduanya membuat laporan tidak bisa lagi memisahkan
+        // "peneliti membuang order ditolak" dari "admin membatalkan slot".
+        submission_status: 'slot_cancelled',
+        payment_status: 'expired',
+        // Tanggal TETAP — lihat kepala fungsi.
         slot_booked_by: null,
         slot_reserved_at: null,
-        submission_status: 'slot_reserved',
-        payment_status: 'expired',
         updated_at: new Date().toISOString(),
       })
       .eq('id', entry.submissionId)
@@ -2485,7 +2497,7 @@ export const releaseScheduleSlot = async (entry: {
       .select('id');
     if (error) throw error;
     if (!data || data.length === 0) {
-      throw new Error('Order ini sudah lunas atau sudah dilepas. Muat ulang dulu.');
+      throw new Error('Order ini sudah lunas atau sudah dibatalkan. Muat ulang dulu.');
     }
 
     // Halaman iklan ikut kehilangan jendela terbitnya — hanya untuk ordinal 1,

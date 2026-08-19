@@ -150,10 +150,13 @@ interface CardActions {
    * jadwal: jadwalnya tetap berdiri dan slotnya tidak dilepas.
    */
   onCancelInvoice: ((inv: ScheduleInvoice) => void) | null;
-  /** null = jadwal ini tidak boleh dibatalkan dari sini. */
-  onCancel: ((entry: AdScheduleEntry) => void) | null;
-  /** "Lepaskan Slot" — lepaskan slot jadwal jika belum dibayar. */
-  onReleaseSlot: ((entry: AdScheduleEntry) => void) | null;
+  /**
+   * "Batalkan Jadwal" — hanya untuk jadwal yang belum dibayar.
+   *
+   * Tanggalnya DIPERTAHANKAN sebagai riwayat sejak sql/62; yang membebaskan
+   * kuota adalah statusnya ('cancelled'), bukan pengosongan tanggal.
+   */
+  onCancelSchedule: ((entry: AdScheduleEntry) => void) | null;
 }
 
 /** Satu baris tagihan di dalam daftar. */
@@ -666,7 +669,7 @@ function ScheduleCard({
 
       <BillingSection entry={entry} billing={billing} state={state} actions={actions} />
 
-      {/* Aksi jadwal: Ganti Jadwal / Buat Jadwal Baru di kiri, Lepaskan Slot di kanan (hanya jika belum bayar) */}
+      {/* Aksi jadwal: Ganti Jadwal / Buat Jadwal Baru di kiri, Batalkan Jadwal di kanan (hanya jika belum bayar) */}
       {state !== 'cancelled' && (
         <div className="flex items-center gap-2 pt-1 border-t border-slate-200">
           <Button
@@ -684,29 +687,18 @@ function ScheduleCard({
             {isLate ? 'Buat Jadwal Baru' : isUnscheduled(entry) ? 'Pilih Jadwal' : 'Ganti Jadwal'}
           </Button>
 
-          {actions.onReleaseSlot && !billing?.paid && state !== 'paid' && (
+          {actions.onCancelSchedule && !billing?.paid && state !== 'paid' && (
             <Button
               size="sm"
               variant="outline"
               className="h-7 px-2.5 text-[11px] font-medium text-red-600 hover:text-red-700 bg-white hover:bg-red-50/60 border-slate-200 hover:border-red-200 shadow-none transition-colors"
-              onClick={() => actions.onReleaseSlot!(entry)}
-              title="Lepaskan slot jadwal agar kuota tanggal ini kembali bebas"
+              onClick={() => actions.onCancelSchedule!(entry)}
+              title="Batalkan jadwal ini — kuota tanggalnya bebas kembali, tanggalnya tetap tercatat"
             >
-              <Trash2 className="w-3 h-3 mr-1" /> Lepaskan Slot
+              <Trash2 className="w-3 h-3 mr-1" /> Batalkan Jadwal
             </Button>
           )}
 
-          {actions.onCancel && entry.isExtension && !billing?.paid && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 w-7 p-0 shrink-0 bg-white text-slate-400 hover:text-red-600 hover:border-red-200 shadow-none"
-              title="Batalkan jadwal perpanjangan ini"
-              onClick={() => actions.onCancel!(entry)}
-            >
-              <Trash2 className="w-3 h-3" />
-            </Button>
-          )}
         </div>
       )}
     </div>
@@ -738,7 +730,7 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, billings, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancel, onReleaseSlot,
+  entries, billings, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule,
 }: {
   entries: AdScheduleEntry[];
   billings: Map<string, ScheduleBilling>;
@@ -747,19 +739,9 @@ export function ScheduleCardList({
   onCreateSchedule?: (isExtraAd: boolean) => void;
   onCreateInvoice: (entry: AdScheduleEntry) => void;
   /**
-   * null = jadwal ini tidak boleh dibatalkan dari sini.
-   *
-   * ⚠️ Syaratnya SENGAJA sama persis dengan tombol lama di ExtendSection:
-   * hanya jadwal perpanjangan, hanya selama belum ada tagihan. Ini bukan
-   * kemampuan baru — cuma pindah rumah. Versi benarnya (melewatkan transaksi
-   * pending jadi `expired`, melepas `slot_booked_by`, berlaku semua ordinal)
-   * adalah Task 13 Langkah 3.
-   */
-  onCancel: ((entry: AdScheduleEntry) => void) | null;
-  /**
    * Batalkan SATU tagihan yang belum dibayar — bukan jadwalnya.
    *
-   * ⚠️ Jangan disamakan dengan `onCancel` di atas. Yang ini berlingkup
+   * ⚠️ Jangan disamakan dengan `onCancelSchedule`. Yang ini berlingkup
    * TAGIHAN: jadwalnya tetap berdiri, slotnya tidak dilepas, dan tagihan lain
    * di jadwal yang sama tidak tersentuh. Ia ada karena tagihan yang salah
    * terbit sebelumnya tidak punya jalan keluar sama sekali — 194 invoice
@@ -791,7 +773,7 @@ export function ScheduleCardList({
    * yang tersisa di sana tinggal menukar penautan `entity_type`/`extend_id`
    * ke `schedule_id` dan mempertahankan tanggal alih-alih mengosongkannya.
    */
-  onReleaseSlot: ((entry: AdScheduleEntry) => void) | null;
+  onCancelSchedule: ((entry: AdScheduleEntry) => void) | null;
 }) {
   const [openId, setOpenId] = useState<string | null>(() => pickDefaultOpen(entries, billings));
   const isOnly = entries.length === 1;
@@ -862,7 +844,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancel, onReleaseSlot }}
+          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule }}
         />
       ))}
     </div>
