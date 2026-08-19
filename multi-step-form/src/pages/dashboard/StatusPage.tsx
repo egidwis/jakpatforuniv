@@ -138,6 +138,7 @@ export function StatusPage() {
                 Promise.all(data.map(async (submission) => {
                     if (submission.id) {
                         let foundTransactionId: string | null = null;
+                        let payMapAnswered = false;
                         try {
                             const transactions = await getTransactionsByFormSubmissionId(submission.id);
                             // Separate the survey's own transaction from extend transactions,
@@ -150,8 +151,21 @@ export function StatusPage() {
                                 if (pickedTx?.payment_id) {
                                     foundTransactionId = pickedTx.payment_id;
                                 }
-                                if (submission.payment_status !== 'paid' && mainTx[0].payment_url) {
-                                    links[submission.id] = mainTx[0].payment_url;
+                                // ⚠️ HANYA TRANSAKSI YANG MASIH BISA DIBAYAR.
+                                //
+                                // Dulu ini memakai `mainTx[0].payment_url` — transaksi
+                                // TERBARU, apa pun statusnya. Sesudah order dijadwalkan
+                                // ulang, transaksi terbarunya `expired`, jadi tombol
+                                // "Bayar Sekarang" peneliti mengantar ke halaman DOKU
+                                // "order anda telah kadaluarsa". Terlihat di W2XPPGF5
+                                // (2026-08-19): link 18 Agu masih dipasang untuk jadwal
+                                // yang sudah dipindah ke 30 Agu.
+                                //
+                                // `mainTx` sudah urut terbaru dulu, jadi `find` di sini
+                                // mengambil yang pending PALING BARU.
+                                const payableTx = mainTx.find((tx) => tx.status === 'pending');
+                                if (submission.payment_status !== 'paid' && payableTx?.payment_url) {
+                                    links[submission.id] = payableTx.payment_url;
                                 }
                             }
 
@@ -188,12 +202,41 @@ export function StatusPage() {
                                 console.error(`Gagal memuat tagihan per jadwal untuk ${submission.id}:`, e);
                             }
                             schedPayments[submission.id] = payMap;
+
+                            // ⚠️ JADWAL PERTAMA MEMAKAI JALUR DATA YANG LAIN — dan itu
+                            // yang membuat perbaikan di atas sempat tidak terasa.
+                            // `airingPeriods` membaca `payments[sourceId]` HANYA untuk
+                            // jadwal ke-2 dst.; kartu jadwal pertama memakai `links`
+                            // yang dirakit tangan dari transaksi/invoice terbaru.
+                            //
+                            // Untuk ordinal 1, `sourceId` MEMANG id submission-nya, jadi
+                            // peta yang sama sudah memuat jawabannya. Pakai itu, dan
+                            // biarkan `schedule_billing` jadi satu-satunya yang memutuskan
+                            // tagihan mana yang masih terbuka — bukan aturan keempat
+                            // yang dirakit di sini.
+                            const ownBilling = payMap[submission.id];
+                            if (ownBilling) {
+                                payMapAnswered = true;
+                                // `?? links[...]` mempertahankan transaksi pending yang
+                                // sudah ditemukan di atas untuk kasus langka "checkout
+                                // ada, barisnya cuma di `transactions`" (5 order per
+                                // Task 13 — sisipan invoice-nya gagal senyap). Ia TIDAK
+                                // bisa menghidupkan link mati: `links` hanya pernah diisi
+                                // dari transaksi ber-status `pending`.
+                                links[submission.id] = ownBilling.paymentUrl ?? links[submission.id] ?? null;
+                                if (ownBilling.paymentId) foundTransactionId = ownBilling.paymentId;
+                            }
                         } catch (e) {
                             console.error(`Error fetching transactions for ${submission.id}:`, e);
                         }
 
-                        // Try to get manual invoice if no transaction payment_id or link is found
-                        if (!foundTransactionId || (submission.payment_status !== 'paid' && !links[submission.id])) {
+                        // Cadangan untuk order yang TIDAK punya baris jadwal sama sekali
+                        // (15 order per Task 11 — belum bertanggal, jadi tak ada
+                        // `ad_schedules` untuk dihitung). Kalau `schedule_billing` sudah
+                        // menjawab, jangan ditimpa dari sini: jawabannya sudah benar,
+                        // termasuk saat jawabannya "tidak ada tagihan terbuka".
+                        const billingAnswered = !!payMapAnswered;
+                        if (!billingAnswered && (!foundTransactionId || (submission.payment_status !== 'paid' && !links[submission.id]))) {
                             try {
                                 const invoices = await getInvoicesByFormSubmissionId(submission.id);
                                 // Exclude extend invoices — only the survey's own invoice is the main link
