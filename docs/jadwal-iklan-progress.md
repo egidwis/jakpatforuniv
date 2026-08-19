@@ -484,15 +484,15 @@ kupon tervalidasi.
 
 Gerbang: `tsc -b --force` **61** (baseline), `npm run build` hijau, 25/25 uji.
 
-⬜ **Belum diuji di browser & belum dideploy.** Buka lewat search bar papan
+🟢 **KELIMA UJI ADMIN HIJAU 2026-08-19.** Dibuka lewat search bar papan
 Schedule — ia menerima Booking ID sejak §00M.
 
 | # | Booking ID | Yang harus terlihat | Kenapa ini ujinya |
 |---|---|---|---|
-| 1 | **`76XKVW5P`** | **dua baris** tagihan, kepala **"Rp 1.531.800 ditagih"** | Kode lama memakai transaksi TERBARU sebagai nominal kartu, yaitu **Rp 61.050** — jadwal yang menerima Rp 1.531.800 tampil sebagai Rp 61.050. Jadwal ini **lunas penuh**, jadi ia memang tetap bilang "Lunas"; yang diuji **angkanya**, bukan labelnya |
+| 1 | ✅ **`76XKVW5P`** | **dua baris** tagihan, kepala **"Rp 1.531.800 ditagih"** | Kode lama memakai transaksi TERBARU sebagai nominal kartu, yaitu **Rp 61.050** — jadwal yang menerima Rp 1.531.800 tampil sebagai Rp 61.050. Jadwal ini **lunas penuh**, jadi ia memang tetap bilang "Lunas"; yang diuji **angkanya**, bukan labelnya |
 | 2 | ✅ **`5FJ9J4Q6`** | **"Rp 2.880.000 ditagih · Rp 1.440.000 belum masuk"** | Inilah yang **berhenti** bilang "Lunas". `hasEverPaid` dulu bernilai true karena satu invoice-nya lunas, padahal Rp 1.440.000 masih menggantung |
 | 3 | ✅ **`5FJ9J4Q6`** lagi | batalkan invoice yang menggantung → kartu balik **"Lunas"** | Ia punya **invoice kembar Rp 1.440.000 di hari yang sama**, satu lunas satu menggantung — kasus yang persis jadi alasan "Batalkan tagihan" ada |
-| 4 | **`T25FVETF`** (atau `7F8CBKEF`, `RT4ZHEPN`) | Rp 2.525.000 **lunas** | **Uji REGRESI, bukan fitur baru.** Jadwal ini hanya punya `transactions`. Kode lama juga membacanya, jadi ia tidak pernah Rp 0 — tapi ia AKAN jadi Rp 0 kalau rencana Task 13 diterapkan harfiah (`invoices` saja). Kalau tampil Rp 0 atau "belum ada tagihan", itu bug |
+| 4 | ✅ **`T25FVETF`** (atau `7F8CBKEF`, `RT4ZHEPN`) | Rp 2.525.000 **lunas** | **Uji REGRESI, bukan fitur baru.** Jadwal ini hanya punya `transactions`. Kode lama juga membacanya, jadi ia tidak pernah Rp 0 — tapi ia AKAN jadi Rp 0 kalau rencana Task 13 diterapkan harfiah (`invoices` saja). Kalau tampil Rp 0 atau "belum ada tagihan", itu bug |
 | 5 | ✅ mana saja yang punya tagihan menggantung | **"Tagih Susulan" disabled** | Peneliti hanya melihat tagihan terakhir; tagihan kedua akan menyembunyikan yang pertama |
 
 **Hasil uji 2/3/5 (2026-08-19, di produksi):** `a8e8233f-…` jadi `cancelled`,
@@ -524,6 +524,30 @@ satu sinyal untuk dua pertanyaan.**
    Ikut diperbaiki: tautan aksi tidak lagi `text-slate-400` — warna yang sama
    dengan isi baris yang diredupkan, sehingga ia terbaca sebagai keterangan
    dan sempat dilaporkan "tidak ada" padahal sudah dirender.
+
+⛔ **SATU PERMUKAAN BELUM DIUJI SAMA SEKALI: DASHBOARD PENELITI.**
+[`StatusPage`](../multi-step-form/src/pages/dashboard/StatusPage.tsx) berubah
+di rilis ini — peta pembayarannya dulu mengambil **transaksi pertama yang
+kebetulan cocok** per `extend_id`; kini ia memanggil `schedule_billing_bulk`
+dan menunjuk `openInvoice`. Peneliti tetap hanya melihat SATU tagihan
+(keputusan pemilik produk), tapi sekarang tagihan yang benar.
+
+Yang wajib diklik **sebagai peneliti**, bukan admin:
+
+- order yang punya tagihan menggantung → tombol bayar menunjuk tagihan itu,
+  bukan tagihan lama yang sudah lunas
+- order lunas sebagian → **tidak** lagi tertulis "Lunas"
+- order dengan jadwal ke-2 → tagihannya tidak tertukar dengan jadwal ke-1
+
+⚠️ Ini permukaan yang dilihat pelanggan, dan satu-satunya bagian rilis ini
+yang belum pernah disentuh manusia. Uji admin tidak mewakilinya: RLS-nya
+berbeda, dan jalur datanya lain (`SchedulePaymentMap`, bukan `ScheduleBilling`
+langsung).
+
+**Catatan cakupan:** rencana menyebut `scheduleMoney.ts` menerima blok kedua
+untuk `billed`/`paid`/`outstanding`. Blok itu akhirnya hidup di
+`BillingSection` — satu tempat dengan daftarnya, bukan dua. `scheduleMoney.ts`
+tetap murni soal HARGA. Hasilnya sama, tempatnya berbeda dari rencana.
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 
