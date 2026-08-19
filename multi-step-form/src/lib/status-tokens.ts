@@ -26,6 +26,26 @@ export type LifecycleStage =
   | "completed"
   | "page_scheduled"
   | "live"
+  /**
+   * Dibatalkan.
+   *
+   * Terukur di produksi 2026-08-19 — 136 baris `ad_schedules.status =
+   * 'cancelled'`, dan rinciannya penting:
+   *
+   *   135 dari `form_submissions` (119 spam + 16 rejected). Mereka lahir dari
+   *       `airing_status_of()` yang memetakan rejected/spam -> 'cancelled',
+   *       jadi `review_status`-nya rejected/spam dan dua cabang PERTAMA
+   *       `chipKindOf` sudah menangkapnya. Tidak pernah salah label.
+   *     1 dari `form_submissions_extend`. Mirror extend menulis status APA
+   *       ADANYA (tanpa airing_status_of) sementara `review_status` diwarisi
+   *       induk yang 'approved' — jadi baris ini jatuh ke cabang terakhir,
+   *       terbaca "Approved", dan lewat `occupiesSlot()` ikut MEMAKAN KUOTA.
+   *
+   * Jadi nilai union ini bukan "memperbaiki 136 baris" melainkan: memberi
+   * pembatalan sebuah nama, supaya `slot_cancelled` (sql/62) punya tempat
+   * mendarat dan setiap permukaan DIPAKSA menamainya oleh type-checker.
+   */
+  | "cancelled"
 
 export interface StatusToken {
   label: string
@@ -36,6 +56,7 @@ export interface StatusToken {
 
 export const STATUS_TOKENS: Record<LifecycleStage, StatusToken> = {
   in_review: { label: "Need Review", variant: "blue", dot: true },
+  cancelled: { label: "Dibatalkan", variant: "slate" },
   approved: { label: "Approved", variant: "indigo" },
   rejected: { label: "Rejected", variant: "red" },
   spam: { label: "Spam", variant: "orange" },
@@ -84,5 +105,5 @@ export const AIRING_STATUS_TOKENS: Record<string, StatusToken> = {
   scheduled: STATUS_TOKENS.page_scheduled,
   live: STATUS_TOKENS.live,
   completed: STATUS_TOKENS.completed,
-  cancelled: { label: "Dibatalkan", variant: "slate" },
+  cancelled: STATUS_TOKENS.cancelled,
 }

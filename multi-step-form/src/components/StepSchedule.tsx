@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Info, Lock } from 'lucide-react';
+import { ArrowLeft, Loader2, Info, Lock, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { SchedulePicker } from './SchedulePicker';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
@@ -17,6 +17,21 @@ interface StepScheduleProps {
   onConfirm: (ymd: string) => Promise<boolean> | boolean;
   onBack: () => void;
   mode?: 'regular' | 'kilat';
+  /**
+   * Ke mana "mundur" pergi.
+   *
+   * `'step'` (bawaan): tombol Kembali ke langkah wizard sebelumnya — benar
+   * untuk order baru, yang memang punya Ringkasan di belakangnya.
+   *
+   * `'orders'`: tautan teks "Kembali ke Order Saya". Dipakai saat layar ini
+   * dimasuki lewat JADWAL ULANG dari My Order: order-nya sudah ada, tidak ada
+   * Ringkasan yang sah untuk dikembalikan — mundur ke step 2 menampilkan layar
+   * submit untuk order yang sedang di-reset, dan CTA-nya bisa melahirkan order
+   * kembar. Pemanggil WAJIB membuang draft reschedule di `onBack`-nya sendiri;
+   * draft berniat-reschedule yang tertinggal adalah akar insiden survei
+   * tertimpa (lihat resolveSubmissionMode).
+   */
+  exitMode?: 'step' | 'orders';
 }
 
 /**
@@ -28,7 +43,7 @@ interface StepScheduleProps {
  * satu layar; secara alamat mereka terpisah karena Fase B punya dua pintu masuk
  * "kembali setelah pergi" yang tidak bisa dilayani state wizard.
  */
-export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: StepScheduleProps) {
+export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', exitMode = 'step' }: StepScheduleProps) {
   const { t } = useLanguage();
   const availability = useSlotAvailability(mode);
 
@@ -55,6 +70,19 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: 
       setSelected(null);
       return;
     }
+    /*
+      ⚠️ KOSONG BUKAN LOWONG.
+      `isRangeAvailable` membaca `counts[ymd] || 0`, jadi selama ketersediaan
+      belum terbaca ia menjawab TRUE untuk SETIAP tanggal — termasuk yang
+      sudah penuh. Tanpa gerbang ini, pengambilan data yang gagal atau
+      menggantung berubah dari "kalender belum siap" menjadi "kalender bilang
+      semuanya lowong", dan tanggal penuh pun ikut terkunci.
+    */
+    if (!availability.isReady) {
+      toast.error(t('slotErrorAvailabilityUnknown'));
+      void availability.reload();
+      return;
+    }
     if (!availability.isRangeAvailable(selected, duration)) {
       toast.error(t('slotErrorFull'));
       return;
@@ -72,6 +100,21 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: 
 
   return (
     <div className="max-w-3xl mx-auto space-y-3.5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Jalan keluar diletakkan DI ATAS kartu, sejajar dengan halaman bayar:
+          ia menjawab "aku ada di mana dan bagaimana keluar", pertanyaan yang
+          muncul SEBELUM isinya dibaca — bukan aksi yang bersaing dengan CTA
+          di bawah. */}
+      {exitMode === 'orders' && (
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isConfirming}
+          className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed -ml-1 px-1 py-1"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          {t('backToOrders')}
+        </button>
+      )}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
         {/* Title + subtitle grouped so gap between them is tight */}
         <div className="space-y-1">
@@ -82,7 +125,25 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: 
             <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
               {mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleTitle')}
             </h2>
-            {availability.isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            {/* Muat PERTAMA diceritakan skeleton kalendernya, bukan spinner ini —
+                dua indikator untuk satu keadaan cuma bising. Spinner tinggal
+                untuk pemuatan ulang, saat kalendernya sudah berisi. */}
+            {availability.isLoading && availability.isReady && (
+              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+            )}
+            {/* Gagal memuat harus KELIHATAN. Sebelumnya kegagalan hanya masuk
+                console.error, jadi layar tampak normal padahal angka slotnya
+                nol semua — mustahil dibedakan dari "semua tanggal kosong". */}
+            {!availability.isLoading && availability.hasError && (
+              <button
+                type="button"
+                onClick={() => void availability.reload()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t('slotAvailabilityRetry')}
+              </button>
+            )}
           </div>
           <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
             {t('scheduleSubtitle')}
@@ -107,15 +168,17 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular' }: 
 
       <div className="space-y-2 pb-4">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            disabled={isConfirming}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            {t('backButton')}
-          </button>
+          {exitMode === 'step' && (
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={isConfirming}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {t('backButton')}
+            </button>
+          )}
           <button
             onClick={handleConfirm}
             disabled={!selected || availability.isLoading || isConfirming}

@@ -50,7 +50,7 @@ export function DistributionSection({
   const previewSubtotal = convertTarget === 'kilat' ? previewKilatSubtotal : previewRegularSubtotal;
   const previewTotal = previewSubtotal + calculatePpn(previewSubtotal);
 
-  const hasPendingInvoice = paymentData.hasInvoices && paymentData.latestStatus === 'pending';
+  const hasPendingInvoice = paymentData.hasOpenInvoice;
 
   const handleConfirmConvert = async () => {
     if (!convertTarget) return;

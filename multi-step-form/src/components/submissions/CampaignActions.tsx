@@ -72,7 +72,12 @@ export function ReserveSlotAction({
             <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
               <p className="font-semibold text-xs text-blue-600 mb-1">Reservation Details</p>
               <p className="text-sm">Date: <span className="font-medium text-gray-900">{submission.start_date ? new Date(submission.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'}</span></p>
-              <p className="text-sm">Type: <span className="font-medium text-gray-900">{(existingPage?.is_extra_ad || (submission.admin_notes || '').includes('[EXTRA_AD]')) ? 'Extra Ad' : 'Regular Ad'}</span></p>
+              {/* Cadangan `admin_notes LIKE '[EXTRA_AD]'` DIBUANG (sql/63): penanda
+                  teks itu sudah diserap ke `ad_schedules.is_extra_ad`, dan
+                  `survey_pages.is_extra_ad` kini cerminnya. Membacanya lagi hanya
+                  menambah satu baris — order Kilat ber-'[EXTRA_AD]' — yang justru
+                  TIDAK boleh disebut iklan tambahan. */}
+              <p className="text-sm">Type: <span className="font-medium text-gray-900">{existingPage?.is_extra_ad ? 'Extra Ad' : 'Regular Ad'}</span></p>
               {submission.slot_booked_by && (
                 <p className="text-sm mt-1 pt-1 border-t border-gray-100">Booked By: <span className="font-medium text-gray-900 capitalize">{submission.slot_booked_by}</span></p>
               )}

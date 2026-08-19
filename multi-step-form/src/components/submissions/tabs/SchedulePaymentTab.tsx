@@ -5,8 +5,8 @@ import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
-  fetchAdSchedules, fetchSchedulePayments, markScheduleAsPaid, unmarkScheduleAsPaid, releaseScheduleSlot, supabase,
-  type AdScheduleEntry, type SchedulePayment,
+  fetchAdSchedules, fetchScheduleBilling, markScheduleAsPaid, unmarkScheduleAsPaid, cancelInvoice, cancelSchedule,
+  type AdScheduleEntry, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
@@ -66,7 +66,7 @@ export function SchedulePaymentTab({
   onInitialSubViewConsumed?: () => void;
 }) {
   const [schedules, setSchedules] = useState<AdScheduleEntry[]>([]);
-  const [payments, setPayments] = useState<Map<string, SchedulePayment>>(new Map());
+  const [billings, setBillings] = useState<Map<string, ScheduleBilling>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [localReloadKey, setLocalReloadKey] = useState(0);
 
@@ -77,9 +77,11 @@ export function SchedulePaymentTab({
     setIsLoading(true);
     (async () => {
       try {
-        const rows = await fetchAdSchedules(submissionId);
-        const pay = await fetchSchedulePayments(submissionId, rows);
-        if (!cancelled) { setSchedules(rows); setPayments(pay); }
+        const [rows, bill] = await Promise.all([
+          fetchAdSchedules(submissionId),
+          fetchScheduleBilling(submissionId),
+        ]);
+        if (!cancelled) { setSchedules(rows); setBillings(bill); }
       } catch (e) {
         console.error('Gagal memuat jadwal order:', e);
       } finally {
@@ -111,31 +113,6 @@ export function SchedulePaymentTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSubView, isLoading, schedules]);
 
-  /**
-   * Batalkan jadwal perpanjangan.
-   *
-   * ⚠️ SENGAJA SAMA PERSIS dengan tombol lama di ExtendSection — status jadi
-   * `cancelled`, `payment_status` jadi `failed`, tidak lebih. Ia TIDAK
-   * melewatkan transaksi pending jadi `expired` dan TIDAK melepas
-   * `slot_booked_by`; keduanya memang belum pernah dilakukan. Memperbaikinya di
-   * rilis ini berarti menyelundupkan kemampuan baru ke dalam pemindahan
-   * permukaan — versi benarnya adalah Task 13 Langkah 3.
-   */
-  const handleCancelSchedule = useCallback(async (entry: AdScheduleEntry) => {
-    if (!confirm('Yakin ingin membatalkan jadwal iklan ini?')) return;
-    try {
-      const { error } = await supabase
-        .from('form_submissions_extend')
-        .update({ submission_status: 'cancelled', payment_status: 'failed' })
-        .eq('id', entry.sourceId);
-      if (error) throw error;
-      toast.success('Jadwal iklan dibatalkan');
-      reload();
-      onExtendCreated();
-    } catch (err: any) {
-      toast.error(err?.message || 'Gagal membatalkan jadwal');
-    }
-  }, [reload, onExtendCreated]);
 
   /**
    * "Hapus dari list" — lepaskan slot jadwal yang batas bayarnya sudah lewat.
@@ -150,26 +127,28 @@ export function SchedulePaymentTab({
    * `occupiesSlot()` false → kuota hari itu bebas. Ordernya sendiri tetap utuh
    * dan bisa dijadwalkan lagi kapan saja.
    */
-  const handleReleaseSlot = useCallback(async (entry: AdScheduleEntry) => {
+  const handleCancelSchedule = useCallback(async (entry: AdScheduleEntry) => {
     const when = entry.startDate
       ? new Date(entry.startDate).toLocaleDateString('id-ID', {
           day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta',
         })
       : 'tanggal ini';
     const ok = confirm(
-      `Lepaskan slot ${when}?\n\n` +
-      'Jadwalnya dikosongkan dan kuota hari itu kembali bisa dijual. ' +
-      'Ordernya TIDAK dihapus — ia pindah ke daftar "belum dijadwalkan" dan ' +
-      'bisa dijadwalkan lagi kapan saja.'
+      `Batalkan jadwal ${when}?\n\n` +
+      'Kuota hari itu langsung bebas dijual lagi, dan tagihan yang masih ' +
+      'menggantung untuk jadwal ini ikut dimatikan.\n\n' +
+      'Tanggalnya TETAP tercatat sebagai riwayat — jadi nanti masih bisa ' +
+      'dijawab "jadwal mana yang dibatalkan, untuk tanggal apa". Ordernya ' +
+      'tidak dihapus dan bisa dijadwalkan ulang kapan saja.'
     );
     if (!ok) return;
     try {
-      await releaseScheduleSlot(entry);
-      toast.success('Slot dilepas. Order pindah ke "belum dijadwalkan".');
+      await cancelSchedule(entry);
+      toast.success('Jadwal dibatalkan. Kuota tanggalnya sudah bebas.');
       reload();
       onExtendCreated();
     } catch (err: any) {
-      toast.error(err?.message || 'Gagal melepas slot');
+      toast.error(err?.message || 'Gagal membatalkan jadwal');
     }
   }, [reload, onExtendCreated]);
 
@@ -224,6 +203,43 @@ export function SchedulePaymentTab({
   }, [reload, onExtendCreated]);
 
   /**
+   * Batalkan SATU tagihan yang belum dibayar.
+   *
+   * ⚠️ BUKAN pembatalan jadwal, dan bukan refund. Jadwalnya tetap berdiri,
+   * slotnya tidak dilepas, dan tagihan lain di jadwal yang sama tidak
+   * tersentuh. Tagihan lunas tidak pernah sampai ke sini — tombolnya digerbang
+   * di kartu, dan `cancelInvoice()` mengulang syarat itu di DB.
+   *
+   * Nilai kembaliannya DIPERIKSA. `.update()` tanpa `.select()` tidak melempar
+   * error saat RLS menyaring hasilnya jadi nol baris; itu persis cara "Tandai
+   * Lunas" gagal diam-diam berbulan-bulan sebelum sql/59. Nol baris di sini
+   * berarti tagihannya sudah berubah status di tab lain — bukan sukses.
+   */
+  const handleCancelInvoice = useCallback(async (inv: ScheduleInvoice) => {
+    if (!inv.paymentId) return;
+    const ok = window.confirm(
+      `Batalkan tagihan ${inv.paymentId}?\n\n` +
+      `Nominal ${formatIDR(inv.amount)} berhenti dihitung sebagai piutang, dan ` +
+      'jadwalnya bisa ditagih ulang. Jadwal serta slotnya TIDAK dibatalkan.\n\n' +
+      'Catatan: link bayar yang sudah terlanjur dikirim masih bisa dibayar dari ' +
+      'sisi bank. Kalau uangnya sungguh masuk, tagihan ini kembali jadi lunas.'
+    );
+    if (!ok) return;
+    try {
+      const changed = await cancelInvoice(inv.paymentId);
+      if (changed === 0) {
+        toast.warning('Tidak ada yang berubah — tagihan ini mungkin sudah dibayar atau dibatalkan.');
+      } else {
+        toast.success(`Tagihan ${inv.paymentId} dibatalkan.`);
+      }
+      reload();
+      onExtendCreated();
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal membatalkan tagihan');
+    }
+  }, [reload, onExtendCreated]);
+
+  /**
    * "Jadwal Iklan Baru" — memesan jendela tayang BERIKUTNYA untuk order yang sama.
    *
    * ⚠️ PAGAR `!existingPage` SENGAJA TIDAK ADA DI SINI. Sampai Phase 3 syaratnya
@@ -274,15 +290,15 @@ export function SchedulePaymentTab({
         ) : (
           <ScheduleCardList
             entries={schedules}
-            payments={payments}
+            billings={billings}
             submission={submission}
             onEditSchedule={onEditSchedule}
             onCreateSchedule={onCreateSchedule}
             onCreateInvoice={onCreateInvoice}
             onMarkPaid={lifecycle.isPaid ? null : (entry) => setPendingPaid(entry)}
             onUnmarkPaid={(entry) => void handleUnmarkPaid(entry)}
-            onCancel={(entry) => void handleCancelSchedule(entry)}
-            onReleaseSlot={(entry) => void handleReleaseSlot(entry)}
+            onCancelInvoice={(inv) => void handleCancelInvoice(inv)}
+            onCancelSchedule={(entry) => void handleCancelSchedule(entry)}
           />
         )}
 

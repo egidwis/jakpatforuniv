@@ -32,6 +32,7 @@ import type { FormSubmission } from '@/utils/supabase';
 import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount, calculatePpn, getKilatAddonCost, voucherInstantOf } from '@/utils/cost-calculator';
 import {
     pickDefaultExpandedKey,
+    fmtShort,
     type ScheduleCard,
     type IncentiveInfo,
 } from './airingPeriods';
@@ -467,6 +468,45 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
         );
     }
     if (b.state === 'awaiting_invoice') {
+        /*
+          ⚠️ JELASKAN KENAPA, JANGAN CUMA MENYEMBUNYIKAN TOMBOLNYA.
+          Kalau jadwal ini dipindah sesudah tagihannya terbit, tagihan lama
+          berhenti berlaku (sql/60) dan yang baru belum ada. Tanpa keterangan
+          ini peneliti hanya melihat tombol bayarnya lenyap — dan tidak ada
+          apa pun di layar yang memberi tahu ia harus menunggu tagihan baru,
+          apalagi bahwa link lama di emailnya tidak boleh dibayar.
+          Tanggal lamanya DISEBUT supaya ia bisa mencocokkan sendiri dengan
+          email tagihan yang sudah terlanjur diterima.
+        */
+        if (b.staleBilledFor) {
+            return (
+                <div className="rounded-xl border p-3.5 border-amber-200/80 bg-amber-50/70">
+                    <div className="flex items-start gap-2.5">
+                        <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                        <div className="min-w-0 space-y-1">
+                            <p className="text-sm font-bold text-slate-900 leading-snug">
+                                Tagihan lama sudah tidak berlaku
+                            </p>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                Tagihan sebelumnya diterbitkan untuk jadwal{' '}
+                                <strong className="font-semibold text-slate-900">
+                                    {fmtShort(b.staleBilledFor)}
+                                </strong>
+                                , sedangkan jadwal kamu sekarang{' '}
+                                <strong className="font-semibold text-slate-900">{card.dateRange}</strong>.
+                                Karena tanggalnya berubah, tagihan itu dibatalkan otomatis.
+                            </p>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                <strong className="font-semibold text-slate-900">Jangan bayar link lama</strong>{' '}
+                                yang mungkin sudah kamu terima — pembayarannya tidak akan
+                                dihitung untuk jadwal baru ini. Tim kami akan menerbitkan
+                                tagihan pengganti sesuai tanggal barunya.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
         return (
             <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
                 <p className="text-sm text-slate-600 leading-relaxed font-medium">
@@ -505,6 +545,30 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
         const bannerTitle = deadlineTime
             ? `${t('bannerTitleWaitingPayment')} (${deadlineTime})`
             : t('bannerTitleWaitingPayment');
+        /*
+          ⚠️ AKIBAT TENGGATNYA BEDA, JADI KALIMATNYA HARUS BEDA.
+          `deadlineCause` sudah dihitung sejak lama tapi tidak pernah dirender,
+          jadi satu kalimat dipakai untuk ketiga keadaan — dan ia hanya benar
+          untuk salah satunya:
+            'slot'   -> reservasi peneliti sendiri, lepas 1 jam. Benar.
+            'cutoff' -> slot milik peneliti yang TIDAK punya tenggat lepas:
+                        `slot_reserved_at` NULL/rusak, jadi `slotReleaseDeadline`
+                        null dan slotnya tidak pernah lepas sendiri. Batas yang
+                        tersisa cuma 14.00 WIB, dan itu tidak melepas slot — yang
+                        habis adalah waktu kami menyiapkan halaman iklan.
+                        BUKAN "dipesan lewat jam 13.00": pemesanan hari-H sudah
+                        ditutup 13.00, jadi hold 1 jam selalu tiba lebih dulu.
+            null     -> slot dipesan admin, atau jadwal ke-2 dst. `deadline`
+                        sengaja dikosongkan di `deriveOrderUiState`: pelepasannya
+                        MANUAL lewat dashboard admin, jadi tidak ada jam yang
+                        jujur bisa disebut. Yang benar adalah alasannya —
+                        slotnya terbatas dan bisa habis.
+        */
+        const deadlineSubKey = b.deadlineCause === 'slot'
+            ? 'bannerSubWaitingPaymentSlot'
+            : b.deadlineCause === 'cutoff'
+                ? 'bannerSubWaitingPaymentCutoff'
+                : 'bannerSubWaitingPaymentSlotsLimited';
 
         return (
             <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/70 shadow-2xs">
@@ -513,7 +577,7 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
                         <CreditCard className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
                         <div className="min-w-0">
                             <p className="text-sm font-bold text-slate-900 leading-snug">{bannerTitle}</p>
-                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubWaitingPayment')}</p>
+                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t(deadlineSubKey)}</p>
                         </div>
                     </div>
                     {b.payUrl && (

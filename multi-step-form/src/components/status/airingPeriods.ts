@@ -91,6 +91,15 @@ export interface ScheduleCard {
         deadlineCause: 'slot' | 'cutoff' | null;
         invoicePaymentId: string | null;
         isPaidForLabel: boolean; // menentukan label "Invoice" vs "Kwitansi"
+        /**
+         * Tanggal tayang yang ditagihkan tagihan BASI terakhir — atau null.
+         *
+         * Terisi kalau jadwal ini berpindah sesudah tagihannya terbit (sql/60),
+         * sehingga tagihan lamanya tidak berlaku lagi dan yang baru belum ada.
+         * Tanpa ini tombol bayar sekadar menghilang dan peneliti tidak tahu
+         * harus menunggu apa.
+         */
+        staleBilledFor: Date | null;
     };
     publication: {
         state: PublicationState;
@@ -99,7 +108,10 @@ export interface ScheduleCard {
     };
 }
 
-const fmtShort = (d: Date | null) =>
+/** Format tanggal yang dilihat peneliti. Diekspor supaya kartu dan keterangan
+ *  di `SchedulePhase` memakai bentuk yang sama persis — dua format berbeda
+ *  untuk tanggal yang sama membuat orang mengira itu dua tanggal berbeda. */
+export const fmtShort = (d: Date | null) =>
     d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '—';
 
 function buildIncentive(s: AdScheduleEntry): IncentiveInfo | null {
@@ -135,6 +147,13 @@ const subtotalOf = (s: AdScheduleEntry) => (s.ppnAmount != null ? s.subtotal ?? 
  * step 0 cuma jadwal tayang & tagihan. Hanya order yang ditolak (step -1) yang
  * tidak punya kartu sama sekali.
  */
+/** Tanggal yang ditagihkan tagihan basi terakhir, siap dirender. */
+function staleDateOf(pay: { staleBilledFor?: string | null } | null | undefined): Date | null {
+    if (!pay?.staleBilledFor) return null;
+    const d = new Date(pay.staleBilledFor);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function buildScheduleCards(
     ui: OrderUiState,
     payments: SchedulePaymentMap,
@@ -205,6 +224,7 @@ export function buildScheduleCards(
                 // Invoice walau ada baris nyasar di tabel transactions.
                 invoicePaymentId: bookingState === 'in_review' ? null : invoiceId,
                 isPaidForLabel: bookingState === 'paid' || ui.isPaid,
+                staleBilledFor: staleDateOf(payments[first.sourceId]),
             },
             publication: {
                 state: pubState,
@@ -270,6 +290,7 @@ export function buildScheduleCards(
                 deadlineCause: null,
                 invoicePaymentId: pay?.paymentId || null,
                 isPaidForLabel: bookingState === 'paid',
+                staleBilledFor: staleDateOf(pay),
             },
             publication: {
                 state: pubState,

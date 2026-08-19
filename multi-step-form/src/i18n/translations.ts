@@ -185,6 +185,8 @@ export const translations = {
     slotErrorPastCutoff: "Today's booking cut-off (13:00 WIB) has passed. Please choose another date.",
     slotErrorNoDate: "Please select a start date for your ad.",
     slotErrorFull: "Slots for the selected date range are full (max 3 per day). Please choose a different date.",
+    slotErrorAvailabilityUnknown: "We could not load slot availability, so we cannot lock this date yet. Please retry.",
+    slotAvailabilityRetry: "Retry loading availability",
     googleFormImportTitle: "Import from Google Form",
     manualFillTitle: "Fill Manually",
     fillManually: "Fill Manually",
@@ -691,7 +693,12 @@ export const translations = {
 
     // Banners with CTA
     bannerTitleWaitingPayment: "Complete Payment",
-    bannerSubWaitingPayment: "Pay before the deadline to keep your reserved slot from being released.",
+    // Tiga sebab, tiga akibat berbeda. Satu kalimat untuk ketiganya berbohong
+    // pada dua di antaranya — batas 14.00 WIB TIDAK melepas slot, dan jadwal
+    // yang dipesan admin tidak pernah lepas sendiri sama sekali.
+    bannerSubWaitingPaymentSlot: "Pay before the deadline to keep your reserved slot from being released.",
+    bannerSubWaitingPaymentCutoff: "Pay before the deadline so we still have time to prepare this airing date. Your slot stays reserved, but past that the date has to be changed.",
+    bannerSubWaitingPaymentSlotsLimited: "Ad slots are limited each day. Complete your payment before they fill up.",
     bannerTitleChooseSchedule: "Review Approved — Pick Ad Schedule",
     bannerSubChooseSchedule: "Please select an available airing date and time slot for your survey.",
     bannerTitleExpired: "Payment Deadline Expired",
@@ -893,6 +900,8 @@ export const translations = {
     slotErrorPastCutoff: "Batas pemesanan hari ini (13.00 WIB) sudah lewat. Silakan pilih tanggal lain.",
     slotErrorNoDate: "Silakan pilih tanggal mulai iklan Anda.",
     slotErrorFull: "Slot pada rentang tanggal yang dipilih sudah penuh (maksimal 3 antrean per hari). Silakan pilih tanggal lain.",
+    slotErrorAvailabilityUnknown: "Ketersediaan slot belum berhasil dimuat, jadi tanggal ini belum bisa dikunci. Silakan coba lagi.",
+    slotAvailabilityRetry: "Muat ulang ketersediaan slot",
     googleFormImportTitle: "Import dari Google Form",
     manualFillTitle: "Isi Manual",
     fillManually: "Isi Secara Manual",
@@ -1461,7 +1470,9 @@ export const translations = {
 
     // Banners with CTA
     bannerTitleWaitingPayment: "Selesaikan Pembayaran",
-    bannerSubWaitingPayment: "Bayar sebelum batas waktu agar reservasi slot tidak dilepas ke pengguna lain.",
+    bannerSubWaitingPaymentSlot: "Bayar sebelum batas waktu agar reservasi slot tidak dilepas ke pengguna lain.",
+    bannerSubWaitingPaymentCutoff: "Bayar sebelum batas waktu agar jadwal tayang ini masih sempat kami siapkan. Slotmu tidak dilepas, tapi lewat dari itu tanggalnya harus diganti.",
+    bannerSubWaitingPaymentSlotsLimited: "Jadwal iklan memiliki slot terbatas setiap harinya. Lakukan pembayaran sebelum slotnya terpenuhi.",
     bannerTitleChooseSchedule: "Review Disetujui — Pilih Jadwal Penayangan",
     bannerSubChooseSchedule: "Silakan tentukan tanggal dan gelombang tayang yang tersedia untuk survei Anda.",
     bannerTitleExpired: "Batas Waktu Pembayaran Kedaluwarsa",

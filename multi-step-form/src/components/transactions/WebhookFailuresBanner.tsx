@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { AlertTriangle, ChevronDown, Check, RefreshCw } from 'lucide-react';
-import { supabase } from '../../utils/supabase';
+import { supabase, getAuthUser } from '../../utils/supabase';
 import { Button } from '@/components/ui/button';
 import { Chip, type ChipVariant } from '@/components/ui/chip';
 import { cn } from '@/lib/utils';
@@ -101,7 +101,7 @@ export function WebhookFailuresBanner() {
   const handleResolve = async (id: string) => {
     setResolvingId(id);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getAuthUser();
       const { error } = await supabase
         .from('doku_webhook_events')
         .update({

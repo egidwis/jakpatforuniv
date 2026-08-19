@@ -8,10 +8,33 @@ export interface SlotAvailability {
   counts: Record<string, number>;
   maxPerDay: number;
   isLoading: boolean;
+  /**
+   * Ketersediaan sudah benar-benar terbaca, minimal sekali.
+   *
+   * ⚠️ WAJIB DICEK SEBELUM MENGUNCI TANGGAL. `counts` kosong tidak bisa
+   * dibedakan dari "semua tanggal lowong": `isRangeAvailable` membacanya
+   * sebagai 0 dari kuota, jadi ia menjawab TRUE untuk setiap tanggal —
+   * termasuk yang sebenarnya penuh. Selama pengambilan datanya gagal atau
+   * menggantung, kalender ini fail-open, dan satu-satunya penjaga yang
+   * tersisa adalah pemeriksaan ulang di `submitOrder` (yang hanya berjalan
+   * di jalur auto-approval) — jalur rebook tidak punya penjaga sama sekali.
+   */
+  isReady: boolean;
+  /** Pengambilan terakhir gagal atau kehabisan waktu. */
+  hasError: boolean;
   reload: () => Promise<void>;
   /** Apakah seluruh rentang `days` hari sejak `startYmd` masih muat. */
   isRangeAvailable: (startYmd: string, days: number) => boolean;
 }
+
+/**
+ * Permintaan yang menggantung TANPA pernah gagal adalah kegagalan yang paling
+ * buruk di sini: spinner berputar selamanya, `counts` tetap kosong, dan
+ * kalender diam-diam mengizinkan tanggal yang penuh. `try/catch/finally` tidak
+ * menolongnya — `finally` cuma jalan kalau promisenya selesai. Jadi batas
+ * waktunya dipasang sendiri.
+ */
+const AVAILABILITY_TIMEOUT_MS = 15_000;
 
 /**
  * Ketersediaan slot untuk kalender pemesanan.
@@ -31,17 +54,32 @@ export function useSlotAvailability(
 ): SlotAvailability {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   const maxPerDay = mode === 'kilat' ? MAX_KILAT_ADS_PER_DAY : MAX_REGULAR_ADS_PER_DAY;
 
   const reload = useCallback(async () => {
     setIsLoading(true);
+    setHasError(false);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const { regularCounts } = await fetchSlotAvailability(excludeSubmissionId, mode);
+      const { regularCounts } = await Promise.race([
+        fetchSlotAvailability(excludeSubmissionId, mode),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('slot availability timed out')),
+            AVAILABILITY_TIMEOUT_MS,
+          );
+        }),
+      ]);
       setCounts(regularCounts);
+      setIsReady(true);
     } catch (err) {
       console.error('Failed to fetch slot counts:', err);
+      setHasError(true);
     } finally {
+      if (timer) clearTimeout(timer);
       setIsLoading(false);
     }
   }, [mode, excludeSubmissionId]);
@@ -70,5 +108,5 @@ export function useSlotAvailability(
     [counts, maxPerDay]
   );
 
-  return { counts, maxPerDay, isLoading, reload, isRangeAvailable };
+  return { counts, maxPerDay, isLoading, isReady, hasError, reload, isRangeAvailable };
 }

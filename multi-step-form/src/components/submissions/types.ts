@@ -58,7 +58,16 @@ export interface SurveySubmission {
 }
 
 export interface PaymentState {
+  /** Ada RIWAYAT tagihan — termasuk yang sudah mati. Bukan "ada yang bisa dibayar". */
   hasInvoices: boolean;
+  /**
+   * Ada tagihan yang MASIH BISA DIBAYAR. Inilah yang menentukan apakah order
+   * benar-benar "menunggu pembayaran"; `hasInvoices` tidak pernah bisa,
+   * karena baris tagihan tidak pernah dihapus — sesudah peneliti menjadwalkan
+   * ulang, satu-satunya baris yang tersisa kedaluwarsa dan `hasInvoices`
+   * tetap true selamanya.
+   */
+  hasOpenInvoice: boolean;
   latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null;
   invoiceCount: number;
   latestPaymentUrl: string | null;

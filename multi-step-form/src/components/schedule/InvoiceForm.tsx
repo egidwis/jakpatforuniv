@@ -117,8 +117,16 @@ export function InvoiceForm({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   // Voucher milik TAGIHAN, bukan order — jadi ia state form, dan tidak pernah
   // ditulis balik ke `form_submissions.voucher_code`. Order hanya jadi nilai
-  // awalnya. Menaikkannya jadi kolom `invoices.voucher_code` (dan mengajari
-  // `create-payment.js` membacanya) adalah Task 13.
+  // awalnya.
+  //
+  // Kolom `invoices.voucher_code`/`transactions.voucher_code` sudah lahir
+  // (sql/53) dan diisi di bawah, jadi separuh catatan lama di sini SUDAH
+  // selesai. Yang BELUM: `create-payment.js` masih membaca
+  // `form_submissions.voucher_code`, bukan voucher tagihannya. Jendelanya
+  // sempit — selama tagihan admin masih hidup, blok pemakaian ulang di sana
+  // memulangkan tagihan itu apa adanya — tapi kalau tagihan admin sudah
+  // kedaluwarsa dan peneliti menekan "Bayar Sekarang", tagihan barunya lahir
+  // dengan voucher ORDER, bukan voucher yang admin pilih.
   const [voucher, setVoucher] = useState(submission.voucher_code || '');
   const [appliedVoucher, setAppliedVoucher] = useState(submission.voucher_code || '');
 
@@ -287,13 +295,14 @@ export function InvoiceForm({
         memo: note.trim(),
         items: items.map(({ name, qty, price, category }) => ({ name, qty, price, category })),
       };
-      // Voucher dicatat di sini, bukan di kolom sendiri — `invoices` dan
-      // `transactions` belum punya `voucher_code`, dan menambahkannya butuh
-      // migrasi yang nomornya sudah dialokasikan ke Task 11 & 13. Untuk tagihan
-      // manual ini cukup: `amount`-nya sudah final (server tidak menghitung
-      // ulang), jadi catatan ini murni jejak audit "kenapa angkanya segini".
-      if (appliedVoucher.trim()) noteData.voucher_code = appliedVoucher.trim().toUpperCase();
+      // ⚠️ Voucher TIDAK lagi dititipkan di `note`. Sejak sql/53 ia punya kolom
+      // sendiri di `invoices` dan `transactions` — voucher milik TAGIHAN, bukan
+      // order, jadi dua jadwal di order yang sama boleh berbeda. Menulis ke dua
+      // tempat sekaligus berarti dua sumber kebenaran; titipan lama di `note`
+      // sudah di-backfill ke kolomnya oleh migrasi itu.
       if (entry.isExtension) noteData.extend_id = entry.sourceId;
+
+      const voucherCode = appliedVoucher.trim() ? appliedVoucher.trim().toUpperCase() : null;
 
       const paymentResponse = await createManualInvoice({
         formSubmissionId: submission.id,
@@ -319,6 +328,12 @@ export function InvoiceForm({
         ppn_rate: PPN_RATE,
         ppn_amount: ppn,
         status: 'pending',
+        voucher_code: voucherCode,
+        // Jendela yang DITAGIHKAN, dibekukan saat tagihan terbit. Kalau
+        // jadwalnya kemudian pindah, `schedule_billing` menandai tagihan ini
+        // basi saat dibaca — itu yang menutup balapan admin-vs-peneliti
+        // tanpa mengunci apa pun (sql/60).
+        billed_start_date: entry.startDate ?? null,
         ...attribution,
       };
       await createInvoice(invoiceData);
@@ -334,6 +349,8 @@ export function InvoiceForm({
         status: 'pending',
         payment_url: paymentResponse.invoice_url,
         note: JSON.stringify(noteData),
+        voucher_code: voucherCode,
+        billed_start_date: entry.startDate ?? null,
         ...attribution,
       };
       await createTransaction(transactionData);

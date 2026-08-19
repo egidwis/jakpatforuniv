@@ -2,6 +2,7 @@ import type { LifecycleStage } from '../../lib/status-tokens';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { toWibYmd, isPaymentTooLateForDate } from '../../utils/airing-window';
 import { isPlaceholderBannerUrl } from '../../utils/page-banner';
+import { isSlotHoldReleased } from '../../utils/slotHold';
 
 // ─────────────────────────────────────────────────────────────
 // Single source of truth for submission lifecycle derivation.
@@ -70,14 +71,53 @@ export function deriveLifecycle(
   const isUserBookedUnpaid = submission.slot_booked_by === 'user' && reservedAtTime > 0 && !isPaid && !paymentData.hasEverPaid;
   const startYmd = submission.start_date ? toWibYmd(new Date(submission.start_date)) : null;
   const isScheduleLate = !isPaid && !paymentData.hasEverPaid && Boolean(startYmd && isPaymentTooLateForDate(startYmd, new Date(now)));
+  // ⚠️ TRANSAKSI YANG MATI BUKAN BUKTI SLOTNYA MATI.
+  //
+  // `paymentData.latestStatus` adalah status transaksi TERBARU, apa pun
+  // keadaannya — dan ia tidak pernah bergerak lagi setelah percobaan bayar
+  // gagal. Kalau peneliti kemudian menjadwalkan ulang, ia mendapat reservasi
+  // baru yang sah TANPA membuat transaksi baru, jadi sinyal ini macet di
+  // 'expired' selamanya dan admin melihat "Slot Kedaluwarsa" untuk slot yang
+  // sebenarnya masih ditahan.
+  //
+  // Terlihat di W2XPPGF5 (2026-08-19): peneliti menjadwalkan ulang 08.42,
+  // hold berlaku sampai 09.42, dashboard peneliti benar menampilkan tombol
+  // bayar — sementara tab Info admin sudah berteriak kedaluwarsa.
+  //
+  // Umur reservasi punya SATU sumber, `utils/slotHold.ts`. Sinyal pembayaran
+  // hanya boleh ikut bicara kalau tidak ada reservasi hidup.
+  const holdReleased = isSlotHoldReleased(
+    { slotBookedBy: submission.slot_booked_by, slotReservedAt: submission.slot_reserved_at },
+    now,
+  );
+  const hasLiveHold = submission.slot_booked_by === 'user' && reservedAtTime > 0 && !holdReleased;
+
   const isActuallyExpired = !isPaid && !paymentData.hasEverPaid && (
-    paymentData.latestStatus === 'expired' ||
-    submission.payment_status === 'expired' ||
-    (submission.slot_booked_by === 'user' && reservedAtTime > 0 && now > reservedAtTime + 3600_000) ||
-    isScheduleLate
+    // Tanggalnya tidak terkejar lagi — berlaku walau reservasinya masih hidup.
+    isScheduleLate ||
+    holdReleased ||
+    (!hasLiveHold && (
+      paymentData.latestStatus === 'expired' ||
+      submission.payment_status === 'expired'
+    ))
   );
   const hasValidSchedule = (isScheduled || (isLegacyActive && !legacyEnded)) && !isActuallyExpired;
-  const isPending = !isPaid && paymentData.hasInvoices && !isRejectedEvent && hasValidSchedule;
+  /**
+   * ⚠️ `hasOpenInvoice`, BUKAN `hasInvoices`.
+   *
+   * `awaiting_payment` menggerakkan banner Info yang berbunyi "Invoice tagihan
+   * sudah diterbitkan, menunggu pelunasan". Diukur dari `hasInvoices` kalimat
+   * itu jadi bohong begitu tagihannya mati: baris tagihan tidak pernah
+   * dihapus, jadi order yang dijadwalkan ulang menyimpan baris kedaluwarsa
+   * selamanya dan terus mengaku menunggu pembayaran — sementara tab Jadwal &
+   * Bayar, yang membaca tagihan hidup lewat `schedule_billing`, menunjukkan
+   * tidak ada apa pun untuk dibayar. Dua layar, satu order, dua jawaban.
+   *
+   * Dengan tagihan hidup sebagai ukuran, order itu jatuh ke `reserved` /
+   * `reserved_expiring` — "Siap Terbitkan Tagihan" — yang memang tindakan
+   * yang admin perlu lakukan.
+   */
+  const isPending = !isPaid && paymentData.hasOpenInvoice && !isRejectedEvent && hasValidSchedule;
   const canBuildPage = isPaid || isLegacyActive;
   const canReserveSlot = RESERVABLE_STATUSES.includes(submission.submission_status || '') || isLegacyActive;
   const canPay = (isScheduled || isLegacyActive) && !isRejectedEvent;
@@ -106,6 +146,11 @@ export function deriveLifecycle(
   let stage: LifecycleStage;
   if (displayStatus === 'rejected') stage = 'rejected';
   else if (displayStatus === 'spam') stage = 'spam';
+  // Sejajar dengan rejected/spam: keputusan manusia yang menghentikan order,
+  // jadi ia menang atas sumbu tayang maupun sumbu uang. Papan Schedule sudah
+  // menamainya lewat `chipKindOf`; daftar Submissions tidak boleh memberi nama
+  // lain untuk baris yang sama.
+  else if (displayStatus === 'cancelled') stage = 'cancelled';
   else if (pageStatus === 'live' || (!isKilat && submission.status === 'live' && !legacyEnded)) stage = 'live';
   else if (pageStatus === 'scheduled') stage = 'page_scheduled';
   else if (

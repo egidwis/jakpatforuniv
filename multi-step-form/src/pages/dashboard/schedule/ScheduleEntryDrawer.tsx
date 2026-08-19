@@ -29,11 +29,11 @@ import { copyToClipboard } from '@/components/submissions/types';
 import { formatIDR } from '@/utils/currency';
 import { bannerSavePatch, isPlaceholderBannerUrl } from '@/utils/page-banner';
 import {
-  fetchSchedulePayments,
+  fetchScheduleBilling,
   getScheduledPageBySubmission,
   supabase,
   type AdScheduleEntry,
-  type SchedulePayment,
+  type ScheduleBilling,
 } from '@/utils/supabase';
 import { isPaymentTooLateForDate, toWibYmd } from '@/utils/airing-window';
 import {
@@ -85,7 +85,7 @@ export function ScheduleEntryDrawer({
   onOpenSubmission: (entry: AdScheduleEntry) => void;
 }) {
   const [page, setPage] = useState<PageRow | null>(null);
-  const [payment, setPayment] = useState<SchedulePayment | null>(null);
+  const [billing, setBilling] = useState<ScheduleBilling | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
@@ -102,7 +102,7 @@ export function ScheduleEntryDrawer({
     if (!entry) return;
     setIsLoading(true);
     try {
-      const [pageRow, sub, payments] = await Promise.all([
+      const [pageRow, sub, billings] = await Promise.all([
         entry.distributionType === 'kilat'
           ? Promise.resolve(null)
           : getScheduledPageBySubmission(entry.submissionId),
@@ -111,13 +111,13 @@ export function ScheduleEntryDrawer({
           .select('criteria_responden')
           .eq('id', entry.submissionId)
           .maybeSingle(),
-        fetchSchedulePayments(entry.submissionId, [entry]).catch(() => new Map()),
+        fetchScheduleBilling(entry.submissionId).catch(() => new Map()),
       ]);
 
       const p = (pageRow as PageRow | null) ?? null;
       const c = sub.data?.criteria_responden || '';
       setPage(p);
-      setPayment(payments.get(entry.id) ?? null);
+      setBilling(billings.get(entry.id) ?? null);
 
       const initial: QuickEdit = {
         title: p?.title || entry.title || '',
@@ -209,7 +209,15 @@ export function ScheduleEntryDrawer({
   const token = tokenForChip(kind);
   const unscheduled = isUnscheduled(entry);
   const bannerTodo = !isKilat && Boolean(page?.is_published && isPlaceholderBannerUrl(page?.banner_url));
-  const isPaid = payment?.hasEverPaid || ['paid', 'completed'].includes(entry.paymentStatus || '');
+  // ⚠️ `isSettled`, bukan "ada yang pernah lunas". Satu jadwal boleh punya
+  // beberapa tagihan sejak Task 13; memakai `.some(paid)` di sini akan
+  // mengumumkan "Lunas" pada jadwal yang masih menyisakan tagihan susulan.
+  // Fallback ke status baris tetap ada untuk order yang dibayar di luar sistem
+  // dan tidak pernah punya catatan tagihan sama sekali.
+  const isPaid = billing
+    ? billing.isSettled
+    : ['paid', 'completed'].includes(entry.paymentStatus || '');
+  const receiptId = billing?.invoices.find((i) => i.isPaid)?.paymentId ?? null;
   const dayCount = airingDaysOf(entry).length;
   const airingYmd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
   const isLate = !isPaid && airingYmd ? isPaymentTooLateForDate(airingYmd) : false;
@@ -839,7 +847,7 @@ export function ScheduleEntryDrawer({
                           <span className="inline-flex items-center gap-1">
                             <Check className="w-3.5 h-3.5 text-emerald-600" /> Lunas · {formatIDR(entry.totalCost)}
                           </span>
-                          {(!payment || payment.paymentMethod === 'manual' || payment.paymentChannel === 'MANUAL_VERIFIED' || (!payment.paymentChannel && payment.paymentMethod !== 'doku')) && (
+                          {(!billing || billing.paymentMethod === 'manual' || billing.paymentChannel === 'MANUAL_VERIFIED' || (!billing.paymentChannel && billing.paymentMethod !== 'doku')) && (
                             <span
                               className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
                               title="Audit: Pembayaran ditandai lunas manual (Tandai Lunas oleh Admin)"
@@ -847,6 +855,10 @@ export function ScheduleEntryDrawer({
                               Tandai Lunas
                             </span>
                           )}
+                        </span>
+                      ) : billing && billing.paid > 0 ? (
+                        <span className="text-amber-700">
+                          Lunas sebagian · sisa {formatIDR(billing.outstanding)}
                         </span>
                       ) : isLate ? (
                         <span className="text-red-700">Slot Expired (Terlewat)</span>
@@ -856,27 +868,32 @@ export function ScheduleEntryDrawer({
                     </p>
                     <p className="text-[11px] text-slate-500 mt-0.5">
                       {isPaid ? (
-                        <span>Biaya tagihan terverifikasi</span>
+                        <span>
+                          Biaya tagihan terverifikasi
+                          {billing && billing.invoices.length > 1 && ` · ${billing.invoices.length} tagihan`}
+                        </span>
+                      ) : billing && billing.billed > 0 ? (
+                        <span>Ditagih {formatIDR(billing.billed)} · masuk {formatIDR(billing.paid)}</span>
                       ) : (
                         <span>Total tagihan: {formatIDR(entry.totalCost)}</span>
                       )}
                     </p>
                   </div>
-                  {isPaid && payment?.paymentId ? (
+                  {isPaid && receiptId ? (
                     <a
-                      href={`/invoices/${payment.paymentId}`}
+                      href={`/invoices/${receiptId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full h-7 rounded-md border border-emerald-200 bg-white hover:bg-emerald-50 text-[11px] font-medium text-emerald-700 flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
                     >
                       <FileText className="w-3 h-3" /> Lihat Kuitansi
                     </a>
-                  ) : payment?.paymentUrl ? (
+                  ) : billing?.openInvoice?.paymentUrl ? (
                     <Button
                       size="sm"
                       variant="outline"
                       className="w-full h-7 text-[11px] font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-2xs"
-                      onClick={() => copyToClipboard(payment.paymentUrl!, 'Link pembayaran disalin!')}
+                      onClick={() => copyToClipboard(billing.openInvoice!.paymentUrl!, 'Link pembayaran disalin!')}
                     >
                       <Copy className="w-3 h-3 mr-1 text-slate-500" /> Salin Link Bayar
                     </Button>

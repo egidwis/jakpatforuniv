@@ -169,7 +169,7 @@ export async function onRequest(context) {
     const subRes = await fetch(
       `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}` +
         `&select=id,total_cost,title,full_name,email,phone_number,payment_status,slot_booked_by,slot_reserved_at` +
-        `,question_count,duration,winner_count,prize_per_winner,voucher_code,distribution_type&limit=1`,
+        `,question_count,duration,winner_count,prize_per_winner,voucher_code,distribution_type,start_date&limit=1`,
       { headers: sbHeaders }
     );
     const subs = await subRes.json();
@@ -193,11 +193,74 @@ export async function onRequest(context) {
       }
     }
 
+    // ── TAGIHAN YANG SUDAH ADA — dibaca SEKALI, dipakai dua kali ──────────
+    //
+    // Melayani dua pertanyaan yang dulu ditanyakan terpisah (dan satu di
+    // antaranya belum pernah ditanyakan sama sekali):
+    //   1. voucher mana yang berlaku untuk jadwal ini
+    //   2. apakah jadwalnya sudah pernah ditagih (penjaga koreksi `total_cost`)
+    //
+    // `null` berarti TIDAK BISA DIPASTIKAN — beda dari `[]` yang berarti
+    // "belum pernah ditagih". Perbedaan itu menentukan apakah `total_cost`
+    // boleh ditimpa di bawah.
+    let priorInvoices = null;
+    try {
+      const invRes = await fetch(
+        `${supabaseUrl}/rest/v1/invoices?form_submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
+        `&select=id,voucher_code,created_at&order=created_at.desc&limit=20`,
+        { headers: sbHeaders }
+      );
+      if (invRes.ok) {
+        const rows = await invRes.json();
+        priorInvoices = Array.isArray(rows) ? rows : [];
+      } else {
+        console.error(`[create-payment] Could not read existing invoices (status ${invRes.status}).`);
+      }
+    } catch (e) {
+      console.error('[create-payment] Existing-invoice lookup failed:', e);
+    }
+
+    // ── VOUCHER TAGIHAN MENANG ATAS VOUCHER ORDER ────────────────────────
+    //
+    // `form_submissions.voucher_code` adalah yang diketik PENELITI saat memesan.
+    // Kalau admin sudah menerbitkan tagihan untuk jadwal ini, ia mungkin memilih
+    // voucher lain — dan pilihan itulah harga yang dijanjikan ke peneliti.
+    //
+    // Tanpa ini, urutan yang wajar berakhir buruk: admin menagih dengan voucher
+    // X, tagihannya kedaluwarsa, peneliti menekan "Bayar Sekarang", dan tagihan
+    // barunya lahir dengan voucher ORDER — nominal berbeda dari yang dijanjikan.
+    // Selama tagihan admin masih hidup, blok pakai-ulang di bawah menutupinya;
+    // begitu ia mati, tidak ada yang menutupinya lagi.
+    //
+    // Efek kedua yang sama pentingnya: `amount` yang dihitung di sini adalah
+    // angka yang dipakai blok pakai-ulang untuk MENCOCOKKAN tagihan hidup.
+    // Dengan voucher yang berbeda, cocoknya selalu gagal — jadi tagihan admin
+    // yang masih hidup pun akan diduplikasi, dan aturan SATU TAGIHAN TERBUKA
+    // PER JADWAL runtuh justru di kasus yang paling sering terjadi.
+    //
+    // ⚠️ Hanya voucher tagihan yang BERISI yang menang. Tagihan ber-voucher
+    // kosong dianggap "tidak menyatakan apa-apa", bukan "tanpa diskon": kolom
+    // ini baru lahir di sql/53, jadi setiap baris yang lebih tua NULL. Menyita
+    // diskon dari baris-baris lama itu jauh lebih merusak daripada gagal
+    // menghormati admin yang sengaja mengosongkan voucher.
+    const billingVoucher =
+      (priorInvoices || [])
+        .map((r) => String(r.voucher_code || '').trim())
+        .find((v) => v !== '') || null;
+
+    if (billingVoucher && billingVoucher !== String(sub.voucher_code || '').trim()) {
+      console.log(
+        `[create-payment] Voucher tagihan "${billingVoucher}" dipakai untuk ${formSubmissionId} ` +
+        `(voucher order: "${sub.voucher_code || '-'}").`
+      );
+    }
+
     // The server recomputes the price from the pricing inputs; total_cost in
     // the DB originates from the client (StepCheckout INSERT) and is only
     // trusted as a cross-check. `amount` is the PPN-inclusive grand total that
     // gets charged and stored; `subtotal`/`ppn` are persisted alongside it.
-    const { subtotal, ppn, total: amount } = computeTotalCostFromSubmission(sub);
+    const pricingSub = billingVoucher ? { ...sub, voucher_code: billingVoucher } : sub;
+    const { subtotal, ppn, total: amount } = computeTotalCostFromSubmission(pricingSub);
     if (!amount || amount <= 0) {
       return json({ error: 'Invalid submission amount' }, 400);
     }
@@ -210,29 +273,134 @@ export async function onRequest(context) {
       console.warn(
         `[create-payment] total_cost mismatch for ${formSubmissionId}: db=${storedTotalCost}, server=${amount}. ` +
         `Inputs: question_count=${sub.question_count}, duration=${sub.duration}, winner_count=${sub.winner_count}, ` +
-        `prize_per_winner=${sub.prize_per_winner}, voucher_code=${sub.voucher_code}, distribution_type=${sub.distribution_type}. ` +
+        `prize_per_winner=${sub.prize_per_winner}, voucher_order=${sub.voucher_code}, voucher_dipakai=${pricingSub.voucher_code}, distribution_type=${sub.distribution_type}. ` +
         `Correcting DB to server value.`
       );
-      const fixRes = await fetch(
-        `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}`,
-        {
-          method: 'PATCH',
-          headers: { ...sbHeaders, Prefer: 'return=minimal' },
-          body: JSON.stringify({ total_cost: amount, subtotal, ppn_amount: ppn }),
+      // ⚠️ KOREKSI INI BERHENTI BEGITU JADWALNYA SUDAH PERNAH DITAGIH.
+      //
+      // Sejak Task 13 `total_cost` berarti HARGA SAAT DIPESAN, bukan "yang
+      // ditagih" — yang ditagih hidup di `invoices`/`transactions` dan boleh
+      // lebih dari satu (tagihan susulan). Menimpa `total_cost` di sini akan
+      // menurunkan angka itu balik ke tarif hari ini secara diam-diam, di
+      // jalur uang, tepat setelah admin menaikkannya lewat InvoiceForm.
+      //
+      // Untuk order yang BELUM pernah ditagih, koreksinya tetap benar dan
+      // tetap jalan: itu pertahanan terhadap `total_cost` kiriman klien.
+      // Dari pembacaan tunggal di atas — dulu ini query keduanya sendiri.
+      if (priorInvoices === null) {
+        // Gagal memastikan = jangan menimpa. Menebak "belum pernah ditagih"
+        // saat cek-nya gagal adalah cara kehilangan angka tagihan admin.
+        console.error(
+          '[create-payment] Existing invoices unknown; skipping total_cost correction.'
+        );
+      } else if (priorInvoices.length > 0) {
+        console.warn(
+          `[create-payment] Schedule already billed — leaving total_cost at ${storedTotalCost} (server value ${amount}).`
+        );
+      } else {
+        const fixRes = await fetch(
+          `${supabaseUrl}/rest/v1/form_submissions?id=eq.${encodeURIComponent(formSubmissionId)}`,
+          {
+            method: 'PATCH',
+            headers: { ...sbHeaders, Prefer: 'return=minimal' },
+            body: JSON.stringify({ total_cost: amount, subtotal, ppn_amount: ppn }),
+          }
+        );
+        if (!fixRes.ok) {
+          console.error(`[create-payment] Failed to correct total_cost (status ${fixRes.status})`);
         }
-      );
-      if (!fixRes.ok) {
-        console.error(`[create-payment] Failed to correct total_cost (status ${fixRes.status})`);
       }
+    }
+
+    const dueDate = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
+
+    // ── Jendela yang DITAGIHKAN — dibaca dari `ad_schedules`, BUKAN dari
+    //    `form_submissions`.
+    //
+    // ⚠️ INI BUKAN KERAPIAN, INI SYARAT HIDUP TAGIHANNYA — TERUKUR, BUKAN TEORI.
+    // Diverifikasi ke produksi 2026-08-19 atas order d696325a:
+    //   form_submissions.start_date = 'date'        -> 2026-08-29 00:00:00+00
+    //   ad_schedules.start_date     = 'timestamptz' -> 2026-08-29 08:00:00+00
+    // Perbandingannya berbeda, jadi tagihannya BENAR-BENAR akan lahir basi.
+    // `schedule_billing.is_stale` (sql/60) membandingkan `billed_start_date`
+    // dengan `ad_schedules.start_date`. Kolom itu TIMESTAMPTZ berisi instant
+    // tayang (15.00 WIB = 08:00 UTC), sedangkan `form_submissions.start_date`
+    // bertipe DATE — terangkat jadi 00:00 UTC. Menulis yang kedua membuat
+    // SETIAP tagihan swalayan lahir langsung basi: dikeluarkan dari `live`,
+    // `openInvoice` null, dan peneliti tidak akan pernah bisa membayar.
+    // `InvoiceForm` (tagihan admin) sudah membaca dari `ad_schedules`; jalur
+    // ini tertinggal.
+    let billedStartDate = sub.start_date || null;
+    try {
+      const schedRes = await fetch(
+        `${supabaseUrl}/rest/v1/ad_schedules?submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
+        `&ordinal=eq.1&select=start_date&limit=1`,
+        { headers: sbHeaders }
+      );
+      if (schedRes.ok) {
+        const rows = await schedRes.json();
+        if (Array.isArray(rows) && rows[0]?.start_date) billedStartDate = rows[0].start_date;
+      } else {
+        console.warn(`[create-payment] Could not read ad_schedules (status ${schedRes.status}); falling back to form_submissions.start_date.`);
+      }
+    } catch (e) {
+      console.warn('[create-payment] ad_schedules lookup failed; falling back to form_submissions.start_date:', e);
+    }
+
+    // ── PAKAI ULANG TAGIHAN YANG MASIH HIDUP ─────────────────────────────
+    //
+    // Sejak tagihan diterbitkan saat slot DIKUNCI (bukan saat tombol bayar
+    // ditekan), endpoint ini dipanggil lebih dari sekali untuk satu jadwal:
+    // saat halaman bayar dibuka, dan lagi tiap kali dimuat ulang. Tanpa blok
+    // ini tiap panggilan melahirkan `payment_id` baru — terukur 29 untuk satu
+    // order — dan aturan SATU TAGIHAN TERBUKA PER JADWAL langsung runtuh.
+    //
+    // Syarat pakai-ulang sengaja ketat: nominal sama, jendela tayang yang
+    // ditagihkan sama (kalau jadwalnya pindah, tagihan lama memang HARUS
+    // diganti), dan linknya terbukti masih hidup lewat `expires_at`. NULL
+    // `expires_at` = baris lama yang umurnya tak bisa dibuktikan → jangan
+    // dipakai ulang; lebih baik terbitkan baru daripada mengirim peneliti ke
+    // halaman DOKU yang sudah mati.
+    try {
+      const liveRes = await fetch(
+        `${supabaseUrl}/rest/v1/invoices?form_submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
+        `&status=eq.pending&select=payment_id,invoice_url,amount,billed_start_date,expires_at` +
+        `&order=created_at.desc&limit=10`,
+        { headers: sbHeaders }
+      );
+      if (liveRes.ok) {
+        const rows = await liveRes.json();
+        const sameInstant = (a, b) => {
+          if (!a || !b) return a === b;
+          const ta = new Date(a).getTime(), tb = new Date(b).getTime();
+          return Number.isFinite(ta) && Number.isFinite(tb) && ta === tb;
+        };
+        const reusable = (Array.isArray(rows) ? rows : []).find((r) =>
+          r.invoice_url &&
+          Number(r.amount) === amount &&
+          sameInstant(r.billed_start_date, billedStartDate) &&
+          r.expires_at && new Date(r.expires_at).getTime() > Date.now()
+        );
+        if (reusable) {
+          console.log(`[create-payment] Reusing live bill ${reusable.payment_id} for ${formSubmissionId}`);
+          return json({ payment_url: reusable.invoice_url, payment_id: reusable.payment_id, reused: true }, 200);
+        }
+      } else {
+        console.warn(`[create-payment] Could not check live bills (status ${liveRes.status}); minting a new one.`);
+      }
+    } catch (e) {
+      console.warn('[create-payment] Live-bill check failed; minting a new one:', e);
     }
 
     // 2. Invoice number — same self-service format (JFU-<8chars>-<ts>).
     const invoiceNumber = `JFU-${String(formSubmissionId).substring(0, 8)}-${Date.now()}`;
+    // Umur link DOKU, disimpan supaya pakai-ulang di atas punya bukti — bukan
+    // tebakan dari `created_at` + durasi permintaan yang sedang berjalan.
+    const expiresAt = new Date(Date.now() + dueDate * 60000).toISOString();
 
     // 3. Build DOKU checkout payload.
     const resolvedOrigin = origin || new URL(request.url).origin;
     const sacId = env.VITE_DOKU_SAC_JFU_ID || env.DOKU_SAC_JFU_ID || 'SAC-7926-1778565828595';
-    const dueDate = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
 
     const dokuPayload = {
       order: {
@@ -316,7 +484,10 @@ export async function onRequest(context) {
     const noteDuration = Number(sub.duration) || 0;
     const noteWinnerCount = Number(sub.winner_count) || 0;
     const notePrizePerWinner = Number(sub.prize_per_winner) || 0;
-    const noteVoucherCode = sub.voucher_code || undefined;
+    // Voucher yang BENAR-BENAR dipakai menghitung `amount` — sama dengan yang
+    // dipakai `computeTotalCostFromSubmission` di atas. Rincian di `note` harus
+    // menjumlah ke angka yang ditagih, jadi ia tidak boleh memakai voucher lain.
+    const noteVoucherCode = pricingSub.voucher_code || undefined;
     const noteIsKilat = sub.distribution_type === 'kilat';
 
     const noteItems = [];
@@ -355,6 +526,10 @@ export async function onRequest(context) {
       });
     }
 
+    const voucherApplied = String(pricingSub.voucher_code || '').trim() || null;
+
+    // `billedStartDate` sudah dibekukan di atas, dari `ad_schedules`.
+
     // 5. Persist BOTH rows via service_role (bypasses RLS).
     //    `amount` is the PPN-inclusive grand total; subtotal/ppn_rate/ppn_amount
     //    record the tax breakdown for reconciliation and invoice rendering.
@@ -369,6 +544,13 @@ export async function onRequest(context) {
       status: 'pending',
       payment_url: paymentUrl,
       note: JSON.stringify({ items: noteItems }),
+      // Voucher milik TAGIHAN sejak sql/53. Yang dicatat adalah kode yang
+      // BENAR-BENAR dipakai `computeTotalCostFromSubmission` untuk menghitung
+      // `amount` di atas — termasuk kalau ia tidak cocok dengan voucher mana
+      // pun dan karenanya tidak memberi potongan. Ini jejak audit "kenapa
+      // angkanya segini", bukan klaim bahwa vouchernya sah.
+      voucher_code: voucherApplied,
+      billed_start_date: billedStartDate,
     };
     const invoiceRow = {
       form_submission_id: formSubmissionId,
@@ -379,6 +561,9 @@ export async function onRequest(context) {
       ppn_rate: PPN_RATE,
       ppn_amount: ppn,
       status: 'pending',
+      voucher_code: voucherApplied,
+      billed_start_date: billedStartDate,
+      expires_at: expiresAt,
     };
 
     const [txRes, invRes] = await Promise.all([
@@ -394,10 +579,34 @@ export async function onRequest(context) {
       }),
     ]);
 
+    /*
+      ⚠️ GAGAL MENULIS = GAGAL, BUKAN CATATAN KECIL.
+
+      Sebelumnya blok ini hanya `console.error` lalu tetap mengembalikan 200
+      beserta payment_url. Artinya link DOKU yang bisa DIBAYAR dikirim ke
+      peneliti sementara tagihannya tidak tercatat di mana pun — persis kelas
+      kegagalan yang sudah membakar proyek ini di webhook DOKU (fetch ke
+      PostgREST yang tak pernah memeriksa `res.ok`).
+
+      Sejak tagihan terbit saat slot dikunci, kegagalan senyap ini juga yang
+      membuat opsi A tampak "tidak jalan": endpoint sukses, halaman bayar
+      tenang, admin tidak melihat tagihan apa pun, dan tidak ada satu pun
+      pesan error yang menjelaskan kenapa.
+
+      Penyebab paling sering: `SUPABASE_SERVICE_ROLE_KEY` tidak ada sehingga
+      key-nya jatuh ke anon — dan RLS `invoices` (sql/24) menolak INSERT-nya.
+    */
     if (!txRes.ok || !invRes.ok) {
-      console.error(
-        `[create-payment] DB insert issue — tx:${txRes.status} inv:${invRes.status} for ${invoiceNumber}`
-      );
+      const detail = [
+        !txRes.ok ? `transactions ${txRes.status}: ${await txRes.text().catch(() => '?')}` : null,
+        !invRes.ok ? `invoices ${invRes.status}: ${await invRes.text().catch(() => '?')}` : null,
+      ].filter(Boolean).join(' | ');
+      console.error(`[create-payment] Gagal mencatat tagihan ${invoiceNumber} — ${detail}`);
+      return json({
+        error: 'Pembayaran tidak dapat dicatat. Silakan coba lagi.',
+        detail,
+        payment_id: invoiceNumber,
+      }, 502);
     }
 
     return json({ payment_url: paymentUrl, payment_id: invoiceNumber }, 200);

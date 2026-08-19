@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { CalendarClock, Clock, Gift, Loader2 } from 'lucide-react';
+import { CalendarClock, Clock, Gift, Loader2, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { MAX_EXTRA_ADS_PER_DAY, MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
 import {
-  fetchSlotAvailability, supabase, updateExtendScheduleDates, updateScheduleDates,
+  fetchSlotAvailability, setScheduleExtraAd, supabase, updateExtendScheduleDates,
+  updateScheduleDates,
   type AdScheduleEntry, type FormSubmissionExtend,
 } from '@/utils/supabase';
 import { nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
@@ -78,18 +79,30 @@ export interface ScheduleFormProps {
    */
   entry?: AdScheduleEntry;
   /**
-   * Iklan tambahan punya KOLAM KUOTA SENDIRI, jadi kalender harus tahu kolam mana
-   * yang dibaca.
+   * Kolam kuota AWAL untuk mode create. Iklan tambahan punya kolam sendiri
+   * (`MAX_EXTRA_ADS_PER_DAY`), jadi kalender harus tahu kolam mana yang dibaca.
    *
-   * ⚠️ HANYA DIBACA, TIDAK BISA DIUBAH DI SINI — dan itu bukan kelalaian.
-   * `is_extra_ad` hidup di `survey_pages`, satu baris per ORDER; tidak ada
-   * kolomnya di baris jadwal. Jadi jadwal baru MEWARISI status order, dan
-   * menawarkan pilihan di sini berarti menjanjikan sesuatu yang tidak tersimpan
-   * ke mana pun — admin memesan ke kolam tambahan, lalu jadwalnya tetap dihitung
-   * reguler dan kolam reguler kelebihan jual. Pemindahan flag ke `ad_schedules`
-   * adalah Task 13 Langkah 4; togglenya lahir di sana, bukan di sini.
+   * Dulu prop ini HANYA DIBACA, dengan larangan panjang di sini yang
+   * menjelaskan kenapa togglenya mustahil: `is_extra_ad` hidup di
+   * `survey_pages`, satu baris per ORDER, jadi pilihan admin tidak punya tempat
+   * penyimpanan dan jadwalnya tetap dihitung reguler. sql/63 memberi setiap
+   * jadwal kolomnya sendiri; larangan itu selesai masa berlakunya, dan
+   * togglenya ada di bawah.
+   *
+   * Mode edit tidak memakainya — di sana nilai awalnya dari `entry.isExtraAd`.
    */
   isExtraAd?: boolean;
+  /**
+   * Order induknya JFU Kilat. Kilat tidak punya kolam iklan tambahan sama
+   * sekali, jadi togglenya tidak ditawarkan.
+   *
+   * Perlu di-oper karena mode create tidak punya `entry` untuk ditanyai, dan
+   * `isKilat` di bawah hanya bisa dijawab untuk mode edit. Kalau salah, DB
+   * tetap menolak (`set_schedule_extra_ad`) atau membersihkan (trigger) —
+   * prop ini soal tidak menawarkan pilihan yang mustahil, bukan penjaga
+   * terakhir.
+   */
+  isKilatOrder?: boolean;
   /** Hadiah order induk — hanya dipakai mode create untuk prefill & pratinjau. */
   currentPrizePerWinner?: number;
   currentWinnerCount?: number;
@@ -129,6 +142,7 @@ export function ScheduleForm({
   submissionId,
   entry,
   isExtraAd = false,
+  isKilatOrder = false,
   currentPrizePerWinner = 0,
   currentWinnerCount = 0,
   columns = 7,
@@ -156,7 +170,11 @@ export function ScheduleForm({
   };
 
   const [airingTime, setAiringTime] = useState<string>(getInitialAiringTime());
-  const isExtraMode = isCreate ? isExtraAd : !!entry?.isExtraAd;
+  // Kolam kuota jadwal INI. Bisa diubah sejak sql/63; sebelum itu ia turunan
+  // mati dari order dan setiap perubahan hilang saat disimpan.
+  const [isExtraMode, setIsExtraMode] = useState(
+    isCreate ? isExtraAd : !!entry?.isExtraAd
+  );
 
   const [regularCounts, setRegularCounts] = useState<Record<string, number>>({});
   const [extraCounts, setExtraCounts] = useState<Record<string, number>>({});
@@ -268,6 +286,14 @@ export function ScheduleForm({
     if (!entry) throw new Error('Jadwal yang disunting tidak ditemukan.');
     if (!selectedYmd || !startIso || !endIso) throw new Error('Waktu tayang tidak valid.');
 
+    // Kolam kuota disimpan LEBIH DULU, sebelum tanggalnya bergerak. Urutan ini
+    // penting: `set_schedule_extra_ad` gagal keras untuk Kilat, dan gagal
+    // sesudah tanggalnya pindah akan meninggalkan jadwal di tanggal baru dengan
+    // kolam lama — persis keadaan yang tidak bisa dilihat siapa pun di layar.
+    if (isExtraMode !== !!entry.isExtraAd) {
+      await setScheduleExtraAd(entry.id, isExtraMode);
+    }
+
     if (entry.isExtension) {
       // ⚠️ Signature-nya (extendId, startYmd, durationDays, jam, menit) — ia
       // MENYUSUN sendiri instant-nya. Mengoper `endIso` ke slot `durationDays`
@@ -332,6 +358,11 @@ export function ScheduleForm({
       is_new_month: resolved.isNewBatch,
       total_cost: 0,
       slot_booked_by: 'admin',
+      // Dikirim EKSPLISIT, tidak dibiarkan kosong: kosong berarti "warisi
+      // jadwal ordinal 1" di `extend_view_insert()`, dan di sini admin sudah
+      // menyatakan pilihannya lewat toggle. Untuk order Kilat nilainya
+      // dibersihkan trigger — kolam tambahan tidak berlaku di sana.
+      is_extra_ad: isExtraMode,
     };
 
     const { error } = await supabase.from('form_submissions_extend').insert([extendData]);
@@ -414,6 +445,40 @@ export function ScheduleForm({
             </div>
           )}
         </div>
+
+        {/* Kolam kuota. Ditaruh TEPAT DI ATAS kalender karena ia mengubah angka
+            yang dibaca setiap kotak tanggal di bawahnya — dipisahkan jauh, admin
+            akan mengira kalendernya salah hitung. Kilat tidak menampilkannya
+            sama sekali: ia tidak punya kolam kedua. */}
+        {!isKilatOrder && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <Layers className="w-3.5 h-3.5 text-violet-600" />
+              Kolam kuota
+            </span>
+            <div className="flex items-center gap-1" role="group" aria-label="Kolam kuota">
+              {([
+                { extra: false, label: 'Reguler', cap: MAX_REGULAR_ADS_PER_DAY },
+                { extra: true, label: 'Tambahan', cap: MAX_EXTRA_ADS_PER_DAY },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  aria-pressed={isExtraMode === opt.extra}
+                  onClick={() => setIsExtraMode(opt.extra)}
+                  className={cn(
+                    'px-2.5 py-1 rounded text-[11px] font-medium transition-colors border',
+                    isExtraMode === opt.extra
+                      ? 'bg-violet-50 border-violet-300 text-violet-700 font-semibold'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
+                  )}
+                >
+                  {opt.label} <span className="tabular-nums opacity-70">({opt.cap}/hari)</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <SlotCalendar
           days={days}

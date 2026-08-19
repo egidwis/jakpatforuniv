@@ -33,6 +33,76 @@ console.log('Running in offline mode:', isPlaceholderUrl || isPlaceholderKey);
 // Buat Supabase client dengan URL dan key yang valid
 export const supabase = createClient(validSupabaseUrl, validSupabaseKey);
 
+// ─────────────────────────────────────────────────────────────
+// PEREDAM PERMINTAAN KEMBAR
+//
+// `auth.getUser()` SELALU memanggil /auth/v1/user lewat jaringan — beda dengan
+// `getSession()` yang membaca storage. Tiap helper di bawah memanggilnya
+// sendiri-sendiri, dan tiap komponen memanggil helper-nya sendiri-sendiri,
+// jadi satu kali muat halaman menembakkan permintaan yang sama berkali-kali.
+// Terukur di produksi 2026-08-19: `user` 4x dan `profiles` 4x dalam SATU kali
+// muat — keduanya dari `getOwnProfile()` yang dipanggil DashboardLayout,
+// MultiStepForm, StepCheckout, dan ProfileForm.
+//
+// Diperbaiki di HELPER-nya, bukan di tiap pemanggil: menyuruh empat komponen
+// saling menunggu berarti menaruh satu aturan di empat tempat, dan komponen
+// kelima nanti tidak akan tahu aturannya.
+//
+// Kegagalan TIDAK di-cache — `inFlight` dilepas lewat finally, jadi percobaan
+// berikutnya benar-benar mencoba lagi.
+// ─────────────────────────────────────────────────────────────
+
+const REQUEST_COALESCE_TTL_MS = 30_000;
+
+function createCoalescer<T>(ttlMs: number = REQUEST_COALESCE_TTL_MS) {
+  let inFlight: Promise<T> | null = null;
+  let cached: { at: number; value: T } | null = null;
+  return {
+    run(fetcher: () => Promise<T>): Promise<T> {
+      if (cached && Date.now() - cached.at < ttlMs) return Promise.resolve(cached.value);
+      if (inFlight) return inFlight;
+      inFlight = fetcher()
+        .then((value) => {
+          cached = { at: Date.now(), value };
+          return value;
+        })
+        .finally(() => {
+          inFlight = null;
+        });
+      return inFlight;
+    },
+    clear() {
+      cached = null;
+      inFlight = null;
+    },
+  };
+}
+
+type AuthUser = Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user'];
+
+const authUserCoalescer = createCoalescer<AuthUser>();
+
+/** Pengganti tunggal `auth.getUser()` — jawaban sama, satu putaran jaringan. */
+export const getAuthUser = async (): Promise<AuthUser> =>
+  authUserCoalescer.run(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user;
+  });
+
+const ownProfileCoalescer = createCoalescer<any>();
+
+/**
+ * ⚠️ Callback SINKRON — jangan pernah memanggil fungsi Supabase async di
+ * dalamnya. `onAuthStateChange` memegang lock auth selagi callback berjalan;
+ * memanggil balik ke supabase-js dari sini adalah deadlock yang terdokumentasi.
+ * Di sini isinya cuma membuang cache.
+ */
+supabase.auth.onAuthStateChange(() => {
+  authUserCoalescer.clear();
+  ownProfileCoalescer.clear();
+  voucherBlockedCoalescers.forEach((c) => c.clear());
+});
+
 /**
  * Rewrites a Supabase Storage public URL to use our Cloudflare CDN proxy.
  * This eliminates Supabase cached egress costs since Cloudflare serves from its own cache.
@@ -112,7 +182,7 @@ export const signOut = async () => {
 
 export const getCurrentUser = async () => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getAuthUser();
     return user;
   } catch (error: any) {
     console.error('Error getting current user:', error);
@@ -194,26 +264,30 @@ export const isProfileComplete = (profile: ResearcherProfile | null): boolean =>
   );
 };
 
-export const getOwnProfile = async (): Promise<ResearcherProfile | null> => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, phone_number, university, department, status, referral_source')
-      .eq('id', user.id)
-      .maybeSingle();
-    if (error) throw error;
-    return data as ResearcherProfile | null;
-  } catch (error: any) {
-    console.error('Error fetching own profile:', error);
-    return null;
-  }
-};
+export const getOwnProfile = async (): Promise<ResearcherProfile | null> =>
+  ownProfileCoalescer.run(async () => {
+    try {
+      const user = await getAuthUser();
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, phone_number, university, department, status, referral_source')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data as ResearcherProfile | null;
+    } catch (error: any) {
+      console.error('Error fetching own profile:', error);
+      return null;
+    }
+  });
 
 export const updateOwnProfile = async (updates: Partial<Omit<ResearcherProfile, 'id' | 'email'>>) => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error('Not authenticated');
+  // Cache dibuang DULU: kalau update berhasil tapi pembuangannya terlewat,
+  // ProfileForm memuat ulang dan mendapat datanya sendiri yang sudah basi.
+  ownProfileCoalescer.clear();
   const { error } = await supabase
     .from('profiles')
     .update(updates)
@@ -245,7 +319,7 @@ export interface VoucherRedemption {
  * karena gangguan sesaat.
  */
 export const hasRedeemedVoucher = async (code: string): Promise<boolean> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return false;
   const { data, error } = await supabase
     .from('voucher_redemptions')
@@ -269,7 +343,7 @@ export const hasRedeemedVoucher = async (code: string): Promise<boolean> => {
  * tetap diperbolehkan bila order lama dibatalkan admin / gagal / kadaluarsa.
  */
 export const hasActiveVoucherSubmission = async (code: string): Promise<boolean> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return false;
   const { data, error } = await supabase
     .from('form_submissions')
@@ -284,6 +358,32 @@ export const hasActiveVoucherSubmission = async (code: string): Promise<boolean>
     s.payment_status !== 'failed' &&
     s.payment_status !== 'expired' &&
     s.submission_status !== 'cancelled');
+};
+
+const voucherBlockedCoalescers = new Map<string, ReturnType<typeof createCoalescer<boolean>>>();
+
+/**
+ * Apakah voucher sekali-pakai `code` sudah terpakai oleh akun yang login.
+ *
+ * Menyatukan `hasRedeemedVoucher` + `hasActiveVoucherSubmission` menjadi SATU
+ * pertanyaan, dengan peredam per kode.
+ *
+ * Sebabnya terukur: `useIlkomunyBlocked` dipasang di EMPAT komponen sekaligus
+ * (StepCheckout, UnifiedHeader, Sidebar, MultiStepForm) karena total harga
+ * muncul di empat tempat. Tiap instance menjalankan kedua cek itu sendiri, jadi
+ * satu kali muat halaman menembakkan `voucher_redemptions` dan
+ * `form_submissions` masing-masing empat kali untuk jawaban yang identik.
+ */
+export const isVoucherBlockedForAccount = async (code: string): Promise<boolean> => {
+  const key = code.toUpperCase();
+  let coalescer = voucherBlockedCoalescers.get(key);
+  if (!coalescer) {
+    coalescer = createCoalescer<boolean>();
+    voucherBlockedCoalescers.set(key, coalescer);
+  }
+  return coalescer.run(async () =>
+    (await hasRedeemedVoucher(key)) || (await hasActiveVoucherSubmission(key)),
+  );
 };
 
 /**
@@ -377,6 +477,10 @@ export interface Transaction {
   note?: string;
   entity_type?: 'submission' | 'extend';
   extend_id?: string;
+  /** Voucher milik TAGIHAN, bukan order (sql/53). NULL = tanpa voucher. */
+  voucher_code?: string | null;
+  /** Jendela tayang yang ditagihkan, dibekukan saat terbit (sql/60). */
+  billed_start_date?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -394,6 +498,10 @@ export interface Invoice {
   status: string;
   entity_type?: 'submission' | 'extend';
   extend_id?: string;
+  /** Voucher milik TAGIHAN, bukan order (sql/53). NULL = tanpa voucher. */
+  voucher_code?: string | null;
+  /** Jendela tayang yang ditagihkan, dibekukan saat terbit (sql/60). */
+  billed_start_date?: string | null;
   created_at?: string;
   expires_at?: string;
   paid_at?: string;
@@ -420,6 +528,15 @@ export interface FormSubmissionExtend {
   ppn_amount?: number;         // PPN 11%
   voucher_code?: string;
   admin_notes?: string;
+  /**
+   * Kolam kuota jadwal INI. Dibawa view sejak sql/63.
+   *
+   * Dihilangkan (undefined) berarti "warisi jadwal ordinal 1", BUKAN "reguler"
+   * — `extend_view_insert()` yang memutuskannya di DB. Mengirim `false` secara
+   * eksplisit untuk jadwal ke-2 sebuah iklan tambahan akan memindahkannya ke
+   * kolam reguler dan menjual satu slot reguler lebih banyak dari yang ada.
+   */
+  is_extra_ad?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -787,6 +904,55 @@ export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry) => {
       .eq('id', entry.sourceId);
     if (error) throw error;
   }
+};
+
+/**
+ * Batalkan SATU tagihan — bukan jadwalnya, bukan pembayarannya.
+ *
+ * Sebelum ini tidak ada jalan keluar untuk tagihan yang salah terbit: ia
+ * menggantung selamanya. Akibatnya terukur di produksi saat fitur ini dibuat —
+ * 194 invoice `pending` di 146 jadwal, dan cacat seperti `V3M9285H` yang punya
+ * tagihan Rp 370.000 DAN Rp 3.700.000 di hari yang sama (satu nol kelebihan).
+ *
+ * Sesudah dibatalkan: statusnya `cancelled` (rank 2 di `payment_status_rank`,
+ * sql/53), jadi ia otomatis keluar dari `billed` dan membebaskan penjaga "satu
+ * tagihan terbuka per jadwal". Barisnya TIDAK dihapus — kartu tetap
+ * menampilkannya dicoret, karena riwayat tagihan adalah catatan uang.
+ *
+ * ⚠️ HANYA UNTUK TAGIHAN YANG BELUM DIBAYAR. Filter `.eq('status','pending')`
+ * mengulang syarat itu di level DB. Membatalkan tagihan lunas bukan
+ * pembatalan, melainkan REFUND — dan refund diurus finance di luar sistem
+ * (keputusan pemilik produk 2026-08-09).
+ *
+ * ⚠️ INI TIDAK MEMATIKAN LINK DOKU. Kami tidak memanggil API pembatalan DOKU,
+ * jadi VA yang sudah terbit masih bisa dibayar dari sisi bank. Kalau uangnya
+ * sungguh datang, webhook tetap mencatatnya dan tagihan ini hidup lagi sebagai
+ * lunas. Itu DISENGAJA: uang yang benar-benar diterima harus selalu menang
+ * atas status di layar — kebalikannya berarti kehilangan pembayaran.
+ *
+ * Mengembalikan jumlah baris yang benar-benar berubah. ⚠️ Jangan buang nilai
+ * itu: `.update()` tanpa `.select()` TIDAK melempar error saat RLS menyaring
+ * hasilnya jadi nol baris — persis cara "Tandai Lunas" gagal diam-diam selama
+ * berbulan-bulan sebelum `sql/59`.
+ */
+export const cancelInvoice = async (paymentId: string): Promise<number> => {
+  const { data: invRows, error: invErr } = await supabase
+    .from('invoices')
+    .update({ status: 'cancelled' })
+    .eq('payment_id', paymentId)
+    .eq('status', 'pending')
+    .select('id');
+  if (invErr) throw invErr;
+
+  const { data: txnRows, error: txnErr } = await supabase
+    .from('transactions')
+    .update({ status: 'cancelled' })
+    .eq('payment_id', paymentId)
+    .eq('status', 'pending')
+    .select('id');
+  if (txnErr) throw txnErr;
+
+  return (invRows?.length || 0) + (txnRows?.length || 0);
 };
 
 /**
@@ -1519,6 +1685,32 @@ export const updateScheduleDates = async (
 };
 
 /**
+ * Memindahkan satu jadwal antara kolam kuota REGULER dan TAMBAHAN.
+ *
+ * Lewat RPC, dan itu bukan pilihan gaya: `ad_schedules` TIDAK punya policy
+ * UPDATE sama sekali (hanya SELECT untuk pemilik/admin, plus service_role).
+ * Setiap tulisan dari dashboard melewati view atau trigger SECURITY DEFINER —
+ * dan jadwal ordinal 1 tidak ada di view mana pun. Tanpa `set_schedule_extra_ad`
+ * togglenya mustahil justru untuk jadwal PERTAMA, yang dimiliki 21 dari 21
+ * order tambahan hari ini.
+ *
+ * Berlaku untuk SATU jadwal, tidak menular ke saudaranya. Itu memang inti
+ * sql/63: sebelumnya flagnya per-order dan tidak ada cara menyatakan "jadwal
+ * ke-2 ini tambahan, yang pertama reguler".
+ *
+ * DB menolak KERAS kalau jadwalnya Kilat. Biarkan pesannya naik apa adanya ke
+ * toast: "JFU Kilat tidak punya kuota iklan tambahan" menjelaskan aturannya
+ * jauh lebih baik daripada "Gagal menyimpan".
+ */
+export const setScheduleExtraAd = async (scheduleId: string, isExtraAd: boolean) => {
+  const { error } = await supabase.rpc('set_schedule_extra_ad', {
+    p_schedule_id: scheduleId,
+    p_is_extra: isExtraAd,
+  });
+  if (error) throw error;
+};
+
+/**
  * Pindahkan jendela tayang sebuah jadwal KE-2 DST. (`form_submissions_extend`).
  *
  * Kembaran `updateScheduleDates` untuk tabel yang satunya, dan sengaja dipisah
@@ -1614,7 +1806,16 @@ type SlotOccupancy = {
   paymentStatus: string | null;
   slotBookedBy: string | null;
   slotReservedAt: string | null;
-  adminNotes: string | null;
+  /**
+   * Kolam kuota jadwal INI, dari `ad_schedules.is_extra_ad` (sql/63).
+   *
+   * ⚠️ TIDAK ADA LAGI CADANGAN `admin_notes LIKE '[EXTRA_AD]'` di sini, dan itu
+   * disengaja. Backfill sql/63 sudah menyerap penanda teks itu ke kolomnya —
+   * membacanya lagi hanya bisa MENAMBAH baris yang sengaja dikeluarkan, yaitu
+   * order Kilat ber-'[EXTRA_AD]'. Kilat tidak punya kolam tambahan; melemparnya
+   * ke `extraCounts` membuatnya lolos dari kuota Kilat tanpa jejak.
+   */
+  isExtraAd: boolean;
 };
 
 /**
@@ -1639,10 +1840,19 @@ const holdsSlot = (slot: SlotOccupancy) => {
  * Also handles user-booked slots timeout (1 hour), hiding expired slots.
  *
  * Counts BOTH the first schedule and every extend. Extends used to be invisible
- * here, so a date could be sold past MAX_REGULAR_ADS_PER_DAY. Extends carry no
+ * here, so a date could be sold past MAX_REGULAR_ADS_PER_DAY.
+ *
+ * ⚠️ KOREKSI sql/63. Catatan lama di sini berbunyi "extends carry no
  * distribution_type or is_extra_ad of their own — both are inherited from the
- * parent submission, so a kilat extend never eats a regular slot and an extra
- * ad's extend stays in extraCounts.
+ * parent submission". Separuhnya masih benar (`distribution_type` memang
+ * diturunkan dari induk), separuhnya TIDAK LAGI: sejak sql/63 setiap jadwal
+ * memiliki `is_extra_ad`-nya sendiri, dan jadwal ke-2 sebuah order boleh
+ * berbeda kolam dari jadwal pertamanya. Pewarisan tetap ada, tapi ia kini
+ * cuma NILAI AWAL yang ditulis `extend_view_insert()` saat jadwal lahir —
+ * bukan aturan yang berlaku selamanya.
+ *
+ * Kedua kakinya lewat RPC SECURITY DEFINER. Kuota harus menghitung jadwal
+ * SEMUA ORANG, sementara RLS klien hanya memapar milik sendiri.
  */
 export const fetchSlotAvailability = async (
   excludeSubmissionId?: string,
@@ -1665,13 +1875,32 @@ export const fetchSlotAvailability = async (
   details: Record<string, Array<{ id: string, title: string, isExtra: boolean, status: string }>>;
 }> => {
   try {
+    /*
+      Kanari kueri lambat. Kalender ini menggantung >15 detik di produksi
+      (2026-08-19) dan `Promise.all` membuat ketiga kakinya tidak bisa
+      dibedakan: yang terlihat cuma "semuanya lambat". Ambang 3 detik dipilih
+      karena statement_timeout Supabase untuk peran authenticated ada di
+      bawahnya — kaki yang melewatinya berarti tidak sedang menunggu kueri,
+      melainkan menunggu KONEKSI (pool habis) atau lock.
+    */
+    const t0 = Date.now();
+    const warnIfSlow = (leg: string, startedAt: number) => {
+      const ms = Date.now() - startedAt;
+      if (ms > 3000) console.warn(`[slot-availability] ${leg} lambat: ${ms}ms`);
+      return ms;
+    };
+
     const [submissionsResult, extendsResult] = await Promise.all([
-      supabase
-        .from('form_submissions')
-        .select('id, title, start_date, end_date, submission_status, slot_booked_by, slot_reserved_at, payment_status, admin_notes, distribution_type')
-        .not('start_date', 'is', null)
-        .not('submission_status', 'in', '("rejected","spam","in_review","completed")')
-        .eq('distribution_type', distributionType),
+      // ⚠️ LEWAT RPC SEJAK sql/63, dulu SELECT langsung ke `form_submissions`.
+      //
+      // Pemicunya `is_extra_ad`: kolom itu hidup di `ad_schedules`, yang RLS-nya
+      // membatasi peneliti ke ordernya sendiri. Saringannya IDENTIK dengan query
+      // lama — termasuk pengecualian 'cancelled'/'slot_cancelled', tanpanya
+      // kalender pemesanan dan papan kapasitas berselisih: admin melihat hari
+      // kosong, peneliti ditolak karena penuh — dan `start_date`/`end_date`
+      // tetap DATE, bukan TIMESTAMPTZ cermin, supaya tidak ada perubahan
+      // perilaku tanggal yang menyelinap.
+      supabase.rpc('get_submission_slot_occupancy', { p_distribution_type: distributionType }),
       // ⚠️ LEWAT RPC, BUKAN SELECT LANGSUNG — dan itu wajib sejak sql/52.
       //
       // `form_submissions_extend` kini VIEW ber-`security_invoker = true`, jadi
@@ -1686,6 +1915,7 @@ export const fetchSlotAvailability = async (
       // ubah keduanya.
       supabase.rpc('get_extend_slot_occupancy', { p_distribution_type: distributionType }),
     ]);
+    warnIfSlow('get_submission_slot_occupancy + get_extend_slot_occupancy', t0);
 
     if (submissionsResult.error) throw submissionsResult.error;
     if (extendsResult.error) throw extendsResult.error;
@@ -1700,7 +1930,7 @@ export const fetchSlotAvailability = async (
       paymentStatus: row.payment_status,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
-      adminNotes: row.admin_notes,
+      isExtraAd: !!row.is_extra_ad,
     }));
 
     // `get_extend_slot_occupancy()` sudah men-JOIN induknya di dalam DB, jadi
@@ -1716,24 +1946,10 @@ export const fetchSlotAvailability = async (
       paymentStatus: row.payment_status,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
-      adminNotes: row.admin_notes ?? null,
+      isExtraAd: !!row.is_extra_ad,
     }));
 
     const activeSlots = [...fromSubmissions, ...fromExtends].filter(holdsSlot);
-
-    // is_extra_ad lives on the page, so it is looked up per submission and
-    // applies to that submission's extends too.
-    const subIds = Array.from(new Set(activeSlots.map((s) => s.submissionId)));
-    let extraAdMap: Record<string, boolean> = {};
-    if (subIds.length > 0) {
-      const { data: pages } = await supabase
-        .from('survey_pages')
-        .select('submission_id, is_extra_ad')
-        .in('submission_id', subIds);
-      if (pages) {
-        pages.forEach((p: any) => { extraAdMap[p.submission_id] = !!p.is_extra_ad; });
-      }
-    }
 
     const regularCounts: Record<string, number> = {};
     const extraCounts: Record<string, number> = {};
@@ -1751,8 +1967,7 @@ export const fetchSlotAvailability = async (
         const endDay = new Date(slot.endDate);
         endDay.setHours(0, 0, 0, 0);
 
-        const isExtra = extraAdMap[slot.submissionId] || (slot.adminNotes || '').includes('[EXTRA_AD]');
-        const targetCounts = isExtra ? extraCounts : regularCounts;
+        const targetCounts = slot.isExtraAd ? extraCounts : regularCounts;
 
         // end-exclusive: the end date is the hand-over day, not an aired day
         while (current < endDay) {
@@ -1765,7 +1980,7 @@ export const fetchSlotAvailability = async (
           details[dateStr].push({
             id: slot.id,
             title: slot.title,
-            isExtra,
+            isExtra: slot.isExtraAd,
             status: slot.status
           });
 
@@ -1845,7 +2060,9 @@ export const fetchKilatSlotAvailability = async (
       paymentStatus: row.payment_status,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
-      adminNotes: null,
+      // Kilat, jadi selalu false — sql/63 menjadikannya jaminan skema, bukan
+      // sekadar kebiasaan: Kilat tidak punya kolam iklan tambahan.
+      isExtraAd: false,
     });
     if (!holds) return;
 
@@ -2100,7 +2317,9 @@ export const fetchKilatSchedule = async (
       paymentStatus: row.payment_status,
       slotBookedBy: row.slot_booked_by,
       slotReservedAt: row.slot_reserved_at,
-      adminNotes: null,
+      // Kilat, jadi selalu false — sql/63 menjadikannya jaminan skema, bukan
+      // sekadar kebiasaan: Kilat tidak punya kolam iklan tambahan.
+      isExtraAd: false,
     }))
     .map((row: any) => ({
       id: row.id,
@@ -2201,31 +2420,39 @@ export const releaseExpiredSlot = async (submissionId: string) => {
 };
 
 /**
- * Lepaskan slot SATU jadwal atas keputusan admin — "Hapus dari list".
+ * Batalkan SATU jadwal atas keputusan admin — dan SIMPAN tanggalnya.
  *
- * Bedanya dengan `releaseExpiredSlot` bukan pada apa yang ditulis, melainkan
- * pada SIAPA yang dilepas: fungsi ini berlingkup satu baris jadwal, bukan satu
- * order. Untuk order berjadwal satu keduanya identik; untuk order berjadwal
- * banyak, `releaseExpiredSlot` akan ikut mematikan tagihan jadwal lain.
+ * Berlingkup satu baris jadwal, bukan satu order. Untuk order berjadwal satu
+ * keduanya identik; untuk order berjadwal banyak, `releaseExpiredSlot` akan
+ * ikut mematikan tagihan jadwal lain.
  *
- * ⚠️ FONDASI TASK 13 LANGKAH 3. Penautan jadwal→pembayaran di sini memakai
- * aturan yang sama persis dengan `fetchSchedulePayments`: `entity_type =
- * 'extend'` + `extend_id` untuk ordinal ≥2, sisanya milik ordinal 1. Itulah
- * satu-satunya sambungan yang perlu ditukar ke `schedule_id` begitu Task 11
- * mendarat — sisa fungsi ini tidak berubah.
+ * ⚠️ TANGGALNYA SENGAJA DIPERTAHANKAN — INI PERUBAHAN DARI VERSI SEBELUMNYA.
  *
- * ⚠️ KENAPA TANGGALNYA DIKOSONGKAN, BUKAN DIBERI STATUS 'cancelled'.
- * Rancangan Task 13 mempertahankan tanggal dan menulis `status = 'cancelled'`.
- * Itu benar SESUDAH Task 11, tapi mustahil hari ini: `submission_status` masih
- * memikul dua sumbu sekaligus, jadi menulis 'cancelled' ke sana menghapus
- * informasi review ("dulu approved atau belum?"), dan `airing_status_of()`
- * (sql/46) tidak mengenal 'cancelled' sebagai MASUKAN — ia memetakannya jadi
- * 'requested', membuat jadwal yang dilepas tampak seperti permintaan aktif.
- * Mengosongkan tanggal mencapai tujuan yang sama tanpa migrasi: `isUnscheduled()`
- * jadi true → keluar dari antrean "perlu ditagih", dan `occupiesSlot()` jadi
- * false → kuota harinya bebas.
+ * Versi lama MENGOSONGKAN `start_date`/`end_date` dan menyimpan larangan
+ * panjang di sini: menulis 'cancelled' katanya mustahil karena
+ * `airing_status_of()` (sql/46) memetakannya jadi 'requested', sehingga jadwal
+ * yang dibatalkan tampak seperti permintaan aktif. Larangan itu BENAR saat
+ * ditulis dan sudah TIDAK berlaku sejak `sql/62`: sumbu tayang kini punya
+ * `slot_cancelled` sendiri, terpisah dari `'cancelled'` yang sudah dipakai
+ * `dismissRejectedSubmission()` untuk penyingkiran oleh peneliti.
+ *
+ * Mengosongkan tanggal memang membebaskan kuota, tapi dengan ongkos yang baru
+ * terasa belakangan: RIWAYATNYA IKUT TERHAPUS. Tidak ada lagi cara menjawab
+ * "jadwal mana yang kami batalkan, dan untuk tanggal apa" — padahal itu
+ * pertanyaan pertama yang muncul saat peneliti menghubungi bantuan. Sekarang
+ * tanggalnya tinggal; yang membebaskan kuota adalah STATUSNYA, lewat
+ * `occupiesSlot()` yang mengecualikan chip 'cancelled'.
+ *
+ * ⚠️ Kosakata sumbernya beda, dan itu disengaja (lihat kepala sql/62):
+ *   ordinal 1 → `form_submissions.submission_status = 'slot_cancelled'`
+ *   ordinal ≥2 → `form_submissions_extend.submission_status = 'cancelled'`
+ * Keduanya mendarat sebagai `ad_schedules.status = 'cancelled'` — satu konsep,
+ * satu representasi, di tabel yang dibaca semua layar.
+ *
+ * Penautan jadwal→pembayaran memakai aturan yang sama dengan `fetchScheduleBilling`:
+ * `entity_type = 'extend'` + `extend_id` untuk ordinal ≥2, sisanya milik ordinal 1.
  */
-export const releaseScheduleSlot = async (entry: {
+export const cancelSchedule = async (entry: {
   submissionId: string;
   sourceId: string;
   isExtension: boolean;
@@ -2234,7 +2461,7 @@ export const releaseScheduleSlot = async (entry: {
   // Penjaga yang sama dengan releaseExpiredSlot: yang sudah lunas tidak
   // pernah dilepas dari sini, apa pun yang diklik admin.
   if (['paid', 'completed'].includes(entry.paymentStatus || '')) {
-    throw new Error('Jadwal yang sudah lunas tidak bisa dilepas dari sini.');
+    throw new Error('Jadwal yang sudah lunas tidak bisa dibatalkan dari sini.');
   }
 
   // ⚠️ Penjaga lunas diulang DI DALAM query, bukan cuma dari `entry` yang bisa
@@ -2244,14 +2471,15 @@ export const releaseScheduleSlot = async (entry: {
   const unpaidOnly = '("paid","completed")';
 
   if (entry.isExtension) {
-    // ⚠️ `submission_status` TIDAK disentuh. CHECK di form_submissions_extend
-    // hanya menerima waiting_payment|paid|scheduled|live|completed|cancelled —
-    // 'slot_reserved' ditolak, dan 'cancelled' salah dipetakan (lihat atas).
+    // CHECK di form_submissions_extend menerima
+    // waiting_payment|paid|scheduled|live|completed|cancelled — dan di tabel
+    // ini `submission_status` MEMANG kosakata sumbu tayang, jadi 'cancelled'
+    // langsung tepat. Mirror menulisnya apa adanya ke `ad_schedules.status`.
     const { data, error } = await supabase
       .from('form_submissions_extend')
       .update({
-        start_date: null,
-        end_date: null,
+        submission_status: 'cancelled',
+        // Tanggal TETAP. Yang dilepas adalah tahanannya, bukan riwayatnya.
         slot_booked_by: null,
         slot_reserved_at: null,
         updated_at: new Date().toISOString(),
@@ -2261,18 +2489,21 @@ export const releaseScheduleSlot = async (entry: {
       .select('id');
     if (error) throw error;
     if (!data || data.length === 0) {
-      throw new Error('Jadwal ini sudah lunas atau sudah dilepas. Muat ulang dulu.');
+      throw new Error('Jadwal ini sudah lunas atau sudah dibatalkan. Muat ulang dulu.');
     }
   } else {
     const { data, error } = await supabase
       .from('form_submissions')
       .update({
-        start_date: null,
-        end_date: null,
+        // `slot_cancelled`, BUKAN `cancelled` — nilai kedua itu sudah dipakai
+        // `dismissRejectedSubmission()` untuk penyingkiran oleh peneliti, dan
+        // melipat keduanya membuat laporan tidak bisa lagi memisahkan
+        // "peneliti membuang order ditolak" dari "admin membatalkan slot".
+        submission_status: 'slot_cancelled',
+        payment_status: 'expired',
+        // Tanggal TETAP — lihat kepala fungsi.
         slot_booked_by: null,
         slot_reserved_at: null,
-        submission_status: 'slot_reserved',
-        payment_status: 'expired',
         updated_at: new Date().toISOString(),
       })
       .eq('id', entry.submissionId)
@@ -2280,7 +2511,7 @@ export const releaseScheduleSlot = async (entry: {
       .select('id');
     if (error) throw error;
     if (!data || data.length === 0) {
-      throw new Error('Order ini sudah lunas atau sudah dilepas. Muat ulang dulu.');
+      throw new Error('Order ini sudah lunas atau sudah dibatalkan. Muat ulang dulu.');
     }
 
     // Halaman iklan ikut kehilangan jendela terbitnya — hanya untuk ordinal 1,
@@ -2308,10 +2539,34 @@ export const releaseScheduleSlot = async (entry: {
   });
 
   if (mine.length > 0) {
-    await supabase
+    const { error } = await supabase
       .from('transactions')
       .update({ status: 'expired', updated_at: new Date().toISOString() })
       .in('id', mine.map((t) => t.id));
+    if (error) throw error;
+  }
+
+  // ⚠️ `invoices` IKUT DIMATIKAN — sebelumnya TIDAK, dan itu meninggalkan
+  // tagihan hantu. Satu tagihan hidup di DUA tabel; melewatkan satu membuat
+  // barisnya bertahan `pending` selamanya walau slotnya sudah dilepas.
+  // Kelas bug yang sama dengan `payment_method` di markScheduleAsPaid: satu
+  // konsep, dua tabel, hanya satu diperbarui.
+  //
+  // Penautannya lewat `payment_id` transaksi yang baru saja di-expire, bukan
+  // `schedule_id` — supaya HANYA tagihan yang benar-benar berpasangan dengan
+  // percobaan bayar ini yang tersentuh.
+  if (mine.length > 0) {
+    const { data: pids } = await supabase
+      .from('transactions').select('payment_id').in('id', mine.map((t) => t.id));
+    const paymentIds = (pids || []).map((r: any) => r.payment_id).filter(Boolean);
+    if (paymentIds.length > 0) {
+      const { error } = await supabase
+        .from('invoices')
+        .update({ status: 'expired' })
+        .in('payment_id', paymentIds)
+        .eq('status', 'pending');
+      if (error) throw error;
+    }
   }
 
   return true;
@@ -2392,19 +2647,58 @@ export const prepareForReschedule = async (submissionId: string) => {
 
     if (subError) throw subError;
 
-    // 2. Mark all pending transactions as expired
+    // 2. Matikan tagihan yang menggantung — HANYA milik jadwal yang dipindah.
+    //
+    // ⚠️ DULU BERLINGKUP SELURUH ORDER (`form_submission_id` saja). Itu benar
+    // ketika satu order = satu jadwal; sejak Task 11 tidak lagi. Peneliti yang
+    // memindahkan jadwal #1 ikut mematikan tagihan jadwal #2 yang tidak
+    // disentuh sama sekali — dan admin tidak diberi tahu apa pun.
+    //
+    // Fungsi ini hanya memindahkan jadwal PERTAMA (ia mengosongkan tanggal di
+    // `form_submissions`), jadi lingkupnya ordinal 1.
+    //
     // DOKU payments auto-expire via payment_due_date — no manual link closure needed.
+    const { data: firstSchedule } = await supabase
+      .from('ad_schedules')
+      .select('id')
+      .eq('submission_id', submissionId)
+      .eq('ordinal', 1)
+      .maybeSingle();
+
     const { data: pendingTxs } = await supabase
       .from('transactions')
-      .select('id')
+      .select('id, payment_id')
       .eq('form_submission_id', submissionId)
+      .eq('schedule_id', firstSchedule?.id ?? '00000000-0000-0000-0000-000000000000')
       .eq('status', 'pending');
 
     if (pendingTxs && pendingTxs.length > 0) {
-      await supabase
+      const { error } = await supabase
         .from('transactions')
         .update({ status: 'expired', updated_at: new Date().toISOString() })
         .in('id', pendingTxs.map(t => t.id));
+      if (error) throw error;
+    }
+
+    // ⚠️ `invoices` IKUT DIMATIKAN — sebelumnya TIDAK.
+    //
+    // Terlihat di produksi pada order `W2XPPGF5` (2026-08-19): sesudah
+    // dijadwalkan ulang, `transactions` berbunyi `expired` sementara
+    // `invoices` untuk `payment_id` YANG SAMA masih `pending`. Peneliti
+    // membuka halaman invoice dan melihat tagihan tertanggal kemarin yang
+    // link bayarnya sudah mati — tanpa tanda apa pun bahwa ia kedaluwarsa.
+    //
+    // Menjadwalkan ulang TIDAK menerbitkan tagihan baru (dan memang tidak
+    // seharusnya — harganya bisa berubah, dan itu keputusan admin). Yang
+    // wajib terjadi adalah tagihan lamanya berhenti tampak hidup.
+    const pendingPaymentIds = (pendingTxs || []).map((t: any) => t.payment_id).filter(Boolean);
+    if (pendingPaymentIds.length > 0) {
+      const { error } = await supabase
+        .from('invoices')
+        .update({ status: 'expired' })
+        .in('payment_id', pendingPaymentIds)
+        .eq('status', 'pending');
+      if (error) throw error;
     }
 
     return true;
@@ -2506,11 +2800,17 @@ export interface AdScheduleEntry {
   pageStatus: 'none' | 'draft' | 'published' | 'kilat';
   /**
    * Iklan tambahan — kuotanya KOLAM SENDIRI (`MAX_EXTRA_ADS_PER_DAY`), terpisah
-   * dari kuota reguler. Ikut dari `survey_pages.is_extra_ad`, jadi ia gratis:
-   * query halaman memang sudah dijalankan untuk `pageStatus`.
+   * dari kuota reguler. Menggabungkannya ke satu kuota akan membuat hari dengan
+   * 4 reguler + 2 tambahan terbaca "6/4" — panik yang tidak berdasar.
    *
-   * Menggabungkannya ke satu kuota akan membuat hari dengan 4 reguler + 2
-   * tambahan terbaca "6/4" — panik yang tidak berdasar.
+   * Sejak sql/63 datang dari `ad_schedules.is_extra_ad`, PER JADWAL. Sebelumnya
+   * dari `survey_pages.is_extra_ad`, satu baris per ORDER — yang berarti jadwal
+   * ke-2 tidak pernah bisa berbeda kolam dari jadwal pertama, dan tidak ada
+   * tempat menyimpan pilihan admin.
+   *
+   * Selalu `false` untuk Kilat: kolam tambahan adalah kolam di KALENDER iklan,
+   * dan Kilat dijual lewat slot jam. Dijamin skema (CHECK + trigger), jadi
+   * pemanggil tidak perlu menyaring kilat lagi sendiri.
    */
   isExtraAd: boolean;
   /**
@@ -2548,11 +2848,14 @@ const IN_FILTER_CHUNK = 200;
 /**
  * `.in('submission_id', ids)` yang tidak bisa meledak karena jumlah id.
  *
- * Dipakai di mana pun daftar id-nya tumbuh seiring umur produk. Satu-satunya
- * pemanggil `survey_pages` lain yang tersisa (peta `is_extra_ad` di
- * `fetchSlotAvailability`) hari ini masih aman — 317 id — karena ia disaring
- * status aktif, jadi daftarnya menyusut lagi saat order selesai. Yang tidak
- * pernah menyusut hanya pemanggil di bawah ini.
+ * Dipakai di mana pun daftar id-nya tumbuh seiring umur produk.
+ *
+ * ⚠️ KOREKSI 2026-08-19. Catatan sebelumnya di sini menyatakan pemanggil
+ * `survey_pages` satunya (peta `is_extra_ad` di `fetchSlotAvailability`)
+ * "masih aman — 317 id" karena disaring status aktif. Itu SALAH: 317 id sudah
+ * cukup untuk menggantungkan permintaannya, dan akibatnya penguncian slot
+ * berhenti total. "Menyusut lagi saat order selesai" bukan jaminan — ia hanya
+ * menunda ambangnya. Kini pemanggil itu ikut lewat sini.
  */
 const selectSurveyPagesByIds = async <T>(columns: string, ids: string[]): Promise<T[]> => {
   const chunks: string[][] = [];
@@ -2596,7 +2899,7 @@ export const fetchAdSchedules = async (
       id, submission_id, ordinal, source_table, source_id, booking_id,
       start_date, end_date, duration,
       status, review_status, payment_status,
-      distribution_type, kilat_slot_hour,
+      distribution_type, kilat_slot_hour, is_extra_ad,
       total_cost, subtotal, ppn_amount, voucher_code,
       prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
       slot_booked_by, slot_reserved_at, created_at,
@@ -2648,19 +2951,17 @@ export const fetchAdSchedules = async (
   // perlu dibayar untuk menjawab "banner mana yang masih bawaan".
   const pageBySubmission = new Map<
     string,
-    { published: boolean; isExtraAd: boolean; placeholderBanner: boolean }
+    { published: boolean; placeholderBanner: boolean }
   >();
   if (regularIds.length > 0) {
     const pages = await selectSurveyPagesByIds<{
       submission_id: string;
       is_published: boolean | null;
-      is_extra_ad: boolean | null;
       banner_url: string | null;
-    }>('submission_id, is_published, is_extra_ad, banner_url', regularIds);
+    }>('submission_id, is_published, banner_url', regularIds);
     for (const p of pages) {
       pageBySubmission.set(p.submission_id, {
         published: !!p.is_published,
-        isExtraAd: !!p.is_extra_ad,
         placeholderBanner: isPlaceholderBannerUrl(p.banner_url),
       });
     }
@@ -2709,7 +3010,7 @@ export const fetchAdSchedules = async (
       submissionCreatedAt: row.form_submissions?.created_at || new Date().toISOString(),
       createdAt: row.created_at || null,
       pageStatus,
-      isExtraAd: page?.isExtraAd ?? false,
+      isExtraAd: !!row.is_extra_ad,
       // Hanya bermakna untuk halaman yang BENAR-BENAR ada. Kilat dan order tanpa
       // halaman keduanya false — lihat komentar di AdScheduleEntry.
       pageBannerIsPlaceholder: pageStatus === 'none' || pageStatus === 'kilat'
@@ -2719,82 +3020,151 @@ export const fetchAdSchedules = async (
   });
 };
 
-/** Pembayaran milik SATU jadwal, bukan satu order. */
-export interface SchedulePayment {
-  /** Status transaksi terbaru untuk jadwal ini. */
-  status: string | null;
+/** Satu PERISTIWA TAGIHAN — satu `payment_id`, bukan satu baris tabel. */
+export interface ScheduleInvoice {
   paymentId: string | null;
-  paymentUrl: string | null;
   amount: number;
-  /** Berapa kali dicoba bayar. 76 jadwal di produksi punya lebih dari satu. */
+  status: string;
+  paymentUrl: string | null;
+  createdAt: string;
+  /** `invoice` = admin menagih. `transaction` = orang membuka halaman bayar. */
+  source: 'invoice' | 'transaction';
+  voucherCode: string | null;
+  /** Percobaan bayar untuk tagihan INI saja. */
   attempts: number;
-  hasEverPaid: boolean;
-  paymentMethod?: string | null;
-  paymentChannel?: string | null;
+  /**
+   * Masih menggantung, tapi ada pembayaran lunas yang lebih baru di jadwal
+   * yang sama — tanda ia diterbitkan ulang. Tetap ditampilkan (sejarah tidak
+   * dihapus) tapi tidak dihitung sebagai piutang.
+   */
+  isSuperseded: boolean;
+  paymentMethod: string | null;
+  paymentChannel: string | null;
+  isPaid: boolean;
+  /** expired / failed / cancelled — sudah tidak bisa dibayar. */
+  isDead: boolean;
+  /** Jendela tayang yang ditagihkan baris ini saat ia terbit. */
+  billedStartDate: string | null;
+  /**
+   * Jadwalnya sudah berpindah sejak tagihan ini terbit, jadi ia menagih
+   * jendela yang tidak ada lagi. Uang yang SUDAH masuk tidak pernah basi.
+   */
+  isStale: boolean;
 }
 
-/**
- * Peta jadwal -> pembayarannya, untuk satu order.
- *
- * ⚠️ INI YANG MEMBUAT PEMBAYARAN BOLEH MASUK KE DALAM KARTU JADWAL.
- * `transactions` sudah membedakan pemiliknya sejak lama lewat `entity_type` +
- * `extend_id` — 617 baris 'submission' dan 10 baris 'extend' per 2026-08-08,
- * `entity_type` konsisten 100%. Jadi menautkan pembayaran ke jadwal bukan
- * kemampuan baru; ia sudah ada dan belum pernah dipakai di layar admin.
- *
- * Kuncinya `sourceId`, bukan `submissionId`: sebuah order berjadwal banyak
- * punya beberapa transaksi, dan memakai `submissionId` akan menempelkan
- * pembayaran jadwal #2 ke kartu jadwal #1.
- *
- * Task 11 akan menggantikan pencocokan ini dengan kolom `schedule_id` yang
- * eksplisit; sampai saat itu bentuk lama inilah satu-satunya penautnya.
- *
- * ⚠️ SATU PEMBAYARAN PER JADWAL — JANGAN DIJADIKAN DAFTAR SEBELUM TASK 11.
- * Beberapa baris untuk satu `sourceId` di data hari ini adalah PERCOBAAN BAYAR
- * BERULANG, bukan tagihan terpisah: 82 sumber punya >1 baris, dan pada 33 di
- * antaranya menjumlahkan `amount` melebihi yang benar-benar dibayar (satu order
- * nyata: lunas Rp 1.150.000, jumlah semua baris Rp 3.450.000). Karena itu
- * `amount` di sini adalah nilai transaksi TERBARU dan `attempts` hanya
- * mencacah percobaan. Rancangan multi-invoice per jadwal ada di rencana
- * Task 13 dan butuh `schedule_id` dari Task 11 lebih dulu.
- */
-export const fetchSchedulePayments = async (
-  submissionId: string,
-  schedules: AdScheduleEntry[],
-): Promise<Map<string, SchedulePayment>> => {
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('payment_id, payment_url, amount, status, entity_type, extend_id, created_at, payment_method, payment_channel')
-    .eq('form_submission_id', submissionId)
-    .order('created_at', { ascending: false });
+/** Ringkasan uang SATU jadwal. */
+export interface ScheduleBilling {
+  /**
+   * Kunci yang dipakai dashboard peneliti (`airingPeriods.ts`): id
+   * `form_submissions` untuk ordinal 1, id jadwal untuk sisanya. Datang dari
+   * DB supaya aturan penurunannya tidak disalin lagi di klien.
+   */
+  sourceId: string;
+  /** Terbaru dulu. Memuat SEMUA peristiwa, termasuk yang mati & tersusul. */
+  invoices: ScheduleInvoice[];
+  billed: number;
+  paid: number;
+  outstanding: number;
+  /** Sudah ditagih dan lunas. Menggantikan `hasEverPaid` yang berbohong. */
+  isSettled: boolean;
+  /** Satu-satunya tagihan yang masih menunggu dibayar, kalau ada. */
+  openInvoice: ScheduleInvoice | null;
+  /** Dari pembayaran lunas terakhir — gerbang aksi "Tandai belum lunas". */
+  paymentMethod: string | null;
+  paymentChannel: string | null;
+  /**
+   * Tagihan basi TERBARU, kalau ada. Dipakai untuk menjelaskan kepada peneliti
+   * kenapa tagihannya hilang — tanpa ini layar cuma berhenti menampilkan
+   * tombol bayar dan orangnya tidak tahu harus menunggu apa.
+   */
+  staleInvoice: ScheduleInvoice | null;
+}
 
+const DEAD_PAYMENT_STATUSES = ['expired', 'failed', 'cancelled'];
+const PAID_PAYMENT_STATUSES = ['paid', 'completed'];
+
+/**
+ * Peta jadwal -> uangnya, untuk satu order. Satu round-trip, bukan N.
+ *
+ * ⚠️ SATU JADWAL BOLEH PUNYA BEBERAPA TAGIHAN — dan itu sudah terjadi di
+ * lapangan sebelum fitur ini ada. `76XKVW5P` dibayar Rp 1.470.750 lalu
+ * Rp 61.050; `43MG75Y5` Rp 1.000.000 lalu Rp 500.000. Pendahulu fungsi ini
+ * (`fetchSchedulePayments`) melipat semuanya jadi SATU objek ber-`hasEverPaid`,
+ * jadi 14 jadwal beruang sungguhan mengumumkan "Lunas" padahal bersisa.
+ *
+ * ⚠️ AGREGASINYA DI SQL, BUKAN DI SINI. `schedule_billing_bulk()` (sql/53)
+ * menggabungkan `invoices` + `transactions` ber-kunci `payment_id`. Alasannya
+ * bukan performa:
+ *
+ *   - `invoices` SENDIRIAN tidak cukup. 190 jadwal di produksi hanya punya
+ *     `transactions` — 79 di antaranya lunas, senilai Rp 44.759.000. 185 dari
+ *     sejarah (`create-payment.js` baru menulis `invoices` sejak 2026-07-01),
+ *     5 sisanya karena sisipan invoice-nya boleh gagal diam-diam.
+ *   - `transactions` SENDIRIAN juga tidak. Pending di sana adalah checkout
+ *     yang ditinggalkan, bukan tagihan: 121 peristiwa senilai Rp 1,08 miliar.
+ *
+ * Aturan lengkapnya ada di kepala `sql/53_schedule_billing.sql`. Jangan
+ * menyalinnya ke sini — ini pembaca, bukan pemilik aturan.
+ */
+export const fetchScheduleBilling = async (
+  submissionId: string,
+): Promise<Map<string, ScheduleBilling>> => {
+  const { data, error } = await supabase
+    .rpc('schedule_billing_bulk', { p_submission_id: submissionId });
   if (error) throw error;
 
-  const bySource = new Map<string, any[]>();
-  for (const tx of data || []) {
-    // entity_type 'extend' -> milik baris form_submissions_extend tertentu.
-    // Selain itu -> jadwal pertama, yang source_id-nya adalah id submission.
-    const key = tx.entity_type === 'extend' && tx.extend_id ? tx.extend_id : submissionId;
-    const list = bySource.get(key);
-    if (list) list.push(tx);
-    else bySource.set(key, [tx]);
+  const rows = (data || []) as any[];
+  const bySchedule = new Map<string, ScheduleInvoice[]>();
+  const sourceIds = new Map<string, string>();
+
+  for (const r of rows) {
+    const status = String(r.status || '');
+    const inv: ScheduleInvoice = {
+      paymentId: r.payment_id ?? null,
+      amount: Number(r.amount || 0),
+      status,
+      paymentUrl: r.payment_url ?? null,
+      createdAt: r.created_at,
+      source: r.source === 'invoice' ? 'invoice' : 'transaction',
+      voucherCode: r.voucher_code ?? null,
+      attempts: Number(r.attempts || 0),
+      isSuperseded: !!r.is_superseded,
+      paymentMethod: r.payment_method ?? null,
+      paymentChannel: r.payment_channel ?? null,
+      isPaid: PAID_PAYMENT_STATUSES.includes(status.toLowerCase()),
+      isDead: DEAD_PAYMENT_STATUSES.includes(status.toLowerCase()),
+      billedStartDate: r.billed_start_date ?? null,
+      isStale: !!r.is_stale,
+    };
+    if (r.source_id) sourceIds.set(r.schedule_id, r.source_id);
+    const list = bySchedule.get(r.schedule_id);
+    if (list) list.push(inv);
+    else bySchedule.set(r.schedule_id, [inv]);
   }
 
-  const out = new Map<string, SchedulePayment>();
-  for (const s of schedules) {
-    const txs = bySource.get(s.sourceId);
-    if (!txs || txs.length === 0) continue;
-    const unpaid = txs.find((t) => !['paid', 'completed'].includes(t.status));
-    const paidTx = txs.find((t) => ['paid', 'completed'].includes(t.status)) || txs[0];
-    out.set(s.id, {
-      status: txs[0].status,
-      paymentId: txs[0].payment_id || null,
-      paymentUrl: unpaid?.payment_url || txs[0].payment_url || null,
-      amount: Number(txs[0].amount || 0),
-      attempts: txs.length,
-      hasEverPaid: txs.some((t) => ['paid', 'completed'].includes(t.status)),
-      paymentMethod: paidTx?.payment_method || null,
-      paymentChannel: paidTx?.payment_channel || null,
+  const out = new Map<string, ScheduleBilling>();
+  for (const [scheduleId, invoices] of bySchedule) {
+    // Cerminan `live` di schedule_billing_summary() — kalau salah satu
+    // berubah, ubah keduanya. Sengaja tidak dua round-trip demi satu angka.
+    const live = invoices.filter(
+      (i) => i.isPaid
+        || (i.source === 'invoice' && !i.isDead && !i.isSuperseded && !i.isStale),
+    );
+    const billed = live.reduce((sum, i) => sum + i.amount, 0);
+    const paid = live.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
+    const lastPaid = invoices.find((i) => i.isPaid);
+
+    out.set(scheduleId, {
+      sourceId: sourceIds.get(scheduleId) ?? scheduleId,
+      invoices,
+      billed,
+      paid,
+      outstanding: billed - paid,
+      isSettled: billed > 0 && billed - paid <= 0,
+      openInvoice: live.find((i) => !i.isPaid) ?? null,
+      paymentMethod: lastPaid?.paymentMethod ?? null,
+      paymentChannel: lastPaid?.paymentChannel ?? null,
+      staleInvoice: invoices.find((i) => i.isStale) ?? null,
     });
   }
   return out;

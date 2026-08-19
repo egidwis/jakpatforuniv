@@ -71,6 +71,16 @@ export type ChipKind = LifecycleStage;
 export function chipKindOf(e: AdScheduleEntry, now: number = Date.now()): ChipKind {
   if (e.reviewStatus === 'rejected') return 'rejected';
   if (e.reviewStatus === 'spam') return 'spam';
+  // ⚠️ DI ATAS SEMUA CABANG SUMBU TAYANG. Jadwal yang dibatalkan tidak boleh
+  // dibaca 'live'/'paid'/'approved' hanya karena kolom lamanya belum disapu.
+  //
+  // Terukur 2026-08-19: dari 136 baris berstatus 'cancelled', 135 datang dari
+  // order rejected/spam dan sudah ditangkap dua cabang di atas. Yang butuh
+  // cabang INI cuma 1 — baris perpanjangan, yang review_status-nya diwarisi
+  // induk 'approved' sehingga dulu jatuh ke 'approved' dan lewat
+  // `occupiesSlot` ikut memakan kuota hari yang sebenarnya sudah bebas.
+  // Satu baris hari ini; SETIAP pembatalan slot sesudah sql/62 lewat sini.
+  if (e.status === 'cancelled') return 'cancelled';
   if (e.status === 'live') return 'live';
   if (e.status === 'scheduled') return 'page_scheduled';
   if (e.status === 'completed') return 'completed';
@@ -161,8 +171,8 @@ export function occupiesSlot(e: AdScheduleEntry, now: number): boolean {
   if (!e.startDate || !e.endDate) return false;
   const kind = chipKindOf(e, now);
   return !(
-    kind === 'rejected' || kind === 'spam' || kind === 'in_review' ||
-    kind === 'completed' || kind === 'reserved_expired'
+    kind === 'rejected' || kind === 'spam' || kind === 'cancelled' ||
+    kind === 'in_review' || kind === 'completed' || kind === 'reserved_expired'
   );
 }
 
@@ -301,8 +311,8 @@ export const CHIP_ORDER: ChipKind[] = [
   'completed',
 ];
 
-/** rejected + spam dilipat jadi satu sakelar "Batal" — keduanya tidak menempati jendela. */
-export const CANCELLED_CHIPS: ChipKind[] = ['rejected', 'spam'];
+/** rejected + spam + cancelled dilipat jadi satu sakelar "Batal" — tidak satu pun menempati jendela. */
+export const CANCELLED_CHIPS: ChipKind[] = ['rejected', 'spam', 'cancelled'];
 
 // PAGE_LABEL dihapus: status halaman kini dirender sebagai chip di
 // `ScheduleEntryDrawer`, bukan teks di agenda. Pembedaan yang dulu dijaga

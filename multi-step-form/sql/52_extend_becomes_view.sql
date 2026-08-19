@@ -73,6 +73,21 @@
 -- ============================================================================
 -- 1. SNAPSHOT — satu-satunya jalan pulang. 15 baris, gratis.
 -- ============================================================================
+-- 🔴 DIPERBAIKI OLEH sql/61 — JANGAN SALIN BENTUK DI BAWAH INI APA ADANYA.
+--
+-- Snapshot ini terbukti membuka lubang yang persis sama dengan yang ditutup
+-- bagian 7 untuk view-nya, dan luput karena bagian ini ditulis SEBELUM temuan
+-- itu muncul. Dua sebabnya:
+--   (1) `CREATE TABLE ... AS SELECT` TIDAK mewarisi RLS maupun policy dari
+--       sumbernya — snapshot lahir dengan RLS MATI walau sumbernya berpolicy;
+--   (2) default privileges Supabase langsung memberi `anon` tujuh privilege
+--       atas tabel baru mana pun di skema `public`.
+-- Hasilnya (terukur sebagai `anon` pada 2026-08-19): 15 baris terbaca DAN
+-- 15 baris bisa di-UPDATE dari internet lewat PostgREST.
+--
+-- sql/61 memindahkannya ke skema `backup` (di luar PostgREST), mencabut
+-- anon/authenticated, dan menyalakan RLS. Snapshot berikutnya di proyek ini
+-- harus LANGSUNG dibuat di `backup`, bukan di `public`.
 DROP TABLE IF EXISTS public.form_submissions_extend_legacy;
 CREATE TABLE public.form_submissions_extend_legacy AS
   SELECT * FROM public.form_submissions_extend;
@@ -81,6 +96,16 @@ COMMENT ON TABLE public.form_submissions_extend_legacy IS
   'Snapshot form_submissions_extend tepat sebelum sql/52 mengubahnya jadi view '
   '(2026-08-19, 15 baris). Jalan pulang kalau Deploy B harus dibatalkan. '
   'Boleh dibuang setelah satu siklus rilis tanpa keluhan.';
+
+-- ⚠️ Kalau berkas ini dijalankan ulang di lingkungan baru, jalankan sql/61
+-- SEGERA sesudahnya — atau lebih baik, ganti tiga pernyataan di atas dengan
+-- bentuk aman ini:
+--   CREATE SCHEMA IF NOT EXISTS backup;
+--   REVOKE ALL ON SCHEMA backup FROM PUBLIC;
+--   DROP TABLE IF EXISTS backup.form_submissions_extend_legacy;
+--   CREATE TABLE backup.form_submissions_extend_legacy AS
+--     SELECT * FROM public.form_submissions_extend;
+--   ALTER TABLE backup.form_submissions_extend_legacy ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================================
@@ -527,8 +552,11 @@ GRANT EXECUTE ON FUNCTION public.get_extend_slot_occupancy(TEXT) TO authenticate
 -- ============================================================================
 -- ROLLBACK — selama snapshot bagian 1 masih ada
 -- ============================================================================
+-- ⚠️ SEJAK sql/61 SNAPSHOTNYA ADA DI `backup`, BUKAN `public`.
 -- DROP VIEW public.form_submissions_extend CASCADE;
--- CREATE TABLE public.form_submissions_extend AS SELECT * FROM public.form_submissions_extend_legacy;
+-- CREATE TABLE public.form_submissions_extend AS SELECT * FROM backup.form_submissions_extend_legacy;
+-- -- ⚠️ tabel hasil CTAS itu lahir tanpa RLS dan dengan hak penuh anon (lihat
+-- --    catatan bagian 1) — sertakan ENABLE RLS + REVOKE anon di transaksi yang sama.
 -- -- lalu pulihkan pkey/index/RLS/trigger dari 19_create_extend_table.sql + 33 + 38 + 41,
 -- -- dan kembalikan assert_no_schedule_overlap() ke versi sql/38.
 -- -- ⚠️ Baris yang lahir SESUDAH sql/52 diterapkan hanya ada di ad_schedules —

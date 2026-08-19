@@ -51,6 +51,34 @@ export function SchedulePicker({
 
   const selectedIndex = value ? dates.findIndex((d) => toLocalYmd(d) === value) : -1;
 
+  /*
+    ⚠️ SKELETON, BUKAN TILE BERISI NOL.
+    Selama ketersediaan belum terbaca, `counts` kosong dan tiap tile merender
+    "0/4" — angka yang terlihat seperti data padahal cuma nilai default. User
+    memilih tanggal berdasarkan angka bohong itu, lalu ditolak saat mengunci.
+    Kalender admin sudah memakai skeleton untuk keadaan yang sama
+    (`SlotCalendarSkeleton`); wizard tertinggal. Bentuknya ditiru dari tile
+    aslinya supaya tidak ada lompatan tata letak saat data mendarat.
+  */
+  if (availability.isLoading && !availability.isReady) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 sm:gap-3 py-1">
+          {Array.from({ length: HORIZON_DAYS }).map((_, i) => (
+            <div
+              key={i}
+              className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white p-2.5 h-[86px] animate-pulse"
+            >
+              <div className="h-2.5 w-7 rounded bg-slate-200" />
+              <div className="h-4 w-12 rounded bg-slate-300" />
+              <div className="h-3.5 w-9 rounded-full bg-slate-100" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 sm:gap-3 py-1">

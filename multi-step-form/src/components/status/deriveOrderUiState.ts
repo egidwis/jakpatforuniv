@@ -177,8 +177,39 @@ export function deriveOrderUiState(
     // Ambil yang paling awal — batas mana pun yang lebih dulu tiba, itu yang
     // jujur ditampilkan ke user.
     const candidateDeadlines = [slotDeadline, cutoffDeadline].filter((d): d is Date => !!d);
+    /**
+     * ⚠️ JAM HANYA DISEBUT UNTUK SLOT YANG DIPESAN PENELITI SENDIRI.
+     * Aturan pemilik produk 2026-08-19.
+     *
+     * Slot yang dipesan admin dilepas MANUAL lewat dashboard admin, kapan saja
+     * — tidak ada jam yang jujur bisa disebut untuknya. Menampilkan batas
+     * 14.00 WIB di situ mengarang tenggat yang bukan tenggat: lewat jam itu
+     * slotnya TIDAK lepas (lihat `slotHold.ts`), yang habis cuma waktu admin
+     * menyiapkan halaman iklan — dan kasus hari-H sudah ditangani keadaan
+     * `too_late_today` yang terpisah. Gantinya peneliti diberi alasan yang
+     * benar-benar berlaku: slotnya terbatas dan bisa habis.
+     *
+     * Diukur dari `isUserBooked`, BUKAN dari `paymentDeadlineCause` — keduanya
+     * TIDAK sama, dan yang membedakan bukan jam pemesanan.
+     *
+     * Pemesanan hari-H sudah tertutup 13.00 WIB (`isBookingClosedForDate`,
+     * ditegakkan keras di `submitOrder` sebelum INSERT dan di `handleRebook`),
+     * jadi reservasi mandiri untuk hari ini selalu berakhir sebelum 14.00 —
+     * hold 1 jam-nya SELALU tiba lebih dulu daripada cutoff. Untuk tanggal di
+     * masa depan apalagi. Jadi `cause` tidak pernah 'cutoff' gara-gara jam.
+     *
+     * Yang membuatnya 'cutoff' pada slot milik peneliti adalah keadaan lain:
+     * `slot_booked_by='user'` dengan `slot_reserved_at` NULL atau tidak bisa
+     * diurai. Terukur 2026-08-19: **0 dari 68** baris user-booked seperti itu,
+     * jadi cabang 'cutoff' hari ini JARING PENGAMAN, bukan jalur hidup —
+     * dipertahankan karena kalau keadaan itu muncul, kalimat 'slot' yang akan
+     * berbohong. `slotReleaseDeadline` mengembalikan `null` di situ — slotnya
+     * TIDAK pernah lepas sendiri (dipagari eksplisit di `slotHold.test.ts`) —
+     * sehingga satu-satunya batas yang tersisa memang cutoff-nya. Di situ
+     * kalimat 'cutoff' justru yang benar, dan kalimat 'slot' akan berbohong.
+     */
     const paymentDeadline =
-        currentStep === 2 && !isExpired && !isTooLateToday && candidateDeadlines.length > 0
+        isUserBooked && currentStep === 2 && !isExpired && !isTooLateToday && candidateDeadlines.length > 0
             ? new Date(Math.min(...candidateDeadlines.map((d) => d.getTime())))
             : null;
     // Kalau keduanya jatuh di detik yang sama, `slot` yang dipakai — reservasi
@@ -317,8 +348,13 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
     }
 
     if (ui.callout === 'payment' && ui.paymentDeadline) {
+        // Akibatnya beda, jadi jangan satu kalimat: batas 14.00 WIB TIDAK
+        // melepas slot, ia hanya membuat tanggalnya tidak terkejar.
+        const akibat = ui.paymentDeadlineCause === 'slot'
+            ? 'slot dilepas jika lewat'
+            : 'lewat dari itu tanggal tayangnya harus diganti';
         lines.push(
-            `- Pembayaran: menunggu, batas waktu ${ui.paymentDeadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB hari ini (slot dilepas jika lewat)`
+            `- Pembayaran: menunggu, batas waktu ${ui.paymentDeadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB hari ini (${akibat})`
         );
     } else if (ui.callout === 'payment') {
         lines.push(`- Pembayaran: menunggu (link pembayaran tersedia di halaman Order Saya)`);

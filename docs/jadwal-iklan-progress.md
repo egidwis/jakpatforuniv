@@ -52,6 +52,16 @@
 > ✅ **Sudah diuji di browser & dideploy 2026-08-19.** Kalender slot admin dan
 > peneliti kini cocok — itu buktinya RPC `get_extend_slot_occupancy()` bekerja
 > dari sisi non-admin.
+>
+> 🟢 **TASK 13 RILIS 1 SELESAI DI KODE — `sql/53` DITERAPKAN, lihat §00O.**
+> Uang per jadwal jadi agregat tagihan; `hasEverPaid` dibuang dari jalur
+> per-jadwal. Tiga premis rencana Task 13 batal saat diukur — yang terpenting:
+> **membaca `invoices` saja akan menghapus Rp 44.759.000 dari layar**, dan
+> **percobaan bayar TIDAK berbagi `payment_id`** (satu jadwal punya 29
+> `payment_id` berbeda senilai Rp 9,8 juta untuk harga Rp 350.000). Piutang
+> total turun Rp 1.106.009.261 → Rp 21.922.163. Fitur **"Batalkan tagihan"**
+> ditambahkan atas permintaan pemilik produk, di luar cakupan rencana asli.
+> ⬜ Belum diuji di browser, belum dideploy.
 
 **Tujuan besar:** satu baris = satu jendela tayang, **termasuk jadwal pertama**.
 Sekarang jadwal pertama hidup di `form_submissions` dan jadwal ke-2 dst. di
@@ -73,7 +83,8 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | ⬜ **sesudah Task 13** (pemilik produk 2026-08-18 — §00G). Prasyarat: `reward_pools` (8B-2, **`sql/50`** — `46` dipakai Task 9A, `47`/`48` dipakai order-flow reorder, `49` dipakai perbaikan jam tayang kustom, semua 2026-08-10) **dan harga per jadwal dari Task 13** |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | 🔓 **TERBUKA sejak 2026-08-19** — Task 13 selesai di branch, harga per jadwal sudah ada. Prasyarat yang MASIH menggantung: `reward_pools` (8B-2, **`sql/50`**) |
+| **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
 Baca §00A sebelum melakukan apa pun. `sql/47` dan `sql/48` **sudah diterapkan ke
@@ -353,7 +364,8 @@ dan semuanya akan terulang di tabel berikutnya kalau tidak dibaca:**
    BISA dipindah apa adanya (keempat kolomnya bernama sama), tapi wajib
    dipagari `source_table` supaya tidak menjatuhkan cermin ordinal 1.
 
-**Rollback** tersedia: `form_submissions_extend_legacy` (15 baris) masih ada.
+**Rollback** tersedia: `form_submissions_extend_legacy` (15 baris) masih ada,
+**kini di skema `backup`, bukan `public`** (dipindah `sql/61` — lihat di bawah).
 ⚠️ Baris yang lahir SESUDAH `sql/52` hanya ada di `ad_schedules` — salin manual
 dulu kalau benar-benar harus mundur. Boleh dibuang setelah satu siklus rilis
 tenang.
@@ -372,7 +384,7 @@ sisi non-admin.
 | `booking_id` NULL | **0** |
 | `transactions` / `invoices` tanpa `schedule_id` | **0 / 0** — trigger penurun A2 masih menutup semua penulis |
 | View vs `ad_schedules(source_table='form_submissions_extend')` | **15 / 15** |
-| `form_submissions_extend_legacy` | 15 baris, masih ada (jalan pulang) |
+| `form_submissions_extend_legacy` | 15 baris, masih ada (jalan pulang) — dipindah ke skema `backup` oleh `sql/61`, sidik jari tetap `1798a75e…` |
 | `is_trigger_updatable/insertable/deletable` di view | **YES / YES / YES** — PostgREST menerima PATCH & POST, jadi jalur `webhook.js` STEP 5 sah |
 
 🎉 **`sql/54` akhirnya terbukti.** `doku_webhook_events` yang sejak dibuat
@@ -388,6 +400,216 @@ ujung-ke-ujung tetap utuh di atas view.
 pernah dilewati sejak view berdiri. Secara struktur aman (`service_role`
 di-GRANT, view trigger-updatable), tapi **pantau baris `doku_webhook_events`
 ber-`entity_type='extend'` yang pertama** alih-alih menganggapnya terbukti.
+
+#### 🔴 Jebakan (1) punya KEMBARAN yang luput — ditutup `sql/61` (2026-08-19)
+
+Security Advisor menyalakan **satu ERROR**: *RLS Disabled in Public →
+`public.form_submissions_extend_legacy`*. Bukan tabel extend yang bocor —
+view-nya justru terbukti aman (`anon` → `permission denied for view`). Yang
+bocor adalah **snapshot jalan-pulang** yang dibuat bagian 1 `sql/52` sendiri.
+
+Sebabnya jebakan (1) di atas, plus satu sifat yang belum tercatat di mana pun:
+
+> **`CREATE TABLE ... AS SELECT` tidak mewarisi RLS maupun policy dari tabel
+> sumbernya.** Snapshot lahir `relrowsecurity = false`, nol policy — padahal
+> sumbernya punya empat policy. Lalu default privileges Supabase
+> menempelkan tujuh privilege `anon` di atasnya, gratis.
+
+Ironinya: REVOKE yang benar sudah ditulis di bagian 7 `sql/52`, untuk view-nya.
+Bagian 1 ditulis **sebelum** temuan itu muncul dan tidak ikut disapu. Satu
+migrasi bisa menutup sebuah lubang di satu paragraf dan membukanya di paragraf
+lain — gerbangnya harus per-objek, bukan per-berkas.
+
+**Terukur sebagai `anon` sebelum perbaikan** (di dalam transaksi yang
+dibatalkan, jadi tidak ada data yang berubah):
+
+| Uji sebagai `anon` | Sebelum | Sesudah `sql/61` |
+|---|---|---|
+| `SELECT` snapshot | **15 baris**, agregat `total_cost` 6.316.683 | `permission denied for schema backup` |
+| `UPDATE` kolom uang | **15 baris tertulis** | idem — tak terjangkau |
+| Lewat PostgREST | terekspos (`public` + anon key ada di bundel frontend) | skema `backup` di luar permukaan API |
+
+Peredam yang kebetulan berlaku: `admin_notes` dan `voucher_code` NULL di
+kelima belas baris, dan tidak ada nama/email di tabel ini. Tulisan `anon` juga
+tidak menjalar ke data hidup (snapshot CTAS tidak punya trigger maupun FK) —
+tapi ia bisa merusak jalan pulang `sql/52`.
+
+**Kenapa pindah skema, bukan sekadar `ENABLE RLS`:** snapshot rollback tidak
+punya alasan untuk terlihat dari API. Selama ia duduk di `public` ia akan
+selalu diekspos PostgREST *dan* mewarisi default privilege `anon` setiap kali
+dibuat ulang. Pindah mencabut kedua sifat itu di sumbernya. Terverifikasi
+sebelum menerapkan: `pg_default_acl` untuk anon/authenticated **hanya**
+terpasang di `public` — tidak ada entri lintas skema, jadi `backup` tidak
+mewarisi jebakannya. RLS tetap dinyalakan sebagai sabuk kedua.
+
+⚠️ **`backup` tidak boleh ditambahkan ke Exposed schemas** (Dashboard >
+Settings > API). Seluruh perbaikan ini bergantung pada itu.
+
+| Verifikasi `sql/61` | Hasil |
+|---|---|
+| Lokasi + RLS | `backup` / **true** |
+| Sisa hak `anon` + `authenticated` | **0** |
+| `USAGE` skema untuk anon/authenticated | **false / false** |
+| Sidik jari 15 baris pasca-pindah | **`1798a75e9750611d14178e45be2387ef`** — identik dengan kepala `sql/52` |
+| `public.form_submissions_extend` (view) | **15** — tak tersentuh |
+| Security Advisor | **ERROR 0** (sisa: INFO `rls_enabled_no_policy`, memang yang dituju) |
+
+**Aturan yang berlaku mulai sekarang:** snapshot/tabel jalan-pulang dibuat
+**langsung di `backup`**, tidak pernah di `public`. Bentuk amannya sudah
+ditempel di bagian 1 `sql/52` supaya tidak perlu diingat-ingat.
+
+⬜ Snapshotnya sendiri **boleh di-DROP** setelah `sql/52` melewati satu siklus
+rilis tenang; per 2026-08-19 baru sehari, jadi ditahan dulu.
+
+### 00O. 🟢 TASK 13 RILIS 1 — uang per jadwal jadi jujur (`sql/53`, 2026-08-19)
+
+**Satu jadwal boleh punya beberapa tagihan, dan kartunya berhenti berbohong.**
+`hasEverPaid` (`.some(paid)`) dihapus dari jalur per-jadwal.
+
+⚠️ **Ini bukan bug hipotetis — ia sudah salah hari ini.** Tagihan susulan sudah
+terjadi di lapangan, dikerjakan manual, jauh sebelum fitur ini ada:
+
+| Booking ID | Dibayar | `total_cost` |
+|---|---|---|
+| `76XKVW5P` | Rp 1.470.750 **lalu** Rp 61.050 | 1.470.750 |
+| `43MG75Y5` | Rp 1.000.000 **lalu** Rp 500.000 | 1.900.000 |
+| `F6WCSWJB` | Rp 1.276.500 **lalu** Rp 410.700 | 410.700 |
+
+14 jadwal beruang sungguhan punya >1 invoice lunas, dan semuanya mengumumkan
+"Lunas" walau bersisa.
+
+**TIGA PREMIS RENCANA TASK 13 YANG BATAL SAAT DIUKUR** — semuanya tercatat
+lengkap di kepala [`sql/53`](../multi-step-form/sql/53_schedule_billing.sql):
+
+1. **"Sumber kebenaran uang = invoice" menghapus Rp 44.759.000.** 190 jadwal
+   hanya punya `transactions`, 79 di antaranya lunas. 185 dari sebelum
+   `create-payment.js` mulai menulis `invoices` (2026-07-01, commit `36ed0eb`);
+   **5 sisanya bertanggal sesudah itu** karena kedua sisipan dijalankan lewat
+   `Promise.all` dan kegagalannya hanya DICATAT — endpoint tetap balas 200.
+   Jadi "tiap transaksi punya invoice" tidak pernah jadi invarian.
+   → Keputusan pemilik produk: **gabungan, kunci `payment_id`**.
+
+2. **Percobaan bayar TIDAK berbagi `payment_id`.** Rencana menyatakan
+   sebaliknya. `3DNWE9PS` punya **29 `payment_id` berbeda** senilai Rp 9.800.000
+   untuk jadwal berharga Rp 350.000 — tiap klik "bayar" menerbitkan nomor DOKU
+   baru. Yang menahan penggelembungan bukan dedup, melainkan aturan bahwa
+   **pending di `transactions` itu keranjang yang ditinggalkan, bukan tagihan**
+   (121 peristiwa, Rp 1,08 miliar — 98% dari total).
+
+3. **"Pending" ≠ "piutang".** 194 invoice pending menggantung, `expires_at`
+   kosong di 194 dari 194. Aturan yang dipilih: sebuah pending berhenti jadi
+   piutang kalau ada pembayaran lunas **yang lebih baru** di jadwal yang sama
+   (tanda ia diterbitkan ulang). Faktual, bukan ambang umur yang dikarang —
+   sengaja TIDAK memakai "pending tua = mati", karena antrean "perlu ditagih"
+   masih memuat entri Maret–Juni yang sungguh ditagih.
+
+**Hasilnya:** piutang total **Rp 1.106.009.261 → Rp 21.922.163**. Dua invarian
+dijaga dan keduanya 0: nol jadwal ber-`outstanding` tanpa tagihan terbuka, nol
+jadwal yang `paid`-nya melebihi `billed`.
+
+**Fitur baru atas permintaan pemilik produk** (rencana asli menaruhnya di luar
+cakupan): **"Batalkan tagihan"** per invoice. Sebelumnya tagihan yang salah
+terbit tidak punya jalan keluar sama sekali — itulah asal 194 baris di atas.
+Contoh yang langsung terbantu: **`V3M9285H` punya tagihan Rp 370.000 DAN
+Rp 3.700.000 di hari yang sama** (satu nol kelebihan), dan `5FJ9J4Q6` punya
+invoice kembar yang satu lunas satu menggantung. Barisnya **tidak dihapus**,
+hanya dicoret — riwayat tagihan adalah catatan uang.
+
+⚠️ **Membatalkan tagihan tidak mematikan link DOKU.** Kami tidak memanggil API
+pembatalan DOKU, jadi VA yang sudah terbit masih bisa dibayar dari sisi bank.
+Kalau uangnya sungguh masuk, webhook tetap mencatatnya dan tagihannya hidup
+lagi sebagai lunas. **Itu disengaja** — uang yang benar-benar diterima harus
+selalu menang atas status di layar.
+
+**Keputusan teknis yang menyimpang dari rencana, dan alasannya:**
+
+- **`SECURITY INVOKER`, bukan `DEFINER`.** Kebalikan `get_extend_slot_occupancy`
+  (sql/52) yang DEFINER karena kuota slot harus melihat jadwal semua orang.
+  Uang kebalikannya: hanya boleh terlihat pemiliknya, dan RLS
+  `invoices`/`transactions` sudah mengerjakannya. DEFINER di sini akan membuka
+  riwayat uang semua orang ke siapa pun yang bisa menebak satu UUID.
+- **`hasEverPaid` di `InternalDashboard` SENGAJA dibiarkan `.some(paid)`.**
+  Namanya sama, pertanyaannya beda: ia menjawab "adakah uang yang pernah
+  masuk?" untuk hitung mundur slot di `CampaignActions`, bukan "sudah lunas?".
+  Menyeragamkannya akan memunculkan "Expired" pada order yang lunas sebagian
+  lalu melepas slot yang sudah dibayar. Alasannya ditulis di tempatnya.
+
+Ikut ditutup: `create-payment.js` berhenti menimpa `total_cost` untuk jadwal
+yang sudah pernah ditagih (temuan C rencana Task 13 — terverifikasi masih
+hidup, lognya berbunyi *"Correcting DB to server value"*), dan voucher pindah
+dari titipan JSON di `transactions.note` ke kolomnya sendiri.
+
+⚠️ **Backfill voucher HANYA dari `note`, bukan dari `form_submissions`.** Kolom
+`form_submissions.voucher_code` isian bebas peneliti: dari 131 baris terisi ada
+`-`, `tidak ada`, `111111111111`, dan beberapa nomor telepon. Ia bukan kode
+kupon tervalidasi.
+
+Gerbang: `tsc -b --force` **61** (baseline), `npm run build` hijau, 25/25 uji.
+
+🟢 **KELIMA UJI ADMIN HIJAU 2026-08-19.** Dibuka lewat search bar papan
+Schedule — ia menerima Booking ID sejak §00M.
+
+| # | Booking ID | Yang harus terlihat | Kenapa ini ujinya |
+|---|---|---|---|
+| 1 | ✅ **`76XKVW5P`** | **dua baris** tagihan, kepala **"Rp 1.531.800 ditagih"** | Kode lama memakai transaksi TERBARU sebagai nominal kartu, yaitu **Rp 61.050** — jadwal yang menerima Rp 1.531.800 tampil sebagai Rp 61.050. Jadwal ini **lunas penuh**, jadi ia memang tetap bilang "Lunas"; yang diuji **angkanya**, bukan labelnya |
+| 2 | ✅ **`5FJ9J4Q6`** | **"Rp 2.880.000 ditagih · Rp 1.440.000 belum masuk"** | Inilah yang **berhenti** bilang "Lunas". `hasEverPaid` dulu bernilai true karena satu invoice-nya lunas, padahal Rp 1.440.000 masih menggantung |
+| 3 | ✅ **`5FJ9J4Q6`** lagi | batalkan invoice yang menggantung → kartu balik **"Lunas"** | Ia punya **invoice kembar Rp 1.440.000 di hari yang sama**, satu lunas satu menggantung — kasus yang persis jadi alasan "Batalkan tagihan" ada |
+| 4 | ✅ **`T25FVETF`** (atau `7F8CBKEF`, `RT4ZHEPN`) | Rp 2.525.000 **lunas** | **Uji REGRESI, bukan fitur baru.** Jadwal ini hanya punya `transactions`. Kode lama juga membacanya, jadi ia tidak pernah Rp 0 — tapi ia AKAN jadi Rp 0 kalau rencana Task 13 diterapkan harfiah (`invoices` saja). Kalau tampil Rp 0 atau "belum ada tagihan", itu bug |
+| 5 | ✅ mana saja yang punya tagihan menggantung | **"Tagih Susulan" disabled** | Peneliti hanya melihat tagihan terakhir; tagihan kedua akan menyembunyikan yang pertama |
+
+**Hasil uji 2/3/5 (2026-08-19, di produksi):** `a8e8233f-…` jadi `cancelled`,
+daftar tetap **3 baris**, `billed` Rp 2.880.000 → Rp 1.440.000, `outstanding`
+Rp 1.440.000 → **0**, `open_count` 1 → **0**. Piutang seluruh sistem
+Rp 21.922.163 → Rp 20.482.163. Kedua invarian tetap **0/0**. Pasangan di
+`transactions` ikut dibatalkan, jadi tidak ada baris yatim yang menghidupkan
+tagihan itu lagi.
+
+⚠️ **DUA BUG UI DITEMUKAN SAAT UJI INI — keduanya kelas yang sama: memakai
+satu sinyal untuk dua pertanyaan.**
+
+1. **Aksi ikut diredupkan bersama barisnya.** Gerbang aksi memakai `isStruck`,
+   yang memuat `isLate` — jadi tagihan yang lewat batas bayar, **persis yang
+   ingin dibatalkan admin**, tidak punya tombolnya sama sekali. Aksi kini
+   dipecah per pertanyaan: `canPay` (hidup DAN belum lewat batas) vs
+   `canCancel` (tagihan sungguhan, belum dibayar, belum mati — terlewat dan
+   tersusul TETAP boleh).
+
+2. **Coretan pada nominal dipakai untuk dua arti.** Baris `isLate` dicoret
+   seolah tidak dihitung, sementara kepala kartu menuliskan angka yang sama
+   sebagai "belum masuk". Sebabnya `isLate` diturunkan di KLIEN dari tanggal
+   tayang, sedangkan `schedule_billing_summary` tidak tahu apa-apa soal itu —
+   dan DB-lah yang benar, karena admin memang masih menagihnya di luar sistem.
+   Aturannya kini satu: **coretan pada nominal = angka ini tidak ikut
+   dihitung**; baris terlewat hanya diredupkan, dan labelnya dieja lengkap
+   *"Batas bayar terlewat — masih dihitung piutang"*.
+
+   Ikut diperbaiki: tautan aksi tidak lagi `text-slate-400` — warna yang sama
+   dengan isi baris yang diredupkan, sehingga ia terbaca sebagai keterangan
+   dan sempat dilaporkan "tidak ada" padahal sudah dirender.
+
+⛔ **SATU PERMUKAAN BELUM DIUJI SAMA SEKALI: DASHBOARD PENELITI.**
+[`StatusPage`](../multi-step-form/src/pages/dashboard/StatusPage.tsx) berubah
+di rilis ini — peta pembayarannya dulu mengambil **transaksi pertama yang
+kebetulan cocok** per `extend_id`; kini ia memanggil `schedule_billing_bulk`
+dan menunjuk `openInvoice`. Peneliti tetap hanya melihat SATU tagihan
+(keputusan pemilik produk), tapi sekarang tagihan yang benar.
+
+Yang wajib diklik **sebagai peneliti**, bukan admin:
+
+- order yang punya tagihan menggantung → tombol bayar menunjuk tagihan itu,
+  bukan tagihan lama yang sudah lunas
+- order lunas sebagian → **tidak** lagi tertulis "Lunas"
+- order dengan jadwal ke-2 → tagihannya tidak tertukar dengan jadwal ke-1
+
+⚠️ Ini permukaan yang dilihat pelanggan, dan satu-satunya bagian rilis ini
+yang belum pernah disentuh manusia. Uji admin tidak mewakilinya: RLS-nya
+berbeda, dan jalur datanya lain (`SchedulePaymentMap`, bukan `ScheduleBilling`
+langsung).
+
+**Catatan cakupan:** rencana menyebut `scheduleMoney.ts` menerima blok kedua
+untuk `billed`/`paid`/`outstanding`. Blok itu akhirnya hidup di
+`BillingSection` — satu tempat dengan daftarnya, bukan dua. `scheduleMoney.ts`
+tetap murni soal HARGA. Hasilnya sama, tempatnya berbeda dari rencana.
 
 ### 00-slot. ✅ Kontrol pelepasan slot kembali ke admin (2026-08-10) — belum diuji di browser
 
@@ -437,6 +659,261 @@ mengosongkannya (keduanya butuh Task 11).
 
 **Belum dikerjakan:** uji manual di browser (urutannya di rencana), dan keputusan atas **4
 order terdampar** peninggalan kerusakan lama — sengaja tidak dipulihkan otomatis.
+
+### 00P. 🟢 Balapan admin-vs-peneliti + "tagihan hidup" (`sql/60`, 2026-08-19)
+
+**Keputusan pemilik produk: PENELITI YANG MENANG.** Saat pembayaran kedaluwarsa,
+admin bisa menerbitkan tagihan ulang tepat ketika peneliti menjadwalkan ulang.
+Slot adalah barang langkanya; tagihan cuma turunan dari jadwal. Menerbitkan ulang
+tagihan gratis, mengembalikan uang tidak — dan sistem ini **tidak punya alur refund**.
+
+**Dinilai saat DIBACA, bukan dikunci saat MENULIS.** Kunci optimistis (bandingkan
+`updated_at` jadwal sebelum menyimpan) menutup urutan "peneliti dulu, admin
+menyusul" tapi **tidak** menutup yang benar-benar bersamaan: tagihan yang mendarat
+sesudah sapuan expiry tetap lolos dan bertahan hidup menunjuk jendela yang sudah
+tidak ada — peneliti bisa **membayar penuh untuk slot yang sudah pindah**.
+Menyimpan jendela yang DITAGIHKAN (`billed_start_date`) lalu membandingkannya saat
+dibaca membuat pertanyaan "apakah tagihan ini masih berlaku?" **tidak punya jendela
+balapan sama sekali**. Polanya sama dengan `is_superseded` di `sql/53`.
+
+    is_stale = status BUKAN lunas
+               AND billed_start_date IS NOT NULL
+               AND ad_schedules.start_date IS NOT NULL
+               AND billed_start_date <> ad_schedules.start_date
+
+Dua pengecualian yang disengaja: **uang yang sudah masuk tidak pernah basi**, dan
+**baris lama tidak pernah basi** (`billed_start_date` NULL = "tidak diketahui",
+bukan "tidak cocok"). Membackfill dari `ad_schedules.start_date` hari ini akan
+menyatakan 400+ tagihan lama sah selamanya ATAU membatalkan semuanya sekaligus,
+tergantung arah tebakan.
+
+⚠️ **`billed_start_date` punya DUA penulis dan keduanya wajib**: `InvoiceForm.tsx`
+(tagihan manual admin) dan `create-payment.js` (swalayan peneliti). Melewatkan satu
+membuat seluruh jalur itu kebal dari pemeriksaan.
+
+Peneliti mendapat keterangannya sendiri — ia tidak tahu apa-apa soal balapan ini:
+tanggal lama disebut (supaya cocok dengan email tagihan yang terlanjur diterima),
+sebabnya dijelaskan, dan **"jangan bayar link lama"** dinyatakan eksplisit — itu
+satu-satunya kalimat yang benar-benar mencegah kehilangan uang.
+
+**Verifikasi sesudah diterapkan:** piutang tetap Rp 20.482.163, `stale_count` 0 di
+semua jadwal (benar — semua baris lama NULL), kedua invarian 0, `anon` tidak bisa
+EXECUTE. Nol pergerakan memang hasil yang diinginkan: migrasi ini memasang alatnya.
+Disimulasikan di `5FJ9J4Q6` — menggeser jadwalnya membuat 2 dari 3 peristiwa basi
+dan yang lunas tetap utuh.
+
+#### 🔴 `sql/60` sempat tidak bisa dijalankan ulang — diperbaiki 2026-08-19
+
+Versi pertama berkasnya hanya memuat `ALTER TABLE` lalu menulis *"definisi lengkap
+ada di riwayat git commit ini"* — padahal DDL ketiga fungsinya **tidak ikut sama
+sekali**. Produksi punya `is_stale`, repo tidak. Klon baru yang menjalankan `sql/53`
+lalu `sql/60` mendapat fungsi versi `sql/53`, dan frontend yang membaca
+`is_stale`/`stale_count` mati tanpa ada yang salah ketik. Definisi lengkapnya
+sekarang ada di berkasnya, disalin verbatim dari `pg_get_functiondef` produksi.
+**Migrasi harus bisa dijalankan ulang dari nol; komentar tidak bisa.**
+(Belum dijalankan ulang ke produksi — produksi sudah memuatnya.)
+
+#### 🟢 "Ada baris tagihan" bukan "ada tagihan hidup" — ditutup 2026-08-19
+
+Dilaporkan dari lapangan: order `d696325a` menampilkan **dua jawaban berbeda untuk
+satu pertanyaan**. Tab Info berkata *"Invoice tagihan sudah diterbitkan, menunggu
+pelunasan"*; tab Jadwal & Bayar cuma menampilkan satu baris tercoret. Yang menyuruh
+menunggu itu yang salah — tidak ada satu pun link yang masih bisa dibayar.
+
+Sebabnya sama di kedua tempat, ditulis dua kali:
+
+| Tempat | Ukuran lama | Ukuran benar |
+|---|---|---|
+| `lifecycle.ts` → banner Info | `paymentData.hasInvoices` | `paymentData.hasOpenInvoice` |
+| `ScheduleCardList.cardStateOf` | `billing.invoices.length` | `billing.openInvoice` |
+
+Keduanya menghitung **baris**, bukan tagihan yang hidup. Baris tagihan tidak pernah
+dihapus, jadi begitu satu tagihan mati keduanya berbohong selamanya. Kartunya bahkan
+sudah menampilkan **"Rp 0 ditagih"** di layar yang sama — dua pernyataan yang saling
+membantah di satu kartu.
+
+Yang lewat batas bayar **tetap** terhitung terbuka: itu piutang, bukan tagihan mati.
+
+Terukur sebelum diubah: **1 order** di seluruh basis data yang semua tagihannya mati
+tanpa uang masuk — persis yang dilaporkan. Di tingkat jadwal **101** jadwal berpindah
+`waiting_payment` → `awaiting_invoice`; semuanya yang tagihan hidupnya cuma `pending`
+di `transactions`, yaitu checkout yang ditinggalkan, dan kartunya memang sudah
+menampilkan Rp 0 untuk mereka.
+
+Kartu tanpa tagihan hidup juga berhenti menawarkan **"Tagih Susulan"** — tidak ada
+tagihan pertama yang bisa disusuli — dan menawarkan **"Terbitkan Tagihan"** beserta
+alasannya.
+
+#### ❌ KOREKSI: "1 hari kerja vs 1 jam" BUKAN kontradiksi — 2026-08-19
+
+Sempat dicatat di sini sebagai bug terbuka. **Salah, dan sudah diverifikasi salah.**
+`calloutAwaitingInvoice` ("maksimal 1 hari kerja") hanya bisa tampil kalau
+`awaitingInvoice` true, dan
+[`deriveOrderUiState.ts:151`](multi-step-form/src/components/status/deriveOrderUiState.ts#L151)
+mensintesis `/dashboard/payment/:id` untuk **setiap** order `slot_booked_by='user'`
+di step 2. Jadi kartu ordinal 1 hanya sampai ke `awaiting_invoice` kalau slotnya
+**dipesan admin** — dan slot admin tidak pernah lepas sendiri (`slotReleaseDeadline`
+mengembalikan `null` kecuali `slotBookedBy === 'user'`). Janjinya ditepati.
+
+Untuk jadwal ke-2 dst. copy-nya beda (`calloutAwaitingInvoiceSchedule`) dan tidak
+menjanjikan waktu apa pun; terukur **0** jadwal ordinal >1 yang `slot_booked_by='user'`.
+
+#### 🟢 Yang SUNGGUHAN berbohong: satu kalimat tenggat untuk tiga akibat — ditutup 2026-08-19
+
+Ditemukan saat memverifikasi koreksi di atas. `booking.deadlineCause`
+(`'slot' | 'cutoff' | null`) sudah dihitung sejak lama, dibawa sampai ke
+`ScheduleCard`, dan **tidak pernah dirender**. Akibatnya satu kalimat dipakai untuk
+ketiga keadaan:
+
+> "Bayar sebelum batas waktu agar reservasi slot tidak dilepas ke pengguna lain."
+
+Benar hanya untuk `'slot'`. Untuk `'cutoff'` (batas 14.00 WIB) **slot tidak dilepas**
+— aturan itu eksplisit di `slotHold.ts`; yang habis adalah waktu admin menyiapkan
+halaman iklan. Untuk jadwal ke-2 dst. `deadline` selalu `null`, jadi kalimat itu
+menyebut "batas waktu" yang tidak ditampilkan di mana pun.
+
+Terukur: dari jadwal yang sedang menunggu bayar, **2 admin-booked : 1 user-booked** —
+kalimat yang salah tampil untuk mayoritasnya.
+
+**Aturan pemilik produk 2026-08-19 — jam hanya untuk slot milik peneliti:**
+
+| `slot_booked_by` | Tenggat ditampilkan? | Kalimatnya |
+|---|---|---|
+| `user` | **ya**, jam WIB di judul banner | konsekuensi sesuai `deadlineCause` (slot lepas / tanggal harus diganti) |
+| `admin` / NULL / jadwal ke-2 dst. | **tidak** | *"Jadwal iklan memiliki slot terbatas setiap harinya. Lakukan pembayaran sebelum slotnya terpenuhi."* |
+
+Alasannya: **slot yang dipesan admin dilepas MANUAL lewat dashboard admin, kapan
+saja.** Tidak ada jam yang jujur bisa disebut untuknya, jadi jangan mengarang satu.
+Kasus hari-H tetap tertangani keadaan `too_late_today` yang terpisah.
+
+⚠️ Gerbangnya `isUserBooked`, **bukan** `paymentDeadlineCause` — tapi alasan yang
+pertama kali kutulis di sini SALAH dan sudah dicabut. Aku menulis "peneliti yang
+memesan pukul 13.50"; itu mustahil. Batas pemesanan hari-H 13.00 WIB **memang
+ditegakkan**, di ketiga jalur yang bisa menulis `slot_booked_by='user'`:
+
+| Penulis | Penjaga |
+|---|---|
+| `submitOrder.ts:207` | `throw OrderSubmitError('past_cutoff')` tepat sebelum INSERT (baris 120) |
+| `rebookSlotForSubmission` | `handleRebook` memblokir + toast (`PaymentCheckoutPage.tsx:306`) |
+| `ScheduleForm.tsx:299` | menulis `slot_booked_by: 'admin'`, jadi bukan slot peneliti |
+
+Karena reservasi mandiri untuk hari ini selalu terjadi sebelum 13.00, hold 1 jamnya
+selalu berakhir sebelum 14.00 — **cutoff tidak pernah menang karena jam**.
+
+Cabang `'cutoff'` tetap dipertahankan karena ia hidup lewat pintu lain:
+`slot_booked_by='user'` dengan `slot_reserved_at` **NULL atau rusak**.
+`slotReleaseDeadline` mengembalikan `null` di situ — slotnya tidak pernah lepas
+sendiri, keadaan yang dipagari eksplisit oleh dua tes di `slotHold.test.ts` — jadi
+satu-satunya batas yang tersisa memang cutoff-nya, dan kalimat `'slot'` justru yang
+akan berbohong di sana.
+
+⚠️ Semua penjaga 13.00 itu **client-side**; tidak ada CHECK maupun trigger di DB.
+Belum sempat diukur berapa baris produksi yang `slot_booked_by='user'` tapi
+`slot_reserved_at` NULL — koneksi DB putus di sesi ini.
+
+Ditegakkan di `deriveOrderUiState` (satu tempat), jadi baris konteks chat ikut
+berhenti menyebut jam untuk slot admin — dan berhenti mengklaim "slot dilepas jika
+lewat" saat sebabnya cutoff.
+
+⚠️ **Masih dibiarkan (sengaja):** jadwal ke-2 dst. tidak menampilkan tenggat sama
+sekali walau batas 14.00 WIB tetap berlaku untuk mereka. Mengisinya tanpa ikut
+membawa keadaan `too_late_today` akan memunculkan tenggat yang lewat tanpa
+mengubah apa pun — menukar kelalaian dengan kontradiksi baru.
+
+### 00Q. 🟢 Task 13 selesai di branch — Extra Ad pindah ke jadwal (`sql/63`/`64`, 2026-08-19)
+
+**Aturan baru dari pemilik produk: KILAT TIDAK PUNYA KUOTA IKLAN TAMBAHAN.**
+Kolam tambahan (`MAX_EXTRA_ADS_PER_DAY` = 4/hari, di samping 4 reguler) adalah
+kolam di KALENDER IKLAN. Kilat dijual lewat slot jam (8/11/14/17 WIB, 2 kuota per
+slot) dan tidak punya kolam kedua.
+
+#### Angka backfill — mengoreksi dokumen rencana
+
+| | |
+|---|---|
+| jadwal terbaca tambahan (halaman **atau** `[EXTRA_AD]`) | 25 |
+| — reguler → **di-backfill** | **24** (21 order: 21 ordinal 1 + 3 perpanjangan) |
+| — kilat → **ditinggal `false`** | **1** |
+
+Baris ke-25 itu `RZ8R6SWR` ("JFSUHUD Pariwisata Sunda", `admin_notes` =
+`'[EXTRA_AD]'`). Ia **belum pernah salah hitung** — `start_date`-nya NULL, jadi ia
+tidak pernah masuk lingkaran penghitungan kalender. Yang dimatikan aturan ini
+adalah bom waktunya: begitu jadwal itu diberi tanggal, kode lama membuangnya ke
+`extraCounts` dan ia **lolos dari kuota Kilat tanpa jejak**.
+
+#### Kenapa aturannya ditegakkan tiga lapis dengan nada berbeda
+
+| Lapis | Perilaku | Alasan |
+|---|---|---|
+| trigger `BEFORE` di `ad_schedules` | membersihkan **diam-diam** | jalur mesin. Konversi reguler→kilat (`convertDistributionType`) harus **berhasil**, bukan gagal — dan hasil benarnya adalah flag tambahannya ikut lepas |
+| `CHECK ad_schedules_kilat_never_extra` | **menjamin** | tidak akan pernah berbunyi selama triggernya hidup; gunanya justru itu — kalau triggernya suatu hari dilepas, barisnya tetap tidak bisa berbohong |
+| `set_schedule_extra_ad()` | menolak **KERAS** | satu-satunya tempat MANUSIA menyatakan maksud. Salah klik harus berbunyi, bukan dibersihkan diam-diam |
+
+#### `survey_pages.is_extra_ad` tidak di-drop — ia jadi cermin
+
+Lima tempat masih membacanya dan tidak disentuh: `adOrdering.ts` +
+`functions/api/surveys.js` (urutan kartu di feed aplikasi), `publish-pages/types.ts`,
+`SubmissionsTableRow.tsx`, `CampaignActions.tsx`. Dibiarkan lepas, admin menandai
+sebuah jadwal "Tambahan", papan kapasitas memindahkannya — dan kelima layar itu
+tetap bilang "Regular Ad".
+
+Dijaga **sepasang** trigger, bukan satu, karena urutan kejadiannya bisa terbalik:
+halaman lahir saat order LUNAS (`ensure_survey_page`), sedangkan flagnya bisa
+disetel jauh sebelum itu. Push saat jadwal berubah, pull saat halaman lahir.
+
+⚠️ **Batasnya, disengaja:** cermin mengikuti jadwal ordinal 1 saja. Order yang
+jadwal ke-2-nya tambahan sementara jadwal pertamanya reguler diurutkan sebagai
+reguler di feed. Tetap lebih benar daripada sebelumnya (yang tidak punya konsep
+per-jadwal sama sekali), dan "iklan mana yang sedang tayang" bukan pertanyaan yang
+bisa dijawab trigger tanpa cron.
+
+#### 🔴 `sql/64` — backfill yang tidak menyebar, dan pelajarannya
+
+Verifikasi sesudah `sql/63` diterapkan memulangkan **9**, bukan 0: sembilan order
+yang jadwalnya sudah `is_extra_ad = true` sementara halamannya masih `false`.
+
+Sebabnya urutan **di dalam `sql/63` sendiri**. Backfill jalan di bagian 2, trigger
+pendorong cermin dipasang di bagian 7, dan **trigger tidak berlaku surut**. Yang
+tertinggal persis order yang ke-extra-annya cuma datang dari penanda teks
+`[EXTRA_AD]` — di sana halamannya memang masih `false`.
+
+> **Pelajaran:** backfill yang mengandalkan trigger untuk menyebar harus dijalankan
+> SESUDAH triggernya terpasang, atau menyebarkannya sendiri di pernyataan yang sama.
+
+Ditutup `sql/64` (satu `UPDATE`). Diperiksa sebelum menulis: kesembilannya sudah
+lewat jendela tayang, jadi **nol iklan berjalan** berpindah urutan. Sesudah
+diterapkan: mismatch **0**, halaman tambahan 10 → **19**, pelanggaran kilat **0**.
+
+#### Yang ikut diperbaiki di jalan
+
+**`extraAdMap` dan query `survey_pages`-nya dihapus.** Itu kaki yang MENGGANTUNG di
+produksi 2026-08-19 (317 UUID → URL ±12 KB → permintaan tidak pernah kembali) dan
+menghentikan seluruh penguncian slot. Kedua kaki `fetchSlotAvailability` kini lewat
+RPC `SECURITY DEFINER` dan membawa `is_extra_ad` sendiri — jadi jadwal ke-2 berhenti
+diam-diam dihitung reguler. Efek samping: kaki ordinal 1 berhenti bergantung pada
+policy `"User View Own Submissions"` yang ber-`USING (true)`.
+
+**Tagihan mandiri memakai voucher TAGIHAN, bukan voucher order.** `create-payment.js`
+membaca `form_submissions.voucher_code` — yang diketik peneliti saat memesan. Kalau
+admin sudah menerbitkan tagihan dengan voucher lain, itulah harga yang dijanjikan.
+Urutan yang wajar berakhir buruk: admin menagih dengan voucher X → tagihan
+kedaluwarsa → peneliti menekan "Bayar Sekarang" → tagihan baru lahir dengan voucher
+order. Efek keduanya lebih halus dan lebih sering: `amount` inilah yang dipakai blok
+pakai-ulang untuk **mencocokkan** tagihan hidup, jadi dengan voucher berbeda
+cocoknya selalu gagal — tagihan admin yang MASIH hidup pun diduplikasi.
+Hanya voucher tagihan yang **berisi** yang menang; kolomnya baru lahir di `sql/53`
+jadi baris lebih tua NULL, dan menyita diskon dari baris-baris itu lebih merusak
+daripada gagal menghormati admin yang sengaja mengosongkan voucher.
+
+#### ⚠️ Temuan sampingan yang BELUM ditutup
+
+`form_submissions` punya policy `"User View Own Submissions"` dengan
+`USING (true)` untuk peran `authenticated` — **setiap akun yang login bisa membaca
+seluruh baris order**, termasuk nama, email, telepon, dan universitas peneliti lain.
+`sql/47` hanya menutup `anon`. Migrasi ini kebetulan melepas satu pembacanya
+(kalender ketersediaan), tapi lubangnya tetap terbuka. Bukan bagian Task 13.
+
+---
 
 ### 00A. 🟢 Cron notifikasi — SELESAI 2026-08-18 lewat Brevo
 
@@ -1758,6 +2235,18 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 
 ## Jebakan yang sudah memakan waktu — jangan diulang
 
+0. **`invoices` SENDIRIAN bukan sumber kebenaran uang.** Rencana Task 13
+   memutuskan *"sumber kebenaran uang = invoice"*, dan diterapkan harfiah sebagai
+   `SELECT FROM invoices` ia **menghapus Rp 44.759.000 lunas dari layar**.
+   Terukur 2026-08-19: **518** jadwal punya baris `transactions`, **328** punya
+   baris `invoices`, dan **190 punya transaksi tapi NOL invoice** — 79 di
+   antaranya sudah dibayar. Sebabnya `create-payment.js` **tidak pernah menulis
+   `invoices`**; pembayaran swalayan hanya lahir di `transactions`, dan baris
+   `invoices` cuma terbit saat admin menagih manual. Baca keduanya, gabungkan
+   ber-kunci `payment_id` — itulah yang `schedule_billing()` (`sql/53`) lakukan.
+   Aturan dedupnya **beda per tabel**: percobaan bayar berbagi `payment_id` di
+   `transactions` (satu jadwal punya 29), sementara di `invoices` nol jadwal
+   punya baris melebihi jumlah `payment_id` uniknya.
 1. **`form_submissions.status` BUKAN kolom status.** Isinya jenjang pendidikan
    peneliti (`Mahasiswa`, `Dosen`, `Mahasiswa S2 (Master)`, …). Yang dibaca
    `deriveLifecycle` sebagai `status` sebenarnya `submission_status` yang

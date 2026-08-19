@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { getOwnProfile, updateOwnProfile, isProfileComplete, type ResearcherProfile, supabase } from '@/utils/supabase';
+import { getOwnProfile, updateOwnProfile, isProfileComplete, getAuthUser, type ResearcherProfile, supabase } from '@/utils/supabase';
 import { ACADEMIC_STATUS_OPTIONS, DEPARTMENT_OPTIONS, UNIVERSITY_OPTIONS, REFERRAL_SOURCE_OPTIONS, collapseReferralSource, expandReferralSource } from '@/constants/biodata';
 import { Combobox } from '@/components/ui/combobox';
 import { Loader2, User, GraduationCap, Megaphone } from 'lucide-react';
@@ -49,11 +49,11 @@ const getReferralLabel = (val: string, t: any) => {
  * disimpan setelah rilis skema baru (flag user_metadata.profile_filled_v2).
  */
 export async function isProfileGateSatisfied(): Promise<boolean> {
-    const [profile, { data }] = await Promise.all([
+    const [profile, user] = await Promise.all([
         getOwnProfile(),
-        supabase.auth.getUser(),
+        getAuthUser(),
     ]);
-    return isProfileComplete(profile) && data.user?.user_metadata?.profile_filled_v2 === true;
+    return isProfileComplete(profile) && user?.user_metadata?.profile_filled_v2 === true;
 }
 
 interface ProfileFormProps {

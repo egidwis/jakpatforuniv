@@ -25,7 +25,7 @@ import { SubmissionDetailSheet } from './submissions/SubmissionDetailSheet';
 import { useRowSelection } from './data-list/useRowSelection';
 import './InternalDashboard.css';
 
-const EMPTY_PAYMENT_STATE: PaymentState = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
+const EMPTY_PAYMENT_STATE: PaymentState = { hasInvoices: false, hasOpenInvoice: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
 
 const STATUS_FILTER_OPTIONS = [
   { id: 'all', label: 'All' },
@@ -317,7 +317,26 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
             return normalizeDate(b.created_at) - normalizeDate(a.created_at);
           });
 
-          const paymentMap: Record<string, { hasInvoices: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean, latestPaymentId?: string | null }> = {};
+          /**
+           * ⚠️ `hasEverPaid` DI SINI SENGAJA TETAP `.some(paid)` — JANGAN
+           * DISERAGAMKAN DENGAN `ScheduleBilling.isSettled`.
+           *
+           * Namanya sama dengan yang dibuang dari `fetchSchedulePayments`
+           * (Task 13), tapi pertanyaannya berbeda. Yang ini berlingkup ORDER
+           * dan cuma dipakai satu hal: apakah hitung mundur "slot kedaluwarsa"
+           * boleh tampil (`CampaignActions.tsx`). Pertanyaannya "apakah ada
+           * uang yang pernah masuk?" — dan untuk itu `.some(paid)` memang
+           * jawaban yang benar.
+           *
+           * Menggantinya dengan `isSettled` akan memunculkan "Expired / <1h"
+           * pada order yang baru lunas sebagian, lalu slotnya dilepas padahal
+           * pembayarannya sudah diterima. Itu regresi, bukan perbaikan.
+           *
+           * Yang berbohong dan sudah diperbaiki adalah pemakaian per-JADWAL:
+           * di sana satu invoice lunas dipakai mengumumkan "Lunas" walau masih
+           * ada tagihan susulan terbuka.
+           */
+          const paymentMap: Record<string, { hasInvoices: boolean, hasOpenInvoice: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean, latestPaymentId?: string | null }> = {};
 
           if (mergedTx.length > 0) {
             transformed.forEach(sub => {
@@ -330,8 +349,21 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                 
                 // Get the latest pending payment URL for quick copy
                 const latestPendingTx = subTxs.find(t => !['paid', 'completed'].includes(t.status));
+                /**
+                 * ⚠️ "PUNYA TAGIHAN" DAN "PUNYA TAGIHAN HIDUP" ITU DUA
+                 * PERTANYAAN BERBEDA — dan `deriveLifecycle` menanyakan yang
+                 * kedua. Baris tagihan tidak pernah dihapus, jadi sesudah
+                 * peneliti menjadwalkan ulang, `hasInvoices` tetap true untuk
+                 * selamanya walau satu-satunya baris yang tersisa sudah
+                 * kedaluwarsa. Order d696325a memakai itu untuk mengumumkan
+                 * "Invoice sudah diterbitkan, menunggu pelunasan" — padahal
+                 * tidak ada satu pun link yang masih bisa dibayar.
+                 */
+                const hasOpenInvoice = subTxs.some(t => t.status === 'pending');
+
                 paymentMap[sub.id] = {
                   hasInvoices: true,
+                  hasOpenInvoice,
                   latestStatus: latestStatus,
                   invoiceCount: subTxs.length,
                   latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null,
@@ -341,13 +373,13 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                 };
                 sub.payment_status = latestStatus;
               } else {
-                paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false, latestPaymentId: null };
+                paymentMap[sub.id] = { hasInvoices: false, hasOpenInvoice: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false, latestPaymentId: null };
                 if (sub.payment_status === 'pending') sub.payment_status = undefined;
               }
             });
           } else {
             transformed.forEach(sub => {
-              paymentMap[sub.id] = { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false, latestPaymentId: null };
+              paymentMap[sub.id] = { hasInvoices: false, hasOpenInvoice: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null, latestAmount: 0, hasEverPaid: false, latestPaymentId: null };
               if (sub.payment_status === 'pending') sub.payment_status = undefined;
             });
           }
@@ -1333,7 +1365,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                 <SubmissionsMobileCard
                   key={submission.id}
                   submission={submission}
-                  paymentData={paymentStates[submission.id] || { hasInvoices: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null }}
+                  paymentData={paymentStates[submission.id] || EMPTY_PAYMENT_STATE}
                   existingPage={existingPages[submission.id]}
                   isScheduled={scheduledSubmissionIds.has(submission.id)}
                   onStatusChange={handleStatusChange}

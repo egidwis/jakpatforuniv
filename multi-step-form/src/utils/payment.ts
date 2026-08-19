@@ -65,9 +65,27 @@ export const createPayment = async (paymentData: PaymentData) => {
     }
 
     return paymentUrl;
-  } catch (err) {
-    console.error('Error creating DOKU payment:', err);
-    throw new Error('Gagal membuat pembayaran DOKU.');
+  } catch (err: any) {
+    /*
+      ⚠️ JANGAN TELAN PESAN SERVERNYA.
+      Versi sebelumnya membuang `err.response.data` dan melempar kalimat
+      generik, jadi 409 ("slot sudah kedaluwarsa"), 502 ("tagihan tidak
+      tercatat"), dan 500 ("kredensial DOKU") semuanya terbaca sama di konsol
+      — mustahil didiagnosis tanpa membuka Network tab. Sejak tagihan terbit
+      otomatis saat slot dikunci, kegagalannya juga tidak lagi punya layar
+      untuk mengeluh; konsol adalah satu-satunya tempat.
+    */
+    const serverError = err?.response?.data?.error;
+    const serverDetail = err?.response?.data?.detail;
+    const status = err?.response?.status;
+    console.error(
+      '[create-payment] gagal'
+      + (status ? ` (HTTP ${status})` : '')
+      + (serverError ? `: ${serverError}` : '')
+      + (serverDetail ? ` — ${serverDetail}` : ''),
+      err,
+    );
+    throw new Error(serverError || 'Gagal membuat pembayaran DOKU.');
   }
 };
 
