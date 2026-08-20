@@ -449,7 +449,7 @@ export function SurveyPage() {
         // Validation for Step 2 (Screening)
         if (currentStep === 2) {
             if (!formData.jakpat_id) {
-                toast.error('Please enter your Jakpat ID');
+                toast.error('Mohon masukkan Jakpat ID kamu');
                 return;
             }
             if (duplicateError) {
@@ -1000,7 +1000,7 @@ export function SurveyPage() {
                                             name="jakpat_id"
                                             value={formData.jakpat_id}
                                             onChange={handleInputChange}
-                                            placeholder="Jakpat ID kamu (min. 3 karakter)"
+                                            placeholder="Contoh: JAKPAT.50BX0 atau tegarerputra"
                                             className="bg-white pr-10" // Add padding right for loader
                                             autoFocus
                                         />

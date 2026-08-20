@@ -14,41 +14,56 @@
  */
 
 /**
- * Strip the wrappers people actually paste. Never rejects, never reshapes the
- * ID itself.
- *
- * Case is left alone on purpose. Stored values are read as-is by the lottery
- * platform, and whether their matching is case-sensitive is still an open
- * question with them — lowercasing here could silently break a match that
- * works today. Revisit once that is answered.
+ * Strip the wrappers people actually paste (https://jakpat.net/s/..., stray spaces).
+ * Preserves the ID itself, including custom usernames (e.g. tegarerputra) and default IDs (JAKPAT.50BX0).
+ * Case is left alone on purpose.
  */
 export function normalizeJakpatId(raw: string): string {
+  if (!raw) return '';
   return raw
+    .trim()
     .replace(/\s+/g, '')
     .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
     .replace(/^jakpat\.net\/s\//i, '');
 }
 
 /**
- * Advisory check for standard Jakpat ID format.
- * Non-standard formats (such as IDs containing '.', '-', '_') are allowed without warning.
+ * Advisory check for common respondent input mistakes:
+ * - Entering an email address (contains '@')
+ * - Pasting non-Jakpat links (contains slashes or external web domains)
+ * - Entering a phone number instead of Jakpat ID
+ *
+ * Custom Jakpat IDs (e.g. tegarerputra), standard IDs (JAKPAT.50BX0, 50BX0),
+ * and other user-chosen formats pass without warning.
  *
  * @returns a human-readable warning, or null when nothing looks off.
  */
 export function jakpatIdWarning(value: string): string | null {
-  const id = normalizeJakpatId(value);
+  const trimmed = (value || '').trim();
+  if (!trimmed) return null;
+
+  const id = normalizeJakpatId(trimmed);
   if (!id) return null;
 
-  // Allow '.', '-', '_' or other non-alphanumeric characters without warning
-  if (/[._-]/.test(id)) {
-    return null;
+  // Check if respondent entered an email address
+  if (id.includes('@')) {
+    return 'Kamu memasukkan alamat email. Mohon masukkan Jakpat ID kamu.';
   }
 
-  if (id.length !== 5) {
-    return 'Jakpat ID biasanya 5 karakter. Coba cek lagi.';
+  // Check if respondent accidentally pasted a non-Jakpat URL or external link
+  if (
+    id.includes('/') ||
+    /^(docs\.google|forms\.gle|bit\.ly|linktr\.ee|instagram\.com|facebook\.com|t\.me|drive\.google)/i.test(id) ||
+    /\.(com|org|net|id|edu|co|io|app)\//i.test(id)
+  ) {
+    return 'Tampaknya kamu memasukkan tautan lain. Mohon masukkan Jakpat ID kamu.';
   }
-  if (!/[0-9]/.test(id)) {
-    return 'Jakpat ID biasanya memuat minimal satu angka. Pastikan ini bukan nama kamu.';
+
+  // Check if respondent entered a phone number (e.g. 081234567890, +628123456789)
+  if (/^(\+?62|0)8[0-9]{8,}$/.test(id)) {
+    return 'Kamu memasukkan nomor HP. Mohon masukkan Jakpat ID dari aplikasi Jakpat.';
   }
+
   return null;
 }

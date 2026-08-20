@@ -16,29 +16,45 @@ function check(name: string, actual: unknown, expected: unknown) {
 
 console.log('normalizeJakpatId');
 check('leaves a clean id alone', normalizeJakpatId('ks8oh'), 'ks8oh');
-check('trims surrounding space', normalizeJakpatId('  ks8oh  '), 'ks8oh');
+check('leaves custom username alone', normalizeJakpatId('tegarerputra'), 'tegarerputra');
+check('leaves default jakpat id alone', normalizeJakpatId('JAKPAT.50BX0'), 'JAKPAT.50BX0');
+check('trims surrounding space', normalizeJakpatId('  tegarerputra  '), 'tegarerputra');
 check('removes inner space', normalizeJakpatId('ks 8oh'), 'ks8oh');
-check('strips https prefix', normalizeJakpatId('https://jakpat.net/s/ks8oh'), 'ks8oh');
-check('strips http prefix', normalizeJakpatId('http://jakpat.net/s/ks8oh'), 'ks8oh');
+check('strips https prefix with default ID', normalizeJakpatId('https://jakpat.net/s/JAKPAT.50BX0'), 'JAKPAT.50BX0');
+check('strips https prefix with custom username', normalizeJakpatId('https://jakpat.net/s/tegarerputra'), 'tegarerputra');
+check('strips http prefix', normalizeJakpatId('http://jakpat.net/s/50bx0'), '50bx0');
+check('strips www prefix', normalizeJakpatId('https://www.jakpat.net/s/JAKPAT.50BX0'), 'JAKPAT.50BX0');
 check('strips bare domain prefix', normalizeJakpatId('jakpat.net/s/ks8oh'), 'ks8oh');
-check('preserves jakpat. prefix', normalizeJakpatId('jakpat.ks8oh'), 'jakpat.ks8oh');
-check('is case-preserving', normalizeJakpatId('KS8OH'), 'KS8OH');
+check('is case-preserving', normalizeJakpatId('JAKPAT.50BX0'), 'JAKPAT.50BX0');
 check('handles empty input', normalizeJakpatId(''), '');
 check('pasted url with spaces', normalizeJakpatId(' https://jakpat.net/s/qt0yt '), 'qt0yt');
 
-console.log('jakpatIdWarning — real-looking ids pass silently');
-for (const id of ['ks8oh', 'qt0yt', '50bx0', '0bxr5', '8uvvh', '2fuad', 'z8wii', 'vq4c9', 'eefafa.eas']) {
-  check(id, jakpatIdWarning(id), null);
+console.log('jakpatIdWarning — custom and default ids pass silently');
+for (const id of [
+  'ks8oh',
+  'qt0yt',
+  '50bx0',
+  'JAKPAT.50BX0',
+  'jakpat.50bx0',
+  'tegarerputra',
+  'indah',
+  'dimas',
+  'ayu',
+  'jakpat123',
+  'eefafa.eas',
+  'user_name-123'
+]) {
+  check(`valid id pass silently: ${id}`, jakpatIdWarning(id), null);
 }
-check('normalises before judging', jakpatIdWarning('https://jakpat.net/s/ks8oh'), null);
-check('uppercase is not warned about', jakpatIdWarning('KS8OH'), null);
+check('normalises before judging', jakpatIdWarning('https://jakpat.net/s/tegarerputra'), null);
 check('empty input is not warned about', jakpatIdWarning(''), null);
-check('ids with dot pass without warning', jakpatIdWarning('eefafa.eas'), null);
 
-console.log('jakpatIdWarning — junk gets flagged');
-check('five letters, no digit', jakpatIdWarning('indah') !== null, true);
-check('too short', jakpatIdWarning('ayu') !== null, true);
-check('too long', jakpatIdWarning('jakpat123') !== null, true);
+console.log('jakpatIdWarning — obvious mistakes get flagged');
+check('email gets flagged', jakpatIdWarning('tegar@gmail.com') !== null, true);
+check('phone number 08... gets flagged', jakpatIdWarning('081234567890') !== null, true);
+check('phone number +628... gets flagged', jakpatIdWarning('+6281234567890') !== null, true);
+check('other external URL gets flagged', jakpatIdWarning('https://docs.google.com/forms/d/e/123') !== null, true);
+check('forms.gle link gets flagged', jakpatIdWarning('https://forms.gle/xyz') !== null, true);
 
 console.log(failures === 0 ? '\nAll passed.' : `\n${failures} failure(s).`);
 if (failures > 0) process.exit(1);
