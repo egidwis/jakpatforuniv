@@ -161,46 +161,120 @@ export async function sendAnalyzerAiPrompt(
 }
 
 /**
- * Generates initial starter blocks immediately upon CSV upload without waiting for first prompt.
+ * Generates an initial multi-block deep storytelling analysis immediately upon CSV upload.
  */
-export function generateInitialCanvasBlocks(summary: DatasetSummary): CanvasBlock[] {
-  const blocks: CanvasBlock[] = [];
+export async function generateDeepSurveyStory(
+  summary: DatasetSummary,
+  rawRows: Record<string, string>[]
+): Promise<{ blocks: CanvasBlock[]; welcomeMessage: string }> {
+  // Try generating via AI for deep insight
+  try {
+    const demoCol = summary.detectedDemographics[0] || summary.columns[0]?.label || 'Kategori';
+    const mainCol = summary.columns.find(c => c.label !== demoCol && (c.type === 'likert' || c.type === 'categorical'))?.label || summary.columns[1]?.label || 'Variabel';
 
-  // 1. Metric Overview Block
-  const metricItems = [
-    { label: 'Total Responden', value: summary.totalRows.toLocaleString('id-ID'), subtext: 'Sampel terdata' },
-    { label: 'Total Variabel/Pertanyaan', value: summary.totalColumns, subtext: 'Kolom kuesioner' }
-  ];
+    const promptText = `Lakukan deep scanning terhadap seluruh dataset survei "${summary.fileName}" (${summary.totalRows} responden, ${summary.totalColumns} variabel).
+Susun Executive Storytelling Report lengkap yang terdiri dari:
+1. Block "narrative": "3 Temuan Utama & Pola Signifikan Riset" (sertakan angka konkret n=... dan persentase %).
+2. Block "chart": "Distribusi Demografi: ${demoCol}" (pilih donut jika kategori <=4, bar jika >4).
+3. Block "crosstab": "Tabulasi Silang: ${demoCol} vs ${mainCol}" (tentukan rowVariable: "${demoCol}", colVariable: "${mainCol}").
+4. Block "chart": "Distribusi Indikator Utama: ${mainCol}".
+5. Block "narrative": "Kesimpulan Sementara & Implikasi Penelitian".
 
-  if (summary.detectedDemographics.length > 0) {
-    metricItems.push({
-      label: 'Variabel Demografi',
-      value: summary.detectedDemographics.length,
-      subtext: summary.detectedDemographics.slice(0, 2).join(', ')
-    });
+Kembalikan respon JSON dengan actions "add_block" untuk setiap blok di atas secara berurutan.`;
+
+    const initialHistory: AnalyzerChatMessage[] = [
+      {
+        id: `msg_system_init`,
+        role: 'user',
+        content: promptText,
+        timestamp: new Date().toISOString()
+      }
+    ];
+
+    const aiRes = await sendAnalyzerAiPrompt(initialHistory, summary, []);
+    
+    if (aiRes && aiRes.actions && aiRes.actions.length > 0) {
+      const generatedBlocks: CanvasBlock[] = [];
+      
+      aiRes.actions.forEach((act, idx) => {
+        if (act.block) {
+          generatedBlocks.push({
+            id: `block_deep_${Date.now()}_${idx}`,
+            type: act.block.type || 'narrative',
+            title: act.block.title || `Temuan Analisis ${idx + 1}`,
+            narrative: act.block.narrative,
+            chartConfig: act.block.chartConfig,
+            crossTabConfig: act.block.crossTabConfig,
+            metricConfig: act.block.metricConfig,
+            createdAt: new Date().toISOString()
+          });
+        }
+      });
+
+      if (generatedBlocks.length >= 2) {
+        return {
+          blocks: generatedBlocks,
+          welcomeMessage: aiRes.message || `Halo! Saya telah melakukan deep scanning terhadap ${summary.totalRows} responden dan menyusun canvas analisis lengkap di sebelah kiri. Silakan jelajahi temuan-temuan di atas atau ajukan pertanyaan spesifik!`
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[Analyzer AI] Deep story generation falling back to local profiler:', err);
   }
 
+  // Fallback to rich deterministic storytelling generated from dataset profiler
+  return generateDeterministicStory(summary, rawRows);
+}
+
+/**
+ * Deterministic rich storytelling fallback if AI prompt is offline/slow.
+ */
+function generateDeterministicStory(
+  summary: DatasetSummary,
+  rawRows: Record<string, string>[]
+): { blocks: CanvasBlock[]; welcomeMessage: string } {
+  const blocks: CanvasBlock[] = [];
+  const demoCols = summary.detectedDemographics;
+  const firstDemo = summary.columns.find(c => demoCols.includes(c.label)) || summary.columns[0];
+  const secondCol = summary.columns.find(c => c.label !== firstDemo?.label && (c.type === 'categorical' || c.type === 'likert')) || summary.columns[1];
+
+  // 1. Executive Metric & Key Highlights
+  const topCategories = summary.columns.slice(0, 3).map(c => {
+    const topEntry = Object.entries(c.counts).sort((a, b) => b[1] - a[1])[0];
+    return topEntry ? `**${c.label}** mayoritas didominasi oleh **${topEntry[0]}** (${c.percentages[topEntry[0]] || 0}%, n=${topEntry[1]})` : '';
+  }).filter(Boolean);
+
   blocks.push({
-    id: `block_${Date.now()}_1`,
-    type: 'metric',
-    title: 'Ringkasan Sampel Penelitian',
-    metricConfig: metricItems,
+    id: `block_${Date.now()}_takeaways`,
+    type: 'narrative',
+    title: '🌟 3 Temuan Utama & Pola Signifikan Riset',
+    narrative: `Berdasarkan pemindaian awal terhadap **${summary.totalRows} responden** dan **${summary.totalColumns} variabel kuesioner**, berikut adalah temuan utama yang teridentifikasi:\n\n` +
+      topCategories.map((t, i) => `${i + 1}. ${t}.`).join('\n\n') +
+      `\n\n*Temuan ini siap menjadi dasar pembahasan mendalam untuk Bab 4 maupun laporan eksekutif.*`,
     createdAt: new Date().toISOString()
   });
 
-  // 2. First demographic or categorical chart
-  const firstChartCol = summary.columns.find(c => c.type === 'demographic' || c.type === 'categorical');
-  if (firstChartCol && Object.keys(firstChartCol.counts).length <= 8) {
-    const chartData = Object.entries(firstChartCol.counts).map(([name, value]) => ({
-      name,
-      value
-    }));
+  // 2. Metric Overview
+  blocks.push({
+    id: `block_${Date.now()}_kpi`,
+    type: 'metric',
+    title: 'Ringkasan Sampel Penelitian',
+    metricConfig: [
+      { label: 'Total Responden', value: summary.totalRows.toLocaleString('id-ID'), subtext: 'Responden Valid' },
+      { label: 'Variabel Kuesioner', value: summary.totalColumns, subtext: 'Kolom Terdata' },
+      { label: 'Variabel Demografi', value: summary.detectedDemographics.length || 1, subtext: summary.detectedDemographics.slice(0, 2).join(', ') || 'Terpetakan' }
+    ],
+    createdAt: new Date().toISOString()
+  });
 
+  // 3. Demographic Distribution Chart
+  if (firstDemo) {
+    const chartData = Object.entries(firstDemo.counts).map(([name, value]) => ({ name, value }));
     blocks.push({
-      id: `block_${Date.now()}_2`,
+      id: `block_${Date.now()}_demo_chart`,
       type: 'chart',
-      title: `Distribusi ${firstChartCol.label}`,
-      narrative: `Berdasarkan data yang dihimpun dari ${summary.totalRows} responden, mayoritas responden pada kategori **${firstChartCol.label}** didominasi oleh **${chartData[0]?.name}** sebesar ${firstChartCol.percentages[chartData[0]?.name] || 0}% (n=${chartData[0]?.value}).`,
+      title: `Distribusi Demografi: ${firstDemo.label}`,
+      narrative: `Dari total ${summary.totalRows} responden, profil demografi **${firstDemo.label}** menunjukkan bahwa kelompok terbesar adalah **${chartData[0]?.name}** dengan proporsi ${firstDemo.percentages[chartData[0]?.name] || 0}% (n=${chartData[0]?.value}), diikuti oleh kategori lainnya secara proporsional.`,
       chartConfig: {
         chartType: chartData.length <= 4 ? 'donut' : 'bar',
         xAxisKey: 'name',
@@ -211,5 +285,49 @@ export function generateInitialCanvasBlocks(summary: DatasetSummary): CanvasBloc
     });
   }
 
-  return blocks;
+  // 4. CrossTab Matrix Block
+  if (firstDemo && secondCol) {
+    blocks.push({
+      id: `block_${Date.now()}_crosstab`,
+      type: 'crosstab',
+      title: `Tabulasi Silang: ${firstDemo.label} vs ${secondCol.label}`,
+      narrative: `Tabulasi silang antara **${firstDemo.label}** dan **${secondCol.label}** menunjukkan adanya variasi preferensi dan pola jawaban responden antar kelompok demografi.`,
+      crossTabConfig: {
+        rowVariable: firstDemo.label,
+        colVariable: secondCol.label,
+        colLabels: [],
+        matrix: [],
+        totalCount: summary.totalRows
+      },
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  // 5. Main Variable Distribution Chart
+  if (secondCol) {
+    const chartData = Object.entries(secondCol.counts).map(([name, value]) => ({ name, value }));
+    blocks.push({
+      id: `block_${Date.now()}_main_chart`,
+      type: 'chart',
+      title: `Distribusi Indikator: ${secondCol.label}`,
+      narrative: `Sebaran jawaban pada variabel **${secondCol.label}** mengindikasikan bahwa responden paling banyak memilih **${chartData[0]?.name}** (${secondCol.percentages[chartData[0]?.name] || 0}%, n=${chartData[0]?.value}).`,
+      chartConfig: {
+        chartType: 'bar',
+        xAxisKey: 'name',
+        dataKeys: ['value'],
+        data: chartData
+      },
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  return {
+    blocks,
+    welcomeMessage: `Halo! Saya telah membaca dataset **${summary.fileName}** (${summary.totalRows} responden) dan secara otomatis menyusun ringkasan temuan, tabulasi silang, serta visualisasi grafik di canvas sebelah kiri. Silakan eksplorasi atau tanyakan hal spesifik!`
+  };
 }
+
+export function generateInitialCanvasBlocks(summary: DatasetSummary): CanvasBlock[] {
+  return generateDeterministicStory(summary, []).blocks;
+}
+

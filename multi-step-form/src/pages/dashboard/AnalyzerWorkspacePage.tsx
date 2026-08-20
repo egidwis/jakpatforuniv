@@ -10,7 +10,7 @@ import type {
   AnalyzerAiAction
 } from '../../components/analyzer/types';
 import { calculateCrossTab } from '../../utils/surveyCrossTab';
-import { generateInitialCanvasBlocks } from '../../utils/analyzerAiAgent';
+import { generateDeepSurveyStory, generateInitialCanvasBlocks } from '../../utils/analyzerAiAgent';
 import { CsvUploadDropzone } from '../../components/analyzer/CsvUploadDropzone';
 import { AnalyzerCanvas } from '../../components/analyzer/AnalyzerCanvas';
 import { AnalyzerCopilotSidebar } from '../../components/analyzer/AnalyzerCopilotSidebar';
@@ -22,7 +22,11 @@ import {
   Loader2,
   FileSpreadsheet,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
+  BrainCircuit,
+  CheckCircle2,
+  Search,
+  BarChart3
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -78,6 +82,11 @@ export const AnalyzerWorkspacePage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
+  // Deep Scanning State on Import
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanStep, setScanStep] = useState(0);
+  const [scanProgress, setScanProgress] = useState(10);
+
   // Project state
   const [projectTitle, setProjectTitle] = useState('Analisis Data Survei');
   const [datasetSummary, setDatasetSummary] = useState<DatasetSummary | null>(null);
@@ -98,8 +107,6 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     }
 
     const loadProject = async () => {
-      if (!user || !id) return;
-      setLoading(true);
       try {
         const { data, error } = await supabase
           .from('survey_analyses')
@@ -107,36 +114,37 @@ export const AnalyzerWorkspacePage: React.FC = () => {
           .eq('id', id)
           .single();
 
-        if (error || !data) {
-          toast.error('Project analisis tidak ditemukan.');
+        if (error) {
+          toast.error('Project tidak ditemukan');
           navigate('/dashboard/analyzer');
           return;
         }
 
         const project = data as AnalysisProject;
         setProjectTitle(project.title || 'Analisis Data Survei');
-        setDatasetSummary(project.dataset_summary);
-        setRawRows(project.raw_data_sample || []);
+        setDatasetSummary(project.dataset_summary || null);
         setCanvasBlocks(project.canvas_blocks || []);
         setChatHistory(project.chat_history || []);
+        setRawRows(project.raw_data_sample || []);
+        setLastSaved(new Date(project.updated_at));
       } catch (err) {
         console.error('Error loading project:', err);
-        toast.error('Gagal memuat data project.');
+        toast.error('Gagal memuat project');
       } finally {
         setLoading(false);
       }
     };
 
     loadProject();
-  }, [id, user, isNew, navigate]);
+  }, [id, isNew, navigate]);
 
   // 2. Auto-save project changes when state changes
   const saveProjectToSupabase = async (
-    title: string,
-    summary: DatasetSummary | null,
-    blocks: CanvasBlock[],
-    history: AnalyzerChatMessage[],
-    sampleRows: Record<string, string>[]
+    title = projectTitle,
+    summary = datasetSummary,
+    blocks = canvasBlocks,
+    history = chatHistory,
+    sampleRows = rawRows
   ) => {
     if (!user || !summary || isNew) return;
 
@@ -178,7 +186,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     }, 1200);
   };
 
-  // 3. Handle initial CSV Data Upload
+  // 3. Handle initial CSV Data Upload with Deep Scanning
   const handleCsvLoaded = async (summary: DatasetSummary, rows: Record<string, string>[]) => {
     setDatasetSummary(summary);
     setRawRows(rows);
@@ -188,42 +196,68 @@ export const AnalyzerWorkspacePage: React.FC = () => {
       : 'Analisis Data Survei';
     setProjectTitle(initialTitle);
 
-    // Generate initial canvas blocks
-    const initialBlocks = generateInitialCanvasBlocks(summary);
-    setCanvasBlocks(initialBlocks);
+    // Start animated AI Deep Scanning
+    setIsScanning(true);
+    setScanStep(0);
+    setScanProgress(15);
 
-    const welcomeMsg: AnalyzerChatMessage = {
-      id: `msg_welcome_${Date.now()}`,
-      role: 'assistant',
-      content: `Halo! Saya telah membaca dataset **${summary.fileName}** (${summary.totalRows} responden, ${summary.totalColumns} variabel). Canvas di sebelah kiri sudah saya siapkan dengan ringkasan awal. Silakan pilih salah satu saran prompt di atas atau ajukan pertanyaan spesifik tentang data Anda!`,
-      timestamp: new Date().toISOString()
-    };
-    const newChat = [welcomeMsg];
-    setChatHistory(newChat);
+    const timer1 = setTimeout(() => { setScanStep(1); setScanProgress(40); }, 900);
+    const timer2 = setTimeout(() => { setScanStep(2); setScanProgress(70); }, 2200);
+    const timer3 = setTimeout(() => { setScanStep(3); setScanProgress(90); }, 3800);
 
-    // If on /new route, create entry in Supabase and replace URL
-    if (user && isNew) {
-      try {
-        const { data, error } = await supabase
-          .from('survey_analyses')
-          .insert({
-            user_id: user.id,
-            title: initialTitle,
-            source_type: 'csv_upload',
-            dataset_summary: summary,
-            raw_data_sample: rows.slice(0, 100),
-            canvas_blocks: initialBlocks,
-            chat_history: newChat
-          })
-          .select('id')
-          .single();
+    try {
+      const { blocks, welcomeMessage } = await generateDeepSurveyStory(summary, rows);
 
-        if (!error && data?.id) {
-          navigate(`/dashboard/analyzer/${data.id}`, { replace: true });
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+
+      const hydratedBlocks = blocks.map(b => resolveCrossTabBlock(b, rows, summary) as CanvasBlock);
+
+      setScanStep(3);
+      setScanProgress(100);
+
+      setTimeout(async () => {
+        setCanvasBlocks(hydratedBlocks);
+
+        const welcomeMsg: AnalyzerChatMessage = {
+          id: `msg_welcome_${Date.now()}`,
+          role: 'assistant',
+          content: welcomeMessage,
+          timestamp: new Date().toISOString()
+        };
+        const newChat = [welcomeMsg];
+        setChatHistory(newChat);
+        setIsScanning(false);
+
+        // If on /new route, create entry in Supabase and replace URL
+        if (user && isNew) {
+          try {
+            const { data, error } = await supabase
+              .from('survey_analyses')
+              .insert({
+                user_id: user.id,
+                title: initialTitle,
+                source_type: 'csv_upload',
+                dataset_summary: summary,
+                raw_data_sample: rows.slice(0, 100),
+                canvas_blocks: hydratedBlocks,
+                chat_history: newChat
+              })
+              .select('id')
+              .single();
+
+            if (!error && data?.id) {
+              navigate(`/dashboard/analyzer/${data.id}`, { replace: true });
+            }
+          } catch (e) {
+            console.error('Error creating new analysis project:', e);
+          }
         }
-      } catch (e) {
-        console.error('Error creating new analysis project:', e);
-      }
+      }, 700);
+    } catch (err) {
+      console.error('Error during deep analysis:', err);
+      setIsScanning(false);
     }
   };
 
@@ -346,6 +380,85 @@ export const AnalyzerWorkspacePage: React.FC = () => {
       <div className="h-[80vh] flex flex-col items-center justify-center text-gray-400 gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
         <p className="text-xs">Memuat workspace analisis...</p>
+      </div>
+    );
+  }
+
+  // 7. If scanning in progress
+  if (isScanning && datasetSummary) {
+    const scanSteps = [
+      'Membaca struktur kolom & profil demografi responden...',
+      'Menganalisis frekuensi, tabulasi silang & korelasi data...',
+      'Menemukan pola anomali & key findings paling signifikan...',
+      'Menyusun narasi akademis Bab 4 & visualisasi interaktif...'
+    ];
+
+    return (
+      <div className="min-h-[85vh] flex items-center justify-center p-6 bg-gradient-to-b from-indigo-50/40 via-white to-gray-50/50">
+        <div className="w-full max-w-lg bg-white rounded-3xl border border-indigo-100/80 p-8 shadow-xl text-center relative overflow-hidden">
+          {/* Top glow decoration */}
+          <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-48 h-48 bg-indigo-500/15 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col items-center">
+            {/* Pulsing AI Icon Orb */}
+            <div className="relative mb-6">
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 animate-pulse">
+                <BrainCircuit className="w-10 h-10" />
+              </div>
+              <div className="absolute -inset-1.5 rounded-3xl bg-indigo-400/20 animate-ping -z-10" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold mb-3 border border-indigo-100">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Ask JFU AI · Deep Data Scanning</span>
+            </div>
+
+            <h2 className="text-xl font-bold text-gray-900 mb-1.5">
+              Menganalisis Pola &amp; Menemukan Insight Data
+            </h2>
+            <p className="text-xs text-gray-500 max-w-sm mb-6">
+              AI sedang memproses <strong className="text-indigo-600 font-semibold">{datasetSummary.totalRows} responden</strong> dan <strong className="text-indigo-600 font-semibold">{datasetSummary.totalColumns} variabel</strong> untuk menyusun storytelling analisis secara otomatis.
+            </p>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-gray-100 rounded-full h-2.5 mb-6 overflow-hidden p-0.5 border border-gray-200/60">
+              <div
+                className="bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 h-full rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${scanProgress}%` }}
+              />
+            </div>
+
+            {/* Stepper Checklist */}
+            <div className="w-full space-y-2.5 text-left bg-gray-50/70 p-4 rounded-2xl border border-gray-100">
+              {scanSteps.map((stepText, idx) => {
+                const isPassed = scanStep > idx;
+                const isCurrent = scanStep === idx;
+
+                return (
+                  <div
+                    key={idx}
+                    className={`flex items-center gap-2.5 text-xs transition-colors ${
+                      isPassed
+                        ? 'text-emerald-700 font-medium'
+                        : isCurrent
+                        ? 'text-indigo-700 font-bold animate-pulse'
+                        : 'text-gray-400'
+                    }`}
+                  >
+                    {isPassed ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : isCurrent ? (
+                      <Loader2 className="w-4 h-4 text-indigo-600 animate-spin shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-gray-300 shrink-0" />
+                    )}
+                    <span className="truncate">{stepText}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

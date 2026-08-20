@@ -23,33 +23,50 @@ interface AnalyzerCopilotSidebarProps {
   onApplyAiActions: (actions: any[]) => void;
 }
 
-const QUICK_PROMPT_CHIPS = [
-  {
-    icon: Users,
-    label: 'Analisis Demografi Responden',
-    prompt: 'Analisis profil demografi responden (Gender, Usia, Fakultas/Jurusan) dan tampilkan grafiknya beserta narasi deskripsi sampel.'
-  },
-  {
-    icon: BarChart2,
-    label: 'Analisis Tingkat Kepuasan/Variabel Utama',
-    prompt: 'Analisis pertanyaan skala likert dan variabel utama. Tampilkan grafik distribusi jawaban dan narasi akademiknya.'
-  },
-  {
-    icon: TableIcon,
-    label: 'Tabulasi Silang (Cross-tab)',
-    prompt: 'Buatkan tabulasi silang (cross-tabulation) antara variabel demografi dengan variabel kepuasan/pilihan utama responden.'
-  },
-  {
+function getDynamicPromptChips(summary: DatasetSummary) {
+  const chips = [];
+  const demoCol = summary.detectedDemographics[0] || summary.columns[0]?.label;
+  const secondCol = summary.columns.find(c => c.label !== demoCol && (c.type === 'categorical' || c.type === 'likert'))?.label || summary.columns[1]?.label;
+  const thirdCol = summary.columns.find(c => c.label !== demoCol && c.label !== secondCol)?.label;
+
+  if (demoCol && secondCol) {
+    chips.push({
+      icon: TableIcon,
+      label: `Tabulasi: ${demoCol} vs ${secondCol}`,
+      prompt: `Buatkan tabulasi silang mendalam antara variabel "${demoCol}" dengan "${secondCol}" dan jelaskan pola preferensi atau korelasinya.`
+    });
+  }
+
+  if (secondCol) {
+    chips.push({
+      icon: BarChart2,
+      label: `Faktor Dominan: ${secondCol}`,
+      prompt: `Analisis faktor pemicu utama pada pertanyaan "${secondCol}". Mengapa responden dominan memilih kategori tertentu?`
+    });
+  }
+
+  chips.push({
     icon: FileText,
-    label: 'Draf Pembahasan Bab 4 Skripsi',
-    prompt: 'Susun draf narasi komprehensif Bab 4 Hasil dan Pembahasan berdasarkan temuan data di atas dengan gaya bahasa ilmiah akademik.'
-  },
-  {
+    label: 'Draf Bab 4: Hasil & Pembahasan',
+    prompt: 'Susun draf komprehensif Bab 4 Hasil dan Pembahasan berdasarkan seluruh temuan di kanvas dengan kaidah penulisan ilmiah akademis.'
+  });
+
+  if (thirdCol) {
+    chips.push({
+      icon: Users,
+      label: `Eksplorasi: ${thirdCol}`,
+      prompt: `Tampilkan grafik distribusi jawaban dan narasi analisis untuk variabel "${thirdCol}".`
+    });
+  }
+
+  chips.push({
     icon: HelpCircle,
     label: 'Kesimpulan & Saran (Bab 5)',
-    prompt: 'Buatkan kesimpulan utama dan saran praktis untuk penelitian ini berdasarkan data yang ada untuk Bab 5.'
-  }
-];
+    prompt: 'Berdasarkan seluruh temuan data ini, buatkan poin-poin kesimpulan strategis dan rekomendasi praktis untuk Bab 5.'
+  });
+
+  return chips;
+}
 
 export const AnalyzerCopilotSidebar: React.FC<AnalyzerCopilotSidebarProps> = ({
   datasetSummary,
@@ -61,6 +78,7 @@ export const AnalyzerCopilotSidebar: React.FC<AnalyzerCopilotSidebarProps> = ({
   const [inputPrompt, setInputPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const promptChips = getDynamicPromptChips(datasetSummary);
 
   const scrollToBottom = () => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -133,7 +151,7 @@ export const AnalyzerCopilotSidebar: React.FC<AnalyzerCopilotSidebarProps> = ({
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/30">
         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Saran Analisis Cepat</p>
         <div className="flex flex-col gap-1.5">
-          {QUICK_PROMPT_CHIPS.map((chip, idx) => {
+          {promptChips.map((chip, idx) => {
             const Icon = chip.icon;
             return (
               <button
