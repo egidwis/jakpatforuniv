@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { getFormSubmissionsByUser, getOwnProfile } from '../utils/supabase';
 import { expandReferralSource } from '../constants/biodata';
 import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
+import { restoreDraft } from '../utils/draftRestore';
 import { isAutoApprovalPath as computeIsAutoApprovalPath } from '../utils/review-path';
 import { isBookingClosedForDate } from '../utils/airing-window';
 import { calculateTotalCost } from '../utils/cost-calculator';
@@ -32,31 +33,12 @@ const getEndDateFromDuration = (duration: number) => {
 
 const STORAGE_KEY = SURVEY_DRAFT_KEY;
 
-// Baca draft dengan migrasi dari skema step paling lama (1 Survei, 2 Biodata,
-// 3 Jadwal, 4 Review, 5 Kilat) ke kunci v2. Urutan v2 sendiri sejak itu dibalik
-// menjadi 1 Survei, 2 Ringkasan, 3 Jadwal, 4 Kilat — draft v2 lama TIDAK perlu
-// dipetakan ulang: step 2 dan 3 hanya bertukar peran, dan keduanya sama-sama
-// layar yang aman untuk didarati (Ringkasan tinggal dibaca, Jadwal tinggal
-// dipilih). Yang wajib dijaga cuma tanggalnya — lihat guard di bawah.
-const readDraft = (): { formData?: Partial<SurveyFormData>; currentStep?: number } | null => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-
-    const legacy = localStorage.getItem(LEGACY_SURVEY_DRAFT_KEY);
-    if (legacy) {
-      const parsed = JSON.parse(legacy);
-      const stepMap: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 3, 5: 4 };
-      parsed.currentStep = stepMap[parsed.currentStep as number] ?? 1;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-      localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
-      return parsed;
-    }
-  } catch {
-    // Draft korup — mulai dari awal
-  }
-  return null;
-};
+/**
+ * Pemulihan draft. Aturannya — termasuk migrasi penomoran step dan jaminan
+ * bahwa draft tidak mendaratkan user melewati gerbang Ringkasan — hidup di
+ * `utils/draftRestore.ts` supaya bisa diuji tanpa merender komponen ini.
+ */
+const readDraft = () => restoreDraft(localStorage);
 
 
 // Default values untuk form
@@ -102,15 +84,11 @@ export function MultiStepForm() {
   const [isPrefillLoading, setIsPrefillLoading] = useState(() => !!searchParams.get('custom_form_id'));
 
   // Initialize state from localStorage if available
-  const [currentStep, setCurrentStep] = useState<number>(() => {
-    const draft = readDraft();
-    const step = typeof draft?.currentStep === 'number' ? draft.currentStep : 1;
-    return Math.min(Math.max(step, 1), 4);
-  });
+  const [currentStep, setCurrentStep] = useState<number>(() => readDraft().currentStep);
 
   const [formData, setFormData] = useState<SurveyFormData>(() => {
     const draft = readDraft();
-    if (!draft?.formData) return defaultFormData;
+    if (!draft.formData) return defaultFormData;
 
     const merged = { ...defaultFormData, ...draft.formData };
 

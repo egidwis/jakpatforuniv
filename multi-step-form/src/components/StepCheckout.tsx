@@ -6,6 +6,8 @@ import { formatRupiah } from '../utils/currency';
 import { getOwnProfile } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { isAutoApprovalPath } from '../utils/review-path';
+import { checkoutBlocker } from '../utils/orderReadiness';
+import { orderSubmitErrorKeyForCode } from '../utils/submitOrder';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { SectionLabel } from './SurveyFieldRow';
@@ -167,27 +169,10 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
    * yang bahkan tidak punya kolom itu.
    */
   const validateBeforeLeaving = (): boolean => {
-    if (!isTermsAccepted) {
-      toast.error(t('errorTermsRequired'));
-      return false;
-    }
-    if (!formData.title || !formData.questionCount || !formData.duration) {
-      toast.error(t('errorCompleteAllSurveyData'));
-      return false;
-    }
-    if (!formData.fullName || !formData.fullName.trim()) {
-      toast.error(t('errorFullNameEmpty'));
-      return false;
-    }
-    if (!formData.email || !formData.email.trim() || !formData.email.includes('@') || !formData.email.includes('.')) {
-      toast.error(t('errorEmailInvalid'));
-      return false;
-    }
-    if (!formData.phoneNumber || formData.phoneNumber.trim().length < 10) {
-      toast.error(t('errorPhoneMinLength'));
-      return false;
-    }
-    return true;
+    const blocker = checkoutBlocker(formData);
+    if (!blocker) return true;
+    toast.error(t(orderSubmitErrorKeyForCode(blocker)));
+    return false;
   };
 
   const handlePrimaryAction = async () => {

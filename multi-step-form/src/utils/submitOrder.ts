@@ -10,6 +10,7 @@ import { resolveSubmissionMode, type SubmissionMode } from './submissionMode';
 import type { TranslationKey } from '../i18n/translations';
 import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from './constants';
 import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } from './airing-window';
+import { checkoutBlocker, type CheckoutBlockerCode } from './orderReadiness';
 
 /**
  * Sebab-sebab gagal yang punya kalimat sendiri untuk user. Kodenya, bukan
@@ -17,11 +18,7 @@ import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } 
  * aktif. Pemanggil menerjemahkannya lewat `orderSubmitErrorKey()`.
  */
 export type OrderSubmitErrorCode =
-  | 'terms'
-  | 'survey_incomplete'
-  | 'name'
-  | 'email'
-  | 'phone'
+  | CheckoutBlockerCode
   | 'no_schedule'
   | 'past_cutoff'
   | 'slot_full_kilat'
@@ -59,6 +56,11 @@ export function orderSubmitErrorKey(error: unknown): TranslationKey {
   return error instanceof OrderSubmitError ? ERROR_KEYS[error.code] : 'errorSavingDataGeneric';
 }
 
+/** Untuk pemanggil yang punya kodenya langsung, bukan lewat exception. */
+export function orderSubmitErrorKeyForCode(code: OrderSubmitErrorCode): TranslationKey {
+  return ERROR_KEYS[code];
+}
+
 export interface SubmitOrderArgs {
   formData: SurveyFormData;
   cost: CostCalculation;
@@ -88,23 +90,10 @@ export async function submitOrder({
   ilkomunyBlocked,
   authUserId,
 }: SubmitOrderArgs): Promise<FormSubmission & { id: string }> {
-  if (!formData.termsAccepted) throw new OrderSubmitError('terms');
-
-  if (!formData.title || !formData.questionCount || !formData.duration) {
-    throw new OrderSubmitError('survey_incomplete');
-  }
-  if (!formData.fullName || !formData.fullName.trim()) throw new OrderSubmitError('name');
-  if (
-    !formData.email ||
-    !formData.email.trim() ||
-    !formData.email.includes('@') ||
-    !formData.email.includes('.')
-  ) {
-    throw new OrderSubmitError('email');
-  }
-  if (!formData.phoneNumber || formData.phoneNumber.trim().length < 10) {
-    throw new OrderSubmitError('phone');
-  }
+  // Syarat Ringkasan, dinilai ulang di sini karena jalur otomatis menulis
+  // order dari layar Jadwal — satu langkah setelah layar yang menegakkannya.
+  const blocker = checkoutBlocker(formData);
+  if (blocker) throw new OrderSubmitError(blocker);
 
   // Jalur otomatis mengunci slot di titik ini, jadi tanggal wajib sudah ada.
   if (isAutoApproval && (!formData.startDate || !formData.startTime)) {
