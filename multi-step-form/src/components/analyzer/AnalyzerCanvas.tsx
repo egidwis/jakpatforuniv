@@ -125,27 +125,53 @@ export const AnalyzerCanvas: React.FC<AnalyzerCanvasProps> = ({
     }
 
     if (chartType === 'donut' || chartType === 'pie') {
+      const nameKeyProp = xAxisKey || 'name';
+      const valueKeyProp = (dataKeys && dataKeys[0]) || 'value';
+
+      const normalizedPieData = data.map((item: any) => {
+        const catName = item[nameKeyProp] || item.name || item.label || item.category || 'Lainnya';
+        const numVal = Number(item[valueKeyProp] ?? item.value ?? item.count ?? item.total ?? 0);
+        return {
+          name: String(catName),
+          value: numVal
+        };
+      });
+
       return (
-        <div className="w-full min-w-0 h-[280px]">
-          <ResponsiveContainer width="100%" height={280} minWidth={0}>
+        <div className="w-full min-w-0 h-[290px]">
+          <ResponsiveContainer width="100%" height={290} minWidth={0}>
             <PieChart>
               <Tooltip
-                formatter={(val: any, name: any) => [`${val} responden`, name]}
+                formatter={(val: any, name: any, item: any) => [
+                  `${val} responden`,
+                  item?.payload?.name || name
+                ]}
                 contentStyle={{ borderRadius: '0.75rem', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
               />
-              <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px' }} />
+              <Legend
+                verticalAlign="bottom"
+                height={40}
+                wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
+                formatter={(value: any, entry: any) => (
+                  <span className="text-gray-700 font-medium">{entry?.payload?.name || value}</span>
+                )}
+              />
               <Pie
-                data={data}
+                data={normalizedPieData}
                 dataKey="value"
                 nameKey="name"
                 cx="50%"
-                cy="50%"
+                cy="46%"
                 innerRadius={chartType === 'donut' ? 60 : 0}
                 outerRadius={85}
-                paddingAngle={chartType === 'donut' ? 4 : 0}
+                paddingAngle={chartType === 'donut' ? 3 : 0}
               >
-                {data.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={PALETTE[index % PALETTE.length]} />
+                {normalizedPieData.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    name={entry.name}
+                    fill={PALETTE[index % PALETTE.length]}
+                  />
                 ))}
               </Pie>
             </PieChart>
