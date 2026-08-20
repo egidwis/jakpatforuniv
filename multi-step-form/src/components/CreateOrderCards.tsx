@@ -46,7 +46,7 @@ export function ProductCardGrid() {
                 const Icon = product.icon;
                 const inner = (
                     <>
-                        <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
+                        <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
                             <Icon className="w-5 h-5" />
                         </span>
                         <span className="min-w-0 flex-1">
@@ -77,7 +77,7 @@ export function ProductCardGrid() {
                         <div
                             key={product.id}
                             aria-disabled="true"
-                            className="flex items-center gap-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4"
+                            className="flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 shadow-sm"
                         >
                             {inner}
                         </div>
@@ -89,7 +89,7 @@ export function ProductCardGrid() {
                         <Link
                             key={product.id}
                             to={product.to}
-                            className="flex items-center gap-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all"
+                            className="flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all"
                         >
                             {inner}
                             <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
@@ -101,7 +101,7 @@ export function ProductCardGrid() {
                     <Link
                         key={product.id}
                         to={product.to}
-                        className="flex items-center gap-3.5 rounded-xl border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_0_rgba(0,0,0,0.02)] hover:border-jfu-primary/40 hover:bg-blue-50/15 transition-all group"
+                        className="flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group"
                     >
                         {inner}
                         <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
@@ -131,35 +131,35 @@ export function CreateOrderCards() {
             collapsible
             value={open ? 'products' : ''}
             onValueChange={handleOpenChange}
-            className="mb-5 rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] hover:border-slate-300 transition-colors overflow-hidden"
+            className="mb-5 rounded-lg bg-gradient-to-r from-jfu-primary to-jfu-light text-white shadow-md shadow-jfu-primary/20 hover:shadow-lg hover:shadow-jfu-primary/30 transition-all duration-200 overflow-hidden border-0"
         >
             <AccordionPrimitive.Item value="products">
                 <AccordionPrimitive.Trigger
                     className={`w-full flex items-center transition-all ${open
-                        ? 'justify-between px-5 pt-4 pb-2 text-left'
-                        : 'min-h-12 justify-center gap-2.5 px-5 py-3 hover:bg-slate-50/80 group'
+                        ? 'justify-between px-5 pt-4 pb-2.5 text-left cursor-pointer'
+                        : 'min-h-12 justify-center gap-2.5 px-5 py-3.5 group cursor-pointer'
                         }`}
                 >
                     {open ? (
                         <>
-                            <span className="text-sm font-bold text-slate-900 dark:text-white">{t('navCreateOrder')}</span>
-                            <span className="flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:text-jfu-primary hover:bg-blue-50 transition-colors">
+                            <span className="text-sm font-bold text-white tracking-wide">{t('navCreateOrder')}</span>
+                            <span className="flex items-center justify-center w-7 h-7 rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-colors">
                                 <ChevronDown className="w-4 h-4 transition-transform duration-200 rotate-180" />
                             </span>
                         </>
                     ) : (
                         <>
-                            <span className="w-5 h-5 rounded-full bg-blue-50 text-jfu-primary flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <Plus className="w-3.5 h-3.5" />
+                            <span className="w-6 h-6 rounded-full bg-white/20 text-white flex items-center justify-center group-hover:scale-110 group-hover:bg-white/30 transition-all">
+                                <Plus className="w-4 h-4 stroke-[2.5]" />
                             </span>
-                            <span className="text-sm font-bold text-slate-800 group-hover:text-jfu-primary transition-colors">{t('createNewOrder')}</span>
-                            <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-jfu-primary transition-colors" />
+                            <span className="text-sm font-bold text-white tracking-wide">{t('createNewOrder')}</span>
+                            <ChevronDown className="w-4 h-4 text-white/80 group-hover:text-white group-hover:translate-y-0.5 transition-all" />
                         </>
                     )}
                 </AccordionPrimitive.Trigger>
 
                 <AccordionPrimitive.Content className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                    <div className="px-5 pb-5 pt-1">
+                    <div className="px-5 pb-5 pt-1.5">
                         <ProductCardGrid />
                     </div>
                 </AccordionPrimitive.Content>
