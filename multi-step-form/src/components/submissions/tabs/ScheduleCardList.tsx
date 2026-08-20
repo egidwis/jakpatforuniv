@@ -630,6 +630,25 @@ function ScheduleCard({
         <span className="text-slate-500 font-medium">
           Reserved by <strong className="font-bold text-slate-700">{actor}</strong>
         </span>
+        {/* Kode yang sama persis dengan yang dilihat & disalin peneliti (sql/51) —
+            samakan dengan `EntryRow` di papan Schedule, jangan menyalin submissionId. */}
+        <span className="inline-flex items-center gap-1">
+          <span className="font-mono text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
+            #{entry.bookingId}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              copyToClipboard(entry.bookingId, 'Booking ID disalin!');
+            }}
+            title="Salin Booking ID"
+            aria-label="Salin Booking ID"
+            className="p-0.5 rounded text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          >
+            <Copy className="w-3 h-3" />
+          </button>
+        </span>
         {needsBilling(entry) && (
           <span
             className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1"
@@ -715,15 +734,26 @@ function ScheduleCard({
 
   return (
     <div className={cn('rounded-lg border bg-white overflow-hidden transition-all', isOpen ? 'border-blue-400 shadow-sm ring-1 ring-blue-400/20' : 'border-slate-300 hover:border-slate-400 shadow-sm')}>
-      <button
-        type="button"
+      {/* `<div role="button">`, BUKAN `<button>` — kartu ini butuh tombol salin
+          Booking ID BERSARANG di dalam togglenya, dan tombol di dalam tombol
+          tidak sah/tidak bisa diklik di HTML. Pola yang sama dengan `EntryRow`
+          di papan Schedule. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
         aria-expanded={isOpen}
-        className="w-full flex items-start gap-2 px-3 py-2.5 text-left hover:bg-slate-50/70 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
+        className="w-full flex items-start gap-2 px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50/70 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
       >
         {summary}
         <ChevronDown className={cn('w-4 h-4 shrink-0 mt-0.5 text-slate-400 transition-transform', isOpen && 'rotate-180')} />
-      </button>
+      </div>
       {isOpen && details}
     </div>
   );
