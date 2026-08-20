@@ -63,7 +63,7 @@ export async function onRequestPost(context) {
 
             <!-- CTA Button -->
             <div style="margin: 28px 0; text-align: center;">
-              <a href="https://jakpatforuniv.com/dashboard/analyzer/new" style="display: inline-block; background-color: #4f46e5; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; padding: 14px 28px; border-radius: 12px; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);">
+              <a href="https://submit.jakpatforuniv.com/dashboard/analyzer/new" style="display: inline-block; background-color: #4f46e5; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; padding: 14px 28px; border-radius: 12px; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);">
                 🚀 Buka JFU AI Analyzer Sekarang &rarr;
               </a>
             </div>

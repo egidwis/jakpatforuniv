@@ -75,7 +75,7 @@ export async function onRequestPost(context) {
             </div>
 
             <div style="margin: 28px 0 20px; text-align: center;">
-              <a href="https://jakpatforuniv.com/dashboard/orders" style="display: inline-block; background-color: #4f46e5; color: #ffffff; font-size: 13px; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 10px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);">
+              <a href="https://submit.jakpatforuniv.com/dashboard" style="display: inline-block; background-color: #4f46e5; color: #ffffff; font-size: 13px; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 10px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);">
                 Pantau Status Penayangan &rarr;
               </a>
             </div>

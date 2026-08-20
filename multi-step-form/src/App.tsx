@@ -124,6 +124,7 @@ function AppContent() {
               profil tidak lagi di level route — pindah ke saat pilih metode
               (ProfileCompletionSheet di dalam flow). */}
           <Route path="status" element={<Navigate to="/dashboard" replace />} />
+          <Route path="orders" element={<Navigate to="/dashboard" replace />} />
           {/* ⚠️ `replace` SAJA TIDAK CUKUP — query string wajib ikut. CTA "Sebar
               via Jakpat" mengirim `?custom_form_id=…`, dan <Navigate to="/path">
               polos MEMBUANGNYA diam-diam: halaman terbuka normal, cuma tanpa
