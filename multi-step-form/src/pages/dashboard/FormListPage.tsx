@@ -16,7 +16,8 @@ import {
   Loader2,
   CheckCircle2,
   Search,
-  BarChart3
+  BarChart3,
+  Megaphone
 } from 'lucide-react';
 import emptyFormIllustration from '../../assets/illustration JFU form.png';
 import { Button } from '../../components/ui/button';
@@ -138,6 +139,28 @@ export const FormListPage: React.FC = () => {
           New form
         </Button>
       </div>
+
+      {/* Ramp untuk user yang sebenarnya mau order iklan, bukan membuat
+          kuesioner — populasi nyasar hampir pasti belum punya form, jadi
+          banner hanya tampil saat daftar form kosong. */}
+      {!loading && forms.length === 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200/80 dark:border-blue-800 rounded-xl px-4 py-3">
+          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+            <Megaphone className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-900 dark:text-blue-200 leading-relaxed">
+              <span className="font-semibold">Mau order iklan survei?</span>{' '}
+              Kalau kuesionermu sudah jadi (misalnya di Google Form), kamu tidak
+              perlu membuat form di sini.
+            </p>
+          </div>
+          <Button
+            onClick={() => navigate('/dashboard/submit-iklan')}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xs shrink-0 w-full sm:w-auto"
+          >
+            Order Iklan Survei
+          </Button>
+        </div>
+      )}
 
       {/* Filter Tabs & Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
