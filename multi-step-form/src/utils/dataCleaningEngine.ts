@@ -27,8 +27,32 @@ export interface AnalysisGoalOption {
   detail?: string;
 }
 
+function findBestMatchingColumn(query: string, summary: DatasetSummary): any {
+  if (!query) return undefined;
+  const qLower = query.toLowerCase().trim();
+  // 1. Exact match
+  const exact = summary.columns.find(c => c.label.toLowerCase().trim() === qLower);
+  if (exact) return exact;
+  // 2. Substring match
+  const sub = summary.columns.find(c => c.label.toLowerCase().includes(qLower) || qLower.includes(c.label.toLowerCase()));
+  if (sub) return sub;
+  // 3. Token overlap
+  const qTokens = qLower.split(/\s+/).filter(t => t.length >= 3);
+  let bestCol: any = undefined;
+  let maxOverlap = 0;
+  summary.columns.forEach(c => {
+    const cTokens = c.label.toLowerCase().split(/\s+/).filter(t => t.length >= 3);
+    const overlap = qTokens.filter(t => cTokens.some(ct => ct.includes(t) || t.includes(ct))).length;
+    if (overlap > maxOverlap) {
+      maxOverlap = overlap;
+      bestCol = c;
+    }
+  });
+  return maxOverlap > 0 ? bestCol : undefined;
+}
+
 /**
- * Transforms 100% AI Comprehension results into executable rules and goals.
+ * Transforms 100% AI Comprehension results into executable rules and goals with accurate dataset counts.
  */
 export function buildRulesFromAiComprehension(
   aiResult: AiComprehensionResult,
@@ -42,49 +66,80 @@ export function buildRulesFromAiComprehension(
 } {
   const rules: CleaningRule[] = [];
 
-  // 1. Process AI Screening Rules
-  (aiResult.screeningRules || []).forEach((sr, idx) => {
-    // Find matching column
-    const col = summary.columns.find(
-      c => c.label.toLowerCase().includes(sr.columnLabel.toLowerCase()) || sr.columnLabel.toLowerCase().includes(c.label.toLowerCase())
-    );
-    const colLabel = col ? col.label : sr.columnLabel;
+  // 1. First run heuristic baseline to get exact data-grounded counts
+  const heuristicRules = detectSmartCleaningRules(summary, rows);
 
-    // Calculate actual affected count in data
-    let count = 0;
-    if (sr.disqualifyValue) {
-      const dqLower = sr.disqualifyValue.toLowerCase().trim();
-      rows.forEach(r => {
-        const val = (r[colLabel] || '').toLowerCase().trim();
-        if (val === dqLower || val.startsWith(dqLower)) {
-          count++;
+  // 2. If AI returned specific screening rules, match and enrich them
+  if (aiResult.screeningRules && aiResult.screeningRules.length > 0) {
+    aiResult.screeningRules.forEach((sr, idx) => {
+      const col = findBestMatchingColumn(sr.columnLabel, summary) || summary.columns.find(c =>
+        c.label.toLowerCase().includes('bersedia') || c.label.toLowerCase().includes('persetujuan')
+      );
+      const colLabel = col ? col.label : sr.columnLabel;
+
+      // Find matching value from column's actual counts
+      let matchedVal = sr.disqualifyValue;
+      let count = 0;
+
+      if (col) {
+        const dqLower = (sr.disqualifyValue || '').toLowerCase().trim();
+        const foundEntry = Object.entries(col.counts).find(([val]) => {
+          const valLower = val.toLowerCase().trim();
+          return valLower.includes(dqLower) || dqLower.includes(valLower) ||
+            valLower.startsWith('tidak') || valLower.includes('tidak bersedia');
+        });
+
+        if (foundEntry) {
+          matchedVal = foundEntry[0];
+          count = foundEntry[1];
         }
+      }
+
+      if (count === 0 && col) {
+        // Fallback: check rows directly
+        rows.forEach(r => {
+          const v = (r[colLabel] || '').toLowerCase().trim();
+          if (v.startsWith('tidak') || v.includes('tidak bersedia') || v.includes('bukan')) {
+            count++;
+          }
+        });
+      }
+
+      // If heuristic already found a rule for this column, reuse its exact count
+      const existingHeuristic = heuristicRules.find(hr => hr.columnLabel === colLabel);
+      if (existingHeuristic && count === 0) {
+        count = existingHeuristic.affectedCount;
+        matchedVal = existingHeuristic.filterValue || matchedVal;
+      }
+
+      rules.push({
+        id: `ai_rule_scr_${idx}`,
+        title: sr.title || `Filter: ${matchedVal}`,
+        description: `Ditemukan ${count} baris (${((count / (rows.length || 1)) * 100).toFixed(1)}%) yang menjawab "${matchedVal}".`,
+        columnLabel: colLabel,
+        type: 'screening',
+        affectedCount: count,
+        recommended: count > 0,
+        enabled: count > 0,
+        filterValue: matchedVal,
+        reason: sr.reason || 'Sesuai analisis AI terhadap kriteria kuesioner.'
       });
-    }
-
-    rules.push({
-      id: `ai_rule_scr_${idx}`,
-      title: sr.title || `Filter: ${sr.disqualifyValue}`,
-      description: `Ditemukan ${count} baris (${((count / (rows.length || 1)) * 100).toFixed(1)}%) yang menjawab "${sr.disqualifyValue}".`,
-      columnLabel: colLabel,
-      type: 'screening',
-      affectedCount: count,
-      recommended: true,
-      enabled: true,
-      filterValue: sr.disqualifyValue,
-      reason: sr.reason || 'Sesuai analisis AI terhadap kriteria kuesioner.'
     });
-  });
+  }
 
-  // 2. Process AI Missing Value Rules
+  // If no AI screening rules matched or affectedCount was 0, fallback to heuristic rules
+  if (rules.length === 0 || rules.every(r => r.affectedCount === 0)) {
+    rules.length = 0;
+    rules.push(...heuristicRules);
+  }
+
+  // 3. Process AI Missing Value Rules
   (aiResult.missingRules || []).forEach((mr, idx) => {
-    const col = summary.columns.find(
-      c => c.label.toLowerCase().includes(mr.columnLabel.toLowerCase()) || mr.columnLabel.toLowerCase().includes(c.label.toLowerCase())
-    );
+    const col = findBestMatchingColumn(mr.columnLabel, summary);
     const colLabel = col ? col.label : mr.columnLabel;
     const missingCount = col ? col.missingCount : 0;
 
-    if (missingCount > 0) {
+    if (missingCount > 0 && !rules.some(r => r.columnLabel === colLabel && r.type === 'missing')) {
       rules.push({
         id: `ai_rule_mis_${idx}`,
         title: mr.title || `Hapus baris kosong pada "${colLabel}"`,
@@ -98,12 +153,6 @@ export function buildRulesFromAiComprehension(
       });
     }
   });
-
-  // 3. Fallback heuristic screening if AI did not return any screening rules
-  if (rules.length === 0) {
-    const heuristicRules = detectSmartCleaningRules(summary, rows);
-    rules.push(...heuristicRules);
-  }
 
   // 4. Process AI Goals
   const goals: AnalysisGoalOption[] = (aiResult.recommendedAnalysisGoals || []).map(g => ({
