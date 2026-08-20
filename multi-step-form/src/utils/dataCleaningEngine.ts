@@ -1,4 +1,5 @@
 import type { DatasetSummary } from '../components/analyzer/types';
+import type { AiComprehensionResult } from './analyzerAiAgent';
 
 export interface CleaningRule {
   id: string;
@@ -20,8 +21,115 @@ export interface AnalysisGoalOption {
   recommended: boolean;
   enabled: boolean;
   blockType: 'narrative' | 'chart' | 'crosstab' | 'metric';
+  rowVariable?: string;
+  colVariable?: string;
+  targetVariable?: string;
   detail?: string;
 }
+
+/**
+ * Transforms 100% AI Comprehension results into executable rules and goals.
+ */
+export function buildRulesFromAiComprehension(
+  aiResult: AiComprehensionResult,
+  summary: DatasetSummary,
+  rows: Record<string, string>[]
+): {
+  rules: CleaningRule[];
+  goals: AnalysisGoalOption[];
+  topic: string;
+  summaryText: string;
+} {
+  const rules: CleaningRule[] = [];
+
+  // 1. Process AI Screening Rules
+  (aiResult.screeningRules || []).forEach((sr, idx) => {
+    // Find matching column
+    const col = summary.columns.find(
+      c => c.label.toLowerCase().includes(sr.columnLabel.toLowerCase()) || sr.columnLabel.toLowerCase().includes(c.label.toLowerCase())
+    );
+    const colLabel = col ? col.label : sr.columnLabel;
+
+    // Calculate actual affected count in data
+    let count = 0;
+    if (sr.disqualifyValue) {
+      const dqLower = sr.disqualifyValue.toLowerCase().trim();
+      rows.forEach(r => {
+        const val = (r[colLabel] || '').toLowerCase().trim();
+        if (val === dqLower || val.startsWith(dqLower)) {
+          count++;
+        }
+      });
+    }
+
+    rules.push({
+      id: `ai_rule_scr_${idx}`,
+      title: sr.title || `Filter: ${sr.disqualifyValue}`,
+      description: `Ditemukan ${count} baris (${((count / (rows.length || 1)) * 100).toFixed(1)}%) yang menjawab "${sr.disqualifyValue}".`,
+      columnLabel: colLabel,
+      type: 'screening',
+      affectedCount: count,
+      recommended: true,
+      enabled: true,
+      filterValue: sr.disqualifyValue,
+      reason: sr.reason || 'Sesuai analisis AI terhadap kriteria kuesioner.'
+    });
+  });
+
+  // 2. Process AI Missing Value Rules
+  (aiResult.missingRules || []).forEach((mr, idx) => {
+    const col = summary.columns.find(
+      c => c.label.toLowerCase().includes(mr.columnLabel.toLowerCase()) || mr.columnLabel.toLowerCase().includes(c.label.toLowerCase())
+    );
+    const colLabel = col ? col.label : mr.columnLabel;
+    const missingCount = col ? col.missingCount : 0;
+
+    if (missingCount > 0) {
+      rules.push({
+        id: `ai_rule_mis_${idx}`,
+        title: mr.title || `Hapus baris kosong pada "${colLabel}"`,
+        description: `Ditemukan ${missingCount} baris dengan nilai kosong (blank).`,
+        columnLabel: colLabel,
+        type: 'missing',
+        affectedCount: missingCount,
+        recommended: missingCount < rows.length * 0.3,
+        enabled: missingCount < rows.length * 0.3,
+        reason: mr.reason || 'Mencegah bias data.'
+      });
+    }
+  });
+
+  // 3. Fallback heuristic screening if AI did not return any screening rules
+  if (rules.length === 0) {
+    const heuristicRules = detectSmartCleaningRules(summary, rows);
+    rules.push(...heuristicRules);
+  }
+
+  // 4. Process AI Goals
+  const goals: AnalysisGoalOption[] = (aiResult.recommendedAnalysisGoals || []).map(g => ({
+    id: g.id,
+    title: g.title,
+    description: g.description,
+    recommended: true,
+    enabled: true,
+    blockType: g.blockType,
+    rowVariable: g.rowVariable,
+    colVariable: g.colVariable,
+    targetVariable: g.targetVariable
+  }));
+
+  if (goals.length === 0) {
+    goals.push(...getRecommendedAnalysisGoals(summary));
+  }
+
+  return {
+    rules,
+    goals,
+    topic: aiResult.studyTopic || `Analisis Data Survei ${summary.fileName.replace(/\.csv$/i, '')}`,
+    summaryText: aiResult.studySummary || `Analisis terhadap ${rows.length} responden survei.`
+  };
+}
+
 
 const SCREENING_KEYWORDS = [
   'bersedia', 'persetujuan', 'screening', 'kriteria', 'kesediaan', 'pernah',

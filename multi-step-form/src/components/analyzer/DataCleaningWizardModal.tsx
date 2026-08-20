@@ -24,6 +24,8 @@ interface DataCleaningWizardModalProps {
   rawRows: Record<string, string>[];
   initialRules: CleaningRule[];
   initialGoals: AnalysisGoalOption[];
+  studyTopic?: string;
+  studySummary?: string;
   onConfirm: (
     activeRules: CleaningRule[],
     customFilters: string[],
@@ -38,6 +40,8 @@ export const DataCleaningWizardModal: React.FC<DataCleaningWizardModalProps> = (
   rawRows,
   initialRules,
   initialGoals,
+  studyTopic,
+  studySummary,
   onConfirm,
   onSkip
 }) => {
@@ -46,6 +50,15 @@ export const DataCleaningWizardModal: React.FC<DataCleaningWizardModalProps> = (
   const [goals, setGoals] = useState<AnalysisGoalOption[]>(initialGoals);
   const [customFilters, setCustomFilters] = useState<string[]>([]);
   const [newCustomInput, setNewCustomInput] = useState('');
+
+  // Keep rules and goals updated when initial props change
+  React.useEffect(() => {
+    setRules(initialRules);
+  }, [initialRules]);
+
+  React.useEffect(() => {
+    setGoals(initialGoals);
+  }, [initialGoals]);
 
   // Calculate live preview of cleaned rows count
   const estimatedCleanCount = useMemo(() => {
@@ -89,28 +102,44 @@ export const DataCleaningWizardModal: React.FC<DataCleaningWizardModalProps> = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl border border-gray-100 shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50/60 via-purple-50/30 to-white flex items-start justify-between">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-bold mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-              <span>AI Data Comprehension &amp; Cleaning</span>
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50/60 via-purple-50/30 to-white flex flex-col gap-3">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-bold mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                <span>AI Data Comprehension &amp; Cleaning</span>
+              </div>
+              <h2 className="text-xl font-extrabold text-gray-900">
+                Personalisasi Pembersihan &amp; Fokus Analisis
+              </h2>
             </div>
-            <h2 className="text-xl font-extrabold text-gray-900">
-              Personalisasi Pembersihan &amp; Fokus Analisis
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              AI telah memindai <strong className="text-indigo-600 font-semibold">{datasetSummary.fileName}</strong> ({rawRows.length} respon mentah). Tentukan aturan data sebelum canvas digenerate.
-            </p>
+
+            {/* Stat Pill */}
+            <div className="hidden sm:flex flex-col items-end shrink-0 bg-white/90 border border-indigo-100 px-4 py-2 rounded-2xl shadow-2xs">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Estimasi Responden Valid</span>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-lg font-black text-indigo-600">{estimatedCleanCount}</span>
+                <span className="text-xs text-gray-400">/ {rawRows.length} mentah</span>
+              </div>
+            </div>
           </div>
 
-          {/* Stat Pill */}
-          <div className="hidden sm:flex flex-col items-end shrink-0 bg-white/90 border border-indigo-100 px-4 py-2 rounded-2xl shadow-2xs">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Estimasi Responden Valid</span>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-lg font-black text-indigo-600">{estimatedCleanCount}</span>
-              <span className="text-xs text-gray-400">/ {rawRows.length} mentah</span>
+          {/* AI Comprehension Card */}
+          {studyTopic && (
+            <div className="p-3 bg-white/90 rounded-2xl border border-indigo-100/90 text-xs flex items-start gap-2.5 shadow-2xs">
+              <span className="text-base shrink-0">🧠</span>
+              <div className="min-w-0">
+                <strong className="block text-indigo-950 font-bold truncate">
+                  Topik Riset yang Dipahami AI: {studyTopic}
+                </strong>
+                {studySummary && (
+                  <p className="text-gray-600 text-[11px] mt-0.5 line-clamp-2">
+                    {studySummary}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Tab Navigation */}

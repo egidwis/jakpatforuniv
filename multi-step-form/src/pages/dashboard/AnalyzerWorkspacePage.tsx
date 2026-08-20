@@ -10,12 +10,13 @@ import type {
   AnalyzerAiAction
 } from '../../components/analyzer/types';
 import { calculateCrossTab } from '../../utils/surveyCrossTab';
-import { generateDeepSurveyStory, generateInitialCanvasBlocks } from '../../utils/analyzerAiAgent';
+import { generateDeepSurveyStory, generateInitialCanvasBlocks, generateAiDataComprehension } from '../../utils/analyzerAiAgent';
 import { profileSurveyDataset } from '../../utils/surveyDataProfiler';
 import {
   detectSmartCleaningRules,
   getRecommendedAnalysisGoals,
   applyDataCleaning,
+  buildRulesFromAiComprehension,
   type CleaningRule,
   type AnalysisGoalOption
 } from '../../utils/dataCleaningEngine';
@@ -90,6 +91,11 @@ export const AnalyzerWorkspacePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
+  // AI Comprehension State on initial upload
+  const [isComprehending, setIsComprehending] = useState(false);
+  const [aiStudyTopic, setAiStudyTopic] = useState('');
+  const [aiStudySummary, setAiStudySummary] = useState('');
 
   // Deep Scanning State on Import
   const [isScanning, setIsScanning] = useState(false);
@@ -202,17 +208,31 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     }, 1200);
   };
 
-  // 3. Handle initial CSV Data Upload -> Opens Personalization Wizard
+  // 3. Handle initial CSV Data Upload -> 100% AI Comprehension & Opens Personalization Wizard
   const handleCsvLoaded = async (summary: DatasetSummary, rows: Record<string, string>[]) => {
     setPendingSummary(summary);
     setPendingRawRows(rows);
+    setIsComprehending(true);
 
-    const rules = detectSmartCleaningRules(summary, rows);
-    const goals = getRecommendedAnalysisGoals(summary);
+    try {
+      const aiComprehension = await generateAiDataComprehension(summary, rows);
+      const { rules, goals, topic, summaryText } = buildRulesFromAiComprehension(aiComprehension, summary, rows);
 
-    setWizardRules(rules);
-    setWizardGoals(goals);
-    setIsWizardOpen(true);
+      setWizardRules(rules);
+      setWizardGoals(goals);
+      setAiStudyTopic(topic);
+      setAiStudySummary(summaryText);
+      setIsComprehending(false);
+      setIsWizardOpen(true);
+    } catch (err) {
+      console.error('Error during AI comprehension:', err);
+      const fallbackRules = detectSmartCleaningRules(summary, rows);
+      const fallbackGoals = getRecommendedAnalysisGoals(summary);
+      setWizardRules(fallbackRules);
+      setWizardGoals(fallbackGoals);
+      setIsComprehending(false);
+      setIsWizardOpen(true);
+    }
   };
 
   // 4. Execute Analysis Pipeline (with Cleaned Data & Selected Goals)
@@ -537,6 +557,40 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     );
   }
 
+  // If AI is comprehending the uploaded dataset
+  if (isComprehending && pendingSummary) {
+    return (
+      <div className="min-h-[85vh] flex items-center justify-center p-6 bg-gradient-to-b from-purple-50/40 via-white to-indigo-50/50">
+        <div className="w-full max-w-md bg-white rounded-3xl border border-purple-100 p-8 shadow-xl text-center relative overflow-hidden">
+          <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-48 h-48 bg-purple-500/15 rounded-full blur-2xl pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col items-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-500/25 mb-4 animate-bounce">
+              <BrainCircuit className="w-8 h-8" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-semibold mb-2">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Ask JFU AI Comprehension</span>
+            </div>
+
+            <h2 className="text-lg font-bold text-gray-900 mb-1">
+              AI Sedang Memahami Kuesioner Anda...
+            </h2>
+            <p className="text-xs text-gray-500 max-w-xs mb-4">
+              Menganalisis makna semantik setiap pertanyaan untuk mendeteksi kriteria screening dan memilih tabulasi silang yang paling berbobot.
+            </p>
+
+            <div className="flex items-center gap-2 text-xs text-purple-700 font-semibold bg-purple-50/80 px-4 py-2 rounded-xl">
+              <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+              <span>Memproses {pendingSummary.fileName}...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // If no dataset loaded yet (e.g. on /new)
   if (!datasetSummary) {
     return (
@@ -572,6 +626,8 @@ export const AnalyzerWorkspacePage: React.FC = () => {
             rawRows={pendingRawRows}
             initialRules={wizardRules}
             initialGoals={wizardGoals}
+            studyTopic={aiStudyTopic}
+            studySummary={aiStudySummary}
             onConfirm={handleConfirmWizard}
             onSkip={handleSkipWizard}
           />

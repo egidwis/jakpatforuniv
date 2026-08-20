@@ -327,7 +327,223 @@ function generateDeterministicStory(
   };
 }
 
+export interface AiComprehensionResult {
+  studyTopic: string;
+  studySummary: string;
+  screeningRules: {
+    columnLabel: string;
+    disqualifyValue: string;
+    reason: string;
+    title: string;
+  }[];
+  missingRules: {
+    columnLabel: string;
+    reason: string;
+    title: string;
+  }[];
+  recommendedAnalysisGoals: {
+    id: string;
+    title: string;
+    description: string;
+    blockType: 'narrative' | 'chart' | 'crosstab' | 'metric';
+    rowVariable?: string;
+    colVariable?: string;
+    targetVariable?: string;
+  }[];
+}
+
+/**
+ * Uses LLM to deeply comprehend the research context, identify real screening questions,
+ * and recommend strategic cross-tabulations and cleaning rules.
+ */
+export async function generateAiDataComprehension(
+  summary: DatasetSummary,
+  rows: Record<string, string>[]
+): Promise<AiComprehensionResult> {
+  const columnsContext = summary.columns.map(c => ({
+    key: c.key,
+    label: c.label,
+    type: c.type,
+    missingCount: c.missingCount,
+    distinctCount: c.distinctCount,
+    topValues: Object.entries(c.counts).slice(0, 6).map(([k, v]) => `${k} (${v})`),
+    sampleValues: c.sampleValues
+  }));
+
+  const systemPrompt = `Anda adalah AI Senior Research Methodologist & Data Analyst.
+Tugas Anda adalah memindai seluruh kolom pertanyaan kuesioner dari dataset survei untuk:
+1. Memahami topik dan konteks riset secara semantik.
+2. Mengidentifikasi pertanyaan screening / persetujuan / kriteria inklusi (misal: "Apakah Anda bersedia...", "Persetujuan responden", dll) dan menentukan nilai jawaban mana yang harus dieliminasi/disqualified (misal: "Tidak, saya tidak bersedia", "Bukan", dll).
+3. Mengidentifikasi variabel demografi utama (Gender, Usia, Fakultas, Universitas, dll).
+4. Memilih pasangan variabel PALING BERBOBOT & BERMAKNA secara teoritis untuk Tabulasi Silang (Cross-Tabulation). 
+   ⚠️ SANGAT PENTING: JANGAN PERNAH memilih pertanyaan screening/persetujuan untuk Tabulasi Silang! Pilih variabel demografi vs pertanyaan inti riset / variabel dependen.
+5. Memilih variabel indikator utama kuesioner untuk visualisasi grafik.
+
+Format respon HARUS berupa JSON valid dengan struktur:
+{
+  "studyTopic": "Judul/Topik Singkat Riset (contoh: Studi Persepsi Gaya Bahasa AI pada Mahasiswa)",
+  "studySummary": "Ringkasan 1-2 kalimat tentang apa yang diteliti oleh kuesioner ini...",
+  "screeningRules": [
+    {
+      "columnLabel": "Nama Kolom Pertanyaan Screening",
+      "disqualifyValue": "Nilai yang dieliminasi (misal: Tidak, saya tidak bersedia)",
+      "title": "Filter Responden Tidak Memenuhi Kriteria (Nilai)",
+      "reason": "Alasan metodologis mengapa sampel ini perlu dieleminasi..."
+    }
+  ],
+  "missingRules": [
+    {
+      "columnLabel": "Nama Kolom dengan baris kosong",
+      "title": "Hapus baris kosong pada variabel X",
+      "reason": "Alasan..."
+    }
+  ],
+  "recommendedAnalysisGoals": [
+    {
+      "id": "goal_takeaways",
+      "title": "🌟 3-4 Temuan Utama Riset (Executive Highlights)",
+      "description": "Poin-poin temuan paling menarik, anomali data, dan proporsi mayoritas secara otomatis.",
+      "blockType": "narrative"
+    },
+    {
+      "id": "goal_kpi",
+      "title": "📊 Ringkasan Sampel & Responden Valid (KPI Cards)",
+      "description": "Statistik total sampel kuesioner, respon valid setelah screening, dan total variabel.",
+      "blockType": "metric"
+    },
+    {
+      "id": "goal_demo_chart",
+      "title": "👥 Distribusi Profil Demografi: [Nama Variabel Demografi Utama]",
+      "description": "Visualisasi grafik Donut / Bar beserta narasi karakteristik sampel.",
+      "blockType": "chart",
+      "targetVariable": "[Nama Kolom Demografi]"
+    },
+    {
+      "id": "goal_crosstab_ai",
+      "title": "🔀 Tabulasi Silang AI: [Demografi Utama] vs [Pertanyaan Inti Riset]",
+      "description": "Matriks korelasi 2 variabel silang untuk melihat pola preferensi kelompok demografi.",
+      "blockType": "crosstab",
+      "rowVariable": "[Nama Kolom Demografi]",
+      "colVariable": "[Nama Kolom Pertanyaan Inti Riset]"
+    },
+    {
+      "id": "goal_main_var",
+      "title": "📈 Sebaran Indikator Utama: [Pertanyaan Inti Riset]",
+      "description": "Grafik batang sebaran jawaban untuk pertanyaan inti kuesioner.",
+      "blockType": "chart",
+      "targetVariable": "[Nama Kolom Pertanyaan Inti Riset]"
+    },
+    {
+      "id": "goal_bab4",
+      "title": "📝 Draf Narasi Akademis Lengkap (Bab 4 Skripsi / Laporan)",
+      "description": "Narasi komprehensif berstandar ilmiah yang mengintegrasikan seluruh temuan di atas.",
+      "blockType": "narrative"
+    }
+  ]
+}`;
+
+  const userPrompt = `Analisis dataset survei "${summary.fileName}" dengan ${summary.totalRows} responden dan kolom-kolom berikut:\n${JSON.stringify(columnsContext, null, 2)}`;
+
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash-lite',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.2
+      })
+    });
+
+    if (!response.ok) throw new Error(`AI Comprehension API error: ${response.statusText}`);
+
+    const resJson = await response.json();
+    const rawContent: string = resJson.choices?.[0]?.message?.content || resJson.message || '';
+
+    let jsonStr = rawContent.trim();
+    if (jsonStr.startsWith('```json')) {
+      jsonStr = jsonStr.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+      const parsed: AiComprehensionResult = JSON.parse(jsonStr);
+      if (parsed.studyTopic && parsed.recommendedAnalysisGoals) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('[AI Comprehension] LLM call failed or timed out, using fallback:', err);
+  }
+
+  // Fallback if AI offline
+  const firstDemo = summary.detectedDemographics[0] || summary.columns[0]?.label || 'Demografi';
+  const nonScreeningCols = summary.columns.filter(c => 
+    !c.label.toLowerCase().includes('bersedia') && 
+    !c.label.toLowerCase().includes('persetujuan') &&
+    c.label !== firstDemo
+  );
+  const secondCol = nonScreeningCols[0]?.label || summary.columns[1]?.label || 'Variabel Riset';
+
+  return {
+    studyTopic: `Analisis Data Survei ${summary.fileName.replace(/\.csv$/i, '')}`,
+    studySummary: `Penelitian ini menganalisis respon dari ${summary.totalRows} responden terkait variabel ${secondCol}.`,
+    screeningRules: [],
+    missingRules: [],
+    recommendedAnalysisGoals: [
+      {
+        id: 'goal_takeaways',
+        title: '🌟 3-4 Temuan Utama Riset (Executive Highlights)',
+        description: 'Poin-poin temuan paling menarik, anomali data, dan proporsi mayoritas secara otomatis.',
+        blockType: 'narrative'
+      },
+      {
+        id: 'goal_kpi',
+        title: '📊 Ringkasan Sampel & Responden Valid (KPI Cards)',
+        description: 'Statistik total sampel kuesioner, respon valid setelah screening, dan total variabel.',
+        blockType: 'metric'
+      },
+      {
+        id: 'goal_demo_chart',
+        title: `👥 Distribusi Profil Demografi: ${firstDemo}`,
+        description: 'Visualisasi grafik Donut / Bar beserta narasi karakteristik sampel.',
+        blockType: 'chart',
+        targetVariable: firstDemo
+      },
+      {
+        id: 'goal_crosstab_ai',
+        title: `🔀 Tabulasi Silang AI: ${firstDemo} vs ${secondCol}`,
+        description: 'Matriks korelasi 2 variabel silang untuk melihat pola preferensi kelompok demografi.',
+        blockType: 'crosstab',
+        rowVariable: firstDemo,
+        colVariable: secondCol
+      },
+      {
+        id: 'goal_main_var',
+        title: `📈 Sebaran Indikator Utama: ${secondCol}`,
+        description: 'Grafik batang sebaran jawaban untuk pertanyaan inti kuesioner.',
+        blockType: 'chart',
+        targetVariable: secondCol
+      },
+      {
+        id: 'goal_bab4',
+        title: '📝 Draf Narasi Akademis Lengkap (Bab 4 Skripsi / Laporan)',
+        description: 'Narasi komprehensif berstandar ilmiah yang mengintegrasikan seluruh temuan di atas.',
+        blockType: 'narrative'
+      }
+    ]
+  };
+}
+
 export function generateInitialCanvasBlocks(summary: DatasetSummary): CanvasBlock[] {
   return generateDeterministicStory(summary, []).blocks;
 }
+
 
