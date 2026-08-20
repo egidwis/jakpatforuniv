@@ -2885,6 +2885,17 @@ const selectSurveyPagesByIds = async <T>(columns: string, ids: string[]): Promis
  * (yang terakhir tidak boleh pernah tersaring — justru order itu yang paling
  * perlu terlihat).
  */
+/**
+ * Diurutkan `ordinal ASC`, dan `ordinal = 1` sendirian sudah lebih dari 1.000
+ * baris (2026-08-20) — batas baris bawaan PostgREST. Satu query tanpa
+ * `.range()` karena itu mengisi penuh batasnya dengan `ordinal = 1` sebelum
+ * sempat menyentuh satu pun baris `ordinal > 1`, dan SETIAP jadwal ke-2/3+
+ * lenyap dari papan, bukan cuma yang barunya. Melompat per halaman lewat
+ * `.range()` menutup itu — untuk target tunggal/kecil (drawer, dashboard
+ * peneliti) putaran pertama langsung berhenti, jadi tidak ada tambahan biaya.
+ */
+const AD_SCHEDULES_PAGE_SIZE = 1000;
+
 export const fetchAdSchedules = async (
   target?: string | string[]
 ): Promise<AdScheduleEntry[]> => {
@@ -2893,45 +2904,51 @@ export const fetchAdSchedules = async (
   // dashboard peneliti akan meminta seluruh isi tabel.
   if (Array.isArray(target) && target.length === 0) return [];
 
-  let q = supabase
-    .from('ad_schedules')
-    .select(`
-      id, submission_id, ordinal, source_table, source_id, booking_id,
-      start_date, end_date, duration,
-      status, review_status, payment_status,
-      distribution_type, kilat_slot_hour, is_extra_ad,
-      total_cost, subtotal, ppn_amount, voucher_code,
-      prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
-      slot_booked_by, slot_reserved_at, created_at,
-      form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
-    `, { count: 'exact' });
+  const rows: any[] = [];
+  let total: number | null = null;
+  let offset = 0;
 
-  // Dipakai tiga permukaan: papan admin (tanpa argumen, semuanya), drawer order
-  // (satu submission), dan dashboard peneliti (daftar order miliknya sendiri).
-  // Satu fungsi supaya ketiganya tidak bisa menurunkan "jadwal ke berapa" dan
-  // "berapa ditagih" dengan aturan yang berbeda.
-  //
-  // Daftar peneliti tidak dipotong: RLS `Owner or admin can view ad_schedules`
-  // sudah membatasinya ke order miliknya, dan order per peneliti dihitung
-  // belasan — jauh di bawah ambang URL yang menjatuhkan papan admin (lihat
-  // `IN_FILTER_CHUNK`). Kalau suatu saat ada akun dengan ratusan order, lewatkan
-  // saja ke pola potongan yang sama.
-  if (Array.isArray(target)) q = q.in('submission_id', target);
-  else if (target) q = q.eq('submission_id', target);
+  for (;;) {
+    let q = supabase
+      .from('ad_schedules')
+      .select(`
+        id, submission_id, ordinal, source_table, source_id, booking_id,
+        start_date, end_date, duration,
+        status, review_status, payment_status,
+        distribution_type, kilat_slot_hour, is_extra_ad,
+        total_cost, subtotal, ppn_amount, voucher_code,
+        prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
+        slot_booked_by, slot_reserved_at, created_at,
+        form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
+      `, { count: 'exact' });
 
-  const { data, error, count } = await q.order('ordinal', { ascending: true });
+    // Dipakai tiga permukaan: papan admin (tanpa argumen, semuanya), drawer order
+    // (satu submission), dan dashboard peneliti (daftar order miliknya sendiri).
+    // Satu fungsi supaya ketiganya tidak bisa menurunkan "jadwal ke berapa" dan
+    // "berapa ditagih" dengan aturan yang berbeda.
+    if (Array.isArray(target)) q = q.in('submission_id', target);
+    else if (target) q = q.eq('submission_id', target);
 
-  if (error) throw error;
+    const { data, error, count } = await q
+      .order('ordinal', { ascending: true })
+      .range(offset, offset + AD_SCHEDULES_PAGE_SIZE - 1);
 
-  const rows = (data || []) as any[];
+    if (error) throw error;
 
-  // Kalau PostgREST memotong hasilnya (`db-max-rows`), papan akan tetap tampil
-  // rapi sambil DIAM-DIAM kehilangan jadwal — dan yang paling mungkin hilang
-  // adalah baris paling belakang, yaitu order terbaru. Lebih baik berisik.
-  if (count != null && count > rows.length) {
+    total = count;
+    const page = (data || []) as any[];
+    rows.push(...page);
+    if (page.length < AD_SCHEDULES_PAGE_SIZE) break;
+    offset += AD_SCHEDULES_PAGE_SIZE;
+  }
+
+  // Penjaga terakhir: kalau angkanya masih tidak cocok sesudah paginasi habis,
+  // sesuatu yang lain sedang salah (bukan lagi batas baris) — lebih baik
+  // berisik daripada papan diam-diam menampilkan data tidak lengkap.
+  if (total != null && total !== rows.length) {
     console.warn(
-      `fetchAdSchedules: server hanya mengirim ${rows.length} dari ${count} baris. ` +
-      `Papan Schedule sedang menampilkan data TIDAK LENGKAP — sudah waktunya query ini dipaginasi.`
+      `fetchAdSchedules: mengambil ${rows.length} dari ${total} baris sesudah paginasi. ` +
+      `Papan Schedule mungkin menampilkan data TIDAK LENGKAP.`
     );
   }
 
