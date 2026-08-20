@@ -11,9 +11,18 @@ import type {
 } from '../../components/analyzer/types';
 import { calculateCrossTab } from '../../utils/surveyCrossTab';
 import { generateDeepSurveyStory, generateInitialCanvasBlocks } from '../../utils/analyzerAiAgent';
+import { profileSurveyDataset } from '../../utils/surveyDataProfiler';
+import {
+  detectSmartCleaningRules,
+  getRecommendedAnalysisGoals,
+  applyDataCleaning,
+  type CleaningRule,
+  type AnalysisGoalOption
+} from '../../utils/dataCleaningEngine';
 import { CsvUploadDropzone } from '../../components/analyzer/CsvUploadDropzone';
 import { AnalyzerCanvas } from '../../components/analyzer/AnalyzerCanvas';
 import { AnalyzerCopilotSidebar } from '../../components/analyzer/AnalyzerCopilotSidebar';
+import { DataCleaningWizardModal } from '../../components/analyzer/DataCleaningWizardModal';
 import {
   ArrowLeft,
   Sparkles,
@@ -86,6 +95,13 @@ export const AnalyzerWorkspacePage: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanStep, setScanStep] = useState(0);
   const [scanProgress, setScanProgress] = useState(10);
+
+  // Wizard State
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [pendingSummary, setPendingSummary] = useState<DatasetSummary | null>(null);
+  const [pendingRawRows, setPendingRawRows] = useState<Record<string, string>[]>([]);
+  const [wizardRules, setWizardRules] = useState<CleaningRule[]>([]);
+  const [wizardGoals, setWizardGoals] = useState<AnalysisGoalOption[]>([]);
 
   // Project state
   const [projectTitle, setProjectTitle] = useState('Analisis Data Survei');
@@ -186,13 +202,30 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     }, 1200);
   };
 
-  // 3. Handle initial CSV Data Upload with Deep Scanning
+  // 3. Handle initial CSV Data Upload -> Opens Personalization Wizard
   const handleCsvLoaded = async (summary: DatasetSummary, rows: Record<string, string>[]) => {
-    setDatasetSummary(summary);
-    setRawRows(rows);
+    setPendingSummary(summary);
+    setPendingRawRows(rows);
 
-    const initialTitle = summary.fileName
-      ? `Analisis ${summary.fileName.replace(/\.csv$/i, '').replace(/[-_]/g, ' ')}`
+    const rules = detectSmartCleaningRules(summary, rows);
+    const goals = getRecommendedAnalysisGoals(summary);
+
+    setWizardRules(rules);
+    setWizardGoals(goals);
+    setIsWizardOpen(true);
+  };
+
+  // 4. Execute Analysis Pipeline (with Cleaned Data & Selected Goals)
+  const executeAnalysisPipeline = async (
+    finalSummary: DatasetSummary,
+    finalRows: Record<string, string>[],
+    cleaningNotes: string[] = []
+  ) => {
+    setDatasetSummary(finalSummary);
+    setRawRows(finalRows);
+
+    const initialTitle = finalSummary.fileName
+      ? `Analisis ${finalSummary.fileName.replace(/\.csv$/i, '').replace(/[-_]/g, ' ')}`
       : 'Analisis Data Survei';
     setProjectTitle(initialTitle);
 
@@ -206,13 +239,13 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     const timer3 = setTimeout(() => { setScanStep(3); setScanProgress(90); }, 3800);
 
     try {
-      const { blocks, welcomeMessage } = await generateDeepSurveyStory(summary, rows);
+      const { blocks, welcomeMessage } = await generateDeepSurveyStory(finalSummary, finalRows);
 
       clearTimeout(timer1);
       clearTimeout(timer2);
       clearTimeout(timer3);
 
-      const hydratedBlocks = blocks.map(b => resolveCrossTabBlock(b, rows, summary) as CanvasBlock);
+      const hydratedBlocks = blocks.map(b => resolveCrossTabBlock(b, finalRows, finalSummary) as CanvasBlock);
 
       setScanStep(3);
       setScanProgress(100);
@@ -220,10 +253,17 @@ export const AnalyzerWorkspacePage: React.FC = () => {
       setTimeout(async () => {
         setCanvasBlocks(hydratedBlocks);
 
+        let welcomeContent = welcomeMessage;
+        if (cleaningNotes.length > 0 && cleaningNotes[0] !== 'Seluruh data mentah digunakan tanpa proses filter eliminasi.') {
+          welcomeContent = `Halo! Saya telah melakukan pembersihan data (${finalRows.length} responden valid) dan menyusun canvas analisis lengkap di sebelah kiri.\n\n*Catatan Pembersihan:*\n` +
+            cleaningNotes.map(n => `• ${n}`).join('\n') +
+            `\n\nSilakan jelajahi grafik di canvas atau ajukan instruksi analisis lanjutan lewat chat ini!`;
+        }
+
         const welcomeMsg: AnalyzerChatMessage = {
           id: `msg_welcome_${Date.now()}`,
           role: 'assistant',
-          content: welcomeMessage,
+          content: welcomeContent,
           timestamp: new Date().toISOString()
         };
         const newChat = [welcomeMsg];
@@ -239,8 +279,8 @@ export const AnalyzerWorkspacePage: React.FC = () => {
                 user_id: user.id,
                 title: initialTitle,
                 source_type: 'csv_upload',
-                dataset_summary: summary,
-                raw_data_sample: rows.slice(0, 100),
+                dataset_summary: finalSummary,
+                raw_data_sample: finalRows.slice(0, 100),
                 canvas_blocks: hydratedBlocks,
                 chat_history: newChat
               })
@@ -259,6 +299,40 @@ export const AnalyzerWorkspacePage: React.FC = () => {
       console.error('Error during deep analysis:', err);
       setIsScanning(false);
     }
+  };
+
+  // 5. Wizard Actions
+  const handleConfirmWizard = (
+    activeRules: CleaningRule[],
+    customFilters: string[],
+    activeGoals: AnalysisGoalOption[]
+  ) => {
+    if (!pendingSummary || pendingRawRows.length === 0) return;
+
+    setIsWizardOpen(false);
+
+    // Apply cleaning rules
+    const { cleanedRows, excludedCount, cleaningSummaryNotes } = applyDataCleaning(
+      pendingRawRows,
+      activeRules,
+      customFilters
+    );
+
+    if (excludedCount > 0) {
+      toast.success(`Pembersihan data selesai: ${cleanedRows.length} responden valid (${excludedCount} dieleminasi).`);
+    }
+
+    // Reprofile summary with cleaned rows
+    const headers = pendingSummary.columns.map(c => c.label);
+    const cleanedSummary = profileSurveyDataset(pendingSummary.fileName, headers, cleanedRows);
+
+    executeAnalysisPipeline(cleanedSummary, cleanedRows, cleaningSummaryNotes);
+  };
+
+  const handleSkipWizard = () => {
+    if (!pendingSummary || pendingRawRows.length === 0) return;
+    setIsWizardOpen(false);
+    executeAnalysisPipeline(pendingSummary, pendingRawRows);
   };
 
   // 4. Block Manipulations
@@ -490,6 +564,18 @@ export const AnalyzerWorkspacePage: React.FC = () => {
         </div>
 
         <CsvUploadDropzone onDataLoaded={handleCsvLoaded} />
+
+        {pendingSummary && (
+          <DataCleaningWizardModal
+            isOpen={isWizardOpen}
+            datasetSummary={pendingSummary}
+            rawRows={pendingRawRows}
+            initialRules={wizardRules}
+            initialGoals={wizardGoals}
+            onConfirm={handleConfirmWizard}
+            onSkip={handleSkipWizard}
+          />
+        )}
       </div>
     );
   }
