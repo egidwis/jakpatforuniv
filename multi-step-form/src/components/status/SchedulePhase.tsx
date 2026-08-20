@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
@@ -248,10 +248,12 @@ const ctaRoyal = 'rounded-full font-bold text-white bg-gradient-to-r from-jfu-pr
 const ctaSoftRose = 'rounded-full font-semibold bg-white text-rose-700 border border-rose-300 hover:bg-rose-50 shadow-2xs transition-all gap-1.5';
 const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-800 border border-amber-300 hover:bg-amber-50 shadow-2xs transition-all gap-1.5';
 
-function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
+function InfoSection({ card, submission, muted }: { card: ScheduleCard; submission: FormSubmission; muted?: boolean }) {
     const { t } = useLanguage();
+    const [showBreakdown, setShowBreakdown] = useState(false);
     const rows: RowDef[] = [];
     const bState = card?.booking?.state;
+    const b = card?.booking || {};
 
     // Panjang tayang diturunkan dari rentang tanggalnya (akhir-eksklusif), BUKAN dari
     // kolom `duration` — keduanya bisa berbeda, dan yang salah adalah kolomnya. Baris
@@ -323,20 +325,8 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
 
     rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: batchValue });
 
-    const sublabel = card?.info?.createdAt ? `${t('submittedOn')} ${formatDateLong(card.info.createdAt)}` : undefined;
-
-    return (
-        <Section label={t('sectionInfo')} sublabel={sublabel}>
-            <RowGrid rows={rows} muted={muted} />
-        </Section>
-    );
-}
-
-function BookingSection({ card, submission, muted }: { card: ScheduleCard; submission: FormSubmission; muted?: boolean }) {
-    const { t } = useLanguage();
-    const b = card?.booking || {};
+    // Payment calculations
     const questionCount = submission?.question_count || 0;
-    const duration = card?.info?.duration || submission?.duration || 0;
     const isKilat = submission?.distribution_type === 'kilat';
     const costPerDay = calculateAdCostPerDay(questionCount);
     const adCost = isKilat ? costPerDay : calculateTotalAdCost(questionCount, duration);
@@ -356,8 +346,6 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
     }
 
     const voucherCode = card?.info?.voucherCode || submission?.voucher_code;
-    // Dinilai pada tanggal order lahir, sama seperti create-payment.js — kalau
-    // tidak, angka yang ditampilkan di sini bisa berbeda dari yang ditagih.
     const discount = calculateDiscount(
         voucherCode, adCost, incentiveCost, duration, voucherInstantOf(submission?.created_at),
     );
@@ -366,90 +354,132 @@ function BookingSection({ card, submission, muted }: { card: ScheduleCard; submi
     const ppn = calculatePpn(subtotal);
     const grandTotal = subtotal + ppn;
 
-    return (
-        <Section label={t('sectionBookingPayment')}>
-            <div className={`rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 space-y-2.5 text-xs ${muted ? 'opacity-60' : ''}`}>
-                <div className="flex justify-between items-center">
-                    <span className="text-slate-600 font-medium">
-                        {t('adCostLabel')} <span className="text-[11px] text-slate-400 font-normal">({questionCount} Qs | {formatIDR(costPerDay)}{isKilat ? ' rate' : ` × ${duration} hari`})</span>
-                    </span>
-                    <span className="font-semibold text-slate-900">
-                        {formatIDR(adCost)}
-                    </span>
-                </div>
-                {kilatAddon > 0 && (
-                    <div className="flex justify-between items-center">
-                        <span className="text-slate-600 font-medium flex items-center gap-1">
-                            <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> Add-on JFU Kilat
-                        </span>
-                        <span className="font-semibold text-amber-600">{formatIDR(kilatAddon)}</span>
-                    </div>
-                )}
-                {discount > 0 && (
-                    <div className="flex justify-between items-center">
-                        <span className="text-slate-600 font-medium">Diskon ({voucherCode})</span>
-                        <span className="font-semibold text-emerald-600">-{formatIDR(discount)}</span>
-                    </div>
-                )}
-                {incentiveCost > 0 && (
-                    <div className="flex justify-between items-center">
-                        <span className="text-slate-600 font-medium">
-                            {t('totalRewardLabel')} {prizePerWinner > 0 && winnerCount > 0 && <span className="text-[11px] text-slate-400 font-normal">({formatIDR(prizePerWinner)} × {winnerCount} {t('winner')})</span>}
-                        </span>
-                        <span className="font-semibold text-slate-900">{formatIDR(incentiveCost)}</span>
-                    </div>
-                )}
-
-                <div className="flex justify-between items-center pt-2 border-t border-slate-200/80 mt-1 text-slate-600 font-medium">
-                    <span>Subtotal (DPP)</span>
-                    <span className="font-semibold text-slate-900">{formatIDR(subtotal)}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-600 font-medium">
-                    <span>PPN (11%)</span>
-                    <span className="font-semibold text-slate-900">{formatIDR(ppn)}</span>
-                </div>
-                <div className="flex justify-between items-center pt-2.5 border-t border-slate-200 mt-1 text-sm bg-white/60 -mx-4 -mb-1 px-4 py-2 rounded-b-lg">
-                    <span className="text-slate-900 font-bold">{t('totalPaymentLabel')}</span>
-                    <span className="font-extrabold text-base text-jfu-primary">{formatIDR(grandTotal)}</span>
-                </div>
-
-                <div className="flex justify-between items-center pt-2 text-xs">
-                    <span className="text-slate-500 font-medium">{b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel')}</span>
-                    {b.isPaidForLabel && b.invoicePaymentId ? (
-                        <a
-                            href={`/invoices/${b.invoicePaymentId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-semibold text-jfu-primary hover:text-jfu-dark hover:underline inline-flex items-center gap-1"
-                        >
-                            <FileText className="w-3.5 h-3.5" />
-                            {t('viewReceiptLink')}
-                            <ExternalLink className="w-3 h-3 ml-0.5" />
-                        </a>
-                    ) : b.state === 'waiting_payment' && b.invoicePaymentId ? (
-                        <a
-                            href={`/invoices/${b.invoicePaymentId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-semibold text-jfu-primary hover:text-jfu-dark hover:underline inline-flex items-center gap-1"
-                        >
-                            <FileText className="w-3.5 h-3.5" />
-                            {t('viewInvoiceLink')}
-                            <ExternalLink className="w-3 h-3 ml-0.5" />
-                        </a>
-                    ) : b.state === 'expired' ? (
-                        <span className="text-rose-600 italic font-medium">{t('invoiceExpired')}</span>
-                    ) : b.state === 'too_late_today' ? (
-                        <span className="text-rose-600 italic font-medium">{t('invoicePaymentClosedToday')}</span>
-                    ) : b.state === 'choose_schedule' ? (
-                        <span className="text-slate-400 italic font-normal">{t('invoiceAwaitingSchedule')}</span>
-                    ) : b.state === 'cancelled' ? (
-                        <span className="text-slate-400 italic font-normal">{t('invoiceCancelled')}</span>
-                    ) : (
-                        <span className="text-slate-400 italic font-normal">{t('invoiceAwaitingIssue')}</span>
-                    )}
-                </div>
+    // Total Payment Row with expandable breakdown
+    const totalPaymentValue = (
+        <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+                <span className={`font-bold text-sm ${muted ? 'text-slate-400' : 'text-jfu-primary'}`}>
+                    {formatIDR(grandTotal)}
+                </span>
+                <button
+                    type="button"
+                    onClick={() => setShowBreakdown((prev) => !prev)}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-jfu-primary transition-colors py-0.5 px-1.5 rounded-md hover:bg-slate-100/80 cursor-pointer"
+                >
+                    <span>{showBreakdown ? t('hideCostBreakdown') : t('viewCostBreakdown')}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showBreakdown ? 'rotate-180' : ''}`} />
+                </button>
             </div>
+            {showBreakdown && (
+                <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 p-3 space-y-2 text-xs font-normal text-slate-600">
+                    <div className="flex justify-between items-center">
+                        <span>
+                            {t('adCostLabel')}{' '}
+                            <span className="text-[11px] text-slate-400 font-normal">
+                                ({questionCount} Qs | {formatIDR(costPerDay)}{isKilat ? ' rate' : ` × ${duration} hari`})
+                            </span>
+                        </span>
+                        <span className="font-semibold text-slate-900">{formatIDR(adCost)}</span>
+                    </div>
+                    {kilatAddon > 0 && (
+                        <div className="flex justify-between items-center">
+                            <span className="flex items-center gap-1">
+                                <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> Add-on JFU Kilat
+                            </span>
+                            <span className="font-semibold text-amber-600">{formatIDR(kilatAddon)}</span>
+                        </div>
+                    )}
+                    {discount > 0 && (
+                        <div className="flex justify-between items-center">
+                            <span>Diskon ({voucherCode})</span>
+                            <span className="font-semibold text-emerald-600">-{formatIDR(discount)}</span>
+                        </div>
+                    )}
+                    {incentiveCost > 0 && (
+                        <div className="flex justify-between items-center">
+                            <span>
+                                {t('totalRewardLabel')}{' '}
+                                {prizePerWinner > 0 && winnerCount > 0 && (
+                                    <span className="text-[11px] text-slate-400 font-normal">
+                                        ({formatIDR(prizePerWinner)} × {winnerCount} {t('winner')})
+                                    </span>
+                                )}
+                            </span>
+                            <span className="font-semibold text-slate-900">{formatIDR(incentiveCost)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center pt-1.5 border-t border-slate-200/80">
+                        <span>Subtotal (DPP)</span>
+                        <span className="font-semibold text-slate-900">{formatIDR(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span>PPN (11%)</span>
+                        <span className="font-semibold text-slate-900">{formatIDR(ppn)}</span>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+
+    rows.push({
+        key: 'totalPayment',
+        icon: <CreditCard className={iconCls} />,
+        label: t('totalPaymentLabel'),
+        value: totalPaymentValue,
+    });
+
+    // Invoice / Receipt Row
+    let invoiceValue: ReactNode;
+    if (b.isPaidForLabel && b.invoicePaymentId) {
+        invoiceValue = (
+            <a
+                href={`/invoices/${b.invoicePaymentId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-jfu-primary hover:text-jfu-dark hover:underline inline-flex items-center gap-1"
+            >
+                <FileText className="w-3.5 h-3.5" />
+                {t('viewReceiptLink')}
+                <ExternalLink className="w-3 h-3 ml-0.5" />
+            </a>
+        );
+    } else if (b.state === 'waiting_payment' && b.invoicePaymentId) {
+        invoiceValue = (
+            <a
+                href={`/invoices/${b.invoicePaymentId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-jfu-primary hover:text-jfu-dark hover:underline inline-flex items-center gap-1"
+            >
+                <FileText className="w-3.5 h-3.5" />
+                {t('viewInvoiceLink')}
+                <ExternalLink className="w-3 h-3 ml-0.5" />
+            </a>
+        );
+    } else if (b.state === 'expired') {
+        invoiceValue = <span className="text-rose-600 italic font-medium text-xs sm:text-sm">{t('invoiceExpired')}</span>;
+    } else if (b.state === 'too_late_today') {
+        invoiceValue = <span className="text-rose-600 italic font-medium text-xs sm:text-sm">{t('invoicePaymentClosedToday')}</span>;
+    } else if (b.state === 'choose_schedule') {
+        invoiceValue = <span className="text-slate-400 italic font-normal text-xs sm:text-sm">{t('invoiceAwaitingSchedule')}</span>;
+    } else if (b.state === 'cancelled') {
+        invoiceValue = <span className="text-slate-400 italic font-normal text-xs sm:text-sm">{t('invoiceCancelled')}</span>;
+    } else {
+        invoiceValue = <span className="text-slate-400 italic font-normal text-xs sm:text-sm">{t('invoiceAwaitingIssue')}</span>;
+    }
+
+    rows.push({
+        key: 'invoice',
+        icon: <FileText className={iconCls} />,
+        label: b.isPaidForLabel ? t('receiptRowLabel') : t('invoiceRowLabel'),
+        value: invoiceValue,
+    });
+
+    const sublabel = card?.info?.createdAt ? `${t('submittedOn')} ${formatDateLong(card.info.createdAt)}` : undefined;
+
+    return (
+        <Section label={t('sectionInfo')} sublabel={sublabel}>
+            <RowGrid rows={rows} muted={muted} />
         </Section>
     );
 }
@@ -719,8 +749,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                 </AccordionPrimitive.Header>
                                 <AccordionContent className="pb-4 pt-1.5 space-y-4 bg-white -mx-3.5 px-3.5 border-t border-slate-100">
                                     <ScheduleBanner card={card} onReschedule={onReschedule} />
-                                    <InfoSection card={card} muted={pendingReview} />
-                                    <BookingSection card={card} submission={submission} muted={pendingReview} />
+                                    <InfoSection card={card} submission={submission} muted={pendingReview} />
                                 </AccordionContent>
                             </AccordionItem>
                             );
