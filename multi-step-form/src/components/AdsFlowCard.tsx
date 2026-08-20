@@ -45,7 +45,7 @@ export function AdsFlowCard({ step, children }: AdsFlowCardProps) {
   const hasCap = step !== 'fields';
 
   const shellClass = hasCap
-    ? '-mt-8 -mx-6 md:mt-0 md:mx-auto w-auto md:w-full max-w-none md:max-w-xl rounded-none md:rounded-2xl border-0 md:border md:border-gray-200 bg-white shadow-none md:shadow-sm overflow-hidden'
+    ? '-mt-8 -mx-6 md:mt-0 md:mx-auto w-auto md:w-full max-w-none md:max-w-xl rounded-none md:rounded-2xl border-0 md:border md:border-gray-300 bg-white shadow-none md:shadow-sm overflow-hidden'
     : 'mx-auto w-full max-w-xl';
 
   const bodyClass = hasCap
@@ -55,19 +55,19 @@ export function AdsFlowCard({ step, children }: AdsFlowCardProps) {
   return (
     <div className={shellClass}>
       {hasCap && (
-        <div className="relative overflow-hidden bg-gradient-to-b from-jfu-primary to-jfu-dark text-center px-5 py-6">
-          <span aria-hidden="true" className="pointer-events-none absolute -top-10 -right-8 w-32 h-32 rounded-full bg-white/[0.07]" />
-          <span aria-hidden="true" className="pointer-events-none absolute -bottom-12 -left-10 w-36 h-36 rounded-full bg-white/[0.05]" />
+        <div className="relative overflow-hidden bg-gradient-to-r from-jfu-primary via-[#1E88E5] to-jfu-light text-center px-5 py-6">
+          <span aria-hidden="true" className="pointer-events-none absolute -top-10 -right-8 w-32 h-32 rounded-full bg-white/[0.12]" />
+          <span aria-hidden="true" className="pointer-events-none absolute -bottom-12 -left-10 w-36 h-36 rounded-full bg-white/[0.08]" />
 
-          <span className="relative inline-flex w-12 h-12 rounded-2xl bg-white/15 ring-1 ring-white/20 text-white items-center justify-center mb-3">
+          <span className="relative inline-flex w-12 h-12 rounded-2xl bg-white/20 ring-1 ring-white/30 text-white items-center justify-center mb-3 shadow-xs">
             <BarChart3 className="w-6 h-6" />
           </span>
 
-          <h1 className="relative font-bold text-white text-xl md:text-2xl">
+          <h1 className="relative font-bold text-white text-xl md:text-2xl drop-shadow-xs">
             {t('productAdsTitle')}
           </h1>
 
-          <p className="relative text-sm text-white/90 mt-2 max-w-sm mx-auto leading-relaxed">
+          <p className="relative text-sm text-white/95 mt-2 max-w-sm mx-auto leading-relaxed">
             {t('adsEntryHeroDesc')}
           </p>
         </div>

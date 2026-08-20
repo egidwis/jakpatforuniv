@@ -7,7 +7,8 @@ import { StepOneGoogleForm } from './StepOneGoogleForm';
 import { StepOneFormFields, ReviewInfoBanner } from './StepOneFormFields';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { isProfileGateSatisfied } from './ProfileForm';
-import { AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface StepSurveyDetailsProps {
@@ -222,6 +223,29 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             <StepOneMethodSelection onSelectMethod={handleMethodSelection} />
           )}
         </AdsFlowCard>
+
+        {!isImport && (
+          <div className="mt-4 w-full max-w-xl mx-auto flex flex-col items-center gap-3.5 text-center">
+            <Link
+              to="/dashboard"
+              className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-2xl border border-gray-300 bg-white text-sm font-semibold text-[#1a1a1a] hover:bg-gray-50 hover:border-gray-400 transition-all shadow-2xs"
+            >
+              <ArrowLeft className="w-4 h-4 text-gray-500" />
+              <span>{t('backToOrders')}</span>
+            </Link>
+
+            <p className="text-xs md:text-sm text-gray-500 leading-relaxed">
+              {t('jfuFormCtaLead')}{' '}
+              <Link
+                to="/dashboard/forms"
+                className="font-semibold text-jfu-primary hover:underline"
+              >
+                {t('jfuFormCtaAction')}
+              </Link>
+            </p>
+          </div>
+        )}
+
         {profileSheet}
       </>
     );
