@@ -365,7 +365,7 @@ export const DataCleaningWizardModal: React.FC<DataCleaningWizardModalProps> = (
               className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-500/20 transition-all hover:scale-101"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>Generate Canvas ({estimatedCleanCount} Responden)</span>
+              <span>Mulai Analisis ({estimatedCleanCount} Responden)</span>
             </button>
           </div>
         </div>
