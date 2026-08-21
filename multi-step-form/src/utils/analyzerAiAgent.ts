@@ -165,14 +165,19 @@ export async function sendAnalyzerAiPrompt(
  */
 export async function generateDeepSurveyStory(
   summary: DatasetSummary,
-  rawRows: Record<string, string>[]
+  rawRows: Record<string, string>[],
+  researchObjective?: string
 ): Promise<{ blocks: CanvasBlock[]; welcomeMessage: string }> {
   // Try generating via AI for deep insight
   try {
     const demoCol = summary.detectedDemographics[0] || summary.columns[0]?.label || 'Kategori';
     const mainCol = summary.columns.find(c => c.label !== demoCol && (c.type === 'likert' || c.type === 'categorical'))?.label || summary.columns[1]?.label || 'Variabel';
 
-    const promptText = `Lakukan deep scanning terhadap seluruh dataset survei "${summary.fileName}" (${summary.totalRows} responden, ${summary.totalColumns} variabel).
+    const objectiveLine = researchObjective?.trim()
+      ? `\n🎯 TUJUAN / FOKUS RISET SPESIFIK: "${researchObjective.trim()}". Pastikan temuan, tabulasi silang, dan draf narasi diarahkan secara tajam untuk menjawab tujuan ini.\n`
+      : '';
+
+    const promptText = `Lakukan deep scanning terhadap seluruh dataset survei "${summary.fileName}" (${summary.totalRows} responden, ${summary.totalColumns} variabel).${objectiveLine}
 Susun Executive Storytelling Report lengkap yang terdiri dari:
 1. Block "narrative": "3 Temuan Utama & Pola Signifikan Riset" (sertakan angka konkret n=... dan persentase %).
 2. Block "chart": "Distribusi Demografi: ${demoCol}" (pilih donut jika kategori <=4, bar jika >4).
@@ -330,6 +335,7 @@ function generateDeterministicStory(
 export interface AiComprehensionResult {
   studyTopic: string;
   studySummary: string;
+  defaultObjective: string;
   screeningRules: {
     columnLabel: string;
     disqualifyValue: string;
@@ -373,16 +379,18 @@ export async function generateAiDataComprehension(
   const systemPrompt = `Anda adalah AI Senior Research Methodologist & Data Analyst.
 Tugas Anda adalah memindai seluruh kolom pertanyaan kuesioner dari dataset survei untuk:
 1. Memahami topik dan konteks riset secara semantik.
-2. Mengidentifikasi pertanyaan screening / persetujuan / kriteria inklusi (misal: "Apakah Anda bersedia...", "Persetujuan responden", dll) dan menentukan nilai jawaban mana yang harus dieliminasi/disqualified (misal: "Tidak, saya tidak bersedia", "Bukan", dll).
-3. Mengidentifikasi variabel demografi utama (Gender, Usia, Fakultas, Universitas, dll).
-4. Memilih pasangan variabel PALING BERBOBOT & BERMAKNA secara teoritis untuk Tabulasi Silang (Cross-Tabulation). 
+2. Merumuskan 1 kalimat Tujuan/Objective Analisis Riset yang jelas, ilmiah, dan akademis (misal: "Menganalisis kesiapan pedagogis guru dalam mengintegrasikan GeoGebra dan AI, serta mengidentifikasi kendala utama dan kebutuhan pelatihan berdasarkan latar belakang/pengalaman mengajar guru.")
+3. Mengidentifikasi pertanyaan screening / persetujuan / kriteria inklusi (misal: "Apakah Anda bersedia...", "Persetujuan responden", dll) dan menentukan nilai jawaban mana yang harus dieliminasi/disqualified (misal: "Tidak, saya tidak bersedia", "Bukan", dll).
+4. Mengidentifikasi variabel demografi utama (Gender, Usia, Fakultas, Universitas, dll).
+5. Memilih pasangan variabel PALING BERBOBOT & BERMAKNA secara teoritis untuk Tabulasi Silang (Cross-Tabulation). 
    ⚠️ SANGAT PENTING: JANGAN PERNAH memilih pertanyaan screening/persetujuan untuk Tabulasi Silang! Pilih variabel demografi vs pertanyaan inti riset / variabel dependen.
-5. Memilih variabel indikator utama kuesioner untuk visualisasi grafik.
+6. Memilih variabel indikator utama kuesioner untuk visualisasi grafik.
 
 Format respon HARUS berupa JSON valid dengan struktur:
 {
   "studyTopic": "Judul/Topik Singkat Riset (contoh: Studi Persepsi Gaya Bahasa AI pada Mahasiswa)",
   "studySummary": "Ringkasan 1-2 kalimat tentang apa yang diteliti oleh kuesioner ini...",
+  "defaultObjective": "Draf kalimat tujuan riset 1-2 kalimat yang tajam dan akademis...",
   "screeningRules": [
     {
       "columnLabel": "Nama Kolom Pertanyaan Screening",
@@ -476,7 +484,10 @@ Format respon HARUS berupa JSON valid dengan struktur:
       jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
       const parsed: AiComprehensionResult = JSON.parse(jsonStr);
       if (parsed.studyTopic && parsed.recommendedAnalysisGoals) {
-        return parsed;
+        return {
+          ...parsed,
+          defaultObjective: parsed.defaultObjective || parsed.studySummary || `Menganalisis sebaran jawaban dan korelasi antar variabel pada dataset ${summary.fileName}.`
+        };
       }
     }
   } catch (err) {
@@ -495,6 +506,7 @@ Format respon HARUS berupa JSON valid dengan struktur:
   return {
     studyTopic: `Analisis Data Survei ${summary.fileName.replace(/\.csv$/i, '')}`,
     studySummary: `Penelitian ini menganalisis respon dari ${summary.totalRows} responden terkait variabel ${secondCol}.`,
+    defaultObjective: `Menganalisis karakteristik responden berdasarkan ${firstDemo}, sebaran indikator ${secondCol}, serta korelasi dan temuan utama untuk pembahasan laporan penelitian.`,
     screeningRules: [],
     missingRules: [],
     recommendedAnalysisGoals: [

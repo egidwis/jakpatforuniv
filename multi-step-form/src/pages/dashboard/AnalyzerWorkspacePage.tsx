@@ -96,6 +96,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
   const [isComprehending, setIsComprehending] = useState(false);
   const [aiStudyTopic, setAiStudyTopic] = useState('');
   const [aiStudySummary, setAiStudySummary] = useState('');
+  const [aiDefaultObjective, setAiDefaultObjective] = useState('');
 
   // Deep Scanning State on Import
   const [isScanning, setIsScanning] = useState(false);
@@ -216,12 +217,13 @@ export const AnalyzerWorkspacePage: React.FC = () => {
 
     try {
       const aiComprehension = await generateAiDataComprehension(summary, rows);
-      const { rules, goals, topic, summaryText } = buildRulesFromAiComprehension(aiComprehension, summary, rows);
+      const { rules, goals, topic, summaryText, defaultObjective } = buildRulesFromAiComprehension(aiComprehension, summary, rows);
 
       setWizardRules(rules);
       setWizardGoals(goals);
       setAiStudyTopic(topic);
       setAiStudySummary(summaryText);
+      setAiDefaultObjective(defaultObjective);
       setIsComprehending(false);
       setIsWizardOpen(true);
     } catch (err) {
@@ -230,16 +232,18 @@ export const AnalyzerWorkspacePage: React.FC = () => {
       const fallbackGoals = getRecommendedAnalysisGoals(summary);
       setWizardRules(fallbackRules);
       setWizardGoals(fallbackGoals);
+      setAiDefaultObjective(`Menganalisis karakteristik responden dan temuan utama pada survei ${summary.fileName}.`);
       setIsComprehending(false);
       setIsWizardOpen(true);
     }
   };
 
-  // 4. Execute Analysis Pipeline (with Cleaned Data & Selected Goals)
+  // 4. Execute Analysis Pipeline (with Cleaned Data & Objective)
   const executeAnalysisPipeline = async (
     finalSummary: DatasetSummary,
     finalRows: Record<string, string>[],
-    cleaningNotes: string[] = []
+    cleaningNotes: string[] = [],
+    researchObjective?: string
   ) => {
     setDatasetSummary(finalSummary);
     setRawRows(finalRows);
@@ -259,7 +263,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     const timer3 = setTimeout(() => { setScanStep(3); setScanProgress(90); }, 3800);
 
     try {
-      const { blocks, welcomeMessage } = await generateDeepSurveyStory(finalSummary, finalRows);
+      const { blocks, welcomeMessage } = await generateDeepSurveyStory(finalSummary, finalRows, researchObjective);
 
       clearTimeout(timer1);
       clearTimeout(timer2);
@@ -325,7 +329,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
   const handleConfirmWizard = (
     activeRules: CleaningRule[],
     customFilters: string[],
-    activeGoals: AnalysisGoalOption[]
+    researchObjective: string
   ) => {
     if (!pendingSummary || pendingRawRows.length === 0) return;
 
@@ -346,7 +350,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
     const headers = pendingSummary.columns.map(c => c.label);
     const cleanedSummary = profileSurveyDataset(pendingSummary.fileName, headers, cleanedRows);
 
-    executeAnalysisPipeline(cleanedSummary, cleanedRows, cleaningSummaryNotes);
+    executeAnalysisPipeline(cleanedSummary, cleanedRows, cleaningSummaryNotes, researchObjective);
   };
 
   const handleSkipWizard = () => {
@@ -628,6 +632,7 @@ export const AnalyzerWorkspacePage: React.FC = () => {
             initialGoals={wizardGoals}
             studyTopic={aiStudyTopic}
             studySummary={aiStudySummary}
+            defaultObjective={aiDefaultObjective}
             onConfirm={handleConfirmWizard}
             onSkip={handleSkipWizard}
           />

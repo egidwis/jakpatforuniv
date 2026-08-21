@@ -175,7 +175,8 @@ export function buildRulesFromAiComprehension(
     rules,
     goals,
     topic: aiResult.studyTopic || `Analisis Data Survei ${summary.fileName.replace(/\.csv$/i, '')}`,
-    summaryText: aiResult.studySummary || `Analisis terhadap ${rows.length} responden survei.`
+    summaryText: aiResult.studySummary || `Analisis terhadap ${rows.length} responden survei.`,
+    defaultObjective: aiResult.defaultObjective || aiResult.studySummary || `Menganalisis sebaran jawaban, korelasi variabel utama, dan menyusun pembahasan laporan penelitian.`
   };
 }
 
