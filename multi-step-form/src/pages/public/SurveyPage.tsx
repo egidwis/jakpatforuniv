@@ -734,65 +734,203 @@ export function SurveyPage() {
         }
     };
 
-    // Block Renderer
-    const renderBlocks = (blocks: any) => {
-        if (!blocks || !blocks.content) return null;
+    // Block & Inline Renderer
+    const renderInline = (content: any[]) => {
+        if (!content || !Array.isArray(content)) return null;
 
-        return blocks.content.map((block: any, index: number) => {
-            switch (block.type) {
-                case 'heading':
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const Level = (`h${block.attrs.level}`) as any;
-                    return <Level key={index} className={`font-bold mt-4 mb-2 ${block.attrs.level === 1 ? 'text-3xl' : block.attrs.level === 2 ? 'text-2xl' : 'text-xl'}`}>{block.content?.[0]?.text}</Level>;
-                case 'paragraph':
-                    if (!block.content) return <p key={index} className="mb-4">&nbsp;</p>; // Empty paragraph
-                    return (
-                        <p key={index} className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
-                            {block.content.map((child: any, i: number) => {
-                                let element: React.ReactNode = null;
+        return content.map((child: any, i: number) => {
+            if (!child) return null;
 
-                                if (child.type === 'text') {
-                                    element = <span key={i} className={`${child.marks?.some((m: any) => m.type === 'bold') ? 'font-bold' : ''} ${child.marks?.some((m: any) => m.type === 'italic') ? 'italic' : ''}`}>{child.text}</span>;
-                                } else if (child.type === 'image') {
-                                    element = <img key={i} src={child.attrs.src} alt={child.attrs.alt} className="max-w-full rounded-lg my-4" />;
-                                }
-
-                                // Check for link mark
-                                const linkMark = child.marks?.find((m: any) => m.type === 'link');
-                                if (linkMark && element) {
-                                    return (
-                                        <a key={i} href={linkMark.attrs.href} target={linkMark.attrs.target || '_blank'} rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
-                                            {element}
-                                        </a>
-                                    );
-                                }
-
-                                return element;
-                            })}
-                        </p>
-                    );
-                case 'image':
-                    return <img key={index} src={block.attrs.src} alt={block.attrs.alt} className="max-w-full rounded-lg my-6 shadow-md" />;
-                case 'bulletList':
-                    return (
-                        <ul key={index} className="list-disc pl-5 mb-4 space-y-1">
-                            {block.content.map((item: any, i: number) => (
-                                <li key={i}>{item.content?.[0]?.content?.[0]?.text}</li>
-                            ))}
-                        </ul>
-                    );
-                case 'orderedList':
-                    return (
-                        <ol key={index} className="list-decimal pl-5 mb-4 space-y-1">
-                            {block.content.map((item: any, i: number) => (
-                                <li key={i}>{item.content?.[0]?.content?.[0]?.text}</li>
-                            ))}
-                        </ol>
-                    );
-                default:
-                    return null;
+            if (child.type === 'hardBreak') {
+                return <br key={i} />;
             }
+
+            if (child.type === 'image') {
+                return (
+                    <img
+                        key={i}
+                        src={child.attrs?.src}
+                        alt={child.attrs?.alt || ''}
+                        className="max-w-full rounded-lg my-4"
+                    />
+                );
+            }
+
+            if (child.type === 'text') {
+                const marks = child.marks || [];
+                const isBold = marks.some((m: any) => m.type === 'bold');
+                const isItalic = marks.some((m: any) => m.type === 'italic');
+                const isStrike = marks.some((m: any) => m.type === 'strike');
+                const isCode = marks.some((m: any) => m.type === 'code');
+                const isUnderline = marks.some((m: any) => m.type === 'underline');
+
+                const classNames: string[] = [];
+                if (isBold) classNames.push('font-bold');
+                if (isItalic) classNames.push('italic');
+                if (isStrike) classNames.push('line-through');
+                if (isUnderline) classNames.push('underline');
+                if (isCode) classNames.push('bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono text-pink-600 dark:text-pink-400');
+
+                let element: React.ReactNode = (
+                    <span key={i} className={classNames.length > 0 ? classNames.join(' ') : undefined}>
+                        {child.text}
+                    </span>
+                );
+
+                const linkMark = marks.find((m: any) => m.type === 'link');
+                if (linkMark) {
+                    const href = linkMark.attrs?.href || '#';
+                    const target = linkMark.attrs?.target || '_blank';
+                    element = (
+                        <a
+                            key={i}
+                            href={href}
+                            target={target}
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {element}
+                        </a>
+                    );
+                }
+
+                return element;
+            }
+
+            return null;
         });
+    };
+
+    const renderBlock = (block: any, index: number): React.ReactNode => {
+        if (!block) return null;
+
+        switch (block.type) {
+            case 'heading': {
+                const level = block.attrs?.level || 2;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const Level = (`h${level}`) as any;
+                const headingStyles: Record<number, string> = {
+                    1: 'text-2xl sm:text-3xl font-bold mt-6 mb-3 text-gray-900 dark:text-gray-100 leading-tight',
+                    2: 'text-xl sm:text-2xl font-bold mt-5 mb-2.5 text-gray-900 dark:text-gray-100 leading-snug',
+                    3: 'text-lg sm:text-xl font-bold mt-4 mb-2 text-gray-900 dark:text-gray-100',
+                    4: 'text-base sm:text-lg font-bold mt-3 mb-1.5 text-gray-900 dark:text-gray-100',
+                    5: 'text-sm sm:text-base font-bold mt-2 mb-1 text-gray-900 dark:text-gray-100',
+                    6: 'text-xs sm:text-sm font-bold mt-2 mb-1 text-gray-900 dark:text-gray-100',
+                };
+                return (
+                    <Level key={index} className={headingStyles[level] || headingStyles[2]}>
+                        {renderInline(block.content)}
+                    </Level>
+                );
+            }
+            case 'paragraph': {
+                if (!block.content || block.content.length === 0) {
+                    return <p key={index} className="mb-4">&nbsp;</p>;
+                }
+                return (
+                    <p key={index} className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {renderInline(block.content)}
+                    </p>
+                );
+            }
+            case 'bulletList': {
+                return (
+                    <ul key={index} className="list-disc pl-5 mb-4 space-y-1 text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {block.content?.map((item: any, i: number) => (
+                            <li key={i}>
+                                {item.type === 'listItem' && item.content ? (
+                                    item.content.map((subBlock: any, subI: number) => {
+                                        if (subBlock.type === 'paragraph') {
+                                            return (
+                                                <span key={subI}>
+                                                    {renderInline(subBlock.content)}
+                                                </span>
+                                            );
+                                        }
+                                        return renderBlock(subBlock, subI);
+                                    })
+                                ) : (
+                                    renderInline(item.content)
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                );
+            }
+            case 'orderedList': {
+                return (
+                    <ol key={index} className="list-decimal pl-5 mb-4 space-y-1 text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {block.content?.map((item: any, i: number) => (
+                            <li key={i}>
+                                {item.type === 'listItem' && item.content ? (
+                                    item.content.map((subBlock: any, subI: number) => {
+                                        if (subBlock.type === 'paragraph') {
+                                            return (
+                                                <span key={subI}>
+                                                    {renderInline(subBlock.content)}
+                                                </span>
+                                            );
+                                        }
+                                        return renderBlock(subBlock, subI);
+                                    })
+                                ) : (
+                                    renderInline(item.content)
+                                )}
+                            </li>
+                        ))}
+                    </ol>
+                );
+            }
+            case 'blockquote': {
+                return (
+                    <blockquote key={index} className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-4 text-gray-700 dark:text-gray-300 italic">
+                        {block.content?.map((subBlock: any, subI: number) => (
+                            <div key={subI}>{renderBlock(subBlock, subI)}</div>
+                        ))}
+                    </blockquote>
+                );
+            }
+            case 'codeBlock': {
+                return (
+                    <pre key={index} className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto my-4 text-sm font-mono text-gray-800 dark:text-gray-200">
+                        <code>{block.content?.[0]?.text}</code>
+                    </pre>
+                );
+            }
+            case 'horizontalRule': {
+                return <hr key={index} className="my-6 border-gray-200 dark:border-gray-700" />;
+            }
+            case 'image': {
+                return (
+                    <img
+                        key={index}
+                        src={block.attrs?.src}
+                        alt={block.attrs?.alt || ''}
+                        className="max-w-full rounded-lg my-6 shadow-md"
+                    />
+                );
+            }
+            default:
+                return null;
+        }
+    };
+
+    const renderBlocks = (blocks: any) => {
+        if (!blocks) return null;
+
+        let parsed = blocks;
+        if (typeof blocks === 'string') {
+            try {
+                parsed = JSON.parse(blocks);
+            } catch (e) {
+                return <p className="mb-4 text-gray-700 whitespace-pre-wrap">{blocks}</p>;
+            }
+        }
+
+        if (!parsed.content || !Array.isArray(parsed.content)) return null;
+
+        return parsed.content.map((block: any, index: number) => renderBlock(block, index));
     };
 
     if (loading) {
