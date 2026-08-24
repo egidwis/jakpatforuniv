@@ -213,11 +213,11 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                 Permintaan Berhasil Terkirim!
               </h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                Terima kasih, <strong>{contactName}</strong>! Kebutuhan riset dan tugas khususmu telah kami terima.
+                Terima kasih, <strong>{contactName}</strong>! Kebutuhan tugas dan misi khususmu telah kami terima.
               </p>
               <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 text-left mt-3">
                 <span className="font-bold block mb-1">⏱️ Apa langkah selanjutnya?</span>
-                Tim Jakpat for Universities akan segera mereview kriteria responden dan menghubungi nomor WhatsApp Anda (<strong>{contactWhatsapp}</strong>) untuk konfirmasi ketersediaan panel &amp; estimasi penayangan.
+                Tim Jakpat for Universities akan segera mereview brief tugas dan menghubungi nomor WhatsApp Anda (<strong>{contactWhatsapp}</strong>) untuk konfirmasi detail misi, estimasi biaya, &amp; jadwal tayang kampanye.
               </div>
             </div>
 
