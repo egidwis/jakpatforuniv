@@ -144,7 +144,7 @@ export function CustomMissionRequestsPage() {
       ? (req.category_custom || 'Kebutuhan Khusus')
       : (CATEGORY_MAP[req.category]?.title || req.category);
 
-    const message = `Halo Kak ${req.contact_name}, salam dari Tim Jakpat for Universities! 👋\n\nKami telah menerima permintaan pengumpulan responden khusus untuk *${catLabel}* (${req.target_respondents} responden, target ${req.target_deadline}).\n\nApakah detail kriteria dan link kuesionernya sudah siap untuk kami review ketersediaan panelnya? Terima kasih! 🙏`;
+    const message = `Halo Kak ${req.contact_name}, salam dari Tim Jakpat for Universities! 👋\n\nKami telah menerima pengajuan misi *${catLabel}* (${req.target_respondents} responden, target ${req.target_deadline}).\n\nApakah detail brief tugas dan bukti (evidence) yang harus dikirim responden sudah siap untuk kami bantu publish ke panel? Terima kasih! 🙏`;
 
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
@@ -281,7 +281,7 @@ export function CustomMissionRequestsPage() {
                   <th className="py-3 px-4">Pemohon</th>
                   <th className="py-3 px-4">Jenis Misi</th>
                   <th className="py-3 px-4">Responden &amp; Target</th>
-                  <th className="py-3 px-4">Kriteria / Link</th>
+                  <th className="py-3 px-4">Brief / Evidence / Link</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Aksi Admin</th>
                 </tr>

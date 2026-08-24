@@ -286,10 +286,10 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                 <select
                   value={targetRespondents}
                   onChange={(e) => setTargetRespondents(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 text-xs font-semibold border border-gray-200 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
+                  className="w-full px-3 py-2.5 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
                 >
                   {RESPONDENT_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
+                    <option key={opt} value={opt} className="text-gray-900">
                       {opt} Responden
                     </option>
                   ))}
@@ -304,10 +304,10 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                 <select
                   value={targetDeadline}
                   onChange={(e) => setTargetDeadline(e.target.value)}
-                  className="w-full px-3 py-2.5 text-xs font-semibold border border-gray-200 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
+                  className="w-full px-3 py-2.5 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
                 >
                   {DEADLINE_OPTIONS.map((dl) => (
-                    <option key={dl} value={dl}>
+                    <option key={dl} value={dl} className="text-gray-900">
                       {dl}
                     </option>
                   ))}
@@ -315,17 +315,17 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
               </div>
             </div>
 
-            {/* 3. Kriteria Responden & Skenario Aksi */}
+            {/* 3. Brief Tugas & Bukti Pengerjaan (Evidence) */}
             <div>
               <label className="block font-bold text-gray-900 text-xs mb-1.5 flex items-center justify-between">
-                <span>3. Kriteria Khusus / Skenario Tugas Responden (Opsional)</span>
-                <span className="text-[10px] text-gray-400 font-normal">Membantu proses screening panel</span>
+                <span>3. Brief Tugas &amp; Bukti Pengerjaan (Evidence) (Opsional)</span>
+                <span className="text-[10px] text-gray-400 font-normal">Panduan aksi &amp; bukti yang wajib dikirim responden</span>
               </label>
               <textarea
-                rows={2}
+                rows={2.5}
                 value={criteriaNotes}
                 onChange={(e) => setCriteriaNotes(e.target.value)}
-                placeholder="Contoh: Khusus domisili Surabaya, memiliki kendaraan bermotor, atau pengguna e-wallet aktif..."
+                placeholder="Contoh: Responden yang bersedia diminta berkunjung ke toko/booth X, melampirkan foto struk belanja / screenshot app, lalu mengisi form evaluasi..."
                 className="w-full p-3 text-xs leading-relaxed border border-gray-200 rounded-xl focus:border-jfu-primary focus:outline-none bg-slate-50/50 hover:bg-white text-gray-800 transition-all font-medium"
               />
             </div>
