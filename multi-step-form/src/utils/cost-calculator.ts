@@ -1,5 +1,5 @@
 import type { SurveyFormData, CostCalculation } from '../types';
-import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL } from './constants';
+import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL, PPISWEDIA_VALID_UNTIL } from './constants';
 
 // DUPLICATED in functions/api/doku/create-payment.js (server-side authoritative
 // copy) — the two MUST be changed together: price tiers, voucher list, the
@@ -37,6 +37,10 @@ export function jfufebExpired(atMs: number = Date.now()): boolean {
 
 export function jfusuhudExpired(atMs: number = Date.now()): boolean {
   return atMs >= Date.parse(JFUSUHUD_VALID_UNTIL);
+}
+
+export function ppiswediaExpired(atMs: number = Date.now()): boolean {
+  return atMs >= Date.parse(PPISWEDIA_VALID_UNTIL);
 }
 
 /**
@@ -163,9 +167,9 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
     return adCost * 0.1;
   }
 
-  // Contoh: kode "PPI SWEDIA" memberikan diskon 20%
+  // Contoh: kode "PPI SWEDIA" memberikan diskon 20%, s/d 30 Jun 2026.
   if (voucherCode.toUpperCase() === 'PPISWEDIA') {
-    return adCost * 0.2;
+    return ppiswediaExpired(atMs) ? 0 : adCost * 0.2;
   }
 
   // Contoh: kode "SEKAR" memberikan diskon 10%
@@ -296,8 +300,7 @@ export const VOUCHER_CATALOG: readonly VoucherCatalogEntry[] = [
   {
     code: 'PPISWEDIA',
     terms: 'Diskon 20% biaya iklan.',
-    validUntil: null,
-    note: 'Pesan di form menyebut "berlaku sampai 30 Juni 2026", tapi tidak ada batas yang ditegakkan di kode — diskonnya masih diberikan hari ini.',
+    validUntil: PPISWEDIA_VALID_UNTIL,
   },
   {
     code: 'TEGARGANTENG',
@@ -385,6 +388,14 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
   }
 
   if (upperCode === 'PPISWEDIA') {
+    if (ppiswediaExpired(atMs)) {
+      return {
+        isValid: false,
+        message: 'Kode PPISWEDIA sudah berakhir (berlaku s/d 30 Jun 2026).',
+        discount: 0,
+        isError: true
+      };
+    }
     return {
       isValid: true,
       message: 'Kode referal ini berlaku sampai 30 Juni 2026',

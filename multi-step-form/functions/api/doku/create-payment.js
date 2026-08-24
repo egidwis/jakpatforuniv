@@ -30,6 +30,7 @@ const PPN_RATE = 0.11;
 const ILKOMUNY_VALID_UNTIL = '2026-12-31T17:00:00Z';
 const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
 const JFUSUHUD_VALID_UNTIL = '2026-08-31T17:00:00Z';
+const PPISWEDIA_VALID_UNTIL = '2026-06-30T17:00:00Z';
 
 // `atMs` = "sah pada kapan". Di sini ia BUKAN kemewahan: fungsi di bawah
 // menghitung ulang harga setiap kali pembayaran dibuat, lalu mengoreksi
@@ -47,6 +48,10 @@ function jfufebExpired(atMs = Date.now()) {
 
 function jfusuhudExpired(atMs = Date.now()) {
   return atMs >= Date.parse(JFUSUHUD_VALID_UNTIL);
+}
+
+function ppiswediaExpired(atMs = Date.now()) {
+  return atMs >= Date.parse(PPISWEDIA_VALID_UNTIL);
 }
 
 function calculatePpn(dpp) {
@@ -82,6 +87,7 @@ export function calculateDiscount(voucherCode, adCost, incentiveCost, duration, 
     const cap = 300000 * duration; // Rp 300.000/hari
     return adCost > cap ? adCost - cap : 0;
   }
+  if (code === 'PPISWEDIA' && ppiswediaExpired(atMs)) return 0;
   if (code === 'PPISWEDIA' || code === 'TEGARGANTENG') return adCost * 0.2;
 
   const tenPercentCodes = [

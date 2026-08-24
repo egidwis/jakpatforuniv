@@ -75,8 +75,11 @@ describe('activePublicVoucherCount', () => {
         const atMs = Date.parse('2026-08-24T00:00:00Z');
         const n = activePublicVoucherCount(atMs);
         expect(n).toBeLessThan(VOUCHER_CATALOG.length);
-        // JFUTGRX (internal) & JAKPATUNIV2025 (retired) keduanya di luar.
-        expect(n).toBe(VOUCHER_CATALOG.filter((v) => !v.internal && !v.retired).length);
+        // JFUTGRX (internal), JAKPATUNIV2025 (retired), dan PPISWEDIA (mati
+        // 30 Jun 2026) semuanya di luar hitungan pada tanggal ini.
+        expect(n).toBe(
+            VOUCHER_CATALOG.filter((v) => !v.internal && v.code !== 'PPISWEDIA' && !v.retired).length,
+        );
     });
 
     test('JFUSUHUD keluar dari hitungan sendiri setelah 31 Agu 2026', () => {

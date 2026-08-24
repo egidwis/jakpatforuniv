@@ -47,9 +47,13 @@ export const PPN_RATE = 0.11;
 // ILKOMUNY s/d 31 Des 2026 → 2027-01-01 00:00 WIB = 2026-12-31T17:00Z.
 // JFUFEB   s/d 20 Feb 2027 → 2027-02-21 00:00 WIB = 2027-02-20T17:00Z.
 // JFUSUHUD s/d 31 Agu 2026 → 2026-09-01 00:00 WIB = 2026-08-31T17:00Z.
+// PPISWEDIA s/d 30 Jun 2026 → 2026-07-01 00:00 WIB = 2026-06-30T17:00Z. Batas
+// ini sampai 2026-08-24 hanya hidup sebagai kalimat di pesan form; kodenya tidak
+// menegakkan apa pun sehingga diskon 20% masih keluar dua bulan setelah lewat.
 // DUPLICATED sebagai ISO literal di functions/api/doku/create-payment.js — jaga tetap sama.
 export const ILKOMUNY_VALID_UNTIL = '2026-12-31T17:00:00Z';
 export const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
+export const PPISWEDIA_VALID_UNTIL = '2026-06-30T17:00:00Z';
 
 // JFUSUHUD adalah pintu masuk pilot JFU Kilat, bukan sekadar diskon 10%: saat ia
 // mati, tombol upgrade Kilat di Ringkasan Pesanan ikut hilang karena
