@@ -25,8 +25,8 @@ interface Product {
 
 const PRODUCTS: Product[] = [
     { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', to: '/dashboard/submit-iklan' },
-    { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', comingSoon: true },
     { id: 'mission', icon: Target, titleKey: 'productMissionTitle', hookKey: 'productMissionHook', descKey: 'productMissionDesc', isActionModal: true },
+    { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', comingSoon: true },
 ];
 
 /**
