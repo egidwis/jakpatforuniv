@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen, Target } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { cn, useMediaQuery } from '@/lib/utils';
@@ -10,6 +10,7 @@ import { ConversationsPage } from './ConversationsPage';
 import { ScheduleBoardPage } from '../pages/dashboard/ScheduleBoardPage';
 import { PublishPageManagement } from './PublishPageManagement';
 import { CustomersPage } from './CustomersPage';
+import { CustomMissionRequestsPage } from './CustomMissionRequestsPage';
 import MiminAISetup from '../pages/internal-dash/MiminAISetup';
 import { useAuth } from '../context/AuthContext';
 import { getAllChatSessions, supabase } from '../utils/supabase';
@@ -17,7 +18,7 @@ import { getAllChatSessions, supabase } from '../utils/supabase';
 // 'ad-schedules' = papan Schedule (Phase 3, membaca tabel ad_schedules). Ia
 // menggantikan 'scheduling' (Page Calendar), yang dipensiunkan 2026-08-08 setelah
 // hidup berdampingan sebagai pembanding.
-type Page = 'submissions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'ad-schedules' | 'publish-page' | 'mimin-setup';
+type Page = 'submissions' | 'custom-missions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'ad-schedules' | 'publish-page' | 'mimin-setup';
 
 export function InternalDashboardWithLayout() {
   // Supabase Auth
@@ -30,6 +31,7 @@ export function InternalDashboardWithLayout() {
     () => localStorage.getItem('admin-sidebar-collapsed') === 'true'
   );
   const [unreadConversations, setUnreadConversations] = useState(0);
+  const [pendingMissionsCount, setPendingMissionsCount] = useState(0);
   const [storageStats, setStorageStats] = useState({ proofCount: 0, bannerCount: 0, contentImageCount: 0 });
   const STORAGE_LIMIT_MB = 102400; // 100 GB Supabase Pro Plan storage limit
 
@@ -97,9 +99,22 @@ export function InternalDashboardWithLayout() {
     }
   };
 
+  const checkPendingMissions = async () => {
+    try {
+      const { count } = await supabase
+        .from('custom_mission_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      setPendingMissionsCount(count || 0);
+    } catch (err) {
+      // Table might be initializing
+    }
+  };
+
   useEffect(() => {
     // Check initial count
     checkUnreadConversations();
+    checkPendingMissions();
     fetchStorageStats();
 
     // Listen for read events from ConversationsPage
@@ -110,8 +125,11 @@ export function InternalDashboardWithLayout() {
     const handleStorageChange = () => fetchStorageStats();
     window.addEventListener('proof-storage-changed', handleStorageChange);
 
-    // Optional: Polling every minute to check for new messages
-    const interval = setInterval(checkUnreadConversations, 60000);
+    // Polling every minute to check for new messages & missions
+    const interval = setInterval(() => {
+      checkUnreadConversations();
+      checkPendingMissions();
+    }, 60000);
 
     return () => {
       window.removeEventListener('chat-session-viewed', handleReadEvent);
@@ -247,6 +265,11 @@ export function InternalDashboardWithLayout() {
           label: 'Mimin AI',
           icon: Bot,
         },
+        {
+          id: 'custom-missions' as Page,
+          label: 'Misi & Aksi Khusus',
+          icon: Target,
+        },
       ]
     }
   ];
@@ -322,7 +345,8 @@ export function InternalDashboardWithLayout() {
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentPage === item.id;
-                const showUnread = item.id === 'conversations' && unreadConversations > 0;
+                const showUnread = (item.id === 'conversations' && unreadConversations > 0) || (item.id === 'custom-missions' && pendingMissionsCount > 0);
+                const badgeCount = item.id === 'conversations' ? unreadConversations : pendingMissionsCount;
                 return (
                   <Tooltip key={item.id} open={collapsed ? undefined : false}>
                     <TooltipTrigger asChild>
@@ -356,7 +380,7 @@ export function InternalDashboardWithLayout() {
                               isActive ? 'bg-blue-600 text-white' : 'bg-red-500 text-white'
                             )}
                           >
-                            {unreadConversations > 99 ? '99+' : unreadConversations}
+                            {badgeCount > 99 ? '99+' : badgeCount}
                           </span>
                         )}
                       </button>
@@ -509,6 +533,8 @@ export function InternalDashboardWithLayout() {
         <main className="flex-1 overflow-auto flex flex-col">
           {currentPage === 'submissions' ? (
             <InternalDashboard onLogout={handleLogout} hideAuth={true} focusSubmission={focusSubmission} />
+          ) : currentPage === 'custom-missions' ? (
+            <CustomMissionRequestsPage />
           ) : currentPage === 'transactions' ? (
             <TransactionsPage />
           ) : currentPage === 'analytics' ? (

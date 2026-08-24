@@ -572,6 +572,9 @@ export const translations = {
     productRespAccessTitle: "Respondent Access",
     productRespAccessHook: "For precise targeting —",
     productRespAccessDesc: "Direct access to respondents for your research",
+    productMissionTitle: "Special Mission & Tasks",
+    productMissionHook: "For real-world actions —",
+    productMissionDesc: "Mystery shopping, website & app testing, and product sample tasting.",
 
     // Product entry pages (submit-iklan & submit-kilat)
     adsEntryHeroDesc: "We air your survey to thousands of active respondents in the Jakpat app — you decide how long it runs.",
@@ -1355,6 +1358,9 @@ export const translations = {
     productRespAccessTitle: "Respondent Access",
     productRespAccessHook: "Untuk targeting presisi —",
     productRespAccessDesc: "Akses langsung ke responden untuk risetmu",
+    productMissionTitle: "Misi & Aksi Khusus",
+    productMissionHook: "Untuk aksi & tugas nyata —",
+    productMissionDesc: "Mystery shopping ke toko/booth, coba fitur aplikasi/website, dan tasting sampel produk.",
 
     // Halaman pintu masuk produk (submit-iklan & submit-kilat)
     adsEntryHeroDesc: "Kami tayangkan surveimu ke ribuan responden aktif di aplikasi Jakpat — durasi iklannya kamu yang tentukan.",

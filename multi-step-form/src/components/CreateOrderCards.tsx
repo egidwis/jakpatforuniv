@@ -4,6 +4,7 @@ import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import { Plus, ChevronDown, ChevronRight, BarChart3, Zap, Target } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
+import { CustomMissionModal } from './CustomMissionModal';
 
 /** Pilihan buka/tutup manual diingat lintas sesi. */
 const OPEN_KEY = 'jfu_product_cards_open';
@@ -17,18 +18,15 @@ interface Product {
     hookKey: TranslationKey;
     descKey: TranslationKey;
     to?: string;
+    isActionModal?: boolean;
     comingSoon?: boolean;
     hidden?: boolean;
 }
 
-// Respondent Access disiapkan tapi masih disembunyikan (hidden: true) —
-// tinggal dibuka saat produknya siap. Kilat tetap tampil sebagai comingSoon
-// tapi TIDAK klikabel lagi 2026-08-10 — halaman edukasinya (submit-kilat)
-// dihapus, jadi tanpa `to` kartu ini otomatis jatuh ke varian non-link.
 const PRODUCTS: Product[] = [
     { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', to: '/dashboard/submit-iklan' },
+    { id: 'mission', icon: Target, titleKey: 'productMissionTitle', hookKey: 'productMissionHook', descKey: 'productMissionDesc', isActionModal: true },
     { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', comingSoon: true },
-    { id: 'respondent-access', icon: Target, titleKey: 'productRespAccessTitle', hookKey: 'productRespAccessHook', descKey: 'productRespAccessDesc', comingSoon: true, hidden: true },
 ];
 
 /**
@@ -38,77 +36,97 @@ const PRODUCTS: Product[] = [
  */
 export function ProductCardGrid() {
     const { t } = useLanguage();
+    const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
     const visible = PRODUCTS.filter((p) => !p.hidden);
 
     return (
-        <div className="grid gap-3 sm:grid-cols-2">
-            {visible.map((product) => {
-                const Icon = product.icon;
-                const inner = (
-                    <>
-                        <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
-                            <Icon className="w-5 h-5" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-2">
-                                <span className={`text-sm font-bold ${product.comingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
-                                    {t(product.titleKey)}
-                                </span>
-                                {product.comingSoon && (
-                                    <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                                        {t('comingSoon')}
+        <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {visible.map((product) => {
+                    const Icon = product.icon;
+                    const inner = (
+                        <>
+                            <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
+                                <Icon className="w-5 h-5" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2">
+                                    <span className={`text-sm font-bold ${product.comingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
+                                        {t(product.titleKey)}
                                     </span>
-                                )}
+                                    {product.comingSoon && (
+                                        <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                            {t('comingSoon')}
+                                        </span>
+                                    )}
+                                </span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${product.comingSoon ? 'text-slate-400' : 'text-slate-600'}`}>
+                                    <span className={`font-bold ${product.comingSoon ? 'text-slate-500' : 'text-jfu-primary'}`}>
+                                        {t(product.hookKey)}
+                                    </span>{' '}
+                                    {t(product.descKey)}
+                                </span>
                             </span>
-                            <span className={`block text-xs mt-0.5 leading-relaxed ${product.comingSoon ? 'text-slate-400' : 'text-slate-600'}`}>
-                                {/* Hook membingkai produk sebagai pilihan strategi (reach vs
-                                    speed), bukan sekadar metode distribusi. */}
-                                <span className={`font-bold ${product.comingSoon ? 'text-slate-500' : 'text-jfu-primary'}`}>
-                                    {t(product.hookKey)}
-                                </span>{' '}
-                                {t(product.descKey)}
-                            </span>
-                        </span>
-                    </>
-                );
-
-                if (!product.to) {
-                    return (
-                        <div
-                            key={product.id}
-                            aria-disabled="true"
-                            className="flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 shadow-sm"
-                        >
-                            {inner}
-                        </div>
+                        </>
                     );
-                }
 
-                if (product.comingSoon) {
+                    if (product.isActionModal) {
+                        return (
+                            <button
+                                key={product.id}
+                                type="button"
+                                onClick={() => setIsMissionModalOpen(true)}
+                                className="flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group text-left cursor-pointer"
+                            >
+                                {inner}
+                                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                            </button>
+                        );
+                    }
+
+                    if (!product.to) {
+                        return (
+                            <div
+                                key={product.id}
+                                aria-disabled="true"
+                                className="flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 shadow-sm"
+                            >
+                                {inner}
+                            </div>
+                        );
+                    }
+
+                    if (product.comingSoon) {
+                        return (
+                            <Link
+                                key={product.id}
+                                to={product.to}
+                                className="flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all"
+                            >
+                                {inner}
+                                <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                            </Link>
+                        );
+                    }
+
                     return (
                         <Link
                             key={product.id}
                             to={product.to}
-                            className="flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all"
+                            className="flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group"
                         >
                             {inner}
-                            <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                         </Link>
                     );
-                }
+                })}
+            </div>
 
-                return (
-                    <Link
-                        key={product.id}
-                        to={product.to}
-                        className="flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group"
-                    >
-                        {inner}
-                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
-                    </Link>
-                );
-            })}
-        </div>
+            <CustomMissionModal
+                isOpen={isMissionModalOpen}
+                onClose={() => setIsMissionModalOpen(false)}
+            />
+        </>
     );
 }
 
