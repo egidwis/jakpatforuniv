@@ -221,11 +221,6 @@ export function InternalDashboardWithLayout() {
           icon: FileText,
         },
         {
-          id: 'custom-missions' as Page,
-          label: 'Misi & Aksi Khusus',
-          icon: Target,
-        },
-        {
           id: 'ad-schedules' as Page,
           label: 'Schedule',
           icon: CalendarDays,
@@ -269,6 +264,11 @@ export function InternalDashboardWithLayout() {
           id: 'mimin-setup' as Page,
           label: 'Mimin AI',
           icon: Bot,
+        },
+        {
+          id: 'custom-missions' as Page,
+          label: 'Misi & Aksi Khusus',
+          icon: Target,
         },
       ]
     }
