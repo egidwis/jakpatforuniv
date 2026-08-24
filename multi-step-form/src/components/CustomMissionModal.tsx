@@ -8,7 +8,7 @@ import {
   FlaskConical,
   Trophy,
   CheckCircle2,
-  Clock,
+  Calendar,
   Users,
   Link as LinkIcon,
   MessageSquare,
@@ -47,25 +47,30 @@ const CATEGORIES = [
   {
     id: 'pitch_validation',
     icon: Trophy,
-    title: 'Validasi Ide Bisnis / Lomba (Survei Kilat)',
+    title: 'Validasi Ide Bisnis / Lomba (Bahan Pitching)',
     desc: 'Responden target pasar isi survei konsep, uji harga (WTP), & analisis kompetitor untuk Pitch Deck/PKM.'
   },
   {
     id: 'other',
     icon: Sparkles,
-    title: 'Kebutuhan Aksi / Survei Khusus Lainnya',
+    title: 'Kebutuhan Aksi / Misi Khusus Lainnya',
     desc: 'Jelaskan skenario riset atau aksi unik responden yang Anda butuhkan secara bebas.'
   }
 ];
 
 const RESPONDENT_OPTIONS = [30, 50, 100, 200, 300, 500];
 
-const DEADLINE_OPTIONS = [
-  '< 12 Jam (Super Kilat)',
-  '24 Jam (Ekspres)',
-  '2-3 Hari (Standar)',
-  'Fleksibel'
-];
+const getTomorrowStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split('T')[0];
+};
+
+const getEndStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 6);
+  return d.toISOString().split('T')[0];
+};
 
 export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
   isOpen,
@@ -76,7 +81,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
   const [category, setCategory] = useState('mystery_shopper');
   const [customCategoryText, setCustomCategoryText] = useState('');
   const [targetRespondents, setTargetRespondents] = useState(50);
-  const [targetDeadline, setTargetDeadline] = useState('< 24 Jam');
+  const [startDate, setStartDate] = useState(getTomorrowStr);
+  const [endDate, setEndDate] = useState(getEndStr);
   const [criteriaNotes, setCriteriaNotes] = useState('');
   const [referenceUrl, setReferenceUrl] = useState('');
   const [contactName, setContactName] = useState(user?.user_metadata?.full_name || '');
@@ -86,6 +92,14 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
   const [isSuccess, setIsSuccess] = useState(false);
 
   if (!isOpen) return null;
+
+  const calculateDays = () => {
+    if (!startDate || !endDate) return 1;
+    const start = new Date(startDate).getTime();
+    const end = new Date(endDate).getTime();
+    const diff = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
+    return diff;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,12 +122,15 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
     setLoading(true);
 
     try {
+      const durationDays = calculateDays();
+      const targetDeadlineStr = `${startDate} s/d ${endDate} (${durationDays} Hari)`;
+
       const payload = {
         user_id: user?.id || null,
         category,
         category_custom: category === 'other' ? customCategoryText.trim() : null,
         target_respondents: targetRespondents,
-        target_deadline: targetDeadline,
+        target_deadline: targetDeadlineStr,
         criteria_notes: criteriaNotes.trim() || null,
         reference_url: referenceUrl.trim() || null,
         contact_name: contactName.trim(),
@@ -143,6 +160,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
     setIsSuccess(false);
     setCategory('mystery_shopper');
     setCustomCategoryText('');
+    setStartDate(getTomorrowStr());
+    setEndDate(getEndStr());
     setCriteriaNotes('');
     setReferenceUrl('');
     onClose();
@@ -163,7 +182,7 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                 Permintaan Misi &amp; Aksi Khusus
               </h2>
               <p className="text-xs text-gray-500">
-                Pengerjaan tugas riil &amp; survei ekspres oleh responden terverifikasi Jakpat
+                Pengerjaan tugas riil, testing, &amp; misi kampanye oleh responden terverifikasi Jakpat
               </p>
             </div>
           </div>
@@ -276,7 +295,7 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
               )}
             </div>
 
-            {/* 2. Target Responden & Deadline */}
+            {/* 2. Target Responden & Periode Misi */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block font-bold text-gray-900 text-xs mb-1.5 flex items-center gap-1.5">
@@ -286,7 +305,7 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                 <select
                   value={targetRespondents}
                   onChange={(e) => setTargetRespondents(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
+                  className="w-full px-3 py-2 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
                 >
                   {RESPONDENT_OPTIONS.map((opt) => (
                     <option key={opt} value={opt} className="text-gray-900">
@@ -297,21 +316,37 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-gray-900 text-xs mb-1.5 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Target Waktu Selesai</span>
+                <label className="block font-bold text-gray-900 text-xs mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Periode Pelaksanaan Misi</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                    {calculateDays()} Hari
+                  </span>
                 </label>
-                <select
-                  value={targetDeadline}
-                  onChange={(e) => setTargetDeadline(e.target.value)}
-                  className="w-full px-3 py-2.5 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
-                >
-                  {DEADLINE_OPTIONS.map((dl) => (
-                    <option key={dl} value={dl} className="text-gray-900">
-                      {dl}
-                    </option>
-                  ))}
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <input
+                      type="date"
+                      value={startDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="date"
+                      value={endDate}
+                      min={startDate || new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
