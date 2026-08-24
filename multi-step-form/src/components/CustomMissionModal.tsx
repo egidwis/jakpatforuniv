@@ -114,6 +114,11 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
       return;
     }
 
+    if (!targetRespondents || Number(targetRespondents) < 5) {
+      toast.error('Target jumlah responden minimal 5 orang.');
+      return;
+    }
+
     if (category === 'other' && !customCategoryText.trim()) {
       toast.error('Mohon jelaskan jenis kebutuhan riset khusus Anda.');
       return;
@@ -299,22 +304,28 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
             {/* 2. Target Responden & Periode Misi */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block font-bold text-gray-900 text-xs mb-1.5 flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>2. Target Jumlah Responden</span>
+                <label className="block font-bold text-gray-900 text-xs mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>2. Target Jumlah Responden</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-normal">Min. 5 orang</span>
                 </label>
-                <select
-                  value={targetRespondents}
-                  onChange={(e) => setTargetRespondents(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs font-semibold !text-gray-900 !bg-white border border-gray-300 rounded-xl focus:border-jfu-primary focus:outline-none"
-                  style={{ color: '#111827', backgroundColor: '#ffffff' }}
-                >
-                  {RESPONDENT_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt} className="text-gray-900 bg-white">
-                      {opt} Responden
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={5}
+                    value={targetRespondents || ''}
+                    onChange={(e) => setTargetRespondents(e.target.value === '' ? ('' as any) : Number(e.target.value))}
+                    placeholder="50"
+                    className="w-full pl-3 pr-22 py-1.5 text-xs font-semibold !text-gray-900 !bg-white border border-gray-300 rounded-xl focus:border-jfu-primary focus:outline-none"
+                    style={{ color: '#111827', backgroundColor: '#ffffff' }}
+                    required
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-semibold pointer-events-none">
+                    Responden
+                  </span>
+                </div>
               </div>
 
               <div>
