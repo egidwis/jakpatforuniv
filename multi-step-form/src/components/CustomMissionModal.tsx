@@ -288,7 +288,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                     value={customCategoryText}
                     onChange={(e) => setCustomCategoryText(e.target.value)}
                     placeholder="Contoh: Responden diminta vote karya poster di festival kampus..."
-                    className="w-full px-3 py-2 text-xs border border-amber-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                    className="w-full px-3 py-2 text-xs border border-amber-300 rounded-lg !bg-white !text-gray-900 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium placeholder:text-gray-400"
+                    style={{ color: '#111827', backgroundColor: '#ffffff' }}
                     required
                   />
                 </div>
@@ -305,10 +306,11 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                 <select
                   value={targetRespondents}
                   onChange={(e) => setTargetRespondents(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
+                  className="w-full px-3 py-2 text-xs font-semibold !text-gray-900 !bg-white border border-gray-300 rounded-xl focus:border-jfu-primary focus:outline-none"
+                  style={{ color: '#111827', backgroundColor: '#ffffff' }}
                 >
                   {RESPONDENT_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt} className="text-gray-900">
+                    <option key={opt} value={opt} className="text-gray-900 bg-white">
                       {opt} Responden
                     </option>
                   ))}
@@ -332,7 +334,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                       value={startDate}
                       min={new Date().toISOString().split('T')[0]}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full px-2.5 py-1.5 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
+                      className="w-full px-2.5 py-1.5 text-xs font-semibold !text-gray-900 !bg-white border border-gray-300 rounded-xl focus:border-jfu-primary focus:outline-none"
+                      style={{ color: '#111827', backgroundColor: '#ffffff' }}
                       required
                     />
                   </div>
@@ -342,7 +345,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                       value={endDate}
                       min={startDate || new Date().toISOString().split('T')[0]}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full px-2.5 py-1.5 text-xs font-semibold text-gray-900 border border-gray-300 rounded-xl bg-white focus:border-jfu-primary focus:outline-none"
+                      className="w-full px-2.5 py-1.5 text-xs font-semibold !text-gray-900 !bg-white border border-gray-300 rounded-xl focus:border-jfu-primary focus:outline-none"
+                      style={{ color: '#111827', backgroundColor: '#ffffff' }}
                       required
                     />
                   </div>
@@ -361,7 +365,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                 value={criteriaNotes}
                 onChange={(e) => setCriteriaNotes(e.target.value)}
                 placeholder="Contoh: Responden yang bersedia diminta berkunjung ke toko/booth X, melampirkan foto struk belanja / screenshot app, lalu mengisi form evaluasi..."
-                className="w-full p-3 text-xs leading-relaxed border border-gray-200 rounded-xl focus:border-jfu-primary focus:outline-none bg-slate-50/50 hover:bg-white text-gray-800 transition-all font-medium"
+                className="w-full p-3 text-xs leading-relaxed border border-gray-200 rounded-xl focus:border-jfu-primary focus:outline-none !bg-white !text-gray-900 transition-all font-medium placeholder:text-gray-400"
+                style={{ color: '#111827', backgroundColor: '#ffffff' }}
               />
             </div>
 
@@ -376,7 +381,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                 value={referenceUrl}
                 onChange={(e) => setReferenceUrl(e.target.value)}
                 placeholder="https://forms.gle/... atau link Figma/website jika sudah ada"
-                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl bg-white focus:border-jfu-primary focus:outline-none font-medium"
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl !bg-white !text-gray-900 focus:border-jfu-primary focus:outline-none font-medium placeholder:text-gray-400"
+                style={{ color: '#111827', backgroundColor: '#ffffff' }}
               />
             </div>
 
@@ -396,7 +402,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
                     placeholder="Nama Anda"
-                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl bg-white focus:border-jfu-primary focus:outline-none font-medium"
+                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl !bg-white !text-gray-900 focus:border-jfu-primary focus:outline-none font-semibold placeholder:text-gray-400"
+                    style={{ color: '#111827', backgroundColor: '#ffffff' }}
                     required
                   />
                 </div>
@@ -412,7 +419,8 @@ export const CustomMissionModal: React.FC<CustomMissionModalProps> = ({
                     value={contactWhatsapp}
                     onChange={(e) => setContactWhatsapp(e.target.value)}
                     placeholder="08123456789"
-                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl bg-white focus:border-jfu-primary focus:outline-none font-medium font-mono"
+                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl !bg-white !text-gray-900 focus:border-jfu-primary focus:outline-none font-semibold font-mono placeholder:text-gray-400"
+                    style={{ color: '#111827', backgroundColor: '#ffffff' }}
                     required
                   />
                 </div>
