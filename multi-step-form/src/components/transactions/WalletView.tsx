@@ -121,6 +121,14 @@ export function WalletView({
       return;
     }
 
+    const availableBalanceNum = balance?.available ? parseInt(balance.available, 10) : null;
+    if (availableBalanceNum !== null && numAmount > availableBalanceNum) {
+      toast.error(
+        `Jumlah penarikan (${formatIDR(numAmount)}) melebihi Saldo Tersedia (${formatIDR(availableBalanceNum)})`
+      );
+      return;
+    }
+
     if (!accountNumber || !accountName) {
       toast.error('Mohon lengkapi detail rekening tujuan');
       return;
@@ -168,6 +176,12 @@ export function WalletView({
         } else if (data.error) {
           errorMessage = JSON.stringify(data.error);
         }
+
+        if (errorMessage.toLowerCase().includes('exceed limit')) {
+          errorMessage =
+            'Nominal penarikan melebihi batas per transaksi DOKU. Silakan pecah penarikan menjadi nominal lebih kecil (misal Rp 10.000.000 - Rp 25.000.000 per transaksi) atau hubungi DOKU.';
+        }
+
         toast.error(errorMessage);
       }
     } catch (error) {
@@ -246,6 +260,7 @@ export function WalletView({
               <li>Setiap pembayaran terverifikasi akan otomatis masuk ke saldo Sub Account ini.</li>
               <li>Tarik dana dapat dilakukan kapan saja ke bank tujuan yang terdaftar.</li>
               <li>Pastikan nama pemilik rekening sesuai untuk menghindari kegagalan transfer bank.</li>
+              <li>DOKU membatasi nominal maksimal per 1 kali penarikan (umumnya Rp 10–25 juta). Jika menarik nominal besar, pecah menjadi beberapa transaksi.</li>
             </ul>
           </div>
 
