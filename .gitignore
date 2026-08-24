@@ -46,3 +46,12 @@ package.json.backup
 
 # graphify generated output (knowledge graph, cache, machine-specific paths)
 graphify-out/
+
+# impeccable design hook — machine-local state only.
+# `.impeccable/config.json` (shared detector config: ignoreRules/Files/Values) is
+# intentionally NOT ignored, so triage decisions travel with the repo.
+# `**/` wajib: .impeccable/ hidup di multi-step-form/, sedangkan pola ber-slash
+# di .gitignore terikat ke direktori .gitignore-nya — bentuk tanpa `**/` tidak
+# pernah cocok dan kedua berkas lokal ini akan ikut ter-commit di clone baru.
+**/.impeccable/hook.cache.json
+**/.impeccable/config.local.json

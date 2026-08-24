@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "src/components/AnalyticsDashboard.tsx"
+        ],
+        "createdAt": "2026-08-24T09:07:37.654Z",
+        "reason": "Claude: pasangan rest/hover tombol ikon \u2014 text-gray-500/400 adalah warna ISTIRAHAT, dan hover:bg-blue-50/red-50 selalu datang bersama hover:text-blue-600/red-600, jadi teks abu tidak pernah duduk di atas tint. Ignore berbasis nilai TIDAK BISA dipakai untuk rule ini (extractFindingIgnoreValue hanya mengembalikan nilai untuk rule direct-value), jadi wildcard ber-scope file adalah satu-satunya bentuk yang berfungsi."
+      }
+    ]
+  }
+}
