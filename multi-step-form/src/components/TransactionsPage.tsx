@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Search, RefreshCw, Download, Filter, ChevronDown, ReceiptText, Wallet, ListFilter, X } from 'lucide-react';
 import { formatPaymentChannel } from '../utils/paymentChannel';
+import { isPaidTx } from '../utils/analytics/revenue';
 import { cn, useMediaQuery } from '@/lib/utils';
 import {
   type Transaction,
@@ -86,7 +87,14 @@ export function TransactionsPage() {
         t.payment_id?.toLowerCase().includes(cleanSearch) ||
         (t.form_submission_id && t.form_submission_id.toLowerCase().includes(cleanSearch));
 
-      const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
+      // Chip "Lunas" harus memakai definisi lunas yang sama dengan angka uang di
+      // atasnya; kalau tidak, jumlah barisnya tak akan pernah cocok dengan totalnya.
+      const matchesStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'completed'
+            ? isPaidTx(t)
+            : t.status === statusFilter;
 
       return matchesSearch && isSameMonth && isSameYear && matchesStatus;
     });
@@ -95,7 +103,11 @@ export function TransactionsPage() {
   const totalRevenue = useMemo(
     () =>
       filteredTransactions
-        .filter((t) => t.status === 'completed')
+        // DOKU menulis lunas dengan dua kata: 'completed' dan 'paid'. Menyaring
+        // 'completed' saja membuang 8 pembayaran nyata senilai Rp 4.469.810 dan
+        // membuat halaman ini melaporkan uang yang berbeda dari Analytics &
+        // Customers untuk order yang sama. `isPaidTx` adalah definisi bersamanya.
+        .filter(isPaidTx)
         .reduce((sum, t) => sum + t.amount, 0),
     [filteredTransactions]
   );
@@ -104,7 +116,7 @@ export function TransactionsPage() {
   const categoryRevenue = useMemo(
     () =>
       filteredTransactions
-        .filter((t) => t.status === 'completed')
+        .filter(isPaidTx)
         .reduce((acc, t) => {
           const { items } = parseTransactionNote(t.note);
           if (items.length > 0) {
@@ -124,7 +136,7 @@ export function TransactionsPage() {
   const statusCounts = {
     all: transactions.length,
     pending: transactions.filter((t) => t.status === 'pending').length,
-    completed: transactions.filter((t) => t.status === 'completed').length,
+    completed: transactions.filter(isPaidTx).length,
     failed: transactions.filter((t) => t.status === 'failed').length,
   };
 

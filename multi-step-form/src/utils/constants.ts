@@ -58,6 +58,16 @@ export const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
 // peneliti (lihat docs/superpowers/plans/2026-08-18-kilat-menu-mandiri.md).
 export const JFUSUHUD_VALID_UNTIL = '2026-08-31T17:00:00Z';
 
+// Tanggal `sql/68_campaign_link_clicks.sql` dijalankan di produksi — instan
+// pertama yang klik-nya tercatat PER TANGGAL. Sebelum ini klik hanya ada sebagai
+// `campaign_links.click_count`, satu angka kumulatif tanpa tanggal (44 klik,
+// Mei–Agu 2026), dan angka itu TIDAK BISA dipecah per hari.
+//
+// Dipakai tab Campaign untuk memutuskan kapan footnote cakupan muncul: rentang
+// yang mendahului tanggal ini menampilkan nol klik, dan nol yang tidak dijelaskan
+// terbaca sebagai "tidak ada yang mengklik" alih-alih "belum dicatat".
+export const CAMPAIGN_CLICK_LOG_SINCE = '2026-08-24T00:00:00+07:00';
+
 // Kunci draft order form di localStorage. _v2 = skema step tanpa biodata
 // (1 Detail Survei, 2 Jadwal, 3 Review & Pembayaran, 4 Jadwal Kilat).
 // Kunci lama masih dibaca sekali untuk migrasi di MultiStepForm.

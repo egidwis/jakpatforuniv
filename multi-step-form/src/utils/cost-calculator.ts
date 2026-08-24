@@ -231,6 +231,108 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
 }
 
 /**
+ * Katalog voucher — SATU daftar, dibaca oleh validasi form DAN oleh dashboard.
+ *
+ * ## Kenapa ini ada
+ *
+ * Tab Campaign dulu memajang tabel syarat voucher yang ditulis tangan di JSX.
+ * Tabel itu sudah menyimpang dari kode yang benar-benar berjalan, dan tak ada
+ * yang tahu karena tidak ada satu pun tempat yang membandingkan keduanya:
+ *
+ *   • JFUSUHUD — penghasil revenue TERBESAR (Rp 7,61jt, 22 pemakaian) — tidak
+ *     terdaftar sama sekali di tabel itu.
+ *   • JAKPATUNIV2025 ditandai "EXPIRED" tanpa menyebut bahwa ia penghasil
+ *     revenue nomor dua sepanjang masa.
+ *   • ILKOMUNY dipajang aktif padahal nol pemakaian sejak lahir.
+ *
+ * Karena katalog ini juga yang MENURUNKAN `validCodes` di `getVoucherInfo`,
+ * menambah voucher baru tanpa memunculkannya di dashboard sudah tidak mungkin
+ * lagi: keduanya membaca array yang sama.
+ *
+ * ⚠️ `terms` menggambarkan apa yang `calculateDiscount()` BENAR-BENAR lakukan,
+ * bukan apa yang pernah dijanjikan di materi promosi. Kalau keduanya berbeda,
+ * yang ditulis di sini adalah perilaku kodenya, dan selisihnya masuk `note`.
+ */
+export interface VoucherCatalogEntry {
+  code: string;
+  /** Ketentuan sebagaimana dijalankan `calculateDiscount()`. */
+  terms: string;
+  /**
+   * Batas berlaku yang DITEGAKKAN kode (ISO). `null` = tidak ada batas di kode —
+   * termasuk kalau materi promosinya menyebut tanggal tertentu. Bedanya penting:
+   * tanggal yang tidak ditegakkan tetap memberi diskon setelah lewat.
+   */
+  validUntil: string | null;
+  /** Ditolak tanpa syarat, berapa pun tanggalnya. */
+  retired?: boolean;
+  /** Bukan voucher publik — jangan dihitung sebagai kampanye. */
+  internal?: boolean;
+  /** Catatan yang harus ikut tampil di dashboard. */
+  note?: string;
+}
+
+const AMBASSADOR_CODES = [
+  'JFUTYR', 'SEKARJFU', 'ADINDAJFU', 'RAJAJFU', 'SACIJFU', 'JFUGITA',
+  'JFUTANIA', 'JFUEDO', 'JFURAISA', 'JFUANA', 'JFUSALSA', 'JFUNATALIA',
+] as const;
+
+export const VOUCHER_CATALOG: readonly VoucherCatalogEntry[] = [
+  {
+    code: 'JFUSUHUD',
+    terms: 'Diskon 10% biaya iklan regular, atau upgrade ke ⚡ JFU Kilat dengan add-on lebih murah — salah satu, bukan keduanya.',
+    validUntil: JFUSUHUD_VALID_UNTIL,
+  },
+  {
+    code: 'JFUFEB',
+    terms: 'Harga iklan flat Rp 1.000.000 untuk durasi 7 hari; durasi lain di-cap Rp 300.000/hari. Verifikasi manual admin.',
+    validUntil: JFUFEB_VALID_UNTIL,
+  },
+  {
+    code: 'ILKOMUNY',
+    terms: 'Sama seperti JFUFEB: flat Rp 1.000.000 untuk 7 hari, durasi lain maks. Rp 300.000/hari. Verifikasi manual admin.',
+    validUntil: ILKOMUNY_VALID_UNTIL,
+    note: 'Aturan "sekali pakai per akun" belum punya catatan penegakan — tabel `voucher_redemptions` masih kosong.',
+  },
+  {
+    code: 'PPISWEDIA',
+    terms: 'Diskon 20% biaya iklan.',
+    validUntil: null,
+    note: 'Pesan di form menyebut "berlaku sampai 30 Juni 2026", tapi tidak ada batas yang ditegakkan di kode — diskonnya masih diberikan hari ini.',
+  },
+  {
+    code: 'TEGARGANTENG',
+    terms: 'Diskon 20% biaya iklan.',
+    validUntil: null,
+  },
+  ...AMBASSADOR_CODES.map((code) => ({
+    code,
+    terms: 'Diskon 10% biaya iklan (kode ambassador).',
+    validUntil: null,
+  })),
+  {
+    code: 'JFUTGRX',
+    terms: 'Memangkas total biaya jadi Rp 1.000 — voucher uji sistem, bukan promo.',
+    validUntil: null,
+    internal: true,
+  },
+  {
+    code: 'JAKPATUNIV2025',
+    terms: 'Dulu diskon 25% (maks. Rp 50.000). Kini ditolak tanpa syarat.',
+    validUntil: null,
+    retired: true,
+  },
+];
+
+/** Voucher masih memberi diskon pada `atMs`? Batas yang `null` berarti tak pernah mati. */
+export function isVoucherActive(entry: VoucherCatalogEntry, atMs: number = Date.now()): boolean {
+  if (entry.retired) return false;
+  return entry.validUntil === null || atMs < Date.parse(entry.validUntil);
+}
+
+/** Kode yang PERNAH resmi — termasuk yang sudah mati. Sudah huruf besar. */
+export const OFFICIAL_VOUCHER_CODES: readonly string[] = VOUCHER_CATALOG.map((v) => v.code);
+
+/**
  * Mendapatkan informasi voucher berdasarkan kode
  * @param voucherCode Kode voucher
  * @returns Informasi voucher atau null jika tidak valid
@@ -309,25 +411,11 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
     };
   }
 
-  const validCodes = [
-    'JFUFEB',
-    'ILKOMUNY',
-    'JFUTGRX',
-    'JFUTYR',
-    'SEKARJFU',
-    'ADINDAJFU',
-    'RAJAJFU',
-    'SACIJFU',
-    'JFUGITA',
-    'JFUTANIA',
-    'JFUEDO',
-    'JFURAISA',
-    'JFUANA',
-    'JFUSALSA',
-    'JFUNATALIA',
-    'TEGARGANTENG',
-    'JFUSUHUD'
-  ];
+  // Diturunkan dari VOUCHER_CATALOG, bukan daftar kedua yang ditulis ulang.
+  // Kode yang sudah pensiun (JAKPATUNIV2025) dikeluarkan; kode berperlakuan
+  // khusus di atas (JFUFEB/ILKOMUNY/PPISWEDIA/JFUSUHUD) sudah pulang lebih dulu,
+  // jadi kehadirannya di daftar ini tidak mengubah apa pun.
+  const validCodes = VOUCHER_CATALOG.filter((v) => !v.retired).map((v) => v.code);
   if (validCodes.includes(upperCode)) {
     return { isValid: true };
   }

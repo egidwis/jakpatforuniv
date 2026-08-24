@@ -3,61 +3,106 @@ import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '../utils/supabase';
 import { formatIDR } from '@/utils/currency';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "./ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Users, School, Share2, TrendingUp, DollarSign, Wallet, Clock, ShieldAlert, Target, Award, BookOpen, Link, Mail, Filter, Megaphone, Copy, ExternalLink, Calendar, RefreshCw, Activity, AlertCircle, BarChart3, Plus, Trash2, List } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, AreaChart, Area, Line, LineChart } from 'recharts';
+import { Users, DollarSign, Megaphone, Copy, RefreshCw, AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { fetchRevenueData } from '../utils/analytics/fetchRevenueData';
+import { buildRevenueAnalytics, UNRECORDED_CHANNEL } from '../utils/analytics/revenue';
+import { fetchRespondentData } from '../utils/analytics/fetchRespondentData';
+import { buildRespondentAnalytics, formatDuration, UNRECORDED_EWALLET } from '../utils/analytics/respondent';
+import { fetchCampaignData } from '../utils/analytics/fetchCampaignData';
+import { buildCampaignAnalytics } from '../utils/analytics/campaign';
+import type {
+  CampaignAnalytics,
+  DateRange as RangeValue,
+  RankedRow,
+  RespondentAnalytics,
+  RevenueAnalytics,
+} from '../utils/analytics/types';
+import { DateRangePicker } from './analytics/DateRangePicker';
+import { DailyRevenueChart } from './analytics/DailyRevenueChart';
+import { DailyRespondentsChart } from './analytics/DailyRespondentsChart';
+import { DailyClicksChart } from './analytics/DailyClicksChart';
+import { TimePatternCard } from './analytics/TimePatternCard';
+import { StatTile } from './analytics/StatTile';
+import { MeterCard } from './analytics/MeterCard';
+import { RankedBarList } from './analytics/RankedBarList';
+import { RankedTabsCard } from './analytics/RankedTabsCard';
+import { SegmentCard } from './analytics/SegmentCard';
+import { TogglePicker } from './analytics/TogglePicker';
+import { VoucherCatalogCard } from './analytics/VoucherCatalogCard';
+import { formatCount, formatDecimal, formatIDRCompact, formatPercent } from './analytics/format';
+import { CHART, INK } from './analytics/palette';
+import { nowWib } from '../utils/airing-window';
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
-const DATE_RANGE_OPTIONS = [
-  { label: '7 Hari', value: '7d' },
-  { label: '30 Hari', value: '30d' },
-  { label: '90 Hari', value: '90d' },
-  { label: '1 Tahun', value: '365d' },
-  { label: 'Semua', value: 'all' },
-] as const;
-type DateRange = typeof DATE_RANGE_OPTIONS[number]['value'];
-type TabKey = 'revenue' | 'respondent' | 'platform' | 'campaign';
-const REVIEW_STATUSES = new Set(['spam', 'approved', 'in_review', 'rejected', 'published', 'drafted', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed']);
+/**
+ * Tab yang tersedia.
+ *
+ * `platform` DIHAPUS 2026-08-24. Ketiga kartunya mengukur hal yang datanya memang
+ * tidak ada: "Lolos" menyaring `submission_status = 'published'` — nilai yang tidak
+ * pernah ada di database, jadi angkanya kurang ~300 dari 995 order; Screening
+ * Drop-off memakai `proof_url`, yang kurvanya adalah RILIS FITUR (0% Maret → 86,2%
+ * Agustus), bukan hasil screening; dan Global CTR memakai `views_count`, penghitung
+ * kumulatif seumur hidup yang mustahil dipotong per rentang. Satu-satunya angka
+ * uniknya — jumlah spam — pindah ke kartu Konversi di tab Revenue.
+ *
+ * `?tab=platform` yang tersimpan di bookmark jatuh ke `revenue` lewat penjaga di
+ * `TAB_KEYS` di bawah, bukan ke layar kosong.
+ */
+type TabKey = 'revenue' | 'respondent' | 'campaign';
+const TAB_KEYS: TabKey[] = ['revenue', 'respondent', 'campaign'];
 
-function getStartDate(range: DateRange): string | null {
-  if (range === 'all') return null;
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 365;
-  const d = new Date(); d.setDate(d.getDate() - days); d.setHours(0, 0, 0, 0); return d.toISOString();
+/**
+ * Rentang bawaan tab Revenue: 7 hari kalender WIB yang berakhir hari ini.
+ *
+ * `to` EKSKLUSIF — 00:00 WIB hari BERIKUTNYA. Itu yang menutup off-by-one lama:
+ * dulu window fetch mulai 8 hari lalu sementara sumbu chart dibangun 7 hari, jadi
+ * revenue di hari paling awal masuk KPI tanpa punya batang.
+ */
+function wibMidnight(ymd: string, dayOffset = 0): Date {
+  return new Date(new Date(`${ymd}T00:00:00.000Z`).getTime() - 7 * 3600_000 + dayOffset * 86_400_000);
 }
-function toWIBHourLabel(iso: string): string {
-  return new Date(iso).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', hour12: false });
+function defaultRange(days = 7): RangeValue {
+  const ymd = nowWib().ymd;
+  return { from: wibMidnight(ymd, -(days - 1)), to: wibMidnight(ymd, 1) };
+}
+const YMD = (d: Date) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+function rangeToParam(r: RangeValue): string {
+  // `to` disimpan sebagai tanggal INKLUSIF supaya URL-nya terbaca manusia.
+  return `${YMD(r.from)}_${YMD(new Date(r.to.getTime() - 1))}`;
+}
+function rangeFromParam(raw: string | null): RangeValue | null {
+  const m = raw?.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);
+  if (!m) return null;
+  const from = wibMidnight(m[1]);
+  const to = wibMidnight(m[2], 1);
+  return to > from ? { from, to } : null;
+}
+function formatRangeLabel(r: RangeValue): string {
+  const f = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short' });
+  const last = new Date(r.to.getTime() - 1);
+  const year = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric' }).format(last);
+  return `${f.format(r.from)} – ${f.format(last)} ${year}`;
+}
+/** Bucket loyalitas yang dihitung sebagai "responden setia". Label berasal dari sql/67. */
+const LOYAL_BUCKET_NAMES = new Set(['10-24 survei', '25+ survei']);
+
+/**
+ * Nama baris dengan nilai terbesar — untuk `emphasizedName` pada deret ORDINAL.
+ *
+ * `RankedBarList` menyorot baris PERTAMA secara bawaan. Itu benar untuk daftar
+ * yang sudah terurut menurun, tapi salah untuk bucket ordinal seperti "< 1 mnt …
+ * > 10 mnt": barisnya sengaja tidak diurutkan menurut nilai, jadi baris pertama
+ * cuma "ember paling kiri", bukan temuannya. Yang layak disorot adalah moda
+ * distribusinya.
+ */
+function modalRowName(rows: RankedRow[]): string | undefined {
+  if (rows.length === 0) return undefined;
+  return rows.reduce((top, row) => (row.value > top.value ? row : top), rows[0]).name;
 }
 
-/** Paginated fetch: Supabase defaults to 1000 rows max. This loops until all rows are fetched. */
-async function fetchAllRows(
-  buildQuery: () => any,
-  batchSize = 1000
-): Promise<any[]> {
-  let allData: any[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await buildQuery().range(from, from + batchSize - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    allData = allData.concat(data);
-    if (data.length < batchSize) break;
-    from += batchSize;
-  }
-  return allData;
-}
-
-function EmptyState({ icon: Icon, message }: { icon: any; message: string }) {
-  return (
-    <div className="h-[240px] flex flex-col items-center justify-center text-gray-400 bg-gray-50/60 rounded-lg border border-dashed border-gray-200">
-      <Icon className="w-8 h-8 text-gray-300 mb-2" />
-      <p className="text-sm text-center px-4">{message}</p>
-    </div>
-  );
-}
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-96 text-gray-500 space-y-4">
@@ -82,196 +127,214 @@ function SkeletonChart() {
 export function AnalyticsDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as TabKey | null;
-  const [activeTab, setActiveTab] = useState<TabKey>(tabFromUrl && ['revenue', 'respondent', 'platform', 'campaign'].includes(tabFromUrl) ? tabFromUrl : 'revenue');
-  const [dateRange, setDateRange] = useState<DateRange>('7d');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>(tabFromUrl && TAB_KEYS.includes(tabFromUrl) ? tabFromUrl : 'revenue');
+  const [range, setRange] = useState<RangeValue>(() => rangeFromParam(searchParams.get('range')) ?? defaultRange());
 
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
-  const [respondents, setRespondents] = useState<any[]>([]);
-  const [surveyPages, setSurveyPages] = useState<any[]>([]);
+  /** Data tab Revenue. Terpisah dari `analytics` lama, yang kini hanya melayani tab lain. */
+  const [revenueData, setRevenueData] = useState<Awaited<ReturnType<typeof fetchRevenueData>> | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(true);
+  const [revenueError, setRevenueError] = useState<string | null>(null);
+
+  /** Data tab Responden. Satu RPC agregasi — lihat `fetchRespondentData`. */
+  const [respondentData, setRespondentData] = useState<Awaited<ReturnType<typeof fetchRespondentData>> | null>(null);
+  const [respondentLoading, setRespondentLoading] = useState(true);
+  const [respondentError, setRespondentError] = useState<string | null>(null);
+
+  /** Data tab Campaign. Klik + link; sisi voucher menumpang `revenueData`. */
+  const [campaignData, setCampaignData] = useState<Awaited<ReturnType<typeof fetchCampaignData>> | null>(null);
+  const [campaignLoading, setCampaignLoading] = useState(true);
+  const [campaignError, setCampaignError] = useState<string | null>(null);
+
+  /**
+   * Salinan `campaign_links` yang bisa diubah tabel manajemen.
+   *
+   * Sengaja state tersendiri, bukan membaca `campaignData.links` langsung: membuat
+   * dan menghapus link mengubah daftarnya seketika, dan memaksa refetch seluruh
+   * dataset untuk satu baris berarti layar berkedip pada tiap aksi.
+   */
   const [campaignLinks, setCampaignLinks] = useState<any[]>([]);
+
+  /** Sakelar kartu voucher: peringkat menurut revenue, atau menurut pemakaian. */
+  const [voucherMetric, setVoucherMetric] = useState<'revenue' | 'orders'>('revenue');
 
   const [linkSource, setLinkSource] = useState('instagram');
   const [linkDescription, setLinkDescription] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedLink, setGeneratedLink] = useState('');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
-  const [deptSortBy, setDeptSortBy] = useState<'revenue' | 'paidUsers'>('revenue');
 
   useEffect(() => {
-    if (activeTab !== (searchParams.get('tab') as TabKey | null)) {
-      const next = new URLSearchParams(searchParams); next.set('tab', activeTab); setSearchParams(next, { replace: true });
-    }
-  }, [activeTab]);
+    const next = new URLSearchParams(searchParams);
+    let dirty = false;
+    if (activeTab !== searchParams.get('tab')) { next.set('tab', activeTab); dirty = true; }
+    const rangeParam = rangeToParam(range);
+    if (rangeParam !== searchParams.get('range')) { next.set('range', rangeParam); dirty = true; }
+    // Rentangnya ikut di URL supaya layar yang sedang dilihat bisa dibagikan apa adanya.
+    if (dirty) setSearchParams(next, { replace: true });
+  }, [activeTab, range]);
 
-  const fetchAllData = async () => {
+  /**
+   * Tab Revenue TIDAK menyentuh `page_respondents`.
+   *
+   * Dulu satu `fetchAllData()` menarik keempat tabel tiap kali periode berubah,
+   * termasuk 120.546 baris responden (121 round-trip di mode "Semua") yang tab
+   * ini tidak pernah pakai. Itu sebab teks loading "beberapa detik".
+   */
+  const loadRevenue = async (target: RangeValue) => {
     try {
-      setLoading(true); setError(null);
-      const start = getStartDate(dateRange);
-      const now = new Date().toISOString();
-
-      // Paginated fetch for all tables that can exceed 1000 rows
-      const buildTxQuery = () => { let q = supabase.from('transactions').select('*'); if (start) q = q.gte('created_at', start).lte('created_at', now); return q; };
-      const buildSubQuery = () => { let q = supabase.from('form_submissions').select('id, auth_user_id, university, department, status, submission_status, payment_status, referral_source, email, winner_count, prize_per_winner, criteria_responden, created_at, voucher_code'); if (start) q = q.gte('created_at', start).lte('created_at', now); return q; };
-      const buildRespQuery = () => { let q = supabase.from('page_respondents').select('id, page_id, proof_url, ewallet_provider, created_at, jakpat_id'); if (start) q = q.gte('created_at', start).lte('created_at', now); return q; };
-      const buildLinksQuery = () => { return supabase.from('campaign_links').select('*').order('created_at', { ascending: false }); };
-
-      // survey_pages is small, no pagination needed
-      const { data: pageData, error: pageErr } = await supabase.from('survey_pages').select('id, views_count, submission_id');
-      if (pageErr) throw pageErr;
-
-      const [txData, subData, respData, linksData] = await Promise.all([
-        fetchAllRows(buildTxQuery),
-        fetchAllRows(buildSubQuery),
-        fetchAllRows(buildRespQuery),
-        fetchAllRows(buildLinksQuery)
-      ]);
-
-      setTransactions(txData); setSubmissions(subData); setRespondents(respData); setSurveyPages(pageData || []); setCampaignLinks(linksData);
-    } catch (err: any) { console.error('Error fetching analytics data:', err); setError(err?.message || 'Terjadi kesalahan saat mengambil data.'); }
-    finally { setLoading(false); }
+      // Refetch menahan render sebelumnya (opacity turun), bukan kembali ke skeleton.
+      setRevenueLoading(true); setRevenueError(null);
+      setRevenueData(await fetchRevenueData(target));
+    } catch (err: any) {
+      console.error('Error fetching revenue data:', err);
+      setRevenueError(err?.message || 'Terjadi kesalahan saat mengambil data revenue.');
+    } finally { setRevenueLoading(false); }
   };
 
-  useEffect(() => { fetchAllData(); }, [dateRange]);
+  useEffect(() => { loadRevenue(range); }, [range.from.getTime(), range.to.getTime()]);
 
-  const analytics = useMemo(() => {
-    if (!submissions.length) return null;
-    const completedTx = transactions.filter((t: any) => t.status === 'completed');
-    const totalRevenue = completedTx.reduce((sum: number, t: any) => sum + t.amount, 0);
-    // AOV = Total Revenue / Paid Submissions (not transaction count, since 1 tx can cover multiple submissions)
-    const paidSubmissionIds = new Set(completedTx.map((t: any) => t.form_submission_id));
-    const paidSubmissionCount = paidSubmissionIds.size;
-    const aov = paidSubmissionCount > 0 ? Math.round(totalRevenue / paidSubmissionCount) : 0;
+  /**
+   * Tab Responden juga TIDAK menyentuh `page_respondents` mentah lagi.
+   *
+   * Sebelumnya ia ikut `fetchAllData()`, yang memaginasi 122.929 baris — 26
+   * round-trip untuk 30 hari, 123 untuk "Semua waktu". Sekarang satu POST ke
+   * `get_respondent_analytics` (lihat sql/67) plus satu GET ringan ke
+   * `form_submissions` untuk kartu Permintaan Customer.
+   */
+  const loadRespondents = async (target: RangeValue) => {
+    try {
+      setRespondentLoading(true); setRespondentError(null);
+      setRespondentData(await fetchRespondentData(target));
+    } catch (err: any) {
+      console.error('Error fetching respondent data:', err);
+      setRespondentError(err?.message || 'Terjadi kesalahan saat mengambil data responden.');
+    } finally { setRespondentLoading(false); }
+  };
 
-    const revenueByUnivMap: Record<string, number> = {};
-    completedTx.forEach((tx: any) => {
-      const sub = submissions.find((s: any) => s.id === tx.form_submission_id);
-      if (sub) { const univName = sub.university?.trim() || 'Tidak Diketahui'; revenueByUnivMap[univName] = (revenueByUnivMap[univName] || 0) + tx.amount; }
+  // Baru menarik data saat tabnya benar-benar dibuka; selama user bertahan di
+  // Revenue, RPC ini tidak pernah dipanggil sama sekali.
+  const onRespondentTab = activeTab === 'respondent';
+  useEffect(() => {
+    if (!onRespondentTab) return;
+    loadRespondents(range);
+  }, [onRespondentTab, range.from.getTime(), range.to.getTime()]);
+
+  /**
+   * Tab Campaign menumpang data tab Revenue untuk sisi vouchernya.
+   *
+   * `voucher_code` sudah ikut di `SUB_COLUMNS` milik `fetchRevenueData`, dan
+   * `submissionsById` sudah dijamin menutupi setiap transaksi. Menariknya ulang
+   * berarti dua sumber untuk satu angka — dan dua sumber selalu berakhir dengan
+   * dua jawaban yang berbeda.
+   */
+  const loadCampaign = async (target: RangeValue) => {
+    try {
+      setCampaignLoading(true); setCampaignError(null);
+      const data = await fetchCampaignData(target);
+      setCampaignData(data);
+      setCampaignLinks(data.links);
+    } catch (err: any) {
+      console.error('Error fetching campaign data:', err);
+      setCampaignError(err?.message || 'Terjadi kesalahan saat mengambil data campaign.');
+    } finally { setCampaignLoading(false); }
+  };
+
+  const onCampaignTab = activeTab === 'campaign';
+  useEffect(() => {
+    if (!onCampaignTab) return;
+    loadCampaign(range);
+  }, [onCampaignTab, range.from.getTime(), range.to.getTime()]);
+
+  /**
+   * Angka tab Revenue. Semua koreksi (status 'paid', normalisasi universitas,
+   * transaksi uji, bucket WIB, hari parsial) hidup di `buildRevenueAnalytics`,
+   * yang murni dan teruji — komponen di bawah tidak menghitung apa pun sendiri.
+   */
+  const revenue: RevenueAnalytics | null = useMemo(() => {
+    if (!revenueData) return null;
+    return buildRevenueAnalytics({
+      range,
+      transactions: revenueData.transactions,
+      previousTransactions: revenueData.previousTransactions,
+      submissionsInRange: revenueData.submissionsInRange,
+      submissionsById: revenueData.submissionsById,
+      firstPaidAtByCustomer: revenueData.firstPaidAtByCustomer,
     });
-    const topSpendersData = Object.entries(revenueByUnivMap).map(([name, Total]) => ({ name, Total })).sort((a: any, b: any) => b.Total - a.Total).slice(0, 5);
+  }, [revenueData, range]);
 
-    const revenueByCustomerMap: Record<string, { email: string; university: string; total: number; txCount: number }> = {};
-    completedTx.forEach((tx: any) => {
-      const sub = submissions.find((s: any) => s.id === tx.form_submission_id);
-      if (sub) {
-        // Use auth_user_id as primary grouping key; fall back to email for pre-Phase 1 data
-        const key = sub.auth_user_id || sub.email?.trim().toLowerCase();
-        if (!key) return;
-        const displayEmail = sub.email?.trim().toLowerCase() || '-';
-        if (!revenueByCustomerMap[key]) revenueByCustomerMap[key] = { email: displayEmail, university: sub.university?.trim() || '-', total: 0, txCount: 0 };
-        revenueByCustomerMap[key].total += tx.amount;
-        revenueByCustomerMap[key].txCount += 1;
-      }
+  /**
+   * Porsi revenue yang channel pembayarannya tidak tercatat, 0–1.
+   *
+   * Pencatatan `payment_channel` baru dimulai Juli 2026 — sebelum itu NULL semua
+   * (Jan–Apr 100%, Mei 98,1%, Jun 76,9%, lalu Jul 1,6%). Pada rentang panjang seperti
+   * "Semua waktu", baris "Tidak tercatat" jadi yang TERBESAR di kartu Metode
+   * Pembayaran, dan tanpa keterangan ia terbaca seolah ada channel bernama itu yang
+   * mendominasi. Footnote cakupannya dimunculkan hanya kalau porsinya memang berarti,
+   * supaya di rentang pendek — tempat datanya sudah bersih — kartunya tidak berisik.
+   */
+  const unrecordedChannelShare = useMemo(
+    () => revenue?.byPaymentChannel.find((row) => row.name === UNRECORDED_CHANNEL)?.share ?? 0,
+    [revenue],
+  );
+
+  /**
+   * Angka tab Responden. Semua koreksi (normalisasi `jakpat_id`, loyalitas
+   * seumur hidup, cakupan `loi_seconds`) hidup di RPC + `buildRespondentAnalytics`,
+   * yang murni dan teruji — komponen di bawah tidak menghitung apa pun sendiri.
+   */
+  const respondent: RespondentAnalytics | null = useMemo(() => {
+    if (!respondentData) return null;
+    return buildRespondentAnalytics({
+      range,
+      payload: respondentData.payload,
+      submissions: respondentData.submissions,
     });
-    const topSpendersByEmail = Object.values(revenueByCustomerMap).sort((a: any, b: any) => b.total - a.total).slice(0, 5);
+  }, [respondentData, range]);
 
+  /**
+   * Porsi responden aktif yang seumur hidup sudah mengerjakan 10+ survei, 0–1.
+   *
+   * Dicocokkan lewat NAMA bucket, bukan posisi: kalau suatu saat sql/67 menambah
+   * atau memecah ember, mencocokkan indeks akan diam-diam menunjuk ember yang
+   * salah, sedangkan nama yang tidak cocok hanya membuat angkanya nol dan
+   * footnote-nya jatuh ke kalimat cadangan.
+   */
+  const loyalRespondentShare = useMemo(() => {
+    if (!respondent) return 0;
+    return respondent.loyalty
+      .filter((row) => LOYAL_BUCKET_NAMES.has(row.name))
+      .reduce((sum, row) => sum + row.share, 0);
+  }, [respondent]);
 
-
-    const ewalletMap: Record<string, number> = {};
-    respondents.forEach((r: any) => { if (r.proof_url) { const p = r.ewallet_provider?.toLowerCase().trim() || 'Lainnya'; ewalletMap[p] = (ewalletMap[p] || 0) + 1; } });
-    const ewalletData = Object.entries(ewalletMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })).sort((a: any, b: any) => b.value - a.value);
-
-    const hourlyMap: Record<string, number> = {}; for (let i = 0; i < 24; i++) hourlyMap[`${i.toString().padStart(2, '0')}:00`] = 0;
-    respondents.forEach((r: any) => { if (r.created_at) { const hour = toWIBHourLabel(r.created_at); hourlyMap[`${hour}:00`] = (hourlyMap[`${hour}:00`] || 0) + 1; } });
-    const hourlyData = Object.entries(hourlyMap).map(([hour, count]) => ({ hour, Responden: count }));
-
-    const jakpatIdMap: Record<string, Set<string>> = {};
-    respondents.forEach((r: any) => { if (r.jakpat_id && r.page_id) { if (!jakpatIdMap[r.jakpat_id]) jakpatIdMap[r.jakpat_id] = new Set(); jakpatIdMap[r.jakpat_id].add(r.page_id); } });
-    const uniqueRespondents = Object.keys(jakpatIdMap).length;
-    const loyalRespondentsCount = Object.values(jakpatIdMap).filter((pages) => pages.size > 1).length;
-    const retentionRate = uniqueRespondents > 0 ? (loyalRespondentsCount / uniqueRespondents) * 100 : 0;
-    const totalRespondents = respondents.length;
-    const completedRespondents = respondents.filter((r: any) => r.proof_url).length;
-    const disqualifiedRespondents = totalRespondents - completedRespondents;
-
-    const totalSubs = submissions.length;
-    const spamSubs = submissions.filter((s: any) => (s.submission_status || s.status) === 'spam').length;
-    const genuineSubs = submissions.filter((s: any) => { const st = s.submission_status || s.status; return st === 'approved' || st === 'published'; }).length;
-    const rawApprovals = submissions.filter((s: any) => { const st = s.submission_status || s.status; return st === 'approved' || st === 'published' || s.payment_status === 'paid'; });
-    const paidApprovals = rawApprovals.filter((s: any) => s.payment_status === 'paid').length;
-    const unpaidApprovals = rawApprovals.length - paidApprovals;
-    const totalViews = surveyPages.reduce((sum: number, sp: any) => sum + (sp.views_count || 0), 0);
-    const globalConversionRate = totalViews > 0 ? ((completedRespondents / totalViews) * 100).toFixed(1) : '0.0';
-
-    const demoDeptMap: Record<string, { count: number; revenue: number; paidUsers: number }> = {};
-    const demoRefMap: Record<string, { count: number; revenue: number }> = {};
-    submissions.forEach((sub: any) => {
-      const dept = sub.department?.trim() || 'Lainnya'; const ref = sub.referral_source?.trim() || 'Organik';
-      if (!demoDeptMap[dept]) demoDeptMap[dept] = { count: 0, revenue: 0, paidUsers: 0 }; if (!demoRefMap[ref]) demoRefMap[ref] = { count: 0, revenue: 0 };
-      demoDeptMap[dept].count += 1; demoRefMap[ref].count += 1;
-      // FIX: Sum ALL completed transactions per submission (not just .find() which returns only 1)
-      const relatedTxs = completedTx.filter((t: any) => t.form_submission_id === sub.id && t.status === 'completed');
-      if (relatedTxs.length > 0) {
-        relatedTxs.forEach((tx: any) => { demoDeptMap[dept].revenue += tx.amount; demoRefMap[ref].revenue += tx.amount; });
-        demoDeptMap[dept].paidUsers += 1; // Count as 1 paid user per submission
-      }
+  /**
+   * Angka tab Campaign.
+   *
+   * Voucher datang dari `revenueData` (transaksi yang SUDAH lewat saringan lunas &
+   * uji internal — lihat catatan di `campaign.ts`), klik dari `campaignData`. Kalau
+   * salah satunya belum tiba, kartunya menunggu; keduanya dipicu oleh `range` yang
+   * sama, jadi mereka tidak bisa menceritakan periode yang berbeda.
+   */
+  const campaign: CampaignAnalytics | null = useMemo(() => {
+    if (!campaignData || !revenueData) return null;
+    return buildCampaignAnalytics({
+      range,
+      transactions: revenueData.transactions,
+      previousTransactions: revenueData.previousTransactions,
+      submissionsById: revenueData.submissionsById,
+      submissionsInRange: revenueData.submissionsInRange,
+      previousSubmissionsInRange: campaignData.previousSubmissions,
+      clicks: campaignData.clicks,
+      previousClicks: campaignData.previousClicks,
+      links: campaignData.links,
     });
-    const topDepartments = Object.entries(demoDeptMap).map(([name, data]) => ({ name, ...data })).sort((a: any, b: any) => b.revenue - a.revenue);
-    const topReferrals = Object.entries(demoRefMap).map(([name, data]) => ({ name, ...data })).sort((a: any, b: any) => b.revenue - a.revenue);
+  }, [campaignData, revenueData, range]);
 
-    const demoStatusMap: Record<string, { count: number; revenue: number }> = {};
-    submissions.forEach((sub: any) => {
-      let statusLabel = 'Tidak Diketahui';
-      if (sub.status && !REVIEW_STATUSES.has(sub.status)) statusLabel = sub.status.trim();
-      if (!demoStatusMap[statusLabel]) demoStatusMap[statusLabel] = { count: 0, revenue: 0 };
-      demoStatusMap[statusLabel].count += 1;
-      const relTx = completedTx.find((t: any) => t.form_submission_id === sub.id);
-      if (relTx) demoStatusMap[statusLabel].revenue += relTx.amount;
-    });
-    const topStudentStatuses = Object.entries(demoStatusMap).map(([name, data]) => ({ name, ...data })).sort((a: any, b: any) => b.revenue - a.revenue);
-
-    const criteriaMap: Record<string, number> = {};
-    const jabodtbkCities = ['jakarta', 'bogor', 'depok', 'tangerang', 'bekasi', 'jabodetabek', 'jabotabek', 'jadetabek'];
-    const normalizeCriteria = (raw: string): string | null => {
-      const s = raw.toLowerCase().trim(); if (s.length < 3) return null;
-      const ageMatch = s.match(/(\d{2})/g);
-      if (ageMatch && (s.includes('tahun') || s.includes('usia') || s.includes('umur') || s.includes('age'))) {
-        const ages = ageMatch.map(Number).filter((a: number) => a >= 10 && a <= 99);
-        if (ages.length > 0) { const minAge = Math.min(...ages); if (minAge <= 20) return 'Usia 17-20 tahun'; if (minAge <= 25) return 'Usia 21-25 tahun'; if (minAge <= 30) return 'Usia 26-30 tahun'; return 'Usia 31+ tahun'; }
-      }
-      if (s.includes('mahasiswa') || s.includes('kuliah') || s.includes('mhs')) return 'Mahasiswa';
-      if (jabodtbkCities.some((city) => s.includes(city)) || s.includes('domisili jabo')) return 'Jabodetabek';
-      if (s.includes('domisili') || s.includes('wilayah') || s.includes('daerah')) { const cleaned = s.replace(/domisili|wilayah|daerah|di|area/gi, '').trim(); if (cleaned.length > 2) return 'Domisili: ' + cleaned.charAt(0).toUpperCase() + cleaned.slice(1); return null; }
-      return s.charAt(0).toUpperCase() + s.slice(1);
-    };
-    submissions.forEach((sub: any) => {
-      if (sub.criteria_responden) { const parts = sub.criteria_responden.split(/[,;\n]+/); const seen = new Set<string>(); parts.forEach((part: string) => { const normalized = normalizeCriteria(part); if (normalized && !seen.has(normalized)) { seen.add(normalized); criteriaMap[normalized] = (criteriaMap[normalized] || 0) + 1; } }); }
-    });
-    const topCriteriaKeywords = Object.entries(criteriaMap).map(([name, count]) => ({ name, count })).sort((a: any, b: any) => b.count - a.count).slice(0, 8);
-
-    const daysToInit = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : 30;
-    const dailyRevenueMap: Record<string, number> = {}; const dailySubmissionMap: Record<string, number> = {};
-    for (let i = daysToInit - 1; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); const key = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); dailyRevenueMap[key] = 0; dailySubmissionMap[key] = 0; }
-    completedTx.forEach((tx: any) => { if (tx.created_at) { const key = new Date(tx.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); if (dailyRevenueMap[key] !== undefined) dailyRevenueMap[key] += tx.amount; } });
-    submissions.forEach((s: any) => { if (s.created_at) { const key = new Date(s.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); if (dailySubmissionMap[key] !== undefined) dailySubmissionMap[key] += 1; } });
-    const dailyTrendData = Object.keys(dailyRevenueMap).map((date) => ({ date, Revenue: dailyRevenueMap[date], Submissions: dailySubmissionMap[date] || 0 }));
-
-    const topBarchartUniv = topSpendersData[0]?.name || '-';
-    const topWallet = ewalletData[0]?.name || '-';
-    const peakHour = Object.entries(hourlyMap).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || '-';
-
-    // Campaign stats now come directly from campaign_links table (merged)
-    const campaignStats = campaignLinks
-      .filter((link: any) => (link.click_count || 0) > 0)
-      .map((link: any) => ({ name: link.source_name, clicks: link.click_count || 0 }))
-      .sort((a: any, b: any) => b.clicks - a.clicks);
-    const totalCampaignClicks = campaignLinks.reduce((sum: number, link: any) => sum + (link.click_count || 0), 0);
-
-    const voucherUsageMap: Record<string, number> = {};
-    completedTx.forEach((tx: any) => {
-      const sub = submissions.find((s: any) => s.id === tx.form_submission_id);
-      if (sub && sub.voucher_code && sub.voucher_code.trim().length > 0) {
-        const code = sub.voucher_code.trim().toUpperCase();
-        voucherUsageMap[code] = (voucherUsageMap[code] || 0) + 1;
-      }
-    });
-    const voucherStats = Object.entries(voucherUsageMap).map(([code, count]) => ({ code, count })).sort((a: any, b: any) => b.count - a.count);
-    const totalVouchersUsed = voucherStats.reduce((sum, v) => sum + v.count, 0);
-
-    return { totalRevenue, aov, paidSubmissionCount, topSpendersData, ewalletData, hourlyData, uniqueRespondents, loyalRespondentsCount, retentionRate: retentionRate.toFixed(1), totalRespondents, completedRespondents, disqualifiedRespondents, totalSubs, spamSubs, genuineSubs, rawApprovalsCount: rawApprovals.length, paidApprovals, unpaidApprovals, totalViews, globalConversionRate, topDepartments, topReferrals, topStudentStatuses, topSpendersByEmail, topCriteriaKeywords, campaignStats, totalCampaignClicks, totalVouchersUsed, voucherStats, dailyTrendData, funFacts: { topBarchartUniv, topWallet, peakHour } };
-  }, [transactions, submissions, respondents, surveyPages, campaignLinks, dateRange]);
+  /** Pemakaian per kode di rentang ini — dipakai Katalog Voucher. Peta, bukan daftar. */
+  const voucherUsageByCode = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of campaign?.voucher.byOrders ?? []) map.set(row.name, row.value);
+    return map;
+  }, [campaign]);
 
   const handleGenerateLink = async () => {
     const source = linkSource.trim().toLowerCase().replace(/\s+/g, '-');
@@ -328,554 +391,678 @@ export function AnalyticsDashboard() {
   const handleTabChange = (tab: TabKey) => { setActiveTab(tab); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="flex flex-col items-center justify-center h-[60vh] space-y-6 animate-in fade-in duration-300">
-          <div className="p-4 bg-blue-50 rounded-full">
-            <RefreshCw className="h-8 w-8 text-blue-500 animate-spin" />
-          </div>
-          <div className="text-center space-y-2">
-            <h3 className="text-sm font-semibold text-gray-900">
-              Mengambil Data {DATE_RANGE_OPTIONS.find(d => d.value === dateRange)?.label}
-            </h3>
-            <p className="text-xs text-gray-500 max-w-xs">
-              Proses ini mungkin memakan waktu beberapa detik karena mengambil jumlah data yang besar.
-            </p>
-          </div>
-          <div className="w-64 h-2 bg-gray-100 rounded-full overflow-hidden relative">
-            <div className="absolute top-0 bottom-0 left-0 bg-blue-500 rounded-full animate-[progress_1.5s_ease-in-out_infinite] w-full" style={{ animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}></div>
-          </div>
-        </div>
-      );
-    }
-    if (error) return <ErrorState message={error} onRetry={fetchAllData} />;
-    if (!analytics) return (
-      <div className="flex flex-col items-center justify-center h-96 text-gray-500">
-        <BarChart3 className="h-10 w-10 text-gray-300 mb-3" />
-        <p className="text-sm font-medium">Belum ada data untuk ditampilkan.</p>
-        <p className="text-xs text-gray-400 mt-1">Coba ubah rentang tanggal atau tunggu hingga data masuk.</p>
-      </div>
-    );
-
     return (
       <div className="space-y-4 animate-in fade-in duration-500">
-
-        {/* Hero */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-lg p-3 shadow text-white mb-2 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 shrink-0">
-            <Award className="w-5 h-5 text-yellow-300" />
-            <span className="font-bold text-xs uppercase tracking-wider text-blue-100">Insight {dateRange === 'all' ? 'Semua Waktu' : DATE_RANGE_OPTIONS.find((d) => d.value === dateRange)?.label}:</span>
-          </div>
-          <div className="grid grid-cols-3 w-full gap-2 lg:w-4/5">
-            <div className="bg-white/10 rounded px-2.5 py-1.5 backdrop-blur-sm border border-white/10 flex flex-col justify-center">
-              <span className="text-[9px] text-blue-200 uppercase tracking-widest truncate">Top Spender Univ</span>
-              <span className="font-semibold text-xs md:text-sm truncate">{analytics.funFacts.topBarchartUniv}</span>
-            </div>
-            <div className="bg-white/10 rounded px-2.5 py-1.5 backdrop-blur-sm border border-white/10 flex flex-col justify-center">
-              <span className="text-[9px] text-blue-200 uppercase tracking-widest truncate">E-Wallet Favorit</span>
-              <span className="font-semibold text-xs md:text-sm truncate">{analytics.funFacts.topWallet} users</span>
-            </div>
-            <div className="bg-white/10 rounded px-2.5 py-1.5 backdrop-blur-sm border border-white/10 flex flex-col justify-center">
-              <span className="text-[9px] text-blue-200 uppercase tracking-widest truncate">Peak Hour</span>
-              <span className="font-semibold text-xs md:text-sm truncate">Pukul {analytics.funFacts.peakHour} WIB</span>
-            </div>
-          </div>
-        </div>
 
         {/* TAB: REVENUE */}
         {activeTab === 'revenue' && (
           <div className="space-y-4 animate-in slide-in-from-bottom-2 fade-in duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="bg-emerald-50 border-emerald-100 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-semibold text-emerald-800 uppercase tracking-widest">Total Revenue</p>
-                      <p className="text-2xl font-bold text-emerald-950">{formatIDR(analytics.totalRevenue)}</p>
-                    </div>
-                    <div className="p-2 bg-emerald-200/50 rounded-lg"><DollarSign className="w-5 h-5 text-emerald-700" /></div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">AOV (Average Order)</p>
-                      <p className="text-2xl font-bold text-gray-900">{formatIDR(analytics.aov)}</p>
-                      <p className="text-[10px] text-gray-400">Rata-rata per {analytics.paidSubmissionCount} paid submission</p>
-                    </div>
-                    <div className="p-2 bg-blue-50 rounded-lg"><Wallet className="w-5 h-5 text-blue-600" /></div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            {revenueError ? (
+              <ErrorState message={revenueError} onRetry={() => loadRevenue(range)} />
+            ) : !revenue ? (
+              <div className="grid gap-4 lg:grid-cols-3">
+                <SkeletonChart /><SkeletonCard /><SkeletonCard />
+              </div>
+            ) : (
+              /* `isRefetching` menahan render sebelumnya pada opacity turun; kembali ke
+                 skeleton tiap ganti periode membuat layar melompat. */
+              <div className={revenueLoading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+                <div
+                  /* tanpa `grid-cols-1`: styles.css:766 mendefinisikannya dan dimuat setelah Tailwind, jadi ia mengalahkan SEMUA varian lg: — termasuk bentuk arbitrary-property. Container grid kosong memang sudah satu kolom. */
+                  className="grid gap-4 lg:[grid-template-columns:2fr_1fr]"
+                >
+                  <DailyRevenueChart
+                    data={revenue.daily}
+                    rangeLabel={formatRangeLabel(range)}
+                  />
+                  {/* Rail KPI: SATU kartu ber-divider, bukan tiga div telanjang di atas
+                      latar halaman. `auto-rows-min` menahan tile agar tidak melar dan
+                      meninggalkan ratusan piksel kosong di antara angkanya. */}
+                  {/* `lg:self-start`: tanpa ini kartu rail diregangkan setinggi kartu
+                      grafik di sebelahnya, menyisakan ±sepertiga tinggi kartu berupa
+                      ruang kosong DI DALAM border — terbaca seperti gagal render.
+                      Kolom kedua yang lebih pendek itu wajar; kartu berongga tidak. */}
+                  <Card className="shadow-sm border-gray-200 [display:grid] grid-cols-2 auto-rows-min divide-gray-100 lg:[grid-template-columns:minmax(0,1fr)] lg:divide-y lg:self-start">
+                    {/*
+                      Angka revenue pindah ke sini dari kartu grafik. Alasannya bukan
+                      ruang: semua angka periode kini terbaca dalam SATU kolom, dari
+                      yang paling ringkas ke yang paling rinci, alih-alih satu angka
+                      besar berdiri sendiri di kartu sebelah.
 
-            {/* Daily Trend */}
-            <Card className="shadow-sm border-gray-200">
-              <CardHeader className="pb-0 p-4">
-                <CardTitle className="text-sm flex items-center gap-1.5"><Activity className="w-4 h-4 text-blue-500" /> Tren Harian</CardTitle>
-                <CardDescription className="text-[10px] mt-0.5">Revenue &amp; Submissions harian</CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-2">
-                {analytics.dailyTrendData.some((d: any) => d.Revenue > 0 || d.Submissions > 0) ? (
-                  <div className="h-[280px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={analytics.dailyTrendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                        <defs><linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.2} /><stop offset="95%" stopColor="#10b981" stopOpacity={0} /></linearGradient></defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                        <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickMargin={5} />
-                        <YAxis yAxisId="left" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
-                        <YAxis yAxisId="right" orientation="right" stroke="#9ca3af" fontSize={10} allowDecimals={false} />
-                        <RechartsTooltip formatter={(value: number, name: string) => name === 'Revenue' ? formatIDR(value) : `${value} submissions`} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                        <Area yAxisId="left" type="monotone" dataKey="Revenue" stroke="#10b981" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={2} />
-                        <Line yAxisId="right" type="monotone" dataKey="Submissions" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : <EmptyState icon={Activity} message="Belum ada data tren untuk periode ini." />}
-              </CardContent>
-            </Card>
+                      `col-span-2 lg:col-span-1`: di mobile rail-nya grid 2 kolom, dan
+                      lima tile berarti tile terakhir menyisakan sel kosong. Revenue
+                      dibuat selebar penuh — ia memang headline-nya, dan sekaligus
+                      membuat sisanya kembali genap 2×2.
+                    */}
+                    <StatTile
+                      hero
+                      className="col-span-2 p-4 lg:col-span-1"
+                      label="Revenue masuk"
+                      value={formatIDR(revenue.totalRevenue.current)}
+                      delta={revenue.totalRevenue}
+                      comparisonLabel="vs periode sebelumnya"
+                    />
+                    <StatTile
+                      className="p-4"
+                      label="Order lunas"
+                      value={`${revenue.paidOrders.current}`}
+                      delta={revenue.paidOrders}
+                      comparisonLabel="vs periode sebelumnya"
+                    />
+                    <StatTile
+                      className="p-4"
+                      label="Customer bayar"
+                      value={`${revenue.payingCustomers.current}`}
+                      delta={revenue.payingCustomers}
+                      deltaMode="absolute"
+                      deltaUnit="customer"
+                      comparisonLabel="vs periode sebelumnya"
+                    />
+                    <StatTile
+                      className="p-4"
+                      label="AOV"
+                      value={formatIDR(revenue.aov.current)}
+                      delta={revenue.aov}
+                      comparisonLabel="vs periode sebelumnya"
+                      caption="per order lunas"
+                    />
+                    <StatTile
+                      className="p-4"
+                      label="PPN 11% terkumpul"
+                      value={formatIDR(revenue.ppn.ppn)}
+                      caption={`subtotal ${formatIDR(revenue.ppn.subtotal)}`}
+                    />
+                  </Card>
+                </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card className="shadow-sm border-gray-200">
-                <CardHeader className="pb-0 p-4">
-                  <CardTitle className="text-sm flex items-center gap-1.5"><School className="w-4 h-4 text-blue-500" /> Top Spenders</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-2">
-                  {analytics.topSpendersData.length > 0 ? (
-                    <div className="h-[260px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analytics.topSpendersData} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f3f4f6" />
-                          <XAxis type="number" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
-                          <YAxis dataKey="name" type="category" width={120} stroke="#9ca3af" fontSize={10} tick={{ fill: '#4b5563' }} />
-                          <RechartsTooltip formatter={(v: number) => formatIDR(v)} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                          <Bar dataKey="Total" radius={[0, 3, 3, 0]} barSize={18}>{analytics.topSpendersData.map((_: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}</Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : <EmptyState icon={School} message="Belum ada data revenue per universitas." />}
-                </CardContent>
-              </Card>
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  <MeterCard
+                    title="Konversi Order → Lunas"
+                    value={revenue.conversion.rate}
+                    centerCaption="order jadi bayar"
+                    /* Jumlah spam-nya DISEBUT, bukan cuma diklaim dikecualikan:
+                       "spam tidak dihitung" adalah pernyataan yang tidak bisa
+                       diperiksa pembaca kalau angkanya tidak ada di mana pun. Ini
+                       satu-satunya angka yang diselamatkan dari tab Platform. */
+                    footnote={`${revenue.conversion.ordersPaid} lunas · ${Math.max(
+                      revenue.conversion.ordersIn - revenue.conversion.ordersPaid,
+                      0,
+                    )} belum · ${revenue.conversion.ordersIn} masuk${
+                      revenue.conversion.spamOrders > 0
+                        ? ` (${revenue.conversion.spamOrders} spam tidak dihitung)`
+                        : ''
+                    }`}
+                  />
+                  {/* `payment_channel` sudah ikut ter-fetch sejak dulu tapi tidak pernah
+                      dibaca — kartu ini nol query baru. Footnote cakupannya WAJIB: lihat
+                      catatan di `unrecordedChannelShare` di atas. */}
+                  <RankedBarList
+                    title="Metode Pembayaran"
+                    subtitle={`${formatIDR(revenue.totalRevenue.current)} · ${revenue.paidOrders.current} order lunas`}
+                    rows={revenue.byPaymentChannel}
+                    contextOnlyNames={['Lainnya', UNRECORDED_CHANNEL]}
+                    emphasis="hover-only"
+                    valueFormatter={formatIDR}
+                    footnote={
+                      unrecordedChannelShare >= 0.1 ? (
+                        <>
+                          Channel pembayaran baru dicatat sejak Juli 2026 — transaksi sebelum
+                          itu masuk ke &ldquo;{UNRECORDED_CHANNEL}&rdquo;, bukan hilang.
+                        </>
+                      ) : undefined
+                    }
+                  />
+                  <SegmentCard segments={revenue.segments} emphasize="repeat" />
+                </div>
 
-              <Card className="shadow-sm border-gray-200">
-                <CardHeader className="pb-0 p-4">
-                  <CardTitle className="text-sm flex items-center gap-1.5"><Award className="w-4 h-4 text-amber-500" /> Top Individual Spenders</CardTitle>
-                  <CardDescription className="text-[10px] mt-0.5">Total pembelanjaan tertinggi per Customer</CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-2">
-                  {analytics.topSpendersByEmail.length > 0 ? (
-                    <div className="h-[260px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analytics.topSpendersByEmail.slice(0, 5).map((d: any) => ({ name: d.email.split('@')[0].length > 12 ? d.email.split('@')[0].slice(0, 12) + '…' : d.email.split('@')[0], Total: d.total, fullEmail: d.email, orders: d.txCount }))} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f3f4f6" />
-                          <XAxis type="number" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
-                          <YAxis dataKey="name" type="category" width={90} stroke="#9ca3af" fontSize={10} tick={{ fill: '#4b5563' }} />
-                          <RechartsTooltip formatter={(v: number) => formatIDR(v)} labelFormatter={(_, payload: any) => { const p = payload?.[0]?.payload; return p ? `${p.fullEmail} - ${p.orders}x order` : ''; }} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                          <Bar dataKey="Total" fill="#f59e0b" radius={[0, 3, 3, 0]} barSize={18}>{analytics.topSpendersByEmail.slice(0, 5).map((_: any, index: number) => <Cell key={`ind-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />)}</Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : <EmptyState icon={Award} message="Belum ada data individual spender." />}
-                </CardContent>
-              </Card>
-            </div>
+                {/*
+                  Tiga daftar peringkat dilebur jadi satu kartu bertab. Ketiganya
+                  menjawab pertanyaan yang sama — SIAPA yang membelanjakan uangnya —
+                  dengan tiga potongan berbeda, jadi berdampingan mereka cuma berebut
+                  lebar: tiap daftar dapat sepertiga kolom dan batangnya jadi pita
+                  tipis. Bertab, daftar yang tampil mendapat seluruh lebar kartu.
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card className="shadow-sm border-gray-200">
-                <CardHeader className="pb-0 p-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-indigo-500" /> Top Jurusan</CardTitle>
-                    <div className="flex space-x-1 bg-gray-100 p-0.5 rounded-md shadow-inner border border-gray-200">
-                      <button onClick={() => setDeptSortBy('revenue')} className={`px-2 py-1 text-[10px] font-medium rounded transition-all ${deptSortBy === 'revenue' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}>Revenue</button>
-                      <button onClick={() => setDeptSortBy('paidUsers')} className={`px-2 py-1 text-[10px] font-medium rounded transition-all ${deptSortBy === 'paidUsers' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}>Paid Users</button>
-                    </div>
-                  </div>
-                  <CardDescription className="text-[10px] mt-0.5">{deptSortBy === 'revenue' ? 'Diurutkan berdasarkan Revenue' : 'Diurutkan berdasarkan Paid Users'}</CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-2">
-                  {analytics.topDepartments.length > 0 ? (
-                    <div className="h-[280px] w-full mt-2">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={[...analytics.topDepartments].sort((a: any, b: any) => b[deptSortBy] - a[deptSortBy]).slice(0, 5).map((d: any) => ({ name: d.name.length > 15 ? d.name.slice(0, 15) + '…' : d.name, Revenue: d.revenue, PaidUsers: d.paidUsers, fullName: d.name }))} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                          <XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickMargin={5} angle={-25} textAnchor="end" height={60} />
-                          <YAxis yAxisId="left" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
-                          <YAxis yAxisId="right" orientation="right" stroke="#9ca3af" fontSize={10} allowDecimals={false} />
-                          <RechartsTooltip formatter={(value: number, name: string) => name === 'Revenue' ? formatIDR(value) : `${value} users`} labelFormatter={(_, payload: any) => payload?.[0]?.payload?.fullName || ''} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                          <Bar yAxisId="left" dataKey="Revenue" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={20} />
-                          <Bar yAxisId="right" dataKey="PaidUsers" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : <EmptyState icon={BookOpen} message="Belum ada data departemen." />}
-                </CardContent>
-              </Card>
+                  Kanal Akuisisi TIDAK ikut dilebur: ia menjawab dari MANA mereka
+                  datang, pertanyaan yang berbeda, dan meleburnya akan menyembunyikan
+                  satu-satunya kartu akuisisi di balik tab yang tak berhubungan.
 
-              <Card className="shadow-sm border-gray-200">
-                <CardHeader className="pb-0 p-4">
-                  <CardTitle className="text-sm flex items-center gap-1.5"><Users className="w-4 h-4 text-teal-500" /> Status Mahasiswa</CardTitle>
-                  <CardDescription className="text-[10px] mt-0.5">Berdasar Revenue</CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-2">
-                  {analytics.topStudentStatuses.length > 0 ? (
-                    <div className="h-[260px] w-full mt-2">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analytics.topStudentStatuses.slice(0, 5).map((d: any) => ({ name: d.name.length > 15 ? d.name.slice(0, 15) + '…' : d.name, Revenue: d.revenue, fullName: d.name }))} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f3f4f6" />
-                          <XAxis type="number" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
-                          <YAxis dataKey="name" type="category" width={110} stroke="#9ca3af" fontSize={10} tick={{ fill: '#4b5563' }} />
-                          <RechartsTooltip formatter={(v: number) => formatIDR(v)} labelFormatter={(_, payload: any) => payload?.[0]?.payload?.fullName || ''} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                          <Bar dataKey="Revenue" fill="#14b8a6" radius={[0, 4, 4, 0]} barSize={20} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : <EmptyState icon={Users} message="Belum ada data status pendidikan." />}
-                </CardContent>
-              </Card>
-
-              <Card className="shadow-sm border-gray-200">
-                <CardHeader className="pb-0 p-4">
-                  <CardTitle className="text-sm flex items-center gap-1.5"><Link className="w-4 h-4 text-pink-500" /> Kanal Akuisisi</CardTitle>
-                  <CardDescription className="text-[10px] mt-0.5">Sumber Referensi</CardDescription>
-                </CardHeader>
-                <CardContent className="p-4 pt-2">
-                  {analytics.topReferrals.length > 0 ? (
-                    <div className="h-[260px] w-full mt-2">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analytics.topReferrals.slice(0, 5).map((d: any) => ({ name: (d.name || 'Lainnya').length > 15 ? (d.name || 'Lainnya').slice(0, 15) + '…' : d.name || 'Lainnya', Revenue: d.revenue, fullName: d.name || 'Lainnya' }))} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f3f4f6" />
-                          <XAxis type="number" tickFormatter={(v) => `${v / 1000000}M`} stroke="#9ca3af" fontSize={10} />
-                          <YAxis dataKey="name" type="category" width={110} stroke="#9ca3af" fontSize={10} tick={{ fill: '#4b5563' }} />
-                          <RechartsTooltip formatter={(v: number) => formatIDR(v)} labelFormatter={(_, payload: any) => payload?.[0]?.payload?.fullName || ''} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                          <Bar dataKey="Revenue" fill="#ec4899" radius={[0, 4, 4, 0]} barSize={20} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : <EmptyState icon={Link} message="Belum ada data kanal akuisisi." />}
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="shadow-sm border-gray-200">
-              <CardHeader className="pb-0 p-4">
-                <CardTitle className="text-sm flex items-center gap-1.5"><Filter className="w-4 h-4 text-violet-500" /> Top Kriteria Responden</CardTitle>
-                <CardDescription className="text-[10px] mt-0.5">Kriteria target responden yang paling sering diminta oleh customer</CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-2">
-                {analytics.topCriteriaKeywords.length > 0 ? (
-                  <div className="h-[300px] w-full mt-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={analytics.topCriteriaKeywords} margin={{ top: 5, right: 10, left: -10, bottom: 60 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                        <XAxis dataKey="name" stroke="#9ca3af" fontSize={9} tickMargin={5} angle={-35} textAnchor="end" height={80} />
-                        <YAxis stroke="#9ca3af" fontSize={10} allowDecimals={false} />
-                        <RechartsTooltip formatter={(v: number) => `${v} submissions`} cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                        <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={28}>{analytics.topCriteriaKeywords.map((_: any, index: number) => <Cell key={`crit-${index}`} fill={COLORS[(index + 4) % COLORS.length]} />)}</Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : <EmptyState icon={Filter} message="Belum ada data kriteria responden." />}
-              </CardContent>
-            </Card>
+                  Iramanya 2fr:1fr — sama persis dengan baris grafik di atas, supaya
+                  tepi kanan kedua baris itu segaris dan halaman punya garis bantu
+                  vertikal yang utuh.
+                */}
+                <div className="mt-4 grid gap-4 lg:[grid-template-columns:2fr_1fr]">
+                  <RankedTabsCard
+                    title="Peringkat Revenue"
+                    ariaLabel="Pilih rincian peringkat revenue"
+                    tabs={[
+                      {
+                        id: 'universitas',
+                        label: 'Universitas',
+                        rows: revenue.byUniversity,
+                        subtitle: `${formatIDR(revenue.totalRevenue.current)} · ${formatRangeLabel(range)}`,
+                        // Hanya benar untuk tab ini — jangan diangkat ke level kartu.
+                        footnote:
+                          'Nama sudah dinormalisasi — UNJ, UI dan BINUS masing-masing tersebar di beberapa ejaan di database.',
+                        contextOnlyNames: ['Lainnya', 'Tidak Diketahui'],
+                        valueFormatter: formatIDR,
+                      },
+                      {
+                        id: 'jurusan',
+                        label: 'Jurusan',
+                        rows: revenue.byDepartment,
+                        subtitle: `Berdasarkan revenue order lunas · ${formatRangeLabel(range)}`,
+                        contextOnlyNames: ['Lainnya', 'Tidak Diketahui'],
+                        valueFormatter: formatIDR,
+                      },
+                      {
+                        id: 'customer',
+                        label: 'Customer',
+                        rows: revenue.byCustomer,
+                        subtitle: `Total pembelanjaan tertinggi per customer · ${formatRangeLabel(range)}`,
+                        contextOnlyNames: ['Lainnya', 'Tidak Diketahui'],
+                        valueFormatter: formatIDR,
+                      },
+                    ]}
+                  />
+                  {/* `lg:self-start`: kanal biasanya cuma 3–4 baris, sementara kartu
+                      peringkat di sebelahnya jauh lebih tinggi. Tanpa ini grid
+                      meregangkannya sampai setinggi tetangganya dan menyisakan ±150px
+                      kosong DI DALAM border — terbaca seperti gagal render. Kolom kedua
+                      yang lebih pendek itu wajar; kartu berongga tidak. */}
+                  <RankedBarList
+                    className="lg:self-start"
+                    title="Kanal Akuisisi"
+                    subtitle="Sumber referensi order lunas"
+                    rows={revenue.byReferral}
+                    contextOnlyNames={['Lainnya', 'Organik', 'Tidak Diketahui']}
+                    emphasis="hover-only"
+                    valueFormatter={formatIDR}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* TAB: RESPONDENT */}
         {activeTab === 'respondent' && (
           <div className="space-y-4 animate-in slide-in-from-bottom-2 fade-in duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="shadow-sm bg-blue-50/50"><CardContent className="p-4"><p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Unique Respondents</p><p className="text-2xl font-bold text-blue-950">{analytics.uniqueRespondents}</p></CardContent></Card>
-              <Card className="shadow-sm bg-purple-50/50 border-purple-100"><CardContent className="p-4"><p className="text-[10px] font-semibold text-purple-700 uppercase tracking-widest">Loyal Respondents</p><p className="text-2xl font-bold text-purple-950">{analytics.loyalRespondentsCount} <span className="text-sm font-medium text-purple-700">users</span></p><p className="text-[10px] text-purple-600 mt-0.5">Mengikuti {'>'} 1 survei berbeda ({analytics.retentionRate}%)</p></CardContent></Card>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card className="shadow-sm border-gray-200">
-                <CardHeader className="pb-0 p-4"><CardTitle className="text-sm flex items-center gap-1.5"><Clock className="w-4 h-4 text-indigo-500" /> Peak Trafik (WIB)</CardTitle></CardHeader>
-                <CardContent className="p-4 pt-2">
-                  {analytics.hourlyData.some((d: any) => d.Responden > 0) ? (
-                    <div className="h-[260px] w-full mt-2">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={analytics.hourlyData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                          <XAxis dataKey="hour" stroke="#9ca3af" fontSize={9} tickMargin={5} interval={2} />
-                          <YAxis stroke="#9ca3af" fontSize={9} allowDecimals={false} />
-                          <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ fontSize: '11px', borderRadius: '6px' }} />
-                          <Line type="monotone" dataKey="Responden" stroke="#6366f1" strokeWidth={2} dot={{ r: 2, fill: '#6366f1' }} activeDot={{ r: 4 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : <EmptyState icon={Clock} message="Belum ada data trafik per jam." />}
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm border-gray-200">
-                <CardHeader className="pb-0 p-4"><CardTitle className="text-sm flex items-center gap-1.5"><Wallet className="w-4 h-4 text-green-500" /> E-Wallet Dominasi</CardTitle></CardHeader>
-                <CardContent className="p-4 pt-3">
-                  {analytics.ewalletData.length > 0 ? (
-                    <div className="space-y-3">
-                      {analytics.ewalletData.slice(0, 5).map((item: any, idx: number) => {
-                        const percentage = Math.round((item.value / (analytics.completedRespondents || 1)) * 100);
-                        return (
-                          <div key={idx} className="group">
-                            <div className="flex justify-between text-[11px] mb-1"><span className="font-medium text-gray-700">{item.name}</span><span className="text-gray-500 tabular-nums">{item.value} ({percentage}%)</span></div>
-                            <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full bg-green-500 transition-all duration-500 ease-out" style={{ width: `${Math.min(percentage, 100)}%` }} /></div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : <EmptyState icon={Wallet} message="Belum ada data e-wallet." />}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        )}
-
-        {/* TAB: PLATFORM */}
-        {activeTab === 'platform' && (
-          <div className="space-y-4 animate-in slide-in-from-bottom-2 fade-in duration-300">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card className="shadow-sm border-gray-200">
-                <CardHeader className="bg-gray-50/50 border-b border-gray-100 p-4"><CardTitle className="text-sm flex items-center gap-1.5"><Target className="w-4 h-4 text-red-500" /> Lead Quality Funnel</CardTitle></CardHeader>
-                <CardContent className="p-4 pt-5">
-                  <div className="space-y-4 relative before:absolute before:inset-0 before:ml-4 md:before:mx-auto before:h-full before:w-px before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
-                    <div className="relative flex items-center group is-active text-sm">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold shadow shrink-0 z-10 md:absolute md:left-[50%] md:-ml-4">1</div>
-                      <div className="w-[calc(100%-3rem)] ml-3 md:w-[calc(50%-1.5rem)] md:ml-0 p-3 rounded-lg border border-slate-200 bg-white">
-                        <h4 className="font-semibold text-xs text-slate-900 mb-1">Spam vs Genuine</h4>
-                        <div className="text-[11px] text-slate-500 flex justify-between"><span className="text-red-500 font-medium">{analytics.spamSubs} Tertolak</span><span className="text-emerald-600 font-medium">{analytics.genuineSubs} Lolos</span></div>
-                      </div>
-                    </div>
-                    <div className="relative flex items-center group is-active text-sm md:flex-row-reverse">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold shadow shrink-0 z-10 md:absolute md:left-[50%] md:-ml-4">2</div>
-                      <div className="w-[calc(100%-3rem)] ml-3 md:w-[calc(50%-1.5rem)] md:ml-0 md:mr-0 p-3 rounded-lg border border-blue-100 bg-blue-50/30">
-                        <h4 className="font-semibold text-xs text-blue-900 mb-1">Conversion (Approvals)</h4>
-                        <div className="text-[11px] text-blue-800 flex justify-between"><span className="text-orange-500">{analytics.unpaidApprovals} Drop</span><span className="font-bold text-emerald-700">{analytics.paidApprovals} Paid</span></div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <div className="space-y-4">
-                <Card className="shadow-sm border-gray-200">
-                  <CardHeader className="pb-0 p-4"><CardTitle className="text-sm flex items-center gap-1.5"><ShieldAlert className="w-4 h-4 text-orange-500" /> Screening Drop-off</CardTitle></CardHeader>
-                  <CardContent className="p-4 pt-3">
-                    {analytics.totalRespondents > 0 ? (
-                      <>
-                        <div className="flex justify-between mb-3 text-sm">
-                          <span className="font-bold text-xl">{analytics.totalRespondents > 0 ? Math.round((analytics.disqualifiedRespondents / analytics.totalRespondents) * 100) : 0}%</span>
-                          <span className="text-gray-500 text-xs text-right text-orange-600 font-medium">{analytics.disqualifiedRespondents} dari {analytics.totalRespondents}<br />Gagal Lolos</span>
-                        </div>
-                        <div className="h-2 w-full bg-emerald-100 rounded-full overflow-hidden flex">
-                          <div className="h-full bg-emerald-500" style={{ width: `${(analytics.completedRespondents / (analytics.totalRespondents || 1)) * 100}%` }} />
-                          <div className="h-full bg-orange-400" style={{ width: `${(analytics.disqualifiedRespondents / (analytics.totalRespondents || 1)) * 100}%` }} />
-                        </div>
-                      </>
-                    ) : <EmptyState icon={ShieldAlert} message="Belum ada data responden." />}
-                  </CardContent>
-                </Card>
-                <Card className="shadow-sm bg-slate-900 text-white">
-                  <CardContent className="p-4">
-                    <p className="text-[10px] text-indigo-300 uppercase tracking-widest mb-1">Global CTR</p>
-                    <p className="text-2xl font-bold">{analytics.globalConversionRate}%</p>
-                    <p className="text-[10px] text-slate-400 mt-1">Rata-rata global untuk setiap {analytics.totalViews.toLocaleString()} views iklan menghasilkan penyelesaian valid.</p>
-                  </CardContent>
-                </Card>
+            {respondentError ? (
+              <ErrorState message={respondentError} onRetry={() => loadRespondents(range)} />
+            ) : !respondent ? (
+              <div className="grid gap-4 lg:grid-cols-3">
+                <SkeletonChart /><SkeletonCard /><SkeletonCard />
               </div>
-            </div>
+            ) : (
+              /* `respondentLoading` menahan render sebelumnya pada opacity turun;
+                 kembali ke skeleton tiap ganti periode membuat layar melompat. */
+              <div className={respondentLoading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+                {/* Irama 2fr:1fr — SAMA PERSIS dengan baris grafik tab Revenue, jadi
+                    tepi kanan kedua tab segaris dan halamannya terbaca sebagai satu
+                    dashboard, bukan dua yang kebetulan bertetangga.
+
+                    Tanpa `grid-cols-1`: styles.css:766 mendefinisikannya dan dimuat
+                    setelah Tailwind, jadi ia mengalahkan SEMUA varian lg: — termasuk
+                    bentuk arbitrary-property. Container grid kosong memang sudah satu
+                    kolom. */}
+                <div className="grid gap-4 lg:[grid-template-columns:2fr_1fr]">
+                  <DailyRespondentsChart
+                    data={respondent.daily}
+                    rangeLabel={formatRangeLabel(range)}
+                    uniqueRespondents={respondent.respondents.current}
+                    perSurveyRate={respondent.responsesPerSurvey.current}
+                  />
+                  {/* `lg:self-start`: tanpa ini kartu rail diregangkan setinggi kartu
+                      grafik di sebelahnya dan menyisakan ratusan piksel kosong DI DALAM
+                      border — terbaca seperti gagal render. */}
+                  <Card className="shadow-sm border-gray-200 [display:grid] grid-cols-2 auto-rows-min divide-gray-100 lg:[grid-template-columns:minmax(0,1fr)] lg:divide-y lg:self-start">
+                    {/* `col-span-2 lg:col-span-1`: di mobile rail-nya grid 2 kolom, dan
+                        lima tile berarti tile terakhir menyisakan sel kosong. Respons
+                        dibuat selebar penuh — ia memang headline-nya, dan sekaligus
+                        membuat sisanya kembali genap 2×2. */}
+                    <StatTile
+                      hero
+                      className="col-span-2 p-4 lg:col-span-1"
+                      /* Bukan "Respons masuk" — kartu grafik di sebelahnya sudah berjudul
+                         persis itu, dan dua judul identik bersebelahan terbaca seperti satu
+                         kartu yang ter-render dua kali. */
+                      label="Total respons"
+                      value={formatCount(respondent.responses.current)}
+                      delta={respondent.responses}
+                      comparisonLabel="vs periode sebelumnya"
+                    />
+                    {/* ⚠️ Angka ini dihitung SEKALI atas seluruh rentang, bukan dijumlahkan
+                        dari hari-harinya. Menjumlahkan responden unik harian menghasilkan
+                        16.680 untuk rentang yang uniknya 9.337 (terukur produksi
+                        2026-08-24). Kalau suatu saat angka ini terlihat mendekati Respons
+                        di atasnya, yang rusak hampir pasti normalisasi identitasnya. */}
+                    <StatTile
+                      className="p-4"
+                      label="Responden unik"
+                      value={formatCount(respondent.respondents.current)}
+                      delta={respondent.respondents}
+                      comparisonLabel="vs periode sebelumnya"
+                      caption={`identitas dinormalisasi · ${formatDecimal(
+                        respondent.surveysPerRespondent.current,
+                      )} survei per orang`}
+                    />
+                    {/*
+                      Menggantikan tile "Survei / responden" (2,2).
+
+                      Jumlah respons mentah TIDAK bisa dipakai sebagai patokan
+                      "seberapa banyak responden yang kita dapat": ia ikut naik-turun
+                      mengikuti berapa survei yang tayang, dan itu berayun antara 1 dan 5
+                      survei per hari tayang (terukur 26 Jul - 25 Ags 2026; maks 6 dalam
+                      90 hari, sesuai kuota 4 slot reguler + extra ad). Angka ini sudah
+                      dibagi hari-survei, jadi ia yang boleh dibandingkan antar periode.
+
+                      Rasio survei-per-orang tidak hilang — ia pindah ke caption tile
+                      "Responden unik" di atas, tempat ia memang menjelaskan kenapa
+                      respons lebih banyak daripada orang.
+                    */}
+                    <StatTile
+                      className="p-4"
+                      label="Respons/survei"
+                      value={formatDecimal(respondent.responsesPerSurvey.current)}
+                      delta={respondent.responsesPerSurvey}
+                      comparisonLabel="vs periode sebelumnya"
+                      caption={`per hari tayang · ${formatCount(respondent.surveyDays)} hari-survei`}
+                    />
+                    {/*
+                      Median durasi & speeder sengaja TANPA baris delta.
+
+                      `StatTile` mewarnai delta hijau/merah lewat `higherIsBetter`, dan
+                      untuk median durasi tidak ada arah yang jelas baik — survei yang
+                      lebih pendek bukan kabar buruk. Untuk speeder, persennya sendiri
+                      sudah persen: "naik 12%" dari 15% ke 16,8% adalah perubahan
+                      RELATIF yang hampir selalu dibaca sebagai poin persentase. Dua-
+                      duanya diganti pembanding apa adanya di caption.
+                    */}
+                    <StatTile
+                      className="p-4"
+                      label="Median durasi"
+                      value={respondent.loiMissingShare >= 1 ? '—' : formatDuration(respondent.medianLoi.current)}
+                      caption={
+                        respondent.medianLoi.previous > 0
+                          ? `periode sebelumnya ${formatDuration(respondent.medianLoi.previous)}`
+                          : 'belum ada pembanding'
+                      }
+                    />
+                    <StatTile
+                      className="p-4"
+                      label="Speeder < 1 mnt"
+                      value={respondent.loiMissingShare >= 1 ? '—' : formatPercent(respondent.speederShare.current, 1)}
+                      caption={
+                        respondent.speederShare.previous > 0
+                          ? `periode sebelumnya ${formatPercent(respondent.speederShare.previous, 1)}`
+                          : 'belum ada pembanding'
+                      }
+                    />
+                  </Card>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  {/* Kartu utama tab ini. `emphasizedName` menunjuk bucket terbesar,
+                      bukan baris pertama: deretnya ORDINAL, jadi "1 survei" ada di
+                      kiri karena ia ember paling kiri, bukan karena ia temuannya. */}
+                  <RankedBarList
+                    title="Loyalitas Responden"
+                    subtitle="Survei seumur hidup, dari responden yang aktif di rentang ini"
+                    rows={respondent.loyalty}
+                    emphasizedName={modalRowName(respondent.loyalty)}
+                    valueFormatter={(v) => `${formatCount(v)} orang`}
+                    footnote={
+                      loyalRespondentShare > 0 ? (
+                        <>
+                          <strong className="font-semibold" style={{ color: INK.secondary }}>
+                            {formatPercent(loyalRespondentShare, 1)}
+                          </strong>{' '}
+                          responden aktif periode ini sudah mengerjakan 10 survei atau lebih
+                          seumur hidup. Dihitung lintas-waktu — bukan hanya survei di rentang
+                          ini, yang akan membuat hampir semua orang tampak baru.
+                        </>
+                      ) : (
+                        'Dihitung lintas-waktu — bukan hanya survei di rentang ini, yang akan membuat hampir semua orang tampak baru.'
+                      )
+                    }
+                  />
+                  {/* Yang disorot bucket speeder, bukan moda: di kartu durasi
+                      pertanyaannya "seberapa banyak yang terlalu cepat", dan itu ember
+                      yang punya konsekuensi pada kualitas data. */}
+                  <RankedBarList
+                    /* `lg:self-start`: Loyalitas di sebelah kiri punya lima baris plus
+                       footnote panjang, jadi ia yang menentukan tinggi baris. Tanpa ini
+                       kedua kartu yang lebih pendek diregangkan dan menyisakan 84 px dan
+                       179 px kosong DI DALAM border — terbaca seperti gagal render.
+                       Kolom yang lebih pendek itu wajar; kartu berongga tidak. */
+                    className="lg:self-start"
+                    title="Durasi Pengerjaan"
+                    subtitle={
+                      respondent.loiMissingShare >= 1
+                        ? 'Belum ada durasi tercatat di rentang ini'
+                        : `Median ${formatDuration(respondent.medianLoi.current)} · ${formatCount(
+                            respondent.loi.reduce((sum, row) => sum + row.value, 0),
+                          )} respons berdurasi`
+                    }
+                    rows={respondent.loi}
+                    emphasizedName="< 1 mnt"
+                    valueFormatter={(v) => `${formatCount(v)} respons`}
+                    emptyMessage="Belum ada durasi tercatat pada rentang ini."
+                    footnote={
+                      respondent.loiMissingShare >= 0.1 ? (
+                        <>
+                          Durasi pengerjaan baru dicatat sejak Juli 2026 —{' '}
+                          {formatCount(respondent.loiMissing)} respons di rentang ini (
+                          {formatPercent(respondent.loiMissingShare, 0)}) tidak punya data durasi.
+                          Median &amp; speeder di atas dihitung HANYA dari yang punya, bukan
+                          dari nol.
+                        </>
+                      ) : undefined
+                    }
+                  />
+                  <RankedBarList
+                    className="lg:self-start"
+                    title="E-Wallet"
+                    subtitle="Tujuan pencairan insentif responden"
+                    rows={respondent.ewallet}
+                    contextOnlyNames={['Lainnya', UNRECORDED_EWALLET]}
+                    emphasis="hover-only"
+                    valueFormatter={(v) => `${formatCount(v)} respons`}
+                  />
+                </div>
+
+                {/* Irama 2fr:1fr lagi, jadi baris ini bertepi-kanan sama dengan baris
+                    grafik di atas dan halamannya punya garis bantu vertikal yang utuh. */}
+                <div className="mt-4 grid gap-4 lg:[grid-template-columns:2fr_1fr]">
+                  <TimePatternCard hourly={respondent.hourly} dow={respondent.dow} />
+                  {/* Dua daftar ini menjawab pertanyaan yang sama — RESPONDEN SEPERTI
+                      APA yang diminta customer — dengan dua potongan, jadi mereka satu
+                      kartu bertab. `hover-only`: kartu satelit selebar sepertiga baris
+                      tidak perlu ikut mengklaim aksen dari grafik di sebelahnya.
+
+                      `lg:self-start` supaya kartu pendek ini tidak diregangkan setinggi
+                      kartu Pola Waktu dan meninggalkan ruang kosong di dalam border. */}
+                  <RankedTabsCard
+                    className="lg:self-start"
+                    title="Permintaan Customer"
+                    ariaLabel="Pilih rincian permintaan customer"
+                    emphasis="hover-only"
+                    tabs={[
+                      {
+                        id: 'kriteria',
+                        label: 'Kriteria',
+                        rows: respondent.criteria,
+                        subtitle: 'Kriteria target yang paling sering diminta',
+                        valueFormatter: (v: number) => `${formatCount(v)} order`,
+                        contextOnlyNames: ['Lainnya'],
+                        footnote:
+                          'Teks bebas dari customer, sudah dinormalisasi: "mahasiswa aktif" dan "mhs" dihitung satu kriteria.',
+                        emptyMessage: 'Belum ada kriteria yang dicatat pada rentang ini.',
+                      },
+                      {
+                        id: 'status',
+                        label: 'Status',
+                        rows: respondent.studentStatus,
+                        subtitle: 'Status pendidikan yang diminta customer',
+                        valueFormatter: (v: number) => `${formatCount(v)} order`,
+                        contextOnlyNames: ['Lainnya', 'Tidak Diketahui'],
+                        emptyMessage: 'Belum ada status pendidikan yang dicatat pada rentang ini.',
+                      },
+                    ]}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
-
         {/* TAB: CAMPAIGN */}
         {activeTab === 'campaign' && (
-          <div className="space-y-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
+          <div className="space-y-4 animate-in slide-in-from-bottom-2 fade-in duration-300">
+            {campaignError || revenueError ? (
+              <ErrorState
+                message={campaignError || revenueError || ''}
+                onRetry={() => { loadCampaign(range); loadRevenue(range); }}
+              />
+            ) : !campaign ? (
+              <div className="grid gap-4 lg:grid-cols-3">
+                <SkeletonChart /><SkeletonCard /><SkeletonCard />
+              </div>
+            ) : (
+              <div className={campaignLoading || revenueLoading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+                {/* Baris 1 — tiga kartu: peringkat voucher, rail KPI, katalog.
+                    2fr:1fr:1fr supaya daftar peringkat (nama + batang) tetap
+                    lega sementara dua kartu ringkas di sebelahnya berbagi sisa
+                    lebar. Tanpa `grid-cols-1`: styles.css:766 mendeklarasikannya
+                    setelah Tailwind dan mengalahkan SEMUA varian lg:, termasuk
+                    bentuk arbitrary-property. */}
+                <div className="grid gap-4 lg:[grid-template-columns:2fr_1fr_1fr]">
+                  <RankedBarList
+                    title="Voucher yang Menghasilkan"
+                    subtitle={
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>{formatRangeLabel(range)}</span>
+                        <TogglePicker<'revenue' | 'orders'>
+                          ariaLabel="Ukuran peringkat voucher"
+                          value={voucherMetric}
+                          onChange={setVoucherMetric}
+                          options={[
+                            { value: 'revenue', label: 'Revenue' },
+                            { value: 'orders', label: 'Order' },
+                          ]}
+                        />
+                      </span>
+                    }
+                    rows={voucherMetric === 'revenue' ? campaign.voucher.byRevenue : campaign.voucher.byOrders}
+                    emphasis="hover-only"
+                    showShare
+                    valueFormatter={
+                      voucherMetric === 'revenue'
+                        ? (v: number) => formatIDRCompact(v, { decimals: 2 })
+                        : (v: number) => `${formatCount(v)} order`
+                    }
+                    emptyMessage={
+                      voucherMetric === 'revenue'
+                        ? 'Belum ada order lunas ber-voucher pada rentang ini.'
+                        : 'Belum ada order yang memakai voucher pada rentang ini.'
+                    }
+                    /* Ketikan ngawur TIDAK masuk peringkat — 31 "kode" palsu di sumbu
+                       tidak menceritakan apa pun. Tapi besarnya derau tetap disebut:
+                       39% isian kolom ini sepanjang masa bukan voucher. */
+                    footnote={
+                      campaign.voucher.unofficialEntries > 0 ? (
+                        <>
+                          {formatCount(campaign.voucher.unofficialEntries)} isian lain (
+                          {formatCount(campaign.voucher.unofficialDistinct)} teks berbeda) tidak cocok
+                          dengan kode mana pun di katalog — kolom voucher di form order menerima teks
+                          bebas. Isian itu tidak dihitung di peringkat maupun di angka di sebelah.
+                        </>
+                      ) : undefined
+                    }
+                  />
 
-            {/* SECTION: VOUCHER CODE */}
-            <Card className="shadow-sm border-purple-200">
-              <CardHeader className="bg-purple-50/50 pb-4 border-b border-purple-100 rounded-t-xl">
-                <div className="flex items-center justify-between w-full">
-                  <CardTitle className="text-base flex items-center gap-2 m-0 text-purple-900"><Award className="w-5 h-5 text-purple-600" /> Voucher Code</CardTitle>
-                  <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                    <Award className="w-3.5 h-3.5" /> Total Terpakai: {analytics.totalVouchersUsed}
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent className="p-5 space-y-6">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-purple-500" /> Penggunaan Voucher</h3>
-                  {analytics.voucherStats.length > 0 ? (
-                    <div className="h-[280px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analytics.voucherStats} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                          <XAxis dataKey="code" stroke="#9ca3af" fontSize={12} tickMargin={10} angle={-20} textAnchor="end" height={50} />
-                          <YAxis stroke="#9ca3af" fontSize={12} allowDecimals={false} />
-                          <RechartsTooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '12px', borderRadius: '6px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value: number) => [value, 'Terpakai']} />
-                          <Bar dataKey="count" fill="#a855f7" radius={[4, 4, 0, 0]} barSize={40} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="h-[280px] flex items-center justify-center text-gray-400 text-sm bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                      <div className="text-center"><Award className="w-8 h-8 text-gray-300 mx-auto mb-2" /><p>Belum ada penggunaan voucher pada periode ini.</p></div>
-                    </div>
-                  )}
-                </div>
+                  <VoucherCatalogCard className="lg:self-start" usageByCode={voucherUsageByCode} />
 
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5"><List className="w-4 h-4 text-orange-500" /> Daftar Voucher Code</h3>
-                  <div className="rounded-md border overflow-hidden">
-                    <Table>
-                      <TableHeader className="bg-orange-50/50">
-                        <TableRow>
-                          <TableHead className="w-[200px]">Kode Voucher</TableHead>
-                          <TableHead>Ketentuan & Diskon</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell className="font-bold text-orange-700">PPISWEDIA</TableCell>
-                          <TableCell className="text-gray-600">Diskon 20% biaya iklan. Berlaku sampai 30 Juni 2026.</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-bold text-orange-700">JFUFEB</TableCell>
-                          <TableCell className="text-gray-600">Harga iklan flat Rp 1.000.000 untuk durasi 7 hari; durasi lain maks. Rp 300.000/hari. Verifikasi manual. Berlaku s/d 20 Feb 2027. Tidak untuk Kilat.</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-bold text-orange-700">ILKOMUNY</TableCell>
-                          <TableCell className="text-gray-600">Sama seperti JFUFEB (flat Rp 1.000.000/7 hari, lainnya maks. Rp 300.000/hari). Verifikasi manual. Berlaku s/d 31 Des 2026. Sekali pakai per akun (wajib login). Tidak untuk Kilat.</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-bold text-orange-700">TEGARGANTENG</TableCell>
-                          <TableCell className="text-gray-600">Diskon 20% biaya iklan.</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-bold text-orange-700">Kode Ambassador</TableCell>
-                          <TableCell className="text-gray-600">Diskon 10% (Contoh: JFUTYR, SEKARJFU, ADINDAJFU, RAJAJFU, SACIJFU, dll).</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-bold text-gray-400 line-through">JAKPATUNIV2025</TableCell>
-                          <TableCell className="text-red-500 font-medium">EXPIRED (Sudah tidak berlaku).</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* SECTION: CLICKS */}
-            <Card className="shadow-sm border-blue-200">
-              <CardHeader className="bg-blue-50/50 pb-4 border-b border-blue-100 rounded-t-xl">
-                <div className="flex items-center justify-between w-full">
-                  <CardTitle className="text-base flex items-center gap-2 m-0 text-blue-900"><TrendingUp className="w-5 h-5 text-blue-600" /> Campaign Links</CardTitle>
-                  <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm" title="Total klik dari semua tracking link">
-                    <TrendingUp className="w-3.5 h-3.5" /> Total Clicks: {analytics.totalCampaignClicks}
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent className="p-5 space-y-6">
-
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-emerald-500" /> Grafik Performa</h3>
-                  {analytics.campaignStats.length > 0 ? (
-                    <div className="h-[280px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analytics.campaignStats} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                          <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickMargin={10} angle={-20} textAnchor="end" height={50} />
-                          <YAxis stroke="#9ca3af" fontSize={12} allowDecimals={false} />
-                          <RechartsTooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ fontSize: '12px', borderRadius: '6px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                          <Bar dataKey="clicks" fill="#10b981" radius={[4, 4, 0, 0]} barSize={40} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="h-[280px] flex items-center justify-center text-gray-400 text-sm bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                      <div className="text-center"><Megaphone className="w-8 h-8 text-gray-300 mx-auto mb-2" /><p>Belum ada data klik. Buat dan bagikan link di atas!</p></div>
-                    </div>
-                  )}
+                  {/* Rail KPI: SATU kartu ber-divider. `lg:self-start` menahannya agar
+                      tidak diregangkan setinggi kartu peringkat di sebelahnya dan
+                      meninggalkan ratusan piksel kosong di dalam border. */}
+                  <Card className="shadow-sm border-gray-200 [display:grid] grid-cols-2 auto-rows-min divide-gray-100 lg:[grid-template-columns:minmax(0,1fr)] lg:divide-y lg:self-start">
+                    <StatTile
+                      hero
+                      className="col-span-2 p-4 lg:col-span-1"
+                      label="Revenue via voucher"
+                      value={formatIDR(campaign.voucher.revenue.current)}
+                      delta={campaign.voucher.revenue}
+                      comparisonLabel="vs periode sebelumnya"
+                    />
+                    {/* `points`, BUKAN `percent`: nilainya sendiri sudah persen. 2,1% yang
+                        naik ke 19,2% adalah kenaikan 17,1 POIN — "naik 814%" secara
+                        teknis benar tapi tak seorang pun membacanya begitu. */}
+                    <StatTile
+                      className="p-4"
+                      label="Porsi dari revenue"
+                      value={formatPercent(campaign.voucher.revenueShare.current)}
+                      delta={campaign.voucher.revenueShare}
+                      deltaMode="points"
+                      comparisonLabel="vs periode sebelumnya"
+                    />
+                    <StatTile
+                      className="p-4"
+                      label="Order pakai voucher"
+                      value={formatCount(campaign.voucher.ordersUsing.current)}
+                      delta={campaign.voucher.ordersUsing}
+                      deltaMode="absolute"
+                      deltaUnit="order"
+                      comparisonLabel="vs periode sebelumnya"
+                      caption="lunas maupun belum"
+                    />
+                    <StatTile
+                      className="col-span-2 p-4 lg:col-span-1"
+                      label="Kode terpakai"
+                      value={`${formatCount(campaign.voucher.codesUsed)} dari ${formatCount(campaign.voucher.codesRegistered)}`}
+                      caption="kode aktif yang terdaftar di katalog"
+                    />
+                  </Card>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-gray-700 m-0 flex items-center gap-1.5"><List className="w-4 h-4 text-blue-500" /> Manajemen Campaign Links</h3>
-                    <Dialog open={isLinkModalOpen} onOpenChange={setIsLinkModalOpen}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-7 text-xs px-2.5 gap-1 text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 shadow-none m-0">
-                          <Plus className="w-3.5 h-3.5" /> Buat Link Baru
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Buat Tracking Link Baru</DialogTitle>
-                          <DialogDescription>Buat link pendek untuk campaign dan simpan ke daftar manajemen.</DialogDescription>
-                        </DialogHeader>
-                        <div className="flex flex-col gap-3 py-4">
-                          <div className="space-y-1">
-                            <label className="text-sm font-medium text-gray-700">Source Name</label>
-                            <input type="text" placeholder="Nama sumber unik (cth: instagram-bio)" className="w-full text-sm rounded-md border border-gray-300 p-2.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium text-gray-700" value={linkSource} onChange={(e) => setLinkSource(e.target.value.replace(/\s+/g, '-').toLowerCase())} />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-sm font-medium text-gray-700">Catatan (opsional)</label>
-                            <input type="text" placeholder="cth: Promo Mei 2024" className="w-full text-sm rounded-md border border-gray-300 p-2.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-gray-600" value={linkDescription} onChange={(e) => setLinkDescription(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleGenerateLink()} />
-                          </div>
-                          {generatedLink && (
-                            <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between gap-3 animate-in fade-in zoom-in-95 mt-2">
-                              <a href={generatedLink} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-blue-800 hover:underline truncate">{generatedLink}</a>
-                              <button onClick={() => handleCopyLink(generatedLink)} className="p-2 bg-white text-blue-600 hover:bg-blue-600 hover:text-white rounded transition-colors shrink-0 border border-blue-200 shadow-sm" title="Copy link"><Copy className="w-4 h-4" /></button>
-                            </div>
-                          )}
-                        </div>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => setIsLinkModalOpen(false)}>Batal</Button>
-                          <Button onClick={handleGenerateLink} disabled={isGenerating || !linkSource.trim()} className="bg-blue-600 hover:bg-blue-700 text-white">
-                            {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />} Simpan & Generate
+                {/* Baris 2 — klik campaign link & manajemen link, 1fr:1fr: keduanya
+                    butuh lebar untuk grafik/tabelnya sendiri, tidak ada yang jelas
+                    lebih dominan seperti baris 1. */}
+                <div className="mt-4 grid gap-4 lg:[grid-template-columns:1fr_1fr]">
+                  <DailyClicksChart
+                    clicks={campaign.clicks}
+                    rangeLabel={formatRangeLabel(range)}
+                    isRefetching={campaignLoading}
+                  />
+
+                  {/* Manajemen link: fungsinya utuh, warnanya diseragamkan ke token
+                      design system (dulu `text-blue-900`, `bg-blue-50/50`, `#10b981`,
+                      `text-orange-700` — semuanya di luar palet yang sudah divalidasi). */}
+                  <Card className="shadow-sm" style={{ borderColor: CHART.grid }}>
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <CardTitle className="text-base font-semibold" style={{ color: INK.primary }}>
+                          Manajemen Campaign Link
+                        </CardTitle>
+                        <CardDescription className="mt-1 text-[13px]">
+                          {formatCount(campaignLinks.length)} link · {formatCount(campaign.clicks.lifetimeTotal)} klik seumur hidup
+                        </CardDescription>
+                      </div>
+                      <Dialog open={isLinkModalOpen} onOpenChange={setIsLinkModalOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                            <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Buat Link Baru
                           </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <div className="rounded-md border overflow-hidden">
-                    <Table>
-                      <TableHeader className="bg-gray-50/50">
-                        <TableRow>
-                          <TableHead className="w-[200px]">Source Name</TableHead>
-                          <TableHead>Catatan</TableHead>
-                          <TableHead className="text-right">Total Klik</TableHead>
-                          <TableHead className="text-center w-[120px]">Aksi</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {campaignLinks.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={4} className="h-24 text-center text-gray-500">Belum ada link yang dikelola.</TableCell>
-                          </TableRow>
-                        ) : (
-                          campaignLinks.map((link: any) => (
-                            <TableRow key={link.id}>
-                              <TableCell className="font-medium text-blue-700">{link.source_name}</TableCell>
-                              <TableCell className="text-gray-500">{link.description || '-'}</TableCell>
-                              <TableCell className="text-right font-bold text-lg">{link.click_count || 0}</TableCell>
-                              <TableCell className="text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <button onClick={() => handleCopyLink(`${window.location.origin}/c/${link.source_name}`)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Copy Link"><Copy className="w-4 h-4" /></button>
-                                  <button onClick={() => handleDeleteLink(link.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Hapus"><Trash2 className="w-4 h-4" /></button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Buat Tracking Link Baru</DialogTitle>
+                            <DialogDescription>Buat link pendek untuk campaign dan simpan ke daftar manajemen.</DialogDescription>
+                          </DialogHeader>
+                          <div className="flex flex-col gap-3 py-4">
+                            <div className="space-y-1">
+                              <label className="text-sm font-medium" htmlFor="campaign-source" style={{ color: INK.secondary }}>Source Name</label>
+                              <input id="campaign-source" type="text" placeholder="Nama sumber unik (cth: instagram-bio)" className="w-full text-sm rounded-md border p-2.5 outline-none transition-all font-medium focus:ring-1" style={{ borderColor: CHART.grid, color: INK.primary }} value={linkSource} onChange={(e) => setLinkSource(e.target.value.replace(/\s+/g, '-').toLowerCase())} />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-sm font-medium" htmlFor="campaign-note" style={{ color: INK.secondary }}>Catatan (opsional)</label>
+                              <input id="campaign-note" type="text" placeholder="cth: Promo Agustus 2026" className="w-full text-sm rounded-md border p-2.5 outline-none transition-all focus:ring-1" style={{ borderColor: CHART.grid, color: INK.secondary }} value={linkDescription} onChange={(e) => setLinkDescription(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleGenerateLink()} />
+                            </div>
+                            {generatedLink && (
+                              <div className="p-3 rounded-lg border flex items-center justify-between gap-3 animate-in fade-in zoom-in-95 mt-2" style={{ borderColor: CHART.grid, backgroundColor: CHART.contextSoft }}>
+                                <a href={generatedLink} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold hover:underline truncate" style={{ color: CHART.accent }}>{generatedLink}</a>
+                                <button onClick={() => handleCopyLink(generatedLink)} className="p-2 bg-white rounded transition-colors shrink-0 border" style={{ borderColor: CHART.grid, color: CHART.accent }} title="Salin link" aria-label="Salin link"><Copy className="w-4 h-4" aria-hidden="true" /></button>
+                              </div>
+                            )}
+                          </div>
+                          <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsLinkModalOpen(false)}>Batal</Button>
+                            <Button onClick={handleGenerateLink} disabled={isGenerating || !linkSource.trim()}>
+                              {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> : <Plus className="w-4 h-4 mr-2" aria-hidden="true" />} Simpan & Generate
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    {/* Tabel lebar dapat scroll-nya SENDIRI; body halaman tidak pernah
+                        ikut menggeser ke samping di 375px. */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[420px] border-collapse text-[13px]">
+                        <caption className="sr-only">Daftar campaign link beserta total klik seumur hidup</caption>
+                        <thead>
+                          <tr style={{ color: INK.muted }}>
+                            <th scope="col" className="py-2 text-left font-medium">Source</th>
+                            <th scope="col" className="py-2 text-left font-medium">Catatan</th>
+                            <th scope="col" className="py-2 text-right font-medium">Klik (seumur hidup)</th>
+                            <th scope="col" className="py-2 text-right font-medium">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {campaignLinks.length === 0 ? (
+                            <tr style={{ borderTop: `1px solid ${CHART.grid}` }}>
+                              <td colSpan={4} className="py-8 text-center" style={{ color: INK.muted }}>
+                                Belum ada link yang dikelola.
+                              </td>
+                            </tr>
+                          ) : (
+                            campaignLinks.map((link: any) => (
+                              <tr key={link.id} style={{ borderTop: `1px solid ${CHART.grid}` }}>
+                                <th scope="row" className="py-2 text-left font-medium" style={{ color: INK.primary }}>{link.source_name}</th>
+                                <td className="py-2" style={{ color: INK.secondary }}>{link.description || '—'}</td>
+                                <td className="py-2 text-right font-semibold tabular-nums" style={{ color: INK.primary }}>{formatCount(link.click_count || 0)}</td>
+                                <td className="py-2">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button onClick={() => handleCopyLink(`${window.location.origin}/c/${link.source_name}`)} className="p-1.5 rounded transition-colors hover:bg-gray-100" style={{ color: INK.muted }} title="Salin link" aria-label={`Salin link ${link.source_name}`}><Copy className="w-4 h-4" aria-hidden="true" /></button>
+                                    <button onClick={() => handleDeleteLink(link.id)} className="p-1.5 rounded transition-colors hover:bg-gray-100" style={{ color: INK.muted }} title="Hapus dari daftar" aria-label={`Hapus link ${link.source_name}`}><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-4 border-t pt-3 text-[12px] leading-snug" style={{ color: INK.muted, borderColor: CHART.grid }}>
+                      Menghapus baris hanya mengeluarkannya dari daftar ini — riwayat kliknya tetap tersimpan.
+                    </p>
+                  </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
 
+                {campaign.clicks.bySource.length > 0 && (
+                  <div className="mt-4 grid gap-4 lg:[grid-template-columns:2fr_1fr]">
+                    <RankedBarList
+                      title="Klik per Sumber"
+                      subtitle={`${formatCount(campaign.clicks.total.current)} klik · ${formatRangeLabel(range)}`}
+                      rows={campaign.clicks.bySource}
+                      emphasis="hover-only"
+                      valueFormatter={(v: number) => `${formatCount(v)} klik`}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
     );
+  };
+
+  // Tiga tab, tiga sumber data. Disatukan di sini supaya toolbar tidak menumbuhkan
+  // rantai ternary yang harus diperbarui tiap kali satu tab dipindahkan.
+  const activeTabBusy =
+    activeTab === 'revenue'
+      ? revenueLoading
+      : activeTab === 'respondent'
+        ? respondentLoading
+        : campaignLoading || revenueLoading;
+  const refreshActiveTab = () => {
+    if (activeTab === 'revenue') return loadRevenue(range);
+    if (activeTab === 'respondent') return loadRespondents(range);
+    loadRevenue(range);
+    return loadCampaign(range);
   };
 
   return (
@@ -886,27 +1073,22 @@ export function AnalyticsDashboard() {
         <div className="flex flex-row items-center justify-between w-full">
           <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-gray-600">Periode</span>
-            <Select value={dateRange} onValueChange={(value) => setDateRange(value as DateRange)}>
-              <SelectTrigger className="w-[140px] h-9 bg-gray-50/80 border-gray-200/50 text-sm font-medium focus:ring-0 focus:ring-offset-0">
-                <SelectValue placeholder="Pilih Periode" />
-              </SelectTrigger>
-              <SelectContent>
-                {DATE_RANGE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Satu baris filter men-scope SELURUH dashboard. Ketiga tab berbagi satu
+                `range` — pindah tab tidak mengubah periode yang sedang dilihat.
+                Preset lama ("7 Hari"/"30 Hari"/…) ikut mati bersama tab Platform:
+                ia satu-satunya kontrol periode yang tersisa yang bukan rentang bebas. */}
+            <DateRangePicker value={range} onChange={setRange} disabled={activeTabBusy} />
           </div>
 
           <Button
-            onClick={fetchAllData}
+            onClick={refreshActiveTab}
             variant="outline"
             size="sm"
-            disabled={loading}
+            disabled={activeTabBusy}
             className="h-9 w-9 p-0 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 border-gray-200"
             title="Refresh data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${activeTabBusy ? 'animate-spin' : ''}`} />
           </Button>
         </div>
 
@@ -914,7 +1096,7 @@ export function AnalyticsDashboard() {
 
         {/* Bottom Row */}
         <div className="flex flex-wrap items-center gap-2 bg-slate-100/80 p-1 w-fit rounded-lg border border-slate-200/50">
-          {([{ key: 'revenue' as TabKey, label: 'Revenue', icon: DollarSign }, { key: 'respondent' as TabKey, label: 'Respondents', icon: Users }, { key: 'platform' as TabKey, label: 'Platform', icon: TrendingUp }, { key: 'campaign' as TabKey, label: 'Campaign', icon: Megaphone }]).map((t) => (
+          {([{ key: 'revenue' as TabKey, label: 'Revenue', icon: DollarSign }, { key: 'respondent' as TabKey, label: 'Respondents', icon: Users }, { key: 'campaign' as TabKey, label: 'Campaign', icon: Megaphone }]).map((t) => (
             <button key={t.key} onClick={() => handleTabChange(t.key)} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === t.key ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-900/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}>
               <t.icon className="w-4 h-4" />{t.label}
             </button>
