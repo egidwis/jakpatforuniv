@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen, Target } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
