@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
-  AlertTriangle, CalendarClock, CalendarPlus, Check, ChevronDown, Copy, CreditCard, ExternalLink,
-  FileText, Sparkles, Trash2, Zap,
+  AlertTriangle, CalendarPlus, Check, ChevronDown, Copy, CreditCard, ExternalLink,
+  FileText, MoreHorizontal, Sparkles, Zap,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from '../../ui/dropdown-menu';
 import { Skeleton } from '../../ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { AdScheduleEntry, ScheduleBilling, ScheduleInvoice } from '@/utils/supabase';
@@ -15,6 +19,12 @@ import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils
 import { holdStateOf, isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { orderTotalOf } from '@/utils/orderTotals';
 import { deriveScheduleMoney } from './scheduleMoney';
+// Keadaan kartu, aksinya, dan definisi "terlambat" hidup di SATU modul —
+// lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
+import {
+  cardStateOf, planCardActions, isLateForSchedule,
+  type CardState, type CardAction, type CardActionPlan,
+} from './scheduleCardActions';
 
 // ─────────────────────────────────────────────────────────────
 // Satu kartu per JADWAL — dan pembayarannya ADA DI DALAM kartu itu.
@@ -29,56 +39,6 @@ import { deriveScheduleMoney } from './scheduleMoney';
 // rincian biaya dan tagihan di bawahnya. Peneliti sudah melihat order-nya
 // begitu; admin melihat order yang sama sebaiknya melihat kerangka yang sama.
 // ─────────────────────────────────────────────────────────────
-
-type CardState =
-  | 'cancelled' | 'choose_schedule' | 'awaiting_invoice'
-  | 'waiting_payment' | 'partially_paid' | 'paid';
-
-/**
- * ⚠️ `isSettled`, BUKAN "ada yang pernah lunas".
- *
- * Pendahulunya memakai `payment.hasEverPaid` — satu invoice lunas sudah cukup
- * untuk mengumumkan "Lunas". Begitu satu jadwal boleh punya beberapa tagihan
- * itu jadi kebohongan uang: `76XKVW5P` dibayar Rp 1.470.750 lalu ditagih
- * Rp 61.050 lagi, dan kartunya tetap berkata lunas. `partially_paid` adalah
- * keadaan yang dulu tidak punya nama.
- */
-function cardStateOf(entry: AdScheduleEntry, billing: ScheduleBilling | undefined): CardState {
-  if (entry.reviewStatus === 'rejected' || entry.reviewStatus === 'spam' || entry.status === 'cancelled') {
-    return 'cancelled';
-  }
-  if (isUnscheduled(entry)) {
-    return 'choose_schedule';
-  }
-  if (billing?.isSettled) return 'paid';
-  // Sebagian order dibayar DI LUAR SISTEM dan tidak pernah punya baris tagihan
-  // (lihat memo payment-status-not-proof-of-payment). Untuk mereka status di
-  // baris jadwalnya satu-satunya bukti yang ada.
-  if (!billing?.invoices.length
-      && (['paid', 'completed'].includes(entry.paymentStatus || '')
-          || ['paid', 'completed'].includes(entry.status || ''))) {
-    return 'paid';
-  }
-  if (billing && billing.paid > 0) return 'partially_paid';
-  /**
-   * ⚠️ "ADA BARIS TAGIHAN" BUKAN "ADA TAGIHAN HIDUP".
-   *
-   * Versi sebelumnya memakai `invoices.length`, dan barisnya tidak pernah
-   * dihapus — sesudah peneliti menjadwalkan ulang, satu-satunya tagihan yang
-   * tersisa sudah kedaluwarsa tapi kartunya tetap berkata "menunggu
-   * pembayaran". Admin disuruh menunggu uang yang tidak mungkin datang: tidak
-   * ada satu pun link yang masih bisa dibayar.
-   *
-   * Kartunya juga sudah menampilkan "Rp 0 ditagih" untuk keadaan itu — dua
-   * pernyataan yang saling membantah di satu kartu yang sama.
-   *
-   * `openInvoice` (tagihan admin yang belum lunas, tidak mati, tidak tersusul,
-   * tidak basi) menjawab pertanyaan yang sebenarnya. Yang lewat batas bayar
-   * TETAP terhitung terbuka — itu piutang, bukan tagihan mati.
-   */
-  if (billing?.openInvoice) return 'waiting_payment';
-  return 'awaiting_invoice';
-}
 
 /**
  * Jadwal yang slotnya masih ditahan tapi batas bayarnya sudah lewat — inilah
@@ -158,6 +118,12 @@ interface CardActions {
    * kuota adalah statusnya ('cancelled'), bukan pengosongan tanggal.
    */
   onCancelSchedule: ((entry: AdScheduleEntry) => void) | null;
+  /**
+   * Lompat ke tab Review. Satu-satunya afordansi pada kartu yang ordernya
+   * masih antre review — tab ini tidak boleh menawarkan aksi Fase ②, tapi
+   * membiarkan admin buntu justru mendorongnya memakai tombol yang salah.
+   */
+  onOpenReview?: () => void;
 }
 
 /** Satu baris tagihan di dalam daftar. */
@@ -202,9 +168,6 @@ function InvoiceRow({
    * menjumlahkannya di "belum masuk" tepat di atasnya.
    */
   const countsTowardBilled = inv.isPaid || isBillable;
-
-  /** Masih bisa dibayar lewat link-nya. */
-  const canPay = isBillable && !isLate;
 
   /**
    * ⚠️ PEMBATALAN JUSTRU PALING DIBUTUHKAN PADA BARIS YANG DICORET.
@@ -318,18 +281,21 @@ function InvoiceRow({
           </a>
         )}
 
-        {(canPay || canCancel) && (
+        {/*
+          ⚠️ "TANDAI LUNAS" DIBUANG DARI BARIS TAGIHAN, dan bukan karena
+          kerapian. Tombolnya duduk di baris SATU TAGIHAN tapi memanggil
+          `onMarkPaid(entry)` — berlingkup SELURUH JADWAL. Admin yang mengklik
+          baris tagihan Rp 61.050 pada jadwal berisi dua tagihan sedang
+          melunasi keduanya, dan tidak ada apa pun di layar yang mengatakannya.
+          Aksi berlingkup jadwal hidup di `CardActionBar`, sekali per kartu,
+          dengan dialog yang menyebut jadwal mana yang dilunasi.
+
+          "Batalkan tagihan" TETAP di sini: ia satu-satunya aksi yang benar-benar
+          berlingkup satu baris (`onCancelInvoice(inv)`).
+        */}
+        {canCancel && (
           <div className="flex flex-col items-end gap-1">
-            {canPay && actions.onMarkPaid && (
-              <Button
-                size="sm"
-                className="h-6 px-2 text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={() => actions.onMarkPaid!(entry)}
-              >
-                <Check className="w-3 h-3 mr-1" /> Tandai Lunas
-              </Button>
-            )}
-            {canCancel && actions.onCancelInvoice && (
+            {actions.onCancelInvoice && (
               <button
                 type="button"
                 /*
@@ -370,19 +336,42 @@ function BillingSection({
   actions: CardActions;
 }) {
   if (state === 'cancelled') {
-    const isSpamOrRejected = ['spam', 'rejected', 'cancelled'].includes(entry.reviewStatus);
+    /**
+     * ⚠️ KARTU INI BERBICARA TENTANG JADWAL, BUKAN TENTANG ORDER.
+     *
+     * Kalimat "Order berstatus … — ubah status review di tab Review" dulu
+     * dirender TIGA KALI untuk satu order: di banner tingkat tab, di sini, dan
+     * di empty-state. Tiga salinan berarti tiga tempat untuk menyimpang, dan
+     * pada order berjadwal banyak ia bahkan diulang sekali per kartu.
+     *
+     * Yang tersisa di sini hanya fakta yang benar-benar milik jadwal ini.
+     * Sebabnya di tingkat order tetap diumumkan sekali, oleh banner tab.
+     */
+    const byOrder = ['spam', 'rejected', 'cancelled'].includes(entry.reviewStatus);
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-100/90 px-3 py-2.5 text-xs text-slate-600 space-y-1">
-        <p className="font-semibold text-slate-700">
-          {isSpamOrRejected
-            ? `Order berstatus ${entry.reviewStatus === 'spam' ? 'Tidak Valid'
-              : entry.reviewStatus === 'cancelled' ? 'Dibatalkan' : 'Menunggu Perbaikan'}`
-            : 'Jadwal telah dibatalkan'}
-        </p>
+        <p className="font-semibold text-slate-700">Jadwal dibatalkan</p>
         <p className="text-[11px] text-slate-500 leading-snug">
-          {isSpamOrRejected
-            ? 'Jadwal dinonaktifkan. Silakan ubah status review menjadi Approved di tab Review jika ingin mengaktifkan kembali penjadwalan.'
-            : 'Jadwal ini telah dibatalkan dari sistem.'}
+          {byOrder
+            ? 'Dinonaktifkan mengikuti status order.'
+            : 'Kuota tanggal itu sudah dibebaskan. Review kuesioner tidak terpengaruh.'}
+        </p>
+      </div>
+    );
+  }
+
+  // ⚠️ CALLOUT INI DULU MEMBAWA TOMBOLNYA SENDIRI ("Pilih jadwal tayang"),
+  // sementara baris aksi di bawah kartu menampilkan "Pilih Jadwal" — dua tombol,
+  // dua label, SATU handler, selalu tampil bersamaan. Kalimatnya tetap di sini
+  // karena ia menjelaskan; tombolnya milik `CardActionBar`.
+  if (state === 'awaiting_review') {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+        <p className="text-[11px] text-slate-700 leading-snug font-medium">
+          Menunggu review kuesioner.
+        </p>
+        <p className="text-[11px] text-slate-500 leading-snug mt-0.5">
+          Jadwal &amp; tagihan belum bisa ditentukan sebelum Fase ① selesai.
         </p>
       </div>
     );
@@ -390,20 +379,33 @@ function BillingSection({
 
   if (state === 'choose_schedule') {
     return (
-      <div className="rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2.5 space-y-2">
+      <div className="rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2.5">
         <p className="text-[11px] text-sky-900 leading-snug font-medium">
-          Jadwal belum ditentukan. Pilih tanggal tayang untuk memesan slot kuota.
+          Tanggal tayang belum ditentukan. Tentukan dulu sebelum tagihan bisa diterbitkan.
         </p>
-        <Button size="sm" className="w-full h-7 text-[11px] bg-sky-600 hover:bg-sky-700 text-white font-medium" onClick={() => actions.onEditSchedule(entry)}>
-          <CalendarClock className="w-3 h-3 mr-1.5" /> Pilih jadwal tayang
-        </Button>
+      </div>
+    );
+  }
+
+  if (state === 'hold_lapsed') {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50/60 px-3 py-2.5">
+        <p className="text-[11px] text-red-900 leading-snug font-medium">
+          Batas bayar terlewat — tanggalnya harus diganti.
+        </p>
+        <p className="text-[11px] text-red-800/80 leading-snug mt-0.5">
+          Tagihan yang sudah terbit tetap tercatat sebagai piutang, bukan dihapus.
+        </p>
       </div>
     );
   }
 
   const invoices = billing?.invoices ?? [];
-  const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
-  const isLate = state !== 'paid' && ymd ? isPaymentTooLateForDate(ymd) : false;
+  // ⚠️ `isLate` DITERIMA, tidak dihitung ulang di sini. Dulu bagian ini punya
+  // perhitungannya sendiri yang berbeda dari baris aksi di kartu yang SAMA
+  // (yang satu mengecualikan `partially_paid`, yang satu tidak), jadi satu kartu
+  // bisa mencoret tagihannya sambil tombolnya berkata tanggalnya masih hidup.
+  const isLate = isLateForSchedule(entry, state);
 
   // ⚠️ CABANG "BELUM ADA TAGIHAN" DIUKUR DARI DAFTAR YANG KOSONG, BUKAN DARI
   // KEADAAN KARTU. Sebagian order dibayar di luar sistem dan tidak pernah punya
@@ -437,38 +439,17 @@ function BillingSection({
               ? 'Batas waktu pembayaran untuk slot ini sudah terlewat. Silakan buat jadwal baru.'
               : 'Slot tayang sudah dipesan. Terbitkan tagihan supaya peneliti bisa membayar.'}
           </p>
-          {!isLate && (
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                className="flex-1 h-7 text-[11px] bg-amber-600 hover:bg-amber-700 text-white"
-                onClick={() => actions.onCreateInvoice(entry)}
-              >
-                <CreditCard className="w-3 h-3 mr-1.5" /> Buat Tagihan
-              </Button>
-              {actions.onMarkPaid && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-[11px] text-emerald-700 hover:bg-emerald-50 border-emerald-300 bg-white"
-                  onClick={() => actions.onMarkPaid!(entry)}
-                >
-                  <Check className="w-3 h-3 mr-1.5" /> Tandai Lunas
-                </Button>
-              )}
-            </div>
-          )}
+          {/* Tombolnya SENGAJA tidak di sini. Dulu blok ini menumbuhkan "Buat
+              Tagihan" + "Tandai Lunas" sendiri, di atas baris aksi yang juga
+              punya tombolnya — itulah cara kondisi `waiting_payment` sampai
+              menampilkan enam kontrol. Sekarang satu-satunya sumber aksi adalah
+              `planCardActions`. */}
         </div>
       </div>
     );
   }
 
   const b = billing!;
-  // Aturan SATU TAGIHAN TERBUKA PER JADWAL. Bukan kerapian: peneliti hanya
-  // melihat tagihan TERAKHIR, jadi menerbitkan tagihan kedua selagi ada yang
-  // menggantung akan menyembunyikan yang pertama dari orang yang harus
-  // membayarnya. Penjaga keduanya ada di DB (`schedule_billing_summary`).
-  const canTopUp = b.openInvoice === null;
   // Ada riwayat tagihan, tapi semuanya sudah mati dan nol rupiah masuk —
   // yang dibutuhkan tagihan PERTAMA yang sungguhan, bukan susulan.
   const needsFreshInvoice = state === 'awaiting_invoice';
@@ -520,45 +501,138 @@ function BillingSection({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2">
-        {actions.onCreateInvoice && (
-          <Button
-            size="sm"
-            variant={needsFreshInvoice ? 'default' : 'outline'}
-            disabled={!canTopUp}
-            title={canTopUp
-              ? 'Terbitkan tagihan tambahan untuk jadwal ini'
-              : 'Masih ada tagihan yang belum dibayar. Peneliti hanya melihat tagihan terakhir, jadi tagihan baru akan menyembunyikannya.'}
-            className={cn(
-              'h-7 text-[11px] disabled:opacity-50',
-              needsFreshInvoice
-                ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
-            )}
-            onClick={() => actions.onCreateInvoice(entry)}
-          >
-            <CreditCard className="w-3 h-3 mr-1.5" />
-            {needsFreshInvoice ? 'Terbitkan Tagihan' : 'Tagih Susulan'}
-          </Button>
-        )}
+      {/* ⚠️ NOL TOMBOL DI SINI, dan itu perubahan yang disengaja.
+          Dulu baris ini memuat "Terbitkan Tagihan"/"Tagih Susulan" — kadang
+          `disabled` dengan tooltip yang menjelaskan apa yang TIDAK bisa
+          dilakukan — plus tautan "Tandai belum lunas". Ketiganya sekarang hidup
+          di `CardActionBar`, yang secara struktural cuma bisa menampilkan satu
+          tombol di luar menu ⋯. Aksi yang tidak berlaku DIHILANGKAN, bukan
+          ditampilkan mati. */}
+    </div>
+  );
+}
 
-        {/*
-          ⚠️ Gerbangnya SENGAJA sempit. Undo hanya boleh muncul kalau
-          `unmarkScheduleAsPaid()` punya sesuatu YANG PASTI bisa dibalikkan:
-          baris `transactions` yang literal ditulis fungsi itu sendiri
-          (`payment_channel === 'MANUAL_VERIFIED'`, sql/59). Pelunasan lewat
-          gateway DOKU tidak pernah memakai nilai itu.
-        */}
-        {actions.onUnmarkPaid && b.paymentChannel === 'MANUAL_VERIFIED' && (
-          <button
-            type="button"
-            className="text-[11px] font-medium text-slate-400 hover:text-red-600 hover:underline transition-colors"
-            onClick={() => actions.onUnmarkPaid!(entry)}
-          >
-            Tandai belum lunas
-          </button>
-        )}
-      </div>
+/**
+ * Baris "Peneliti melihat" — kembaran fase dibuat terlihat.
+ *
+ * Tab drawer admin adalah kembaran satu-lawan-satu fase dashboard peneliti
+ * (Review↔①, Reservasi Jadwal↔②, Page↔③). Baris ini menutup selisih yang paling
+ * sering menggigit: admin bertindak tanpa tahu kalimat apa yang sedang dibaca
+ * penelitinya, lalu keduanya menelepon satu sama lain dengan dua cerita.
+ *
+ * ⚠️ DITURUNKAN DARI KEADAAN YANG SAMA, BUKAN DISALIN KATA PER KATA dari
+ * `translations.ts`. Kalau nanti sisi peneliti berubah kalimat, yang penting
+ * baris ini tetap menyebut KEADAAN yang benar; menyalin string akan menyimpang
+ * diam-diam dan justru memberi admin keyakinan palsu.
+ */
+function ResearcherSeesLine({
+  state, isLate, billing,
+}: {
+  state: CardState;
+  isLate: boolean;
+  billing: ScheduleBilling | undefined;
+}) {
+  let text: string | null = null;
+
+  if (state === 'awaiting_review') {
+    text = 'Menunggu hasil review — tanggal tayang ditentukan setelah kuesionernya lolos review.';
+  } else if (state === 'choose_schedule') {
+    text = 'Menunggu jadwal ditentukan.';
+  } else if (state === 'awaiting_invoice') {
+    text = 'Tanggal tayang sudah dipesan, menunggu tagihan terbit.';
+  } else if (state === 'hold_lapsed' || isLate) {
+    text = 'Batas bayar terlewat — perlu tanggal tayang baru.';
+  } else if (state === 'partially_paid' && billing) {
+    // Sampai D4 mendarat, kartu penelitinya masih menyebut HARGA PENUH di sini.
+    // Itu justru alasan baris ini paling berguna pada keadaan ini: admin dan
+    // peneliti sedang memegang dua angka berbeda tanpa ada yang tahu.
+    text = `Sudah bayar ${formatIDR(billing.paid)} · sisa ${formatIDR(billing.outstanding)}.`;
+  } else if (state === 'waiting_payment') {
+    text = 'Menunggu pembayaran.';
+  }
+
+  if (!text) return null;
+
+  return (
+    <p className="text-[11px] leading-snug text-slate-500 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5">
+      <span className="font-semibold text-slate-600">Peneliti melihat:</span> «{text}»
+    </p>
+  );
+}
+
+/**
+ * Satu aksi utama + menu `⋯`. Bentuknya mengikuti pola yang sudah disetujui di
+ * tab Review, dan yang menentukan isinya `planCardActions` — bukan gerbang yang
+ * ditulis ulang di JSX.
+ */
+function CardActionBar({
+  plan, entry, actions,
+}: {
+  plan: CardActionPlan;
+  entry: AdScheduleEntry;
+  actions: CardActions;
+}) {
+  const run = (a: CardAction) => {
+    switch (a.id) {
+      case 'schedule':        return actions.onEditSchedule(entry);
+      case 'invoice':
+      case 'top_up':          return actions.onCreateInvoice(entry);
+      case 'mark_paid':       return actions.onMarkPaid?.(entry);
+      case 'unmark_paid':     return actions.onUnmarkPaid?.(entry);
+      case 'cancel_schedule': return actions.onCancelSchedule?.(entry);
+      case 'open_review':     return actions.onOpenReview?.();
+    }
+  };
+
+  if (!plan.primary && plan.menu.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-2 pt-1 border-t border-slate-200">
+      {plan.primary ? (
+        <Button
+          size="sm"
+          className="flex-1 h-7 text-[11px] font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-none"
+          onClick={() => run(plan.primary!)}
+        >
+          {plan.primary.label}
+        </Button>
+      ) : (
+        <span className="flex-1" />
+      )}
+
+      {plan.menu.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label="Aksi lain"
+              className="h-7 w-8 px-0 shrink-0 text-slate-500 hover:text-slate-900 bg-white border-slate-200 shadow-none"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[13rem]">
+            {plan.menu.map((a, i) => {
+              // Aksi merusak dipisahkan garis di dasar menu — bukan kosmetik:
+              // jaraknya yang mencegah klik refleks pada baris terakhir.
+              const startsDestructive = a.destructive && !plan.menu[i - 1]?.destructive;
+              return (
+                <Fragment key={a.id}>
+                  {startsDestructive && i > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuItem
+                    onClick={() => run(a)}
+                    className={cn('text-xs', a.destructive && 'text-red-600 focus:text-red-700 focus:bg-red-50')}
+                  >
+                    {a.warns && <AlertTriangle className="w-3 h-3 mr-1.5 text-amber-500" />}
+                    {a.label}
+                  </DropdownMenuItem>
+                </Fragment>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
@@ -596,12 +670,54 @@ function ScheduleCard({
   actions: CardActions;
 }) {
   const money = deriveScheduleMoney(entry, submission);
-  const state = cardStateOf(entry, billing);
+  const state = cardStateOf(entry, billing, { holdLapsed: needsBilling(entry) });
   const isKilat = entry.distributionType === 'kilat';
-  const isBookedByUser = entry.slotBookedBy?.toLowerCase() === 'user' || entry.slotBookedBy?.toLowerCase() === 'customer';
-  const actor = isBookedByUser ? 'Customer' : 'Admin';
-  const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
-  const isLate = state !== 'paid' && state !== 'partially_paid' && ymd ? isPaymentTooLateForDate(ymd) : false;
+  const isLate = isLateForSchedule(entry, state);
+
+  /**
+   * Siapa yang memesan slotnya — dan "tidak ada" adalah jawaban yang sah.
+   *
+   * ⚠️ DULU SETIAP NILAI SELAIN 'user' DIBACA SEBAGAI "Reserved by Admin",
+   * termasuk NULL. 603 baris produksi ber-`slot_booked_by` NULL dan tak seorang
+   * pun memesannya — kartunya mengarang pelaku untuk reservasi yang tidak
+   * pernah terjadi, dan admin yang membacanya mengira rekan kerjanya sudah
+   * menangani order itu.
+   */
+  /**
+   * Aksi kartu ini — dihitung SEKALI, di satu tempat.
+   *
+   * Gerbang `can.*` sengaja tetap di sini, bukan pindah ke model: mereka soal
+   * apakah pemanggil MENYEDIAKAN handler-nya (dan `unmark` soal apakah ada
+   * sesuatu yang pasti bisa dibalikkan), sementara model menjawab pertanyaan
+   * lain — aksi mana yang MASUK AKAL di keadaan ini.
+   */
+  const plan = planCardActions({
+    state, entry, billing, isLate,
+    can: {
+      markPaid: !!actions.onMarkPaid,
+      createInvoice: !!actions.onCreateInvoice,
+      // Batalkan jadwal tidak pernah untuk jadwal yang uangnya sudah masuk —
+      // itu bukan pembatalan melainkan refund, dan refund diurus di luar sistem.
+      cancelSchedule: !!actions.onCancelSchedule && !billing?.paid && state !== 'paid',
+      /**
+       * ⚠️ Gerbangnya SENGAJA sempit. Undo hanya boleh muncul kalau
+       * `unmarkScheduleAsPaid()` punya sesuatu YANG PASTI bisa dibalikkan:
+       * baris `transactions` yang literal ditulis fungsi itu sendiri
+       * (`payment_channel === 'MANUAL_VERIFIED'`, sql/59). Pelunasan lewat
+       * gateway DOKU tidak pernah memakai nilai itu — dan `MANUAL_RECONCILED`
+       * (sql/71) juga tidak, supaya rekonsiliasi warisan tak bisa dibalik dari
+       * layar oleh admin yang tidak tahu asal-usulnya.
+       */
+      unmarkPaid: !!actions.onUnmarkPaid && billing?.paymentChannel === 'MANUAL_VERIFIED',
+    },
+  });
+
+  const booker = entry.slotBookedBy?.toLowerCase();
+  const slotLine = !booker
+    ? { label: 'Slot belum dipesan', actor: null }
+    : booker === 'user' || booker === 'customer'
+      ? { label: 'Slot dipesan', actor: 'peneliti' }
+      : { label: 'Slot dipesan', actor: 'admin' };
 
   const summary = (
     <div className="min-w-0 flex-1 space-y-1">
@@ -630,7 +746,8 @@ function ScheduleCard({
       </div>
       <div className="flex items-center gap-2 text-xs flex-wrap">
         <span className="text-slate-500 font-medium">
-          Reserved by <strong className="font-bold text-slate-700">{actor}</strong>
+          {slotLine.label}
+          {slotLine.actor && <> <strong className="font-bold text-slate-700">{slotLine.actor}</strong></>}
         </span>
         {/* Kode yang sama persis dengan yang dilihat & disalin peneliti (sql/51) —
             samakan dengan `EntryRow` di papan Schedule, jangan menyalin submissionId. */}
@@ -690,38 +807,10 @@ function ScheduleCard({
 
       <BillingSection entry={entry} billing={billing} state={state} actions={actions} />
 
-      {/* Aksi jadwal: Ganti Jadwal / Buat Jadwal Baru di kiri, Batalkan Jadwal di kanan (hanya jika belum bayar) */}
-      {state !== 'cancelled' && (
-        <div className="flex items-center gap-2 pt-1 border-t border-slate-200">
-          <Button
-            size="sm"
-            variant={isLate ? 'default' : 'outline'}
-            className={cn(
-              'flex-1 h-7 text-[11px] font-medium transition-colors shadow-none',
-              isLate
-                ? 'bg-blue-600 hover:bg-blue-700 text-white font-semibold'
-                : 'text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300'
-            )}
-            onClick={() => actions.onEditSchedule(entry)}
-          >
-            <CalendarClock className={cn('w-3 h-3 mr-1.5', isLate ? 'text-white' : 'text-slate-400')} />
-            {isLate ? 'Buat Jadwal Baru' : isUnscheduled(entry) ? 'Pilih Jadwal' : 'Ganti Jadwal'}
-          </Button>
+      {/* Baris "Peneliti melihat" — lihat `ResearcherSeesLine`. */}
+      <ResearcherSeesLine state={state} isLate={isLate} billing={billing} />
 
-          {actions.onCancelSchedule && !billing?.paid && state !== 'paid' && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2.5 text-[11px] font-medium text-red-600 hover:text-red-700 bg-white hover:bg-red-50/60 border-slate-200 hover:border-red-200 shadow-none transition-colors"
-              onClick={() => actions.onCancelSchedule!(entry)}
-              title="Batalkan jadwal ini — kuota tanggalnya bebas kembali, tanggalnya tetap tercatat"
-            >
-              <Trash2 className="w-3 h-3 mr-1" /> Batalkan Jadwal
-            </Button>
-          )}
-
-        </div>
-      )}
+      <CardActionBar plan={plan} entry={entry} actions={actions} />
     </div>
   );
 
@@ -762,13 +851,15 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, billings, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule,
+  entries, billings, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onOpenReview,
 }: {
   entries: AdScheduleEntry[];
   billings: Map<string, ScheduleBilling>;
   submission: { questionCount?: number | null; distribution_type?: string | null; submission_status?: string | null; status?: string | null };
   onEditSchedule: (entry: AdScheduleEntry) => void;
   onCreateSchedule?: (isExtraAd: boolean) => void;
+  /** Lompat ke tab Review — lihat `CardActions.onOpenReview`. */
+  onOpenReview?: () => void;
   onCreateInvoice: (entry: AdScheduleEntry) => void;
   /**
    * Batalkan SATU tagihan yang belum dibayar — bukan jadwalnya.
@@ -876,7 +967,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule }}
+          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onOpenReview }}
         />
       ))}
     </div>

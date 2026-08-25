@@ -1,6 +1,15 @@
 import { defineConfig } from 'vitest/config';
+import path from 'path';
 
 export default defineConfig({
+  // ⚠️ Alias `@` HARUS ada di sini juga, bukan hanya di vite.config.
+  // Vitest memakai konfigurasi ini sendiri, jadi tanpa baris ini setiap modul
+  // yang mengimpor `@/…` gagal dimuat saat diuji — dan efeknya bukan "tesnya
+  // merah" melainkan "tesnya tidak pernah ditulis": seluruh kode di bawah
+  // src/components/ memakai `@/`, jadi ia praktis tak bisa diuji sama sekali.
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
   test: {
     // Repo ini punya DUA gaya tes yang sengaja dibiarkan hidup berdampingan:
     //

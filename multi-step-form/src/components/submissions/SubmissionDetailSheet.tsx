@@ -86,7 +86,10 @@ type DetailTab = 'info' | 'review' | 'schedule-payment' | 'page';
 const TABS: { id: DetailTab; label: string; icon: typeof FileText }[] = [
   { id: 'info', label: 'Info', icon: Info },
   { id: 'review', label: 'Review', icon: FileText },
-  { id: 'schedule-payment', label: 'Jadwal & Bayar', icon: CalendarCheck },
+  // ⚠️ HANYA labelnya yang berubah. `id`-nya TETAP 'schedule-payment' — ia
+  // dipakai `initialSubView` dan CTA lintas-tab di InfoTab; menggantinya
+  // memutus deep-link dari papan Schedule tanpa satu pun error.
+  { id: 'schedule-payment', label: 'Reservasi Jadwal', icon: CalendarCheck },
   { id: 'page', label: 'Page', icon: Globe },
 ];
 
@@ -392,6 +395,7 @@ export function SubmissionDetailSheet({
           onEditFormDetails={onEditFormDetails}
           onConvertDistribution={onConvertDistribution}
           onExtendCreated={onExtendCreated}
+          onOpenReview={() => setActiveTab('review')}
           reloadKey={scheduleReloadKey}
           initialSubView={initialSubView}
           onInitialSubViewConsumed={onInitialSubViewConsumed}

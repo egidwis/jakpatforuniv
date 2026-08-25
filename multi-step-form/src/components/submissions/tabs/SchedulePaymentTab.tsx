@@ -9,9 +9,11 @@ import {
   type AdScheduleEntry, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
+import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 import { ScheduleCardList, ScheduleCardSkeleton } from './ScheduleCardList';
+import { cardStateOf, pickTargetSchedule } from './scheduleCardActions';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Jadwal & Bayar.
@@ -39,6 +41,7 @@ export function SchedulePaymentTab({
   onCreateInvoice,
   onCreateSchedule,
   onExtendCreated,
+  onOpenReview,
   reloadKey = 0,
   initialSubView = null,
   onInitialSubViewConsumed,
@@ -59,6 +62,13 @@ export function SchedulePaymentTab({
   onEditFormDetails: (submission: SurveySubmission) => void;
   onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
   onExtendCreated: () => void;
+  /**
+   * Pindah ke tab Review. Dipakai kartu yang ordernya masih antre review:
+   * tab ini menolak menawarkan aksi Fase ②, tapi jalan buntu justru mendorong
+   * admin memakai tombol yang salah — riwayat repo ini menunjukkan begitulah
+   * `spam` berubah jadi tong sampah.
+   */
+  onOpenReview?: () => void;
   /** Dinaikkan drawer setiap sub-tampilan selesai menulis. */
   reloadKey?: number;
   /** Niat dari pemanggil luar; diresolusi di sini karena jadwalnya ada di sini. */
@@ -101,7 +111,11 @@ export function SchedulePaymentTab({
    */
   useEffect(() => {
     if (!initialSubView || isLoading) return;
-    const target = schedules[0];
+    // Sasarannya diturunkan dengan aturan yang SAMA dengan kartu yang otomatis
+    // terbuka — lihat `pickTargetSchedule`. Sebelum ini keduanya bisa menunjuk
+    // jadwal yang berbeda dalam satu klik.
+    const target = pickTargetSchedule(schedules, (e) =>
+      cardStateOf(e, billings.get(e.id)));
     if (!target) {
       if (initialSubView === 'schedule') onCreateSchedule(false);
     } else if (initialSubView === 'payment') {
@@ -111,7 +125,7 @@ export function SchedulePaymentTab({
     }
     onInitialSubViewConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialSubView, isLoading, schedules]);
+  }, [initialSubView, isLoading, schedules, billings]);
 
 
   /**
@@ -133,23 +147,27 @@ export function SchedulePaymentTab({
           day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta',
         })
       : 'tanggal ini';
-    const ok = confirm(
-      `Batalkan jadwal ${when}?\n\n` +
-      'Kuota hari itu langsung bebas dijual lagi, dan tagihan yang masih ' +
-      'menggantung untuk jadwal ini ikut dimatikan.\n\n' +
-      'Tanggalnya TETAP tercatat sebagai riwayat — jadi nanti masih bisa ' +
-      'dijawab "jadwal mana yang dibatalkan, untuk tanggal apa". Ordernya ' +
-      'tidak dihapus dan bisa dijadwalkan ulang kapan saja.'
-    );
-    if (!ok) return;
-    try {
-      await cancelSchedule(entry);
-      toast.success('Jadwal dibatalkan. Kuota tanggalnya sudah bebas.');
-      reload();
-      onExtendCreated();
-    } catch (err: any) {
-      toast.error(err?.message || 'Gagal membatalkan jadwal');
-    }
+    setPendingConfirm({
+      title: `Batalkan jadwal #${entry.bookingId}?`,
+      highlight: when,
+      lines: [
+        'Kuota hari itu langsung bebas dijual lagi, dan tagihan yang masih menggantung untuk jadwal ini ikut dimatikan.',
+        'Tanggalnya TETAP tercatat sebagai riwayat — jadi nanti masih bisa dijawab "jadwal mana yang dibatalkan, untuk tanggal apa".',
+        'Ordernya tidak dihapus dan bisa dijadwalkan ulang kapan saja.',
+      ],
+      confirmLabel: 'Ya, Batalkan Jadwal',
+      tone: 'danger',
+      onConfirm: async () => {
+        try {
+          await cancelSchedule(entry);
+          toast.success('Jadwal dibatalkan. Kuota tanggalnya sudah bebas.');
+          reload();
+          onExtendCreated();
+        } catch (err: any) {
+          toast.error(err?.message || 'Gagal membatalkan jadwal');
+        }
+      },
+    });
   }, [reload, onExtendCreated]);
 
   // Pelunasan manual berlingkup SATU jadwal sejak sql/51 (`schedule_id`), jadi
@@ -166,6 +184,27 @@ export function SchedulePaymentTab({
    * admin mengklik kartu #2 dan yang lunas adalah #1.
    */
   const [pendingPaid, setPendingPaid] = useState<AdScheduleEntry | null>(null);
+
+  /**
+   * Konfirmasi untuk aksi merusak — menggantikan `confirm()` mentah.
+   *
+   * ⚠️ AKSI PALING MERUSAK DULU PUNYA KONFIRMASI PALING LEMAH. "Batalkan
+   * Jadwal" dan "Batalkan Tagihan" memakai `confirm()` bawaan browser — tanpa
+   * hierarki, tanpa nominal yang menonjol, dan di sebagian browser bisa
+   * dibungkam permanen oleh centang "jangan tampilkan lagi" — sementara
+   * "Tandai Lunas", yang tidak merusak apa pun, mendapat dialog terkaya.
+   * Ketimpangan itu yang dibalik di sini.
+   */
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    /** Baris penjelas; yang pertama paling penting. */
+    lines: string[];
+    /** Nominal/tanggal yang dipertaruhkan — dialog aksi uang WAJIB menyebutnya. */
+    highlight?: string;
+    confirmLabel: string;
+    tone: 'danger' | 'neutral';
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
 
   const handleMarkPaid = useCallback(async (entry: AdScheduleEntry) => {
     try {
@@ -196,26 +235,29 @@ export function SchedulePaymentTab({
    * benar-benar dibayar lewat DOKU yang bisa lolos ke jalur ini.
    */
   const handleUnmarkPaid = useCallback(async (entry: AdScheduleEntry) => {
-    const ok = window.confirm(
-      `Batalkan status lunas jadwal #${entry.bookingId}?\n\n` +
-      'Tagihan jadwal ini kembali jadi "menunggu bayar". Ini hanya membalik ' +
-      'pelunasan yang ditandai manual — bukan pembayaran lewat DOKU.'
-    );
-    if (!ok) return;
-    try {
-      const touched = await unmarkScheduleAsPaid(entry);
-      if (touched.invoices === 0 && touched.transactions === 0) {
-        toast.success(
-          `Jadwal #${entry.bookingId} kembali "menunggu bayar" — tanpa catatan tagihan yang ikut dibalik.`
-        );
-      } else {
-        toast.success(`Jadwal #${entry.bookingId} kembali "menunggu bayar".`);
-      }
-      reload();
-      onExtendCreated();
-    } catch (err: any) {
-      toast.error(err?.message || 'Gagal membatalkan status lunas');
-    }
+    setPendingConfirm({
+      title: `Batalkan status lunas jadwal #${entry.bookingId}?`,
+      lines: [
+        'Tagihan jadwal ini kembali jadi "menunggu bayar".',
+        'Ini hanya membalik pelunasan yang ditandai MANUAL — bukan pembayaran lewat DOKU, dan bukan rekonsiliasi warisan (kanal MANUAL_RECONCILED, sql/71).',
+      ],
+      confirmLabel: 'Ya, Batalkan Status Lunas',
+      tone: 'danger',
+      onConfirm: async () => {
+        try {
+          const touched = await unmarkScheduleAsPaid(entry);
+          if (touched.invoices === 0 && touched.transactions === 0) {
+            toast.success(`Jadwal #${entry.bookingId} kembali "menunggu bayar" — tanpa catatan tagihan yang ikut dibalik.`);
+          } else {
+            toast.success(`Jadwal #${entry.bookingId} kembali "menunggu bayar".`);
+          }
+          reload();
+          onExtendCreated();
+        } catch (err: any) {
+          toast.error(err?.message || 'Gagal membatalkan status lunas');
+        }
+      },
+    });
   }, [reload, onExtendCreated]);
 
   /**
@@ -233,26 +275,32 @@ export function SchedulePaymentTab({
    */
   const handleCancelInvoice = useCallback(async (inv: ScheduleInvoice) => {
     if (!inv.paymentId) return;
-    const ok = window.confirm(
-      `Batalkan tagihan ${inv.paymentId}?\n\n` +
-      `Nominal ${formatIDR(inv.amount)} berhenti dihitung sebagai piutang, dan ` +
-      'jadwalnya bisa ditagih ulang. Jadwal serta slotnya TIDAK dibatalkan.\n\n' +
-      'Catatan: link bayar yang sudah terlanjur dikirim masih bisa dibayar dari ' +
-      'sisi bank. Kalau uangnya sungguh masuk, tagihan ini kembali jadi lunas.'
-    );
-    if (!ok) return;
-    try {
-      const changed = await cancelInvoice(inv.paymentId);
-      if (changed === 0) {
-        toast.warning('Tidak ada yang berubah — tagihan ini mungkin sudah dibayar atau dibatalkan.');
-      } else {
-        toast.success(`Tagihan ${inv.paymentId} dibatalkan.`);
-      }
-      reload();
-      onExtendCreated();
-    } catch (err: any) {
-      toast.error(err?.message || 'Gagal membatalkan tagihan');
-    }
+    const paymentId = inv.paymentId;
+    setPendingConfirm({
+      title: 'Batalkan tagihan ini?',
+      highlight: formatIDR(inv.amount),
+      lines: [
+        'Nominal itu berhenti dihitung sebagai piutang, dan jadwalnya bisa ditagih ulang.',
+        'Jadwal serta slotnya TIDAK dibatalkan — ini berlingkup tagihan saja.',
+        `Link bayar ${paymentId} yang sudah terlanjur dikirim masih bisa dibayar dari sisi bank. Kalau uangnya sungguh masuk, tagihan ini kembali jadi lunas.`,
+      ],
+      confirmLabel: 'Ya, Batalkan Tagihan',
+      tone: 'danger',
+      onConfirm: async () => {
+        try {
+          const changed = await cancelInvoice(paymentId);
+          if (changed === 0) {
+            toast.warning('Tidak ada yang berubah — tagihan ini mungkin sudah dibayar atau dibatalkan.');
+          } else {
+            toast.success(`Tagihan ${paymentId} dibatalkan.`);
+          }
+          reload();
+          onExtendCreated();
+        } catch (err: any) {
+          toast.error(err?.message || 'Gagal membatalkan tagihan');
+        }
+      },
+    });
   }, [reload, onExtendCreated]);
 
   /**
@@ -287,9 +335,28 @@ export function SchedulePaymentTab({
     ['rejected', 'spam', 'cancelled'].includes(submission.submission_status || '') ||
     ['rejected', 'spam', 'cancelled'].includes(submission.status || '');
 
+  /**
+   * ⚠️ `in_review` IKUT DIGERBANG (C7) — dan ini lubang yang TERPISAH dari
+   * `cardStateOf`.
+   *
+   * Tombol "Jadwal Iklan Baru" dirender oleh tab, bukan oleh kartu, jadi ia
+   * punya gerbangnya sendiri. Sebelum ini gerbang itu menyaring
+   * `spam`/`rejected`/`cancelled` tapi TIDAK `in_review`, sehingga order yang
+   * masih antre review — asal sudah punya satu jadwal — tetap menawarkan
+   * penambahan jadwal kedua. Memperbaiki `cardStateOf` saja tidak menutupnya:
+   * sumbernya berbeda.
+   *
+   * Sama seperti kartunya: sebuah tab tidak boleh menawarkan aksi milik fase
+   * yang belum selesai.
+   */
+  const isAwaitingReview =
+    ['in_review', 'pending'].includes(submission.submission_status || '') ||
+    ['in_review', 'pending'].includes(submission.status || '');
+
   const canAddSchedule =
     submission.distribution_type !== 'kilat' &&
     !isSpamOrRejected &&
+    !isAwaitingReview &&
     schedules.length > 0;
 
   return (
@@ -323,6 +390,7 @@ export function SchedulePaymentTab({
             onUnmarkPaid={(entry) => void handleUnmarkPaid(entry)}
             onCancelInvoice={(inv) => void handleCancelInvoice(inv)}
             onCancelSchedule={(entry) => void handleCancelSchedule(entry)}
+            onOpenReview={onOpenReview}
           />
         )}
 
@@ -387,6 +455,61 @@ export function SchedulePaymentTab({
               onClick={() => { if (pendingPaid) void handleMarkPaid(pendingPaid); }}
             >
               Ya, Tandai Lunas
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/*
+        Satu dialog untuk SEMUA aksi merusak di tab ini. Bentuknya sengaja
+        sejajar dengan dialog "Tandai Lunas" di atas — hierarki judul yang sama,
+        nominal yang sama menonjolnya — supaya beratnya sebuah aksi terbaca dari
+        konsekuensinya, bukan dari kebetulan komponen mana yang dipakai.
+      */}
+      <Dialog open={!!pendingConfirm} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }}>
+        <DialogContent className="sm:max-w-[26rem] p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-gray-900">
+              {pendingConfirm?.title}
+            </DialogTitle>
+          </DialogHeader>
+
+          {pendingConfirm?.highlight && (
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-center">
+              <p className="text-sm font-bold text-slate-800">{pendingConfirm.highlight}</p>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            {pendingConfirm?.lines.map((line, i) => (
+              <p key={i} className={cn('text-xs leading-relaxed', i === 0 ? 'text-slate-700 font-medium' : 'text-slate-500')}>
+                {line}
+              </p>
+            ))}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              variant="outline"
+              onClick={() => setPendingConfirm(null)}
+              className="text-xs font-semibold h-9 px-5 text-gray-600 border-gray-200 hover:bg-gray-50"
+            >
+              Batal
+            </Button>
+            <Button
+              className={cn(
+                'text-xs font-semibold h-9 px-5 text-white',
+                pendingConfirm?.tone === 'danger'
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : 'bg-blue-600 hover:bg-blue-700',
+              )}
+              onClick={() => {
+                const pending = pendingConfirm;
+                setPendingConfirm(null);
+                void pending?.onConfirm();
+              }}
+            >
+              {pendingConfirm?.confirmLabel}
             </Button>
           </div>
         </DialogContent>
