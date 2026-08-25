@@ -54,26 +54,27 @@ function getStatusBannerConfig(
     case 'cancelled':
       return {
         title: 'Order Dibatalkan',
-        description: 'Order ini dibatalkan dan tidak lagi menempati slot tayang. Riwayat jadwal serta tagihannya tetap tersimpan.',
+        description: 'Order sah yang dihentikan — tidak lagi menempati slot tayang. Peneliti tetap melihatnya di tab "Selesai". Riwayat jadwal serta tagihannya tetap tersimpan.',
         containerClass: 'bg-slate-50 border-slate-200 text-slate-800',
       };
 
     case 'rejected':
       return {
-        title: 'Menunggu Perbaikan Peneliti',
-        description: 'Kuesioner dikembalikan ke peneliti dengan catatan perbaikan untuk disesuaikan.',
+        title: 'Menunggu Perbaikan',
+        description: 'Kuesioner dikembalikan ke peneliti dengan catatan perbaikan. Belum final — begitu ia memperbaiki, Anda bisa langsung meloloskannya.',
         action: {
           label: 'Cek Catatan Review',
           icon: FileText,
           targetTab: 'review',
         },
-        containerClass: 'bg-rose-50/70 border-rose-200/80 text-rose-950',
+        // Amber, bukan rose: sejalan dengan chip daftar & banner peneliti.
+        containerClass: 'bg-amber-50/70 border-amber-200/80 text-amber-950',
       };
 
     case 'spam':
       return {
-        title: 'Submission Ditandai Spam',
-        description: 'Submission ini ditandai sebagai spam atau tidak valid.',
+        title: 'Order Tidak Valid',
+        description: 'Ditandai bukan order sungguhan. TIDAK tampil di dashboard peneliti, dan ia tidak bisa mengajukannya ulang.',
         action: {
           label: 'Detail Review',
           icon: FileText,

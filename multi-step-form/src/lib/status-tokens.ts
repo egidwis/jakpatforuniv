@@ -58,8 +58,12 @@ export const STATUS_TOKENS: Record<LifecycleStage, StatusToken> = {
   in_review: { label: "Need Review", variant: "blue", dot: true },
   cancelled: { label: "Dibatalkan", variant: "slate" },
   approved: { label: "Approved", variant: "indigo" },
-  rejected: { label: "Rejected", variant: "red" },
-  spam: { label: "Spam", variant: "orange" },
+  // Amber, BUKAN merah. Merah berarti final/gagal, dan "Menunggu Perbaikan"
+  // bukan keduanya: bolanya di peneliti, dan admin masih bisa meloloskannya
+  // begitu ia memperbaiki. Chip drawer & banner peneliti sudah amber — ini
+  // menyelaraskan permukaan terakhir yang masih berteriak merah.
+  rejected: { label: "Menunggu Perbaikan", variant: "amber" },
+  spam: { label: "Tidak Valid", variant: "orange" },
   reserved: { label: "Reserved", variant: "blue" },
   reserved_expiring: {
     label: "Reserved · <1h",

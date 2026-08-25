@@ -2,9 +2,19 @@ import { Chip } from '../ui/chip';
 
 interface ReviewStatusChipProps {
   status?: string | null;
-  size?: 'sm' | 'md';
+  size?: 'xs' | 'sm' | 'md';
 }
 
+/**
+ * Chip sumbu review. NILAI DB-nya tidak pernah diubah (`rejected`, `spam`) —
+ * yang dipetakan di sini cuma kata yang dilihat manusia:
+ *
+ *   rejected → "Menunggu Perbaikan"   (bukan penolakan final; admin masih bisa
+ *                                      meloloskannya tanpa peneliti klik apa pun)
+ *   spam     → "Tidak Valid"          (bukan order sungguhan, disembunyikan
+ *                                      dari dashboard peneliti)
+ *   cancelled→ "Dibatalkan"           (order sah yang dihentikan)
+ */
 export function ReviewStatusChip({ status, size = 'md' }: ReviewStatusChipProps) {
   const normStatus = status || 'in_review';
 
@@ -18,12 +28,24 @@ export function ReviewStatusChip({ status, size = 'md' }: ReviewStatusChipProps)
       label = 'Approved';
       break;
     case 'rejected':
+      // Amber, bukan merah: merah berarti final/gagal, dan status ini bukan
+      // keduanya — bolanya ada di peneliti, dan admin masih bisa approve.
       variant = 'amber';
-      label = 'Menunggu Revisi';
+      label = 'Menunggu Perbaikan';
       break;
     case 'spam':
       variant = 'orange';
-      label = 'Spam';
+      label = 'Tidak Valid';
+      break;
+    case 'cancelled':
+      variant = 'slate';
+      label = 'Dibatalkan';
+      break;
+    case 'slot_cancelled':
+      // Sumbu review-nya sebenarnya tetap 'approved' (sql/62 §2). Chip ini
+      // hanya dipakai kalau ada pemanggil yang mengoper nilai mentahnya.
+      variant = 'slate';
+      label = 'Slot Dibatalkan';
       break;
     case 'in_review':
     case 'pending':

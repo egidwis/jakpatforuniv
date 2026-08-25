@@ -9,7 +9,8 @@ import {
   TooltipTrigger,
 } from './ui/tooltip';
 import type { SurveySubmission, PaymentState, ExistingPage } from './submissions/types';
-import { deriveLifecycle } from './submissions/lifecycle';
+import { deriveLifecycle, getDisplayStatus } from './submissions/lifecycle';
+import { ReviewStatusChip } from './submissions/ReviewStatusChip';
 
 // Types moved to ./submissions/types — re-exported here for backward compatibility
 export type { SurveySubmission, PaymentState, ExistingPage } from './submissions/types';
@@ -30,6 +31,8 @@ interface SubmissionsTableRowProps {
   onOpenPageBuilder: (submission: SurveySubmission) => void;
   onOpenSchedule: (submission: SurveySubmission) => void;
   onOpenPayment: (submission: SurveySubmission) => void;
+  /** Buka drawer detail — satu-satunya tempat status review boleh diubah. */
+  onOpenReview: (submission: SurveySubmission) => void;
   onExtendCreated: () => void;
 }
 
@@ -43,11 +46,10 @@ export function SubmissionsMobileCard({
   paymentData,
   existingPage,
   isScheduled,
-  onStatusChange,
-  onPaymentStatusChange,
   onOpenPageBuilder,
   onOpenSchedule,
   onOpenPayment,
+  onOpenReview,
 }: SubmissionsTableRowProps) {
   const {
     isPaid,
@@ -169,35 +171,24 @@ export function SubmissionsMobileCard({
           </div>
         </div>
 
-        {/* Actions Row */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Status Row.
+            Dulu di sini ada <select> status mentah yang menulis nilai APA PUN
+            — termasuk 'spam'/'rejected' untuk order yang sudah lunas — tanpa
+            dialog, tanpa catatan, dan tanpa jejak di review_history. Jalur
+            keputusan review sekarang cuma satu: drawer, lewat gerbangnya. */}
+        <div className="flex items-center justify-between gap-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-500">Status</label>
-            <select
-              className={`w-full px-3 py-2 text-xs font-medium rounded-lg border-0 cursor-pointer transition-all focus:ring-2 ${submission.status === 'spam' ? 'bg-red-100 text-red-700 focus:ring-red-500' :
-                submission.status === 'in_review' ? 'bg-blue-100 text-blue-700 focus:ring-blue-500' :
-                  submission.status === 'rejected' ? 'bg-red-100 text-red-700 focus:ring-red-500' :
-                    submission.status === 'approved' ? 'bg-green-100 text-green-700 focus:ring-green-500' :
-                      'bg-gray-100 text-gray-800'
-                }`}
-              value={submission.status || 'in_review'}
-              onChange={(e) => {
-                if (e.target.value === 'mark_paid') {
-                  onPaymentStatusChange(submission.id, 'paid');
-                  // Revert select back to current status visually
-                  e.target.value = submission.status || 'in_review';
-                } else {
-                  onStatusChange(submission.id, e.target.value);
-                }
-              }}
-            >
-              <option value="spam" className="bg-white text-gray-900">Spam</option>
-              <option value="in_review" className="bg-white text-gray-900">In Review</option>
-              <option value="approved" className="bg-white text-gray-900">Approved</option>
-              <option value="rejected" className="bg-white text-gray-900">Rejected</option>
-              <option value="mark_paid" className="bg-emerald-50 text-emerald-700 font-bold border-t">-- Mark as Paid --</option>
-            </select>
+            <div><ReviewStatusChip status={getDisplayStatus(submission.status)} size="sm" /></div>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2.5 text-xs font-semibold shrink-0"
+            onClick={() => onOpenReview(submission)}
+          >
+            Buka Review
+          </Button>
         </div>
 
         {/* Campaign Actions Area */}

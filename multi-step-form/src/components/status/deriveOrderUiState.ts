@@ -21,11 +21,20 @@ import { isManualVerificationVoucher } from '@/utils/cost-calculator';
 
 export type OrderCalloutState =
     | 'revision'
+    /** Pesanan dihentikan — oleh peneliti sendiri atau oleh admin. Keadaan
+     * AKHIR yang tetap terlihat peneliti (tab "Selesai"), bukan disembunyikan:
+     * order yang lenyap tanpa jejak justru memicu pertanyaan ke tim. */
+    | 'cancelled'
     /** Satu-satunya state review. Order yang lolos auto-approval langsung ke
      * `waiting_payment` (step 2) dan tak pernah menyentuh step 0, jadi "review
      * otomatis sedang berjalan" bukan state yang bisa ada. */
     | 'review_manual'
     | 'choose_schedule'
+    /** Disetujui lewat review MANUAL admin — dan sejak keputusan produk
+     * 2026-08-25, admin pula yang menetapkan jadwalnya. Bolanya di admin, jadi
+     * peneliti TIDAK diberi CTA "Pilih Jadwal" di sini. Order yang lolos
+     * auto-review tetap menjadwalkan sendiri lewat `choose_schedule`. */
+    | 'awaiting_admin_schedule'
     | 'payment'
     | 'awaiting_invoice'
     | 'expired'
@@ -224,7 +233,8 @@ export function deriveOrderUiState(
 
     let callout: OrderCalloutState;
     if (currentStep === -1) {
-        callout = 'revision';
+        // -1 memuat SEMUA order mati; yang membedakan sebabnya cuma reviewStatus.
+        callout = first.reviewStatus === 'cancelled' ? 'cancelled' : 'revision';
     } else if (isExpired) {
         callout = 'expired';
     } else if (hasLaterScheduleAwaitingPayment) {
@@ -234,7 +244,16 @@ export function deriveOrderUiState(
         // (form manual / ada keyword data pribadi / voucher verifikasi manual).
         callout = 'review_manual';
     } else if (currentStep === 1) {
-        callout = 'choose_schedule';
+        // "Disetujui tapi belum punya jendela tayang" secara KONSTRUKSI adalah
+        // pendaratan approval manual: jalur auto menulis tanggal + slot sejak
+        // checkout (`submitOrder`), dan order auto yang slotnya kedaluwarsa
+        // mengambil cabang `isExpired` di atas lebih dulu.
+        //
+        // Penjaga `isAutoReviewed` tetap dipasang meski cabangnya sudah
+        // struktural: ketidakpresisiannya (lihat docstring fungsi itu) hanya
+        // bisa salah ke arah "dianggap auto" — dan itu jatuh ke perilaku
+        // sekarang, bukan ke peneliti yang terdampar menunggu admin.
+        callout = isAutoReviewed(submission) ? 'choose_schedule' : 'awaiting_admin_schedule';
     } else if (currentStep === 2) {
         // too_late_today menang atas payment/awaiting_invoice: menawarkan bayar
         // untuk jadwal yang sudah tidak bisa dikejar cuma memindahkan kekecewaan
@@ -262,11 +281,15 @@ export function deriveOrderUiState(
         callout === 'choose_schedule' ||
         (callout === 'payment' && !!finalPaymentLink);
 
-    const group: OrderGroup = needsAction
-        ? 'butuh-aksi'
-        : currentStep === 4
-            ? 'selesai'
-            : 'berjalan';
+    // `awaiting_admin_schedule` sengaja TIDAK masuk `needsAction`: bolanya di
+    // admin, jadi ordernya duduk di "Berjalan", bukan berteriak di "Butuh Aksi".
+    const group: OrderGroup = callout === 'cancelled'
+        ? 'selesai'
+        : needsAction
+            ? 'butuh-aksi'
+            : currentStep === 4
+                ? 'selesai'
+                : 'berjalan';
 
     return {
         currentStep,
@@ -318,7 +341,9 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
     const statusText: Record<OrderCalloutState, string> = {
         revision: 'perlu revisi karena belum sesuai syarat & ketentuan (mis. menanyakan data pribadi responden); user bisa ajukan ulang dari halaman Order Saya',
         review_manual: 'sedang direview admin (maksimal 2 hari kerja, hari kerja Senin-Jumat)',
+        cancelled: 'pesanan DIBATALKAN dan tidak akan tayang; tagihan yang sempat terbit tidak berlaku lagi. Kalau user masih ingin mengiklankan survei ini, ia perlu membuat pesanan baru — bukan mengajukan ulang yang ini',
         choose_schedule: 'sudah disetujui, menunggu user memilih jadwal tayang di halaman Order Saya',
+        awaiting_admin_schedule: 'sudah disetujui admin; tim Jakpat yang akan menetapkan jadwal tayang lalu menerbitkan tagihan. User TIDAK perlu memilih jadwal sendiri, cukup menunggu',
         payment: 'menunggu pembayaran dari user',
         awaiting_invoice: 'slot sudah dipesan, menunggu admin menerbitkan tagihan (maksimal 1 hari kerja)',
         expired: 'pembayaran kedaluwarsa sehingga slot dilepas; user perlu memilih jadwal baru dari halaman Order Saya (tidak perlu submit ulang)',

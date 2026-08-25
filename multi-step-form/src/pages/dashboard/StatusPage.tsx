@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, dismissRejectedSubmission, prepareForReschedule, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, dismissSubmission, cancelOrder, updateFormStatus, prepareForReschedule, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
+import type { ReviewHistoryEntry } from '@/components/submissions/types';
 import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
@@ -35,6 +36,27 @@ import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 
 type FilterValue = 'all' | OrderGroup;
+
+/**
+ * Boleh membatalkan sendiri? Hanya selama BELUM ADA UANG.
+ *
+ * Ini lapis KETIGA, dan yang paling lemah dari ketiganya — ia cuma menentukan
+ * apakah tautannya terlihat. Yang benar-benar menegakkan aturan:
+ *
+ *   1. Trigger `guard_payment_columns()` (sql/33) di database — menolak
+ *      transisi non-admin pada order yang menyentuh paid/scheduled/live/
+ *      completed. Dipanggil paksa lewat konsol pun tetap gagal.
+ *   2. Penyaring `.in(...)` di `cancelOrder()`.
+ *
+ * Order yang sudah lunas/tayang diarahkan menghubungi tim, bukan diberi tombol
+ * yang akan ditolak server.
+ */
+function canCancelOrder(ui: { isPaid: boolean; currentStep: number; callout: string }): boolean {
+    if (ui.isPaid) return false;
+    if (ui.currentStep >= 3) return false;
+    return ['review_manual', 'revision', 'choose_schedule', 'awaiting_admin_schedule',
+        'payment', 'awaiting_invoice', 'expired', 'too_late_today'].includes(ui.callout);
+}
 
 export function StatusPage() {
     const { user } = useAuth();
@@ -117,12 +139,27 @@ export function StatusPage() {
         }
         try {
             const fetched = await getFormSubmissionsByUser(user.id, user.email);
-            // Order yang sudah disingkirkan pemiliknya (lihat dismissRejectedSubmission)
-            // ditandai `cancelled` dan disaring di sini, bukan dihapus dari database —
-            // datanya tetap ada untuk penelusuran saat user menghubungi bantuan.
-            // Di tabel ini `cancelled` HANYA berarti itu; pembatalan oleh admin hidup
-            // di `form_submissions_extend`.
-            const data = fetched.filter((s) => s.submission_status !== 'cancelled');
+            // DUA penyaring, dua sebab yang berbeda:
+            //
+            //  `dismissed_at`  — PEMILIKNYA menyingkirkan order ini dari daftarnya
+            //                    (sql/69). Preferensi tampilan; datanya tetap ada
+            //                    untuk penelusuran saat ia menghubungi bantuan.
+            //                    Dulu perannya dipegang `submission_status='cancelled'`,
+            //                    yang membuat kata "cancelled" tidak bisa dipakai
+            //                    untuk pembatalan yang sesungguhnya.
+            //
+            //  `spam`          — admin menandainya BUKAN ORDER SUNGGUHAN. Sebelum ini
+            //                    `reviewStateOf` melipatnya jadi `rejected`, jadi order
+            //                    spam justru BERTERIAK di dashboard peneliti menyuruhnya
+            //                    memperbaiki kuesioner — dan ia bisa menghidupkannya
+            //                    sendiri lewat "Saya Sudah Perbaiki", berulang kali.
+            //
+            // `cancelled` sengaja TIDAK disaring: order yang dibatalkan HARUS tetap
+            // terlihat (tab "Selesai"), supaya peneliti tahu apa yang terjadi alih-alih
+            // ordernya lenyap tanpa jejak.
+            const data = fetched.filter(
+                (s) => !s.dismissed_at && s.submission_status !== 'spam'
+            );
             setSubmissions(data);
 
             // Fetch payment links for each submission
@@ -311,12 +348,56 @@ export function StatusPage() {
     const [pendingDismiss, setPendingDismiss] = useState<FormSubmission | null>(null);
     const [isDismissing, setIsDismissing] = useState(false);
 
+    /** Order yang sedang dikonfirmasi untuk DIBATALKAN — beda dari disingkirkan:
+     * yang ini mengubah keadaan pesanannya, bukan cuma tampilannya. */
+    const [pendingCancel, setPendingCancel] = useState<FormSubmission | null>(null);
+    const [isCancelling, setIsCancelling] = useState(false);
+
+    const confirmCancelOrder = async () => {
+        const target = pendingCancel;
+        if (!target?.id) return;
+        setIsCancelling(true);
+        try {
+            await cancelOrder(target.id);
+            const entry: ReviewHistoryEntry = {
+                action: 'cancelled',
+                actor: 'researcher',
+                notes: 'Peneliti membatalkan pesanannya sendiri dari dashboard.',
+                timestamp: new Date().toISOString(),
+            };
+            // Riwayat ditulis TERPISAH dan kegagalannya tidak membatalkan apa pun:
+            // pesanannya sudah batal di server, dan memutar balik keadaan itu
+            // gara-gara satu baris jejak jauh lebih buruk daripada jejak yang
+            // hilang. `actor` di sinilah yang nanti menentukan kalimat pelaku di
+            // banner — tanpanya banner jatuh ke "dibatalkan tim Jakpat".
+            try {
+                await updateFormStatus(target.id, 'cancelled', undefined, [
+                    ...(target.review_history || []),
+                    entry,
+                ]);
+            } catch (histErr) {
+                console.error('Order cancelled but review_history was not written:', histErr);
+            }
+            setPendingCancel(null);
+            toast.success(t('cancelOrderSuccess'));
+            await fetchSubmissions();
+        } catch (error) {
+            // Daftar TIDAK disentuh kalau server menolak — pelajaran dari bug
+            // dismiss lama, yang membuang baris dari state lalu menampilkan
+            // toast sukses sehingga ordernya "hidup lagi" saat refresh.
+            console.error('Failed to cancel order:', error);
+            toast.error(t('cancelOrderError'));
+        } finally {
+            setIsCancelling(false);
+        }
+    };
+
     const confirmDismissSubmission = async () => {
         const target = pendingDismiss;
         if (!target?.id) return;
         setIsDismissing(true);
         try {
-            await dismissRejectedSubmission(target.id);
+            await dismissSubmission(target.id);
             setSubmissions(prev => prev.filter(s => s.id !== target.id));
             setPendingDismiss(null);
             toast.success(t('deleteSubmissionSuccess'));
@@ -548,7 +629,19 @@ export function StatusPage() {
                                     const cards = buildScheduleCards(ui, pays, invoiceIds[submission.id!] || null, t);
                                     const pageInfo = submission.id ? surveyPages[submission.id] : undefined;
                                     const activePhase = getActiveDashboardPhase(ui.currentStep);
-                                    const reachedPhase = activePhase ?? 3;
+                                    /**
+                                     * `?? 3` berarti "order tuntas, nyalakan ketiganya" — dan itu
+                                     * BENAR hanya untuk order yang selesai tayang. Untuk order yang
+                                     * DIBATALKAN, `getActiveDashboardPhase` juga bisa kehabisan fase
+                                     * aktif, dan jatuhnya ke 3 membuat kartu pesanan batal terbaca
+                                     * seolah sudah tuntas — persis kebalikan dari yang terjadi.
+                                     *
+                                     * Order batal berhenti di Fase ①: di situ bannernya, dan itu
+                                     * satu-satunya fase yang benar-benar pernah dilalui.
+                                     */
+                                    const isCancelled = ui.callout === 'cancelled';
+                                    const reachedPhase = isCancelled ? 1 : (activePhase ?? 3);
+                                    const isDead = isCancelled || ui.callout === 'revision';
                                     return (
                                         <Card key={submission.id} className="overflow-hidden border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] hover:border-slate-300 transition-colors duration-150 rounded-2xl">
                                             <CardHeader className="bg-white p-5 md:p-6 pb-4 md:pb-5 space-y-2.5 border-b border-slate-100">
@@ -570,9 +663,9 @@ export function StatusPage() {
                                                     <ReviewPhase
                                                         submission={submission}
                                                         first={ui.first}
-                                                        onDelete={() => setPendingDismiss(submission)}
                                                         onDataUpdated={fetchSubmissions}
-                                                        active={activePhase === 1}
+                                                        active={isCancelled || activePhase === 1}
+                                                        hadBilledInvoice={!!ui.finalPaymentLink}
                                                     />
                                                 </Phase>
 
@@ -589,9 +682,45 @@ export function StatusPage() {
                                                     <PublicationPhase cards={cards} pageInfo={pageInfo} />
                                                 </Phase>
 
-                                                {/* F. Footer: baris chat rata kanan (deep-link ke Mimin dengan konteks order) */}
+                                                {/* F. Footer.
+                                                    Kiri = tautan TERSIER, kanan = Tanya Mimin.
+
+                                                    "Batalkan Pesanan" hidup DI SINI, bukan di dalam
+                                                    banner Fase ①, dan sengaja jadi teks polos abu-abu
+                                                    tanpa border/latar/ikon: kami tidak mendorong
+                                                    peneliti membatalkan pesanan. Ia harus ADA —
+                                                    buntu tanpa jalan keluar lebih buruk — tapi tidak
+                                                    mengundang. Bukan merah: merah menarik mata dan
+                                                    terbaca sebagai peringatan.
+
+                                                    `min-h-10` menjaga area sentuh tetap layak di
+                                                    ponsel. "Tidak didorong" tidak boleh berubah jadi
+                                                    "sulit ditekan"; yang mencegah salah pencet adalah
+                                                    dialog konfirmasinya, bukan ukuran tombolnya.
+
+                                                    Satu tautan melayani SEMUA status pra-lunas,
+                                                    alih-alih disalin ke tiap fase. */}
                                                 <div className="border-t border-slate-100 mt-4 pt-3" />
-                                                <div className="flex justify-end">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        {isDead ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPendingDismiss(submission)}
+                                                                className="min-h-10 inline-flex items-center rounded-xl px-2 text-xs text-slate-400 hover:text-slate-600 hover:underline underline-offset-2 transition-colors"
+                                                            >
+                                                                {t('btnDeleteForm')}
+                                                            </button>
+                                                        ) : canCancelOrder(ui) ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPendingCancel(submission)}
+                                                                className="min-h-10 inline-flex items-center rounded-xl px-2 text-xs text-slate-400 hover:text-slate-600 hover:underline underline-offset-2 transition-colors"
+                                                            >
+                                                                {t('btnCancelOrder')}
+                                                            </button>
+                                                        ) : null}
+                                                    </div>
                                                     <Link
                                                         to={`/dashboard/chat?message=${encodeURIComponent(`Saya ingin bertanya tentang order "${submission.title}"`)}`}
                                                         className="min-h-10 inline-flex items-center gap-2 rounded-xl px-3 text-xs font-semibold text-slate-600 hover:text-jfu-primary hover:bg-blue-50/50 transition-colors"
@@ -621,6 +750,39 @@ export function StatusPage() {
             >
                 <ArrowUp className="w-5 h-5" />
             </button>
+
+            {/* Konfirmasi PEMBATALAN. Terpisah dari dialog "singkirkan" di bawah
+                karena dua aksi ini punya akibat yang berbeda: yang ini
+                menghentikan pesanannya, yang itu cuma menyembunyikan kartunya.
+                Dialog inilah pengaman sesungguhnya — bukan ukuran tombolnya. */}
+            <Dialog open={pendingCancel !== null} onOpenChange={(open) => { if (!open && !isCancelling) setPendingCancel(null); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t('cancelOrderConfirmTitle')}</DialogTitle>
+                        <DialogDescription className="pt-1 leading-relaxed">
+                            <strong className="font-semibold text-gray-900">{pendingCancel?.title || t('untitledSurvey')}</strong>
+                            {' — '}{t('cancelOrderConfirmBody')}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => setPendingCancel(null)}
+                            disabled={isCancelling}
+                            className="max-md:w-full rounded-full"
+                        >
+                            {t('cancel')}
+                        </Button>
+                        <Button
+                            onClick={confirmCancelOrder}
+                            disabled={isCancelling}
+                            className="max-md:w-full rounded-full bg-slate-700 hover:bg-slate-800 text-white font-semibold"
+                        >
+                            {t('cancelOrderConfirmAction')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Konfirmasi menyingkirkan order yang ditolak. Menggantikan window.confirm()
                 polos — dialog ini menyebut judul surveinya supaya tidak salah sasaran,

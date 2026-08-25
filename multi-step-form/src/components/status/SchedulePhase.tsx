@@ -58,6 +58,7 @@ interface SchedulePhaseProps {
  * kunci sendiri karena bukan bagian dari status extend/publikasi. */
 function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: TranslationKey) => string): string {
     if (state === 'choose_schedule') return t('bookingStatusChooseSchedule');
+    if (state === 'awaiting_admin_schedule') return t('bookingStatusAwaitingAdminSchedule');
     if (state === 'awaiting_invoice') return t('bookingStatusAwaitingInvoice');
     if (state === 'too_late_today') return t('bookingStatusTooLateToday');
     return t(extendStatusLabelKey(state));
@@ -70,6 +71,9 @@ function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: Tr
  * too_late_today (di luar enum shared) yang dapat warna sendiri. */
 function bookingStatusStyle(state: ScheduleCard['booking']['state']): { bg: string; text: string; dot: string } {
     if (state === 'choose_schedule') return { bg: 'bg-amber-50 border-amber-200/80', text: 'text-amber-800', dot: 'bg-amber-500' };
+    // Abu, bukan amber: amber di kartu ini berarti "giliranmu". Bolanya di
+    // admin, jadi warnanya tidak boleh memanggil.
+    if (state === 'awaiting_admin_schedule') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
     if (state === 'awaiting_invoice') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
     if (state === 'too_late_today') return { bg: 'bg-rose-50 border-rose-200/80', text: 'text-rose-700', dot: 'bg-rose-500' };
     return extendStatusStyle(state);
@@ -318,7 +322,10 @@ function InfoSection({ card, submission, muted }: { card: ScheduleCard; submissi
         rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('rewardRespondentLabel'), value: <IncentiveValue info={card.info.incentive} muted={muted} /> });
     }
 
-    const hasValidDate = bState !== 'expired' && bState !== 'too_late_today' && bState !== 'in_review' && bState !== 'choose_schedule' && bState !== 'cancelled';
+    // `awaiting_admin_schedule` ikut: sama seperti `choose_schedule`, tanggalnya
+    // memang BELUM ADA — yang berbeda cuma siapa yang akan menetapkannya.
+    const hasValidDate = bState !== 'expired' && bState !== 'too_late_today' && bState !== 'in_review'
+        && bState !== 'choose_schedule' && bState !== 'awaiting_admin_schedule' && bState !== 'cancelled';
     const batchValue = hasValidDate && card?.info?.periodBatch
         ? <span className={valueTone(muted)}>{formatPeriodBatch(card.info.periodBatch)}</span>
         : <span className="text-gray-400 font-normal text-xs sm:text-sm">{t('periodAwaitingSchedule')}</span>;
@@ -545,6 +552,19 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
             </div>
         );
     }
+    // Sudah disetujui, tapi TIM yang menetapkan jadwalnya. Bentuknya sengaja
+    // mengikuti banner `awaiting_invoice` di atas — netral, tanpa CTA. Menawarkan
+    // "Pilih Jadwal" di sini akan mengundang peneliti memesan slot yang admin
+    // juga sedang pesan: balapan `slot_booked_by`, dan ujungnya tagihan basi.
+    if (b.state === 'awaiting_admin_schedule') {
+        return (
+            <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
+                <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                    {t('calloutAwaitingAdminSchedule')}
+                </p>
+            </div>
+        );
+    }
     if (b.state === 'choose_schedule') {
         return (
             <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/70 shadow-2xs">
@@ -704,9 +724,12 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
     return (
         <div>
             {cards.length === 0 ? (
-                /* Satu-satunya order tanpa kartu jadwal adalah yang ditolak —
-                   order yang masih direview sudah punya kartunya sendiri
-                   (Booking ID terbit sejak submit, lihat `buildScheduleCards`). */
+                /* Order tanpa kartu jadwal adalah yang MATI — menunggu perbaikan
+                   atau dibatalkan. Order yang masih direview sudah punya kartunya
+                   sendiri (Booking ID terbit sejak submit, lihat
+                   `buildScheduleCards`). Kalimatnya sengaja netral: untuk order
+                   batal, menyuruh "selesaikan revisi" adalah instruksi yang
+                   tidak punya jalan keluar. */
                 <p className="text-sm text-slate-400 rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center">
                     {t('scheduleEmptyRejected')}
                 </p>

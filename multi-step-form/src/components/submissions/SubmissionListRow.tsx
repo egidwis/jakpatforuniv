@@ -185,7 +185,7 @@ export function SubmissionListRow({
                   <ShieldAlert className="w-3.5 h-3.5 text-red-500 shrink-0 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Detected: {submission.detected_keywords.join(', ')}</p>
+                  <p>Terdeteksi saat pengajuan awal (tidak dihitung ulang): {submission.detected_keywords.join(', ')}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

@@ -185,9 +185,16 @@ export function orderStepOf(first: AdScheduleEntry, now: Date = new Date()): num
     const end = scheduleEnd(first);
     const hasDates = !!start && !!end;
 
-    // 1. Ditolak/spam yang belum pernah bayar → revisi. Diletakkan di atas
-    //    karena sumbu tayangnya ('cancelled') tidak membawa informasi apa pun.
-    if (!paid && ['rejected', 'spam'].includes(first.reviewStatus)) return -1;
+    // 1. Order MATI yang belum pernah bayar → -1. Diletakkan di atas karena
+    //    sumbu tayangnya ('cancelled') tidak membawa informasi apa pun.
+    //
+    //    `cancelled` ikut di sini sejak sql/69. Tanpa itu ia lolos ke aturan (3)
+    //    dan mendarat di step 0 — yang berarti dashboard peneliti berkata
+    //    "sedang direview admin" untuk pesanan yang sudah dibatalkan.
+    //
+    //    -1 sendiri tidak membedakan MENGAPA ordernya mati; pemanggil yang
+    //    perlu membedakan (`deriveOrderUiState`) membaca `reviewStatus`.
+    if (!paid && ['rejected', 'spam', 'cancelled'].includes(first.reviewStatus)) return -1;
 
     // 2. Lunas menutup sumbu review — lihat catatan (1) di kepala berkas.
     if (paid) {

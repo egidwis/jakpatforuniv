@@ -6,7 +6,15 @@
 import { toast } from 'sonner';
 
 export interface ReviewHistoryEntry {
-  action: 'in_review' | 'approved' | 'rejected' | 'spam';
+  action: 'in_review' | 'approved' | 'rejected' | 'spam' | 'cancelled';
+  /**
+   * Siapa yang menekan tombolnya. Tanpa ini entri `in_review` dari peneliti
+   * ("Saya Sudah Perbaiki") dan dari tombol Reset admin tampil IDENTIK — dua
+   * peristiwa yang sangat berbeda dengan satu wajah. Opsional karena entri
+   * yang lahir sebelum kolomnya ada tidak punya nilai ini; pembacanya jatuh
+   * ke label netral.
+   */
+  actor?: 'admin' | 'researcher';
   notes?: string;
   timestamp: string; // ISO 8601
 }
@@ -43,6 +51,8 @@ export interface SurveySubmission {
   slot_reserved_at?: string;
   admin_notes?: string;
   submission_status?: string;
+  /** Disingkirkan pemilik baris dari daftarnya (sql/69). Bukan keadaan order. */
+  dismissed_at?: string | null;
   distribution_type?: 'regular' | 'kilat';
   /**
    * Gelombang push Kilat dalam jam WIB (8/11/14/17). NULL/undefined pada order

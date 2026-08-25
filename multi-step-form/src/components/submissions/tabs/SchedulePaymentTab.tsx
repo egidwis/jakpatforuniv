@@ -263,9 +263,13 @@ export function SchedulePaymentTab({
    * Membuka ini butuh formulir itu mengenal jalur distribusi lebih dulu: bukan
    * cuma rumus harga, tapi pemilih gelombang alih-alih rentang hari.
    */
+  // `cancelled` ikut sejak sql/69. Sebelumnya nilai itu praktis tak terlihat
+  // (2 baris, disaring habis dari dashboard peneliti), jadi lubangnya tak
+  // pernah terbuka; begitu pembatalan jadi jalur resmi, menambahkan jadwal ke
+  // order yang sudah dihentikan berhenti jadi hal mustahil.
   const isSpamOrRejected =
-    ['rejected', 'spam'].includes(submission.submission_status || '') ||
-    ['rejected', 'spam'].includes(submission.status || '');
+    ['rejected', 'spam', 'cancelled'].includes(submission.submission_status || '') ||
+    ['rejected', 'spam', 'cancelled'].includes(submission.status || '');
 
   const canAddSchedule =
     submission.distribution_type !== 'kilat' &&
@@ -279,7 +283,11 @@ export function SchedulePaymentTab({
           <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
             <span className="leading-relaxed">
-              <strong>Submission berstatus {submission.submission_status === 'spam' || submission.status === 'spam' ? 'Spam' : 'Ditolak'}.</strong>{' '}
+              <strong>Order berstatus {
+                submission.submission_status === 'spam' || submission.status === 'spam' ? 'Tidak Valid'
+                  : submission.submission_status === 'cancelled' || submission.status === 'cancelled' ? 'Dibatalkan'
+                    : 'Menunggu Perbaikan'
+              }.</strong>{' '}
               Jadwal dinonaktifkan. Silakan ubah status review menjadi <strong>Approved</strong> di tab Review jika ingin menjadwalkan kembali order ini.
             </span>
           </div>

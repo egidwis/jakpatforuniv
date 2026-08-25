@@ -429,7 +429,7 @@ export const translations = {
     errorConnectionFailed: "Failed to connect to server. Please check your internet connection.",
 
     // Revision / Spam Status
-    revisionNeededTitle: "Please Resubmit",
+    revisionNeededTitle: "Awaiting Revision",
     revisionNeededDescPart1: "There are issues during the review process, such as inaccessible links or information that does not comply with our",
     revisionNeededDescPart2: ". Please update the necessary data and resubmit your survey.",
     resubmit: "Resubmit",
@@ -624,6 +624,7 @@ export const translations = {
     calloutPayBeforeSuffixCutoff: "so your ad can go live on the scheduled date.",
     calloutPaymentGeneric: "Complete your payment to secure your survey's airing schedule.",
     calloutAwaitingInvoice: "Slot reserved. Waiting for the admin to issue your invoice — max 1 working day.",
+    calloutAwaitingAdminSchedule: "Your questionnaire is approved. Our team is setting the airing schedule and will issue your invoice — max 1 working day. You don't need to pick a schedule yourself.",
     calloutExpired: "Payment expired and the slot was released. Pick a new schedule — no need to resubmit.",
     calloutTooLateToday: "Payment for today's schedule passed the 14:00 WIB cut-off, so the ad can no longer go live today. Pick a new schedule — no need to resubmit.",
     paymentQuotaPriorityNote: "Daily airing quota is limited, so we prioritise publishing in the order payments arrive. To secure the schedule you want, we recommend paying before that day's quota fills up 🙏",
@@ -646,16 +647,33 @@ export const translations = {
 
     // Order card v3 — phase ① Review
     phaseReviewTitle: "Review",
-    reviewChipRejected: "Needs Revision",
+    // "Awaiting Revision", not "Rejected": the decision is NOT final — an admin
+    // can still approve it the moment the researcher fixes the questionnaire,
+    // without the researcher having to click anything first.
+    reviewChipRejected: "Awaiting Revision",
     reviewChipPending: "In Review",
     reviewChipApproved: "Approved",
-    reviewTitleRejected: "Questionnaire Needs Revision",
-    reviewSubRejected: "Your questionnaire requires minor revisions before proceeding to scheduling.",
+    reviewChipCancelled: "Cancelled",
+    reviewTitleRejected: "Questionnaire Awaiting Revision",
+    reviewSubRejected: "Your questionnaire needs a few fixes before we can process it further. This is not a rejection — once you're done, we'll review it again.",
+    reviewTitleCancelled: "Order Cancelled",
+    cancelledByResearcher: "You cancelled this order",
+    cancelledByAdmin: "Cancelled by the Jakpat team",
+    cancelledStaleInvoiceWarning: "Any invoice already issued no longer applies. Please don't pay a payment link you may have received.",
+    cancelledNextStep: "This order will not go live. If you still want to advertise this survey, please create a new order.",
+    btnCancelOrder: "Cancel Order",
+    cancelOrderConfirmTitle: "Cancel this order?",
+    cancelOrderConfirmBody: "The order stops here and will not go live. Any reserved slot is released, and an invoice already issued stops being valid. It stays visible under \"Done\" so you can still see what happened.",
+    cancelOrderConfirmAction: "Yes, cancel order",
+    cancelOrderSuccess: "Order cancelled.",
+    cancelOrderError: "Could not cancel the order. Please try again.",
     reviewerNotesTitle: "Notes from Review Team",
     reviewGuideText: "Please update your questionnaire, then submit your confirmation below:",
     btnConfirmFixed: "I Have Fixed the Questionnaire",
     btnChangeLink: "Change Form Link",
-    btnDeleteForm: "Delete Form",
+    // Named after the nav label the researcher actually sees ("My Order"),
+    // not a new word. It removes the card from the list; it deletes nothing.
+    btnDeleteForm: "Remove from My Orders",
     submittingReReview: "Submitting...",
     // Label chip = SUMBER form; hint = SIAPA yang mereview. Dua fakta berbeda
     // yang dulu dipadatkan jadi satu kalimat ("Auto Review - Google Form").
@@ -679,6 +697,7 @@ export const translations = {
     totalPaymentLabel: "Total Payment",
     sectionPublication: "Publication",
     bookingStatusChooseSchedule: "Awaiting Schedule",
+    bookingStatusAwaitingAdminSchedule: "Team is scheduling",
     bookingStatusAwaitingInvoice: "Awaiting Invoice",
     bookingStatusTooLateToday: "Past Today's Cut-off",
     airingStartTimeNote: "Starts at 15:00 WIB",
@@ -692,7 +711,7 @@ export const translations = {
     incentiveNoAdditionNote: "No addition — current incentive still applies",
     calloutAwaitingInvoiceSchedule: "Waiting for the admin to issue the invoice for this ad schedule.",
     calloutCancelledSchedule: "This schedule was cancelled by the admin. Need an explanation? Chat with Mimin below.",
-    scheduleEmptyRejected: "Finish your survey revision first to continue to the ad schedule.",
+    scheduleEmptyRejected: "No airing schedule for this order yet.",
     scheduleEmptyPending: "Ad schedules can be picked once your review is approved.",
     publicationEmptyState: "Airing info will appear once a schedule is paid.",
     adPageLinkLabel: "Ad Page",
@@ -1216,7 +1235,7 @@ export const translations = {
     winner: "pemenang",
 
     // Revision / Spam Status
-    revisionNeededTitle: "Mohon Submit Ulang",
+    revisionNeededTitle: "Menunggu Perbaikan",
     revisionNeededDescPart1: "Terdapat kendala saat proses review, seperti tautan yang belum dapat diakses atau informasi yang belum sesuai dengan",
     revisionNeededDescPart2: " kami. Silakan perbarui data yang diperlukan dan submit ulang survei Anda.",
     resubmit: "Submit Ulang",
@@ -1410,6 +1429,7 @@ export const translations = {
     calloutPayBeforeSuffixCutoff: "agar iklan bisa tayang di tanggal yang dijadwalkan.",
     calloutPaymentGeneric: "Selesaikan pembayaran untuk mengamankan jadwal tayang survei kamu.",
     calloutAwaitingInvoice: "Slot berhasil dipesan. Menunggu admin menerbitkan tagihan — maksimal 1 hari kerja.",
+    calloutAwaitingAdminSchedule: "Kuesionermu sudah disetujui. Tim kami sedang menetapkan jadwal tayang lalu menerbitkan tagihannya — maksimal 1 hari kerja. Kamu tidak perlu memilih jadwal sendiri.",
     calloutExpired: "Pembayaran kedaluwarsa dan slot dilepas. Pilih jadwal baru — tidak perlu submit ulang.",
     calloutTooLateToday: "Pembayaran untuk jadwal hari ini sudah lewat batas 14.00 WIB, jadi iklan belum bisa tayang hari ini. Pilih jadwal baru — tidak perlu submit ulang.",
     paymentQuotaPriorityNote: "Kuota penayangan iklan tersedia terbatas setiap harinya. Untuk itu, jadwal publish akan kami prioritaskan berdasarkan urutan pembayaran yang masuk. Agar bisa mendapatkan jadwal sesuai yang diharapkan, kami sarankan melakukan pembayaran sebelum kuota hari tersebut terpenuhi ya, Kak 🙏",
@@ -1432,16 +1452,33 @@ export const translations = {
 
     // Order card v3 — fase ① Review
     phaseReviewTitle: "Review",
-    reviewChipRejected: "Perlu Penyesuaian",
+    // "Menunggu Perbaikan", bukan "Ditolak"/"Perlu Penyesuaian": statusnya BELUM
+    // FINAL — admin masih bisa meloloskannya begitu peneliti memperbaiki, tanpa
+    // peneliti perlu mengklik apa pun lebih dulu.
+    reviewChipRejected: "Menunggu Perbaikan",
     reviewChipPending: "Di-review",
     reviewChipApproved: "Disetujui",
-    reviewTitleRejected: "Kuesioner Perlu Penyesuaian",
-    reviewSubRejected: "Kuesioner Anda memerlukan perbaikan kecil sebelum dapat kami proses ke tahap berikutnya.",
+    reviewChipCancelled: "Dibatalkan",
+    reviewTitleRejected: "Kuesioner Menunggu Perbaikan",
+    reviewSubRejected: "Kuesioner Anda memerlukan beberapa perbaikan sebelum dapat kami proses ke tahap berikutnya. Ini bukan penolakan — begitu selesai, kami review lagi.",
+    reviewTitleCancelled: "Pesanan Dibatalkan",
+    cancelledByResearcher: "Kamu membatalkan pesanan ini",
+    cancelledByAdmin: "Dibatalkan oleh tim Jakpat",
+    cancelledStaleInvoiceWarning: "Tagihan yang sudah terbit tidak berlaku lagi. Jangan bayar link pembayaran yang mungkin sudah kamu terima.",
+    cancelledNextStep: "Pesanan ini tidak akan tayang. Kalau masih ingin mengiklankan survei ini, silakan buat pesanan baru.",
+    btnCancelOrder: "Batalkan Pesanan",
+    cancelOrderConfirmTitle: "Batalkan pesanan ini?",
+    cancelOrderConfirmBody: "Pesanan berhenti sampai di sini dan tidak akan tayang. Slot yang sudah dipesan dilepas, dan tagihan yang sudah terbit berhenti berlaku. Pesanannya tetap terlihat di tab \"Selesai\" supaya kamu masih bisa menelusurinya.",
+    cancelOrderConfirmAction: "Ya, batalkan pesanan",
+    cancelOrderSuccess: "Pesanan dibatalkan.",
+    cancelOrderError: "Gagal membatalkan pesanan. Silakan coba lagi.",
     reviewerNotesTitle: "Catatan dari Tim Reviewer",
     reviewGuideText: "Perbaiki kuesioner Anda, lalu konfirmasi di bawah jika sudah selesai:",
     btnConfirmFixed: "Saya Sudah Perbaiki Kuesioner",
     btnChangeLink: "Ganti Link Form",
-    btnDeleteForm: "Hapus Form",
+    // Namanya mengikuti label nav yang dilihat peneliti ("Order Saya"), bukan
+    // istilah baru. Ia menyingkirkan kartu dari daftar; tidak menghapus apa pun.
+    btnDeleteForm: "Hapus dari Order Saya",
     submittingReReview: "Mengirimkan...",
     reviewMethodAuto: "Google Forms",
     reviewMethodManual: "Manual Review",
@@ -1463,6 +1500,7 @@ export const translations = {
     totalPaymentLabel: "Total Pembayaran",
     sectionPublication: "Penayangan",
     bookingStatusChooseSchedule: "Menunggu jadwal dipilih",
+    bookingStatusAwaitingAdminSchedule: "Tim sedang menjadwalkan",
     bookingStatusAwaitingInvoice: "Menunggu Tagihan",
     bookingStatusTooLateToday: "Lewat Batas Hari Ini",
     airingStartTimeNote: "Mulai 15.00 WIB",
@@ -1476,7 +1514,7 @@ export const translations = {
     incentiveNoAdditionNote: "Tanpa tambahan — insentif berjalan tetap berlaku",
     calloutAwaitingInvoiceSchedule: "Menunggu admin menerbitkan tagihan untuk jadwal iklan ini.",
     calloutCancelledSchedule: "Jadwal ini dibatalkan oleh admin. Butuh penjelasan? Chat Mimin di bawah.",
-    scheduleEmptyRejected: "Selesaikan revisi survei terlebih dahulu untuk melanjutkan ke jadwal iklan.",
+    scheduleEmptyRejected: "Belum ada jadwal iklan untuk pesanan ini.",
     scheduleEmptyPending: "Jadwal iklan bisa dipilih setelah review disetujui.",
     publicationEmptyState: "Info penayangan akan muncul setelah ada jadwal yang lunas.",
     adPageLinkLabel: "Halaman Iklan",

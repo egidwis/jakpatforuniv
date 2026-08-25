@@ -150,7 +150,11 @@ export function deriveLifecycle(
   // jadi ia menang atas sumbu tayang maupun sumbu uang. Papan Schedule sudah
   // menamainya lewat `chipKindOf`; daftar Submissions tidak boleh memberi nama
   // lain untuk baris yang sama.
-  else if (displayStatus === 'cancelled') stage = 'cancelled';
+  // `slot_cancelled` ikut di sini: sql/62 §2 sengaja MENJAGA sumbu review tetap
+  // 'approved', jadi tanpa cabang ini order yang slotnya dilepas admin jatuh ke
+  // `else` paling bawah dan chip daftarnya berbunyi "Need Review" — mengundang
+  // admin me-review ulang sesuatu yang sudah pernah diputuskan.
+  else if (displayStatus === 'cancelled' || displayStatus === 'slot_cancelled') stage = 'cancelled';
   else if (pageStatus === 'live' || (!isKilat && submission.status === 'live' && !legacyEnded)) stage = 'live';
   else if (pageStatus === 'scheduled') stage = 'page_scheduled';
   else if (
@@ -204,11 +208,15 @@ export function getSubmissionActionDot(
   if (isReviewActive) {
     return {
       type: 'red',
-      label: isRejected ? 'Review ditolak' : 'Perlu tindakan di tab Review',
+      label: isRejected ? 'Menunggu perbaikan peneliti' : 'Perlu tindakan di tab Review',
     };
   }
 
-  if (displayStatus === 'spam') {
+  // Keadaan akhir — tidak ada yang perlu ditindak. Diukur lewat `stage`, bukan
+  // `displayStatus`, supaya `slot_cancelled` (yang sumbu review-nya tetap
+  // 'approved') ikut tertangkap; kalau tidak, ia lolos ke cabang jadwal di
+  // bawah dan berteriak "Menunggu Pembayaran" untuk slot yang sudah dilepas.
+  if (displayStatus === 'spam' || lifecycle.stage === 'cancelled') {
     return null;
   }
 

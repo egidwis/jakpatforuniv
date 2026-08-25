@@ -440,7 +440,13 @@ export interface FormSubmission {
   status?: string;
   submission_status?: 'in_review' | 'approved' | 'rejected' | 'spam'
     | 'slot_reserved' | 'waiting_payment' | 'paid'
-    | 'scheduled' | 'live' | 'completed';
+    | 'scheduled' | 'live' | 'completed'
+    // `cancelled`  = SELURUH ORDER dihentikan (admin atau peneliti). Sejak
+    //                sql/69 kata ini akhirnya berarti apa yang tertulis:
+    //                sebelumnya ia dipakai untuk "sembunyikan dari daftar".
+    // `slot_cancelled` = hanya SLOTNYA yang dilepas admin; sumbu review-nya
+    //                sengaja tetap 'approved' (sql/62 §2).
+    | 'cancelled' | 'slot_cancelled';
   referral_source?: string;
   winner_count?: number;
   prize_per_winner?: number;
@@ -450,6 +456,9 @@ export interface FormSubmission {
   ppn_amount?: number;         // PPN 11% (null utk submission pra-PPN)
   payment_status?: string;
   submission_method?: string;
+  /** Disingkirkan pemilik baris dari daftarnya (sql/69). Bukan keadaan order. */
+  dismissed_at?: string | null;
+  review_history?: ReviewHistoryEntry[];
   detected_keywords?: string[];
   custom_form_id?: string | null;
   admin_notes?: string;
@@ -1020,33 +1029,21 @@ export const updateFormStatus = async (
       updateData.review_history = reviewHistory;
     }
 
+    // ⚠️ TIDAK ADA LAGI FALLBACK 42703 DI SINI.
+    //
+    // Dulu fungsi ini menangkap "kolom tidak ada" lalu diam-diam mengulang
+    // TANPA `review_history`. Kolomnya memang tidak pernah ada, jadi cabang
+    // "fallback" itu ternyata SATU-SATUNYA jalur yang pernah diambil — dan
+    // setiap keputusan review menguap begitu halaman di-refresh, tanpa satu
+    // pun tanda di layar. Kolomnya lahir di sql/69; kalau penulisannya gagal
+    // sekarang, itu HARUS berisik.
     const { data, error } = await supabase
       .from('form_submissions')
       .update(updateData)
       .eq('id', id)
       .select();
 
-    if (error) {
-      const isMissingColumn = error.code === '42703' || error.message?.includes('review_history');
-      if (isMissingColumn && reviewHistory !== undefined) {
-        console.warn('review_history column does not exist. Retrying update without review_history...');
-        const fallbackData: any = { submission_status: status };
-        if (notes !== undefined) {
-          fallbackData.admin_notes = notes;
-        }
-        console.log('Sending fallback update query with data:', fallbackData);
-        const { data: retryData, error: retryError } = await supabase
-          .from('form_submissions')
-          .update(fallbackData)
-          .eq('id', id)
-          .select();
-        
-        console.log('Fallback retry result:', { retryData, retryError });
-        if (retryError) throw retryError;
-        return retryData[0];
-      }
-      throw error;
-    }
+    if (error) throw error;
     return data[0];
   } catch (error: any) {
     console.error('Error updating form status:', error);
@@ -1067,7 +1064,7 @@ export const updateFormStatus = async (
  * yang benar-benar terhapus, sehingga "tidak ada yang terhapus" bisa dibedakan dari
  * "berhasil" dan dilempar sebagai error. JANGAN hapus `.select()` itu.
  *
- * Untuk menyingkirkan order dari daftar user, pakai `dismissRejectedSubmission()` —
+ * Untuk menyingkirkan order dari daftar user, pakai `dismissSubmission()` —
  * ia menyimpan datanya (bisa ditelusuri saat ada keluhan), bukan menghapusnya.
  */
 export const deleteFormSubmission = async (id: string) => {
@@ -1092,42 +1089,94 @@ export const deleteFormSubmission = async (id: string) => {
 };
 
 /**
- * Menyingkirkan order yang DITOLAK review dari daftar user, tanpa menghapus datanya.
+ * Menyingkirkan order MATI dari daftar user, tanpa menghapus datanya dan tanpa
+ * menyentuh statusnya.
  *
- * Dipakai tombol "Hapus" di kartu order (ReviewPhase hanya menampilkannya untuk
- * status `rejected`/`spam`). Soft-delete dipilih ketimbang DELETE sungguhan karena:
- *   - `survey_pages`, `invoices`, dan `transactions` TIDAK punya foreign key ke
- *     `form_submissions`, jadi penghapusan keras akan meninggalkan baris yatim;
- *   - riwayat order tetap perlu ada saat user menghubungi bantuan;
- *   - user memang cuma ingin membersihkan tampilan, bukan melenyapkan bukti.
+ * Dulu ini bernama `dismissRejectedSubmission` dan menulis
+ * `submission_status = 'cancelled'`. Itu keliru dua kali:
  *
- * `submission_status = 'cancelled'` aman dipakai sebagai penanda di tabel ini: nol
- * baris `form_submissions` memakainya (dicek di produksi 2026-08-09) dan tidak ada
- * kode lain yang menulisnya — pembatalan oleh admin hidup di `form_submissions_extend`
- * (lihat SchedulePaymentTab). Trigger `guard_payment_columns()` juga sudah
- * mengizinkan transisi non-admin menuju `cancelled` selama order belum lunas.
+ *   1. Menyembunyikan adalah PREFERENSI TAMPILAN PEMILIK BARIS, bukan keadaan
+ *      order. Ia tidak berhak menduduki satu nilai status — apalagi nilai yang
+ *      kata-katanya berarti hal lain sama sekali.
+ *   2. Karena kata 'cancelled' terpakai untuk ini, tidak tersisa kata untuk
+ *      pembatalan yang sesungguhnya. sql/69 memindahkan perilakunya ke kolom
+ *      `dismissed_at` dan membebaskan 'cancelled' berarti "dibatalkan".
  *
- * Penyaring `.in(...)` menjaga agar hanya order yang benar-benar ditolak bisa
- * disingkirkan — order berbayar tidak akan pernah ikut terbawa meski dipanggil keliru.
+ * Soft-hide, bukan DELETE, karena `survey_pages`, `invoices`, dan `transactions`
+ * TIDAK punya foreign key ke `form_submissions`: penghapusan keras meninggalkan
+ * baris yatim, dan riwayat order tetap perlu ada saat user menghubungi bantuan.
+ *
+ * `.select('id')` WAJIB: RLS membalas sukses-dengan-nol-baris, bukan error, jadi
+ * tanpa ini "tidak ada yang tersentuh" tidak bisa dibedakan dari "berhasil".
+ *
+ * Penyaring `.in(...)` kini mencakup SEMUA keadaan mati — menyembunyikan sudah
+ * orthogonal terhadap sebabnya, bukan cuma melayani satu tombol.
  */
-export const dismissRejectedSubmission = async (id: string) => {
+export const dismissSubmission = async (id: string) => {
   try {
     const { data, error } = await supabase
       .from('form_submissions')
-      .update({ submission_status: 'cancelled' })
+      .update({ dismissed_at: new Date().toISOString() })
       .eq('id', id)
-      .in('submission_status', ['rejected', 'spam'])
+      .in('submission_status', ['rejected', 'spam', 'cancelled'])
       .select('id');
 
     if (error) throw error;
     if (!data || data.length === 0) {
       throw new Error(
-        `Order ${id} tidak bisa disingkirkan — statusnya bukan rejected/spam, atau ditolak RLS.`
+        `Order ${id} tidak bisa disingkirkan — statusnya masih aktif, atau ditolak RLS.`
       );
     }
     return true;
   } catch (error: any) {
-    console.error('Error dismissing rejected submission:', error);
+    console.error('Error dismissing submission:', error);
+    throw error;
+  }
+};
+
+/**
+ * Peneliti membatalkan pesanannya sendiri — SELAMA BELUM LUNAS.
+ *
+ * Ini keadaan order yang sesungguhnya, bukan preferensi tampilan: ordernya
+ * TETAP TERLIHAT peneliti (pindah ke tab "Selesai" bertanda Dibatalkan), dan
+ * hanya hilang kalau ia juga menekan "Hapus dari Order Saya" (`dismissSubmission`).
+ *
+ * DUA LAPIS PENJAGA, dan lapis pertamanya bukan di sini:
+ *
+ *   1. Trigger `guard_payment_columns()` (sql/33) di DATABASE. Ia denylist:
+ *      memblokir transisi yang menyentuh paid|scheduled|live|completed untuk
+ *      pemanggil non-admin. Jadi order lunas ditolak database — dipanggil paksa
+ *      lewat konsol pun tetap gagal. Aturan "order lunas hanya lewat admin"
+ *      sudah ditegakkan di sana, bukan sekadar disembunyikan di UI.
+ *   2. `.in(...)` di bawah, sebagai jaring kedua yang eksplisit terbaca.
+ *
+ * `.select('id')` wajib, alasannya sama dengan `dismissSubmission`.
+ */
+export const cancelOrder = async (id: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .update({ submission_status: 'cancelled' })
+      .eq('id', id)
+      .in('submission_status', [
+        'in_review',
+        'pending',
+        'rejected',
+        'approved',
+        'slot_reserved',
+        'waiting_payment',
+      ])
+      .select('id');
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(
+        `Pesanan ${id} tidak bisa dibatalkan sendiri — kemungkinan sudah lunas atau sedang tayang.`
+      );
+    }
+    return true;
+  } catch (error: any) {
+    console.error('Error cancelling order:', error);
     throw error;
   }
 };
@@ -1298,13 +1347,154 @@ const submissionIdsForBookingId = async (
 };
 
 // Fungsi untuk mendapatkan form submissions dengan pagination
+/**
+ * Hitung ulang harga order dari kolom-kolomnya, lalu tulis
+ * `total_cost/subtotal/ppn_amount`.
+ *
+ * ⚠️ Ada karena `updateFormDetails` menulis `question_count` TANPA menyentuh
+ * ketiga kolom harga itu. Padahal InvoiceForm dan `SchedulePhase` peneliti
+ * menghitung ulang dari `question_count`, jadi koreksi jumlah pertanyaan oleh
+ * admin membuat peneliti melihat harga baru tanpa penjelasan sementara kolom
+ * `total_cost` di daftar admin masih angka lama. Dua layar, satu order, dua
+ * harga.
+ *
+ * Rumusnya SENGAJA dipinjam dari `convertDistributionType` alih-alih ditulis
+ * ulang — versi kelima dari rumus yang sama adalah versi yang akan menyimpang
+ * lebih dulu. Voucher tetap dinilai pada tanggal order LAHIR: mengoreksi jumlah
+ * pertanyaan tidak boleh mencabut hak diskon yang sudah dimiliki pemesannya.
+ *
+ * Order LUNAS tidak pernah ditulis ulang — harganya mencatat uang yang sudah
+ * masuk, dan mengubahnya membuat pembukuan berbohong.
+ */
+export const recomputeOrderPrice = async (
+  submissionId: string,
+  overrides: { questionCount?: number } = {}
+): Promise<{ totalCost: number; subtotal: number; ppn: number; skipped?: 'paid' }> => {
+  const { data: sub, error: readError } = await supabase
+    .from('form_submissions')
+    .select('question_count, duration, winner_count, prize_per_winner, voucher_code, payment_status, submission_status, distribution_type, created_at, total_cost, subtotal, ppn_amount')
+    .eq('id', submissionId)
+    .single();
+
+  if (readError) throw readError;
+  if (!sub) throw new Error('Order tidak ditemukan.');
+
+  const isPaid =
+    ['paid', 'completed'].includes(sub.payment_status || '') ||
+    ['paid', 'scheduled', 'live', 'completed'].includes(sub.submission_status || '');
+
+  const questionCount = Number(overrides.questionCount ?? sub.question_count) || 0;
+  const duration = Number(sub.duration) || 0;
+  const winnerCount = Number(sub.winner_count) || 0;
+  const prizePerWinner = Number(sub.prize_per_winner) || 0;
+  const incentiveCost = calculateIncentiveCost(winnerCount, prizePerWinner);
+
+  let subtotal: number;
+  if (sub.distribution_type === 'kilat') {
+    subtotal =
+      calculateAdCostPerDay(questionCount) +
+      getKilatAddonCost(sub.voucher_code) +
+      incentiveCost;
+  } else {
+    const adCost = calculateTotalAdCost(questionCount, duration);
+    const discount = calculateDiscount(
+      sub.voucher_code, adCost, incentiveCost, duration, voucherInstantOf(sub.created_at),
+    );
+    subtotal = adCost + incentiveCost - discount;
+  }
+
+  const ppn = calculatePpn(subtotal);
+  const totalCost = subtotal + ppn;
+
+  if (isPaid) {
+    return {
+      totalCost: Number(sub.total_cost) || 0,
+      subtotal: Number(sub.subtotal) || 0,
+      ppn: Number(sub.ppn_amount) || 0,
+      skipped: 'paid',
+    };
+  }
+
+  const { error: writeError } = await supabase
+    .from('form_submissions')
+    .update({ total_cost: totalCost, subtotal, ppn_amount: ppn })
+    .eq('id', submissionId);
+
+  if (writeError) throw writeError;
+  return { totalCost, subtotal, ppn };
+};
+
+/** Pratinjau harga TANPA menulis apa pun — untuk dialog konfirmasi. */
+export const previewOrderPrice = async (
+  submissionId: string,
+  questionCount: number
+): Promise<number> => {
+  const { data: sub, error } = await supabase
+    .from('form_submissions')
+    .select('duration, winner_count, prize_per_winner, voucher_code, distribution_type, created_at')
+    .eq('id', submissionId)
+    .single();
+  if (error || !sub) throw error || new Error('Order tidak ditemukan.');
+
+  const duration = Number(sub.duration) || 0;
+  const incentiveCost = calculateIncentiveCost(
+    Number(sub.winner_count) || 0,
+    Number(sub.prize_per_winner) || 0,
+  );
+  let subtotal: number;
+  if (sub.distribution_type === 'kilat') {
+    subtotal = calculateAdCostPerDay(questionCount) + getKilatAddonCost(sub.voucher_code) + incentiveCost;
+  } else {
+    const adCost = calculateTotalAdCost(questionCount, duration);
+    const discount = calculateDiscount(
+      sub.voucher_code, adCost, incentiveCost, duration, voucherInstantOf(sub.created_at),
+    );
+    subtotal = adCost + incentiveCost - discount;
+  }
+  return subtotal + calculatePpn(subtotal);
+};
+
+/**
+ * Berapa order yang berstatus ini — DI SELURUH DATABASE, tanpa filter bulan.
+ *
+ * Angka pada tab antrean dulu dihitung dari 50 baris yang kebetulan termuat,
+ * jadi ia mengukur halaman, bukan pekerjaan. `head: true` membuat Postgres
+ * mengembalikan hitungan tanpa satu pun baris ikut terkirim.
+ */
+export const countSubmissionsByStatus = async (statuses: string[]): Promise<number> => {
+  try {
+    const { count, error } = await supabase
+      .from('form_submissions')
+      .select('id', { count: 'exact', head: true })
+      .in('submission_status', statuses);
+    if (error) throw error;
+    return count ?? 0;
+  } catch (error: any) {
+    console.error('Error counting submissions by status:', error);
+    return 0;
+  }
+};
+
 export const getFormSubmissionsPaginated = async (
   page: number,
   limit: number,
   searchQuery: string = '',
   startDate?: string,
   endDate?: string,
-  ascending: boolean = false
+  ascending: boolean = false,
+  /**
+   * Saring `submission_status` DI SERVER, dan lewati filter bulan saat terisi.
+   *
+   * Antrean review adalah PEKERJAAN YANG BELUM SELESAI, bukan arsip bulan
+   * tertentu. Tanpa ini, order yang masuk Juli lalu diperbaiki penelitinya hari
+   * ini tidak pernah muncul lagi di layar admin: `created_at`-nya Juli, dan
+   * layar default hanya memuat bulan berjalan × 50 baris — lalu menyaring
+   * statusnya dari 50 baris itu saja. Perbaikan yang tidak pernah terlihat sama
+   * saja dengan perbaikan yang tidak pernah terjadi.
+   *
+   * Alasannya sejajar dengan pengecualian pencarian ID di bawah.
+   */
+  statusIn?: string[]
 ) => {
   try {
     const from = (page - 1) * limit;
@@ -1368,7 +1558,12 @@ export const getFormSubmissionsPaginated = async (
     //
     // Pencarian TEKS tetap terikat bulan: di sana bulan memang menyempitkan
     // sesuatu yang bisa cocok di ratusan baris.
-    if (startDate && endDate && !isIdSearch) {
+    const isStatusQueue = !!statusIn && statusIn.length > 0;
+    if (isStatusQueue) {
+      query = query.in('submission_status', statusIn!);
+    }
+
+    if (startDate && endDate && !isIdSearch && !isStatusQueue) {
       query = query.gte('created_at', startDate).lte('created_at', endDate);
     }
 
@@ -2433,8 +2628,9 @@ export const releaseExpiredSlot = async (submissionId: string) => {
  * `airing_status_of()` (sql/46) memetakannya jadi 'requested', sehingga jadwal
  * yang dibatalkan tampak seperti permintaan aktif. Larangan itu BENAR saat
  * ditulis dan sudah TIDAK berlaku sejak `sql/62`: sumbu tayang kini punya
- * `slot_cancelled` sendiri, terpisah dari `'cancelled'` yang sudah dipakai
- * `dismissRejectedSubmission()` untuk penyingkiran oleh peneliti.
+ * `slot_cancelled` sendiri, terpisah dari `'cancelled'`. (sql/69 kemudian
+ * memberi `'cancelled'` sebuah cabang sendiri juga, jadi larangan itu tidak
+ * berlaku untuk nilai mana pun sekarang.)
  *
  * Mengosongkan tanggal memang membebaskan kuota, tapi dengan ongkos yang baru
  * terasa belakangan: RIWAYATNYA IKUT TERHAPUS. Tidak ada lagi cara menjawab
@@ -2495,10 +2691,13 @@ export const cancelSchedule = async (entry: {
     const { data, error } = await supabase
       .from('form_submissions')
       .update({
-        // `slot_cancelled`, BUKAN `cancelled` — nilai kedua itu sudah dipakai
-        // `dismissRejectedSubmission()` untuk penyingkiran oleh peneliti, dan
-        // melipat keduanya membuat laporan tidak bisa lagi memisahkan
-        // "peneliti membuang order ditolak" dari "admin membatalkan slot".
+        // `slot_cancelled`, BUKAN `cancelled` — dua peristiwa yang berbeda.
+        // `cancelled` membatalkan SELURUH ORDER: sumbu review-nya ikut mati.
+        // `slot_cancelled` cuma melepas SLOTNYA; sql/62 §2 sengaja menjaga
+        // sumbu review tetap 'approved', karena membatalkan slot tidak
+        // membatalkan persetujuan kuesionernya. Melipat keduanya membuat
+        // laporan tidak bisa lagi memisahkan "order ini dihentikan" dari
+        // "jadwalnya kami lepas, ordernya masih hidup".
         submission_status: 'slot_cancelled',
         payment_status: 'expired',
         // Tanggal TETAP — lihat kepala fungsi.

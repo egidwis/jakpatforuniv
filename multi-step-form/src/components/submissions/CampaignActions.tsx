@@ -315,7 +315,7 @@ export function PaymentAction({
     );
   }
 
-  const payTooltip = isRejectedEvent ? 'Submission was rejected.' : 'Reserve a slot first.';
+  const payTooltip = isRejectedEvent ? 'Order menunggu perbaikan / ditandai tidak valid.' : 'Reserve a slot first.';
   return (
     <TooltipProvider>
       <Tooltip>

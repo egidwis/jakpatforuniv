@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar } from 'lucide-react';
-import { getFormSubmissionsPaginated, updateFormStatus, updatePaymentStatus, convertDistributionType, supabase } from '../utils/supabase';
+import { getFormSubmissionsPaginated, countSubmissionsByStatus, updateFormStatus, updatePaymentStatus, convertDistributionType, supabase } from '../utils/supabase';
 import { fetchProfileNames } from '../utils/profileNames';
 import { emailLocalPart } from './customers/types';
 import { useAuth } from '../context/AuthContext';
@@ -27,13 +27,25 @@ import './InternalDashboard.css';
 
 const EMPTY_PAYMENT_STATE: PaymentState = { hasInvoices: false, hasOpenInvoice: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
 
+// Kata "Rejected"/"Spam" dihapus dari layar; NILAI DB-nya tidak diubah.
+// `rejected` bukan penolakan final — admin masih bisa meloloskannya begitu
+// peneliti memperbaiki. `spam` berarti "bukan order sungguhan", dan sekarang
+// terpisah dari `cancelled` ("order sah yang dihentikan").
+/**
+ * Status yang disaring DI SERVER dan lepas dari filter bulan (lihat `statusIn`
+ * di `getFormSubmissionsPaginated`). Ketiganya adalah antrean kerja: order yang
+ * belum selesai ditangani, berapa pun umurnya.
+ */
+const SERVER_STATUS_FILTERS = ['in_review', 'rejected', 'cancelled', 'spam'] as const;
+
 const STATUS_FILTER_OPTIONS = [
   { id: 'all', label: 'All' },
   { id: 'in_review', label: 'Need Review' },
-  { id: 'rejected', label: 'Rejected' },
+  { id: 'rejected', label: 'Menunggu Perbaikan' },
   { id: 'approved', label: 'Approved' },
   { id: 'paid', label: 'Paid' },
-  { id: 'spam', label: 'Revision / Spam' },
+  { id: 'cancelled', label: 'Dibatalkan' },
+  { id: 'spam', label: 'Tidak Valid' },
 ] as const;
 
 interface InternalDashboardProps {
@@ -111,13 +123,12 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
   useEffect(() => {
     let result = submissions;
 
-    // Filter by Status
-    if (statusFilter !== 'all') {
+    // Status yang disaring SERVER (lihat SERVER_STATUS_FILTERS di loadSubmissions)
+    // sengaja TIDAK disaring lagi di sini. Menyaring ulang tidak salah hasilnya,
+    // tapi menyembunyikan kalau parameter servernya lupa dioper — kesalahannya
+    // jadi tak terlihat sampai halaman kedua.
+    if (statusFilter !== 'all' && !SERVER_STATUS_FILTERS.includes(statusFilter as any)) {
       result = result.filter(sub => {
-        if (statusFilter === 'spam') return sub.status === 'spam';
-        if (statusFilter === 'rejected') return sub.status === 'rejected';
-        if (statusFilter === 'approved') return sub.status === 'approved';
-        if (statusFilter === 'in_review') return sub.status === 'in_review';
         if (statusFilter === 'paid') return (sub.payment_status || '').toLowerCase() === 'paid';
         return true;
       });
@@ -126,13 +137,39 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     setFilteredSubmissions(result);
   }, [submissions, statusFilter]);
 
-  // Calculate Status Counts
+  /**
+   * Angka pada tab antrean. Untuk `in_review` dan `rejected` diambil dari DB
+   * tanpa filter bulan — sisanya masih dihitung dari halaman yang termuat.
+   *
+   * Bedanya penting justru pada dua status itu: keduanya adalah antrean kerja
+   * yang boleh berumur berapa pun, jadi angka yang dihitung dari 50 baris bulan
+   * berjalan bukan cuma kurang tepat — ia mengukur hal yang lain sama sekali.
+   * Status lain memang dibaca dalam konteks bulan yang sedang dibuka.
+   */
+  const [queueCounts, setQueueCounts] = useState<{ in_review: number; rejected: number }>({
+    in_review: 0,
+    rejected: 0,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [inReview, rejected] = await Promise.all([
+        countSubmissionsByStatus(['in_review', 'pending']),
+        countSubmissionsByStatus(['rejected']),
+      ]);
+      if (!cancelled) setQueueCounts({ in_review: inReview, rejected });
+    })();
+    return () => { cancelled = true; };
+  }, [submissions]);
+
   const statusCounts = {
     all: submissions.length,
-    in_review: submissions.filter(s => s.status === 'in_review').length,
-    rejected: submissions.filter(s => s.status === 'rejected').length,
+    in_review: queueCounts.in_review,
+    rejected: queueCounts.rejected,
     approved: submissions.filter(s => s.status === 'approved').length,
     paid: submissions.filter(s => (s.payment_status || '').toLowerCase() === 'paid').length,
+    cancelled: submissions.filter(s => s.status === 'cancelled').length,
     spam: submissions.filter(s => s.status === 'spam').length,
   };
 
@@ -165,13 +202,20 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
       endOfMonth.setHours(23, 59, 59, 999);
 
       // Use paginated fetch with date range
+      const serverStatuses = SERVER_STATUS_FILTERS.includes(statusFilter as any)
+        // 'in_review' juga menangkap baris lama ber-`pending` / NULL, yang di
+        // seluruh UI dibaca sebagai "Need Review".
+        ? (statusFilter === 'in_review' ? ['in_review', 'pending'] : [statusFilter])
+        : undefined;
+
       const { data, count } = await getFormSubmissionsPaginated(
         currentPage,
         pageSize,
         searchQuery,
         startOfMonth.toISOString(),
         endOfMonth.toISOString(),
-        sortDir === 'asc'
+        sortDir === 'asc',
+        serverStatuses
       );
 
       if (data) {
@@ -216,6 +260,11 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
           slot_booked_by: sub.slot_booked_by,
           slot_reserved_at: sub.slot_reserved_at,
           admin_notes: sub.admin_notes,
+          // Tanpa baris ini `review_history` tidak pernah sampai ke drawer —
+          // dan History Log cuma menampilkan aksi dalam sesi browser yang
+          // sedang berjalan, menguap setiap refresh.
+          review_history: sub.review_history || [],
+          dismissed_at: sub.dismissed_at,
           distribution_type: sub.distribution_type,
           kilat_slot_hour: sub.kilat_slot_hour,
           has_transactions: false, // Default, will verify below
@@ -412,7 +461,9 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     if (isAdmin) {
       loadSubmissions();
     }
-  }, [isAdmin, currentPage, searchQuery, currentDate, sortDir]);
+    // `statusFilter` ikut di sini sejak penyaringannya pindah ke server:
+    // mengubah tab kini mengubah QUERY-nya, bukan cuma menyaring hasil.
+  }, [isAdmin, currentPage, searchQuery, currentDate, sortDir, statusFilter]);
 
   // Re-render every 60s so time-based chips (Reserved <1h / Expired) stay honest
   const [, setNowTick] = useState(0);
@@ -589,6 +640,10 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     // Build new history entry
     const newEntry: ReviewHistoryEntry = {
       action: newStatus as ReviewHistoryEntry['action'],
+      // Semua yang lewat sini datang dari dashboard ADMIN. Tanpa penanda ini,
+      // entri `in_review` dari tombol Reset admin dan dari "Saya Sudah
+      // Perbaiki" milik peneliti tampil identik di History Log.
+      actor: 'admin',
       notes: notes || undefined,
       timestamp: new Date().toISOString(),
     };
@@ -599,7 +654,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
       newEntry,
     ];
 
-    await executeStatusUpdate(submissionId, newStatus, notes, updatedHistory);
+    await executeStatusUpdate(submissionId, newStatus, notes, updatedHistory, submission.status);
   };
 
   const handlePaymentStatusChange = async (submissionId: string, newStatus: string) => {
@@ -657,14 +712,47 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     }
   };
 
+  /**
+   * Mengabari peneliti hasil review. Endpointnya membaca ulang barisnya dari DB
+   * dan hanya mengirim kalau statusnya benar-benar cocok, jadi tidak ada yang
+   * perlu dititipkan dari sini selain id-nya.
+   *
+   * Kegagalan email TIDAK boleh membatalkan perubahan status — statusnya sudah
+   * berubah di server, dan memutar balik keputusan review gara-gara SMTP jauh
+   * lebih buruk daripada satu email yang tidak sampai. Admin diberi tahu lewat
+   * toast terpisah supaya bisa menyusul lewat WA.
+   */
+  const notifyReviewResult = async (submissionId: string, newStatus: string) => {
+    if (!['approved', 'rejected', 'cancelled'].includes(newStatus)) return;
+    try {
+      const res = await fetch('/api/notify-review-result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId, status: newStatus }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      console.error('Gagal mengirim email hasil review:', err);
+      toast.warning('Status tersimpan, tapi email ke peneliti gagal terkirim. Susulkan lewat WA.');
+    }
+  };
+
   const executeStatusUpdate = async (
     submissionId: string,
     newStatus: string,
     notes?: string,
-    reviewHistory?: ReviewHistoryEntry[]
+    reviewHistory?: ReviewHistoryEntry[],
+    /** Status sebelum aksi ini — email hanya dikirim kalau benar-benar berubah. */
+    previousStatus?: string
   ) => {
     try {
       await updateFormStatus(submissionId, newStatus, notes, reviewHistory);
+
+      if (previousStatus !== newStatus) {
+        // Sengaja tidak di-`await`: email tidak boleh menahan layar, dan
+        // kegagalannya sudah ditangani di dalam.
+        void notifyReviewResult(submissionId, newStatus);
+      }
 
       const updateState = (prev: SurveySubmission[]) =>
         prev.map(s =>
@@ -989,14 +1077,14 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
               {[
                 { id: 'all', label: 'All', count: statusCounts.all, color: 'bg-gray-100 text-gray-700' },
                 { id: 'in_review', label: 'Need Review', count: statusCounts.in_review, color: 'bg-blue-50 text-blue-700' },
-                { id: 'rejected', label: 'Rejected', count: statusCounts.rejected, color: 'bg-red-50 text-red-700' },
+                { id: 'rejected', label: 'Menunggu Perbaikan', count: statusCounts.rejected, color: 'bg-amber-50 text-amber-700' },
                 { id: 'approved', label: 'Approved', count: statusCounts.approved, color: 'bg-green-50 text-green-700' },
                 { id: 'paid', label: 'Paid', count: statusCounts.paid, color: 'bg-emerald-50 text-emerald-700' },
                 { id: 'spam', label: 'Revision / Spam', count: statusCounts.spam, color: 'bg-orange-50 text-orange-700' },
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setStatusFilter(tab.id)}
+                  onClick={() => { setStatusFilter(tab.id); setCurrentPage(1); }}
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap h-9
                     ${statusFilter === tab.id
@@ -1005,7 +1093,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                   `}
                 >
                   {tab.label}
-                  {/* Only show counter for 'Need Review' and 'Rejected' */}
+                  {/* Angka hanya untuk dua antrean kerja — keduanya dihitung
+                      dari DB tanpa filter bulan (lihat `queueCounts`). */}
                   {['in_review', 'rejected'].includes(tab.id) && (
                     <span className={`
                       px-1.5 py-0.5 rounded-md text-[10px] font-bold min-w-[18px] text-center
@@ -1107,7 +1196,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
             <div className="ml-auto flex items-center gap-1">
               {statusFilter !== 'all' && (
                 <button
-                  onClick={() => setStatusFilter('all')}
+                  onClick={() => { setStatusFilter('all'); setCurrentPage(1); }}
                   className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-xs font-medium pl-2.5 pr-1.5 py-1 mr-1"
                   title="Clear status filter"
                 >
@@ -1125,7 +1214,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                   {STATUS_FILTER_OPTIONS.map((opt) => (
                     <DropdownMenuItem
                       key={opt.id}
-                      onClick={() => setStatusFilter(opt.id)}
+                      onClick={() => { setStatusFilter(opt.id); setCurrentPage(1); }}
                       className={cn('flex items-center justify-between text-sm cursor-pointer', statusFilter === opt.id && 'font-semibold text-blue-700')}
                     >
                       {opt.label}
@@ -1381,6 +1470,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                     setOpenSubmissionId(sub.id);
                     setPendingSubView('payment');
                   }}
+                  onOpenReview={(sub) => setOpenSubmissionId(sub.id)}
                   onExtendCreated={loadSubmissions}
                 />
               ))}

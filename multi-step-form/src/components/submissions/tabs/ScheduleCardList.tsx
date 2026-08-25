@@ -369,12 +369,13 @@ function BillingSection({
   actions: CardActions;
 }) {
   if (state === 'cancelled') {
-    const isSpamOrRejected = entry.reviewStatus === 'spam' || entry.reviewStatus === 'rejected';
+    const isSpamOrRejected = ['spam', 'rejected', 'cancelled'].includes(entry.reviewStatus);
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-100/90 px-3 py-2.5 text-xs text-slate-600 space-y-1">
         <p className="font-semibold text-slate-700">
           {isSpamOrRejected
-            ? `Submission berstatus ${entry.reviewStatus === 'spam' ? 'Spam' : 'Ditolak'}`
+            ? `Order berstatus ${entry.reviewStatus === 'spam' ? 'Tidak Valid'
+              : entry.reviewStatus === 'cancelled' ? 'Dibatalkan' : 'Menunggu Perbaikan'}`
             : 'Jadwal telah dibatalkan'}
         </p>
         <p className="text-[11px] text-slate-500 leading-snug">
@@ -819,8 +820,8 @@ export function ScheduleCardList({
 
   if (entries.length === 0) {
     const isSpamOrRejected =
-      ['rejected', 'spam'].includes(submission.submission_status || '') ||
-      ['rejected', 'spam'].includes(submission.status || '');
+      ['rejected', 'spam', 'cancelled'].includes(submission.submission_status || '') ||
+      ['rejected', 'spam', 'cancelled'].includes(submission.status || '');
 
     if (isSpamOrRejected) {
       return (

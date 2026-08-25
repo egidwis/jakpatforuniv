@@ -16,6 +16,12 @@ export type BookingState =
      * belum ada jadwal, belum ada tagihan. Kartu tampil netral abu-abu. */
     | 'in_review'
     | 'choose_schedule'
+    /** Disetujui lewat review MANUAL — TIM yang menetapkan jadwalnya, bukan
+     * peneliti. Sengaja dipisah dari `choose_schedule`: keduanya sama-sama
+     * "sudah disetujui, belum ada tanggal", tapi yang satu menunggu peneliti
+     * dan yang satu menunggu admin. Satu kata untuk keduanya membuat dua pihak
+     * sama-sama mengira giliran yang lain. */
+    | 'awaiting_admin_schedule'
     | 'awaiting_invoice'
     | 'waiting_payment'
     | 'expired'
@@ -175,7 +181,14 @@ export function buildScheduleCards(
         let bookingState: BookingState;
         if (ui.isExpired) bookingState = 'expired';
         else if (step === 0) bookingState = 'in_review';
-        else if (step === 1) bookingState = 'choose_schedule';
+        else if (step === 1) {
+            // Cabangnya sudah dihitung sekali di `deriveOrderUiState`; dibaca
+            // ulang dari `ui.callout` supaya kartu jadwal dan callout order
+            // tidak bisa berbeda pendapat soal siapa yang memegang bola.
+            bookingState = ui.callout === 'awaiting_admin_schedule'
+                ? 'awaiting_admin_schedule'
+                : 'choose_schedule';
+        }
         else if (step === 2) {
             // Lewat batas 14.00 WIB menang atas waiting_payment/awaiting_invoice:
             // jadwal ini sudah tidak bisa dikejar, jadi jangan tawarkan bayar.

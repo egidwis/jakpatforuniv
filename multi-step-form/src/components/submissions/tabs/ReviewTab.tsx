@@ -87,9 +87,17 @@ export function ReviewTab({
               <Globe className="w-3.5 h-3.5 text-gray-400 shrink-0" />
               <span className="text-xs text-gray-600 truncate">{submission.formUrl.replace(/^https?:\/\//, '')}</span>
               {submission.detected_keywords && submission.detected_keywords.length > 0 && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 border border-red-200 shrink-0 ml-1">
+                /* ⚠️ SEBUT WAKTUNYA. `detected_keywords` dihitung SEKALI saat
+                   pengajuan awal dan tidak pernah dihitung ulang, jadi badge ini
+                   menempel selamanya — termasuk pada kuesioner yang keyword-nya
+                   sudah dihapus peneliti. Tanpa keterangan waktu, admin membaca
+                   deteksi basi sebagai vonis yang masih berlaku. */
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 border border-red-200 shrink-0 ml-1"
+                  title="Terdeteksi saat pengajuan awal dan tidak dihitung ulang — periksa langsung kuesionernya untuk memastikan."
+                >
                   <ShieldAlert className="w-3 h-3 text-red-500" />
-                  Sensitif: {submission.detected_keywords.join(', ')}
+                  Sensitif (saat pengajuan awal): {submission.detected_keywords.join(', ')}
                 </span>
               )}
               {actionButtons}

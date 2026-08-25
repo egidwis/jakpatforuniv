@@ -21,6 +21,10 @@ const chipVariants = cva(
         outline: "border-border bg-transparent text-foreground",
       },
       size: {
+        // Untuk baris rapat yang labelnya bisa panjang — mis. baris status di
+        // footer drawer Review, yang kini memuat "Menunggu Perbaikan" dan
+        // "Slot Dibatalkan", bukan lagi satu kata.
+        xs: "h-5 px-2 text-[10px]",
         sm: "h-6 px-2.5 text-[11px]",
         md: "h-7 px-3 text-xs",
       },

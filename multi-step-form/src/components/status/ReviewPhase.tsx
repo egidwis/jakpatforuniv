@@ -2,6 +2,7 @@ import { useState } from 'react';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
     AlertCircle,
+    Ban,
     Bot,
     CheckCircle2,
     ChevronDown,
@@ -9,7 +10,6 @@ import {
     Link2,
     Loader2,
     PenLine,
-    Trash2,
     UserCheck,
     Users,
 } from 'lucide-react';
@@ -50,10 +50,19 @@ import { toast } from 'sonner';
  * tanggal jatuh ke langkah 2 dan chipnya menyala hijau "Disetujui" — 70 order
  * ada di keadaan itu per 2026-08-08 (65 spam, 5 rejected).
  */
-export type ReviewState = 'rejected' | 'pending' | 'approved';
+export type ReviewState = 'rejected' | 'cancelled' | 'pending' | 'approved';
 
 export function reviewStateOf(first: AdScheduleEntry): ReviewState {
-    if (['rejected', 'spam'].includes(first.reviewStatus)) return 'rejected';
+    // ⚠️ `spam` TIDAK lagi dilipat jadi `rejected`.
+    //
+    // Dulu ia dilipat, jadi order yang admin tandai "bukan order sungguhan"
+    // justru BERTERIAK di dashboard peneliti menyuruhnya memperbaiki kuesioner
+    // — dan peneliti bisa menghidupkannya sendiri lewat "Saya Sudah Perbaiki",
+    // berulang kali. Order `spam` kini disaring habis di `StatusPage`, jadi ia
+    // seharusnya tidak pernah sampai ke sini; kalau toh sampai, `pending` jauh
+    // lebih tidak berbahaya daripada instruksi yang salah.
+    if (first.reviewStatus === 'rejected') return 'rejected';
+    if (first.reviewStatus === 'cancelled') return 'cancelled';
     return first.reviewStatus === 'approved' ? 'approved' : 'pending';
 }
 
@@ -61,8 +70,12 @@ interface ReviewPhaseProps {
     submission: FormSubmission;
     /** Jadwal pertama (ordinal 1) — pembawa sumbu review order ini. */
     first: AdScheduleEntry;
-    onDelete: () => void;
     onDataUpdated?: () => void;
+    /** Pernah ada tagihan yang terbit untuk order ini. Menggerakkan peringatan
+     * "jangan bayar link lama" pada banner pembatalan — dan HANYA itu, supaya
+     * peneliti yang tak pernah menerima tagihan tidak diperingatkan tentang
+     * sesuatu yang tidak pernah ada. */
+    hadBilledInvoice?: boolean;
     /** Fase ① sedang berjalan (`getActiveDashboardPhase(ui.currentStep) === 1`)
      * — kartu default terbuka. Kalau tidak (sudah lewat/belum sampai), default
      * tertutup; user tetap bisa expand manual. */
@@ -76,6 +89,16 @@ interface ReviewPhaseProps {
  * menyediakan `t`. */
 export function getReviewChip(first: AdScheduleEntry, t: (key: TranslationKey) => string) {
     const state = reviewStateOf(first);
+    if (state === 'cancelled') {
+        // Abu, bukan merah, dan tanpa denyut: ini KEPUTUSAN, bukan kegagalan,
+        // dan tidak ada yang perlu ditindak.
+        return (
+            <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-slate-100 border-slate-200 text-slate-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                {t('reviewChipCancelled')}
+            </span>
+        );
+    }
     if (state === 'rejected') {
         return (
             <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-rose-50 border-rose-200/80 text-rose-700">
@@ -142,11 +165,26 @@ function ReviewMethodChip({ auto }: { auto: boolean }) {
  * link/ringkasan survei + chip status review (dulu ada di header Fase),
  * expand untuk detail lengkap + banner status.
  */
-export function ReviewPhase({ submission, first, onDelete, onDataUpdated, active }: ReviewPhaseProps) {
+export function ReviewPhase({ submission, first, onDataUpdated, active, hadBilledInvoice = false }: ReviewPhaseProps) {
     const { t } = useLanguage();
     const state = reviewStateOf(first);
     const rejected = state === 'rejected';
     const inReview = state === 'pending';
+    const cancelled = state === 'cancelled';
+
+    /** Pelaku pembatalan, dari entri riwayat terakhir yang beraksi 'cancelled'.
+     * Entri lama tidak punya `actor`; di situ kita TIDAK menebak dan jatuh ke
+     * kalimat "dibatalkan tim" — menuduh peneliti membatalkan sesuatu yang
+     * sebenarnya dihentikan admin jauh lebih buruk daripada sebaliknya. */
+    const cancelEntry = [...(submission.review_history || [])]
+        .reverse()
+        .find((h) => h.action === 'cancelled');
+    const cancelledByResearcher = cancelEntry?.actor === 'researcher';
+    const cancelledAt = cancelEntry?.timestamp
+        ? new Date(cancelEntry.timestamp).toLocaleDateString('id-ID', {
+            day: 'numeric', month: 'short', year: 'numeric',
+        })
+        : null;
 
     const [isSubmittingReReview, setIsSubmittingReReview] = useState(false);
     const [isEditLinkOpen, setIsEditLinkOpen] = useState(false);
@@ -164,11 +202,12 @@ export function ReviewPhase({ submission, first, onDelete, onDataUpdated, active
         try {
             const newHistoryEntry: ReviewHistoryEntry = {
                 action: 'in_review',
+                actor: 'researcher',
                 notes: 'Peneliti mengajukan review ulang setelah perbaikan kuesioner.',
                 timestamp: new Date().toISOString(),
             };
             const updatedHistory = [
-                ...((submission as any).review_history || []),
+                ...(submission.review_history || []),
                 newHistoryEntry,
             ];
             await updateFormStatus(submission.id, 'in_review', submission.admin_notes, updatedHistory);
@@ -194,11 +233,12 @@ export function ReviewPhase({ submission, first, onDelete, onDataUpdated, active
             });
             const newHistoryEntry: ReviewHistoryEntry = {
                 action: 'in_review',
+                actor: 'researcher',
                 notes: 'Peneliti memperbarui tautan survei dan mengajukan review ulang.',
                 timestamp: new Date().toISOString(),
             };
             const updatedHistory = [
-                ...((submission as any).review_history || []),
+                ...(submission.review_history || []),
                 newHistoryEntry,
             ];
             await updateFormStatus(submission.id, 'in_review', submission.admin_notes, updatedHistory);
@@ -287,14 +327,6 @@ export function ReviewPhase({ submission, first, onDelete, onDataUpdated, active
                                                 >
                                                     <PenLine className="w-3.5 h-3.5 text-gray-500" /> {t('btnChangeLink')}
                                                 </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={onDelete}
-                                                    className="rounded-full font-semibold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 text-xs px-3.5 h-9 gap-1.5 shadow-xs transition-all ml-auto"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" /> {t('btnDeleteForm')}
-                                                </Button>
                                             </div>
 
                                             {/* Mobile View (< 640px) */}
@@ -311,29 +343,73 @@ export function ReviewPhase({ submission, first, onDelete, onDataUpdated, active
                                                         <><CheckCircle2 className="w-3.5 h-3.5" /> {t('btnConfirmFixed')}</>
                                                     )}
                                                 </Button>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => {
-                                                            setNewSurveyUrl(submission.survey_url || '');
-                                                            setIsEditLinkOpen(true);
-                                                        }}
-                                                        className="w-full rounded-full font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-xs px-2.5 h-9 gap-1.5 shadow-xs transition-all justify-center"
-                                                    >
-                                                        <PenLine className="w-3.5 h-3.5 text-gray-500" /> {t('btnChangeLink')}
-                                                    </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={onDelete}
-                                                        className="w-full rounded-full font-semibold bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 text-xs px-2.5 h-9 gap-1.5 shadow-xs transition-all justify-center"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" /> {t('btnDeleteForm')}
-                                                    </Button>
-                                                </div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        setNewSurveyUrl(submission.survey_url || '');
+                                                        setIsEditLinkOpen(true);
+                                                    }}
+                                                    className="w-full rounded-full font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-xs px-2.5 h-9 gap-1.5 shadow-xs transition-all justify-center"
+                                                >
+                                                    <PenLine className="w-3.5 h-3.5 text-gray-500" /> {t('btnChangeLink')}
+                                                </Button>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Pesanan dibatalkan — MENUMPANG slot banner yang sama.
+                            Tidak ada tempat banner baru di mana pun: peneliti
+                            selalu tahu di mana mencarinya, berapa pun titik
+                            pembatalannya. Abu, bukan merah: ini keputusan,
+                            bukan kegagalan. */}
+                        {cancelled && (
+                            <div className="rounded-xl border p-4 border-slate-200 bg-slate-50 shadow-xs space-y-3">
+                                <div className="flex items-start gap-2.5">
+                                    <Ban className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
+                                    <div className="flex-1 min-w-0 space-y-3">
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-900 leading-snug">
+                                                {t('reviewTitleCancelled')}
+                                            </p>
+                                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">
+                                                {cancelledByResearcher
+                                                    ? t('cancelledByResearcher')
+                                                    : t('cancelledByAdmin')}
+                                                {cancelledAt ? ` · ${cancelledAt}` : ''}
+                                            </p>
+                                        </div>
+
+                                        {/* Alasan HANYA kalau admin yang membatalkan — catatan
+                                            admin pada pembatalan mandiri peneliti bisa jadi sisa
+                                            dari review sebelumnya, dan menampilkannya di sini
+                                            akan terbaca seolah timlah yang menghentikannya. */}
+                                        {!cancelledByResearcher && submission.admin_notes && (
+                                            <div className="bg-white border border-slate-200 rounded-lg p-3 text-xs space-y-1 shadow-xs">
+                                                <span className="font-semibold text-slate-500 block text-[11px] uppercase tracking-wider">
+                                                    {t('reviewerNotesTitle')}:
+                                                </span>
+                                                <p className="whitespace-pre-line leading-relaxed text-gray-800 font-normal">
+                                                    &ldquo;{submission.admin_notes}&rdquo;
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Hanya kalau tagihan sempat terbit. Tanpa gerbang ini
+                                            peneliti yang tak pernah menerima tagihan diberi
+                                            peringatan tentang sesuatu yang tidak pernah ada. */}
+                                        {hadBilledInvoice && (
+                                            <div className="rounded-lg bg-amber-50 border border-amber-200/80 px-3 py-2 text-xs text-amber-800 font-medium">
+                                                {t('cancelledStaleInvoiceWarning')}
+                                            </div>
+                                        )}
+
+                                        <p className="text-xs text-gray-600 font-normal">
+                                            {t('cancelledNextStep')}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
