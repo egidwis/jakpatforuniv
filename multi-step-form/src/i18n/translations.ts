@@ -92,8 +92,12 @@ export const translations = {
     statusScheduled: "Scheduled",
     statusPublishing: "Ready to Launch",
     statusCompleted: "Completed 🎉",
-    chooseSchedule: "Choose Schedule",
-    rescheduleSlot: "Reschedule",
+    // ⚠️ "Pilih Jadwal" DIBUANG dari sisi peneliti. Admin memakai kata yang
+    // sama persis untuk aksinya sendiri ("Tentukan Jadwal"/"Ganti Tanggal"),
+    // jadi dua pihak sama-sama mengira langkah itu miliknya. Yang dipilih
+    // peneliti adalah TANGGAL; jadwal adalah bendanya, bukan aksinya.
+    chooseSchedule: "Pick a date",
+    rescheduleSlot: "Pick a new date",
     payNow: "Pay Now",
     contactSupport: "Need help? Contact Support",
     downloadReceipt: "Download Receipt",
@@ -102,7 +106,7 @@ export const translations = {
     incentiveAccumulated: "added to the previous incentive pool",
     periodBatchLabel: "Lottery Period",
     airingDateLabel: "Reservation Date",
-    scheduleExpiredHint: "The payment link for this ad schedule has expired. Please contact the admin to have it reissued.",
+    scheduleExpiredHint: "The payment link for this schedule has expired. Our team will issue a replacement — chat with Mimin below if you need it sooner.",
     extStatusWaitingPayment: "Awaiting Payment",
     extStatusPaid: "Paid",
     extStatusScheduled: "Scheduled",
@@ -623,8 +627,6 @@ export const translations = {
     calloutPayBeforeSuffix: "or the slot will be released.",
     calloutPayBeforeSuffixCutoff: "so your ad can go live on the scheduled date.",
     calloutPaymentGeneric: "Complete your payment to secure your survey's airing schedule.",
-    calloutAwaitingInvoice: "Slot reserved. Waiting for the admin to issue your invoice — max 1 working day.",
-    calloutAwaitingAdminSchedule: "Your questionnaire is approved. Our team is setting the airing schedule and will issue your invoice — max 1 working day. You don't need to pick a schedule yourself.",
     calloutExpired: "Payment expired and the slot was released. Pick a new schedule — no need to resubmit.",
     calloutTooLateToday: "Payment for today's schedule passed the 14:00 WIB cut-off, so the ad can no longer go live today. Pick a new schedule — no need to resubmit.",
     paymentQuotaPriorityNote: "Daily airing quota is limited, so we prioritise publishing in the order payments arrive. To secure the schedule you want, we recommend paying before that day's quota fills up 🙏",
@@ -708,9 +710,19 @@ export const translations = {
     hideCostBreakdown: "Hide Breakdown",
     viewInvoiceLink: "View invoice",
     viewReceiptLink: "View receipt",
+    // Sisa tagihan, bukan harga penuh. 24 jadwal di produksi sudah dibayar
+    // sebagian; sampai sekarang kartunya tetap menyebut angka penuh.
+    paidSoFarLabel: "Paid so far",
+    outstandingLabel: "Remaining",
+    payRemaining: "Pay the rest",
+    // Kilat yang gelombangnya belum ditetapkan TIDAK punya jam tayang untuk
+    // ditampilkan — `start_date`-nya 00:00 WIB sebagai penampung, bukan jadwal.
+    scheduleKilatHourPending: "airing time set by our team",
+    // Harga jadwal ini belum pernah ditagihkan, jadi angkanya tarif HARI INI —
+    // penawaran, bukan catatan. Lihat `utils/scheduleMoney.ts`.
+    costIsEstimateNote: "Estimate at today's rate — the invoice is issued by our team.",
     incentiveNoAdditionNote: "No addition — current incentive still applies",
-    calloutAwaitingInvoiceSchedule: "Waiting for the admin to issue the invoice for this ad schedule.",
-    calloutCancelledSchedule: "This schedule was cancelled by the admin. Need an explanation? Chat with Mimin below.",
+    calloutCancelledSchedule: "Our team cancelled this schedule. Need an explanation? Chat with Mimin below.",
     // Manual-review orders never pick their own airing date — the wizard skips
     // the schedule step for them. This replaces the reschedule button so the
     // card still says who is holding the next step.
@@ -722,25 +734,62 @@ export const translations = {
     bannerTitleSlotCancelled: "Airing date cancelled",
     bannerSubSlotCancelled: "The Jakpat team cancelled this order's airing date. Your questionnaire is still approved. Need an explanation? Chat with Mimin below.",
     scheduleEmptyRejected: "No airing schedule for this order yet.",
-    scheduleEmptyPending: "Ad schedules can be picked once your review is approved.",
     publicationEmptyState: "Airing info will appear once a schedule is paid.",
     adPageLinkLabel: "Ad Page",
     viewsUnit: "views",
 
-    // Banners with CTA
-    bannerTitleWaitingPayment: "Complete Payment",
+    // ─────────────────────────────────────────────────────────────
+    // Banner Fase ② — anatominya TETAP di semua kondisi: judul pendek
+    // (2–4 kata), satu kalimat "apa yang sedang terjadi", lalu langkah
+    // berikutnya / siapa yang mengerjakan. Bagian yang tidak berlaku
+    // DIHILANGKAN, bukan diganti kalimat pengisi.
+    //
+    // ⚠️ ATURAN EMAS: JANGAN PERNAH MENAMPILKAN DATA YANG BELUM ADA.
+    // Tiap `{placeholder}` di bawah hanya boleh dirender kalau sumbernya
+    // benar-benar terisi. `deadline` hanya ada saat slotnya dipesan
+    // peneliti sendiri; `start_date` kosong untuk order yang belum
+    // dijadwalkan; `kilat_slot_hour` NULL selama gelombangnya belum
+    // ditetapkan. Kalau salah satunya kosong, barisnya TIDAK DIRENDER —
+    // bukan diisi tebakan. Angka penampung yang dipajang seolah data
+    // sungguhan lebih buruk daripada tidak menampilkan apa-apa.
+    //
+    // ⚠️ NOL WARNA MERAH. Tidak ada satu pun keadaan di Fase ② yang
+    // benar-benar gagal — semuanya bisa dilanjutkan peneliti atau tim.
+    // Merah membuat pesanan yang masih hidup terbaca seperti hangus.
+    // slate = bukan giliranmu · amber = giliranmu · emerald = selesai.
+    // ─────────────────────────────────────────────────────────────
+    bannerTitleInReview: "Waiting for review",
+    bannerSubInReview: "Your airing date is set once your questionnaire passes review.",
+    bannerTitleAwaitingAdminSchedule: "Our team is scheduling",
+    bannerSubAwaitingAdminSchedule: "Your questionnaire passed review. Our team is setting the airing date and preparing the invoice — max 1 working day.",
+    bannerTitleChooseSchedule: "Pick an airing date",
+    bannerSubChooseSchedule: "Your questionnaire passed review. Pick a date that is still available — your ad starts airing at 15:00 WIB.",
+    bannerTitleAwaitingInvoice: "Waiting for the invoice",
+    bannerSubAwaitingInvoice: "Your airing date is reserved. Our team is preparing the invoice — max 1 working day.",
+    bannerSubAwaitingInvoiceSchedule: "This schedule's airing date is reserved. Our team is preparing its invoice.",
+    bannerTitleStaleInvoice: "The old invoice no longer applies",
+    bannerSubStaleInvoice: "The previous invoice was issued for {oldDate}, but your airing date is now {newDate}. Because the date changed, that invoice was cancelled.",
+    bannerSubStaleInvoiceWait: "Wait for the replacement invoice from our team — do not pay the old link you may have received.",
+    bannerTitleWaitingPayment: "Complete your payment",
     // Tiga sebab, tiga akibat berbeda. Satu kalimat untuk ketiganya berbohong
     // pada dua di antaranya — batas 14.00 WIB TIDAK melepas slot, dan jadwal
-    // yang dipesan admin tidak pernah lepas sendiri sama sekali.
-    bannerSubWaitingPaymentSlot: "Pay before the deadline to keep your reserved slot from being released.",
-    bannerSubWaitingPaymentCutoff: "Pay before the deadline so we still have time to prepare this airing date. Your slot stays reserved, but past that the date has to be changed.",
-    bannerSubWaitingPaymentSlotsLimited: "Ad slots are limited each day. Complete your payment before they fill up.",
-    bannerTitleChooseSchedule: "Review Approved — Pick Ad Schedule",
-    bannerSubChooseSchedule: "Please select an available airing date and time slot for your survey.",
-    bannerTitleExpired: "Payment Deadline Expired",
-    bannerSubExpired: "The airing slot has been released. Please select a new schedule without resubmitting the form.",
-    bannerTitleTooLateToday: "Cut-off for Today Has Passed",
-    bannerSubTooLateToday: "Payment was not completed before the 14:00 WIB cut-off. Please choose the next available airing date.",
+    // yang dipesan admin tidak pernah lepas sendiri sama sekali. Varian ketiga
+    // sengaja tidak menyebut jam apa pun: di situ memang tidak ada tenggat.
+    bannerSubWaitingPaymentSlot: "Pay before {time} so the date you reserved is not released.",
+    bannerSubWaitingPaymentCutoff: "Pay before {time} so we still have time to prepare your ad. Your date stays reserved until then.",
+    bannerSubWaitingPaymentSlotsLimited: "Ad slots are limited each day. Complete your payment before your date fills up.",
+    bannerTitleWaitingPaymentPartial: "Complete the remaining payment",
+    bannerSubPartiallyPaid: "We have received {paid}. {due} remaining.",
+    bannerTitleExpired: "Reservation expired",
+    bannerSubExpired: "The payment deadline passed, so the date you reserved was released automatically. You do not need to resubmit your questionnaire.",
+    bannerSubPickNewDate: "Pick a new date that is still available.",
+    // "Hari ini" DIBUANG: `isPaymentTooLateForDate` cocok untuk tanggal lampau
+    // mana pun, jadi kartu order yang tertinggal seminggu pun berbunyi "hari
+    // ini". Sebut tanggalnya.
+    bannerTitleTooLateToday: "Payment deadline passed",
+    bannerSubTooLateToday: "Payment for {date} was not completed before 14:00 WIB.",
+    bannerSubPickNextDate: "Pick the next available airing date.",
+    bannerTitleCancelledSchedule: "Schedule cancelled",
 
     // Placeholders
     scheduleSlotReleased: "Slot released (reschedule needed)",
@@ -1219,8 +1268,9 @@ export const translations = {
     statusScheduled: "Scheduled",
     statusPublishing: "Ready to Launch",
     statusCompleted: "Completed 🎉",
-    chooseSchedule: "Pilih Jadwal",
-    rescheduleSlot: "Jadwalkan Ulang",
+    // Lihat catatan di blok `en`.
+    chooseSchedule: "Pilih Tanggal",
+    rescheduleSlot: "Pilih Tanggal Baru",
     payNow: "Bayar Sekarang",
     contactSupport: "Butuh bantuan? Hubungi Support",
     downloadReceipt: "Unduh Bukti Pembayaran",
@@ -1229,7 +1279,7 @@ export const translations = {
     incentiveAccumulated: "diakumulasi ke insentif sebelumnya",
     periodBatchLabel: "Periode Undian",
     airingDateLabel: "Penayangan",
-    scheduleExpiredHint: "Link pembayaran jadwal iklan ini telah kedaluwarsa. Silakan hubungi admin untuk menerbitkannya ulang.",
+    scheduleExpiredHint: "Link pembayaran jadwal ini sudah kedaluwarsa. Tim kami akan menerbitkan penggantinya — chat Mimin di bawah kalau butuh lebih cepat.",
     extStatusWaitingPayment: "Menunggu Pembayaran",
     extStatusPaid: "Lunas",
     extStatusScheduled: "Terjadwal",
@@ -1438,8 +1488,6 @@ export const translations = {
     calloutPayBeforeSuffix: "agar slot tidak hangus.",
     calloutPayBeforeSuffixCutoff: "agar iklan bisa tayang di tanggal yang dijadwalkan.",
     calloutPaymentGeneric: "Selesaikan pembayaran untuk mengamankan jadwal tayang survei kamu.",
-    calloutAwaitingInvoice: "Slot berhasil dipesan. Menunggu admin menerbitkan tagihan — maksimal 1 hari kerja.",
-    calloutAwaitingAdminSchedule: "Kuesionermu sudah disetujui. Tim kami sedang menetapkan jadwal tayang lalu menerbitkan tagihannya — maksimal 1 hari kerja. Kamu tidak perlu memilih jadwal sendiri.",
     calloutExpired: "Pembayaran kedaluwarsa dan slot dilepas. Pilih jadwal baru — tidak perlu submit ulang.",
     calloutTooLateToday: "Pembayaran untuk jadwal hari ini sudah lewat batas 14.00 WIB, jadi iklan belum bisa tayang hari ini. Pilih jadwal baru — tidak perlu submit ulang.",
     paymentQuotaPriorityNote: "Kuota penayangan iklan tersedia terbatas setiap harinya. Untuk itu, jadwal publish akan kami prioritaskan berdasarkan urutan pembayaran yang masuk. Agar bisa mendapatkan jadwal sesuai yang diharapkan, kami sarankan melakukan pembayaran sebelum kuota hari tersebut terpenuhi ya, Kak 🙏",
@@ -1515,36 +1563,78 @@ export const translations = {
     bookingStatusTooLateToday: "Lewat Batas Hari Ini",
     airingStartTimeNote: "Mulai 15.00 WIB",
     voucherLabel: "Voucher",
-    invoiceRowLabel: "Invoice",
-    receiptRowLabel: "Receipt",
+    // ⚠️ SATU KATA UNTUK SATU BENDA. Empat kunci ini berbunyi Inggris di dalam
+    // blok Indonesia, jadi satu layar peneliti mencampur "Invoice"/"Receipt"
+    // dengan "tagihan"/"kuitansi" yang dipakai di tempat lain — termasuk di
+    // drawer admin, yang sudah menyebutnya "Kuitansi".
+    invoiceRowLabel: "Tagihan",
+    receiptRowLabel: "Kuitansi",
     viewCostBreakdown: "Rincian Biaya",
     hideCostBreakdown: "Tutup Rincian",
-    viewInvoiceLink: "Lihat invoice",
-    viewReceiptLink: "Lihat receipt",
+    viewInvoiceLink: "Lihat tagihan",
+    viewReceiptLink: "Lihat kuitansi",
+    paidSoFarLabel: "Sudah dibayar",
+    outstandingLabel: "Sisa tagihan",
+    payRemaining: "Bayar Sisa",
+    scheduleKilatHourPending: "jam tayang ditetapkan tim kami",
+    costIsEstimateNote: "Estimasi tarif hari ini — tagihan resmi diterbitkan tim kami.",
     incentiveNoAdditionNote: "Tanpa tambahan — insentif berjalan tetap berlaku",
-    calloutAwaitingInvoiceSchedule: "Menunggu admin menerbitkan tagihan untuk jadwal iklan ini.",
-    calloutCancelledSchedule: "Jadwal ini dibatalkan oleh admin. Butuh penjelasan? Chat Mimin di bawah.",
+    calloutCancelledSchedule: "Jadwal ini dibatalkan tim kami. Butuh penjelasan? Chat Mimin di bawah.",
     rescheduleHandledByTeam: "Tim kami yang akan menjadwalkan ulang iklanmu. Butuh penjelasan? Chat Mimin di bawah.",
     bookingStatusSlotCancelled: "Dibatalkan",
     bannerTitleSlotCancelled: "Jadwal tayang dibatalkan",
     bannerSubSlotCancelled: "Tim Jakpat membatalkan tanggal tayang pesanan ini. Kuesionermu tetap lolos review. Butuh penjelasan? Chat Mimin di bawah.",
     scheduleEmptyRejected: "Belum ada jadwal iklan untuk pesanan ini.",
-    scheduleEmptyPending: "Jadwal iklan bisa dipilih setelah review disetujui.",
     publicationEmptyState: "Info penayangan akan muncul setelah ada jadwal yang lunas.",
     adPageLinkLabel: "Halaman Iklan",
     viewsUnit: "views",
 
-    // Banners with CTA
-    bannerTitleWaitingPayment: "Selesaikan Pembayaran",
-    bannerSubWaitingPaymentSlot: "Bayar sebelum batas waktu agar reservasi slot tidak dilepas ke pengguna lain.",
-    bannerSubWaitingPaymentCutoff: "Bayar sebelum batas waktu agar jadwal tayang ini masih sempat kami siapkan. Slotmu tidak dilepas, tapi lewat dari itu tanggalnya harus diganti.",
-    bannerSubWaitingPaymentSlotsLimited: "Jadwal iklan memiliki slot terbatas setiap harinya. Lakukan pembayaran sebelum slotnya terpenuhi.",
-    bannerTitleChooseSchedule: "Review Disetujui — Pilih Jadwal Penayangan",
-    bannerSubChooseSchedule: "Silakan tentukan tanggal dan gelombang tayang yang tersedia untuk survei Anda.",
-    bannerTitleExpired: "Batas Waktu Pembayaran Kedaluwarsa",
-    bannerSubExpired: "Slot penayangan telah dilepas otomatis. Silakan pilih jadwal baru tanpa perlu mengajukan ulang form.",
-    bannerTitleTooLateToday: "Waktu Penyiapan Hari Ini Telah Lewat",
-    bannerSubTooLateToday: "Pembayaran melewati batas 14.00 WIB untuk jadwal hari ini. Silakan pilih tanggal penayangan berikutnya.",
+    // ─────────────────────────────────────────────────────────────
+    // Banner Fase ② — aturan lengkapnya di blok `en` (anatomi tetap,
+    // aturan emas, nol warna merah). Yang khas di sisi Indonesia:
+    //
+    //   * kata "slot" hampir hilang. Itu kosakata internal; penelitinya
+    //     memesan TANGGAL TAYANG. Disisakan hanya di varian
+    //     `…SlotsLimited`, di mana "slot terbatas" memang menjelaskan
+    //     kelangkaannya.
+    //   * "admin" -> "tim kami", mengikuti kalimat yang sudah dipakai
+    //     `calloutAwaitingAdminSchedule`.
+    //   * "Anda" -> "kamu". Sebelum ini keduanya bercampur dalam SATU
+    //     layar: `bannerSubChooseSchedule` memakai "Anda", sisanya "kamu".
+    //   * judul jadi kalimat pendek huruf normal, bukan Judul Berkapital
+    //     Setiap Kata — "Waktu Penyiapan Hari Ini Telah Lewat" berbunyi
+    //     seperti pengumuman pengadilan.
+    // ─────────────────────────────────────────────────────────────
+    bannerTitleInReview: "Menunggu hasil review",
+    bannerSubInReview: "Tanggal tayang ditentukan setelah kuesionermu lolos review.",
+    bannerTitleAwaitingAdminSchedule: "Tim kami sedang menjadwalkan",
+    bannerSubAwaitingAdminSchedule: "Kuesionermu sudah lolos review. Tim kami menetapkan tanggal tayang dan menyiapkan tagihannya — maksimal 1 hari kerja.",
+    bannerTitleChooseSchedule: "Pilih tanggal tayang",
+    // "gelombang" DIBUANG — itu kosakata Kilat. Iklan reguler tidak punya
+    // gelombang; ia selalu mulai 15.00 WIB.
+    bannerSubChooseSchedule: "Kuesionermu sudah lolos review. Pilih tanggal yang masih tersedia — iklanmu mulai tayang pukul 15.00 WIB.",
+    bannerTitleAwaitingInvoice: "Menunggu tagihan",
+    bannerSubAwaitingInvoice: "Tanggal tayangmu sudah dipesan. Tim kami sedang menyiapkan tagihannya — maksimal 1 hari kerja.",
+    bannerSubAwaitingInvoiceSchedule: "Tanggal tayang jadwal ini sudah dipesan. Tim kami sedang menyiapkan tagihannya.",
+    bannerTitleStaleInvoice: "Tagihan lama tidak berlaku",
+    bannerSubStaleInvoice: "Tagihan sebelumnya diterbitkan untuk tanggal {oldDate}, sedangkan tanggal tayangmu sekarang {newDate}. Karena tanggalnya berubah, tagihan itu dibatalkan.",
+    bannerSubStaleInvoiceWait: "Tunggu tagihan pengganti dari tim kami — jangan bayar link lama yang mungkin sudah kamu terima.",
+    bannerTitleWaitingPayment: "Selesaikan pembayaran",
+    // Tiga sebab, tiga akibat berbeda — lihat catatan di blok `en`.
+    bannerSubWaitingPaymentSlot: "Bayar sebelum {time} agar tanggal yang kamu pesan tidak dilepas.",
+    bannerSubWaitingPaymentCutoff: "Bayar sebelum {time} agar kami sempat menyiapkan iklanmu. Tanggalmu aman sampai batas itu.",
+    bannerSubWaitingPaymentSlotsLimited: "Slot iklan terbatas setiap hari. Selesaikan pembayaran sebelum tanggalmu terisi.",
+    bannerTitleWaitingPaymentPartial: "Selesaikan sisa pembayaran",
+    bannerSubPartiallyPaid: "{paid} sudah kami terima. Sisa {due}.",
+    bannerTitleExpired: "Reservasi kedaluwarsa",
+    // "otomatis" di SINI benar — yang lepas adalah hold 1 jam, dan tidak ada
+    // manusia yang menekannya. Jangan menyalinnya ke `slot_cancelled`.
+    bannerSubExpired: "Batas pembayaran terlewat, jadi tanggal yang kamu pesan dilepas otomatis. Kuesionermu tidak perlu diajukan ulang.",
+    bannerSubPickNewDate: "Pilih tanggal baru yang masih tersedia.",
+    bannerTitleTooLateToday: "Batas bayar terlewat",
+    bannerSubTooLateToday: "Pembayaran untuk {date} tidak selesai sebelum pukul 14.00 WIB.",
+    bannerSubPickNextDate: "Pilih tanggal tayang berikutnya.",
+    bannerTitleCancelledSchedule: "Jadwal dibatalkan",
 
     // Placeholders
     scheduleSlotReleased: "Slot dilepas (perlu dijadwalkan ulang)",

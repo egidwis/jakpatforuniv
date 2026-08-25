@@ -1,5 +1,6 @@
-import type { AdScheduleEntry } from '@/utils/supabase';
+import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
 import type { TranslationKey } from '@/i18n/translations';
+import { deriveScheduleMoney, type ScheduleMoney } from '@/utils/scheduleMoney';
 import {
     orderStepOf,
     scheduleEnd,
@@ -88,6 +89,19 @@ export interface ScheduleCard {
         periodBatch: string | null;
         incentive: IncentiveInfo | null;
         voucherCode: string | null;
+        /** Iklan Kilat dijual per GELOMBANG push (8/11/14/17 WIB), bukan per
+         * jam mulai biasa. */
+        isKilat: boolean;
+        /** Gelombang Kilat yang sudah ditetapkan, atau `null` kalau tim belum
+         * menugaskannya.
+         *
+         * ⚠️ NULL DI SINI BERARTI "BELUM ADA", BUKAN "TENGAH MALAM". Baris
+         * `start_date` Kilat yang belum bergelombang disimpan 00:00 WIB sebagai
+         * nilai penampung, dan kartu peneliti membacanya sebagai jam tayang —
+         * jadi layarnya berbunyi "Mulai 00.00 WIB" untuk iklan yang jamnya
+         * justru belum diputuskan siapa pun. Selama ini null, jangan render
+         * angka jam sama sekali. */
+        kilatSlotHour: number | null;
     };
     booking: {
         state: BookingState;
@@ -113,7 +127,24 @@ export interface ScheduleCard {
          * harus menunggu apa.
          */
         staleBilledFor: Date | null;
+        /** Sudah masuk untuk jadwal ini, dan sisanya. `amount` adalah yang
+         * DITAGIH; saat sebagian sudah dibayar, yang harus dilunasi tinggal
+         * `outstanding`. Lihat `SchedulePaymentInfo`. */
+        paid: number;
+        outstanding: number;
     };
+    /**
+     * Uang jadwal ini, diturunkan `deriveScheduleMoney` — FUNGSI YANG SAMA
+     * dengan yang dipakai kartu drawer admin.
+     *
+     * Dulu sisi peneliti menghitung ulang seluruh rinciannya dari tarif hari
+     * ini (`calculateTotalAdCost` dkk. langsung di `SchedulePhase`), sementara
+     * admin membaca `total_cost` yang tersimpan. Untuk order lama keduanya
+     * memberi angka berbeda — dan yang dilihat peneliti adalah angka yang tidak
+     * pernah ada di tagihan mana pun. Alasan lengkapnya di kepala
+     * `utils/scheduleMoney.ts`.
+     */
+    money: ScheduleMoney;
     publication: {
         state: PublicationState;
         start: Date | null;
@@ -160,6 +191,12 @@ const subtotalOf = (s: AdScheduleEntry) => (s.ppnAmount != null ? s.subtotal ?? 
  * step 0 cuma jadwal tayang & tagihan. Hanya order yang ditolak (step -1) yang
  * tidak punya kartu sama sekali.
  */
+/** Kilat ditandai di baris jadwalnya (sql/63) maupun di ordernya; sebagian
+ *  baris lama hanya punya yang kedua. Aturan yang sama dipakai
+ *  `deriveScheduleMoney` — jangan menulis versi ketiga. */
+const isKilatSchedule = (e: AdScheduleEntry, submission: FormSubmission): boolean =>
+    e.distributionType === 'kilat' || submission.distribution_type === 'kilat';
+
 /** Tanggal yang ditagihkan tagihan basi terakhir, siap dirender. */
 function staleDateOf(pay: { staleBilledFor?: string | null } | null | undefined): Date | null {
     if (!pay?.staleBilledFor) return null;
@@ -171,7 +208,10 @@ export function buildScheduleCards(
     ui: OrderUiState,
     payments: SchedulePaymentMap,
     invoiceId: string | null,
-    t: TFn
+    t: TFn,
+    /** Dibutuhkan `deriveScheduleMoney`: `question_count` dan
+     * `distribution_type` tinggal di order, bukan di baris jadwal. */
+    submission: FormSubmission,
 ): ScheduleCard[] {
     const now = new Date();
     const cards: ScheduleCard[] = [];
@@ -234,6 +274,8 @@ export function buildScheduleCards(
                 periodBatch: first.periodBatch,
                 incentive: buildIncentive(first),
                 voucherCode: first.voucherCode,
+                isKilat: isKilatSchedule(first, submission),
+                kilatSlotHour: first.kilatSlotHour,
             },
             booking: {
                 state: bookingState,
@@ -248,7 +290,10 @@ export function buildScheduleCards(
                 invoicePaymentId: bookingState === 'in_review' ? null : invoiceId,
                 isPaidForLabel: bookingState === 'paid' || ui.isPaid,
                 staleBilledFor: staleDateOf(payments[first.sourceId]),
+                paid: payments[first.sourceId]?.paid ?? 0,
+                outstanding: payments[first.sourceId]?.outstanding ?? 0,
             },
+            money: deriveScheduleMoney(first, submission),
             publication: {
                 state: pubState,
                 start: oStart,
@@ -302,6 +347,8 @@ export function buildScheduleCards(
                 periodBatch: s.periodBatch,
                 incentive: buildIncentive(s),
                 voucherCode: s.voucherCode,
+                isKilat: isKilatSchedule(s, submission),
+                kilatSlotHour: s.kilatSlotHour,
             },
             booking: {
                 state: bookingState,
@@ -314,7 +361,10 @@ export function buildScheduleCards(
                 invoicePaymentId: pay?.paymentId || null,
                 isPaidForLabel: bookingState === 'paid',
                 staleBilledFor: staleDateOf(pay),
+                paid: pay?.paid ?? 0,
+                outstanding: pay?.outstanding ?? 0,
             },
+            money: deriveScheduleMoney(s, submission),
             publication: {
                 state: pubState,
                 start,

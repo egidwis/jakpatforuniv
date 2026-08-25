@@ -233,6 +233,12 @@ export function StatusPage() {
                                         // susulan harus tetap terbaca menunggu bayar.
                                         status: b.isSettled ? 'paid' : (shown?.status || null),
                                         amount: b.billed || shown?.amount || 0,
+                                        // Sisa tagihan, bukan harga penuh (D4). `outstanding`
+                                        // sudah dihitung `fetchScheduleBilling` dengan aturan
+                                        // yang sama persis dengan layar admin — jangan
+                                        // menguranginya lagi di sini.
+                                        paid: b.paid,
+                                        outstanding: b.outstanding,
                                         staleBilledFor: b.openInvoice ? null : (b.staleInvoice?.billedStartDate ?? null),
                                     };
                                 });
@@ -626,7 +632,7 @@ export function StatusPage() {
                         ) : (
                             <div className="space-y-4">
                                 {filtered.map(({ submission, pays, ui }) => {
-                                    const cards = buildScheduleCards(ui, pays, invoiceIds[submission.id!] || null, t);
+                                    const cards = buildScheduleCards(ui, pays, invoiceIds[submission.id!] || null, t, submission);
                                     const pageInfo = submission.id ? surveyPages[submission.id] : undefined;
                                     const activePhase = getActiveDashboardPhase(ui.currentStep);
                                     /**

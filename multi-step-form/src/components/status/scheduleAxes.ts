@@ -54,6 +54,19 @@ export interface SchedulePaymentInfo {
     status: string | null;
     amount: number;
     /**
+     * Uang yang SUDAH masuk untuk jadwal ini, dan sisanya. Keduanya sudah
+     * dihitung `fetchScheduleBilling` (`paid` / `outstanding`) sejak lama —
+     * yang belum pernah ada cuma jalur untuk membawanya ke layar peneliti.
+     *
+     * ⚠️ `amount` (= `billed`) BUKAN yang harus dibayar saat sebagian sudah
+     * masuk. 24 jadwal di produksi berstatus itu, dan kartunya menyebut harga
+     * penuh — jadi peneliti yang sudah menyetor Rp 100.000 dari Rp 233.100
+     * tetap dibilang berutang Rp 233.100. Pakai `outstanding` untuk kalimat
+     * "sisa", `amount` hanya untuk "total ditagih".
+     */
+    paid: number;
+    outstanding: number;
+    /**
      * Tanggal tayang yang DITAGIHKAN tagihan basi terakhir, ISO — atau null.
      *
      * Terisi hanya kalau jadwalnya berpindah sesudah tagihan itu terbit

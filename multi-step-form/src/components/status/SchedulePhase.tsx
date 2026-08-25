@@ -29,7 +29,6 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import type { FormSubmission } from '@/utils/supabase';
-import { calculateAdCostPerDay, calculateTotalAdCost, calculateDiscount, calculatePpn, getKilatAddonCost, voucherInstantOf } from '@/utils/cost-calculator';
 import {
     pickDefaultExpandedKey,
     fmtShort,
@@ -74,17 +73,36 @@ function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: Tr
  * nyata (mis. "Lunas" tampil emerald di baris Status tapi biru di chip
  * trigger untuk kartu yang sama). Hanya choose_schedule/awaiting_invoice/
  * too_late_today (di luar enum shared) yang dapat warna sendiri. */
+const TONE_SLATE = { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
+const TONE_AMBER = { bg: 'bg-amber-50 border-amber-200/80', text: 'text-amber-800', dot: 'bg-amber-500' };
+
 function bookingStatusStyle(state: ScheduleCard['booking']['state']): { bg: string; text: string; dot: string } {
-    if (state === 'choose_schedule') return { bg: 'bg-amber-50 border-amber-200/80', text: 'text-amber-800', dot: 'bg-amber-500' };
+    // ⚠️ WARNA MENGIKUTI MAKNA, DAN FASE ② TIDAK PUNYA KEADAAN GAGAL.
+    //   slate  = bukan giliranmu, tim sedang bekerja
+    //   amber  = giliranmu, ada yang perlu diselesaikan
+    //   emerald= selesai (lewat `extendStatusStyle`)
+    //
+    // ROSE DICABUT DARI FASE ②. Dulu `expired`, `too_late_today`, dan
+    // `cancelled` semuanya merah — padahal tidak satu pun benar-benar gagal:
+    // ketiganya bisa dilanjutkan peneliti atau tim, dan kuesionernya tetap
+    // lolos review. Merah membuat pesanan yang masih hidup terbaca seperti
+    // hangus, dan itu memicu chat "pesanan saya batal ya?" yang tidak perlu.
+    if (state === 'choose_schedule') return TONE_AMBER;
     // Abu, bukan amber: amber di kartu ini berarti "giliranmu". Bolanya di
     // admin, jadi warnanya tidak boleh memanggil.
-    if (state === 'awaiting_admin_schedule') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
-    if (state === 'awaiting_invoice') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
-    if (state === 'too_late_today') return { bg: 'bg-rose-50 border-rose-200/80', text: 'text-rose-700', dot: 'bg-rose-500' };
-    // Abu, bukan rose. Tidak ada yang gagal dan tidak ada yang perlu peneliti
-    // kerjakan — bolanya di tim. Merah akan membuat pesanan yang masih hidup
-    // terbaca seperti hangus.
-    if (state === 'slot_cancelled') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
+    if (state === 'awaiting_admin_schedule') return TONE_SLATE;
+    if (state === 'awaiting_invoice') return TONE_SLATE;
+    // Giliran peneliti: tanggalnya harus diganti. Amber, bukan rose.
+    if (state === 'too_late_today') return TONE_AMBER;
+    if (state === 'expired') return TONE_AMBER;
+    // Tidak ada yang gagal dan tidak ada yang perlu peneliti kerjakan —
+    // bolanya di tim.
+    if (state === 'slot_cancelled') return TONE_SLATE;
+    // ⚠️ Sengaja TIDAK mengubah `EXTEND_STATUS_STYLES.cancelled` yang dipakai
+    // bersama papan admin & airing bar: di sana merah masih punya arti. Yang
+    // diperbaiki cuma Fase ②, tempat chip-nya dulu rose sementara bannernya
+    // slate — dua warna untuk satu keadaan di satu kartu.
+    if (state === 'cancelled') return TONE_SLATE;
     return extendStatusStyle(state);
 }
 
@@ -258,10 +276,15 @@ function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean 
 const iconCls = 'w-3.5 h-3.5 text-slate-400 shrink-0';
 const ctaButtonClass = 'max-md:w-full min-h-9 text-xs px-4 justify-center whitespace-nowrap';
 const ctaRoyal = 'rounded-full font-bold text-white bg-gradient-to-r from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary shadow-xs hover:shadow transition-all';
-const ctaSoftRose = 'rounded-full font-semibold bg-white text-rose-700 border border-rose-300 hover:bg-rose-50 shadow-2xs transition-all gap-1.5';
 const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-800 border border-amber-300 hover:bg-amber-50 shadow-2xs transition-all gap-1.5';
 
-function InfoSection({ card, submission, muted }: { card: ScheduleCard; submission: FormSubmission; muted?: boolean }) {
+/**
+ * ⚠️ `submission` SENGAJA TIDAK LAGI DITERIMA. Dulu ia dipakai untuk menghitung
+ * ulang harga dari `question_count`/`distribution_type` — jalur yang sekarang
+ * ditutup: uangnya datang jadi dari `card.money`. Menerimanya lagi berarti
+ * membuka pintu untuk hitungan kedua yang diam-diam menyimpang dari admin.
+ */
+function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const { t } = useLanguage();
     const [showBreakdown, setShowBreakdown] = useState(false);
     const rows: RowDef[] = [];
@@ -276,20 +299,38 @@ function InfoSection({ card, submission, muted }: { card: ScheduleCard; submissi
     const duration = card?.info?.airingDays || card?.info?.duration || 1;
     const totalHours = duration * 24;
     const formattedRange = formatDateRangeClean(card?.startDate, card?.endDate, card?.dateRange);
-    const startTimeWib = card?.startDate
+
+    /*
+      ⚠️ ATURAN EMAS: JANGAN MENAMPILKAN JAM YANG BELUM DITETAPKAN SIAPA PUN.
+
+      Dua kebohongan pernah hidup di tiga baris ini:
+
+        1. Kilat yang gelombangnya belum ditugaskan menyimpan `start_date`
+           pukul 00:00 WIB sebagai penampung. Membacanya sebagai jam tayang
+           membuat kartunya berbunyi "Mulai 00.00 WIB" — jam yang tidak pernah
+           diputuskan siapa pun, untuk iklan yang justru sedang menunggu
+           keputusan itu.
+        2. Cadangan `: '15.00'` menebak jam untuk jadwal yang bahkan belum
+           punya tanggal.
+
+      Sekarang `null` berarti "tidak ada jam yang jujur bisa disebut", dan
+      barisnya DIHILANGKAN, bukan diisi tebakan.
+    */
+    const kilatHourPending = !!card?.info?.isKilat && card.info.kilatSlotHour == null;
+    const startTimeWib = card?.startDate && !kilatHourPending
         ? card.startDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: WIB }).replace(':', '.')
-        : '15.00';
+        : null;
 
     let airingValue: ReactNode;
     if (bState === 'expired') {
         airingValue = (
-            <span className="text-rose-600/90 font-medium text-xs sm:text-sm">
+            <span className="text-amber-800/90 font-medium text-xs sm:text-sm">
                 {t('scheduleSlotReleased')}
             </span>
         );
     } else if (bState === 'too_late_today') {
         airingValue = (
-            <span className="text-rose-600/90 font-medium text-xs sm:text-sm">
+            <span className="text-amber-800/90 font-medium text-xs sm:text-sm">
                 {t('scheduleTooLate')}
             </span>
         );
@@ -317,9 +358,17 @@ function InfoSection({ card, submission, muted }: { card: ScheduleCard; submissi
                 <div className={`font-semibold text-sm ${valueTone(muted)}`}>{formattedRange}</div>
                 {card?.startDate && (
                     <div className="text-xs text-gray-500 font-normal mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        <span>Mulai <strong className="font-medium text-gray-700">{startTimeWib} WIB</strong></span>
-                        <span className="text-gray-300">•</span>
-                        <span>Durasi <strong className="font-medium text-gray-700">{duration} Hari ({totalHours} Jam)</strong></span>
+                        {startTimeWib ? (
+                            <span>Mulai <strong className="font-medium text-gray-700">{startTimeWib} WIB</strong></span>
+                        ) : (
+                            <span className="italic">{t('scheduleKilatHourPending')}</span>
+                        )}
+                        {!kilatHourPending && (
+                            <>
+                                <span className="text-gray-300">•</span>
+                                <span>Durasi <strong className="font-medium text-gray-700">{duration} Hari ({totalHours} Jam)</strong></span>
+                            </>
+                        )}
                     </div>
                 )}
             </div>
@@ -341,97 +390,70 @@ function InfoSection({ card, submission, muted }: { card: ScheduleCard; submissi
 
     rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: batchValue });
 
-    // Payment calculations
-    const questionCount = submission?.question_count || 0;
-    const isKilat = submission?.distribution_type === 'kilat';
-    const costPerDay = calculateAdCostPerDay(questionCount);
-    const adCost = isKilat ? costPerDay : calculateTotalAdCost(questionCount, duration);
-    const kilatAddon = isKilat ? getKilatAddonCost(submission?.voucher_code) : 0;
+    /*
+      ⚠️ UANG JADWAL INI DIBACA, BUKAN DIHITUNG ULANG.
 
-    let incentiveCost = 0;
-    let winnerCount = submission?.winner_count || 0;
-    let prizePerWinner = submission?.prize_per_winner || 0;
-    if (card?.info?.incentive) {
-        if (card.info.incentive.mode === 'plain' || card.info.incentive.mode === 'new_pool') {
-            prizePerWinner = card.info.incentive.prizePerWinner || 0;
-            winnerCount = card.info.incentive.winnerCount || 0;
-            incentiveCost = prizePerWinner * winnerCount;
-        } else if (card.info.incentive.mode === 'accumulated') {
-            incentiveCost = card.info.incentive.additionalPrize || 0;
-        }
-    }
+      Sampai sekarang blok ini menghitung seluruh harganya dari nol memakai
+      tarif HARI INI (`calculateTotalAdCost` dkk.), sementara drawer admin
+      membaca `ad_schedules.total_cost` yang tersimpan. Untuk order lama kedua
+      layar memberi angka berbeda — dan yang dilihat peneliti adalah angka yang
+      tidak pernah ada di tagihan mana pun. Untuk jadwal ke-2 dst. lebih buruk
+      lagi: rumus ORDER dipakai untuk baris perpanjangan, jadi dua jadwal yang
+      ditagih berbeda tampil dengan harga yang sama.
 
-    const voucherCode = card?.info?.voucherCode || submission?.voucher_code;
-    const discount = calculateDiscount(
-        voucherCode, adCost, incentiveCost, duration, voucherInstantOf(submission?.created_at),
-    );
+      `deriveScheduleMoney` (dipanggil di `buildScheduleCards`) adalah fungsi
+      yang SAMA PERSIS dengan yang dipakai kartu admin. Aturannya: kalau sudah
+      pernah ditagih, tampilkan yang ditagih; hitung ulang hanya untuk jadwal
+      yang memang belum punya tagihan — di situ ia penawaran, bukan catatan,
+      dan kartunya menyebutnya begitu (`costIsEstimateNote`).
+    */
+    const money = card.money;
 
-    const subtotal = Math.max(0, adCost + kilatAddon - discount + incentiveCost);
-    const ppn = calculatePpn(subtotal);
-    const grandTotal = subtotal + ppn;
-
-    // Total Payment Row with expandable breakdown
     const totalPaymentValue = (
         <div className="space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
                 <span className={`font-bold text-sm ${muted ? 'text-slate-400' : 'text-jfu-primary'}`}>
-                    {formatIDR(grandTotal)}
+                    {formatIDR(money.total)}
                 </span>
-                <button
-                    type="button"
-                    onClick={() => setShowBreakdown((prev) => !prev)}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-jfu-primary transition-colors py-0.5 px-1.5 rounded-md hover:bg-slate-100/80 cursor-pointer"
-                >
-                    <span>{showBreakdown ? t('hideCostBreakdown') : t('viewCostBreakdown')}</span>
-                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showBreakdown ? 'rotate-180' : ''}`} />
-                </button>
+                {(money.lines || money.note) && (
+                    <button
+                        type="button"
+                        onClick={() => setShowBreakdown((prev) => !prev)}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-jfu-primary transition-colors py-0.5 px-1.5 rounded-md hover:bg-slate-100/80 cursor-pointer"
+                    >
+                        <span>{showBreakdown ? t('hideCostBreakdown') : t('viewCostBreakdown')}</span>
+                        <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showBreakdown ? 'rotate-180' : ''}`} />
+                    </button>
+                )}
             </div>
+            {money.isEstimate && (
+                <p className="text-[11px] text-slate-500 font-normal leading-relaxed">{t('costIsEstimateNote')}</p>
+            )}
             {showBreakdown && (
                 <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 p-3 space-y-2 text-xs font-normal text-slate-600">
-                    <div className="flex justify-between items-center">
-                        <span>
-                            {t('adCostLabel')}{' '}
-                            <span className="text-[11px] text-slate-400 font-normal">
-                                ({questionCount} Qs | {formatIDR(costPerDay)}{isKilat ? ' rate' : ` × ${duration} hari`})
-                            </span>
-                        </span>
-                        <span className="font-semibold text-slate-900">{formatIDR(adCost)}</span>
-                    </div>
-                    {kilatAddon > 0 && (
-                        <div className="flex justify-between items-center">
-                            <span className="flex items-center gap-1">
-                                <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> Add-on JFU Kilat
-                            </span>
-                            <span className="font-semibold text-amber-600">{formatIDR(kilatAddon)}</span>
-                        </div>
-                    )}
-                    {discount > 0 && (
-                        <div className="flex justify-between items-center">
-                            <span>Diskon ({voucherCode})</span>
-                            <span className="font-semibold text-emerald-600">-{formatIDR(discount)}</span>
-                        </div>
-                    )}
-                    {incentiveCost > 0 && (
-                        <div className="flex justify-between items-center">
-                            <span>
-                                {t('totalRewardLabel')}{' '}
-                                {prizePerWinner > 0 && winnerCount > 0 && (
-                                    <span className="text-[11px] text-slate-400 font-normal">
-                                        ({formatIDR(prizePerWinner)} × {winnerCount} {t('winner')})
-                                    </span>
-                                )}
-                            </span>
-                            <span className="font-semibold text-slate-900">{formatIDR(incentiveCost)}</span>
-                        </div>
-                    )}
-                    <div className="flex justify-between items-center pt-1.5 border-t border-slate-200/80">
-                        <span>Subtotal (DPP)</span>
-                        <span className="font-semibold text-slate-900">{formatIDR(subtotal)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                        <span>PPN (11%)</span>
-                        <span className="font-semibold text-slate-900">{formatIDR(ppn)}</span>
-                    </div>
+                    {money.lines
+                        ? money.lines.map((line, i) => (
+                            <div key={`${line.label}-${i}`} className="flex justify-between items-center gap-3">
+                                <span className="min-w-0">
+                                    {line.tone === 'addon' ? (
+                                        <span className="inline-flex items-center gap-1">
+                                            <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> {line.label}
+                                        </span>
+                                    ) : line.label}
+                                    {line.hint && (
+                                        <span className="text-[11px] text-slate-400 font-normal"> ({line.hint})</span>
+                                    )}
+                                </span>
+                                <span className={`font-semibold shrink-0 ${
+                                    line.tone === 'discount' ? 'text-emerald-600'
+                                        : line.tone === 'addon' ? 'text-amber-600'
+                                            : 'text-slate-900'
+                                }`}>
+                                    {line.amount < 0 ? `-${formatIDR(Math.abs(line.amount))}` : formatIDR(line.amount)}
+                                </span>
+                            </div>
+                        ))
+                        : <p className="leading-relaxed">{money.note}</p>}
                 </div>
             )}
         </div>
@@ -443,6 +465,31 @@ function InfoSection({ card, submission, muted }: { card: ScheduleCard; submissi
         label: t('totalPaymentLabel'),
         value: totalPaymentValue,
     });
+
+    /*
+      Sebagian sudah dibayar — 24 jadwal di produksi. Sampai sekarang kartu
+      peneliti hanya menyebut harga penuh, jadi orang yang sudah menyetor
+      Rp 100.000 dari Rp 233.100 tetap dibilang berutang Rp 233.100 sementara
+      admin melihat sisanya Rp 133.100. Angkanya sudah lama tersedia dari
+      `fetchScheduleBilling`; yang belum ada cuma jalur ke layar ini.
+
+      Barisnya hanya muncul saat memang ada selisih: jadwal yang lunas atau
+      yang belum dibayar sama sekali tidak butuh dua baris tambahan.
+    */
+    if (b.paid > 0 && b.outstanding > 0) {
+        rows.push({
+            key: 'paidSoFar',
+            icon: <CreditCard className={iconCls} />,
+            label: t('paidSoFarLabel'),
+            value: <span className="text-emerald-700 font-semibold">{formatIDR(b.paid)}</span>,
+        });
+        rows.push({
+            key: 'outstanding',
+            icon: <CreditCard className={iconCls} />,
+            label: t('outstandingLabel'),
+            value: <span className="text-amber-800 font-bold">{formatIDR(b.outstanding)}</span>,
+        });
+    }
 
     // Invoice / Receipt Row
     let invoiceValue: ReactNode;
@@ -473,9 +520,9 @@ function InfoSection({ card, submission, muted }: { card: ScheduleCard; submissi
             </a>
         );
     } else if (b.state === 'expired') {
-        invoiceValue = <span className="text-rose-600 italic font-medium text-xs sm:text-sm">{t('invoiceExpired')}</span>;
+        invoiceValue = <span className="text-amber-800 italic font-medium text-xs sm:text-sm">{t('invoiceExpired')}</span>;
     } else if (b.state === 'too_late_today') {
-        invoiceValue = <span className="text-rose-600 italic font-medium text-xs sm:text-sm">{t('invoicePaymentClosedToday')}</span>;
+        invoiceValue = <span className="text-amber-800 italic font-medium text-xs sm:text-sm">{t('invoicePaymentClosedToday')}</span>;
     } else if (b.state === 'choose_schedule') {
         invoiceValue = <span className="text-slate-400 italic font-normal text-xs sm:text-sm">{t('invoiceAwaitingSchedule')}</span>;
     } else if (b.state === 'cancelled') {
@@ -500,6 +547,68 @@ function InfoSection({ card, submission, muted }: { card: ScheduleCard; submissi
     );
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+   BANNER FASE ② — SATU ANATOMI UNTUK SEMUA KONDISI.
+
+   Sebelumnya tiap cabang merakit `<div>`-nya sendiri, dan hasilnya sepuluh
+   banner dengan tiga bentuk berbeda: sebagian punya judul, sebagian cuma satu
+   paragraf; sebagian memakai ikon, sebagian tidak; teks "siapa yang
+   mengerjakan" kadang jadi baris isi, kadang duduk di kolom CTA. Bentuknya
+   sekarang dipaksa satu:
+
+       ◍  Judul singkat (2–4 kata)
+          Apa yang sedang terjadi — satu kalimat.
+          Langkah berikutnya / siapa yang mengerjakan.
+
+          [ CTA ]   ← hanya bila ini giliran peneliti
+
+   Bagian yang tidak berlaku DIHILANGKAN, bukan diganti kalimat pengisi —
+   itu sebabnya `lines` menerima `null` dan menyaringnya, bukan menerima
+   string kosong.
+
+   ⚠️ NOL WARNA MERAH DI FASE ②. Tidak ada satu pun keadaannya yang
+   benar-benar gagal; semuanya bisa dilanjutkan peneliti atau tim. Lihat
+   catatan panjangnya di `bookingStatusStyle`.
+   ───────────────────────────────────────────────────────────────────── */
+type BannerTone = 'slate' | 'amber';
+
+const BANNER_TONE: Record<BannerTone, { box: string; icon: string }> = {
+    /** Bukan giliranmu — tim sedang bekerja. */
+    slate: { box: 'border-slate-200/80 bg-slate-50/80', icon: 'text-slate-500' },
+    /** Giliranmu, ada yang perlu diselesaikan. */
+    amber: { box: 'border-amber-200/80 bg-amber-50/70', icon: 'text-amber-600' },
+};
+
+function Banner({ tone, icon, title, lines, cta }: {
+    tone: BannerTone;
+    icon: ReactNode;
+    title: string;
+    /** Kalimat isi, urut. `null`/`false` disaring — lihat aturan emas. */
+    lines: (ReactNode | null | false)[];
+    cta?: ReactNode;
+}) {
+    const style = BANNER_TONE[tone];
+    const body = lines.filter(Boolean);
+    return (
+        <div className={`rounded-xl border p-3.5 sm:p-4 shadow-2xs ${style.box}`}>
+            <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5 min-w-0">
+                    <span className={`shrink-0 mt-0.5 ${style.icon}`}>{icon}</span>
+                    <div className="min-w-0 space-y-1">
+                        <p className="text-sm font-bold text-slate-900 leading-snug">{title}</p>
+                        {body.map((line, i) => (
+                            <p key={i} className="text-xs text-slate-600 leading-relaxed">{line}</p>
+                        ))}
+                    </div>
+                </div>
+                {cta && <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">{cta}</div>}
+            </div>
+        </div>
+    );
+}
+
+const bannerIcon = 'w-4 h-4';
+
 function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     card: ScheduleCard;
     onReschedule: () => void;
@@ -518,15 +627,33 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     const { t } = useLanguage();
     const b = card.booking;
 
+    /** Kalimat penutup untuk keadaan yang tanggalnya harus diganti: entah
+     *  peneliti yang memilih sendiri, entah tim yang mengerjakannya. Salah
+     *  satu SELALU benar, jadi tidak ada keadaan tanpa langkah berikutnya. */
+    const nextStepLine = (selfKey: TranslationKey) =>
+        canSelfReschedule ? t(selfKey) : t('rescheduleHandledByTeam');
+
+    /** Tombol jadwal-ulang — hanya untuk jadwal pertama jalur auto-review.
+     *  Jadwal ke-2 dst. tidak punya alur pemilihan tanggal mandiri, dan order
+     *  jalur manual tanggalnya milik admin (keputusan produk 2026-08-25). */
+    const rescheduleCta = card.kind === 'original' && canSelfReschedule ? (
+        <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftAmber}`}>
+            <RotateCcw className="w-3.5 h-3.5" />
+            {t('rescheduleSlot')}
+        </Button>
+    ) : undefined;
+
     if (b.state === 'in_review') {
         return (
-            <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
-                <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                    {t('scheduleEmptyPending')}
-                </p>
-            </div>
+            <Banner
+                tone="slate"
+                icon={<Clock className={bannerIcon} />}
+                title={t('bannerTitleInReview')}
+                lines={[t('bannerSubInReview')]}
+            />
         );
     }
+
     if (b.state === 'awaiting_invoice') {
         /*
           ⚠️ JELASKAN KENAPA, JANGAN CUMA MENYEMBUNYIKAN TOMBOLNYA.
@@ -535,89 +662,73 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
           ini peneliti hanya melihat tombol bayarnya lenyap — dan tidak ada
           apa pun di layar yang memberi tahu ia harus menunggu tagihan baru,
           apalagi bahwa link lama di emailnya tidak boleh dibayar.
-          Tanggal lamanya DISEBUT supaya ia bisa mencocokkan sendiri dengan
-          email tagihan yang sudah terlanjur diterima.
+
+          Kedua tanggalnya DISEBUT supaya ia bisa mencocokkan sendiri dengan
+          email tagihan yang sudah terlanjur diterima — dan justru karena
+          kalimatnya bergantung pada dua tanggal, cabang ini hanya dipakai
+          bila keduanya benar-benar ada (aturan emas). Kalau jadwalnya belum
+          bertanggal, banner biasa yang tampil.
         */
-        if (b.staleBilledFor) {
+        if (b.staleBilledFor && card.startDate) {
             return (
-                <div className="rounded-xl border p-3.5 border-amber-200/80 bg-amber-50/70">
-                    <div className="flex items-start gap-2.5">
-                        <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                        <div className="min-w-0 space-y-1">
-                            <p className="text-sm font-bold text-slate-900 leading-snug">
-                                Tagihan lama sudah tidak berlaku
-                            </p>
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                                Tagihan sebelumnya diterbitkan untuk jadwal{' '}
-                                <strong className="font-semibold text-slate-900">
-                                    {fmtShort(b.staleBilledFor)}
-                                </strong>
-                                , sedangkan jadwal kamu sekarang{' '}
-                                <strong className="font-semibold text-slate-900">{card.dateRange}</strong>.
-                                Karena tanggalnya berubah, tagihan itu dibatalkan otomatis.
-                            </p>
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                                <strong className="font-semibold text-slate-900">Jangan bayar link lama</strong>{' '}
-                                yang mungkin sudah kamu terima — pembayarannya tidak akan
-                                dihitung untuk jadwal baru ini. Tim kami akan menerbitkan
-                                tagihan pengganti sesuai tanggal barunya.
-                            </p>
-                        </div>
-                    </div>
-                </div>
+                <Banner
+                    tone="amber"
+                    icon={<CalendarClock className={bannerIcon} />}
+                    title={t('bannerTitleStaleInvoice')}
+                    lines={[
+                        t('bannerSubStaleInvoice', {
+                            oldDate: fmtShort(b.staleBilledFor),
+                            newDate: card.dateRange,
+                        }),
+                        t('bannerSubStaleInvoiceWait'),
+                    ]}
+                />
             );
         }
         return (
-            <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
-                <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                    {card.kind === 'extend' ? t('calloutAwaitingInvoiceSchedule') : t('calloutAwaitingInvoice')}
-                </p>
-            </div>
+            <Banner
+                tone="slate"
+                icon={<Clock className={bannerIcon} />}
+                title={t('bannerTitleAwaitingInvoice')}
+                lines={[card.kind === 'extend' ? t('bannerSubAwaitingInvoiceSchedule') : t('bannerSubAwaitingInvoice')]}
+            />
         );
     }
-    // Sudah disetujui, tapi TIM yang menetapkan jadwalnya. Bentuknya sengaja
-    // mengikuti banner `awaiting_invoice` di atas — netral, tanpa CTA. Menawarkan
-    // "Pilih Jadwal" di sini akan mengundang peneliti memesan slot yang admin
-    // juga sedang pesan: balapan `slot_booked_by`, dan ujungnya tagihan basi.
+
+    // Sudah disetujui, tapi TIM yang menetapkan jadwalnya. Warnanya slate, bukan
+    // amber — menawarkan "Pilih Tanggal" di sini akan mengundang peneliti
+    // memesan slot yang admin juga sedang pesan: balapan `slot_booked_by`, dan
+    // ujungnya tagihan basi.
     if (b.state === 'awaiting_admin_schedule') {
         return (
-            <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
-                <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                    {t('calloutAwaitingAdminSchedule')}
-                </p>
-            </div>
+            <Banner
+                tone="slate"
+                icon={<CalendarClock className={bannerIcon} />}
+                title={t('bannerTitleAwaitingAdminSchedule')}
+                lines={[t('bannerSubAwaitingAdminSchedule')]}
+            />
         );
     }
+
     if (b.state === 'choose_schedule') {
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/70 shadow-2xs">
-                <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                        <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                        <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-900 leading-snug">{t('bannerTitleChooseSchedule')}</p>
-                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubChooseSchedule')}</p>
-                        </div>
-                    </div>
-                    <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
-                        <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftAmber}`}>
-                            <CalendarClock className="w-3.5 h-3.5" />
-                            {t('chooseSchedule')}
-                        </Button>
-                    </div>
-                </div>
-            </div>
+            <Banner
+                tone="amber"
+                icon={<CalendarClock className={bannerIcon} />}
+                title={t('bannerTitleChooseSchedule')}
+                lines={[t('bannerSubChooseSchedule')]}
+                cta={
+                    <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftAmber}`}>
+                        <CalendarClock className="w-3.5 h-3.5" />
+                        {t('chooseSchedule')}
+                    </Button>
+                }
+            />
         );
     }
+
     if (b.state === 'waiting_payment') {
         const isExternal = card.kind === 'original' ? b.isExternalLink : true;
-        const payLabel = t('payNow');
-        const deadlineTime = b.deadline
-            ? b.deadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB'
-            : null;
-        const bannerTitle = deadlineTime
-            ? `${t('bannerTitleWaitingPayment')} (${deadlineTime})`
-            : t('bannerTitleWaitingPayment');
         /*
           ⚠️ AKIBAT TENGGATNYA BEDA, JADI KALIMATNYA HARUS BEDA.
           `deadlineCause` sudah dihitung sejak lama tapi tidak pernah dirender,
@@ -636,47 +747,62 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                         MANUAL lewat dashboard admin, jadi tidak ada jam yang
                         jujur bisa disebut. Yang benar adalah alasannya —
                         slotnya terbatas dan bisa habis.
+
+          ⚠️ ATURAN EMAS: `{time}` hanya boleh muncul kalau `deadline` MEMANG
+          ada. Kalau ia null, varian ketiga yang dipakai — dan varian itu
+          sengaja tidak menyebut jam apa pun.
         */
-        const deadlineSubKey = b.deadlineCause === 'slot'
-            ? 'bannerSubWaitingPaymentSlot'
-            : b.deadlineCause === 'cutoff'
-                ? 'bannerSubWaitingPaymentCutoff'
-                : 'bannerSubWaitingPaymentSlotsLimited';
+        const deadlineTime = b.deadline
+            ? b.deadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: WIB }).replace(':', '.') + ' WIB'
+            : null;
+        const deadlineLine = deadlineTime && b.deadlineCause === 'slot'
+            ? t('bannerSubWaitingPaymentSlot', { time: deadlineTime })
+            : deadlineTime && b.deadlineCause === 'cutoff'
+                ? t('bannerSubWaitingPaymentCutoff', { time: deadlineTime })
+                : t('bannerSubWaitingPaymentSlotsLimited');
+
+        /*
+          Sebagian sudah dibayar (24 jadwal di produksi). State-nya SENGAJA
+          tetap `waiting_payment`: yang berubah cuma angka dan satu kalimat.
+          Menambah BookingState baru berarti menyentuh seluruh matriks banner,
+          chip, dan urutan kartu untuk keuntungan nol.
+        */
+        const isPartial = b.paid > 0 && b.outstanding > 0;
 
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-amber-200/80 bg-amber-50/70 shadow-2xs">
-                <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                        <CreditCard className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                        <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-900 leading-snug">{bannerTitle}</p>
-                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t(deadlineSubKey)}</p>
-                        </div>
-                    </div>
-                    {b.payUrl && (
-                        <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
-                            {isExternal ? (
-                                <a href={b.payUrl} target="_blank" rel="noopener noreferrer" className="block max-md:w-full md:inline-block">
-                                    <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal} gap-1.5`}>
-                                        <CreditCard className="w-3.5 h-3.5" />
-                                        {payLabel}
-                                        <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-                                    </Button>
-                                </a>
-                            ) : (
-                                <Link to={b.payUrl} className="block max-md:w-full md:inline-block">
-                                    <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal} gap-1.5`}>
-                                        <CreditCard className="w-3.5 h-3.5" />
-                                        {payLabel}
-                                    </Button>
-                                </Link>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
+            <Banner
+                tone="amber"
+                icon={<CreditCard className={bannerIcon} />}
+                title={isPartial ? t('bannerTitleWaitingPaymentPartial') : t('bannerTitleWaitingPayment')}
+                lines={[
+                    isPartial && t('bannerSubPartiallyPaid', {
+                        paid: formatIDR(b.paid),
+                        due: formatIDR(b.outstanding),
+                    }),
+                    deadlineLine,
+                ]}
+                cta={b.payUrl ? (
+                    isExternal ? (
+                        <a href={b.payUrl} target="_blank" rel="noopener noreferrer" className="block max-md:w-full md:inline-block">
+                            <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal} gap-1.5`}>
+                                <CreditCard className="w-3.5 h-3.5" />
+                                {isPartial ? t('payRemaining') : t('payNow')}
+                                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                            </Button>
+                        </a>
+                    ) : (
+                        <Link to={b.payUrl} className="block max-md:w-full md:inline-block">
+                            <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal} gap-1.5`}>
+                                <CreditCard className="w-3.5 h-3.5" />
+                                {isPartial ? t('payRemaining') : t('payNow')}
+                            </Button>
+                        </Link>
+                    )
+                ) : undefined}
+            />
         );
     }
+
     if (b.state === 'slot_cancelled') {
         /* Dulu keadaan ini memakai banner `expired` — jadi peneliti diberi tahu
            slotnya "dilepas OTOMATIS" padahal seorang admin menekannya, lalu
@@ -684,90 +810,64 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
            baru saja dibatalkan (penjaganya sekarang di `rebookSlotForSubmission`).
            Nol CTA di sini bukan kelalaian: tidak ada langkah milik peneliti. */
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-slate-200/80 bg-slate-50/80 shadow-2xs">
-                <div className="flex items-start gap-2.5 min-w-0">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-slate-500" />
-                    <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900 leading-snug">{t('bannerTitleSlotCancelled')}</p>
-                        <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubSlotCancelled')}</p>
-                    </div>
-                </div>
-            </div>
+            <Banner
+                tone="slate"
+                icon={<AlertCircle className={bannerIcon} />}
+                title={t('bannerTitleSlotCancelled')}
+                lines={[t('bannerSubSlotCancelled')]}
+            />
         );
     }
+
     if (b.state === 'expired') {
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/70 shadow-2xs">
-                <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                        <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-900 leading-snug">{t('bannerTitleExpired')}</p>
-                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
-                                {card.kind === 'extend' ? t('scheduleExpiredHint') : t('bannerSubExpired')}
-                            </p>
-                        </div>
-                    </div>
-                    {card.kind === 'original' && (canSelfReschedule ? (
-                        <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
-                            <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftRose}`}>
-                                <RotateCcw className="w-3.5 h-3.5" />
-                                {t('rescheduleSlot')}
-                            </Button>
-                        </div>
-                    ) : (
-                        /* Order jalur manual TIDAK menentukan tanggalnya sendiri —
-                           aturan yang sama yang membuat wizard-nya melewati step
-                           Jadwal. Menawarkan tombol di sini akan membiarkan peneliti
-                           mengunci slot untuk order yang tanggalnya milik admin. */
-                        <p className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto text-xs text-slate-600 leading-relaxed md:max-w-[15rem]">
-                            {t('rescheduleHandledByTeam')}
-                        </p>
-                    ))}
-                </div>
-            </div>
+            <Banner
+                tone="amber"
+                icon={<AlertCircle className={bannerIcon} />}
+                title={t('bannerTitleExpired')}
+                lines={
+                    card.kind === 'extend'
+                        ? [t('scheduleExpiredHint')]
+                        : [t('bannerSubExpired'), nextStepLine('bannerSubPickNewDate')]
+                }
+                cta={rescheduleCta}
+            />
         );
     }
+
     if (b.state === 'too_late_today') {
+        /* ⚠️ "Hari ini" DIBUANG. `isPaymentTooLateForDate` cocok untuk tanggal
+           lampau MANA PUN, jadi order yang tertinggal seminggu pun dulu
+           berbunyi "Waktu Penyiapan Hari Ini Telah Lewat". Sebut tanggalnya —
+           dan kalau tanggalnya entah kenapa tidak ada, hilangkan barisnya
+           sekalian, jangan menebak. */
         return (
-            <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/70 shadow-2xs">
-                <div className="flex max-md:flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                        <Clock className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                        <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-900 leading-snug">{t('bannerTitleTooLateToday')}</p>
-                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubTooLateToday')}</p>
-                        </div>
-                    </div>
-                    {card.kind === 'original' && (canSelfReschedule ? (
-                        <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
-                            <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftRose}`}>
-                                <RotateCcw className="w-3.5 h-3.5" />
-                                {t('rescheduleSlot')}
-                            </Button>
-                        </div>
-                    ) : (
-                        /* Order jalur manual TIDAK menentukan tanggalnya sendiri —
-                           aturan yang sama yang membuat wizard-nya melewati step
-                           Jadwal. Menawarkan tombol di sini akan membiarkan peneliti
-                           mengunci slot untuk order yang tanggalnya milik admin. */
-                        <p className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto text-xs text-slate-600 leading-relaxed md:max-w-[15rem]">
-                            {t('rescheduleHandledByTeam')}
-                        </p>
-                    ))}
-                </div>
-            </div>
+            <Banner
+                tone="amber"
+                icon={<Clock className={bannerIcon} />}
+                title={t('bannerTitleTooLateToday')}
+                lines={[
+                    card.startDate && t('bannerSubTooLateToday', { date: formatWithWeekday(card.startDate, true) }),
+                    card.kind === 'original' && nextStepLine('bannerSubPickNextDate'),
+                ]}
+                cta={rescheduleCta}
+            />
         );
     }
+
     if (b.state === 'cancelled') {
         return (
-            <div className="rounded-xl border p-3.5 border-slate-200/80 bg-slate-50/80">
-                <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                    {t('calloutCancelledSchedule')}
-                </p>
-            </div>
+            <Banner
+                tone="slate"
+                icon={<AlertCircle className={bannerIcon} />}
+                title={t('bannerTitleCancelledSchedule')}
+                lines={[t('calloutCancelledSchedule')]}
+            />
         );
     }
+
+    /* `paid` sengaja tanpa banner: order lunas tidak menunggu apa pun, dan Fase
+       ③ yang bercerita soal penayangannya. */
     return null;
 }
 
@@ -832,7 +932,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                 </AccordionPrimitive.Header>
                                 <AccordionContent className="pb-4 pt-1.5 space-y-4 bg-white -mx-3.5 px-3.5 border-t border-slate-100">
                                     <ScheduleBanner card={card} onReschedule={onReschedule} canSelfReschedule={selfReschedule} />
-                                    <InfoSection card={card} submission={submission} muted={pendingReview} />
+                                    <InfoSection card={card} muted={pendingReview} />
                                 </AccordionContent>
                             </AccordionItem>
                             );

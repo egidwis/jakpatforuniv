@@ -18,7 +18,7 @@ import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils
 // menamai keadaan yang sama dengan nama yang sama.
 import { holdStateOf, isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { orderTotalOf } from '@/utils/orderTotals';
-import { deriveScheduleMoney } from './scheduleMoney';
+import { deriveScheduleMoney } from '@/utils/scheduleMoney';
 // Keadaan kartu, aksinya, dan definisi "terlambat" hidup di SATU modul —
 // lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
 import {

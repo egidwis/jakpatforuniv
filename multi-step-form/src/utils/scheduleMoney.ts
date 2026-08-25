@@ -13,7 +13,13 @@ import {
 //                   benar-benar keluar sebagai tagihan ke peneliti.
 //   ESTIMASI      — dihitung ulang dari tarif HARI INI.
 //
-// Sampai Phase 3 tab ini SELALU memakai yang kedua, dan itu salah dua kali:
+// Dipakai DUA LAYAR: kartu jadwal di drawer admin dan kartu Fase ② di
+// dashboard peneliti. Sebelumnya masing-masing punya hitungannya sendiri, dan
+// yang di sisi peneliti menghitung ulang dari nol — jadi satu order bisa
+// berbunyi dua harga tergantung siapa yang membukanya. Berkasnya tinggal di
+// `utils/` justru supaya tidak ada sisi yang "memiliki"-nya.
+//
+// Sampai Phase 3 tab admin SELALU memakai yang kedua, dan itu salah dua kali:
 //   * untuk order lama ia menampilkan harga hari ini atas order yang ditagih
 //     dengan tarif lama — angka yang tidak pernah ada di invoice mana pun;
 //   * untuk jadwal ke-2 dst. ia memakai rumus ORDER (base × durasi order),
