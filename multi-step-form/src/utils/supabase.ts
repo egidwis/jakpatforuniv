@@ -805,13 +805,57 @@ export const getFormSubmissionById = async (id: string) => {
 };
 
 /**
+ * Berapa baris tagihan yang benar-benar tersentuh oleh satu aksi uang.
+ *
+ * Nol BUKAN kegagalan di sini — lihat `assertScheduleRowTouched()` untuk
+ * pembagian tanggung jawabnya. Pemanggil memakai angka ini untuk berkata jujur
+ * di toast ("lunas, tapi nol tagihan ikut ditandai") alih-alih menampilkan
+ * sukses polos yang menyembunyikan bahwa tidak ada catatan tagihan apa pun.
+ */
+export type ScheduleBillingTouch = { invoices: number; transactions: number };
+
+/**
+ * Penjaga baris untuk penulisan jadwal — pasangan `.select('id')` yang WAJIB
+ * menyertai setiap `.update()` ke `form_submissions` / `form_submissions_extend`
+ * di jalur uang.
+ *
+ * ⚠️ INI MENUTUP KELAS BUG "GAGAL SENYAP". PostgREST membalas 2xx tanpa error
+ * saat RLS menyaring hasilnya jadi NOL baris — jadi `.update()` tanpa
+ * `.select()` tidak bisa dibedakan antara "tersimpan" dan "ditolak diam-diam".
+ * RLS di sini mengunci tulisan kolom uang ke `service_role` atau satu email
+ * hardcoded (`guard_extend_payment_columns`, sql/33), jadi nol baris adalah
+ * keadaan yang benar-benar bisa terjadi pada admin lain — dan sebelum ini
+ * tampil sebagai toast hijau "ditandai lunas" padahal tidak ada yang berubah.
+ *
+ * ⚠️ SENGAJA HANYA UNTUK BARIS JADWAL, bukan untuk `invoices`/`transactions`.
+ * Di kedua tabel itu nol baris adalah keadaan SAH: order yang dilunasi di luar
+ * sistem memang tidak punya catatan tagihan sama sekali. Melempar di sana akan
+ * memblokir pelunasan yang benar. Karena itu jumlahnya dikembalikan
+ * (`ScheduleBillingTouch`) untuk dilaporkan, bukan dilempar.
+ *
+ * Aman dipakai pada `form_submissions_extend` meski ia VIEW: `extend_view_update()`
+ * mengembalikan `NEW` (sql/52), jadi `RETURNING` di baliknya tetap berisi.
+ */
+const assertScheduleRowTouched = (rows: unknown[] | null, entry: AdScheduleEntry): void => {
+  if (rows && rows.length > 0) return;
+  throw new Error(
+    `Perubahan jadwal #${entry.bookingId} TIDAK tersimpan — nol baris tersentuh. ` +
+    'Biasanya karena akun ini tidak berhak menulis kolom pembayaran, atau ' +
+    'jadwalnya sudah berubah di tempat lain. Muat ulang lalu coba lagi.'
+  );
+};
+
+/**
  * Tandai SATU jadwal lunas — pelunasan manual oleh admin.
  *
- * ⚠️ INI YANG MENGGANTIKAN `updatePaymentStatus` DI KARTU JADWAL, dan bedanya
- * bukan kosmetik. `updatePaymentStatus` menyaring `form_submission_id` saja,
- * jadi pada order berjadwal banyak ia melunasi tagihan jadwal LAIN sekaligus —
- * termasuk jadwal yang uangnya belum pernah diterima. Fungsi ini menyaring
- * `schedule_id` (sql/51), jadi cakupannya persis kartu yang diklik.
+ * ⚠️ SATU-SATUNYA JALAN PELUNASAN MANUAL. Pendahulunya, `updatePaymentStatus`,
+ * menyaring `form_submission_id` saja — jadi pada order berjadwal banyak ia
+ * melunasi tagihan jadwal LAIN sekaligus, termasuk jadwal yang uangnya belum
+ * pernah diterima. Fungsi ini menyaring `schedule_id` (sql/51), jadi cakupannya
+ * persis kartu yang diklik. `updatePaymentStatus` sendiri sudah DIHAPUS: ia
+ * berakhir sebagai kode mati (prop `onPaymentStatusChange` tak pernah
+ * di-destructure penerimanya), jadi jangan hidupkan kembali pola berlingkup
+ * order untuk aksi berlingkup jadwal.
  *
  * Efek sampingnya sengaja dibuat IDENTIK dengan jalur webhook DOKU, supaya
  * pelunasan manual dan pelunasan otomatis tidak meninggalkan baris yang
@@ -828,38 +872,53 @@ export const getFormSubmissionById = async (id: string) => {
  * ⚠️ Penjaga kolom uang (`guard_extend_payment_columns`, sql/33) hanya
  * meloloskan `service_role` atau `product@jakpat.net`. Admin lain akan ditolak
  * DB — itu perilaku yang sudah ada sejak sql/33, bukan yang dibawa fungsi ini.
+ * Sampai sekarang penolakan itu TIDAK TERLIHAT: `.update()` tanpa `.select()`
+ * membalas sukses meski nol baris berubah, jadi admin melihat toast hijau untuk
+ * pelunasan yang tidak pernah terjadi. `assertScheduleRowTouched()` menutupnya.
+ *
+ * Mengembalikan jumlah baris `invoices`/`transactions` yang ikut ditandai.
+ * ⚠️ Nol di sana BUKAN kegagalan — order yang dibayar di luar sistem memang tak
+ * punya catatan tagihan. Laporkan angkanya di toast, jangan lempar.
  */
-export const markScheduleAsPaid = async (entry: AdScheduleEntry) => {
+export const markScheduleAsPaid = async (entry: AdScheduleEntry): Promise<ScheduleBillingTouch> => {
   // `invoices` TIDAK punya kolom `payment_method` — hanya `transactions` yang
   // punya. Patch-nya harus terpisah per skema; menyamakannya (seperti versi
   // lama) membuat PostgREST menolak update invoices dengan 400 PGRST204.
-  const { error: invErr } = await supabase
+  const { data: invRows, error: invErr } = await supabase
     .from('invoices')
     .update({ status: 'paid', paid_at: new Date().toISOString() })
     .eq('schedule_id', entry.id)
-    .in('status', ['pending', 'expired']);
+    .in('status', ['pending', 'expired'])
+    .select('id');
   if (invErr) throw invErr;
 
-  const { error: txnErr } = await supabase
+  const { data: txnRows, error: txnErr } = await supabase
     .from('transactions')
     .update({ status: 'paid', payment_method: 'manual', payment_channel: 'MANUAL_VERIFIED' })
     .eq('schedule_id', entry.id)
-    .in('status', ['pending', 'expired']);
+    .in('status', ['pending', 'expired'])
+    .select('id');
   if (txnErr) throw txnErr;
 
   if (entry.isExtension) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('form_submissions_extend')
       .update({ payment_status: 'paid', submission_status: 'scheduled' })
-      .eq('id', entry.sourceId);
+      .eq('id', entry.sourceId)
+      .select('id');
     if (error) throw error;
+    assertScheduleRowTouched(data, entry);
   } else {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('form_submissions')
       .update({ payment_status: 'paid', submission_status: 'paid' })
-      .eq('id', entry.sourceId);
+      .eq('id', entry.sourceId)
+      .select('id');
     if (error) throw error;
+    assertScheduleRowTouched(data, entry);
   }
+
+  return { invoices: invRows?.length || 0, transactions: txnRows?.length || 0 };
 };
 
 /**
@@ -884,35 +943,47 @@ export const markScheduleAsPaid = async (entry: AdScheduleEntry) => {
  * `payment_method`/`payment_channel` dikosongkan (bukan ditebak balik ke
  * 'doku') karena kita tidak tahu — dan tidak boleh berpura-pura tahu — cara
  * bayar SEBELUM ditandai lunas manual.
+ *
+ * Pembagian penjaganya sama persis dengan `markScheduleAsPaid()`: baris jadwal
+ * WAJIB tersentuh (`assertScheduleRowTouched`), baris tagihan boleh nol dan
+ * jumlahnya dikembalikan untuk dilaporkan.
  */
-export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry) => {
-  const { error: invErr } = await supabase
+export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry): Promise<ScheduleBillingTouch> => {
+  const { data: invRows, error: invErr } = await supabase
     .from('invoices')
     .update({ status: 'pending', paid_at: null })
     .eq('schedule_id', entry.id)
-    .eq('status', 'paid');
+    .eq('status', 'paid')
+    .select('id');
   if (invErr) throw invErr;
 
-  const { error: txnErr } = await supabase
+  const { data: txnRows, error: txnErr } = await supabase
     .from('transactions')
     .update({ status: 'pending', payment_method: null, payment_channel: null })
     .eq('schedule_id', entry.id)
-    .eq('payment_channel', 'MANUAL_VERIFIED');
+    .eq('payment_channel', 'MANUAL_VERIFIED')
+    .select('id');
   if (txnErr) throw txnErr;
 
   if (entry.isExtension) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('form_submissions_extend')
       .update({ payment_status: 'pending', submission_status: 'waiting_payment' })
-      .eq('id', entry.sourceId);
+      .eq('id', entry.sourceId)
+      .select('id');
     if (error) throw error;
+    assertScheduleRowTouched(data, entry);
   } else {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('form_submissions')
       .update({ payment_status: 'pending', submission_status: 'waiting_payment' })
-      .eq('id', entry.sourceId);
+      .eq('id', entry.sourceId)
+      .select('id');
     if (error) throw error;
+    assertScheduleRowTouched(data, entry);
   }
+
+  return { invoices: invRows?.length || 0, transactions: txnRows?.length || 0 };
 };
 
 /**
@@ -962,55 +1033,6 @@ export const cancelInvoice = async (paymentId: string): Promise<number> => {
   if (txnErr) throw txnErr;
 
   return (invRows?.length || 0) + (txnRows?.length || 0);
-};
-
-/**
- * Ubah status pembayaran seluruh ORDER.
- *
- * ⚠️ CAKUPANNYA ORDER, BUKAN JADWAL — ia melunasi/membatalkan setiap invoice
- * dan transaksi yang `form_submission_id`-nya cocok, apa pun jadwal pemiliknya.
- * Itu benar untuk dropdown status di tabel Submissions (yang memang berbicara
- * tentang order), dan SALAH untuk tombol di kartu jadwal. Untuk yang terakhir
- * pakai `markScheduleAsPaid()`.
- */
-export const updatePaymentStatus = async (id: string, status: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('form_submissions')
-      .update({ payment_status: status })
-      .eq('id', id)
-      .select();
-
-    if (error) throw error;
-
-    // If marked as paid, also update any pending invoices/transactions for this submission.
-    //
-    // ⚠️ `invoices` TIDAK punya kolom `payment_method` — hanya `transactions`
-    // punya. Sebelumnya kedua update ini terkena `payment_method` yang sama
-    // DAN hasilnya tidak diperiksa, jadi update invoices ditolak PostgREST
-    // (400 PGRST204) secara diam-diam sejak fungsi ini ditulis: form_submissions
-    // dan transactions berubah jadi 'paid', invoices tidak pernah ikut.
-    if (status === 'paid') {
-      const { error: invErr } = await supabase
-        .from('invoices')
-        .update({ status: 'paid', paid_at: new Date().toISOString() })
-        .eq('form_submission_id', id)
-        .in('status', ['pending', 'expired']);
-      if (invErr) throw invErr;
-
-      const { error: txnErr } = await supabase
-        .from('transactions')
-        .update({ status: 'paid', payment_method: 'manual', payment_channel: 'MANUAL_VERIFIED' })
-        .eq('form_submission_id', id)
-        .in('status', ['pending', 'expired']);
-      if (txnErr) throw txnErr;
-    }
-
-    return data[0];
-  } catch (error: any) {
-    console.error('Error updating payment status:', error);
-    throw error;
-  }
 };
 
 // Fungsi untuk update status form
@@ -1346,6 +1368,31 @@ const submissionIdsForBookingId = async (
   return Array.from(found);
 };
 
+/**
+ * Berapa jadwal yang dimiliki order ini, dan berapa totalnya menurut
+ * `ad_schedules` — sisi-DB dari `orderTotalOf()` (utils/orderTotals.ts).
+ *
+ * Dipakai oleh fungsi yang MENULIS `form_submissions.total_cost` dari input
+ * tingkat-order. Kolom itu cuma menampung harga jadwal ke-1, jadi begitu sebuah
+ * order punya jadwal ke-2, angka yang mereka hitung berhenti menjadi harga
+ * order — dan menampilkannya sebagai "harga order" adalah cara paling mudah
+ * membuat admin dan peneliti memegang dua angka berbeda.
+ */
+const readOrderScheduleTotals = async (
+  submissionId: string
+): Promise<{ count: number; total: number }> => {
+  const { data, error } = await supabase
+    .from('ad_schedules')
+    .select('total_cost')
+    .eq('submission_id', submissionId);
+  if (error) throw error;
+  const rows = (data || []) as { total_cost: number | null }[];
+  return {
+    count: rows.length,
+    total: rows.reduce((sum, r) => sum + (Number(r.total_cost) || 0), 0),
+  };
+};
+
 // Fungsi untuk mendapatkan form submissions dengan pagination
 /**
  * Hitung ulang harga order dari kolom-kolomnya, lalu tulis
@@ -1365,11 +1412,24 @@ const submissionIdsForBookingId = async (
  *
  * Order LUNAS tidak pernah ditulis ulang — harganya mencatat uang yang sudah
  * masuk, dan mengubahnya membuat pembukuan berbohong.
+ *
+ * ⚠️ `totalCost` YANG DIKEMBALIKAN BUKAN HARGA ORDER PADA ORDER BERJADWAL
+ * BANYAK. Ia harga jadwal ke-1 — satu-satunya yang muat di
+ * `form_submissions.total_cost`. Jadwal ke-2 dst. dihargai terpisah lewat
+ * `InvoiceForm` dan tidak ikut terhitung di rumus mana pun di atas. Karena itu
+ * `orderTotal` + `scheduleCount` ikut dikembalikan: begitu `scheduleCount > 1`,
+ * yang boleh dikutip ke admin adalah `orderTotal`, bukan `totalCost`.
  */
 export const recomputeOrderPrice = async (
   submissionId: string,
   overrides: { questionCount?: number } = {}
-): Promise<{ totalCost: number; subtotal: number; ppn: number; skipped?: 'paid' }> => {
+): Promise<{
+  totalCost: number; subtotal: number; ppn: number; skipped?: 'paid';
+  /** Total SELURUH jadwal order ini sesudah tulisan di atas — lihat `readOrderScheduleTotals`. */
+  orderTotal: number;
+  /** >1 berarti `totalCost` di atas hanya harga jadwal ke-1, bukan harga order. */
+  scheduleCount: number;
+}> => {
   const { data: sub, error: readError } = await supabase
     .from('form_submissions')
     .select('question_count, duration, winner_count, prize_per_winner, voucher_code, payment_status, submission_status, distribution_type, created_at, total_cost, subtotal, ppn_amount')
@@ -1407,11 +1467,14 @@ export const recomputeOrderPrice = async (
   const totalCost = subtotal + ppn;
 
   if (isPaid) {
+    const scoped = await readOrderScheduleTotals(submissionId);
     return {
       totalCost: Number(sub.total_cost) || 0,
       subtotal: Number(sub.subtotal) || 0,
       ppn: Number(sub.ppn_amount) || 0,
       skipped: 'paid',
+      orderTotal: scoped.total,
+      scheduleCount: scoped.count,
     };
   }
 
@@ -1421,7 +1484,13 @@ export const recomputeOrderPrice = async (
     .eq('id', submissionId);
 
   if (writeError) throw writeError;
-  return { totalCost, subtotal, ppn };
+
+  // ⚠️ DIBACA SESUDAH TULISAN, BUKAN SEBELUM. Tulisan di atas menyalakan
+  // `trg_ad_schedule_from_submission`, yang memperbarui baris ordinal 1 di
+  // `ad_schedules`. Membaca lebih dulu akan menjumlahkan harga LAMA jadwal ke-1
+  // dengan harga baru — angka yang tidak pernah benar.
+  const scoped = await readOrderScheduleTotals(submissionId);
+  return { totalCost, subtotal, ppn, orderTotal: scoped.total, scheduleCount: scoped.count };
 };
 
 /** Pratinjau harga TANPA menulis apa pun — untuk dialog konfirmasi. */
@@ -2361,7 +2430,9 @@ export const updateKilatSchedule = async (
  * `duration` sengaja tidak diubah. Kilat mengabaikannya, dan menimpanya akan
  * menghapus jejak pesanan asli kalau admin membatalkan konversi.
  *
- * Satu-satunya penolakan keras: halaman iklan yang MASIH published. Order itu
+ * DUA penolakan keras. Yang pertama: order yang punya jadwal ke-2 — alasannya
+ * ditulis panjang di badan fungsi, intinya konversi berlingkup satu jadwal
+ * sementara ordernya tidak. Yang kedua: halaman iklan yang MASIH published. Order itu
  * sedang tayang di feed aplikasi Jakpat, dan memindahkannya diam-diam ke Kilat
  * meninggalkan kartu iklan hidup untuk order yang tidak lagi membayarnya. Kalau
  * halamannya sudah di-unpublish (draft), konversi boleh jalan — dan baris #2
@@ -2380,6 +2451,34 @@ export const convertDistributionType = async (
 
   if (readError) throw readError;
   if (!sub) throw new Error('Order tidak ditemukan.');
+
+  // ⚠️ PENOLAKAN KEDUA: order yang punya jadwal ke-2 tidak boleh dikonversi.
+  //
+  // Tiga hal di bawah bekerja pada asumsi "satu order = satu jadwal", dan
+  // semuanya rusak diam-diam begitu ada ordinal ≥2:
+  //
+  //   * `total_cost/subtotal/ppn_amount` ditulis dari input tingkat-order, jadi
+  //     yang tersimpan hanya harga jadwal ke-1 — harga jadwal lanjutan tidak
+  //     pernah masuk rumus mana pun di sini;
+  //   * `start_date`/`end_date` dikosongkan untuk melepas reservasi. Di
+  //     `sync_ad_schedule_from_submission()` (sql/49) `start_date IS NULL`
+  //     berarti HAPUS baris cermin ordinal 1 — sementara baris ordinal ≥2 tetap
+  //     berdiri, kini menempel ke order yang jadwal pertamanya sudah lenyap;
+  //   * rumus Kilat tidak mengenal perpanjangan sama sekali (lihat pagar yang
+  //     sama di `SchedulePaymentTab`), jadi jadwal lanjutan akan tertinggal
+  //     dengan harga jalur lama pada order berjalur baru.
+  //
+  // Menolaknya di sini, bukan di UI: ini satu-satunya pintu, dan penolakan yang
+  // hidup di tombol selalu bisa dilewati pemanggil berikutnya.
+  const scoped = await readOrderScheduleTotals(submissionId);
+  if (scoped.count > 1) {
+    throw new Error(
+      `Order ini punya ${scoped.count} jadwal iklan, jadi jalur distribusinya tidak bisa dipindahkan. ` +
+      'Konversi menghitung ulang harga dan melepas reservasi untuk SATU jadwal saja — ' +
+      'jadwal lanjutannya akan tertinggal dengan harga jalur lama. ' +
+      'Batalkan dulu jadwal lanjutannya kalau order ini memang harus pindah jalur.'
+    );
+  }
 
   const { data: page } = await supabase
     .from('survey_pages')

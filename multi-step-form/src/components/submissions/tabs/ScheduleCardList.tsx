@@ -13,6 +13,7 @@ import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils
 // Derivasi chip diimpor, TIDAK disalin. Papan Schedule dan drawer ini harus
 // menamai keadaan yang sama dengan nama yang sama.
 import { holdStateOf, isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
+import { orderTotalOf } from '@/utils/orderTotals';
 import { deriveScheduleMoney } from './scheduleMoney';
 
 // ─────────────────────────────────────────────────────────────
@@ -810,7 +811,7 @@ export function ScheduleCardList({
   const isOnly = entries.length === 1;
 
   const summary = useMemo(() => {
-    const billed = entries.reduce((sum, e) => sum + e.totalCost, 0);
+    const billed = orderTotalOf(entries);
     const unpaid = entries.filter((e) => {
       const s = cardStateOf(e, billings.get(e.id));
       return s !== 'paid' && s !== 'cancelled';

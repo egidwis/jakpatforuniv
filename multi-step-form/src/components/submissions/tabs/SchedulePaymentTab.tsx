@@ -169,8 +169,18 @@ export function SchedulePaymentTab({
 
   const handleMarkPaid = useCallback(async (entry: AdScheduleEntry) => {
     try {
-      await markScheduleAsPaid(entry);
-      toast.success(`Jadwal #${entry.bookingId} ditandai lunas.`);
+      const touched = await markScheduleAsPaid(entry);
+      // Nol tagihan tersentuh itu SAH — order yang dibayar di luar sistem tidak
+      // punya catatan tagihan sama sekali. Yang tidak boleh adalah menyembunyikannya:
+      // admin perlu tahu bahwa yang berubah cuma status jadwalnya, supaya ia tidak
+      // mencari kuitansi yang memang tidak akan pernah ada.
+      if (touched.invoices === 0 && touched.transactions === 0) {
+        toast.success(
+          `Jadwal #${entry.bookingId} ditandai lunas — tanpa catatan tagihan yang ikut ditandai.`
+        );
+      } else {
+        toast.success(`Jadwal #${entry.bookingId} ditandai lunas.`);
+      }
       setPendingPaid(null);
       reload();
       onExtendCreated();
@@ -193,8 +203,14 @@ export function SchedulePaymentTab({
     );
     if (!ok) return;
     try {
-      await unmarkScheduleAsPaid(entry);
-      toast.success(`Jadwal #${entry.bookingId} kembali "menunggu bayar".`);
+      const touched = await unmarkScheduleAsPaid(entry);
+      if (touched.invoices === 0 && touched.transactions === 0) {
+        toast.success(
+          `Jadwal #${entry.bookingId} kembali "menunggu bayar" — tanpa catatan tagihan yang ikut dibalik.`
+        );
+      } else {
+        toast.success(`Jadwal #${entry.bookingId} kembali "menunggu bayar".`);
+      }
       reload();
       onExtendCreated();
     } catch (err: any) {

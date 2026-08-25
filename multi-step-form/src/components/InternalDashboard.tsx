@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar } from 'lucide-react';
-import { getFormSubmissionsPaginated, countSubmissionsByStatus, updateFormStatus, updatePaymentStatus, convertDistributionType, supabase } from '../utils/supabase';
+import { getFormSubmissionsPaginated, countSubmissionsByStatus, updateFormStatus, convertDistributionType, supabase } from '../utils/supabase';
 import { fetchProfileNames } from '../utils/profileNames';
 import { emailLocalPart } from './customers/types';
 import { useAuth } from '../context/AuthContext';
@@ -657,35 +657,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     await executeStatusUpdate(submissionId, newStatus, notes, updatedHistory, submission.status);
   };
 
-  const handlePaymentStatusChange = async (submissionId: string, newStatus: string) => {
-    try {
-      await updatePaymentStatus(submissionId, newStatus);
-      
-      const updateState = (prev: SurveySubmission[]) =>
-        prev.map(s => s.id === submissionId ? { ...s, payment_status: newStatus } : s);
-
-      setSubmissions(updateState);
-      setFilteredSubmissions(updateState);
-      
-      // Update local payment state for UI changes
-      setPaymentStates(prev => {
-        const curr = prev[submissionId];
-        if (!curr) return prev;
-        return {
-          ...prev,
-          [submissionId]: {
-            ...curr,
-            latestStatus: newStatus as any,
-          }
-        };
-      });
-      
-      toast.success(`Payment status marked as ${newStatus}`);
-    } catch (error) {
-      toast.error('Failed to update payment status');
-    }
-  };
-
   /**
    * Jembatan iklan regular ↔ JFU Kilat. Setelah konversi, baris berpindah tab
    * sendiri — filter distTab membaca distribution_type dari data yang dimuat
@@ -943,7 +914,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     clientTier,
     onOpenChange: (open: boolean) => { if (!open) setOpenSubmissionId(null); },
     onStatusChange: handleStatusChange,
-    onPaymentStatusChange: handlePaymentStatusChange,
     onEditFormDetails: handleOpenEditFormDetailsModal,
     onEditCriteria: handleOpenEditCriteriaModal,
     onOpenPageBuilder: handleOpenPageBuilder,
@@ -1458,7 +1428,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                   existingPage={existingPages[submission.id]}
                   isScheduled={scheduledSubmissionIds.has(submission.id)}
                   onStatusChange={handleStatusChange}
-                  onPaymentStatusChange={handlePaymentStatusChange}
                   onEditFormDetails={handleOpenEditFormDetailsModal}
                   onEditCriteria={handleOpenEditCriteriaModal}
                   onOpenPageBuilder={handleOpenPageBuilder}

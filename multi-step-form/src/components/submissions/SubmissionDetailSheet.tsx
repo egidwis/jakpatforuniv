@@ -109,7 +109,6 @@ interface SubmissionDetailSheetProps {
   isScheduled: boolean;
   onOpenChange: (open: boolean) => void;
   onStatusChange: (submissionId: string, newStatus: string, notes?: string) => void;
-  onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onEditCriteria: (submission: SurveySubmission) => void;
   onOpenPageBuilder: (submission: SurveySubmission) => void;
@@ -543,10 +542,16 @@ export function SubmissionDetailSheet({
         // Harga ikut, di panggilan terpisah. `recomputeOrderPrice` menolak
         // sendiri untuk order lunas — harganya mencatat uang yang sudah masuk.
         const priced = await recomputeOrderPrice(submission.id, { questionCount: questionCountInput });
+        // Pada order berjadwal banyak, `priced.totalCost` cuma harga jadwal ke-1
+        // — mengutipnya sebagai "total" adalah cara admin dan peneliti mulai
+        // memegang dua angka. Yang benar `orderTotal` (SUM ad_schedules), dan
+        // kalimatnya menyebut jumlah jadwalnya supaya angkanya tidak ambigu.
         toast.success(
           priced.skipped === 'paid'
             ? `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q (harga order lunas tidak diubah)`
-            : `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q · total Rp ${priced.totalCost.toLocaleString('id-ID')}`
+            : priced.scheduleCount > 1
+              ? `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q · jadwal ke-1 Rp ${priced.totalCost.toLocaleString('id-ID')} · total ${priced.scheduleCount} jadwal Rp ${priced.orderTotal.toLocaleString('id-ID')}`
+              : `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q · total Rp ${priced.totalCost.toLocaleString('id-ID')}`
         );
         onExtendCreated();
       }

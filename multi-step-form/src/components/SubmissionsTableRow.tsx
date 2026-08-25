@@ -25,7 +25,6 @@ interface SubmissionsTableRowProps {
   existingPage?: ExistingPage;
   isScheduled: boolean;
   onStatusChange: (submissionId: string, newStatus: string) => void;
-  onPaymentStatusChange: (submissionId: string, newStatus: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onEditCriteria: (submission: SurveySubmission) => void;
   onOpenPageBuilder: (submission: SurveySubmission) => void;
