@@ -25,6 +25,13 @@ export type BookingState =
     | 'awaiting_invoice'
     | 'waiting_payment'
     | 'expired'
+    /** Tim Jakpat membatalkan tanggal tayangnya. Dipisah dari `expired` karena
+     * PELAKUNYA berbeda — dan itu satu-satunya hal yang penting bagi peneliti:
+     * `expired` adalah tenggat yang terlewat (bisa ia perbaiki sendiri),
+     * `slot_cancelled` adalah keputusan tim (tidak bisa, dan tidak boleh, ia
+     * batalkan sendiri dengan tombol jadwal-ulang). Lihat
+     * `isSlotCancelledSchedule` untuk cara membedakannya di data. */
+    | 'slot_cancelled'
     /** Jadwalnya hari ini tapi batas bayar 14.00 WIB sudah lewat. Sengaja
      * dipisah dari `expired` — sebabnya beda (slot tidak dilepas, yang habis
      * adalah waktu admin menyiapkan halaman iklan), jadi copy-nya beda. */
@@ -173,13 +180,16 @@ export function buildScheduleCards(
     const rawStep = orderStepOf(first, now);
     const totalPeriods = 1 + later.length;
 
-    if (rawStep >= 0 || ui.isExpired) {
-        const step = ui.isExpired ? 1 : rawStep;
+    if (rawStep >= 0 || ui.isExpired || ui.isSlotCancelled) {
+        const step = (ui.isExpired || ui.isSlotCancelled) ? 1 : rawStep;
         const oStart = scheduleStart(first);
         const oEnd = scheduleEnd(first);
 
         let bookingState: BookingState;
-        if (ui.isExpired) bookingState = 'expired';
+        // Sebelum `isExpired` — keduanya cocok untuk baris yang sama, dan
+        // `deriveOrderUiState` sudah memastikan hanya satu yang bisa true.
+        if (ui.isSlotCancelled) bookingState = 'slot_cancelled';
+        else if (ui.isExpired) bookingState = 'expired';
         else if (step === 0) bookingState = 'in_review';
         else if (step === 1) {
             // Cabangnya sudah dihitung sekali di `deriveOrderUiState`; dibaca

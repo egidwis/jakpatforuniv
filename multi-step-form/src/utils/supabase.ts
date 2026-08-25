@@ -2903,6 +2903,15 @@ export const rebookSlotForSubmission = async (
     })
     .eq('id', submissionId)
     .not('payment_status', 'in', '("paid","completed")')
+    // ⚠️ PENJAGA TRACK B2 — jadwal yang DIBATALKAN ADMIN tidak boleh dihidupkan
+    // kembali oleh peneliti.
+    //
+    // `cancelSchedule()` menulis `submission_status = 'slot_cancelled'` dan
+    // `payment_status = 'expired'`. Filter `payment_status` di atas TIDAK
+    // menangkapnya — 'expired' bukan 'paid'/'completed' — jadi sampai sekarang
+    // tombol "Jadwalkan Ulang" di dashboard peneliti membatalkan keputusan
+    // admin tanpa satu pun peringatan ke siapa pun.
+    .neq('submission_status', 'slot_cancelled')
     .select('id');
 
   if (error) throw error;
@@ -2910,7 +2919,8 @@ export const rebookSlotForSubmission = async (
     // Nol baris di PostgREST tidak memunculkan error — inilah cara "berhasil
     // palsu" lahir. Dilempar supaya UI tidak bisa menampilkan sukses semu.
     throw new Error(
-      `Slot untuk ${submissionId} tidak bisa dikunci ulang — kemungkinan sudah lunas atau ditolak RLS.`
+      `Slot untuk ${submissionId} tidak bisa dikunci ulang — kemungkinan sudah lunas, ` +
+      'jadwalnya dibatalkan tim Jakpat, atau ditolak RLS.'
     );
   }
   return true;
@@ -2930,7 +2940,7 @@ export const prepareForReschedule = async (submissionId: string) => {
   try {
     // 1. Clear slot data and reset payment status to pending
     // Status becomes 'approved' (form approved, slot cleared, ready for re-booking)
-    const { error: subError } = await supabase
+    const { data: subData, error: subError } = await supabase
       .from('form_submissions')
       .update({
         start_date: null,
@@ -2941,9 +2951,24 @@ export const prepareForReschedule = async (submissionId: string) => {
         payment_status: 'pending',
         updated_at: new Date().toISOString()
       })
-      .eq('id', submissionId);
+      .eq('id', submissionId)
+      // Penjaga yang sama dengan `rebookSlotForSubmission` (Track B2). Keduanya
+      // pintu jadwal-ulang milik peneliti, jadi keduanya harus menolak hal yang
+      // sama — kalau hanya satu yang dijaga, yang lain jadi jalan memutarnya.
+      .neq('submission_status', 'slot_cancelled')
+      .select('id');
 
     if (subError) throw subError;
+    // ⚠️ Fungsi ini SEBELUMNYA tidak memeriksa apa pun sesudah update — nol
+    // `.select()`, nol pemeriksaan baris. Jadi penolakan RLS maupun penjaga di
+    // atas akan lewat sebagai sukses, dan peneliti dibawa ke wizard untuk
+    // menjadwalkan ulang order yang tidak pernah benar-benar dilepas.
+    if (!subData || subData.length === 0) {
+      throw new Error(
+        'Order ini tidak bisa dijadwalkan ulang — jadwalnya dibatalkan tim Jakpat, ' +
+        'atau perubahannya ditolak. Hubungi Mimin kalau ini tidak sesuai harapan.'
+      );
+    }
 
     // 2. Matikan tagihan yang menggantung — HANYA milik jadwal yang dipindah.
     //

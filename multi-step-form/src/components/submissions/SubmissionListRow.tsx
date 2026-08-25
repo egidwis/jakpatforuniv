@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, ShieldAlert, Copy, Check } from 'lucide-react';
+import { ChevronRight, ShieldAlert, Copy, Check, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Checkbox } from '../ui/checkbox';
 import { Chip } from '../ui/chip';
@@ -15,6 +15,7 @@ import type { LifecycleInfo } from './lifecycle';
 import { getSubmissionActionDot } from './lifecycle';
 import { ClientStatusDot } from '../customers/ClientStatusIcon';
 import type { CustomerTier } from '../customers/types';
+import { missedPaymentWindow } from '@/utils/missedPaymentWindow';
 
 interface SubmissionListRowProps {
   submission: SurveySubmission;
@@ -54,6 +55,13 @@ export function SubmissionListRow({
 }: SubmissionListRowProps) {
   const [copiedId, setCopiedId] = useState(false);
   const actionDot = getSubmissionActionDot(submission, lifecycle, existingPage);
+
+  // Track B5 — lihat `missedPaymentWindow` untuk kenapa permukaan ini ada.
+  const missedPayment = missedPaymentWindow({
+    startDate: submission.start_date,
+    submissionStatus: submission.submission_status || submission.status,
+    paymentStatus: submission.payment_status,
+  });
 
   const handleCopyId = (e: React.MouseEvent) => {
     navigator.clipboard.writeText(submission.id);
@@ -174,6 +182,30 @@ export function SubmissionListRow({
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Voucher Code: {submission.voucher_code}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {missedPayment && (
+            /* Penanda Track B5. Ditaruh di judul, bukan di chip lifecycle:
+               chipnya tetap "Menunggu Pembayaran" — yang benar — dan penanda ini
+               menambahkan satu hal yang tidak bisa dibaca dari chip itu, yaitu
+               bahwa tanggalnya sudah tidak bisa dikejar. Mengubah chipnya justru
+               akan menyembunyikan bahwa uangnya memang masih ditunggu. */
+            <TooltipProvider>
+              <Tooltip delayDuration={150}>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 uppercase shrink-0 cursor-help">
+                    <Clock className="w-3 h-3" />
+                    Lewat batas
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[18rem]">
+                  <p>
+                    Batas bayar 14.00 WIB untuk tanggal tayangnya sudah lewat, tapi
+                    ordernya masih menunggu pembayaran — tanggalnya perlu diganti.
+                    Peneliti jalur manual tidak bisa menjadwalkan ulang sendiri.
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

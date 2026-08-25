@@ -5,6 +5,7 @@ import {
     isSchedulePaid,
     laterSchedulesOf,
     orderStepOf,
+    isSlotCancelledSchedule,
     scheduleFromSubmission,
     type EffectiveAiring,
     type SchedulePaymentMap,
@@ -38,6 +39,10 @@ export type OrderCalloutState =
     | 'payment'
     | 'awaiting_invoice'
     | 'expired'
+    /** Tim Jakpat membatalkan tanggal tayangnya. BUKAN `cancelled` — pesanannya
+     * masih berdiri dan kelulusan review-nya utuh; yang hilang cuma tanggalnya.
+     * Dan BUKAN `expired` — tidak ada yang kedaluwarsa, ada yang memutuskan. */
+    | 'slot_cancelled'
     | 'too_late_today'
     | 'extend_payment'
     | 'ready_to_launch'
@@ -55,6 +60,8 @@ export interface OrderUiState {
     /** Jadwal ke-2 dst., urut ordinal. */
     later: AdScheduleEntry[];
     isExpired: boolean;
+    /** Jadwalnya dibatalkan admin. Mengalahkan `isExpired`, lihat turunannya. */
+    isSlotCancelled: boolean;
     isUserBooked: boolean;
     isPaid: boolean;
     awaitingInvoice: boolean;
@@ -145,7 +152,15 @@ export function deriveOrderUiState(
     const isUserBooked = first.slotBookedBy === 'user';
     const isPaymentExpired = first.paymentStatus === 'expired';
     const isPaid = isSchedulePaid(first);
+    /**
+     * Dibatalkan admin — bukan kedaluwarsa. Harus dihitung SEBELUM `isExpired`
+     * dan mengalahkannya: `cancelSchedule()` menulis `payment_status='expired'`
+     * juga, jadi tanpa penjaga ini keduanya jatuh ke cabang yang sama dan
+     * peneliti dibilang slotnya "dilepas otomatis" oleh mesin.
+     */
+    const isSlotCancelled = !isPaid && isSlotCancelledSchedule(first);
     const isExpired =
+        !isSlotCancelled &&
         rawStep !== -1 &&
         !isPaid &&
         (isPaymentExpired ||
@@ -235,6 +250,9 @@ export function deriveOrderUiState(
     if (currentStep === -1) {
         // -1 memuat SEMUA order mati; yang membedakan sebabnya cuma reviewStatus.
         callout = first.reviewStatus === 'cancelled' ? 'cancelled' : 'revision';
+    } else if (isSlotCancelled) {
+        // Sebelum cabang `isExpired`, karena keduanya cocok untuk baris yang sama.
+        callout = 'slot_cancelled';
     } else if (isExpired) {
         callout = 'expired';
     } else if (hasLaterScheduleAwaitingPayment) {
@@ -297,6 +315,7 @@ export function deriveOrderUiState(
         first,
         later,
         isExpired,
+        isSlotCancelled,
         isUserBooked,
         isPaid,
         awaitingInvoice,
@@ -347,6 +366,10 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
         payment: 'menunggu pembayaran dari user',
         awaiting_invoice: 'slot sudah dipesan, menunggu admin menerbitkan tagihan (maksimal 1 hari kerja)',
         expired: 'pembayaran kedaluwarsa sehingga slot dilepas; user perlu memilih jadwal baru dari halaman Order Saya (tidak perlu submit ulang)',
+        // ⚠️ JANGAN samakan kalimatnya dengan `expired`. Mimin mengulangi teks ini
+        // ke user; menyebut "kedaluwarsa" untuk pembatalan oleh tim akan membuat
+        // user mencari kesalahannya sendiri atas keputusan yang bukan miliknya.
+        slot_cancelled: 'tanggal tayangnya DIBATALKAN oleh tim Jakpat — bukan kedaluwarsa, dan bukan karena user terlambat. Kuesionernya tetap lolos review, jadi tidak perlu diajukan ulang; tim Jakpat yang akan menjadwalkan ulang. Kalau user butuh penjelasan kenapa dibatalkan, eskalasikan ke tim',
         too_late_today: 'batas pembayaran 14.00 WIB untuk jadwal hari ini sudah lewat sehingga iklan tidak bisa tayang hari ini (halaman iklan disiapkan admin pukul 14.00-15.00); user perlu memilih jadwal baru dari halaman Order Saya (tidak perlu submit ulang)',
         extend_payment: 'ada jadwal iklan berikutnya yang menunggu pembayaran',
         ready_to_launch: 'pembayaran diterima, menunggu jadwal tayang',

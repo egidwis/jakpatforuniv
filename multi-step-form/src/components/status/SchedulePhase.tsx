@@ -37,6 +37,7 @@ import {
     type IncentiveInfo,
 } from './airingPeriods';
 import { formatIDR } from '@/utils/currency';
+import { isAutoReviewed } from './deriveOrderUiState';
 
 const WIB = 'Asia/Jakarta';
 
@@ -61,6 +62,10 @@ function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: Tr
     if (state === 'awaiting_admin_schedule') return t('bookingStatusAwaitingAdminSchedule');
     if (state === 'awaiting_invoice') return t('bookingStatusAwaitingInvoice');
     if (state === 'too_late_today') return t('bookingStatusTooLateToday');
+    // Di luar enum shared: `extendStatusLabelKey` tidak mengenalnya, dan
+    // memetakannya ke 'cancelled' akan berbunyi "Dibatalkan" untuk pesanan
+    // yang justru masih hidup — yang batal cuma tanggalnya.
+    if (state === 'slot_cancelled') return t('bookingStatusSlotCancelled');
     return t(extendStatusLabelKey(state));
 }
 
@@ -76,6 +81,10 @@ function bookingStatusStyle(state: ScheduleCard['booking']['state']): { bg: stri
     if (state === 'awaiting_admin_schedule') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
     if (state === 'awaiting_invoice') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
     if (state === 'too_late_today') return { bg: 'bg-rose-50 border-rose-200/80', text: 'text-rose-700', dot: 'bg-rose-500' };
+    // Abu, bukan rose. Tidak ada yang gagal dan tidak ada yang perlu peneliti
+    // kerjakan — bolanya di tim. Merah akan membuat pesanan yang masih hidup
+    // terbaca seperti hangus.
+    if (state === 'slot_cancelled') return { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-600', dot: 'bg-slate-400' };
     return extendStatusStyle(state);
 }
 
@@ -491,7 +500,21 @@ function InfoSection({ card, submission, muted }: { card: ScheduleCard; submissi
     );
 }
 
-function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedule: () => void }) {
+function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
+    card: ScheduleCard;
+    onReschedule: () => void;
+    /**
+     * Apakah peneliti ini BERHAK menentukan tanggalnya sendiri.
+     *
+     * Diturunkan dari `isAutoReviewed(submission)` di pemanggil — predikat yang
+     * SUDAH ADA di `deriveOrderUiState.ts` dan sudah dipakai untuk memilih antara
+     * callout `choose_schedule` dan `awaiting_admin_schedule`. Sengaja tidak
+     * ditulis ulang di sini: dua definisi "siapa yang memilih jadwal" akan
+     * menyimpang, dan yang menyimpang diam-diam adalah yang menentukan apakah
+     * seorang peneliti boleh mengunci slot.
+     */
+    canSelfReschedule: boolean;
+}) {
     const { t } = useLanguage();
     const b = card.booking;
 
@@ -654,6 +677,24 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
             </div>
         );
     }
+    if (b.state === 'slot_cancelled') {
+        /* Dulu keadaan ini memakai banner `expired` — jadi peneliti diberi tahu
+           slotnya "dilepas OTOMATIS" padahal seorang admin menekannya, lalu
+           diberi tombol "Jadwalkan Ulang" yang MENGHIDUPKAN KEMBALI jadwal yang
+           baru saja dibatalkan (penjaganya sekarang di `rebookSlotForSubmission`).
+           Nol CTA di sini bukan kelalaian: tidak ada langkah milik peneliti. */
+        return (
+            <div className="rounded-xl border p-3.5 sm:p-4 border-slate-200/80 bg-slate-50/80 shadow-2xs">
+                <div className="flex items-start gap-2.5 min-w-0">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-slate-500" />
+                    <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 leading-snug">{t('bannerTitleSlotCancelled')}</p>
+                        <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubSlotCancelled')}</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
     if (b.state === 'expired') {
         return (
             <div className="rounded-xl border p-3.5 sm:p-4 border-rose-200/80 bg-rose-50/70 shadow-2xs">
@@ -667,14 +708,22 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
                             </p>
                         </div>
                     </div>
-                    {card.kind === 'original' && (
+                    {card.kind === 'original' && (canSelfReschedule ? (
                         <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
                             <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftRose}`}>
                                 <RotateCcw className="w-3.5 h-3.5" />
                                 {t('rescheduleSlot')}
                             </Button>
                         </div>
-                    )}
+                    ) : (
+                        /* Order jalur manual TIDAK menentukan tanggalnya sendiri —
+                           aturan yang sama yang membuat wizard-nya melewati step
+                           Jadwal. Menawarkan tombol di sini akan membiarkan peneliti
+                           mengunci slot untuk order yang tanggalnya milik admin. */
+                        <p className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto text-xs text-slate-600 leading-relaxed md:max-w-[15rem]">
+                            {t('rescheduleHandledByTeam')}
+                        </p>
+                    ))}
                 </div>
             </div>
         );
@@ -690,14 +739,22 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
                             <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{t('bannerSubTooLateToday')}</p>
                         </div>
                     </div>
-                    {card.kind === 'original' && (
+                    {card.kind === 'original' && (canSelfReschedule ? (
                         <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">
                             <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftRose}`}>
                                 <RotateCcw className="w-3.5 h-3.5" />
                                 {t('rescheduleSlot')}
                             </Button>
                         </div>
-                    )}
+                    ) : (
+                        /* Order jalur manual TIDAK menentukan tanggalnya sendiri —
+                           aturan yang sama yang membuat wizard-nya melewati step
+                           Jadwal. Menawarkan tombol di sini akan membiarkan peneliti
+                           mengunci slot untuk order yang tanggalnya milik admin. */
+                        <p className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto text-xs text-slate-600 leading-relaxed md:max-w-[15rem]">
+                            {t('rescheduleHandledByTeam')}
+                        </p>
+                    ))}
                 </div>
             </div>
         );
@@ -720,6 +777,9 @@ function ScheduleBanner({ card, onReschedule }: { card: ScheduleCard; onReschedu
  */
 export function SchedulePhase({ submission, cards, onReschedule, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
+    // Satu perhitungan untuk seluruh kartu order ini — hak menjadwalkan melekat
+    // pada ORDER, bukan pada jadwal. Lihat catatan di prop `canSelfReschedule`.
+    const selfReschedule = isAutoReviewed(submission);
 
     return (
         <div>
@@ -771,7 +831,7 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                     <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200" />
                                 </AccordionPrimitive.Header>
                                 <AccordionContent className="pb-4 pt-1.5 space-y-4 bg-white -mx-3.5 px-3.5 border-t border-slate-100">
-                                    <ScheduleBanner card={card} onReschedule={onReschedule} />
+                                    <ScheduleBanner card={card} onReschedule={onReschedule} canSelfReschedule={selfReschedule} />
                                     <InfoSection card={card} submission={submission} muted={pendingReview} />
                                 </AccordionContent>
                             </AccordionItem>

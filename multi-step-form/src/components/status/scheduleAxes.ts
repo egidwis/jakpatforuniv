@@ -178,6 +178,32 @@ export function scheduleFromSubmission(submission: FormSubmission): AdScheduleEn
  * seluruh callout sudah berbicara dalam angka-angka ini. Yang berubah adalah
  * dari mana angkanya berasal.
  */
+/**
+ * Apakah jadwal ini dibatalkan ADMIN, bukan kedaluwarsa sendiri.
+ *
+ * ⚠️ DUA PERISTIWA INI TAMPAK SAMA DI DB DAN SAMA SEKALI BERBEDA BAGI PENELITI.
+ * `cancelSchedule()` menulis `submission_status = 'slot_cancelled'` DAN
+ * `payment_status = 'expired'`. Yang kedua itulah yang selama ini membuat
+ * `deriveOrderUiState` menyimpulkan "kedaluwarsa", sehingga penelitinya dibilang
+ * slotnya *"dilepas otomatis"* — padahal ada manusia yang menekannya — lalu
+ * diberi tombol yang MENGHIDUPKAN KEMBALI jadwal yang baru saja dibatalkan.
+ *
+ * Cara membedakannya: `slot_cancelled` adalah satu-satunya status yang sumbu
+ * tayangnya `cancelled` sementara sumbu review-nya tetap `approved`. Diverifikasi
+ * langsung ke fungsi DB-nya (2026-08-25):
+ *
+ *   slot_cancelled → airing 'cancelled', review 'approved'   ← hanya ini
+ *   cancelled      → airing 'cancelled', review 'cancelled'
+ *   rejected       → airing 'cancelled', review 'rejected'
+ *   spam           → airing 'cancelled', review 'spam'
+ *
+ * Itu memang niat sql/62: membatalkan SLOT tidak boleh mencabut kelulusan
+ * review. Jadi kombinasi ini bukan kebetulan yang bisa berubah — ia kontrak.
+ */
+export function isSlotCancelledSchedule(entry: AdScheduleEntry): boolean {
+    return airingOf(entry) === 'cancelled' && entry.reviewStatus === 'approved';
+}
+
 export function orderStepOf(first: AdScheduleEntry, now: Date = new Date()): number {
     const airing = airingOf(first);
     const paid = isSchedulePaid(first);

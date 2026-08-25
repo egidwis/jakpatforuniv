@@ -711,6 +711,16 @@ export const translations = {
     incentiveNoAdditionNote: "No addition — current incentive still applies",
     calloutAwaitingInvoiceSchedule: "Waiting for the admin to issue the invoice for this ad schedule.",
     calloutCancelledSchedule: "This schedule was cancelled by the admin. Need an explanation? Chat with Mimin below.",
+    // Manual-review orders never pick their own airing date — the wizard skips
+    // the schedule step for them. This replaces the reschedule button so the
+    // card still says who is holding the next step.
+    rescheduleHandledByTeam: "Our team will reschedule this for you. Need an explanation? Chat with Mimin below.",
+    // slot_cancelled is NOT "expired" — a person cancelled it. Never say
+    // "automatically" here; that sends the researcher looking for a mistake
+    // they did not make.
+    bookingStatusSlotCancelled: "Cancelled",
+    bannerTitleSlotCancelled: "Airing date cancelled",
+    bannerSubSlotCancelled: "The Jakpat team cancelled this order's airing date. Your questionnaire is still approved. Need an explanation? Chat with Mimin below.",
     scheduleEmptyRejected: "No airing schedule for this order yet.",
     scheduleEmptyPending: "Ad schedules can be picked once your review is approved.",
     publicationEmptyState: "Airing info will appear once a schedule is paid.",
@@ -1514,6 +1524,10 @@ export const translations = {
     incentiveNoAdditionNote: "Tanpa tambahan — insentif berjalan tetap berlaku",
     calloutAwaitingInvoiceSchedule: "Menunggu admin menerbitkan tagihan untuk jadwal iklan ini.",
     calloutCancelledSchedule: "Jadwal ini dibatalkan oleh admin. Butuh penjelasan? Chat Mimin di bawah.",
+    rescheduleHandledByTeam: "Tim kami yang akan menjadwalkan ulang iklanmu. Butuh penjelasan? Chat Mimin di bawah.",
+    bookingStatusSlotCancelled: "Dibatalkan",
+    bannerTitleSlotCancelled: "Jadwal tayang dibatalkan",
+    bannerSubSlotCancelled: "Tim Jakpat membatalkan tanggal tayang pesanan ini. Kuesionermu tetap lolos review. Butuh penjelasan? Chat Mimin di bawah.",
     scheduleEmptyRejected: "Belum ada jadwal iklan untuk pesanan ini.",
     scheduleEmptyPending: "Jadwal iklan bisa dipilih setelah review disetujui.",
     publicationEmptyState: "Info penayangan akan muncul setelah ada jadwal yang lunas.",

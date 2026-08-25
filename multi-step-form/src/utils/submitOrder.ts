@@ -143,11 +143,21 @@ export async function submitOrder({
     // user di luar WIB menyimpan instant yang meleset sejam.
     calculatedStartDate = toAiringStartIso(startYmd);
     calculatedEndDate = toAiringEndIso(startYmd, formData.isKilatUpgrade ? 1 : formData.duration);
-  } else if (formData.isKilatUpgrade && startYmd && formData.startTime) {
-    // Kilat pada jalur non-otomatis: jadwal tetap disimpan sebagai reservasi kilat.
-    calculatedStartDate = toAiringStartIso(startYmd);
-    calculatedEndDate = toAiringEndIso(startYmd, 1);
   }
+  // ⚠️ DULU ADA CABANG KETIGA DI SINI, dan pembuangannya disengaja (Track B1).
+  //
+  //     } else if (formData.isKilatUpgrade && startYmd && formData.startTime) {
+  //         calculatedStartDate = toAiringStartIso(startYmd); …
+  //
+  // Ia menuliskan tanggal tayang untuk order Kilat yang BELUM lolos review.
+  // Aturan kepemilikan jadwal berbunyi: pada jalur manual, nol tanggal dan nol
+  // slot ditentukan peneliti — hanya admin yang menentukannya, dan itu berlaku
+  // untuk Kilat persis seperti untuk iklan regular.
+  //
+  // Risikonya rendah: wizard jalur manual melewati step Jadwal sama sekali
+  // (`review-path.ts`), jadi `formData.startTime` praktis hanya terisi dari
+  // draft basi. Yang ia cegah justru itu — draft basi yang diam-diam mengunci
+  // tanggal untuk order yang belum berhak punya tanggal.
 
   const isManualForm =
     formData.isManualEntry || (!!formData.surveyUrl && !formData.surveyUrl.includes('docs.google.com/forms'));
@@ -192,7 +202,13 @@ export async function submitOrder({
     custom_form_id: formData.customFormId || null,
     auth_user_id: authUserId,
     distribution_type: formData.isKilatUpgrade ? 'kilat' : 'regular',
-    ...(isAutoApproval || formData.isKilatUpgrade
+    // ⚠️ `isAutoApproval` SAJA — `|| formData.isKilatUpgrade` dibuang di Track B1.
+    // Slot hanya dipesan atas nama peneliti kalau ordernya memang lolos jalur
+    // auto-review. Order Kilat jalur manual dulu ikut mengunci slot `'user'`
+    // di sini meski tanggalnya belum sah, dan `slot_booked_by = 'user'` itulah
+    // yang membuat slotnya dilepas otomatis oleh utils/slotHold.ts — pelepasan
+    // untuk reservasi yang seharusnya tidak pernah ada.
+    ...(isAutoApproval
       ? { slot_booked_by: 'user', slot_reserved_at: new Date().toISOString() }
       : {}),
   } as FormSubmission;

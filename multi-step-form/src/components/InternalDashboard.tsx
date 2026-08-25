@@ -23,6 +23,23 @@ import { deriveLifecycle } from './submissions/lifecycle';
 import { SubmissionListRow } from './submissions/SubmissionListRow';
 import { SubmissionDetailSheet } from './submissions/SubmissionDetailSheet';
 import { useRowSelection } from './data-list/useRowSelection';
+import { missedPaymentWindow } from '../utils/missedPaymentWindow';
+
+/**
+ * Adapter tipis ke `missedPaymentWindow`. Baris tabel admin memakai `status`
+ * untuk sumbu yang sama yang disebut `submission_status` di tempat lain, jadi
+ * keduanya dicoba — bukan salah satu.
+ */
+const isMissedPaymentWindow = (sub: {
+  start_date?: string | null;
+  status?: string | null;
+  submission_status?: string | null;
+  payment_status?: string | null;
+}) => missedPaymentWindow({
+  startDate: sub.start_date,
+  submissionStatus: sub.submission_status || sub.status,
+  paymentStatus: sub.payment_status,
+});
 import './InternalDashboard.css';
 
 const EMPTY_PAYMENT_STATE: PaymentState = { hasInvoices: false, hasOpenInvoice: false, latestStatus: null, invoiceCount: 0, latestPaymentUrl: null };
@@ -44,6 +61,16 @@ const STATUS_FILTER_OPTIONS = [
   { id: 'rejected', label: 'Menunggu Perbaikan' },
   { id: 'approved', label: 'Approved' },
   { id: 'paid', label: 'Paid' },
+  /**
+   * Order yang jendela bayarnya sudah tertutup tapi masih menunggu uang.
+   *
+   * Prasyarat kejujuran Track B3: sejak CTA "Jadwalkan Ulang" dicabut dari
+   * peneliti jalur manual, kartunya menjanjikan tim yang menjadwalkan ulang.
+   * Ini permukaan yang membuat janji itu bisa ditepati — tanpanya order semacam
+   * itu tenggelam di daftar `waiting_payment` dan hanya ketemu dengan menyisir
+   * tanggal satu per satu.
+   */
+  { id: 'missed_payment', label: 'Lewat Batas Bayar' },
   { id: 'cancelled', label: 'Dibatalkan' },
   { id: 'spam', label: 'Tidak Valid' },
 ] as const;
@@ -130,6 +157,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     if (statusFilter !== 'all' && !SERVER_STATUS_FILTERS.includes(statusFilter as any)) {
       result = result.filter(sub => {
         if (statusFilter === 'paid') return (sub.payment_status || '').toLowerCase() === 'paid';
+        if (statusFilter === 'missed_payment') return isMissedPaymentWindow(sub);
         return true;
       });
     }
@@ -169,6 +197,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     rejected: queueCounts.rejected,
     approved: submissions.filter(s => s.status === 'approved').length,
     paid: submissions.filter(s => (s.payment_status || '').toLowerCase() === 'paid').length,
+    missed_payment: submissions.filter(isMissedPaymentWindow).length,
     cancelled: submissions.filter(s => s.status === 'cancelled').length,
     spam: submissions.filter(s => s.status === 'spam').length,
   };
