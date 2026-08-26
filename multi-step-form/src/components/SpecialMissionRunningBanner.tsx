@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Target, Sparkles, ChevronRight, ArrowRight } from 'lucide-react';
+import { Target, Sparkles, ArrowRight } from 'lucide-react';
 import { CustomMissionModal } from './CustomMissionModal';
 
 export const SpecialMissionRunningBanner: React.FC = () => {
@@ -43,12 +43,6 @@ export const SpecialMissionRunningBanner: React.FC = () => {
               {bannerText}
               {bannerText}
             </div>
-          </div>
-
-          {/* Right Action Hint */}
-          <div className="hidden md:flex items-center gap-1 text-[11px] font-semibold text-pink-700 group-hover:text-pink-800 group-hover:translate-x-0.5 transition-all shrink-0">
-            <span>Buka Form</span>
-            <ChevronRight className="w-3.5 h-3.5 text-pink-500" />
           </div>
         </div>
       </div>
