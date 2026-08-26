@@ -5,9 +5,6 @@ import { Plus, ChevronDown, ChevronRight, BarChart3, Zap } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
 
-/** Pilihan buka/tutup manual diingat lintas sesi. */
-const OPEN_KEY = 'jfu_product_cards_open';
-
 interface Product {
     id: string;
     icon: typeof BarChart3;
