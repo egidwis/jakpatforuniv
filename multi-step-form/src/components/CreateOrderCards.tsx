@@ -122,25 +122,25 @@ export function ProductCardGrid() {
 
     return (
         <>
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-3.5 lg:grid-cols-3 items-stretch">
                 {/* Grup 1: Survei Online */}
-                <div className="lg:col-span-2 space-y-2">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-white/90 uppercase tracking-wider">
-                        <BarChart3 className="w-3.5 h-3.5 text-white/80" />
+                <div className="lg:col-span-2 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/20 p-3 sm:p-3.5 flex flex-col shadow-inner">
+                    <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-white/95 uppercase tracking-wider mb-2.5 px-0.5">
+                        <BarChart3 className="w-3.5 h-3.5 text-white/90" />
                         <span>Survei Online</span>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-2.5 sm:grid-cols-2 flex-1">
                         {SURVEY_PRODUCTS.map(renderProductCard)}
                     </div>
                 </div>
 
                 {/* Grup 2: Misi & Aksi Khusus */}
-                <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-white/90 uppercase tracking-wider">
-                        <Target className="w-3.5 h-3.5 text-white/80" />
+                <div className="rounded-2xl bg-white/10 backdrop-blur-xs border border-white/20 p-3 sm:p-3.5 flex flex-col shadow-inner">
+                    <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-white/95 uppercase tracking-wider mb-2.5 px-0.5">
+                        <Target className="w-3.5 h-3.5 text-white/90" />
                         <span>Misi &amp; Aksi Khusus</span>
                     </div>
-                    <div className="h-[calc(100%-24px)]">
+                    <div className="flex-1 flex flex-col">
                         {MISSION_PRODUCTS.map(renderProductCard)}
                     </div>
                 </div>
