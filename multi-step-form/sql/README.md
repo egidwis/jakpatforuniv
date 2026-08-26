@@ -62,7 +62,7 @@ memeriksa objek yang dibuat masing-masing berkas, bukan dari catatan.
 | `64_repair_page_extra_ad_mirror` | perbaikan cermin `survey_pages.is_extra_ad` | ✅ |
 | `65_fix_ad_completed_notifications` | email "iklan selesai" yang tak pernah terkirim | ✅ |
 | `66_fix_form_submission_and_billing_policies` | tutup policy `true` + samakan kepemilikan tagihan | ✅ diterapkan 2026-08-19 |
-| `72_reconcile_stale_order_price` | 11 order yang mencatat harga lain dari yang ditagihkan | ⏳ BELUM diterapkan |
+| `72_reconcile_stale_order_price` | 11 order yang mencatat harga lain dari yang ditagihkan | ✅ diterapkan 2026-08-26 |
 
 Berkas di bawah 51 tidak dicatat statusnya satu per satu: aplikasi tidak akan
 berjalan tanpanya, jadi keberadaannya sudah terbukti setiap hari. Kalau ragu,

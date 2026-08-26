@@ -1007,8 +1007,9 @@ WHERE completed_notified_at IS NOT NULL;` memulihkan persis.
 ### 00V. 🟠 Harga order yang basi — tercatat ≠ ditagihkan (3 commit, 2026-08-26)
 
 > Branch `fix/harga-order-basi`, bercabang dari `fix/tab-page-fase-3`.
-> Dua commit kode + satu migrasi **yang belum diterapkan** (`sql/72`).
-> Belum di-push, belum diuji di browser.
+> Dua commit kode + `sql/72` **diterapkan & diverifikasi di prod 2026-08-26**
+> (11/11 `OK`, cermin `ad_schedules` ikut, sisa selisih 88 → 77 dan nol dari
+> kesebelas). Kode belum di-push, belum diuji di browser.
 
 **Gejalanya satu kartu yang menyebut dua angka.** `#A85YGANA` memajang
 "Total Penagihan Rp 288.600" tepat di atas blok yang mencetak "Rp 399.600
@@ -1029,7 +1030,7 @@ tidak pernah lewat Approve.
 |---|---|
 | `f93fc61` | Penulisnya sendiri yang menghitung ulang — `updateFormDetails` (bila menyentuh `PRICE_INPUT_COLUMNS`) & `updateSubmissionCriteria` (selalu). Keduanya mengembalikan `{ row, pricing }`; `repriceMessage()` menyuarakannya di keempat permukaan. |
 | `dc8abd0` | Label "Total Penagihan" → **"Harga Tercatat"**, plus penanda selisih dari `recordedVsBilled()`. Predikat "tagihan hidup" diangkat ke `billingCompare.ts`, dipakai bersama `fetchScheduleBilling`. |
-| `de9b54d` | `sql/72` — rekonsiliasi 11 order. **Belum dijalankan.** |
+| `de9b54d` | `sql/72` — rekonsiliasi 11 order. **Diterapkan 2026-08-26.** |
 
 **`skipped: 'paid'` berhenti diam.** Pada order lunas harganya SENGAJA tidak
 ikut berubah (`guard_payment_columns()` juga menolaknya di level DB), dan
@@ -1071,7 +1072,8 @@ kesimpulan yang salah, dan itulah kenapa klasifikasinya dikerjakan per-tipe.
 
 **`#CB5SB36S`** — tayang 26 Agu, invoice **pending Rp 388.500**, tercatat
 **Rp 222.000**. Penelitinya sedang melihat satu angka dan diminta membayar
-angka lain. Ia salah satu dari 11.
+angka lain. **Beres 2026-08-26**: kini tercatat Rp 388.500 (350.000 + PPN
+38.500), sama dengan tagihannya.
 
 #### Yang sengaja TIDAK dikerjakan
 
@@ -1085,7 +1087,8 @@ angka lain. Ia salah satu dari 11.
   salinan yang tak pernah dipanggil siapa pun — yang paling cepat menyimpang.
   Tarif dipakai sebagai alat pilih saat audit; nilainya dibakukan per baris.
 * **77 sisa selisih** (pra-PPN, bertagihan jamak, atau nego) dibiarkan dan
-  dilaporkan, tidak disapu.
+  dilaporkan, tidak disapu. Sesudah migrasi, hanya **5** di antaranya era PPN
+  — tepat kelima selisih yang terbukti disengaja.
 
 ---
 
