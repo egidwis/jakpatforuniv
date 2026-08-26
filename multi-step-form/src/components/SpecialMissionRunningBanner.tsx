@@ -13,10 +13,6 @@ export const SpecialMissionRunningBanner: React.FC = () => {
           Butuh responden untuk <strong>Mystery Shopping toko/booth</strong>, <strong>testing website &amp; aplikasi</strong>, <strong>tasting sampel produk</strong>, atau <strong>validasi ide bisnis</strong>?
         </span>
       </span>
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-pink-600 hover:bg-pink-700 text-white font-bold text-[11px] transition-all cursor-pointer shadow-xs shrink-0">
-        <span>Ajukan Misi Khusus</span>
-        <ArrowRight className="w-3 h-3" />
-      </span>
       <span className="text-pink-300 text-xs select-none">•</span>
     </div>
   );
@@ -43,6 +39,14 @@ export const SpecialMissionRunningBanner: React.FC = () => {
               {bannerText}
               {bannerText}
             </div>
+          </div>
+
+          {/* Right Static Action Button */}
+          <div className="flex items-center shrink-0">
+            <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-pink-600 group-hover:bg-pink-700 text-white font-bold text-[11px] transition-all shadow-xs cursor-pointer">
+              <span>Ajukan</span>
+              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+            </span>
           </div>
         </div>
       </div>
