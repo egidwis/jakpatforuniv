@@ -26,6 +26,9 @@ export function InternalDashboardWithLayout() {
 
   const [currentPage, setCurrentPage] = useState<Page>('submissions');
   const [focusSubmission, setFocusSubmission] = useState<{ id: string; createdAt: string } | null>(null);
+  /** Arah sebaliknya: drawer Submissions → papan Jadwal. Lahir saat tab Page
+   *  jadi monitoring dan pekerjaan halamannya pindah ke papan. */
+  const [focusSchedule, setFocusSchedule] = useState<{ bookingId: string } | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(
     () => localStorage.getItem('admin-sidebar-collapsed') === 'true'
@@ -192,6 +195,11 @@ export function InternalDashboardWithLayout() {
   }) => {
     setFocusSubmission(params);
     setCurrentPage('submissions');
+  };
+
+  const handleOpenScheduleBoard = (bookingId: string) => {
+    setFocusSchedule({ bookingId });
+    setCurrentPage('ad-schedules');
   };
 
   const toggleCollapsed = () => {
@@ -532,7 +540,7 @@ export function InternalDashboardWithLayout() {
         {/* Main Content */}
         <main className="flex-1 overflow-auto flex flex-col">
           {currentPage === 'submissions' ? (
-            <InternalDashboard onLogout={handleLogout} hideAuth={true} focusSubmission={focusSubmission} />
+            <InternalDashboard onLogout={handleLogout} hideAuth={true} focusSubmission={focusSubmission} onOpenScheduleBoard={handleOpenScheduleBoard} />
           ) : currentPage === 'custom-missions' ? (
             <CustomMissionRequestsPage />
           ) : currentPage === 'transactions' ? (
@@ -557,7 +565,7 @@ export function InternalDashboardWithLayout() {
             // Tanpa pembungkus `container`: papan ini mengurus paddingnya sendiri,
             // sama seperti Submissions dan Transaksi. Pembungkus dengan padding
             // memotong tinggi yang dibutuhkan kartunya untuk menggulung di dalam.
-            <ScheduleBoardPage onOpenSubmission={handleOpenSubmissionFromSchedule} />
+            <ScheduleBoardPage onOpenSubmission={handleOpenSubmissionFromSchedule} focusEntry={focusSchedule} />
           ) : null}
         </main>
       </div>

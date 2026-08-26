@@ -70,8 +70,15 @@ const serviceLabel = (s: string) => SERVICE_LABEL[s] ?? s;
 
 export function ScheduleBoardPage({
   onOpenSubmission,
+  focusEntry,
 }: {
   onOpenSubmission: (params: { id: string; createdAt: string; distributionType?: string | null }) => void;
+  /**
+   * Deep-link BALIK dari drawer Submissions — cerminan `focusSubmission` yang
+   * sudah lama membawa admin ke arah sebaliknya. Tab Page kini monitoring saja,
+   * jadi ia perlu satu jalan ke tempat pekerjaan halaman sebenarnya dikerjakan.
+   */
+  focusEntry?: { bookingId: string } | null;
 }) {
   const [entries, setEntries] = useState<AdScheduleEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -296,6 +303,23 @@ export function ScheduleBoardPage({
     didAutoJump.current = true;
     requestAnimationFrame(() => scrollToTodayAnchor('auto'));
   }, [isLoading, dayGroups, month, year, scrollToTodayAnchor]);
+
+  /**
+   * Order yang ditunjuk dari drawer Submissions.
+   *
+   * `ALL_MONTHS` sengaja, bukan bulan tanggal tayangnya: papan ini ber-scope
+   * bulan, dan mendarat di bulan yang salah lebih buruk daripada tidak
+   * mendarat sama sekali. `didAutoJump` ikut ditutup supaya lompat-otomatis ke
+   * hari ini tidak menarik layar pergi dari baris yang baru saja dicari.
+   */
+  useEffect(() => {
+    if (!focusEntry) return;
+    setQuery(focusEntry.bookingId);
+    setMonth(ALL_MONTHS);
+    setChips(new Set());
+    setShowCancelled(true);
+    didAutoJump.current = true;
+  }, [focusEntry]);
 
   const openEntry = (e: AdScheduleEntry) => setOpenEntryId(e.id);
 

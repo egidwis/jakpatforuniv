@@ -196,7 +196,7 @@ const subtotalOf = (s: AdScheduleEntry) => (s.ppnAmount != null ? s.subtotal ?? 
 /** Kilat ditandai di baris jadwalnya (sql/63) maupun di ordernya; sebagian
  *  baris lama hanya punya yang kedua. Aturan yang sama dipakai
  *  `deriveScheduleMoney` — jangan menulis versi ketiga. */
-const isKilatSchedule = (e: AdScheduleEntry, submission: FormSubmission): boolean =>
+export const isKilatSchedule = (e: AdScheduleEntry, submission: FormSubmission): boolean =>
     e.distributionType === 'kilat' || submission.distribution_type === 'kilat';
 
 /** Tanggal yang ditagihkan tagihan basi terakhir, siap dirender. */
@@ -437,12 +437,21 @@ export function publicationStateOf(s: AdScheduleEntry, now: Date = new Date()): 
  * berarti mengarang jam yang belum diputuskan siapa pun. Pemanggil WAJIB
  * menyembunyikan barisnya — jangan diisi tebakan.
  */
-export function airingStartHourWib(card: ScheduleCard): string | null {
-    if (card.info.isKilat && card.info.kilatSlotHour == null) return null;
-    if (!card.startDate) return null;
-    return card.startDate
+export function airingStartHourWibOf(
+    start: Date | null,
+    isKilat: boolean,
+    kilatSlotHour: number | null,
+): string | null {
+    if (isKilat && kilatSlotHour == null) return null;
+    if (!start) return null;
+    return start
         .toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })
         .replace(':', '.');
+}
+
+/** Bentuk kartu dari `airingStartHourWibOf` — dipakai Fase ② & Fase ③. */
+export function airingStartHourWib(card: ScheduleCard): string | null {
+    return airingStartHourWibOf(card.startDate, card.info.isKilat, card.info.kilatSlotHour);
 }
 
 /**

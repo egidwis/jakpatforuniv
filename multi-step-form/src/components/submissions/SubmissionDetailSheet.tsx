@@ -114,7 +114,10 @@ interface SubmissionDetailSheetProps {
   onStatusChange: (submissionId: string, newStatus: string, notes?: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onEditCriteria: (submission: SurveySubmission) => void;
-  onOpenPageBuilder: (submission: SurveySubmission) => void;
+  /** Pekerjaan halaman (buat/terbit/ganti banner) hidup di papan Jadwal, bukan
+   *  di tab Page — lihat kepala `PageTab.tsx`. Ini satu-satunya jalan ke sana,
+   *  dan menggantikan `onOpenPageBuilder` yang dulu dioper ke tab Page. */
+  onOpenScheduleBoard?: (bookingId: string) => void;
   /**
    * Sub-tampilan yang harus terbuka begitu drawer muncul — dipakai pemanggil
    * luar (baris tabel, kartu mobile) yang dulu melempar ke halaman penuh.
@@ -146,7 +149,7 @@ export function SubmissionDetailSheet({
   onStatusChange,
   onEditFormDetails,
   onEditCriteria,
-  onOpenPageBuilder,
+  onOpenScheduleBoard,
   initialSubView = null,
   onInitialSubViewConsumed,
   onConvertDistribution,
@@ -406,7 +409,7 @@ export function SubmissionDetailSheet({
           submission={submission}
           existingPage={existingPage}
           lifecycle={lifecycle}
-          onOpenPageBuilder={onOpenPageBuilder}
+          onOpenScheduleBoard={onOpenScheduleBoard}
         />
       )}
     </>

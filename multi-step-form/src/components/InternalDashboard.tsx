@@ -79,9 +79,12 @@ interface InternalDashboardProps {
   hideAuth?: boolean;
   onLogout?: () => void;
   focusSubmission?: { id: string; createdAt: string; distributionType?: string | null } | null;
+  /** Drawer → papan Jadwal. Tab Page monitoring saja sejak pekerjaan halaman
+   *  pindah ke papan; ini jalannya ke sana. */
+  onOpenScheduleBoard?: (bookingId: string) => void;
 }
 
-export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission }: InternalDashboardProps = {}) {
+export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission, onOpenScheduleBoard }: InternalDashboardProps = {}) {
   const { user, loading: authLoading, signOut } = useAuth();
   const [submissions, setSubmissions] = useState<SurveySubmission[]>([]);
   const [filteredSubmissions, setFilteredSubmissions] = useState<SurveySubmission[]>([]);
@@ -306,7 +309,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
           // 1. Fetch Pages
           const { data: pages, error: pagesError } = await supabase
             .from('survey_pages')
-            .select('id, submission_id, slug, is_published, publish_start_date, publish_end_date, title, is_extra_ad, banner_url, views_count, requires_banner_update, page_respondents(count)')
+            .select('id, submission_id, slug, is_published, publish_start_date, publish_end_date, title, is_extra_ad, banner_url, views_count, requires_banner_update, redirect_url, page_respondents(count)')
             .in('submission_id', submissionIds);
 
           if (pagesError) console.error('Error fetching survey pages:', pagesError);
@@ -330,6 +333,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
                 views_count: p.views_count || 0,
                 respondents_count: respondentsCount,
                 requires_banner_update: p.requires_banner_update,
+                redirect_url: p.redirect_url,
               };
             });
             setExistingPages(pageMap);
@@ -945,7 +949,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission 
     onStatusChange: handleStatusChange,
     onEditFormDetails: handleOpenEditFormDetailsModal,
     onEditCriteria: handleOpenEditCriteriaModal,
-    onOpenPageBuilder: handleOpenPageBuilder,
+    onOpenScheduleBoard,
     initialSubView: pendingSubView,
     onInitialSubViewConsumed: () => setPendingSubView(null),
     onConvertDistribution: handleConvertDistribution,

@@ -98,6 +98,9 @@ export interface ExistingPage {
   views_count?: number;
   respondents_count?: number;
   requires_banner_update?: boolean;
+  /** Terisi = SurveyPage langsung `window.location.href` ke sini; isi halaman
+   *  tidak pernah dilihat responden. 5 baris di produksi. */
+  redirect_url?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────
