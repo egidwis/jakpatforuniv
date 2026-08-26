@@ -1004,6 +1004,83 @@ WHERE completed_notified_at IS NOT NULL;` memulihkan persis.
 
 ---
 
+### 00U. 🟢 Rework tab "Page" — kembaran Fase ③ (5 commit, 2026-08-26)
+
+> Rencana: `~/.claude/plans/bantu-aku-mengaudit-flow-twinkling-cascade.md`
+> (ditulis ulang untuk tab Page). Branch `fix/tab-page-fase-3`, bercabang dari
+> `fix/track-a-jalur-uang`. **Nol SQL** — seluruhnya perubahan kode.
+> Belum di-push, belum diuji di browser.
+
+Tab **Page** adalah kembaran satu-lawan-satu **Fase ③ Penayangan**, dan
+keduanya menjawab pertanyaan yang sama dari dua sumber berbeda: admin membaca
+jendela `survey_pages.publish_*` (satu baris per ORDER), peneliti membaca
+`ad_schedules` (satu baris per JADWAL). Ditambah satu hal yang tidak tercermin
+di layar mana pun: **admin yang melayani reservasi bukan orang yang membuat
+halaman.**
+
+| Commit | Isi |
+|---|---|
+| `23a62c2` | P1 satu bentuk URL halaman publik · P2 satu aturan penayangan |
+| `a834534` | P3 jam tayang Fase ③ berhenti dikonstantakan |
+| `668ed3d` | P4 tab Page jadi monitoring, kembaran per-jadwal |
+| `76d3bd3` | P5 titik merah halaman dicabut |
+
+**Yang paling perlu diingat.**
+
+- **`/p/{slug}` tidak pernah punya rute.** `git log -S'/p/:slug' --all` → nol.
+  Bentuk itu lahir di `84d5401` (revamp visual) dan menetap di `PageTab` &
+  `ScheduleEntryDrawer` — dua permukaan yang justru **menyerahkan tautan itu ke
+  manusia**, keduanya lengkap dengan tombol "Salin Link". Yang diterima orang di
+  ujung sana: halaman kosong + footer (`submit.`), atau homepage marketing
+  (`jakpatforuniv.com`, `functions/_middleware.js` cabang `else`). Sekarang satu
+  helper `utils/page-url.ts`, dan spec-nya mengadu helper dengan literal rute di
+  `App.tsx`.
+- **Jendela `publish_*` adalah jendela BERJALAN, bukan periode iklan.** Untuk 8
+  order multi-jadwal ia hanya memuat jadwal terakhir — `survei-pengguna-mrt-jakarta`
+  tayang 3–16 Jul, jendelanya 15–16 Jul. Itu **benar** (`updateScheduleDates`
+  menolak menyinkronkan selama jadwal lain memilikinya; `cron_activate_extends`
+  yang memajukannya). Yang salah membacanya sebagai periode iklan. Kini
+  berlabel "jendela aktif" + keterangan multi-jadwal.
+- **Nol dari 20 order Kilat tayang jam 15.** Gelombangnya 8/11/14/17, dan 5
+  belum ditugaskan. Fase ③ dulu mencetak konstanta "Mulai 15.00 WIB" untuk
+  semuanya. `airingStartHourWib()` kini melayani Fase ② & ③.
+
+**Dua koreksi terhadap rencananya sendiri — ditemukan saat mengerjakan.**
+
+1. **Rencana menuduh cabang ordinal-1 membaca `ui.currentStep`.** Salah — ia
+   membaca `orderStepOf(first)`, step jadwal itu sendiri. Kedua cabang memang
+   berselisih, tapi atas hal lain, dan terukur **485 baris**:
+
+   | ordinal-1 | "later" | baris | yang benar |
+   |---|---|---|---|
+   | `none` | `completed` | 265 | ordinal-1 — `requested` + bayar `expired` disebut "Selesai" |
+   | `completed` | `live` | 177 | ordinal-1 — kolom `status` macet di 'live' |
+   | `none` | `scheduled` | 38 | ordinal-1 — lunas tanpa tanggal |
+   | `completed` | `none` | 5 | "later" — `cancelled` tak pernah tayang |
+
+   `publicationStateOf()` mengambil semantik ordinal-1 + penjaga `cancelled`
+   milik "later". ⚠️ **Jangan menggantinya dengan `isAiringNowSchedule`** —
+   predikat itu sengaja membiarkan `status='live'` menang atas jam dinding,
+   benar untuk "jendela mana yang sedang dipakai order ini", salah di sini.
+
+2. **Rencana menyebut "4 halaman draft terlambat akan hilang ke gelap" kalau
+   titik merah dicabut.** Keempatnya `submission_id` NULL — halaman pengumuman
+   Jakpat Mission, yang titik itu **tidak pernah jangkau**. Diukur ulang:
+   `isPageUnpublishedWhenDue` menyala untuk **NOL** order (sql/40 menerbitkan
+   halaman otomatis saat lunas), `needsBannerUpdate` untuk **2** — dan papan
+   Jadwal sudah menghitung keduanya. Jadi pil baru **tidak dibuat**: ia akan
+   berbunyi nol selamanya. Yang ditempuh: melebarkan `paidWithoutPage` jadi
+   `paidPageNotReachable()` supaya `pageStatus === 'draft'` ikut tertangkap —
+   satu jalan yang masih bisa melahirkannya ("Change to Draft" di Page Builder)
+   tetap terawasi.
+
+**Sisa yang sengaja tidak dikerjakan.** `fetchAdSchedules` **tidak** diangkat ke
+cangkang drawer seperti rencana: kedua tab tidak pernah ter-mount bersamaan,
+jadi pembacaan gandanya tidak pernah terjadi — sementara mengangkatnya membuat
+setiap drawer menarik jadwal walau admin cuma melihat tab Info.
+
+---
+
 ### 00T. 🟢 Rework "Reservasi Jadwal" — Track A–E (`sql/70` + `sql/71` + 5 commit, 2026-08-26)
 
 > Rencana lengkapnya: `~/.claude/plans/bantu-aku-mengaudit-flow-twinkling-cascade.md`.
