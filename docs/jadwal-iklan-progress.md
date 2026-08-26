@@ -1004,6 +1004,53 @@ WHERE completed_notified_at IS NOT NULL;` memulihkan persis.
 
 ---
 
+### 00T. 🟢 Rework "Reservasi Jadwal" — Track A–E (`sql/70` + `sql/71` + 5 commit, 2026-08-26)
+
+> Rencana lengkapnya: `~/.claude/plans/bantu-aku-mengaudit-flow-twinkling-cascade.md`.
+> Branch `fix/track-a-jalur-uang`. **`sql/70` & `sql/71` sudah diterapkan ke
+> produksi 2026-08-26 dan diverifikasi**; kodenya belum di-push.
+
+**Yang menutup catatan lama di dokumen ini:**
+
+| Catatan lama | Nasibnya |
+|---|---|
+| "Task 11 langkah 4 — `updatePaymentStatus` dipersempit ke `schedule_id`", dicatat sebagai **prasyarat Task 13** | **Prasyaratnya terpenuhi lewat PENIADAAN.** Fungsinya ternyata KODE MATI: `handlePaymentStatusChange` diteruskan sebagai prop `onPaymentStatusChange` ke `SubmissionsTableRow` dan `SubmissionDetailSheet`, dan **tidak satu pun dari keduanya pernah men-destructure-nya** — ia cuma berdiri di interface props. Sudah tercatat sejak revamp Juli 2026 (*"`onPaymentStatusChange` was never destructured, so 'Mark as Paid' crashed"*). Dihapus seluruhnya di `a22ea19`; nol kemunculan tersisa di repo. **Jangan mencarinya lagi.** |
+| §00L Lapis 2 — `.update()` tanpa `.select()` gagal senyap saat RLS menyaring nol baris | Polanya ditutup di titik yang tersisa: `markScheduleAsPaid`/`unmarkScheduleAsPaid` kini `.select('id')` di keempat penulisannya, dengan `assertScheduleRowTouched()` yang melempar saat baris jadwal nol tersentuh. Tulisan ke `invoices`/`transactions` sengaja TIDAK melempar — nol baris di sana keadaan sah ("lunas di luar sistem"), jadi jumlahnya dilaporkan di toast. |
+
+**Lima commit:**
+
+| Track | Commit | Isi |
+|---|---|---|
+| A — jalur uang | `a22ea19` | gagal-senyap pelunasan ditutup; `updatePaymentStatus` dihapus; `orderTotalOf()` jadi satu-satunya "total order" (`form_submissions.total_cost` menyimpan harga jadwal ke-1, bukan total — terukur meleset di 10 order multi-jadwal) |
+| A — data | `sql/70`, `sql/71` | `review_status` ordinal-2 berhenti beku; 5 faktur `paid` tanpa `paid_at` diselesaikan **3 dibatalkan + 2 di-backfill**, bukan sapu rata |
+| B — kepemilikan | `6cec6b2` | Kilat manual berhenti mengunci slot; peneliti tidak bisa menghidupkan jadwal yang admin batalkan; `slot_cancelled` berhenti berkata "otomatis"; penanda + filter "batas bayar terlewat" di tabel Submissions |
+| C — tab admin | `2ab9fa6` | `scheduleCardActions.ts` jadi sumber tunggal `{ primary, menu }` — "maksimal satu tombol di luar ⋯" kini ditegakkan TIPE, bukan disiplin |
+| D — sisi peneliti | `de91e76` | satu kosakata (Tagihan/Kuitansi); harga dibaca lewat `deriveScheduleMoney` yang sama dengan admin; sisa tagihan bukan harga penuh; banner Fase ② ditulis ulang dengan aturan emas |
+| E — notifikasi | `f2ce0b3` | gerbang + dialog menggeser tanggal order lunas; `functions/api/notify-schedule-change.js` |
+
+**Dua temuan yang tidak ada di rencana, ditemukan saat mengerjakan:**
+
+1. **"Tandai Lunas" di baris tagihan salah lingkup.** Tombolnya duduk di satu
+   baris tagihan tapi memanggil `onMarkPaid(entry)` — melunasi **seluruh
+   jadwal**. Pada jadwal dengan 2 tagihan, admin yang mengklik baris Rp 61.050
+   sedang melunasi keduanya, tanpa apa pun di layar yang menyebutkannya.
+   Dibuang; aksi berlingkup jadwal kini hidup sekali per kartu.
+2. **`ad_schedules.status = 'cancelled'` kelebihan muatan.** Dari 136 baris,
+   110 sebenarnya spam, 15 ditolak, 9 order dibatalkan, dan **1** yang
+   benar-benar "tim membatalkan tanggal tayang". Menggerbangkan email pembatalan
+   pada nilai itu saja akan mengirim 135 email salah. Pembedanya kontrak
+   `sql/62`: `slot_cancelled` satu-satunya yang tayangnya `cancelled` sementara
+   review-nya tetap `approved`.
+
+**Sisa yang DISEBUT, bukan didiamkan:** jalur Kilat memakai penyimpan jadwalnya
+sendiri (`updateKilatSchedule`), jadi pemindahan tanggal Kilat mendapat
+**email**-nya (kait `onRescheduled`, hanya diisi drawer admin) tapi **belum
+dialog konsekuensi E1** — menaruhnya di `KilatScheduleStep` berarti menyentuh
+komponen yang juga dipakai wizard checkout, pekerjaan Kilat yang sengaja
+ditunda ke sesi terpisah.
+
+---
+
 ### 00S. 🟢 Audit Task 1–13 — tiga bug jalur uang + dua lubang izin (`sql/66` + deploy, 2026-08-20)
 
 > **SELESAI 2026-08-20.** `sql/66` diterapkan ke produksi, dan seluruh perbaikan
@@ -1684,7 +1731,7 @@ obati — jadi prasyarat lama tetap berlaku, ia cuma bukan satu-satunya.
 
 | | |
 |---|---|
-| `updatePaymentStatus` ([`supabase.ts:681`](../multi-step-form/src/utils/supabase.ts#L681)) masih menyaring `form_submission_id` saja | "Tandai Lunas" melunasi **seluruh** invoice order, termasuk milik jadwal lain. Task 11 langkah 4 mempersempitnya ke `schedule_id` |
+| ~~`updatePaymentStatus` masih menyaring `form_submission_id` saja~~ **LUNAS 2026-08-26** | Fungsinya ternyata kode mati dan **dihapus** (`a22ea19`), bukan dipersempit — lihat §00T. Prasyarat Task 13 ini terpenuhi lewat peniadaan; jangan mencarinya lagi |
 | Booking ID masih beda antara admin & peneliti | Pencarian sudah ditambal (§00E); **tampilannya belum**. Task 11 (`booking_id`) yang menyatukan |
 | Perpanjangan order Kilat | Eksplisit di luar cakupan Task 11 — butuh pemilih gelombang, bukan rentang hari. Phase 4 harus menyembunyikan CTA-nya untuk order Kilat |
 
