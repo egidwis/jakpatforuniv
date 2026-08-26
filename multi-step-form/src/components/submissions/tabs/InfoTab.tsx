@@ -7,6 +7,7 @@ import { Textarea } from '../../ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import { updateFormDetails, updateSubmissionCriteria } from '../../../utils/supabase';
+import { repriceMessage } from '../../../utils/repriceMessage';
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
@@ -318,19 +319,27 @@ export function InfoTab({
   const handleSaveSubmission = async () => {
     setSaving(true);
     try {
+      // Form ini menulis KEEMPAT masukan harga sekaligus lewat dua panggilan.
+      // Masing-masing menghitung ulang harganya sendiri, jadi yang pertama
+      // menghasilkan keadaan antara (pertanyaan/durasi baru, hadiah lama) yang
+      // langsung disusul yang kedua. Yang dikutip ke admin karena itu hasil
+      // panggilan TERAKHIR — satu-satunya yang menggambarkan keadaan final.
       await updateFormDetails(submission.id, {
         title: draftTitle,
         survey_url: submission.formUrl,
         question_count: parseInt(draftQuestions) || 0,
         duration: parseInt(draftDuration) || 0,
       });
-      await updateSubmissionCriteria(
+      const { pricing } = await updateSubmissionCriteria(
         submission.id,
         draftCriteria,
         parseInt(draftPrize) || 0,
         parseInt(draftWinners) || 0,
       );
-      toast.success('Detail submission diperbarui');
+      const priced = repriceMessage(pricing);
+      toast.success(
+        priced ? `Detail submission diperbarui · ${priced}` : 'Detail submission diperbarui',
+      );
       setEditing(null);
       onDataUpdated();
     } catch {

@@ -13,6 +13,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { updateSubmissionCriteria } from '../utils/supabase';
+import { repriceMessage } from '../utils/repriceMessage';
 import { toast } from 'sonner';
 
 interface EditCriteriaModalProps {
@@ -50,13 +51,21 @@ export function EditCriteriaModal({ isOpen, onClose, submission, onUpdate, onSuc
 
         setLoading(true);
         try {
-            await updateSubmissionCriteria(
+            // Hadiah & jumlah pemenang adalah masukan harga; `updateSubmissionCriteria`
+            // menghitung ulang sendiri, dan hasilnya DISEBUT — perubahan harga
+            // yang diam adalah cara selisih tercatat-vs-ditagih lahir.
+            const { pricing } = await updateSubmissionCriteria(
                 submission.id,
                 criteria,
                 parseInt(prizePerWinner) || 0,
                 parseInt(winnerCount) || 0
             );
-            toast.success('Criteria & Incentive updated successfully');
+            const priced = repriceMessage(pricing);
+            toast.success(
+                priced
+                    ? `Kriteria & insentif diperbarui · ${priced}`
+                    : 'Kriteria & insentif diperbarui',
+            );
             if (onUpdate) onUpdate();
             if (onSuccess) onSuccess();
             onClose();

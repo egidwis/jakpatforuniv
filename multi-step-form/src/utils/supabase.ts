@@ -1203,7 +1203,18 @@ export const cancelOrder = async (id: string) => {
   }
 };
 
-export const updateSubmissionCriteria = async (id: string, criteria: string, prizePerWinner: number, winnerCount: number) => {
+/**
+ * ⚠️ MENULIS DUA MASUKAN HARGA — jadi ia SELALU menghitung ulang harganya.
+ *
+ * `prize_per_winner` dan `winner_count` masuk ke subtotal lewat
+ * `calculateIncentiveCost`. Sampai sebelum ini fungsinya menulis keduanya lalu
+ * berhenti, dan `total_cost/subtotal/ppn_amount` tetap memegang angka lama.
+ * Lihat catatan panjang di `updateFormDetails` untuk kenapa penghitungan
+ * ulangnya ditaruh DI SINI dan bukan di pemanggil.
+ */
+export const updateSubmissionCriteria = async (
+  id: string, criteria: string, prizePerWinner: number, winnerCount: number,
+): Promise<{ row: any; pricing: OrderPriceResult | null }> => {
   try {
     const { data, error } = await supabase
       .from('form_submissions')
@@ -1217,12 +1228,16 @@ export const updateSubmissionCriteria = async (id: string, criteria: string, pri
       .single();
 
     if (error) throw error;
-    return data;
+    return { row: data, pricing: await recomputeOrderPrice(id) };
   } catch (error: any) {
     console.error('Error updating submission criteria:', error);
     throw error;
   }
 };
+
+/** Kolom yang ikut menentukan harga order. Menulis salah satunya WAJIB
+ *  diikuti `recomputeOrderPrice` — lihat `updateFormDetails`. */
+const PRICE_INPUT_COLUMNS = ['question_count', 'duration'] as const;
 
 /**
  * ⚠️ KIRIM HANYA KOLOM YANG BENAR-BENAR DIUBAH.
@@ -1232,6 +1247,22 @@ export const updateSubmissionCriteria = async (id: string, criteria: string, pri
  * yang berubah membuat salinan lokal yang basi menimpa suntingan pihak lain —
  * dan `question_count`/`duration` adalah masukan harga, jadi yang tertimpa
  * bukan sekadar teks.
+ *
+ * ⚠️ HARGANYA IKUT DIHITUNG ULANG DI SINI, BUKAN DI PEMANGGIL.
+ *
+ * Dulu `recomputeOrderPrice` adalah tanggung jawab pemanggil, dan dari EMPAT
+ * permukaan yang menulis masukan harga hanya SATU yang mengingatnya (tombol
+ * Approve). Tiga sisanya — tab Info, `EditFormDetailsModal`,
+ * `EditCriteriaModal` — menulis `question_count`/`duration`/hadiah lalu
+ * berhenti, sementara `InvoiceForm` menghitung tagihan ULANG dari kolom yang
+ * baru itu. Hasilnya order yang ditagih dengan tarif benar tapi mencatat harga
+ * lama: 17 dari 90 order era-PPN, 12 di antaranya sudah lunas.
+ *
+ * Aturan pemanggil yang harus diingat adalah aturan yang akan dilupakan
+ * pemanggil kelima. Jadi penulisnya sendiri yang memikulnya sekarang.
+ *
+ * Tidak ada masukan harga di `updates` (mis. peneliti hanya mengganti tautan
+ * lewat `ReviewPhase`) → `pricing` bernilai `null` dan nol query tambahan.
  */
 export const updateFormDetails = async (
   id: string,
@@ -1241,7 +1272,7 @@ export const updateFormDetails = async (
     question_count: number;
     duration: number;
   }>
-) => {
+): Promise<{ row: any; pricing: OrderPriceResult | null }> => {
   try {
     const { data, error } = await supabase
       .from('form_submissions')
@@ -1251,7 +1282,9 @@ export const updateFormDetails = async (
       .single();
 
     if (error) throw error;
-    return data;
+
+    const touchesPrice = PRICE_INPUT_COLUMNS.some((c) => c in updates);
+    return { row: data, pricing: touchesPrice ? await recomputeOrderPrice(id) : null };
   } catch (error: any) {
     console.error('Error updating form details:', error);
     throw error;
@@ -1420,16 +1453,31 @@ const readOrderScheduleTotals = async (
  * `orderTotal` + `scheduleCount` ikut dikembalikan: begitu `scheduleCount > 1`,
  * yang boleh dikutip ke admin adalah `orderTotal`, bukan `totalCost`.
  */
-export const recomputeOrderPrice = async (
-  submissionId: string,
-  overrides: { questionCount?: number } = {}
-): Promise<{
-  totalCost: number; subtotal: number; ppn: number; skipped?: 'paid';
+export interface OrderPriceResult {
+  totalCost: number;
+  subtotal: number;
+  ppn: number;
+  /**
+   * `'paid'` = harga TIDAK ditulis ulang karena uangnya sudah masuk, dan
+   * `totalCost` di atas adalah angka LAMA yang tersimpan.
+   *
+   * ⚠️ Pemanggil wajib mengatakannya kepada admin. Sebelum ini nilainya
+   * dilewatkan diam-diam, jadi admin yang mengoreksi jumlah pertanyaan pada
+   * order lunas melihat "tersimpan" dan menyimpulkan harganya ikut berubah —
+   * padahal justru di situlah selisih tercatat-vs-ditagih lahir dan hanya
+   * tagihan susulan yang bisa menutupnya.
+   */
+  skipped?: 'paid';
   /** Total SELURUH jadwal order ini sesudah tulisan di atas — lihat `readOrderScheduleTotals`. */
   orderTotal: number;
   /** >1 berarti `totalCost` di atas hanya harga jadwal ke-1, bukan harga order. */
   scheduleCount: number;
-}> => {
+}
+
+export const recomputeOrderPrice = async (
+  submissionId: string,
+  overrides: { questionCount?: number } = {}
+): Promise<OrderPriceResult> => {
   const { data: sub, error: readError } = await supabase
     .from('form_submissions')
     .select('question_count, duration, winner_count, prize_per_winner, voucher_code, payment_status, submission_status, distribution_type, created_at, total_cost, subtotal, ppn_amount')

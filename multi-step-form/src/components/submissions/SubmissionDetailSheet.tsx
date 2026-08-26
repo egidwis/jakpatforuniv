@@ -50,7 +50,8 @@ import { SchedulePaymentTab } from './tabs/SchedulePaymentTab';
 import { PageTab } from './tabs/PageTab';
 import { ScheduleForm } from '@/components/schedule/ScheduleForm';
 import { InvoiceForm } from '@/components/schedule/InvoiceForm';
-import { updateFormDetails, recomputeOrderPrice, previewOrderPrice, type AdScheduleEntry } from '@/utils/supabase';
+import { updateFormDetails, previewOrderPrice, type AdScheduleEntry } from '@/utils/supabase';
+import { repriceMessage } from '@/utils/repriceMessage';
 import { toast } from 'sonner';
 
 const REASONS = {
@@ -533,20 +534,15 @@ export function SubmissionDetailSheet({
         // Approve menimpa `survey_url` dengan salinan yang dipegang drawer —
         // dan salinan itu bisa basi kalau peneliti mengganti linknya sesudah
         // drawer terbuka. Docstring `updateFormDetails` melarang ini eksplisit.
-        await updateFormDetails(submission.id, { question_count: questionCountInput });
-        // Harga ikut, di panggilan terpisah. `recomputeOrderPrice` menolak
-        // sendiri untuk order lunas — harganya mencatat uang yang sudah masuk.
-        const priced = await recomputeOrderPrice(submission.id, { questionCount: questionCountInput });
-        // Pada order berjadwal banyak, `priced.totalCost` cuma harga jadwal ke-1
-        // — mengutipnya sebagai "total" adalah cara admin dan peneliti mulai
-        // memegang dua angka. Yang benar `orderTotal` (SUM ad_schedules), dan
-        // kalimatnya menyebut jumlah jadwalnya supaya angkanya tidak ambigu.
+        // Harganya ikut DI DALAM `updateFormDetails` sekarang. Sampai sebelum
+        // ini blok inilah satu-satunya dari empat permukaan penyunting yang
+        // ingat memanggil `recomputeOrderPrice` sendiri — dan aturan yang cuma
+        // diingat satu dari empat pemanggil bukan aturan, melainkan kebetulan.
+        const { pricing } = await updateFormDetails(submission.id, { question_count: questionCountInput });
+        const priced = repriceMessage(pricing);
         toast.success(
-          priced.skipped === 'paid'
-            ? `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q (harga order lunas tidak diubah)`
-            : priced.scheduleCount > 1
-              ? `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q · jadwal ke-1 Rp ${priced.totalCost.toLocaleString('id-ID')} · total ${priced.scheduleCount} jadwal Rp ${priced.orderTotal.toLocaleString('id-ID')}`
-              : `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q · total Rp ${priced.totalCost.toLocaleString('id-ID')}`
+          `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q`
+          + (priced ? ` · ${priced}` : ''),
         );
         onExtendCreated();
       }

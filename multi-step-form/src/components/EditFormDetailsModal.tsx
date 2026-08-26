@@ -12,6 +12,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { updateFormDetails } from '../utils/supabase';
+import { repriceMessage } from '../utils/repriceMessage';
 import { toast } from 'sonner';
 
 interface EditFormDetailsModalProps {
@@ -50,7 +51,8 @@ export function EditFormDetailsModal({ isOpen, onClose, submission, onUpdate }: 
 
         setLoading(true);
         try {
-            await updateFormDetails(
+            // `question_count` & `duration` adalah masukan harga.
+            const { pricing } = await updateFormDetails(
                 submission.id,
                 {
                     title,
@@ -59,7 +61,10 @@ export function EditFormDetailsModal({ isOpen, onClose, submission, onUpdate }: 
                     duration: parseInt(duration) || 0,
                 }
             );
-            toast.success('Form details updated successfully');
+            const priced = repriceMessage(pricing);
+            toast.success(
+                priced ? `Detail form diperbarui · ${priced}` : 'Detail form diperbarui',
+            );
             onUpdate();
             onClose();
         } catch (error) {
