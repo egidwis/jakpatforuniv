@@ -1004,6 +1004,91 @@ WHERE completed_notified_at IS NOT NULL;` memulihkan persis.
 
 ---
 
+### 00V. 🟠 Harga order yang basi — tercatat ≠ ditagihkan (3 commit, 2026-08-26)
+
+> Branch `fix/harga-order-basi`, bercabang dari `fix/tab-page-fase-3`.
+> Dua commit kode + satu migrasi **yang belum diterapkan** (`sql/72`).
+> Belum di-push, belum diuji di browser.
+
+**Gejalanya satu kartu yang menyebut dua angka.** `#A85YGANA` memajang
+"Total Penagihan Rp 288.600" tepat di atas blok yang mencetak "Rp 399.600
+ditagih · Lunas seluruhnya". Selisihnya persis satu tier tarif: 31 pertanyaan
+berharga Rp 300.000/hari, bukan Rp 200.000. Yang tercatat itu juga yang dilihat
+**peneliti** — Fase ② memanggil `deriveScheduleMoney`, fungsi yang sama.
+
+**Sebabnya aturan pemanggil yang cuma diingat satu dari empat pemanggil.**
+`question_count`, `duration`, `prize_per_winner`, `winner_count` semuanya
+masukan harga. Empat permukaan admin menyuntingnya; hanya tombol **Approve**
+yang memanggil `recomputeOrderPrice` sesudahnya. Sementara itu
+`buildOrderInvoiceItems` menghitung tagihan ULANG dari kolom yang baru saat
+admin menerbitkan invoice — jadi ordernya **ditagih dengan tarif benar dan
+mencatat harga lama**. `#A85YGANA` membuktikannya: `review_history` kosong, ia
+tidak pernah lewat Approve.
+
+| Commit | Isi |
+|---|---|
+| `f93fc61` | Penulisnya sendiri yang menghitung ulang — `updateFormDetails` (bila menyentuh `PRICE_INPUT_COLUMNS`) & `updateSubmissionCriteria` (selalu). Keduanya mengembalikan `{ row, pricing }`; `repriceMessage()` menyuarakannya di keempat permukaan. |
+| `dc8abd0` | Label "Total Penagihan" → **"Harga Tercatat"**, plus penanda selisih dari `recordedVsBilled()`. Predikat "tagihan hidup" diangkat ke `billingCompare.ts`, dipakai bersama `fetchScheduleBilling`. |
+| `de9b54d` | `sql/72` — rekonsiliasi 11 order. **Belum dijalankan.** |
+
+**`skipped: 'paid'` berhenti diam.** Pada order lunas harganya SENGAJA tidak
+ikut berubah (`guard_payment_columns()` juga menolaknya di level DB), dan
+diamnya terbaca "sudah beres" — padahal justru di situ selisihnya lahir dan
+hanya tagihan susulan yang bisa menutupnya.
+
+#### Kenapa 11, bukan 88 — dan bukan 17
+
+Angka pertama yang kulaporkan (**17**) berasal dari irisan sempit yang dirancang
+untuk MENGUJI hipotesis tangga tarif, bukan untuk menentukan ruang lingkup
+perbaikan. Diukur dengan pertanyaan yang benar — "jadwal mana yang punya tepat
+satu tagihan hidup bernominal beda dari `total_cost`" — jawabannya **88**.
+
+Dan 88 tidak boleh ditimpa semuanya: **sebagian selisih itu keputusan manusia.**
+Admin memang boleh menyunting baris tagihan di `InvoiceForm`. Lima terbukti
+begitu, dan dua di antaranya justru catatannya yang cocok rumus:
+
+| Booking | Tercatat | Rumus | Ditagih | Bacaan |
+|---|---|---|---|---|
+| `88CK8M83` | 377.400 | **377.400** | 632.700 | admin menagih lain |
+| `PXTS7G6S` | 527.250 | **527.250** | 721.500 | admin menagih lain |
+| `9EXTRJSC` | 388.500 | 499.500 | 999.000 | nego JAK26xx |
+| `G77GXPS9` | 388.500 | 499.500 | 1.498.500 | nego JAK26xx |
+| `Y55BFFX6` | 388.500 | 610.500 | 1.609.500 | nego JAK26xx |
+
+Syarat yang menyisakan 11: tepat satu tagihan hidup (cerminan `live` sql/53),
+era PPN penuh di kedua sisi, `invoices.subtotal` sama persis dengan tarif resmi
+atas kolom order itu sementara `total_cost` tidak, dan PPN tagihan konsisten.
+**Dua penghitungan yang saling bebas sepakat, dan hanya kolom beku yang
+menyimpang** — itu tanda tangan harga basi. Arahnya dua-duanya: 3 tercatat
+terlalu tinggi, 8 terlalu rendah.
+
+Kilat & JFUSUHUD ikut begitu rumusnya yang benar dipakai (Kilat: base + add-on
+Rp 200.000, durasi tidak berlaku; JFUSUHUD: 10% dari biaya iklan). Dengan rumus
+regular polos ketiga baris Kilat dan dua baris JFUSUHUD tampak "tidak cocok" —
+kesimpulan yang salah, dan itulah kenapa klasifikasinya dikerjakan per-tipe.
+
+#### Satu yang mendesak
+
+**`#CB5SB36S`** — tayang 26 Agu, invoice **pending Rp 388.500**, tercatat
+**Rp 222.000**. Penelitinya sedang melihat satu angka dan diminta membayar
+angka lain. Ia salah satu dari 11.
+
+#### Yang sengaja TIDAK dikerjakan
+
+* **Fase ② peneliti tidak diberi penanda selisih.** Sesudah `f93fc61` dan
+  `sql/72`, keadaannya tidak lahir lagi: pada order lunas `recomputeOrderPrice`
+  menolak menulis, jadi catatan tetap sama dengan tagihan yang dibayar.
+  Memasang alarm pembukuan di layar pelanggan untuk keadaan yang sedang
+  dihabisi adalah menakuti orang tanpa memberinya keputusan.
+* **Tangga tarif tidak ditulis ke SQL.** Ia sudah punya dua salinan
+  (`cost-calculator.ts` + `create-payment.js`); yang ketiga di migrasi akan jadi
+  salinan yang tak pernah dipanggil siapa pun — yang paling cepat menyimpang.
+  Tarif dipakai sebagai alat pilih saat audit; nilainya dibakukan per baris.
+* **77 sisa selisih** (pra-PPN, bertagihan jamak, atau nego) dibiarkan dan
+  dilaporkan, tidak disapu.
+
+---
+
 ### 00U. 🟢 Rework tab "Page" — kembaran Fase ③ (5 commit, 2026-08-26)
 
 > Rencana: `~/.claude/plans/bantu-aku-mengaudit-flow-twinkling-cascade.md`
