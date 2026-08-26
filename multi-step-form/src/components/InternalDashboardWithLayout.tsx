@@ -546,7 +546,7 @@ export function InternalDashboardWithLayout() {
           ) : currentPage === 'transactions' ? (
             <TransactionsPage />
           ) : currentPage === 'analytics' ? (
-            <div className="container mx-auto p-4 md:p-8">
+            <div className="p-4 md:p-6 flex-1 min-h-0 flex flex-col">
               <AnalyticsDashboard />
             </div>
           ) : currentPage === 'customers' ? (
