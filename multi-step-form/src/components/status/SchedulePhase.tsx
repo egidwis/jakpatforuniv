@@ -30,6 +30,7 @@ import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import type { FormSubmission } from '@/utils/supabase';
 import {
+    airingStartHourWib,
     pickDefaultExpandedKey,
     fmtShort,
     type ScheduleCard,
@@ -316,10 +317,10 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
       Sekarang `null` berarti "tidak ada jam yang jujur bisa disebut", dan
       barisnya DIHILANGKAN, bukan diisi tebakan.
     */
+    // Satu turunan untuk kedua fase — lihat `airingStartHourWib`. Fase ③ dulu
+    // memakai konstanta 15.00 dan karena itu salah untuk SELURUH order Kilat.
+    const startTimeWib = card ? airingStartHourWib(card) : null;
     const kilatHourPending = !!card?.info?.isKilat && card.info.kilatSlotHour == null;
-    const startTimeWib = card?.startDate && !kilatHourPending
-        ? card.startDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: WIB }).replace(':', '.')
-        : null;
 
     let airingValue: ReactNode;
     if (bState === 'expired') {

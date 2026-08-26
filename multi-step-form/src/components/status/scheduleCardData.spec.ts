@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildScheduleCards, publicationStateOf } from './airingPeriods';
+import { airingStartHourWib, buildScheduleCards, publicationStateOf } from './airingPeriods';
 import type { OrderUiState } from './deriveOrderUiState';
 import type { SchedulePaymentMap } from './scheduleAxes';
 import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
@@ -311,5 +311,39 @@ describe('buildScheduleCards — kedua cabang memakai aturan yang sama', () => {
         const ui = { ...uiOf(first, [second]), currentStep: 3, isPaid: true };
         const cards = buildScheduleCards(ui, {}, null, t, submissionOf());
         expect(cards[1].publication.state).toBe('none');
+    });
+});
+
+describe('airingStartHourWib — P3', () => {
+    const cardFor = (over: Partial<AdScheduleEntry>, sub: Partial<FormSubmission> = {}) =>
+        buildScheduleCards(uiOf(scheduleOf(over)), {}, null, t, submissionOf(sub))[0];
+
+    it('iklan reguler membaca jam dari instant jadwalnya, bukan konstanta', () => {
+        // 2026-09-03 08:00Z = 15.00 WIB
+        const card = cardFor({ startDate: '2026-09-03T08:00:00.000Z' });
+        expect(airingStartHourWib(card)).toBe('15.00');
+    });
+
+    it('Kilat memakai gelombangnya, bukan 15.00', () => {
+        // 2026-09-03 01:00Z = 08.00 WIB — gelombang paling pagi.
+        const card = cardFor(
+            { distributionType: 'kilat', kilatSlotHour: 8, startDate: '2026-09-03T01:00:00.000Z' },
+            { distribution_type: 'kilat' },
+        );
+        expect(airingStartHourWib(card)).toBe('08.00');
+    });
+
+    it('Kilat tanpa gelombang TIDAK memasok jam sama sekali', () => {
+        // `start_date` menyimpan 00.00 WIB sebagai penampung; menampilkannya
+        // berarti mengarang jam yang belum diputuskan siapa pun.
+        const card = cardFor(
+            { distributionType: 'kilat', kilatSlotHour: null, startDate: '2026-09-02T17:00:00.000Z' },
+            { distribution_type: 'kilat' },
+        );
+        expect(airingStartHourWib(card)).toBeNull();
+    });
+
+    it('tanpa tanggal, nol tebakan', () => {
+        expect(airingStartHourWib(cardFor({ startDate: null, endDate: null }))).toBeNull();
     });
 });

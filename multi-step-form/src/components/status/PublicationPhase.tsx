@@ -4,7 +4,7 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import { publicPagePath } from '@/utils/page-url';
-import { pickPublicationHighlight, type ScheduleCard } from './airingPeriods';
+import { airingStartHourWib, pickPublicationHighlight, type ScheduleCard } from './airingPeriods';
 
 interface PublicationPhaseProps {
     cards: ScheduleCard[];
@@ -30,6 +30,7 @@ export function getPublicationChip(cards: ScheduleCard[], t: (key: TranslationKe
 function PublicationRow({ card }: { card: ScheduleCard }) {
     const { t } = useLanguage();
     const style = extendStatusStyle(card.publication.state);
+    const startHour = airingStartHourWib(card);
     return (
         <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 text-sm bg-white hover:bg-slate-50/50 transition-colors">
             <span className="flex items-center gap-2 min-w-0">
@@ -37,9 +38,20 @@ function PublicationRow({ card }: { card: ScheduleCard }) {
                     di mobile keterangan jam tidak muat disandingkan. */}
                 <span className="flex flex-col min-w-0">
                     <span className="text-slate-900 font-semibold truncate text-xs sm:text-sm">{card.dateRange}</span>
-                    {card.dateRange !== '—' && (
-                        <span className="text-[11px] text-slate-500 font-medium">{t('airingStartTimeNote')}</span>
-                    )}
+                    {/* ⚠️ Dulu di sini ada konstanta "Mulai 15.00 WIB" — dan ia salah
+                        untuk SELURUH order Kilat: gelombangnya 08/11/14/17, nol yang
+                        tayang jam 15. Jamnya sekarang diturunkan dari instant jadwalnya
+                        sendiri, dan Kilat yang gelombangnya belum ditetapkan tidak
+                        menampilkan angka apa pun. */}
+                    {startHour ? (
+                        <span className="text-[11px] text-slate-500 font-medium">
+                            {t('airingStartTimeAt', { time: startHour })}
+                        </span>
+                    ) : card.info.isKilat ? (
+                        <span className="text-[11px] text-slate-500 font-medium italic">
+                            {t('scheduleKilatHourPending')}
+                        </span>
+                    ) : null}
                 </span>
             </span>
             <span className={`flex items-center gap-1.5 text-xs font-bold shrink-0 ${style.text}`}>

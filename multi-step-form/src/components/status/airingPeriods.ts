@@ -424,6 +424,28 @@ export function publicationStateOf(s: AdScheduleEntry, now: Date = new Date()): 
 }
 
 /**
+ * Jam mulai tayang sebuah kartu dalam WIB (`"15.00"`), atau **null** kalau tidak
+ * ada jam yang jujur bisa disebut.
+ *
+ * Diturunkan dari `startDate` — instant sebenarnya dari cermin `ad_schedules` —
+ * bukan dari konstanta 15.00. Untuk iklan reguler keduanya sama; untuk **Kilat**
+ * tidak: gelombangnya 08/11/14/17 WIB, dan **nol dari 20 order Kilat di
+ * produksi tayang jam 15** (8×2, 11×3, 14×7, 17×3, dan 5 belum ditugaskan).
+ *
+ * Kilat yang gelombangnya belum ditetapkan mengembalikan null, bukan jam:
+ * `start_date`-nya menyimpan 00.00 WIB sebagai penampung, dan menampilkannya
+ * berarti mengarang jam yang belum diputuskan siapa pun. Pemanggil WAJIB
+ * menyembunyikan barisnya — jangan diisi tebakan.
+ */
+export function airingStartHourWib(card: ScheduleCard): string | null {
+    if (card.info.isKilat && card.info.kilatSlotHour == null) return null;
+    if (!card.startDate) return null;
+    return card.startDate
+        .toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })
+        .replace(':', '.');
+}
+
+/**
  * Kartu yang paling relevan untuk chip heading Fase ③ (Penayangan).
  * Prioritas: sedang tayang > terjadwal terdekat > selesai terakhir.
  */

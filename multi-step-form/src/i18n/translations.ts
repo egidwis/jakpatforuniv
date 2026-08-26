@@ -702,7 +702,8 @@ export const translations = {
     bookingStatusAwaitingAdminSchedule: "Team is scheduling",
     bookingStatusAwaitingInvoice: "Awaiting Invoice",
     bookingStatusTooLateToday: "Past Today's Cut-off",
-    airingStartTimeNote: "Starts at 15:00 WIB",
+    /** Jam diturunkan dari instant jadwalnya sendiri — Kilat tidak tayang 15.00. */
+    airingStartTimeAt: "Starts at {time} WIB",
     voucherLabel: "Voucher",
     invoiceRowLabel: "Invoice",
     receiptRowLabel: "Receipt",
@@ -1561,7 +1562,8 @@ export const translations = {
     bookingStatusAwaitingAdminSchedule: "Tim sedang menjadwalkan",
     bookingStatusAwaitingInvoice: "Menunggu Tagihan",
     bookingStatusTooLateToday: "Lewat Batas Hari Ini",
-    airingStartTimeNote: "Mulai 15.00 WIB",
+    /** Jam diturunkan dari instant jadwalnya sendiri — Kilat tidak tayang 15.00. */
+    airingStartTimeAt: "Mulai {time} WIB",
     voucherLabel: "Voucher",
     // ⚠️ SATU KATA UNTUK SATU BENDA. Empat kunci ini berbunyi Inggris di dalam
     // blok Indonesia, jadi satu layar peneliti mencampur "Invoice"/"Receipt"
