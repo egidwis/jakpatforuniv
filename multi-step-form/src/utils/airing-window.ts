@@ -157,3 +157,30 @@ export function toWibYmd(date: Date): string {
 export function toLocalYmd(date: Date): string {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
+
+/**
+ * Di mana sebuah jendela tayang berada relatif jam dinding.
+ *
+ * Akhir-EKSKLUSIF, mengikuti seluruh repo ini: jendela 25 Agu 15.00 → 26 Agu
+ * 15.00 berarti satu hari tayang, dan pada 26 Agu 15.00 tepat ia sudah selesai.
+ *
+ * Sengaja **tidak** mengenal `status`, pembayaran, atau pembatalan — ia murni
+ * aritmetika tanggal. Pemanggil yang punya kolom status wajib memeriksanya
+ * lebih dulu dan hanya jatuh ke sini untuk sisanya; lihat `publicationStateOf`
+ * di `components/status/airingPeriods.ts`. Itu juga alasan ia tinggal di sini
+ * alih-alih di sana: `PageBuilderModal` cuma memegang dua tanggal, bukan baris
+ * jadwal, dan memaksanya merakit baris palsu demi memakai aturan yang sama akan
+ * melahirkan salinan ketiga.
+ */
+export function airingWindowState(
+    start: Date | null,
+    end: Date | null,
+    now: Date = new Date(),
+): 'scheduled' | 'live' | 'completed' {
+    if (end && end < now) return 'completed';
+    if (start && start > now) return 'scheduled';
+    // Tanpa tanggal mulai, jendela yang belum berakhir dianggap sudah berjalan —
+    // itu yang dilakukan `SurveyPage` di gerbang publiknya (start NULL = tidak
+    // menahan siapa pun).
+    return 'live';
+}

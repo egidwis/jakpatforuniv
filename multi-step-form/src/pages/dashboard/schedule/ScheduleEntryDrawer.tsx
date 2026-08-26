@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { copyToClipboard } from '@/components/submissions/types';
 import { formatIDR } from '@/utils/currency';
 import { bannerSavePatch, isPlaceholderBannerUrl } from '@/utils/page-banner';
+import { publicPagePath, publicPageUrl } from '@/utils/page-url';
 import {
   fetchScheduleBilling,
   getScheduledPageBySubmission,
@@ -235,7 +236,7 @@ export function ScheduleEntryDrawer({
     ? entry.prizePerWinner * entry.winnerCount
     : 0;
 
-  const fullPublicUrl = page ? `${window.location.origin}/p/${page.slug}` : '';
+  const fullPublicUrl = page ? publicPageUrl(page.slug) : '';
 
   // Mode editor terbuka: jika banner masih bawaan ATAU admin mengklik edit secara manual
   const showEditor = bannerTodo || isEditOpen;
@@ -553,7 +554,7 @@ export function ScheduleEntryDrawer({
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="font-mono text-[11px] text-slate-600 truncate select-all">
-                          /p/{page.slug}
+                          {publicPagePath(page.slug)}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -724,7 +725,7 @@ export function ScheduleEntryDrawer({
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="font-mono text-[11px] text-slate-600 truncate select-all">
-                          /p/{page.slug}
+                          {publicPagePath(page.slug)}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">

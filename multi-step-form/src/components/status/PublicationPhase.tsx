@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
+import { publicPagePath } from '@/utils/page-url';
 import { pickPublicationHighlight, type ScheduleCard } from './airingPeriods';
 
 interface PublicationPhaseProps {
@@ -121,7 +122,7 @@ export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
             {pageInfo?.slug && (
                 <div className="flex items-center justify-between gap-2 px-1">
                     <a
-                        href={`/pages/${pageInfo.slug}`}
+                        href={publicPagePath(pageInfo.slug)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1.5 text-xs font-semibold text-jfu-primary hover:text-jfu-dark hover:underline min-w-0"

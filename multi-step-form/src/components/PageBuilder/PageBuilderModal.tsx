@@ -7,13 +7,14 @@ import { Textarea } from '@/components/ui/textarea';
 // import { Switch } from '@/components/ui/switch'; // Removed unused
 import { BlockEditor } from './BlockEditor';
 import { supabase, updateFormStatus } from '@/utils/supabase';
-import { toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { airingWindowState, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Eye, Save, Trash2, Plus, Trophy, Users, Calendar, StopCircle, ExternalLink } from 'lucide-react';
 import { BannerPicker } from './BannerPicker';
 import { bannerSavePatch } from '@/utils/page-banner';
+import { publicPagePath } from '@/utils/page-url';
 
 /**
  * Normalize a schedule date string for accurate time comparison & display.
@@ -367,18 +368,14 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
                 // Update status based on current date vs start_date
                 if (isPublished) {
-                    const now = new Date();
-                    const start = new Date(syncedStart!);
-                    const end = syncedEnd ? new Date(syncedEnd) : null;
-
-                    let newStatus: string;
-                    if (end && end < now) {
-                        newStatus = 'completed';
-                    } else if (start <= now) {
-                        newStatus = 'live';
-                    } else {
-                        newStatus = 'scheduled';
-                    }
+                    // ⚠️ Aturannya DIPINJAM, bukan ditulis ulang. Ini dulu salinan
+                    // keempat dari "sudah selesai / sedang tayang / belum mulai",
+                    // dan salinan-salinan itulah yang membuat dua layar bisa
+                    // menyebut satu order dengan dua nama.
+                    const newStatus = airingWindowState(
+                        new Date(syncedStart!),
+                        syncedEnd ? new Date(syncedEnd) : null,
+                    );
                     await updateFormStatus(submissionId, newStatus);
                 }
             }
@@ -814,7 +811,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     {/* Right Side: Actions */}
                     <div className="flex items-center gap-2 flex-shrink-0">
                         {(initialData?.slug || savedPageId) && (
-                            <Button title="Preview Page" variant="outline" size="icon" onClick={() => window.open(`/pages/${formData.slug}`, '_blank')} className="h-9 w-9 bg-white border-gray-200 text-gray-700 hover:bg-gray-50 shrink-0">
+                            <Button title="Preview Page" variant="outline" size="icon" onClick={() => window.open(publicPagePath(formData.slug), '_blank')} className="h-9 w-9 bg-white border-gray-200 text-gray-700 hover:bg-gray-50 shrink-0">
                                 <Eye className="w-4 h-4" />
                             </Button>
                         )}

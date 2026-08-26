@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import {
     PAGE_TYPE_LABEL, pageTypeOf, shortOrderId, usesPlaceholderBanner, type PageData,
 } from './types';
+import { publicPagePath, publicPageUrl } from '@/utils/page-url';
 
 // ─────────────────────────────────────────────────────────────
 // Feed Live — kurasi urutan kartu yang sedang tayang.
@@ -139,7 +140,7 @@ export function LiveFeedTab({
     };
 
     const handleCopyLink = (page: PageData) => {
-        const url = `${window.location.origin}/pages/${page.slug}`;
+        const url = publicPageUrl(page.slug);
         if (navigator?.clipboard) {
             navigator.clipboard.writeText(url);
             toast.success('Link halaman berhasil disalin!');
@@ -340,7 +341,7 @@ export function LiveFeedTab({
                                             variant="ghost"
                                             size="icon"
                                             className="h-7 w-7 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                            onClick={() => window.open(`/pages/${page.slug}`, '_blank')}
+                                            onClick={() => window.open(publicPagePath(page.slug), '_blank')}
                                             title="Buka Halaman"
                                         >
                                             <ExternalLink className="w-3.5 h-3.5" />

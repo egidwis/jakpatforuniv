@@ -18,6 +18,7 @@ import type { SurveySubmission, ExistingPage } from '../types';
 import { formatDate } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 import { isPlaceholderBannerUrl } from '@/utils/page-banner';
+import { publicPagePath, publicPageUrl } from '@/utils/page-url';
 import { toast } from 'sonner';
 
 // ─────────────────────────────────────────────────────────────
@@ -49,9 +50,7 @@ export function PageTab({
           Boolean(existingPage.requires_banner_update))
     );
 
-  const fullPublicUrl = existingPage
-    ? `${window.location.origin}/p/${existingPage.slug}`
-    : '';
+  const fullPublicUrl = existingPage ? publicPageUrl(existingPage.slug) : '';
 
   const handleCopyLink = () => {
     if (!fullPublicUrl) return;
@@ -305,7 +304,7 @@ export function PageTab({
                 className="font-mono text-[11px] text-slate-600 truncate select-all"
                 title={fullPublicUrl}
               >
-                /p/{existingPage.slug}
+                {publicPagePath(existingPage.slug)}
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">

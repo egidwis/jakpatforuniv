@@ -5,6 +5,7 @@ import { Card, CardContent, CardFooter, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Users, Trophy, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { publicPagePath } from '@/utils/page-url';
 
 /**
  * Normalize a schedule date string for accurate time comparison.
@@ -182,7 +183,7 @@ export function SurveyListingPage() {
                                     </Button>
                                 ) : (
                                     <Button asChild className="w-full h-11 text-base font-semibold shadow-lg shadow-blue-500/30 hover:shadow-blue-600/40 transition-all rounded-xl bg-blue-600 hover:bg-blue-700">
-                                        <Link to={`/pages/${page.slug}`}>
+                                        <Link to={publicPagePath(page.slug)}>
                                             {page.submission_id ? 'Ikuti Survei Sekarang' : 'Lihat Selengkapnya'}
                                             <ExternalLink className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                                         </Link>

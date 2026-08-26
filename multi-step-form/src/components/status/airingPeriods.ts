@@ -2,11 +2,13 @@ import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
 import type { TranslationKey } from '@/i18n/translations';
 import { deriveScheduleMoney, type ScheduleMoney } from '@/utils/scheduleMoney';
 import {
+    isSchedulePaid,
     orderStepOf,
     scheduleEnd,
     scheduleStart,
     type SchedulePaymentMap,
 } from './scheduleAxes';
+import { airingWindowState } from '@/utils/airing-window';
 import { airingDaysOf } from '@/pages/dashboard/schedule/scheduleModel';
 import type { OrderUiState } from './deriveOrderUiState';
 
@@ -247,16 +249,7 @@ export function buildScheduleCards(
                 : ui.finalPaymentLink ? 'waiting_payment' : 'awaiting_invoice';
         } else bookingState = 'paid'; // step 3 atau 4
 
-        let pubState: PublicationState = 'none';
-        if (bookingState === 'paid') {
-            if (step === 4) pubState = 'completed';
-            else {
-                const isLive =
-                    (first.status || '').toLowerCase() === 'live' ||
-                    !!(oStart && oEnd && oStart <= now && oEnd >= now);
-                pubState = isLive ? 'live' : 'scheduled';
-            }
-        }
+        const pubState = publicationStateOf(first, now);
 
         cards.push({
             key: 'original',
@@ -322,14 +315,7 @@ export function buildScheduleCards(
             bookingState = 'paid';
         }
 
-        let pubState: PublicationState = 'none';
-        if (bookingState === 'paid') {
-            if (status === 'completed') pubState = 'completed';
-            else if (status === 'live') pubState = 'live';
-            else if (end && end < now) pubState = 'completed';
-            else if (start && end && start <= now && end >= now) pubState = 'live';
-            else pubState = 'scheduled';
-        }
+        const pubState = publicationStateOf(s, now);
 
         cards.push({
             key: s.sourceId,
@@ -393,6 +379,48 @@ export function pickDefaultExpandedKey(cards: ScheduleCard[]): string {
     if (needsPay) return needsPay.key;
 
     return cards.find((c) => c.booking.state !== 'cancelled')?.key || cards[0]?.key || 'original';
+}
+
+/**
+ * Di mana satu jadwal berada di daur hidup penayangannya.
+ *
+ * ⚠️ SATU ATURAN, SATU TEMPAT — dan ini bukan kerapian, ini perbaikan bug.
+ *
+ * Aturan ini sebelumnya ditulis DUA kali di berkas ini, sekali per cabang, dan
+ * keduanya sudah berselisih atas **485 baris produksi** (diukur 2026-08-26):
+ *
+ * | ordinal-1 | "later" | baris | yang benar |
+ * |---|---|---|---|
+ * | `none` | `completed` | 265 | ordinal-1 — `requested` + bayar `expired` disebut "Selesai" |
+ * | `completed` | `live` | 177 | ordinal-1 — kolom `status` macet di 'live' |
+ * | `none` | `scheduled` | 38 | ordinal-1 — lunas tapi tanpa tanggal sama sekali |
+ * | `completed` | `none` | 5 | "later" — `cancelled` tidak pernah tayang |
+ *
+ * Jadi yang menang cabang ordinal-1, ditambah penjaga `cancelled` milik "later".
+ *
+ * ⚠️ JANGAN mengganti pemeriksaan tanggal di bawah dengan `isAiringNowSchedule`.
+ * Predikat itu sengaja membiarkan `status = 'live'` menang atas jam dinding —
+ * benar untuk pertanyaan "jendela mana yang sedang dipakai order ini"
+ * (`effectiveAiringOf`), salah untuk pertanyaan di sini. Kolom `status` tidak
+ * pernah dimajukan ke 'completed' oleh siapa pun: **177 baris** berstatus 'live'
+ * padahal jendelanya sudah lewat, dan hanya **2** yang benar-benar tayang saat
+ * pengukuran. Untuk sumbu ini, jam dinding yang menang.
+ */
+export function publicationStateOf(s: AdScheduleEntry, now: Date = new Date()): PublicationState {
+    // Belum dibayar = belum pernah terbit. Dibatalkan juga: `isSchedulePaid`
+    // meloloskan baris batal yang uangnya sudah masuk, dan tanpa penjaga ini
+    // jendelanya yang sudah lewat membuatnya terbaca "Selesai" — padahal ia
+    // tidak pernah tayang sama sekali.
+    if (!isSchedulePaid(s)) return 'none';
+    if ((s.status || '').toLowerCase() === 'cancelled') return 'none';
+
+    const start = scheduleStart(s);
+    const end = scheduleEnd(s);
+    // Aturan emas: lunas tapi belum punya jendela bukan "akan tayang" — ia belum
+    // punya tanggal sama sekali. Fase ② yang memegangnya, bukan fase ini.
+    if (!start || !end) return 'none';
+
+    return airingWindowState(start, end, now);
 }
 
 /**

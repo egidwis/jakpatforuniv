@@ -17,6 +17,7 @@ import {
     type PageData,
 } from './types';
 import { RespondentTable, usePageRespondents } from './RespondentTable';
+import { publicPagePath } from '@/utils/page-url';
 
 // ─────────────────────────────────────────────────────────────
 // Detail halaman — DRAWER, bukan tukar-layar.
@@ -239,7 +240,7 @@ export function PageDetailDrawer({
                         <Button
                             variant="outline" size="sm"
                             className="h-8 text-xs border-gray-200 text-gray-700"
-                            onClick={() => window.open(`/pages/${page.slug}`, '_blank')}
+                            onClick={() => window.open(publicPagePath(page.slug), '_blank')}
                         >
                             <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
                             Buka
