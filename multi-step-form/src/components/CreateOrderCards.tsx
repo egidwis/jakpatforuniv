@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
-import { Plus, ChevronDown, ChevronRight, BarChart3, Zap, Target } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, BarChart3, Zap } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
-import { CustomMissionModal } from './CustomMissionModal';
 
 /** Pilihan buka/tutup manual diingat lintas sesi. */
 const OPEN_KEY = 'jfu_product_cards_open';
@@ -23,13 +22,9 @@ interface Product {
     hidden?: boolean;
 }
 
-const SURVEY_PRODUCTS: Product[] = [
+const PRODUCTS: Product[] = [
     { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', to: '/dashboard/submit-iklan' },
     { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', comingSoon: true },
-];
-
-const MISSION_PRODUCTS: Product[] = [
-    { id: 'mission', icon: Target, titleKey: 'productMissionTitle', hookKey: 'productMissionHook', descKey: 'productMissionDesc', isActionModal: true },
 ];
 
 /**
@@ -39,7 +34,7 @@ const MISSION_PRODUCTS: Product[] = [
  */
 export function ProductCardGrid() {
     const { t } = useLanguage();
-    const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
+    const visible = PRODUCTS.filter((p) => !p.hidden);
 
     const renderProductCard = (product: Product) => {
         const Icon = product.icon;
@@ -71,25 +66,12 @@ export function ProductCardGrid() {
             </div>
         );
 
-        if (product.isActionModal) {
-            return (
-                <button
-                    key={product.id}
-                    type="button"
-                    onClick={() => setIsMissionModalOpen(true)}
-                    className="h-full w-full rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs hover:shadow-md hover:border-jfu-primary/40 transition-all group text-left cursor-pointer flex flex-col"
-                >
-                    {inner}
-                </button>
-            );
-        }
-
         if (!product.to) {
             return (
                 <div
                     key={product.id}
                     aria-disabled="true"
-                    className="h-full rounded-xl border border-slate-200/80 bg-white/95 p-3.5 shadow-xs flex flex-col"
+                    className="h-full rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-xs flex flex-col"
                 >
                     {inner}
                 </div>
@@ -101,7 +83,7 @@ export function ProductCardGrid() {
                 <Link
                     key={product.id}
                     to={product.to}
-                    className="h-full rounded-xl border border-slate-200/80 bg-white/95 p-3.5 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all flex flex-col group"
+                    className="h-full rounded-xl border border-slate-200/80 bg-white/95 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all flex flex-col group"
                 >
                     {inner}
                 </Link>
@@ -112,7 +94,7 @@ export function ProductCardGrid() {
             <Link
                 key={product.id}
                 to={product.to}
-                className="h-full rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs hover:shadow-md hover:border-jfu-primary/40 transition-all group flex flex-col"
+                className="h-full rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs hover:shadow-md hover:border-jfu-primary/40 transition-all group flex flex-col"
             >
                 {inner}
             </Link>
@@ -120,36 +102,9 @@ export function ProductCardGrid() {
     };
 
     return (
-        <>
-            <div className="grid gap-3.5 lg:grid-cols-3 items-stretch">
-                {/* Grup 1: Survei Online */}
-                <div className="lg:col-span-2 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/20 p-3 sm:p-3.5 flex flex-col shadow-inner">
-                    <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-white/95 uppercase tracking-wider mb-2.5 px-0.5">
-                        <BarChart3 className="w-3.5 h-3.5 text-white/90" />
-                        <span>Survei Online</span>
-                    </div>
-                    <div className="grid gap-2.5 sm:grid-cols-2 flex-1">
-                        {SURVEY_PRODUCTS.map(renderProductCard)}
-                    </div>
-                </div>
-
-                {/* Grup 2: Misi & Aksi Khusus */}
-                <div className="rounded-2xl bg-white/10 backdrop-blur-xs border border-white/20 p-3 sm:p-3.5 flex flex-col shadow-inner">
-                    <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-white/95 uppercase tracking-wider mb-2.5 px-0.5">
-                        <Target className="w-3.5 h-3.5 text-white/90" />
-                        <span>Misi &amp; Aksi Khusus</span>
-                    </div>
-                    <div className="flex-1 flex flex-col">
-                        {MISSION_PRODUCTS.map(renderProductCard)}
-                    </div>
-                </div>
-            </div>
-
-            <CustomMissionModal
-                isOpen={isMissionModalOpen}
-                onClose={() => setIsMissionModalOpen(false)}
-            />
-        </>
+        <div className="grid gap-3 sm:grid-cols-2">
+            {visible.map(renderProductCard)}
+        </div>
     );
 }
 

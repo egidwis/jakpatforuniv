@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, Outlet } from 'react-router-dom';
 import { AppNav } from './AppNav';
+import { SpecialMissionRunningBanner } from './SpecialMissionRunningBanner';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { getOwnProfile, isProfileComplete } from '../utils/supabase';
 
@@ -26,6 +27,7 @@ export function DashboardLayout() {
   return (
     <div className="min-h-screen bg-jfu-bg font-jakarta dark:bg-gray-900">
       <AppNav />
+      <SpecialMissionRunningBanner />
 
       {/* Selaras dengan gate di flow submit: banner membuka drawer profil di
           tempat, bukan menavigasi ke /dashboard/profile. */}
