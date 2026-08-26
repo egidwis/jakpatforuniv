@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Target, Sparkles, ArrowRight } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 import { CustomMissionModal } from './CustomMissionModal';
 
 export const SpecialMissionRunningBanner: React.FC = () => {
+  const { t } = useLanguage();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const bannerText = (
@@ -10,7 +12,12 @@ export const SpecialMissionRunningBanner: React.FC = () => {
       <span className="flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5 text-pink-500 fill-pink-500 shrink-0" />
         <span>
-          Butuh responden untuk <strong>Mystery Shopping toko/booth</strong>, <strong>testing website &amp; aplikasi</strong>, <strong>tasting sampel produk</strong>, atau <strong>validasi ide bisnis</strong>?
+          {t('specialMissionBannerPart1')}{' '}
+          <strong>{t('specialMissionBannerMysteryShopping')}</strong>,{' '}
+          <strong>{t('specialMissionBannerAppTesting')}</strong>,{' '}
+          <strong>{t('specialMissionBannerProductTasting')}</strong>,{' '}
+          {t('specialMissionBannerOr')}{' '}
+          <strong>{t('specialMissionBannerValidation')}</strong>?
         </span>
       </span>
       <span className="text-pink-300 text-xs select-none">•</span>
@@ -21,14 +28,14 @@ export const SpecialMissionRunningBanner: React.FC = () => {
     <>
       <div
         onClick={() => setIsModalOpen(true)}
-        className="w-full bg-gradient-to-r from-pink-50/95 via-rose-50 to-pink-50/95 text-slate-800 border-b border-pink-200/80 overflow-hidden cursor-pointer group py-1.5 px-3 sm:px-4 relative z-30 transition-all hover:bg-pink-50/80 select-none"
-        title="Klik untuk mengajukan Misi & Aksi Khusus Responden"
+        className="w-full bg-gradient-to-r from-pink-50/95 via-rose-50 to-pink-50/95 text-slate-800 border-b border-pink-200/80 overflow-hidden cursor-pointer group py-1.5 relative z-30 transition-all hover:bg-pink-50/80 select-none"
+        title={t('specialMissionTooltip')}
       >
-        <div className="max-w-7xl mx-auto flex items-center gap-3">
-          {/* Left Static Badge */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-pink-100/90 text-pink-700 text-[10px] font-extrabold uppercase tracking-wider shrink-0 border border-pink-200/80 shadow-2xs">
+        <div className="max-w-5xl mx-auto px-4 md:px-6 flex items-center gap-3">
+          {/* Left Static Label */}
+          <div className="hidden sm:flex items-center gap-1.5 text-pink-700 text-[11px] font-extrabold uppercase tracking-wider shrink-0">
             <Target className="w-3.5 h-3.5 text-pink-600" />
-            <span>Misi Khusus</span>
+            <span>{t('specialMissionLabel')}</span>
           </div>
 
           {/* Running Marquee Container */}
@@ -44,7 +51,7 @@ export const SpecialMissionRunningBanner: React.FC = () => {
           {/* Right Static Action Button */}
           <div className="flex items-center shrink-0">
             <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-pink-600 group-hover:bg-pink-700 text-white font-bold text-[11px] transition-all shadow-xs cursor-pointer">
-              <span>Ajukan</span>
+              <span>{t('specialMissionApply')}</span>
               <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>

@@ -121,6 +121,8 @@ export interface DateRangePickerProps {
     /** Nonaktifkan saat fetch berjalan supaya rentang tidak diganti dua kali beruntun. */
     disabled?: boolean;
     className?: string;
+    /** Penjajaran popover pada breakpoint sm ke atas: 'left' (default) atau 'right'. */
+    align?: 'left' | 'right';
 }
 
 export function DateRangePicker({
@@ -129,6 +131,7 @@ export function DateRangePicker({
     earliestDate,
     disabled = false,
     className = '',
+    align = 'left',
 }: DateRangePickerProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -213,8 +216,10 @@ export function DateRangePicker({
                        "Periode" + gap ≈ 81px), jadi lebar 94vw meluber 58px ke luar layar —
                        dan karena posisinya out-of-flow, halaman tidak bisa digulir untuk
                        mencapainya: tombol "Terapkan" benar-benar tak terjangkau di ponsel.
+                       Pada breakpoint sm+, dijangkarkan ke sisi kiri tombol (atau kanan jika align='right')
+                       agar tidak meluber ke kiri menabrak sidebar admin.
                     */
-                    className="jfu-daterange fixed inset-x-3 top-auto z-50 mt-2 overflow-hidden rounded-lg border bg-white shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:w-[min(94vw,34rem)]"
+                    className={`jfu-daterange fixed inset-x-3 top-auto z-50 mt-2 overflow-hidden rounded-lg border bg-white shadow-lg sm:absolute sm:inset-x-auto ${align === 'right' ? 'sm:right-0' : 'sm:left-0'} sm:w-[min(94vw,34rem)]`}
                     style={{ borderColor: CHART.grid }}
                 >
                     <style>{CALENDAR_CSS}</style>

@@ -13,6 +13,7 @@ export function DashboardLayout() {
   // Chat mengatur tingginya sendiri (full-height di bawah navbar),
   // jadi tanpa padding bawah dari layout.
   const isChat = location.pathname.startsWith('/dashboard/chat');
+  const isMyOrders = location.pathname === '/dashboard' || location.pathname === '/dashboard/status';
 
   // Banner ajakan melengkapi profil (user Google / user lama). Dicek ulang tiap
   // pindah halaman agar hilang segera setelah profil dilengkapi.
@@ -27,7 +28,7 @@ export function DashboardLayout() {
   return (
     <div className="min-h-screen bg-jfu-bg font-jakarta dark:bg-gray-900">
       <AppNav />
-      <SpecialMissionRunningBanner />
+      {isMyOrders && <SpecialMissionRunningBanner />}
 
       {/* Selaras dengan gate di flow submit: banner membuka drawer profil di
           tempat, bukan menavigasi ke /dashboard/profile. */}

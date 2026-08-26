@@ -83,7 +83,7 @@ export const translations = {
     googleSafetyPoint3: "Access is limited to reading question types and total question count",
 
     // Status Page
-    pageTitle: "My Orders",
+    pageTitle: "My Order",
     pageSubtitle: "Monitor the progress of your survey submissions in real-time.",
     statusAll: "All Status",
     statusInReview: "Under Review",
@@ -321,8 +321,8 @@ export const translations = {
     // Success page after DOKU
     successPaidTitle: "Payment received",
     successPaidBody: "Your survey ad “{title}” airs on {start} at 15:00 WIB, and runs for {days} until {end}.",
-    successPaidBodyNoSchedule: "Payment for “{title}” is confirmed. We'll set the airing date shortly and it will show up in My Orders.",
-    successFollowUp: "You can follow its progress any time in My Orders.",
+    successPaidBodyNoSchedule: "Payment for “{title}” is confirmed. We'll set the airing date shortly and it will show up in My Order.",
+    successFollowUp: "You can follow its progress any time in My Order.",
     successPendingTitle: "Confirming your payment",
     successPendingBody: "If you have just completed the payment, the bank's confirmation usually lands within a few minutes. This page refreshes itself — no need to close it.",
     successTxDetails: "Transaction details",
@@ -331,7 +331,7 @@ export const translations = {
     successNoScheduleYet: "Not set yet",
     successBadgePaid: "Paid",
     successBadgePending: "Awaiting",
-    successViewOrders: "View My Orders",
+    successViewOrders: "View My Order",
     successCheckNow: "Check status now",
     successChecking: "Checking...",
     successContactSupport: "Contact Support",
@@ -552,7 +552,7 @@ export const translations = {
     voucherPlaceholder: "Enter voucher or referral code",
 
     // Dashboard revamp — navigation
-    navOrders: "My Orders",
+    navOrders: "My Order",
     navMyOrder: "My Order",
     navTheForm: "Form Builder",
     navChatMimin: "Chat Mimin",
@@ -560,7 +560,7 @@ export const translations = {
     navHelp: "Help",
     navProfile: "Profile",
     signOut: "Sign Out",
-    backToOrders: "Back to My Orders",
+    backToOrders: "Back to My Order",
     refresh: "Refresh",
     language: "Language",
 
@@ -675,7 +675,7 @@ export const translations = {
     btnChangeLink: "Change Form Link",
     // Named after the nav label the researcher actually sees ("My Order"),
     // not a new word. It removes the card from the list; it deletes nothing.
-    btnDeleteForm: "Remove from My Orders",
+    btnDeleteForm: "Remove from My Order",
     submittingReReview: "Submitting...",
     // Label chip = SUMBER form; hint = SIAPA yang mereview. Dua fakta berbeda
     // yang dulu dipadatkan jadi satu kalimat ("Auto Review - Google Form").
@@ -868,6 +868,17 @@ export const translations = {
     resetPasswordSuccessDesc: "Redirecting to log in page…",
     resetPasswordInvalidTitle: "Invalid Link",
     resetPasswordInvalidDesc: "The reset link is invalid or has expired. Please request a new link from the login page.",
+
+    // Special Mission Running Banner
+    specialMissionLabel: "Special Mission",
+    specialMissionTooltip: "Click to request Custom Missions & Respondent Actions",
+    specialMissionBannerPart1: "Need respondents for",
+    specialMissionBannerMysteryShopping: "store/booth Mystery Shopping",
+    specialMissionBannerAppTesting: "website & app testing",
+    specialMissionBannerProductTasting: "product sample tasting",
+    specialMissionBannerOr: "or",
+    specialMissionBannerValidation: "business idea validation",
+    specialMissionApply: "Request",
   },
 
   id: {
@@ -1119,8 +1130,8 @@ export const translations = {
     // Halaman sukses setelah DOKU
     successPaidTitle: "Pembayaran diterima",
     successPaidBody: "Iklan survei “{title}” tayang {start} pukul 15.00 WIB, dan berjalan {days} sampai {end}.",
-    successPaidBodyNoSchedule: "Pembayaran untuk “{title}” sudah kami terima. Jadwal tayangnya akan segera kami tetapkan dan muncul di Order Saya.",
-    successFollowUp: "Kamu bisa memantau perkembangannya kapan saja di Order Saya.",
+    successPaidBodyNoSchedule: "Pembayaran untuk “{title}” sudah kami terima. Jadwal tayangnya akan segera kami tetapkan dan muncul di My Order.",
+    successFollowUp: "Kamu bisa memantau perkembangannya kapan saja di My Order.",
     successPendingTitle: "Sedang mengonfirmasi pembayaranmu",
     successPendingBody: "Kalau kamu baru saja menyelesaikan pembayaran, konfirmasi dari bank biasanya masuk dalam beberapa menit. Halaman ini memperbarui sendiri — tidak perlu ditutup.",
     successTxDetails: "Detail transaksi",
@@ -1129,7 +1140,7 @@ export const translations = {
     successNoScheduleYet: "Belum ditetapkan",
     successBadgePaid: "Lunas",
     successBadgePending: "Menunggu",
-    successViewOrders: "Lihat Order Saya",
+    successViewOrders: "Lihat My Order",
     successCheckNow: "Cek status sekarang",
     successChecking: "Mengecek...",
     successContactSupport: "Hubungi Bantuan",
@@ -1260,7 +1271,7 @@ export const translations = {
     googleSafetyPoint3: "Izin hanya untuk menghitung model dan jumlah pertanyaan kuesioner",
 
     // Status Page
-    pageTitle: "Order Saya",
+    pageTitle: "My Order",
     pageSubtitle: "Pantau progress submission survey Anda secara real-time.",
     statusAll: "Semua Status",
     statusInReview: "Under Review",
@@ -1414,7 +1425,7 @@ export const translations = {
     voucherPlaceholder: "Masukkan kode voucher atau referral",
 
     // Dashboard revamp — navigasi
-    navOrders: "Order Saya",
+    navOrders: "My Order",
     navMyOrder: "My Order",
     navTheForm: "Buat Kuesioner",
     navChatMimin: "Chat Mimin",
@@ -1422,7 +1433,7 @@ export const translations = {
     navHelp: "Bantuan",
     navProfile: "Profil",
     signOut: "Keluar",
-    backToOrders: "Kembali ke Order Saya",
+    backToOrders: "Kembali ke My Order",
     refresh: "Muat ulang",
     language: "Bahasa",
 
@@ -1535,9 +1546,9 @@ export const translations = {
     reviewGuideText: "Perbaiki kuesioner Anda, lalu konfirmasi di bawah jika sudah selesai:",
     btnConfirmFixed: "Saya Sudah Perbaiki Kuesioner",
     btnChangeLink: "Ganti Link Form",
-    // Namanya mengikuti label nav yang dilihat peneliti ("Order Saya"), bukan
+    // Namanya mengikuti label nav yang dilihat peneliti ("My Order"), bukan
     // istilah baru. Ia menyingkirkan kartu dari daftar; tidak menghapus apa pun.
-    btnDeleteForm: "Hapus dari Order Saya",
+    btnDeleteForm: "Hapus dari My Order",
     submittingReReview: "Mengirimkan...",
     reviewMethodAuto: "Google Forms",
     reviewMethodManual: "Manual Review",
@@ -1714,6 +1725,17 @@ export const translations = {
     resetPasswordSuccessDesc: "Mengarahkan kembali ke halaman login…",
     resetPasswordInvalidTitle: "Tautan Tidak Valid",
     resetPasswordInvalidDesc: "Tautan reset tidak valid atau sudah kedaluwarsa. Silakan minta tautan baru dari halaman login.",
+
+    // Special Mission Running Banner
+    specialMissionLabel: "Misi Khusus",
+    specialMissionTooltip: "Klik untuk mengajukan Misi & Aksi Khusus Responden",
+    specialMissionBannerPart1: "Butuh responden untuk",
+    specialMissionBannerMysteryShopping: "Mystery Shopping toko/booth",
+    specialMissionBannerAppTesting: "testing website & aplikasi",
+    specialMissionBannerProductTasting: "tasting sampel produk",
+    specialMissionBannerOr: "atau",
+    specialMissionBannerValidation: "validasi ide bisnis",
+    specialMissionApply: "Ajukan",
   }
 };
 

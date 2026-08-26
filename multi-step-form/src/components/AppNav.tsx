@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, User, ChevronDown, Globe, Menu, ShoppingBag, ListPlus, MessageCircle, Sparkles } from 'lucide-react';
+import { LogOut, User, ChevronDown, Globe, Menu, ShoppingBag, ListPlus, MessageCircle, Sparkles, Wrench } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -24,7 +24,7 @@ import {
 
 /**
  * Header Dashboard User:
- * - Desktop: Text-only navigation links (My Order, Buat Kuesioner/Form Builder, Data Analyzer, Chat Mimin) rata kanan dengan Avatar Dropdown.
+ * - Desktop: Text-only navigation links (My Order, Tools Dropdown [Buat Kuesioner, Data Analyzer], Chat Mimin) rata kanan dengan Avatar Dropdown.
  * - Mobile: Hamburger menu yang membuka Side Sheet dengan menu lengkap dan Switch Bahasa.
  */
 export function AppNav() {
@@ -50,6 +50,7 @@ export function AppNav() {
     // pembuat form hidup di bawah prefix ini.
     const isTheFormActive = location.pathname.startsWith('/dashboard/forms');
     const isAnalyzerActive = location.pathname.startsWith('/dashboard/analyzer');
+    const isToolsActive = isTheFormActive || isAnalyzerActive;
 
     return (
         <header className="sticky top-0 z-40 h-14 md:h-16 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)]">
@@ -88,45 +89,56 @@ export function AppNav() {
                                     )}
                                 </Link>
 
-                                {/* Buat Kuesioner (JFU Forms) — jangan beri label mengandung kata
-                                    "form" telanjang: user lama membacanya sebagai "form order iklan"
-                                    dan tersesat ke sini. */}
-                                <Link
-                                    to="/dashboard/forms"
-                                    className={`relative flex items-center gap-2 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
-                                        isTheFormActive
-                                            ? 'text-jfu-primary'
-                                            : 'text-slate-500 hover:text-slate-800'
-                                    }`}
-                                >
-                                    <ListPlus className={`w-4 h-4 shrink-0 transition-colors ${isTheFormActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
-                                    <span>{t('navTheForm')}</span>
-                                    <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-amber-100 text-amber-800 uppercase tracking-tight border border-amber-200/80">
-                                        Beta
-                                    </span>
-                                    {isTheFormActive && (
-                                        <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
-                                    )}
-                                </Link>
-
-                                {/* AI Analyzer */}
-                                <Link
-                                    to="/dashboard/analyzer"
-                                    className={`relative flex items-center gap-1.5 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
-                                        isAnalyzerActive
-                                            ? 'text-jfu-primary'
-                                            : 'text-slate-500 hover:text-slate-800'
-                                    }`}
-                                >
-                                    <Sparkles className={`w-4 h-4 shrink-0 transition-colors ${isAnalyzerActive ? 'text-indigo-600' : 'text-slate-400'}`} />
-                                    <span>Data Analyzer</span>
-                                    <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-tight border border-indigo-200/80">
-                                        AI
-                                    </span>
-                                    {isAnalyzerActive && (
-                                        <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
-                                    )}
-                                </Link>
+                                {/* Tools Dropdown (Buat Kuesioner + Data Analyzer) */}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger
+                                        className={`relative flex items-center gap-1.5 h-14 md:h-16 px-1 text-sm font-bold transition-colors outline-none cursor-pointer ${
+                                            isToolsActive
+                                                ? 'text-jfu-primary'
+                                                : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        <Wrench className={`w-4 h-4 shrink-0 transition-colors ${isToolsActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
+                                        <span>Tools</span>
+                                        <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-blue-100 text-blue-800 uppercase tracking-tight border border-blue-200/80">
+                                            New
+                                        </span>
+                                        <ChevronDown className={`w-3.5 h-3.5 transition-colors ${isToolsActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
+                                        {isToolsActive && (
+                                            <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
+                                        )}
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="w-56 p-1.5 shadow-lg border-slate-200">
+                                        <DropdownMenuItem
+                                            onClick={() => navigate('/dashboard/forms')}
+                                            className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                                                isTheFormActive ? 'bg-jfu-primary/10 text-jfu-primary font-semibold' : 'text-slate-700 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <ListPlus className={`w-4 h-4 ${isTheFormActive ? 'text-jfu-primary' : 'text-slate-500'}`} />
+                                                <span className="text-sm">{t('navTheForm')}</span>
+                                            </div>
+                                            <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-amber-100 text-amber-800 uppercase tracking-tight border border-amber-200/80">
+                                                Beta
+                                            </span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            onClick={() => navigate('/dashboard/analyzer')}
+                                            className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                                                isAnalyzerActive ? 'bg-jfu-primary/10 text-jfu-primary font-semibold' : 'text-slate-700 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <Sparkles className={`w-4 h-4 ${isAnalyzerActive ? 'text-indigo-600' : 'text-slate-500'}`} />
+                                                <span className="text-sm">Data Analyzer</span>
+                                            </div>
+                                            <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-tight border border-indigo-200/80">
+                                                AI
+                                            </span>
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
 
                                 {/* Chat Mimin */}
                                 <Link
@@ -249,44 +261,6 @@ export function AppNav() {
 
                                         <SheetClose asChild>
                                             <Link
-                                                to="/dashboard/forms"
-                                                className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                                                    isTheFormActive
-                                                        ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
-                                                        : 'text-gray-700 hover:bg-gray-100'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <ListPlus className="w-4 h-4 text-jfu-primary" />
-                                                    <span>{t('navTheForm')}</span>
-                                                </div>
-                                                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-                                                    Beta
-                                                </span>
-                                            </Link>
-                                        </SheetClose>
-
-                                        <SheetClose asChild>
-                                            <Link
-                                                to="/dashboard/analyzer"
-                                                className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                                                    isAnalyzerActive
-                                                        ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
-                                                        : 'text-gray-700 hover:bg-gray-100'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <Sparkles className="w-4 h-4 text-indigo-600" />
-                                                    <span>Data Analyzer</span>
-                                                </div>
-                                                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
-                                                    AI
-                                                </span>
-                                            </Link>
-                                        </SheetClose>
-
-                                        <SheetClose asChild>
-                                            <Link
                                                 to="/dashboard/chat"
                                                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                                                     isChatActive
@@ -298,6 +272,54 @@ export function AppNav() {
                                                 <span>{t('navChatMimin')}</span>
                                             </Link>
                                         </SheetClose>
+
+                                        <div className="pt-2">
+                                            <div className="flex items-center justify-between px-2 mb-1.5">
+                                                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                                                    Tools
+                                                </span>
+                                                <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-blue-100 text-blue-800 uppercase tracking-tight border border-blue-200/80">
+                                                    New
+                                                </span>
+                                            </div>
+                                            <SheetClose asChild>
+                                                <Link
+                                                    to="/dashboard/forms"
+                                                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                                        isTheFormActive
+                                                            ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
+                                                            : 'text-gray-700 hover:bg-gray-100'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <ListPlus className="w-4 h-4 text-jfu-primary" />
+                                                        <span>{t('navTheForm')}</span>
+                                                    </div>
+                                                    <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                                        Beta
+                                                    </span>
+                                                </Link>
+                                            </SheetClose>
+
+                                            <SheetClose asChild>
+                                                <Link
+                                                    to="/dashboard/analyzer"
+                                                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                                        isAnalyzerActive
+                                                            ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
+                                                            : 'text-gray-700 hover:bg-gray-100'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <Sparkles className="w-4 h-4 text-indigo-600" />
+                                                        <span>Data Analyzer</span>
+                                                    </div>
+                                                    <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                                                        AI
+                                                    </span>
+                                                </Link>
+                                            </SheetClose>
+                                        </div>
                                     </div>
 
                                     <div className="border-t border-gray-100 pt-4 space-y-3">
