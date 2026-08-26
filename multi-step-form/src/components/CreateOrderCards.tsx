@@ -44,29 +44,31 @@ export function ProductCardGrid() {
     const renderProductCard = (product: Product) => {
         const Icon = product.icon;
         const inner = (
-            <>
-                <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
-                    <Icon className="w-5 h-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                        <span className={`text-sm font-bold ${product.comingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
-                            {t(product.titleKey)}
-                        </span>
-                        {product.comingSoon && (
-                            <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                                {t('comingSoon')}
-                            </span>
-                        )}
+            <div className="flex flex-col items-start gap-2.5 w-full h-full">
+                <div className="w-full flex items-center justify-between">
+                    <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
+                        <Icon className="w-4.5 h-4.5" />
                     </span>
-                    <span className={`block text-xs mt-0.5 leading-relaxed ${product.comingSoon ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {product.comingSoon ? (
+                        <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                            {t('comingSoon')}
+                        </span>
+                    ) : (
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                    )}
+                </div>
+                <div className="min-w-0 flex-1">
+                    <span className={`text-sm font-bold block ${product.comingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
+                        {t(product.titleKey)}
+                    </span>
+                    <span className={`block text-xs mt-1 leading-relaxed ${product.comingSoon ? 'text-slate-400' : 'text-slate-600'}`}>
                         <span className={`font-bold ${product.comingSoon ? 'text-slate-500' : 'text-jfu-primary'}`}>
                             {t(product.hookKey)}
                         </span>{' '}
                         {t(product.descKey)}
                     </span>
-                </span>
-            </>
+                </div>
+            </div>
         );
 
         if (product.isActionModal) {
@@ -75,10 +77,9 @@ export function ProductCardGrid() {
                     key={product.id}
                     type="button"
                     onClick={() => setIsMissionModalOpen(true)}
-                    className="h-full w-full flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group text-left cursor-pointer"
+                    className="h-full w-full rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs hover:shadow-md hover:border-jfu-primary/40 transition-all group text-left cursor-pointer flex flex-col"
                 >
                     {inner}
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                 </button>
             );
         }
@@ -88,7 +89,7 @@ export function ProductCardGrid() {
                 <div
                     key={product.id}
                     aria-disabled="true"
-                    className="h-full flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 shadow-sm"
+                    className="h-full rounded-xl border border-slate-200/80 bg-white/95 p-3.5 shadow-xs flex flex-col"
                 >
                     {inner}
                 </div>
@@ -100,10 +101,9 @@ export function ProductCardGrid() {
                 <Link
                     key={product.id}
                     to={product.to}
-                    className="h-full flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all"
+                    className="h-full rounded-xl border border-slate-200/80 bg-white/95 p-3.5 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all flex flex-col group"
                 >
                     {inner}
-                    <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
                 </Link>
             );
         }
@@ -112,10 +112,9 @@ export function ProductCardGrid() {
             <Link
                 key={product.id}
                 to={product.to}
-                className="h-full flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group"
+                className="h-full rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs hover:shadow-md hover:border-jfu-primary/40 transition-all group flex flex-col"
             >
                 {inner}
-                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
             </Link>
         );
     };
