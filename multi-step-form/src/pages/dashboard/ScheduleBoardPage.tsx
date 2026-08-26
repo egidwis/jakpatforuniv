@@ -477,8 +477,9 @@ export function ScheduleBoardPage({
               <AlertPill
                 icon={AlertTriangle}
                 count={alerts.paidWithoutPage}
-                label="lunas tanpa halaman"
+                label="halaman belum bisa dibuka"
                 tone="amber"
+                title="Iklan lunas yang halamannya belum dibuat atau masih draft — responden tidak bisa membukanya"
               />
               <AlertPill
                 icon={ImageIcon}

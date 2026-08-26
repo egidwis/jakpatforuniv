@@ -383,6 +383,27 @@ export function needsBannerSwap(e: AdScheduleEntry): boolean {
   return e.pageStatus === 'published' && e.pageBannerIsPlaceholder;
 }
 
+/**
+ * Iklan sudah lunas tapi halamannya belum bisa dibuka responden — belum dibuat
+ * SAMA SEKALI, atau ada tapi masih draft.
+ *
+ * ⚠️ `'draft'` sengaja ikut, dan bukan karena ada barisnya hari ini — hari ini
+ * NOL. sql/40 menerbitkan halaman otomatis begitu tagihan lunas, jadi halaman
+ * milik order survei praktis tidak pernah lahir sebagai draft. Yang bisa
+ * melahirkannya cuma satu: tombol "Change to Draft" di Page Builder.
+ *
+ * Sebelum P5, keadaan itu ditangkap titik merah `isPageUnpublishedWhenDue` di
+ * tab Page & baris tabel Submissions. Titik itu dicabut karena menagih admin
+ * yang salah — tapi mencabutnya tanpa memindahkan keadaannya berarti
+ * meninggalkan satu jalan yang tidak diawasi siapa pun. Ia menumpang pil yang
+ * sudah ada alih-alih menuntut pil sendiri: pekerjaannya identik ("buat halaman
+ * itu bisa dibuka"), dan pil yang selamanya berbunyi nol hanya menambah
+ * kosakata tanpa menambah keputusan.
+ */
+export function paidPageNotReachable(e: AdScheduleEntry, now: number = Date.now()): boolean {
+  return chipKindOf(e, now) === 'paid' && (e.pageStatus === 'none' || e.pageStatus === 'draft');
+}
+
 export function matchesFilter(e: AdScheduleEntry, f: FilterState, now: number): boolean {
   const kind = chipKindOf(e, now);
 
@@ -499,6 +520,7 @@ export function groupByDay(
 export interface BoardAlerts {
   /** Tahanan slotnya gugur — PERSIS baris yang `holdStateOf` sebut `lapsed`. */
   lateForPayment: number;
+  /** Lunas tapi halamannya belum bisa dibuka — belum dibuat, atau masih draft. */
   paidWithoutPage: number;
   unscheduled: number;
   /** Halaman terbit, banner masih bawaan. */
@@ -532,7 +554,7 @@ export function computeAlerts(entries: AdScheduleEntry[], now: number = Date.now
     // langsung bercerai tanpa ada yang menyadarinya.
     if (holdStateOf(e, now) === 'lapsed') lateForPayment += 1;
 
-    if (kind === 'paid' && e.pageStatus === 'none') paidWithoutPage += 1;
+    if (paidPageNotReachable(e, now)) paidWithoutPage += 1;
     if (needsBannerSwap(e)) placeholderBanner += 1;
   }
   return { lateForPayment, paidWithoutPage, unscheduled, placeholderBanner };

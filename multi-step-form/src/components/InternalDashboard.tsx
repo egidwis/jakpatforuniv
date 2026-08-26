@@ -1344,7 +1344,6 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                       existingPages[submission.id],
                       scheduledSubmissionIds.has(submission.id)
                     )}
-                    existingPage={existingPages[submission.id]}
                     selected={rowSelection.isSelected(submission.id)}
                     onSelectToggle={rowSelection.toggle}
                     onOpen={setOpenSubmissionId}

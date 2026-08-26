@@ -51,7 +51,6 @@ import { PageTab } from './tabs/PageTab';
 import { ScheduleForm } from '@/components/schedule/ScheduleForm';
 import { InvoiceForm } from '@/components/schedule/InvoiceForm';
 import { updateFormDetails, recomputeOrderPrice, previewOrderPrice, type AdScheduleEntry } from '@/utils/supabase';
-import { isPlaceholderBannerUrl } from '@/utils/page-banner';
 import { toast } from 'sonner';
 
 const REASONS = {
@@ -267,14 +266,10 @@ export function SubmissionDetailSheet({
     ? (lifecycle.isActuallyExpired ? 'gray' : 'red')
     : null;
 
-   const isKilat = submission?.distribution_type === 'kilat';
-  const isCompleted = lifecycle.stage === 'completed' || lifecycle.pageStatus === 'completed';
-  const needsBannerUpdate = !isKilat && !isCompleted && existingPage && (
-    isPlaceholderBannerUrl(existingPage.banner_url) ||
-    Boolean(existingPage.requires_banner_update)
-  );
-  const isPageUnpublishedWhenDue = !isKilat && !isCompleted && existingPage && lifecycle.canBuildPage && !existingPage.is_published;
-  const pageDotType: 'red' | null = (needsBannerUpdate || isPageUnpublishedWhenDue) ? 'red' : null;
+  // Tab Page TIDAK punya titik notifikasi. Pekerjaan halaman dikerjakan admin
+  // lain, dari papan Jadwal; menyalakan alarmnya di sini berarti menagih orang
+  // yang tidak bisa — dan tidak seharusnya — menyelesaikannya. Lihat
+  // `getSubmissionActionDot` di lifecycle.ts untuk angka yang mendasarinya.
 
   const tabBar = (
     <div className="flex gap-1 -mb-px">
@@ -283,7 +278,6 @@ export function SubmissionDetailSheet({
         const isActive = activeTab === tab.id;
         const isReviewTab = tab.id === 'review';
         const isScheduleTab = tab.id === 'schedule-payment';
-        const isPageTab = tab.id === 'page';
         return (
           <button
             key={tab.id}
@@ -312,12 +306,6 @@ export function SubmissionDetailSheet({
             {isScheduleTab && scheduleDotType === 'gray' && (
               <span className="relative flex h-2 w-2 ml-0.5" title="Slot kedaluwarsa (unpaid)">
                 <span className="inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
-              </span>
-            )}
-            {isPageTab && pageDotType === 'red' && (
-              <span className="relative flex h-2 w-2 ml-0.5" title="Halaman perlu tindakan (banner/publish)">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
               </span>
             )}
           </button>

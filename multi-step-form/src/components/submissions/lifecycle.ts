@@ -1,7 +1,6 @@
 import type { LifecycleStage } from '../../lib/status-tokens';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { toWibYmd, isPaymentTooLateForDate } from '../../utils/airing-window';
-import { isPlaceholderBannerUrl } from '../../utils/page-banner';
 import { isSlotHoldReleased } from '../../utils/slotHold';
 
 // ─────────────────────────────────────────────────────────────
@@ -192,14 +191,16 @@ export interface ActionDot {
 }
 
 /**
- * Derives whether a submission needs admin/user action across all tabs
- * (Review, Schedule & Payment, Page) to display a notification dot in the list.
+ * Titik notifikasi di baris daftar Submissions.
+ *
+ * DUA sumbu, bukan tiga: Review dan Jadwal/Pembayaran. Sumbu HALAMAN sengaja
+ * tidak ikut — pekerjaannya milik admin lain dan rumahnya papan Jadwal. Lihat
+ * catatan panjang di badan fungsi ini.
+ *
+ * Sesudah sumbu halaman dicabut, `lifecycle` sendirian sudah memuat segalanya —
+ * parameter `submission` dan `existingPage` yang dulu ada tidak lagi dibaca.
  */
-export function getSubmissionActionDot(
-  submission: SurveySubmission,
-  lifecycle: LifecycleInfo,
-  existingPage?: ExistingPage
-): ActionDot | null {
+export function getSubmissionActionDot(lifecycle: LifecycleInfo): ActionDot | null {
   const { displayStatus } = lifecycle;
   const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
   const isRejected = displayStatus === 'rejected';
@@ -229,33 +230,28 @@ export function getSubmissionActionDot(
     lifecycle.stage !== 'completed' &&
     lifecycle.stage !== 'page_scheduled';
 
-  const isKilat = submission.distribution_type === 'kilat';
-  const isCompleted = lifecycle.stage === 'completed' || lifecycle.pageStatus === 'completed';
-  const needsBannerUpdate = !isKilat && !isCompleted && existingPage && (
-    isPlaceholderBannerUrl(existingPage.banner_url) ||
-    Boolean(existingPage.requires_banner_update)
-  );
-  const isPageUnpublishedWhenDue = !isKilat && !isCompleted && existingPage && lifecycle.canBuildPage && !existingPage.is_published;
-
-  if (isScheduleActive && !lifecycle.isActuallyExpired) {
-    return {
-      type: 'red',
-      label: 'Perlu tindakan: Menunggu Pembayaran / Jadwal',
-    };
-  }
-
-  if (needsBannerUpdate || isPageUnpublishedWhenDue) {
-    return {
-      type: 'red',
-      label: needsBannerUpdate ? 'Perlu tindakan: Upload Banner Iklan' : 'Perlu tindakan: Publikasikan Halaman',
-    };
-  }
-
-  if (isScheduleActive && lifecycle.isActuallyExpired) {
-    return {
-      type: 'gray',
-      label: 'Slot kedaluwarsa (Unpaid)',
-    };
+  // ⚠️ SUMBU HALAMAN SENGAJA TIDAK DIHITUNG DI SINI — lihat P5.
+  //
+  // Dulu ada cabang ketiga: banner masih bawaan atau halaman masih draft →
+  // titik MERAH. Ia dicabut karena menagih admin yang salah: yang melayani
+  // reservasi bukan orang yang membuat halaman, dan daftar ini rumahnya.
+  // Pekerjaan halaman punya rumah yang lebih baik di papan Jadwal — pil
+  // berhitung yang bisa disaring, plus editor banner & tombol terbit di
+  // drawernya (`paidPageNotReachable`, `needsBannerSwap`).
+  //
+  // Diukur sebelum dicabut: cabang itu menyala untuk 2 order, keduanya
+  // pekerjaan banner yang SUDAH dihitung papan. Yang cabang publikasi tangkap:
+  // NOL — sql/40 menerbitkan halaman otomatis saat lunas, jadi halaman milik
+  // order survei tidak pernah lahir sebagai draft.
+  //
+  // Efek samping yang ikut sembuh: cabang itu dulu duduk DI ANTARA dua cabang
+  // `isScheduleActive`, jadi order yang slotnya kedaluwarsa tapi bannernya
+  // bawaan mendapat titik MERAH halaman — menutupi titik ABU "slot kedaluwarsa"
+  // yang seharusnya muncul. Cabang abu di bawah kini benar-benar terjangkau.
+  if (isScheduleActive) {
+    return lifecycle.isActuallyExpired
+      ? { type: 'gray', label: 'Slot kedaluwarsa (Unpaid)' }
+      : { type: 'red', label: 'Perlu tindakan: Menunggu Pembayaran / Jadwal' };
   }
 
   return null;

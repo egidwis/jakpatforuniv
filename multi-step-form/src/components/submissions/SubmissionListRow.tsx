@@ -10,7 +10,7 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import { cn } from '@/lib/utils';
-import type { SurveySubmission, ExistingPage } from './types';
+import type { SurveySubmission } from './types';
 import type { LifecycleInfo } from './lifecycle';
 import { getSubmissionActionDot } from './lifecycle';
 import { ClientStatusDot } from '../customers/ClientStatusIcon';
@@ -20,7 +20,6 @@ import { missedPaymentWindow } from '@/utils/missedPaymentWindow';
 interface SubmissionListRowProps {
   submission: SurveySubmission;
   lifecycle: LifecycleInfo;
-  existingPage?: ExistingPage;
   selected: boolean;
   onSelectToggle: (id: string) => void;
   onOpen: (id: string) => void;
@@ -46,7 +45,6 @@ function getAutoPlatformTooltip(formUrl?: string): string {
 export function SubmissionListRow({
   submission,
   lifecycle,
-  existingPage,
   selected,
   onSelectToggle,
   onOpen,
@@ -54,7 +52,7 @@ export function SubmissionListRow({
   clientTier,
 }: SubmissionListRowProps) {
   const [copiedId, setCopiedId] = useState(false);
-  const actionDot = getSubmissionActionDot(submission, lifecycle, existingPage);
+  const actionDot = getSubmissionActionDot(lifecycle);
 
   // Track B5 — lihat `missedPaymentWindow` untuk kenapa permukaan ini ada.
   const missedPayment = missedPaymentWindow({
