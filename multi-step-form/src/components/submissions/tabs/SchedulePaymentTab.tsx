@@ -14,6 +14,7 @@ import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 import { ScheduleCardList, ScheduleCardSkeleton } from './ScheduleCardList';
 import { cardStateOf, pickTargetSchedule } from './scheduleCardActions';
+import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Jadwal & Bayar.
@@ -154,6 +155,7 @@ export function SchedulePaymentTab({
         'Kuota hari itu langsung bebas dijual lagi, dan tagihan yang masih menggantung untuk jadwal ini ikut dimatikan.',
         'Tanggalnya TETAP tercatat sebagai riwayat — jadi nanti masih bisa dijawab "jadwal mana yang dibatalkan, untuk tanggal apa".',
         'Ordernya tidak dihapus dan bisa dijadwalkan ulang kapan saja.',
+        'Penelitinya akan menerima email berisi tanggal yang dibatalkan, dan bahwa kuesionernya tetap lolos review.',
       ],
       confirmLabel: 'Ya, Batalkan Jadwal',
       tone: 'danger',
@@ -161,6 +163,22 @@ export function SchedulePaymentTab({
         try {
           await cancelSchedule(entry);
           toast.success('Jadwal dibatalkan. Kuota tanggalnya sudah bebas.');
+
+          /*
+            Kabari penelitinya. Sampai sekarang pembatalan jadwal oleh tim tidak
+            mengirim apa pun — orangnya baru tahu kalau kebetulan membuka
+            dashboard, dan yang ia temukan di sana (sebelum Track B) malah
+            berbunyi slotnya "dilepas otomatis".
+
+            ⚠️ Tidak di-`await` dan di luar jalur gagal: emailnya tidak boleh
+            menahan layar, dan kegagalannya tidak boleh membuat pembatalan yang
+            SUDAH mendarat terbaca seperti gagal. `notifyScheduleChange` tidak
+            pernah melempar. Endpointnya membaca ulang cerminnya sendiri dan
+            menolak mengirim kalau yang terjadi ternyata bukan pembatalan jadwal
+            (mis. ordernya yang ditolak — itu sudah punya emailnya sendiri).
+          */
+          void notifyScheduleChange({ scheduleId: entry.id, event: 'cancelled' });
+
           reload();
           onExtendCreated();
         } catch (err: any) {

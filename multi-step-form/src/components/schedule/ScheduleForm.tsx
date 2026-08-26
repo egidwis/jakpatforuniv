@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { CalendarClock, Clock, Gift, Loader2, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { MAX_EXTRA_ADS_PER_DAY, MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
 import {
@@ -12,6 +13,8 @@ import {
   type AdScheduleEntry, type FormSubmissionExtend,
 } from '@/utils/supabase';
 import { nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { isAiringNowSchedule, isSchedulePaid } from '@/components/status/scheduleAxes';
+import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
 import { formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { KilatScheduleStep } from '@/components/KilatScheduleStep';
 import { DAYS_AHEAD, SlotCalendar, daysCoveredBy, nextDays } from './SlotCalendar';
@@ -176,6 +179,23 @@ export function ScheduleForm({
     isCreate ? isExtraAd : !!entry?.isExtraAd
   );
 
+  /**
+   * Konfirmasi menggeser tanggal jadwal yang UANGNYA SUDAH MASUK.
+   *
+   * ⚠️ SAUDARANYA DIJAGA, YANG INI TIDAK. "Batalkan Jadwal" sejak lama ditolak
+   * untuk jadwal lunas — di kartu maupun di `cancelSchedule()`. "Ganti Tanggal"
+   * satu-satunya penjaganya `state !== 'cancelled'`, jadi tanggal order lunas —
+   * termasuk 177 iklan yang SEDANG TAYANG — bisa digeser tanpa peringatan,
+   * tanpa kabar ke peneliti, dan tanpa perlindungan tagihan-basi (faktur lunas
+   * tidak pernah dianggap basi, sql/60).
+   *
+   * Kemampuannya SENGAJA dipertahankan, bukan dibuntu (keputusan produk): jalan
+   * buntu mendorong admin menyalahgunakan tombol lain — begitulah `spam` dulu
+   * berubah jadi tong sampah. Yang ditambahkan adalah harga yang harus dibayar
+   * untuk memakainya: menyebut konsekuensinya, lalu mengabari penelitinya.
+   */
+  const [pendingMove, setPendingMove] = useState<{ from: string | null; to: string } | null>(null);
+
   const [regularCounts, setRegularCounts] = useState<Record<string, number>>({});
   const [extraCounts, setExtraCounts] = useState<Record<string, number>>({});
   const [isLoadingSlots, setIsLoadingSlots] = useState(true);
@@ -266,6 +286,19 @@ export function ScheduleForm({
       return;
     }
 
+    // Gerbang E1: menggeser tanggal jadwal yang uangnya sudah masuk harus lewat
+    // dialog konsekuensi lebih dulu. Hanya sekali — `pendingMove` dikosongkan
+    // tepat sebelum `commit()` supaya konfirmasinya tidak berulang.
+    if (!isCreate && entry && isSchedulePaid(entry) && startIso !== entry.startDate) {
+      setPendingMove({ from: entry.startDate, to: startIso });
+      return;
+    }
+
+    await commit();
+  };
+
+  /** Penyimpanan sebenarnya — dipanggil langsung, atau lewat dialog E1. */
+  const commit = async () => {
     setIsSaving(true);
     try {
       if (isCreate) {
@@ -328,6 +361,28 @@ export function ScheduleForm({
       }
     }
     toast.success('Jadwal tayang berhasil diperbarui.');
+
+    /*
+      Kabari penelitinya — Fase ② akhirnya punya notifikasi seperti Fase ①.
+      Sampai sekarang tanggal tayang bisa bergeser tanpa satu pun kabar keluar;
+      peneliti baru tahu kalau kebetulan membuka dashboard.
+
+      ⚠️ Sengaja TIDAK di-`await` dan TIDAK di dalam `try` penyimpanan: emailnya
+      tidak boleh menahan layar, dan kegagalannya tidak boleh membatalkan
+      perubahan yang sudah mendarat di server. `notifyScheduleChange` tidak
+      pernah melempar; ia memberi tahu admin lewat toast terpisah.
+
+      Hanya kalau tanggalnya BENAR-BENAR pindah: admin yang membuka formulir lalu
+      menyimpan tanpa mengubah apa pun tidak mengirim kabar apa-apa. Pemindahan
+      oleh peneliti sendiri disaring di sisi server (`self_rescheduled`).
+    */
+    if (startIso !== entry.startDate) {
+      void notifyScheduleChange({
+        scheduleId: entry.id,
+        event: 'moved',
+        previousStart: entry.startDate,
+      });
+    }
   };
 
   const handleSaveCreate = async () => {
@@ -415,12 +470,101 @@ export function ScheduleForm({
         isRescheduling
         onCancel={onCancel}
         onScheduled={onDone}
+        /* Jalur Kilat memakai penyimpannya sendiri (`updateKilatSchedule`), jadi
+           `handleSaveEdit` di bawah tidak pernah lewat — dan tanpa kait ini
+           pemindahan tanggal Kilat oleh admin adalah satu-satunya perubahan
+           jadwal yang tidak berkabar sama sekali.
+
+           ⚠️ Dialog konsekuensi E1 memang BELUM berlaku di sini: gerbangnya
+           hidup di `handleSave`, dan Kilat tidak melewatinya. Menaruhnya di
+           dalam `KilatScheduleStep` berarti menyentuh komponen yang juga
+           dipakai wizard checkout — pekerjaan Kilat yang sengaja ditunda ke
+           sesi terpisah. Emailnya lebih dulu; kabar tanpa dialog tetap lebih
+           baik daripada perubahan senyap. */
+        onRescheduled={() => {
+          void notifyScheduleChange({
+            scheduleId: entry.id,
+            event: 'moved',
+            previousStart: entry.startDate,
+          });
+        }}
       />
     );
   }
 
+  /*
+    Dialog konsekuensi untuk E1. Isinya menyesuaikan keadaan, dan tiap barisnya
+    hanya muncul kalau memang berlaku — tidak ada kalimat pengisi:
+
+      * order sudah dibayar (selalu, sebab gerbangnya `isSchedulePaid`);
+      * iklannya SEDANG TAYANG, kalau memang begitu — akibatnya berbeda total
+        dari memindahkan iklan yang belum mulai;
+      * tanggal lama -> tanggal baru, dua-duanya disebut;
+      * penelitinya akan dikabari lewat email.
+
+    Baris terakhir itu bukan basa-basi: ia yang membuat tombolnya jujur. Tanpa
+    email, memindahkan tanggal iklan orang lain adalah perubahan senyap.
+  */
+  const moveDialog = (
+    <Dialog open={!!pendingMove} onOpenChange={(open) => { if (!open) setPendingMove(null); }}>
+      <DialogContent className="sm:max-w-[26rem] p-6">
+        <DialogHeader>
+          <DialogTitle className="text-base font-bold text-gray-900">
+            Geser tanggal tayang pesanan yang sudah dibayar?
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-center space-y-0.5">
+          <p className="text-xs text-slate-500 line-through">
+            {pendingMove?.from ? formatWibShort(pendingMove.from) : 'belum bertanggal'}
+          </p>
+          <p className="text-sm font-bold text-slate-800">
+            {pendingMove ? formatWibShort(pendingMove.to) : ''}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          {entry && isAiringNowSchedule(entry) && (
+            <p className="text-xs leading-relaxed text-amber-800 font-semibold">
+              Iklan ini SEDANG TAYANG. Memindahkan tanggalnya mengubah periode tayang yang
+              sudah berjalan, dan respondennya sudah melihat iklan itu di tanggal lama.
+            </p>
+          )}
+          <p className="text-xs leading-relaxed text-slate-700 font-medium">
+            Pesanan ini sudah dibayar. Uangnya tidak dikembalikan dan tidak ditagih ulang —
+            yang bergeser hanya jendela tayangnya.
+          </p>
+          <p className="text-xs leading-relaxed text-slate-500">
+            Tagihan lunas TIDAK ikut dianggap basi (sql/60), jadi kuitansinya tetap berlaku
+            untuk pesanan ini.
+          </p>
+          <p className="text-xs leading-relaxed text-slate-500">
+            Penelitinya akan menerima email berisi tanggal lama dan tanggal barunya.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button
+            variant="outline"
+            onClick={() => setPendingMove(null)}
+            className="text-xs font-semibold h-9 px-5 text-gray-600 border-gray-200 hover:bg-gray-50"
+          >
+            Batal
+          </Button>
+          <Button
+            className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold h-9 px-5"
+            onClick={() => { setPendingMove(null); void commit(); }}
+          >
+            Ya, Geser Tanggal
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
     <div className="space-y-4">
+      {moveDialog}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">

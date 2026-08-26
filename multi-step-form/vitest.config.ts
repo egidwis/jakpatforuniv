@@ -26,6 +26,9 @@ export default defineConfig({
     // dirawat setiap kali ada tes baru.
     // `functions/` ikut karena adapter email (functions/api/_mail.js) memutuskan
     // seluruh email transaksional jalan atau tidak — dan pernah gagal diam-diam.
-    include: ['src/**/*.spec.ts', 'functions/**/*.spec.ts'],
+    // `.spec.js` ikut di sana (dan HANYA di sana): Pages Function ditulis dalam
+    // JS polos, jadi tesnya pun begitu — memaksanya jadi `.ts` cuma menambah
+    // lapisan tipe di atas modul yang tidak punya tipe.
+    include: ['src/**/*.spec.ts', 'functions/**/*.spec.ts', 'functions/**/*.spec.js'],
   },
 });

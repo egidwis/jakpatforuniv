@@ -37,6 +37,18 @@ interface KilatScheduleStepProps {
     onCancel: () => void;
     onScheduled: () => void;
     onRemoveSchedule?: () => void;
+    /**
+     * Dipanggil TEPAT SETELAH gelombang tersimpan, hanya bila tanggalnya
+     * benar-benar berpindah.
+     *
+     * ⚠️ Ada supaya notifikasi Fase ② tidak punya lubang senyap di jalur Kilat.
+     * Komponen ini melayani DUA pemanggil dengan arti yang berlawanan: wizard
+     * checkout (peneliti memesan slotnya sendiri — tidak boleh dikabari, ia
+     * sedang menatap hasilnya) dan drawer admin (tim memindahkan tanggal orang
+     * lain — wajib dikabari). Keputusannya karena itu TIDAK diambil di sini;
+     * yang tahu bedanya adalah pemanggilnya, dan hanya drawer yang mengisinya.
+     */
+    onRescheduled?: (newYmd: string) => void;
 }
 
 /**
@@ -68,6 +80,7 @@ export function KilatScheduleStep({
     onCancel,
     onScheduled,
     onRemoveSchedule,
+    onRescheduled,
 }: KilatScheduleStepProps) {
     const [availability, setAvailability] = useState<Record<string, KilatDayAvailability>>({});
     const [isFetching, setIsFetching] = useState(true);
@@ -120,6 +133,7 @@ export function KilatScheduleStep({
         try {
             await updateKilatSchedule(submissionId, selectedYmd, selectedHour);
             toast.success(`Slot Kilat ${formatHour(selectedHour)} WIB berhasil dibooking!`);
+            if (selectedYmd !== initialYmd) onRescheduled?.(selectedYmd);
             onScheduled();
         } catch (error: any) {
             console.error('Gagal booking slot Kilat:', error);

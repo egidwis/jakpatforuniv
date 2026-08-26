@@ -217,6 +217,30 @@ export function isSlotCancelledSchedule(entry: AdScheduleEntry): boolean {
     return airingOf(entry) === 'cancelled' && entry.reviewStatus === 'approved';
 }
 
+/**
+ * Iklan ini SEDANG TAYANG sekarang.
+ *
+ * ⚠️ Diekspor karena dipakai di luar perhitungan jendela efektif: dialog
+ * "Ganti Tanggal" harus tahu apakah iklannya sudah di udara, sebab
+ * memindahkan tanggal iklan yang sedang tayang punya akibat yang sama sekali
+ * berbeda dari memindahkan yang belum mulai. Dulu predikat ini terkubur
+ * sebagai closure di dalam `effectiveAiringOf`, jadi pemakai berikutnya
+ * terpaksa menulis versinya sendiri — dan versi kedua itulah yang biasanya
+ * lupa bahwa kolom `status` bisa berbohong lebih lambat dari jam dinding.
+ *
+ * Kolom `status` menang saat ia berkata 'live' (mesin penayangan sudah
+ * mengonfirmasi), dan menang saat ia berkata sudah selesai/batal/belum bayar.
+ * Sisanya diputuskan jendela tanggalnya.
+ */
+export function isAiringNowSchedule(s: AdScheduleEntry, now: Date = new Date()): boolean {
+    const airing = airingOf(s);
+    if (airing === 'live') return true;
+    if (['completed', 'cancelled', 'waiting_payment'].includes(airing)) return false;
+    const start = scheduleStart(s);
+    const end = scheduleEnd(s);
+    return !!(start && end && start <= now && end >= now);
+}
+
 export function orderStepOf(first: AdScheduleEntry, now: Date = new Date()): number {
     const airing = airingOf(first);
     const paid = isSchedulePaid(first);
@@ -286,16 +310,7 @@ export function effectiveAiringOf(
 
     const confirmed = later.filter((s) => PAID_AIRING.includes(airingOf(s)));
 
-    const isAiringNow = (s: AdScheduleEntry) => {
-        const airing = airingOf(s);
-        if (airing === 'live') return true;
-        if (['completed', 'cancelled', 'waiting_payment'].includes(airing)) return false;
-        const start = scheduleStart(s);
-        const end = scheduleEnd(s);
-        return !!(start && end && start <= now && end >= now);
-    };
-
-    const live = confirmed.find(isAiringNow) || null;
+    const live = confirmed.find((s) => isAiringNowSchedule(s, now)) || null;
 
     const upcoming = confirmed
         .filter((s) => {
