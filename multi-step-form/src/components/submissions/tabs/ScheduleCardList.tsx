@@ -19,6 +19,7 @@ import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils
 import { holdStateOf, isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { orderTotalOf } from '@/utils/orderTotals';
 import { deriveScheduleMoney } from '@/utils/scheduleMoney';
+import { recordedVsBilled } from '@/utils/billingCompare';
 // Keadaan kartu, aksinya, dan definisi "terlambat" hidup di SATU modul —
 // lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
 import {
@@ -670,6 +671,15 @@ function ScheduleCard({
   actions: CardActions;
 }) {
   const money = deriveScheduleMoney(entry, submission);
+  /**
+   * Harga tercatat vs nominal yang benar-benar ditagihkan.
+   *
+   * ⚠️ KEDUA ANGKANYA SUDAH ADA DI KARTU INI SEJAK LAMA — yang tidak ada cuma
+   * pembandingannya. `#A85YGANA` memajang "Total Penagihan Rp 288.600" tepat di
+   * atas blok yang mencetak "Rp 399.600 ditagih · Lunas seluruhnya", dan tidak
+   * ada satu pun penanda bahwa keduanya seharusnya angka yang sama.
+   */
+  const mismatch = recordedVsBilled(money, billing?.invoices ?? []);
   const state = cardStateOf(entry, billing, { holdLapsed: needsBilling(entry) });
   const isKilat = entry.distributionType === 'kilat';
   const isLate = isLateForSchedule(entry, state);
@@ -797,12 +807,36 @@ function ScheduleCard({
             </div>
           ))}
           <div className="flex justify-between gap-3 pt-1 border-t border-slate-200">
-            <span className="font-bold text-slate-900">{money.isEstimate ? 'Estimasi Total' : 'Total Penagihan'}</span>
+            {/* ⚠️ "Total Penagihan" ADALAH KATA YANG SALAH untuk angka ini, dan
+                bukan cuma pada order yang harganya basi. `total_cost` menyimpan
+                harga jadwal SAAT DIPESAN; yang ditagihkan hidup di
+                `invoices`/`transactions` dan boleh lebih dari satu baris.
+                Selama labelnya berkata "penagihan", setiap selisih terbaca
+                sebagai salah hitung — padahal pada order bertagihan susulan
+                keduanya memang sengaja berbeda. */}
+            <span className="font-bold text-slate-900">{money.isEstimate ? 'Estimasi Total' : 'Harga Tercatat'}</span>
             <span className="font-bold text-blue-600 tabular-nums">{formatIDR(money.total)}</span>
           </div>
         </div>
       ) : (
         <p className="text-[11px] text-slate-400 italic">{money.note}</p>
+      )}
+
+      {/* ⚠️ DI LUAR ternary di atas, bukan di dalamnya. Order pra-PPN tidak
+          menyimpan rincian sama sekali (`money.lines === null`) dan justru
+          merekalah yang paling mungkin memegang angka lama — menaruh penanda
+          ini di cabang yang berrincian akan membungkamnya persis di sana. */}
+      {mismatch && (
+        <div className="flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">
+          <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-amber-600" />
+          <span className="leading-relaxed">
+            Ditagihkan <strong className="font-semibold tabular-nums">{formatIDR(mismatch.billed)}</strong>
+            {' '}— {mismatch.delta > 0 ? 'lebih tinggi' : 'lebih rendah'}{' '}
+            <strong className="font-semibold tabular-nums">{formatIDR(Math.abs(mismatch.delta))}</strong>
+            {' '}dari harga tercatat. Uang yang masuk mengikuti tagihan; angka
+            tercatat inilah yang juga dilihat peneliti.
+          </span>
+        </div>
       )}
 
       <BillingSection entry={entry} billing={billing} state={state} actions={actions} />

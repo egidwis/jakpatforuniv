@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { ReviewHistoryEntry } from '../components/submissions/types';
 import { toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
 import { isPlaceholderBannerUrl } from './page-banner';
+import { isLiveInvoice } from './billingCompare';
 import {
   calculateAdCostPerDay,
   calculateTotalAdCost,
@@ -3553,10 +3554,9 @@ export const fetchScheduleBilling = async (
   for (const [scheduleId, invoices] of bySchedule) {
     // Cerminan `live` di schedule_billing_summary() — kalau salah satu
     // berubah, ubah keduanya. Sengaja tidak dua round-trip demi satu angka.
-    const live = invoices.filter(
-      (i) => i.isPaid
-        || (i.isPending && i.source === 'invoice' && !i.isSuperseded && !i.isStale),
-    );
+    // Predikatnya tinggal di `billingCompare.ts` supaya pembandingan
+    // tercatat-vs-ditagih memakai definisi yang SAMA, bukan salinannya.
+    const live = invoices.filter(isLiveInvoice);
     const billed = live.reduce((sum, i) => sum + i.amount, 0);
     const paid = live.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
     const lastPaid = invoices.find((i) => i.isPaid);
