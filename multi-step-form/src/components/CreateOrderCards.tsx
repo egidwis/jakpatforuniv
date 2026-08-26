@@ -23,10 +23,13 @@ interface Product {
     hidden?: boolean;
 }
 
-const PRODUCTS: Product[] = [
+const SURVEY_PRODUCTS: Product[] = [
     { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', to: '/dashboard/submit-iklan' },
-    { id: 'mission', icon: Target, titleKey: 'productMissionTitle', hookKey: 'productMissionHook', descKey: 'productMissionDesc', isActionModal: true },
     { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', comingSoon: true },
+];
+
+const MISSION_PRODUCTS: Product[] = [
+    { id: 'mission', icon: Target, titleKey: 'productMissionTitle', hookKey: 'productMissionHook', descKey: 'productMissionDesc', isActionModal: true },
 ];
 
 /**
@@ -37,89 +40,110 @@ const PRODUCTS: Product[] = [
 export function ProductCardGrid() {
     const { t } = useLanguage();
     const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
-    const visible = PRODUCTS.filter((p) => !p.hidden);
+
+    const renderProductCard = (product: Product) => {
+        const Icon = product.icon;
+        const inner = (
+            <>
+                <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
+                    <Icon className="w-5 h-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                        <span className={`text-sm font-bold ${product.comingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
+                            {t(product.titleKey)}
+                        </span>
+                        {product.comingSoon && (
+                            <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                {t('comingSoon')}
+                            </span>
+                        )}
+                    </span>
+                    <span className={`block text-xs mt-0.5 leading-relaxed ${product.comingSoon ? 'text-slate-400' : 'text-slate-600'}`}>
+                        <span className={`font-bold ${product.comingSoon ? 'text-slate-500' : 'text-jfu-primary'}`}>
+                            {t(product.hookKey)}
+                        </span>{' '}
+                        {t(product.descKey)}
+                    </span>
+                </span>
+            </>
+        );
+
+        if (product.isActionModal) {
+            return (
+                <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => setIsMissionModalOpen(true)}
+                    className="h-full w-full flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group text-left cursor-pointer"
+                >
+                    {inner}
+                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                </button>
+            );
+        }
+
+        if (!product.to) {
+            return (
+                <div
+                    key={product.id}
+                    aria-disabled="true"
+                    className="h-full flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 shadow-sm"
+                >
+                    {inner}
+                </div>
+            );
+        }
+
+        if (product.comingSoon) {
+            return (
+                <Link
+                    key={product.id}
+                    to={product.to}
+                    className="h-full flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all"
+                >
+                    {inner}
+                    <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                </Link>
+            );
+        }
+
+        return (
+            <Link
+                key={product.id}
+                to={product.to}
+                className="h-full flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group"
+            >
+                {inner}
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+            </Link>
+        );
+    };
 
     return (
         <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {visible.map((product) => {
-                    const Icon = product.icon;
-                    const inner = (
-                        <>
-                            <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
-                                <Icon className="w-5 h-5" />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                                <span className="flex items-center gap-2">
-                                    <span className={`text-sm font-bold ${product.comingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
-                                        {t(product.titleKey)}
-                                    </span>
-                                    {product.comingSoon && (
-                                        <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                                            {t('comingSoon')}
-                                        </span>
-                                    )}
-                                </span>
-                                <span className={`block text-xs mt-0.5 leading-relaxed ${product.comingSoon ? 'text-slate-400' : 'text-slate-600'}`}>
-                                    <span className={`font-bold ${product.comingSoon ? 'text-slate-500' : 'text-jfu-primary'}`}>
-                                        {t(product.hookKey)}
-                                    </span>{' '}
-                                    {t(product.descKey)}
-                                </span>
-                            </span>
-                        </>
-                    );
+            <div className="grid gap-4 lg:grid-cols-3">
+                {/* Grup 1: Survei Online */}
+                <div className="lg:col-span-2 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white/90 uppercase tracking-wider">
+                        <BarChart3 className="w-3.5 h-3.5 text-white/80" />
+                        <span>Survei Online</span>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        {SURVEY_PRODUCTS.map(renderProductCard)}
+                    </div>
+                </div>
 
-                    if (product.isActionModal) {
-                        return (
-                            <button
-                                key={product.id}
-                                type="button"
-                                onClick={() => setIsMissionModalOpen(true)}
-                                className="flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group text-left cursor-pointer"
-                            >
-                                {inner}
-                                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
-                            </button>
-                        );
-                    }
-
-                    if (!product.to) {
-                        return (
-                            <div
-                                key={product.id}
-                                aria-disabled="true"
-                                className="flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 shadow-sm"
-                            >
-                                {inner}
-                            </div>
-                        );
-                    }
-
-                    if (product.comingSoon) {
-                        return (
-                            <Link
-                                key={product.id}
-                                to={product.to}
-                                className="flex items-center gap-3.5 rounded-lg border border-slate-200/80 bg-white/95 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all"
-                            >
-                                {inner}
-                                <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
-                            </Link>
-                        );
-                    }
-
-                    return (
-                        <Link
-                            key={product.id}
-                            to={product.to}
-                            className="flex items-center gap-3.5 rounded-lg border border-slate-200/90 bg-white p-4 shadow-sm hover:shadow-md hover:border-jfu-primary/40 transition-all group"
-                        >
-                            {inner}
-                            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
-                        </Link>
-                    );
-                })}
+                {/* Grup 2: Misi & Aksi Khusus */}
+                <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white/90 uppercase tracking-wider">
+                        <Target className="w-3.5 h-3.5 text-white/80" />
+                        <span>Misi &amp; Aksi Khusus</span>
+                    </div>
+                    <div className="h-[calc(100%-24px)]">
+                        {MISSION_PRODUCTS.map(renderProductCard)}
+                    </div>
+                </div>
             </div>
 
             <CustomMissionModal
