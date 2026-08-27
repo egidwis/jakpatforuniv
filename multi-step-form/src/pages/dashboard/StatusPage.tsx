@@ -7,7 +7,7 @@ import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check, ArrowUp } from 'lucide-react';
+import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check, ArrowUp, Copy } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -56,6 +56,43 @@ function canCancelOrder(ui: { isPaid: boolean; currentStep: number; callout: str
     if (ui.currentStep >= 3) return false;
     return ['review_manual', 'revision', 'choose_schedule', 'awaiting_admin_schedule',
         'payment', 'awaiting_invoice', 'expired', 'too_late_today'].includes(ui.callout);
+}
+
+function CopySubmissionIdBadge({ id }: { id: string }) {
+    const { t } = useLanguage();
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        try {
+            await navigator.clipboard.writeText(id);
+            setCopied(true);
+            toast.success(t('submissionIdCopied'));
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            /* clipboard API fallback */
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleCopy}
+            className="group/id inline-flex items-center gap-1.5 h-6 px-2.5 rounded-md text-[11px] text-slate-500 bg-slate-50 hover:bg-slate-100 hover:text-slate-800 border border-slate-200/80 transition-colors cursor-pointer"
+            title={`${t('copySubmissionId')}: ${id}`}
+            aria-label={`${t('copySubmissionId')}: ${id}`}
+        >
+            <span className="text-slate-500 font-medium">Submission ID:</span>
+            <span className="font-semibold font-mono text-slate-700 group-hover/id:text-slate-900">
+                #{id.slice(0, 8)}
+            </span>
+            {copied ? (
+                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+            ) : (
+                <Copy className="w-3 h-3 text-slate-400 group-hover/id:text-blue-600 shrink-0 transition-colors" />
+            )}
+        </button>
+    );
 }
 
 export function StatusPage() {
@@ -651,13 +688,16 @@ export function StatusPage() {
                                     return (
                                         <Card key={submission.id} className="overflow-hidden border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] hover:border-slate-300 transition-colors duration-150 rounded-2xl">
                                             <CardHeader className="bg-white p-5 md:p-6 pb-4 md:pb-5 space-y-2.5 border-b border-slate-100">
-                                                <div>
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <Chip
                                                         variant={submission.distribution_type === 'kilat' ? 'amber' : 'blue'}
                                                         size="sm"
                                                     >
                                                         {submission.distribution_type === 'kilat' ? `⚡ ${t('productKilatTitle')}` : t('productAdsTitle')}
                                                     </Chip>
+                                                    {submission.id && (
+                                                        <CopySubmissionIdBadge id={submission.id} />
+                                                    )}
                                                 </div>
                                                 <CardTitle className="text-base md:text-lg font-bold text-slate-900 leading-snug line-clamp-2" title={submission.title}>
                                                     {submission.title}

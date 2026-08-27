@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
     AlertCircle,
+    Bookmark,
     CalendarCheck,
     CalendarClock,
     CalendarRange,
     ChevronDown,
     Clock,
-    Copy,
     CreditCard,
     ExternalLink,
     FileText,
@@ -123,40 +123,50 @@ function ScheduleChip({ card }: { card: ScheduleCard }) {
     );
 }
 
-/** Tombol salin Booking ID/ID perpanjangan — dirender TEPAT di samping teks
- * Booking ID di dalam trigger. Bukan `<button>` (elemen trigger accordion
- * sendiri sudah `<button>` sungguhan — nesting `<button>` di dalamnya
- * invalid HTML), tapi `<span role="button">` yang `stopPropagation()`
- * kliknya supaya tap-to-copy tidak ikut men-toggle accordion di baliknya. */
-function CopyOrderIdButton({ id }: { id: string }) {
-    const { t } = useLanguage();
-    const copy = async (e: { stopPropagation: () => void }) => {
-        e.stopPropagation();
-        try {
-            await navigator.clipboard.writeText(id);
-            toast.success(t('orderIdCopied'));
-        } catch {
-            /* clipboard tidak tersedia — biarkan senyap */
+const formatDateRangeTrigger = (start: Date | null, end: Date | null) => {
+    if (!start && !end) return null;
+    if (start && !end) {
+        return start.toLocaleDateString('id-ID', { timeZone: WIB, day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    if (!start && end) {
+        return end.toLocaleDateString('id-ID', { timeZone: WIB, day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    if (start && end) {
+        if (start.getTime() === end.getTime()) {
+            return start.toLocaleDateString('id-ID', { timeZone: WIB, day: 'numeric', month: 'short', year: 'numeric' });
         }
-    };
-    return (
-        <span
-            role="button"
-            tabIndex={0}
-            onClick={copy}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    copy(e);
-                }
-            }}
-            title={id}
-            aria-label={t('copyOrderId')}
-            className="inline-flex shrink-0 p-1 -m-1 rounded-md text-gray-400 hover:text-jfu-primary hover:bg-jfu-primary/[0.06] transition-colors cursor-pointer"
-        >
-            <Copy className="w-3.5 h-3.5" />
-        </span>
-    );
+        const sDay = start.toLocaleDateString('id-ID', { timeZone: WIB, day: 'numeric' });
+        const sMonth = start.toLocaleDateString('id-ID', { timeZone: WIB, month: 'short' });
+        const sYear = start.toLocaleDateString('id-ID', { timeZone: WIB, year: 'numeric' });
+        const eDay = end.toLocaleDateString('id-ID', { timeZone: WIB, day: 'numeric' });
+        const eMonth = end.toLocaleDateString('id-ID', { timeZone: WIB, month: 'short' });
+        const eYear = end.toLocaleDateString('id-ID', { timeZone: WIB, year: 'numeric' });
+
+        if (sYear === eYear) {
+            if (sMonth === eMonth) {
+                return `${sDay} – ${eDay} ${eMonth} ${eYear}`;
+            }
+            return `${sDay} ${sMonth} – ${eDay} ${eMonth} ${eYear}`;
+        }
+        return `${sDay} ${sMonth} ${sYear} – ${eDay} ${eMonth} ${eYear}`;
+    }
+    return null;
+};
+
+function getScheduleTriggerTitle(card: ScheduleCard, t: (k: TranslationKey) => string): string {
+    const dateRangeText = formatDateRangeTrigger(card.startDate, card.endDate);
+
+    if (card.kind === 'original') {
+        if (dateRangeText) {
+            return dateRangeText;
+        }
+        return t('airingPeriodLabel');
+    } else {
+        if (dateRangeText) {
+            return `${t('scheduleExtensionPrefix')}: ${dateRangeText}`;
+        }
+        return t('scheduleExtensionLabel');
+    }
 }
 
 /**
@@ -322,61 +332,65 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const startTimeWib = card ? airingStartHourWib(card) : null;
     const kilatHourPending = !!card?.info?.isKilat && card.info.kilatSlotHour == null;
 
-    let airingValue: ReactNode;
-    if (bState === 'expired') {
-        airingValue = (
-            <span className="text-amber-800/90 font-medium text-xs sm:text-sm">
-                {t('scheduleSlotReleased')}
-            </span>
-        );
-    } else if (bState === 'too_late_today') {
-        airingValue = (
-            <span className="text-amber-800/90 font-medium text-xs sm:text-sm">
-                {t('scheduleTooLate')}
-            </span>
-        );
-    } else if (bState === 'in_review') {
-        airingValue = (
-            <span className="text-gray-400 font-normal text-xs sm:text-sm">
-                {t('schedulePendingReview')}
-            </span>
-        );
-    } else if (bState === 'choose_schedule') {
-        airingValue = (
-            <span className="text-gray-400 font-normal text-xs sm:text-sm">
-                {t('scheduleNotYetChosen')}
-            </span>
-        );
-    } else if (bState === 'cancelled') {
-        airingValue = (
-            <span className="text-gray-400 font-normal text-xs sm:text-sm">
-                {t('scheduleCancelled')}
-            </span>
-        );
-    } else {
-        airingValue = (
-            <div>
-                <div className={`font-semibold text-sm ${valueTone(muted)}`}>{formattedRange}</div>
-                {card?.startDate && (
-                    <div className="text-xs text-gray-500 font-normal mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        {startTimeWib ? (
-                            <span>Mulai <strong className="font-medium text-gray-700">{startTimeWib} WIB</strong></span>
-                        ) : (
-                            <span className="italic">{t('scheduleKilatHourPending')}</span>
-                        )}
-                        {!kilatHourPending && (
-                            <>
-                                <span className="text-gray-300">•</span>
-                                <span>Durasi <strong className="font-medium text-gray-700">{duration} Hari ({totalHours} Jam)</strong></span>
-                            </>
-                        )}
-                    </div>
-                )}
+    const penayanganBox = (
+        <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1.5 mb-4">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <CalendarCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>{t('airingDateLabel')}</span>
             </div>
-        );
-    }
+            {bState === 'expired' ? (
+                <p className="text-amber-800/90 font-medium text-xs sm:text-sm pt-0.5">
+                    {t('scheduleSlotReleased')}
+                </p>
+            ) : bState === 'too_late_today' ? (
+                <p className="text-amber-800/90 font-medium text-xs sm:text-sm pt-0.5">
+                    {t('scheduleTooLate')}
+                </p>
+            ) : bState === 'in_review' ? (
+                <p className="text-slate-400 font-normal text-xs sm:text-sm pt-0.5">
+                    {t('schedulePendingReview')}
+                </p>
+            ) : bState === 'choose_schedule' ? (
+                <p className="text-slate-400 font-normal text-xs sm:text-sm pt-0.5">
+                    {t('scheduleNotYetChosen')}
+                </p>
+            ) : bState === 'cancelled' ? (
+                <p className="text-slate-400 font-normal text-xs sm:text-sm pt-0.5">
+                    {t('scheduleCancelled')}
+                </p>
+            ) : (
+                <div className="space-y-1 pt-0.5">
+                    <div className={`font-bold text-sm ${valueTone(muted)}`}>
+                        {formattedRange}
+                    </div>
+                    {card?.startDate && (
+                        <div className="text-xs text-slate-500 font-normal flex items-center gap-1.5 flex-wrap">
+                            {startTimeWib ? (
+                                <span>Mulai <strong className="font-semibold text-slate-700">{startTimeWib} WIB</strong></span>
+                            ) : (
+                                <span className="italic">{t('scheduleKilatHourPending')}</span>
+                            )}
+                            {!kilatHourPending && (
+                                <>
+                                    <span className="text-slate-300">•</span>
+                                    <span>Durasi <strong className="font-semibold text-slate-700">{duration} Hari ({totalHours} Jam)</strong></span>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 
-    rows.push({ key: 'airingDate', icon: <CalendarCheck className={iconCls} />, label: t('airingDateLabel'), value: airingValue });
+    if (card?.info?.bookingId) {
+        rows.push({
+            key: 'bookingId',
+            icon: <Bookmark className={iconCls} />,
+            label: 'Booking ID',
+            value: <span className={`font-mono text-xs font-normal text-slate-600 ${valueTone(muted)}`}>#{card.info.bookingId}</span>,
+        });
+    }
     if (card?.info?.incentive) {
         rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('rewardRespondentLabel'), value: <IncentiveValue info={card.info.incentive} muted={muted} /> });
     }
@@ -543,6 +557,7 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
 
     return (
         <Section label={t('sectionInfo')} sublabel={sublabel}>
+            {penayanganBox}
             <RowGrid rows={rows} muted={muted} />
         </Section>
     );
@@ -903,29 +918,20 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                         className="rounded-xl border border-slate-200/80 bg-slate-50/40 divide-y divide-slate-100 overflow-hidden shadow-2xs"
                     >
                         {cards.map((card) => {
-                            const shortId = `#${card.info.bookingId}`;
-                            /* Booking ID diredam untuk kartu yang belum aktif
-                               (review) maupun yang sudah mati (dibatalkan). */
-                            const mutedId = card.booking.state === 'in_review' || card.booking.state === 'cancelled';
-                            /* Isi kartu diredam KHUSUS saat masih review — lewat
-                               `valueTone` per-value, bukan `opacity`/`grayscale` di
-                               container: keduanya ikut memudarkan chip & aksen
-                               Rupiah, dan `[&_*]:text-*` kalah/menang cascade tak
-                               terduga lawan styles.css legacy. */
+                            const triggerTitle = getScheduleTriggerTitle(card, t);
+                            /* Judul diredam untuk kartu yang belum aktif (review) maupun yang sudah dibatalkan */
+                            const mutedTitle = card.booking.state === 'in_review' || card.booking.state === 'cancelled';
                             const pendingReview = card.booking.state === 'in_review';
                             return (
                             <AccordionItem key={card.key} value={card.key} className="border-b-0 px-3.5">
                                 <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
                                     <AccordionPrimitive.Trigger
-                                        aria-label={`${card.label} Booking ID: ${shortId}`}
-                                        className="flex flex-1 items-center gap-1.5 min-h-11 py-2.5 min-w-0 text-left font-medium hover:bg-slate-100/40 transition-colors"
+                                        aria-label={triggerTitle}
+                                        className="flex flex-1 items-center gap-2 min-h-11 py-2.5 min-w-0 text-left font-medium hover:bg-slate-100/40 transition-colors"
                                     >
-                                        {/* Tampilkan "Booking ID: #ID" pada tiap kartu */}
-                                        <span className={`text-xs font-bold shrink-0 ${mutedId ? 'text-slate-400' : 'text-slate-900'}`}>
-                                            <span>Booking ID: </span>
-                                            <span className="font-mono">{shortId}</span>
+                                        <span className={`text-xs font-bold truncate ${mutedTitle ? 'text-slate-400' : 'text-slate-900'}`}>
+                                            {triggerTitle}
                                         </span>
-                                        <CopyOrderIdButton id={card.info.bookingId} />
                                         <span className="flex-1" />
                                         <ScheduleChip card={card} />
                                     </AccordionPrimitive.Trigger>

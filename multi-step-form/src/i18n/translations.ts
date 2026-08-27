@@ -639,6 +639,10 @@ export const translations = {
     // Dashboard revamp — survey details & order info accordions
     copyOrderId: "Copy booking ID",
     orderIdCopied: "Booking ID copied to clipboard",
+    copySubmissionId: "Copy submission ID",
+    submissionIdCopied: "Submission ID copied to clipboard",
+    scheduleExtensionPrefix: "Extension",
+    scheduleExtensionLabel: "Ad Extension",
     scheduleAdAgain: "Schedule Ad Again",
     scheduleAgainComingSoon: "Booking another ad schedule is coming soon!",
     comingSoonBadge: "Coming Soon",
@@ -1512,6 +1516,10 @@ export const translations = {
     // Dashboard revamp — accordion detail survei & info order
     copyOrderId: "Salin Booking ID",
     orderIdCopied: "Booking ID disalin ke clipboard",
+    copySubmissionId: "Salin Submission ID",
+    submissionIdCopied: "Submission ID disalin ke clipboard",
+    scheduleExtensionPrefix: "Perpanjangan",
+    scheduleExtensionLabel: "Perpanjangan Iklan",
     scheduleAdAgain: "Jadwalkan Iklan Lagi",
     scheduleAgainComingSoon: "Fitur jadwalkan iklan lagi akan segera hadir!",
     comingSoonBadge: "Segera Hadir",
