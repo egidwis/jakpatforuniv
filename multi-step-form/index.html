@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/webp" href="/favicon.webp" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jakpat for Universities - Submit Survey</title>
+    <title>Jakpat for Universities</title>
     <!-- Preload critical resources -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,14 +18,128 @@
   </head>
   <body>
     <div id="root">
-      <!-- Loading state -->
-      <div style="display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column;">
-        <h2 style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin-bottom: 20px;">
-          Loading...
-        </h2>
-        <p style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #666;">
-          Mohon tunggu sebentar
-        </p>
+      <!-- High-Performance Pre-React Branded Loader (Concept 1: Breathing Logo + Shimmer Progress) -->
+      <style>
+        .jfu-initial-loader {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background-color: #f8fafc;
+          font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          z-index: 99999;
+          overflow: hidden;
+          user-select: none;
+        }
+
+        .jfu-loader-glow {
+          position: absolute;
+          width: 320px;
+          height: 320px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(24, 124, 255, 0.18) 0%, rgba(56, 189, 248, 0.08) 45%, transparent 70%);
+          filter: blur(40px);
+          animation: jfu-glow-pulse 3s ease-in-out infinite alternate;
+          pointer-events: none;
+        }
+
+        .jfu-loader-card {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          padding: 2rem;
+          z-index: 1;
+        }
+
+        .jfu-loader-logo-wrap {
+          position: relative;
+          width: 72px;
+          height: 72px;
+          border-radius: 20px;
+          background: #ffffff;
+          box-shadow: 0 4px 20px -2px rgba(24, 124, 255, 0.15), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+          border: 1px solid rgba(226, 232, 240, 0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 1.25rem;
+          animation: jfu-logo-breathe 2.4s ease-in-out infinite;
+        }
+
+        .jfu-loader-logo {
+          width: 44px;
+          height: 44px;
+          object-fit: contain;
+        }
+
+        .jfu-loader-title {
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: #0f172a;
+          letter-spacing: -0.02em;
+          margin-bottom: 0.35rem;
+        }
+
+        .jfu-loader-subtitle {
+          font-size: 0.8125rem;
+          font-weight: 500;
+          color: #64748b;
+          margin-bottom: 1.5rem;
+        }
+
+        .jfu-progress-track {
+          width: 140px;
+          height: 4px;
+          background: #e2e8f0;
+          border-radius: 9999px;
+          overflow: hidden;
+          position: relative;
+        }
+
+        .jfu-progress-bar {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          left: 0;
+          width: 50%;
+          background: linear-gradient(90deg, #187cff, #38bdf8);
+          border-radius: 9999px;
+          animation: jfu-shimmer-slide 1.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        }
+
+        @keyframes jfu-glow-pulse {
+          0% { transform: scale(0.85); opacity: 0.5; }
+          100% { transform: scale(1.15); opacity: 0.9; }
+        }
+
+        @keyframes jfu-logo-breathe {
+          0%, 100% { transform: scale(1); box-shadow: 0 4px 20px -2px rgba(24, 124, 255, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.04); }
+          50% { transform: scale(1.05); box-shadow: 0 8px 28px -2px rgba(24, 124, 255, 0.24), 0 4px 10px -1px rgba(0, 0, 0, 0.06); }
+        }
+
+        @keyframes jfu-shimmer-slide {
+          0% { left: -50%; width: 30%; }
+          50% { left: 25%; width: 55%; }
+          100% { left: 100%; width: 30%; }
+        }
+      </style>
+
+      <div class="jfu-initial-loader">
+        <div class="jfu-loader-glow"></div>
+        <div class="jfu-loader-card">
+          <div class="jfu-loader-logo-wrap">
+            <img src="/favicon.webp" alt="Jakpat Logo" class="jfu-loader-logo" />
+          </div>
+          <div class="jfu-loader-title">Jakpat for Universities</div>
+          <div class="jfu-loader-subtitle">Menyiapkan workspace kamu...</div>
+          <div class="jfu-progress-track">
+            <div class="jfu-progress-bar"></div>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

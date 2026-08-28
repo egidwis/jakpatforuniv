@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar } from 'lucide-react';
+import { LogOut, Eye, EyeOff, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar, ShieldCheck, ArrowRight } from 'lucide-react';
+import logoMark from '../assets/Jakpat Navbar Logo.webp';
 import { getFormSubmissionsPaginated, countSubmissionsByStatus, updateFormStatus, convertDistributionType, supabase } from '../utils/supabase';
 import { fetchProfileNames } from '../utils/profileNames';
 import { emailLocalPart } from './customers/types';
@@ -106,6 +107,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   // Login State
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
 
   // Schedule & Payment View State
   // Niat "buka jadwal / buka tagihan" dari baris tabel & kartu mobile. Dulu ini
@@ -864,50 +866,127 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
     };
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 px-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-center rounded-t-lg">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-full mb-4 mx-auto">
-              <Lock className="w-8 h-8 text-white" />
+      <div className="relative min-h-screen w-full flex flex-col justify-between bg-[#f8fafc] px-4 py-8 overflow-hidden selection:bg-blue-100 selection:text-jfu-primary">
+        {/* Centered Ambient Aura Glow */}
+        <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none flex items-center justify-center">
+          {/* 1. Main Central Radial Glow */}
+          <div
+            className="absolute w-[700px] h-[700px] sm:w-[950px] sm:h-[950px] rounded-full transform-gpu"
+            style={{
+              background: 'radial-gradient(circle at center, rgba(24, 124, 255, 0.32) 0%, rgba(56, 189, 248, 0.22) 42%, rgba(244, 114, 182, 0.16) 65%, transparent 80%)',
+              filter: 'blur(95px)',
+            }}
+          />
+
+          {/* 2. Soft Pink/Rose Accent Ambient */}
+          <div
+            className="absolute -top-[12%] left-1/2 -translate-x-[65%] w-[550px] h-[550px] rounded-full transform-gpu"
+            style={{
+              background: 'radial-gradient(circle, rgba(251, 113, 133, 0.22) 0%, transparent 70%)',
+              filter: 'blur(100px)',
+            }}
+          />
+
+          {/* 3. Soft Sky Blue Ambient */}
+          <div
+            className="absolute -bottom-[12%] left-1/2 translate-x-[15%] w-[600px] h-[600px] rounded-full transform-gpu"
+            style={{
+              background: 'radial-gradient(circle, rgba(24, 124, 255, 0.25) 0%, transparent 70%)',
+              filter: 'blur(100px)',
+            }}
+          />
+        </div>
+
+        <div className="relative z-10 flex-1 flex items-center justify-center py-4">
+          <div className="w-full max-w-md bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden p-6 sm:p-8">
+            {/* Brand Header */}
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="inline-block mb-3 hover:opacity-90 transition-opacity">
+                <img src={logoMark} alt="Jakpat for Universities" className="h-8 md:h-9 w-auto object-contain" />
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200/70 text-[10px] font-bold text-jfu-primary uppercase tracking-wider mb-2">
+                <ShieldCheck className="w-3 h-3" />
+                <span>Admin Portal</span>
+              </div>
+              <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
+                Internal Dashboard
+              </h1>
+              <p className="text-xs text-slate-500 mt-1">
+                Login with admin credentials to manage submissions
+              </p>
             </div>
-            <CardTitle className="text-2xl text-white">Internal Dashboard</CardTitle>
-            <CardDescription className="text-blue-100">Login with Admin Credentials</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-8 pb-8 px-8">
+
             <form onSubmit={handleEmailLogin} className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium">Email</label>
+              <div className="space-y-1.5">
+                <label htmlFor="email" className="block text-xs font-bold text-slate-700">
+                  Email
+                </label>
                 <Input
                   id="email"
                   type="email"
                   placeholder="admin@jakpat.net"
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
+                  className="h-11 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 hover:bg-slate-50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-jfu-primary/10 focus:border-jfu-primary transition-all"
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium">Password</label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  required
-                />
+
+              <div className="space-y-1.5">
+                <label htmlFor="password" className="block text-xs font-bold text-slate-700">
+                  Password
+                </label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showAdminPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    className="h-11 pr-10 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 hover:bg-slate-50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-jfu-primary/10 focus:border-jfu-primary transition-all"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors cursor-pointer"
+                    tabIndex={-1}
+                    aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showAdminPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
+
               <Button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700"
+                className="w-full h-11 bg-gradient-to-r from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary text-white font-bold rounded-xl shadow-xs hover:shadow transition-all text-sm flex items-center justify-center gap-2 mt-2 cursor-pointer"
                 disabled={loading}
               >
-                {loading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
-                Login
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Signing In...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Log In to Dashboard</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </Button>
             </form>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        {/* Clean bottom footer */}
+        <footer className="relative z-10 w-full max-w-5xl mx-auto flex items-center justify-center pt-6 pb-2 text-xs text-slate-400 border-t border-slate-200/60">
+          <p>© {new Date().getFullYear()} Jakpat for Universities. Internal Admin Portal.</p>
+        </footer>
       </div>
     );
   }
@@ -915,19 +994,36 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   // Not Admin -> Access Denied
   if (!isAdmin && !hideAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-red-50 px-4">
-        <Card className="w-full max-w-md text-center p-8">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-8 h-8 text-red-600" />
+      <div className="relative min-h-screen w-full flex flex-col justify-between bg-[#f8fafc] px-4 py-8 overflow-hidden">
+        {/* Centered Ambient Aura Glow */}
+        <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none flex items-center justify-center">
+          <div
+            className="absolute w-[600px] h-[600px] rounded-full transform-gpu"
+            style={{
+              background: 'radial-gradient(circle at center, rgba(239, 68, 68, 0.15) 0%, transparent 70%)',
+              filter: 'blur(90px)',
+            }}
+          />
+        </div>
+
+        <div className="relative z-10 flex-1 flex items-center justify-center py-4">
+          <div className="w-full max-w-md bg-white/95 backdrop-blur-md border border-red-200/80 shadow-[0_4px_20px_-2px_rgba(239,68,68,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden p-6 sm:p-8 text-center">
+            <div className="w-14 h-14 bg-red-50 text-red-600 border border-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xs">
+              <Lock className="w-7 h-7" />
+            </div>
+            <h2 className="text-xl font-extrabold text-slate-900 mb-2">Access Denied</h2>
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              Your email (<strong className="text-slate-800 font-semibold">{user ? user.email : 'Unknown'}</strong>) is not authorized to access the Internal Admin Dashboard.
+            </p>
+            <Button onClick={handleLogout} variant="destructive" className="w-full h-11 rounded-xl font-bold cursor-pointer">
+              Log Out
+            </Button>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600 mb-6">
-            Your email ({user ? user.email : 'Unknown'}) is not authorized to access the Internal Dashboard.
-          </p>
-          <Button onClick={handleLogout} variant="destructive">
-            Log Out
-          </Button>
-        </Card>
+        </div>
+
+        <footer className="relative z-10 w-full max-w-5xl mx-auto flex items-center justify-center pt-6 pb-2 text-xs text-slate-400 border-t border-slate-200/60">
+          <p>© {new Date().getFullYear()} Jakpat for Universities. Internal Admin Portal.</p>
+        </footer>
       </div>
     );
   }

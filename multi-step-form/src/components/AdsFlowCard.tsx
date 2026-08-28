@@ -45,11 +45,11 @@ export function AdsFlowCard({ step, children }: AdsFlowCardProps) {
   const hasCap = step !== 'fields';
 
   const shellClass = hasCap
-    ? '-mt-8 -mx-6 md:mt-0 md:mx-auto w-auto md:w-full max-w-none md:max-w-xl rounded-none md:rounded-2xl border-0 md:border md:border-gray-300 bg-white shadow-none md:shadow-sm overflow-hidden'
+    ? '-mt-8 -mx-6 md:mt-0 md:mx-auto w-auto md:w-full max-w-none md:max-w-xl rounded-none md:rounded-2xl border-0 md:border md:border-slate-200/90 bg-white/95 md:backdrop-blur-md shadow-none md:shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden transition-all'
     : 'mx-auto w-full max-w-xl';
 
   const bodyClass = hasCap
-    ? 'bg-white px-4 md:px-5 py-4 md:py-5'
+    ? 'bg-white px-5 md:px-7 py-5 md:py-6'
     : 'w-full';
 
   return (

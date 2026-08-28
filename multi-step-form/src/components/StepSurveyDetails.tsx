@@ -228,21 +228,11 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
           <div className="mt-4 w-full max-w-xl mx-auto flex flex-col items-center gap-3.5 text-center">
             <Link
               to="/dashboard"
-              className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-2xl border border-gray-300 bg-white text-sm font-semibold text-[#1a1a1a] hover:bg-gray-50 hover:border-gray-400 transition-all shadow-2xs"
+              className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-xl border border-slate-200/90 bg-white/95 backdrop-blur-xs text-sm font-bold text-slate-700 hover:bg-white hover:border-slate-300 hover:text-slate-900 transition-all shadow-xs group"
             >
-              <ArrowLeft className="w-4 h-4 text-gray-500" />
+              <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:-translate-x-0.5 transition-all" />
               <span>{t('backToOrders')}</span>
             </Link>
-
-            <p className="text-xs md:text-sm text-gray-500 leading-relaxed">
-              {t('jfuFormCtaLead')}{' '}
-              <Link
-                to="/dashboard/forms"
-                className="font-semibold text-jfu-primary hover:underline"
-              >
-                {t('jfuFormCtaAction')}
-              </Link>
-            </p>
           </div>
         )}
 

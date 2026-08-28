@@ -1,21 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { useEffect } from 'react';
 import { ProfileForm } from '@/components/ProfileForm';
 import { useLanguage } from '@/i18n/LanguageContext';
-
-/** Breakpoint sm Tailwind — di bawahnya drawer jadi bottom sheet. */
-const DESKTOP_QUERY = '(min-width: 640px)';
-
-function useIsDesktop() {
-    const [isDesktop, setIsDesktop] = useState(() => window.matchMedia(DESKTOP_QUERY).matches);
-    useEffect(() => {
-        const mq = window.matchMedia(DESKTOP_QUERY);
-        const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-        mq.addEventListener('change', onChange);
-        return () => mq.removeEventListener('change', onChange);
-    }, []);
-    return isDesktop;
-}
+import { UserCheck, X } from 'lucide-react';
 
 interface ProfileCompletionSheetProps {
     open: boolean;
@@ -25,33 +11,81 @@ interface ProfileCompletionSheetProps {
 }
 
 /**
- * Drawer gate kelengkapan profil. Menggantikan redirect ke /dashboard/profile:
- * user melengkapi biodata di tempat, lalu flow lanjut tanpa berpindah halaman.
- * Desktop: slide dari kanan (konsisten dengan DetailSheet dashboard admin);
- * mobile: bottom sheet. Ditutup tanpa simpan → tidak ada yang hilang.
+ * Modal popup kelengkapan profil (Desain seragam dengan CustomMissionModal / Riset Non-Survei).
+ * - Desktop: Centered modal popup yang ramping, rounded, dan berkelas.
+ * - Mobile: Bottom sheet drawer dengan drag handle indicator.
  */
 export function ProfileCompletionSheet({ open, onOpenChange, onCompleted }: ProfileCompletionSheetProps) {
     const { t } = useLanguage();
-    const isDesktop = useIsDesktop();
+
+    // Lock body scroll saat modal terbuka
+    useEffect(() => {
+        if (open) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [open]);
+
+    // Handle ESC key untuk menutup modal
+    useEffect(() => {
+        if (!open) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onOpenChange(false);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [open, onOpenChange]);
+
+    if (!open) return null;
 
     return (
-        <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent
-                side={isDesktop ? 'right' : 'bottom'}
-                className={
-                    isDesktop
-                        ? 'flex w-full flex-col p-0 sm:max-w-xl overflow-y-auto bg-white'
-                        : 'rounded-t-2xl border-t-0 p-0 max-h-[88vh] overflow-y-auto bg-white'
-                }
-            >
-                <div className="px-5 py-6 md:px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-                    <SheetHeader className="text-left mb-5">
-                        <SheetTitle className="text-gray-900">{t('profileSheetTitle')}</SheetTitle>
-                        <SheetDescription className="text-gray-500">{t('profileSheetDesc')}</SheetDescription>
-                    </SheetHeader>
+        <div
+            className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-6 md:p-8 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onOpenChange(false);
+            }}
+        >
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-gray-100 shadow-2xl w-full sm:max-w-2xl max-h-[90vh] sm:max-h-[86vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+                {/* Mobile Drag Handle Indicator */}
+                <div className="sm:hidden pt-2.5 pb-1 flex justify-center bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-white shrink-0">
+                    <div className="w-10 h-1 bg-slate-300 rounded-full" />
+                </div>
+
+                {/* Header */}
+                <div className="px-5 sm:px-8 py-4 sm:py-5 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-white flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-jfu-primary text-white flex items-center justify-center shadow-md shadow-jfu-primary/25 shrink-0">
+                            <UserCheck className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                        </div>
+                        <div className="min-w-0">
+                            <h2 className="text-sm sm:text-base font-extrabold text-gray-900 leading-tight truncate">
+                                {t('profileSheetTitle')}
+                            </h2>
+                            <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">
+                                {t('profileSheetDesc')}
+                            </p>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => onOpenChange(false)}
+                        aria-label={t('closePopup')}
+                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors cursor-pointer shrink-0 ml-3"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {/* Scrollable Form Body */}
+                <div className="overflow-y-auto p-5 sm:p-8 space-y-5 sm:space-y-6 flex-1 overscroll-contain">
                     <ProfileForm continueAfterSave onSaved={onCompleted} />
                 </div>
-            </SheetContent>
-        </Sheet>
+            </div>
+        </div>
     );
 }

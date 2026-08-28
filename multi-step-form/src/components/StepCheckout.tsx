@@ -10,7 +10,7 @@ import { checkoutBlocker } from '../utils/orderReadiness';
 import { orderSubmitErrorKeyForCode } from '../utils/submitOrder';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import { SectionLabel } from './SurveyFieldRow';
+import { SectionLabel, FieldRow } from './SurveyFieldRow';
 import { Switch } from './ui/switch';
 import {
   Ticket,
@@ -27,7 +27,11 @@ import {
   ExternalLink,
   CalendarCheck,
   Zap,
-  Lock
+  Lock,
+  User,
+  Mail,
+  Phone,
+  AlertCircle
 } from 'lucide-react';
 
 interface StepCheckoutProps {
@@ -68,6 +72,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   // Persetujuan S&K ikut di formData, bukan state lokal: pada jalur otomatis
   // order baru ditulis satu langkah kemudian, setelah layar ini unmount.
@@ -176,6 +181,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
   };
 
   const handlePrimaryAction = async () => {
+    setAttemptedSubmit(true);
     // Guard double-submit lewat ref (sinkron, kebal batching React)
     if (isSubmittingRef.current) return;
     if (!validateBeforeLeaving()) return;
@@ -351,166 +357,150 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
         </div>
 
         {/* SECTION: INVOICE DETAILS */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
+        <div className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xs p-5 md:p-6 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SectionLabel>{t('invoiceDetailTitle')}</SectionLabel>
             <div className="flex items-center gap-2.5 select-none">
-              <span className="text-xs font-medium text-gray-600">{t('sameAsAccount')}</span>
+              <span className="text-xs font-medium text-slate-600">{t('sameAsAccount')}</span>
               <Switch
                 checked={useAccountData}
                 onCheckedChange={handleUseAccountDataChange}
-                className="data-[state=unchecked]:!bg-gray-300 data-[state=checked]:!bg-blue-600"
+                className="data-[state=unchecked]:!bg-slate-200 data-[state=checked]:!bg-jfu-primary"
               />
             </div>
           </div>
 
           <div className="space-y-4">
-            <p className="text-xs text-gray-400 -mt-1">{t('invoiceContactHelp')}</p>
+            <p className="text-xs text-slate-500 -mt-1 leading-relaxed">{t('invoiceContactHelp')}</p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5 md:col-span-2">
-                <label htmlFor="invoiceFullName" className="text-sm font-medium text-gray-700">
-                  {t('invoiceNameLabel')} <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    id="invoiceFullName"
-                    type="text"
-                    disabled={useAccountData}
-                    readOnly={useAccountData}
-                    className={`w-full px-4 py-2.5 rounded-xl border transition-all duration-200 text-sm ${
-                      useAccountData 
-                        ? 'bg-gray-50/80 border-gray-200 text-gray-700 cursor-not-allowed pr-10 font-medium' 
-                        : 'bg-white border-gray-200 hover:border-gray-300 text-gray-900'
-                    }`}
-                    placeholder={t('invoiceNamePlaceholder')}
-                    value={formData.fullName}
-                    onChange={(e) => updateFormData({ fullName: e.target.value })}
-                  />
-                  {useAccountData && (
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
-                      <Lock size={14} />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label htmlFor="invoiceEmail" className="text-sm font-medium text-gray-700">
-                  {t('invoiceEmailLabel')} <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    id="invoiceEmail"
-                    type="email"
-                    disabled={useAccountData}
-                    readOnly={useAccountData}
-                    className={`w-full px-4 py-2.5 rounded-xl border transition-all duration-200 text-sm ${
-                      useAccountData 
-                        ? 'bg-gray-50/80 border-gray-200 text-gray-700 cursor-not-allowed pr-10 font-medium' 
-                        : 'bg-white border-gray-200 hover:border-gray-300 text-gray-900'
-                    }`}
-                    placeholder={t('invoiceEmailPlaceholder')}
-                    value={formData.email}
-                    onChange={(e) => updateFormData({ email: e.target.value })}
-                  />
-                  {useAccountData && (
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
-                      <Lock size={14} />
-                    </div>
-                  )}
-                </div>
-                {!useAccountData && isEmailMismatch && (
-                  <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg mt-1.5">
-                    <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-amber-700">
-                      {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
-                    </p>
-                  </div>
+            <div className="space-y-2.5">
+              <FieldRow
+                icon={User}
+                label={t('invoiceNameLabel')}
+                htmlFor="invoiceFullName"
+                required
+                compact
+                readOnly={useAccountData}
+              >
+                <input
+                  id="invoiceFullName"
+                  type="text"
+                  disabled={useAccountData}
+                  readOnly={useAccountData}
+                  className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                  placeholder={t('invoiceNamePlaceholder')}
+                  value={formData.fullName}
+                  onChange={(e) => updateFormData({ fullName: e.target.value })}
+                />
+                {useAccountData && (
+                  <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
+                    <Lock size={14} />
+                  </span>
                 )}
-              </div>
+              </FieldRow>
 
-              <div className="space-y-1.5">
-                <label htmlFor="invoicePhoneNumber" className="text-sm font-medium text-gray-700">
-                  {t('invoicePhoneLabel')} <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    id="invoicePhoneNumber"
-                    type="tel"
-                    disabled={useAccountData}
-                    readOnly={useAccountData}
-                    className={`w-full px-4 py-2.5 rounded-xl border transition-all duration-200 text-sm ${
-                      useAccountData 
-                        ? 'bg-gray-50/80 border-gray-200 text-gray-700 cursor-not-allowed pr-10 font-medium' 
-                        : 'bg-white border-gray-200 hover:border-gray-300 text-gray-900'
-                    }`}
-                    placeholder={t('invoicePhonePlaceholder')}
-                    value={formData.phoneNumber}
-                    onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
-                  />
-                  {useAccountData && (
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
-                      <Lock size={14} />
-                    </div>
-                  )}
-                </div>
-              </div>
+              <FieldRow
+                icon={Mail}
+                label={t('invoiceEmailLabel')}
+                htmlFor="invoiceEmail"
+                required
+                compact
+                readOnly={useAccountData}
+                hint={
+                  !useAccountData && isEmailMismatch ? (
+                    <span className="flex items-start gap-1.5 text-amber-700 bg-amber-50/80 p-2 rounded-lg border border-amber-200/70 mt-1">
+                      <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                      <span>
+                        {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
+                      </span>
+                    </span>
+                  ) : undefined
+                }
+              >
+                <input
+                  id="invoiceEmail"
+                  type="email"
+                  disabled={useAccountData}
+                  readOnly={useAccountData}
+                  className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                  placeholder={t('invoiceEmailPlaceholder')}
+                  value={formData.email}
+                  onChange={(e) => updateFormData({ email: e.target.value })}
+                />
+                {useAccountData && (
+                  <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
+                    <Lock size={14} />
+                  </span>
+                )}
+              </FieldRow>
+
+              <FieldRow
+                icon={Phone}
+                label={t('invoicePhoneLabel')}
+                htmlFor="invoicePhoneNumber"
+                required
+                compact
+                readOnly={useAccountData}
+              >
+                <input
+                  id="invoicePhoneNumber"
+                  type="tel"
+                  disabled={useAccountData}
+                  readOnly={useAccountData}
+                  className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                  placeholder={t('invoicePhonePlaceholder')}
+                  value={formData.phoneNumber}
+                  onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
+                />
+                {useAccountData && (
+                  <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
+                    <Lock size={14} />
+                  </span>
+                )}
+              </FieldRow>
             </div>
 
             {/* Divider line */}
-            <hr className="border-gray-100 my-5" />
+            <div className="border-t border-slate-100/90 my-5" />
 
             {/* SECTION: PROMO / REFERRAL CODE INLINE */}
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <label htmlFor="voucherCode" className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                  {t('voucherTitle')}
-                </label>
+                <div className="flex items-center gap-1.5">
+                  <SectionLabel>{t('voucherTitle')}</SectionLabel>
+                  <span className="text-xs text-slate-400 font-normal mb-2.5">({t('optional') || 'opsional'})</span>
+                </div>
                 {voucherInfo.isValid && (
-                  <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/80 mb-2.5">
                     <CheckCircle size={12} />
                     <span>{t('voucherApplied')}</span>
                   </div>
                 )}
               </div>
 
-              <div className="relative">
+              <FieldRow
+                icon={Ticket}
+                label={t('voucherTitle')}
+                htmlFor="voucherCode"
+                compact
+                error={voucherInfo.isError ? voucherInfo.message : undefined}
+                hint={
+                  voucherInfo.isValid && voucherInfo.message ? (
+                    <span className="text-xs text-emerald-600 flex items-center gap-1 font-medium">
+                      <CheckCircle className="w-3.5 h-3.5" /> {voucherInfo.message}
+                    </span>
+                  ) : undefined
+                }
+              >
                 <input
                   id="voucherCode"
                   type="text"
-                  className={`w-full px-4 py-2.5 rounded-xl border text-sm transition-all duration-200
-                    ${voucherInfo.isValid
-                      ? 'border-emerald-200 focus:ring-emerald-200 bg-emerald-50/30 text-emerald-900'
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                    }
-                  `}
-                  style={!voucherInfo.isValid ? { outlineColor: '#0091ff' } : {}}
-                  onFocus={(e) => {
-                    if (!voucherInfo.isValid) {
-                      if (voucherInfo.isError) {
-                        e.target.style.borderColor = '#ef4444';
-                        e.target.style.boxShadow = '0 0 0 4px rgba(239, 68, 68, 0.1)';
-                      } else {
-                        e.target.style.borderColor = '#0091ff';
-                        e.target.style.boxShadow = '0 0 0 4px rgba(0, 145, 255, 0.1)';
-                      }
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!voucherInfo.isValid) {
-                      e.target.style.borderColor = '#e5e7eb';
-                      e.target.style.boxShadow = 'none';
-                    }
-                  }}
+                  className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none uppercase"
                   placeholder={t('voucherPlaceholder')}
                   value={formData.voucherCode || ''}
                   onChange={handleVoucherChange}
                 />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <Ticket size={16} />
-                </div>
-              </div>
+              </FieldRow>
               
               {voucherInfo.isValid && voucherInfo.message && (
                 <p className="text-xs text-emerald-600 flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2">
@@ -518,7 +508,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
                 </p>
               )}
               {!voucherInfo.isValid && voucherInfo.message && (
-                <p className={`text-xs flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2 ${voucherInfo.isError ? 'text-red-600' : 'text-gray-500'}`}>
+                <p className={`text-xs flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2 ${voucherInfo.isError ? 'text-rose-600' : 'text-slate-500'}`}>
                   {voucherInfo.isError ? <AlertTriangle className="w-3 h-3" /> : <Info className="w-3 h-3" />} {voucherInfo.message}
                 </p>
               )}
@@ -553,50 +543,50 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
         </div>
 
         {/* SECTION: COST BREAKDOWN */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
                 <Wallet size={18} />
               </div>
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">{t('costBreakdown')}</h3>
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight">{t('costBreakdown')}</h3>
             </div>
           </div>
 
           <div className="p-6">
             <div className="space-y-4">
               {/* Ad Cost */}
-              <div className="flex justify-between items-start pb-4 border-b border-dashed border-gray-200">
+              <div className="flex justify-between items-start pb-3.5 border-b border-dashed border-slate-200">
                 <div>
-                  <div className="text-sm font-medium text-gray-900">{formData.isKilatUpgrade ? 'Base Rate Iklan' : t('adCampaignCost')}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{formData.questionCount} {t('questions').toLowerCase()} {formData.isKilatUpgrade ? '' : `× ${formData.duration} hari`}</div>
+                  <div className="text-sm font-medium text-slate-900">{formData.isKilatUpgrade ? 'Base Rate Iklan' : t('adCampaignCost')}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{formData.questionCount} {t('questions').toLowerCase()} {formData.isKilatUpgrade ? '' : `× ${formData.duration} hari`}</div>
                 </div>
-                <div className="text-sm font-medium text-gray-900">Rp {formatRupiah(costCalculation.adCost)}</div>
+                <div className="text-sm font-semibold text-slate-900">Rp {formatRupiah(costCalculation.adCost)}</div>
               </div>
 
               {/* JFU Kilat Add-on */}
               {formData.isKilatUpgrade && costCalculation.kilatAddonCost && (
-                <div className="flex justify-between items-start pb-4 border-b border-dashed border-gray-200">
+                <div className="flex justify-between items-start pb-3.5 border-b border-dashed border-slate-200">
                   <div>
                     <div className="text-sm font-bold text-amber-600 flex items-center gap-1.5"><Zap size={14} className="fill-amber-600" /> {t('kilatAddonLabel')}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Prioritas distribusi super cepat</div>
+                    <div className="text-xs text-slate-500 mt-0.5">Prioritas distribusi super cepat</div>
                   </div>
                   <div className="text-sm font-bold text-amber-600">Rp {formatRupiah(costCalculation.kilatAddonCost)}</div>
                 </div>
               )}
 
               {/* Incentive Cost */}
-              <div className="flex justify-between items-start pb-4 border-b border-dashed border-gray-200">
+              <div className="flex justify-between items-start pb-3.5 border-b border-dashed border-slate-200">
                 <div>
-                  <div className="text-sm font-medium text-gray-900">{t('respondentIncentive')}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{formData.winnerCount} winners × Rp {formatRupiah(formData.prizePerWinner)}</div>
+                  <div className="text-sm font-medium text-slate-900">{t('respondentIncentive')}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{formData.winnerCount} winners × Rp {formatRupiah(formData.prizePerWinner)}</div>
                 </div>
-                <div className="text-sm font-medium text-gray-900">Rp {formatRupiah(costCalculation.incentiveCost)}</div>
+                <div className="text-sm font-semibold text-slate-900">Rp {formatRupiah(costCalculation.incentiveCost)}</div>
               </div>
 
               {/* Discount (if applicable) */}
               {costCalculation.discount > 0 && (
-                <div className="flex justify-between items-center text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg mb-2">
+                <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200/80 mb-2">
                   <div className="text-sm font-medium flex items-center gap-1">
                     <Ticket size={14} /> {t('discount')}
                   </div>
@@ -605,84 +595,104 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
               )}
 
               {/* Subtotal (DPP) */}
-              <div className="flex justify-between items-center">
-                <div className="text-sm text-gray-500">{t('subtotal')}</div>
-                <div className="text-sm text-gray-700">Rp {formatRupiah(costCalculation.subtotal)}</div>
+              <div className="flex justify-between items-center text-sm">
+                <div className="text-slate-500">{t('subtotal')}</div>
+                <div className="text-slate-700 font-medium">Rp {formatRupiah(costCalculation.subtotal)}</div>
               </div>
 
               {/* PPN 11% */}
-              <div className="flex justify-between items-center">
-                <div className="text-sm text-gray-500">{t('ppn')}</div>
-                <div className="text-sm text-gray-700">Rp {formatRupiah(costCalculation.ppn)}</div>
+              <div className="flex justify-between items-center text-sm">
+                <div className="text-slate-500">{t('ppn')}</div>
+                <div className="text-slate-700 font-medium">Rp {formatRupiah(costCalculation.ppn)}</div>
               </div>
 
               {/* Total */}
-              <div className="flex justify-between items-end pt-4 border-t border-dashed border-gray-200">
-                <div className="text-base font-bold text-gray-900">{t('totalPayment')}</div>
-                <div className="text-2xl font-bold" style={{ color: '#0091ff' }}>Rp {formatRupiah(costCalculation.totalCost)}</div>
+              <div className="flex justify-between items-end pt-4 border-t border-dashed border-slate-200">
+                <div className="text-base font-bold text-slate-900">{t('totalPayment')}</div>
+                <div className="text-2xl font-bold text-jfu-primary">Rp {formatRupiah(costCalculation.totalCost)}</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Terms Agreement Checkbox - Placed Inside Card */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow duration-200">
+        {/* Terms Agreement Checkbox - Soft Highlight Strip (Solusi 3) */}
+        <div
+          className={`rounded-2xl p-4 transition-all duration-200 ${
+            attemptedSubmit && !isTermsAccepted
+              ? 'border border-rose-300 bg-rose-50/80 shadow-xs ring-2 ring-rose-400/20'
+              : 'border border-sky-200/80 bg-sky-50/60 shadow-2xs hover:bg-sky-50/90 hover:border-sky-300'
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <div className="flex h-5 items-center">
+            <div className="flex h-5 items-center mt-0.5">
               <input
                 id="terms-checkbox"
                 type="checkbox"
                 checked={isTermsAccepted}
                 onChange={(e) => updateFormData({ termsAccepted: e.target.checked })}
-                className="h-4 w-4 rounded border-gray-300 cursor-pointer"
-                style={{ accentColor: '#0091ff' }}
+                className={`h-4 w-4 rounded cursor-pointer transition-all ${
+                  attemptedSubmit && !isTermsAccepted
+                    ? 'border-rose-400 text-rose-600 focus:ring-rose-500 accent-rose-600 ring-2 ring-rose-400/30'
+                    : 'border-sky-300 text-jfu-primary focus:ring-sky-400 accent-jfu-primary'
+                }`}
               />
             </div>
-            <label htmlFor="terms-checkbox" className="text-sm text-gray-700 leading-relaxed cursor-pointer select-none font-medium">
-              {t('byContinuingAgree')}{' '}
-              <a
-                href="/homepage/privacy-policy.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline transition-colors"
-                style={{ color: '#0091ff' }}
-                onClick={(e) => e.stopPropagation()}
+            <div className="flex-1">
+              <label
+                htmlFor="terms-checkbox"
+                className={`text-xs md:text-sm leading-relaxed cursor-pointer select-none font-medium ${
+                  attemptedSubmit && !isTermsAccepted ? 'text-rose-950' : 'text-slate-700'
+                }`}
               >
-                {t('privacyPolicy')}
-              </a>
-              {' '}{t('andText')}{' '}
-              <a
-                href="/homepage/terms-conditions.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline transition-colors"
-                style={{ color: '#0091ff' }}
-                onClick={(e) => e.stopPropagation()}
-              >
+                {t('byContinuingAgree')}{' '}
+                <a
+                  href="/homepage/privacy-policy.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-300 hover:decoration-blue-500 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {t('privacyPolicy')}
+                </a>
+                {' '}{t('andText')}{' '}
+                <a
+                  href="/homepage/terms-conditions.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-300 hover:decoration-blue-500 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {t('termsConditions')}
+                </a>
+              </label>
 
-                {t('termsConditions')}
-              </a>
-            </label>
+              {attemptedSubmit && !isTermsAccepted && (
+                <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-600 animate-in slide-in-from-top-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t('errorTermsRequired') || 'Mohon setujui Syarat & Ketentuan serta Kebijakan Privasi'}</span>
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
         {/* ACTION — satu tombol, tiga takdir. */}
-        <div className="pt-1 pb-12 space-y-2.5">
+        <div className="pt-2 pb-12 space-y-3">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onBack}
               disabled={isSubmitting}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-60 disabled:pointer-events-none"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-all hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 shadow-xs cursor-pointer disabled:opacity-60 disabled:pointer-events-none"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4 text-slate-500" />
               {t('backButton')}
             </button>
             <button
               type="button"
               onClick={handlePrimaryAction}
               disabled={isSubmitting}
-              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-colors ${
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition-all shadow-xs cursor-pointer ${
                 !isAutoApproval
                   ? 'bg-amber-600 hover:bg-amber-700'
                   : 'bg-jfu-primary hover:bg-jfu-dark'
@@ -715,14 +725,6 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
               )}
             </button>
           </div>
-
-          <p className="text-xs text-gray-500 text-center leading-relaxed px-2">
-            {!isAutoApproval
-              ? t('summaryHintReview')
-              : needsSchedule
-                ? t('summaryHintSchedule')
-                : t('summaryHintPay')}
-          </p>
         </div>
       </div>
     </div >

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, User, ChevronDown, Globe, Menu, ShoppingBag, ListPlus, MessageCircle, Sparkles, Wrench } from 'lucide-react';
+import { LogOut, User, ChevronDown, ChevronRight, Globe, Menu, LayoutDashboard, ListPlus, MessageCircle, Sparkles, Wrench } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -53,7 +53,7 @@ export function AppNav() {
     const isToolsActive = isTheFormActive || isAnalyzerActive;
 
     return (
-        <header className="sticky top-0 z-40 h-14 md:h-16 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)]">
+        <header className="sticky top-0 z-40 w-full h-14 md:h-16 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)]">
             <div className="max-w-5xl mx-auto h-full px-4 md:px-6 flex items-center justify-between gap-4">
                 {/* Logo & Brand */}
                 <Link
@@ -73,7 +73,7 @@ export function AppNav() {
                         /* DESKTOP NAV - Rata Kanan dengan Avatar */
                         <div className="flex items-center gap-4 lg:gap-6 shrink-0 h-full">
                             <nav className="flex items-center gap-4 lg:gap-6 h-full">
-                                {/* My Order */}
+                                {/* Dashboard */}
                                 <Link
                                     to="/dashboard"
                                     className={`relative flex items-center gap-2 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
@@ -82,7 +82,7 @@ export function AppNav() {
                                             : 'text-slate-500 hover:text-slate-800'
                                     }`}
                                 >
-                                    <ShoppingBag className={`w-4 h-4 shrink-0 transition-colors ${isMyOrdersActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
+                                    <LayoutDashboard className={`w-4 h-4 shrink-0 transition-colors ${isMyOrdersActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
                                     <span>{t('navMyOrder')}</span>
                                     {isMyOrdersActive && (
                                         <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
@@ -214,11 +214,14 @@ export function AppNav() {
                                     <Menu className="w-6 h-6" />
                                 </button>
                             </SheetTrigger>
-                            <SheetContent side="right" className="w-4/5 max-w-xs p-5 flex flex-col justify-between">
-                                <SheetHeader className="text-left border-b border-gray-100 pb-4">
-                                    <SheetTitle className="sr-only">Mobile Menu</SheetTitle>
+                            <SheetContent side="right" className="w-[85vw] max-w-xs p-0 flex flex-col justify-between bg-white border-l border-slate-200/80 shadow-2xl overflow-hidden">
+                                {/* 1. HEADER: User Profile Info (Padded for Close X button) */}
+                                <div className="p-4 pr-12 border-b border-slate-100 bg-slate-50/50">
+                                    <SheetHeader className="text-left sr-only">
+                                        <SheetTitle>Mobile Menu</SheetTitle>
+                                    </SheetHeader>
                                     <div className="flex items-center gap-3">
-                                        <span className="w-10 h-10 rounded-full bg-jfu-primary/10 border border-jfu-primary/20 flex items-center justify-center overflow-hidden shrink-0">
+                                        <span className="w-10 h-10 rounded-full bg-jfu-primary/10 border border-jfu-primary/20 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
                                             {user?.user_metadata?.avatar_url && !avatarError ? (
                                                 <img
                                                     src={user.user_metadata.avatar_url}
@@ -231,30 +234,31 @@ export function AppNav() {
                                             )}
                                         </span>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-semibold truncate text-gray-900">
+                                            <p className="text-sm font-bold truncate text-slate-900">
                                                 {user?.user_metadata?.full_name || 'User'}
                                             </p>
-                                            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                                            <p className="text-xs text-slate-500 truncate">{user?.email}</p>
                                         </div>
                                     </div>
-                                </SheetHeader>
+                                </div>
 
-                                <div className="flex-1 py-4 space-y-4 overflow-y-auto">
-                                    {/* Navigation links */}
+                                {/* 2. BODY NAVIGATION: Clear Groups & Badges */}
+                                <div className="flex-1 px-4 py-4 space-y-5 overflow-y-auto">
+                                    {/* Group A: Menu Utama */}
                                     <div className="space-y-1">
-                                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 mb-2">
-                                            Menu
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
+                                            Menu Utama
                                         </p>
                                         <SheetClose asChild>
                                             <Link
                                                 to="/dashboard"
-                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                                                     isMyOrdersActive
-                                                        ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
-                                                        : 'text-gray-700 hover:bg-gray-100'
+                                                        ? 'bg-jfu-primary text-white shadow-xs'
+                                                        : 'text-slate-700 hover:bg-slate-100/80'
                                                 }`}
                                             >
-                                                <ShoppingBag className="w-4 h-4 text-jfu-primary" />
+                                                <LayoutDashboard className={`w-4 h-4 shrink-0 ${isMyOrdersActive ? 'text-white' : 'text-slate-500'}`} />
                                                 <span>{t('navMyOrder')}</span>
                                             </Link>
                                         </SheetClose>
@@ -262,97 +266,102 @@ export function AppNav() {
                                         <SheetClose asChild>
                                             <Link
                                                 to="/dashboard/chat"
-                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                                                     isChatActive
-                                                        ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
-                                                        : 'text-gray-700 hover:bg-gray-100'
+                                                        ? 'bg-jfu-primary text-white shadow-xs'
+                                                        : 'text-slate-700 hover:bg-slate-100/80'
                                                 }`}
                                             >
-                                                <MessageCircle className="w-4 h-4 text-jfu-primary" />
+                                                <MessageCircle className={`w-4 h-4 shrink-0 ${isChatActive ? 'text-white' : 'text-slate-500'}`} />
                                                 <span>{t('navChatMimin')}</span>
                                             </Link>
                                         </SheetClose>
-
-                                        <div className="pt-2">
-                                            <div className="flex items-center justify-between px-2 mb-1.5">
-                                                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                                                    Tools
-                                                </span>
-                                                <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-blue-100 text-blue-800 uppercase tracking-tight border border-blue-200/80">
-                                                    New
-                                                </span>
-                                            </div>
-                                            <SheetClose asChild>
-                                                <Link
-                                                    to="/dashboard/forms"
-                                                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                                                        isTheFormActive
-                                                            ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
-                                                            : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <ListPlus className="w-4 h-4 text-jfu-primary" />
-                                                        <span>{t('navTheForm')}</span>
-                                                    </div>
-                                                    <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-                                                        Beta
-                                                    </span>
-                                                </Link>
-                                            </SheetClose>
-
-                                            <SheetClose asChild>
-                                                <Link
-                                                    to="/dashboard/analyzer"
-                                                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                                                        isAnalyzerActive
-                                                            ? 'bg-jfu-primary/10 text-jfu-primary font-semibold'
-                                                            : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <Sparkles className="w-4 h-4 text-indigo-600" />
-                                                        <span>Data Analyzer</span>
-                                                    </div>
-                                                    <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
-                                                        AI
-                                                    </span>
-                                                </Link>
-                                            </SheetClose>
-                                        </div>
                                     </div>
 
-                                    <div className="border-t border-gray-100 pt-4 space-y-3">
-                                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">
-                                            {t('language')}
+                                    {/* Group B: Tools & Fitur */}
+                                    <div className="space-y-1 pt-1">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
+                                            Tools &amp; Fitur
                                         </p>
-                                        <div className="px-2">
-                                            <LanguageSwitcher />
-                                        </div>
+
+                                        <SheetClose asChild>
+                                            <Link
+                                                to="/dashboard/forms"
+                                                className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                                                    isTheFormActive
+                                                        ? 'bg-jfu-primary text-white shadow-xs'
+                                                        : 'text-slate-700 hover:bg-slate-100/80'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <ListPlus className={`w-4 h-4 shrink-0 ${isTheFormActive ? 'text-white' : 'text-slate-500'}`} />
+                                                    <span>{t('navTheForm')}</span>
+                                                </div>
+                                                <span className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${isTheFormActive ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800 border border-amber-200/60'}`}>
+                                                    Beta
+                                                </span>
+                                            </Link>
+                                        </SheetClose>
+
+                                        <SheetClose asChild>
+                                            <Link
+                                                to="/dashboard/analyzer"
+                                                className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                                                    isAnalyzerActive
+                                                        ? 'bg-jfu-primary text-white shadow-xs'
+                                                        : 'text-slate-700 hover:bg-slate-100/80'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <Sparkles className={`w-4 h-4 shrink-0 ${isAnalyzerActive ? 'text-white' : 'text-indigo-500'}`} />
+                                                    <span>Data Analyzer</span>
+                                                </div>
+                                                <span className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${isAnalyzerActive ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-800 border border-indigo-200/60'}`}>
+                                                    AI
+                                                </span>
+                                            </Link>
+                                        </SheetClose>
                                     </div>
 
-                                    <div className="border-t border-gray-100 pt-4 space-y-1">
+                                    {/* Group C: Akun Pengguna */}
+                                    <div className="space-y-1 pt-1">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
+                                            Akun
+                                        </p>
                                         <SheetClose asChild>
-                                            <button
-                                                type="button"
-                                                onClick={() => navigate('/dashboard/profile')}
-                                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                                            <Link
+                                                to="/dashboard/profile"
+                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                                                    location.pathname === '/dashboard/profile'
+                                                        ? 'bg-jfu-primary text-white shadow-xs'
+                                                        : 'text-slate-700 hover:bg-slate-100/80'
+                                                }`}
                                             >
-                                                <User className="w-4 h-4 text-gray-500" />
+                                                <User className={`w-4 h-4 shrink-0 ${location.pathname === '/dashboard/profile' ? 'text-white' : 'text-slate-500'}`} />
                                                 <span>{t('navProfile')}</span>
-                                            </button>
+                                            </Link>
                                         </SheetClose>
                                     </div>
                                 </div>
 
-                                {/* Sign Out at the bottom */}
-                                <div className="border-t border-gray-100 pt-3">
+                                {/* 3. FOOTER: Preferences & Sign Out */}
+                                <div className="p-4 border-t border-slate-100 bg-slate-50/60 space-y-2">
+                                    {/* Language Switcher Bar */}
+                                    <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-white border border-slate-200/70 shadow-xs">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                                            <Globe className="w-3.5 h-3.5 text-slate-400" />
+                                            <span>{t('language')}</span>
+                                        </div>
+                                        <LanguageSwitcher />
+                                    </div>
+
+                                    {/* Sign Out */}
                                     <button
                                         type="button"
                                         onClick={handleSignOut}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition-colors"
                                     >
-                                        <LogOut className="w-4 h-4" />
+                                        <LogOut className="w-3.5 h-3.5" />
                                         <span>{t('signOut')}</span>
                                     </button>
                                 </div>

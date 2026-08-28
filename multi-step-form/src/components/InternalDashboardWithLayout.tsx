@@ -283,7 +283,55 @@ export function InternalDashboardWithLayout() {
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-[#f8fafc] relative overflow-hidden">
+      {/* Modern Mesh Aurora Glow Background (Sama persis dengan Konsep 1 Dashboard Peneliti) */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none" aria-hidden="true">
+        {/* Titik 1: Mid-Right — Pendaran Biru Jakpat Cerah & Sky Blue */}
+        <div
+          className="absolute top-[18%] -right-[6%] md:right-[2%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
+          style={{
+            background: 'radial-gradient(circle at center, rgba(24, 124, 255, 0.22) 0%, rgba(56, 189, 248, 0.14) 45%, transparent 75%)',
+            filter: 'blur(90px)',
+          }}
+        />
+
+        {/* Titik 2: Mid-Left — Aksen Warm Rose / Blush Pink */}
+        <div
+          className="absolute top-[25%] -left-[8%] md:-left-[4%] w-[550px] md:w-[800px] h-[550px] md:h-[800px] rounded-full pointer-events-none transform-gpu"
+          style={{
+            background: 'radial-gradient(circle at center, rgba(251, 113, 133, 0.18) 0%, rgba(244, 114, 182, 0.10) 45%, transparent 75%)',
+            filter: 'blur(95px)',
+          }}
+        />
+
+        {/* Titik 3: Lower-Right — Aksen Soft Rose Pink Hangat */}
+        <div
+          className="absolute top-[60%] -right-[5%] md:right-[4%] w-[550px] md:w-[750px] h-[550px] md:h-[750px] rounded-full pointer-events-none transform-gpu"
+          style={{
+            background: 'radial-gradient(circle at center, rgba(244, 114, 182, 0.16) 0%, rgba(251, 113, 133, 0.08) 50%, transparent 75%)',
+            filter: 'blur(95px)',
+          }}
+        />
+
+        {/* Titik 4: Lower-Left — Pendaran Sky Cyan & Biru Jakpat Segar */}
+        <div
+          className="absolute top-[65%] -left-[6%] md:left-[0%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
+          style={{
+            background: 'radial-gradient(circle at center, rgba(14, 165, 233, 0.20) 0%, rgba(24, 124, 255, 0.12) 45%, transparent 75%)',
+            filter: 'blur(95px)',
+          }}
+        />
+
+        {/* Titik 5: Bottom-Center — Pendaran Lembut Penyeimbang di Bagian Bawah */}
+        <div
+          className="absolute -bottom-[5%] left-[25%] md:left-[35%] w-[500px] md:w-[700px] h-[500px] md:h-[700px] rounded-full pointer-events-none transform-gpu"
+          style={{
+            background: 'radial-gradient(circle at center, rgba(56, 189, 248, 0.18) 0%, rgba(24, 124, 255, 0.10) 50%, transparent 75%)',
+            filter: 'blur(100px)',
+          }}
+        />
+      </div>
+
       {/* Force light theme styles for all inputs */}
       <style>{`
         #root input,
@@ -304,13 +352,13 @@ export function InternalDashboardWithLayout() {
       <TooltipProvider delayDuration={0}>
         <aside
           className={cn(
-            'fixed md:static inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col transform transition-transform duration-300 ease-in-out md:transition-[width] md:duration-200',
+            'fixed md:static inset-y-0 left-0 z-50 bg-white/45 backdrop-blur-md border-r border-gray-200/60 flex flex-col transform transition-transform duration-300 ease-in-out md:transition-[width] md:duration-200 shadow-[2px_0_12px_rgba(0,0,0,0.02)]',
             collapsed ? 'w-16' : 'w-64',
             isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
           )}
         >
         {/* Header */}
-        <div className={cn('flex items-center border-b border-gray-200 px-3', collapsed ? 'flex-col gap-2 py-3' : 'h-14 gap-2')}>
+        <div className={cn('flex items-center border-b border-gray-200/70 px-3', collapsed ? 'flex-col gap-2 py-3' : 'h-14 gap-2')}>
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
@@ -402,7 +450,7 @@ export function InternalDashboardWithLayout() {
         </nav>
 
         {/* Storage Meter — linear bar expanded, progress ring in rail mode */}
-        <div className={cn('border-t border-gray-200 py-2.5', collapsed ? 'px-2 flex justify-center' : 'px-4')}>
+        <div className={cn('border-t border-gray-200/70 py-2.5', collapsed ? 'px-2 flex justify-center' : 'px-4')}>
           {(() => {
             // Calculate estimated MB from all sources with different avg sizes
             const proofMB = (storageStats.proofCount * 70) / 1024;    // ~70KB avg (compressed proof screenshots)
@@ -464,7 +512,7 @@ export function InternalDashboardWithLayout() {
         </div>
 
         {/* Footer */}
-        <div className={cn('border-t border-gray-200 bg-gray-50/50 p-3 flex items-center gap-2', collapsed && 'flex-col')}>
+        <div className={cn('border-t border-gray-200/50 bg-white/20 backdrop-blur-xs p-3 flex items-center gap-2', collapsed && 'flex-col')}>
           <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
             {user?.email?.charAt(0).toUpperCase() || 'U'}
           </div>
@@ -490,7 +538,7 @@ export function InternalDashboardWithLayout() {
                 <LogOut className="h-4 w-4" />
               </button>
             </TooltipTrigger>
-            {collapsed && <TooltipContent side="right">Logout</TooltipContent>}
+            <TooltipContent side="right">Log out</TooltipContent>
           </Tooltip>
         </div>
         </aside>
@@ -505,10 +553,10 @@ export function InternalDashboardWithLayout() {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="relative z-10 flex-1 flex flex-col min-w-0">
         {/* Mobile Top Header with Hamburger - Only render on mobile */}
         {!isDesktop && (
-          <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+          <div className="bg-white/60 backdrop-blur-md border-b border-gray-200/60 px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setIsSidebarOpen(true)}

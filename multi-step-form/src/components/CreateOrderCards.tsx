@@ -1,7 +1,5 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import * as AccordionPrimitive from '@radix-ui/react-accordion';
-import { Plus, ChevronDown, ChevronRight, BarChart3, Zap } from 'lucide-react';
+import { ChevronRight, BarChart3, Zap } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
 
@@ -35,26 +33,46 @@ export function ProductCardGrid() {
 
     const renderProductCard = (product: Product) => {
         const Icon = product.icon;
+        const isComingSoon = !!product.comingSoon;
+
         const inner = (
             <div className="flex flex-col items-start gap-2.5 w-full h-full">
                 <div className="w-full flex items-center justify-between">
-                    <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${product.comingSoon ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-jfu-primary'}`}>
+                    <span
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                            isComingSoon
+                                ? 'bg-amber-50 text-amber-500 border border-amber-200/80 shadow-2xs'
+                                : 'bg-white/20 text-white shadow-xs'
+                        }`}
+                    >
                         <Icon className="w-4.5 h-4.5" />
                     </span>
-                    {product.comingSoon ? (
-                        <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                    {isComingSoon ? (
+                        <span className="rounded-full border border-slate-200/90 bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
                             {t('comingSoon')}
                         </span>
                     ) : (
-                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                        <ChevronRight className="w-4 h-4 text-white/80 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" />
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <span className={`text-sm font-bold block ${product.comingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
+                    <span
+                        className={`text-sm sm:text-base font-bold block ${
+                            isComingSoon ? 'text-slate-800' : 'text-white'
+                        }`}
+                    >
                         {t(product.titleKey)}
                     </span>
-                    <span className={`block text-xs mt-1 leading-relaxed ${product.comingSoon ? 'text-slate-400' : 'text-slate-600'}`}>
-                        <span className={`font-bold ${product.comingSoon ? 'text-slate-500' : 'text-jfu-primary'}`}>
+                    <span
+                        className={`block text-xs mt-1.5 leading-relaxed ${
+                            isComingSoon ? 'text-slate-500' : 'text-white/85'
+                        }`}
+                    >
+                        <span
+                            className={`font-semibold ${
+                                isComingSoon ? 'text-slate-600' : 'text-white'
+                            }`}
+                        >
                             {t(product.hookKey)}
                         </span>{' '}
                         {t(product.descKey)}
@@ -63,27 +81,15 @@ export function ProductCardGrid() {
             </div>
         );
 
-        if (!product.to) {
+        if (!product.to || isComingSoon) {
             return (
                 <div
                     key={product.id}
                     aria-disabled="true"
-                    className="h-full rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-xs flex flex-col"
+                    className="h-full rounded-2xl border border-slate-200/80 bg-white/40 backdrop-blur-xs p-4 sm:p-5 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] flex flex-col cursor-not-allowed select-none"
                 >
                     {inner}
                 </div>
-            );
-        }
-
-        if (product.comingSoon) {
-            return (
-                <Link
-                    key={product.id}
-                    to={product.to}
-                    className="h-full rounded-xl border border-slate-200/80 bg-white/95 p-4 hover:bg-white hover:border-slate-300 hover:shadow-xs transition-all flex flex-col group"
-                >
-                    {inner}
-                </Link>
             );
         }
 
@@ -91,7 +97,7 @@ export function ProductCardGrid() {
             <Link
                 key={product.id}
                 to={product.to}
-                className="h-full rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs hover:shadow-md hover:border-jfu-primary/40 transition-all group flex flex-col"
+                className="h-full rounded-2xl bg-gradient-to-r from-jfu-primary to-jfu-light text-white p-4 sm:p-5 shadow-md shadow-jfu-primary/20 hover:shadow-lg hover:shadow-jfu-primary/30 hover:-translate-y-0.5 transition-all duration-200 group flex flex-col border-0"
             >
                 {inner}
             </Link>
@@ -106,57 +112,21 @@ export function ProductCardGrid() {
 }
 
 /**
- * Hub produk di homepage — jalur masuk "Buat Order" setelah menu itu keluar
- * dari navbar. Bisa dikolaps jadi strip "➕ Buat Order Baru" yang selalu
- * terlihat, sehingga affordance untuk order tidak pernah hilang.
+ * Hub produk di homepage — Versi A: Clean card dengan heading sejajar My Order
  */
 export function CreateOrderCards() {
     const { t } = useLanguage();
-    const [open, setOpen] = useState<boolean>(false);
-
-    const handleOpenChange = (value: string) => {
-        setOpen(value === 'products');
-    };
 
     return (
-        <AccordionPrimitive.Root
-            type="single"
-            collapsible
-            value={open ? 'products' : ''}
-            onValueChange={handleOpenChange}
-            className="mb-5 rounded-lg bg-gradient-to-r from-jfu-primary to-jfu-light text-white shadow-md shadow-jfu-primary/20 hover:shadow-lg hover:shadow-jfu-primary/30 transition-all duration-200 overflow-hidden border-0"
-        >
-            <AccordionPrimitive.Item value="products">
-                <AccordionPrimitive.Trigger
-                    className={`w-full flex items-center transition-all ${open
-                        ? 'justify-between px-5 pt-4 pb-2.5 text-left cursor-pointer'
-                        : 'min-h-12 justify-center gap-2.5 px-5 py-3.5 group cursor-pointer'
-                        }`}
-                >
-                    {open ? (
-                        <>
-                            <span className="text-sm font-bold text-white tracking-wide">{t('navCreateOrder')}</span>
-                            <span className="flex items-center justify-center w-7 h-7 rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-colors">
-                                <ChevronDown className="w-4 h-4 transition-transform duration-200 rotate-180" />
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <span className="w-6 h-6 rounded-full bg-white/20 text-white flex items-center justify-center group-hover:scale-110 group-hover:bg-white/30 transition-all">
-                                <Plus className="w-4 h-4 stroke-[2.5]" />
-                            </span>
-                            <span className="text-sm font-bold text-white tracking-wide">{t('createNewOrder')}</span>
-                            <ChevronDown className="w-4 h-4 text-white/80 group-hover:text-white group-hover:translate-y-0.5 transition-all" />
-                        </>
-                    )}
-                </AccordionPrimitive.Trigger>
-
-                <AccordionPrimitive.Content className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                    <div className="px-5 pb-5 pt-1.5">
-                        <ProductCardGrid />
-                    </div>
-                </AccordionPrimitive.Content>
-            </AccordionPrimitive.Item>
-        </AccordionPrimitive.Root>
+        <div className="space-y-3">
+            <div className="flex items-center gap-2">
+                <h2 className="text-lg md:text-xl font-bold text-[#1a1a1a] dark:text-white truncate">
+                    {t('createNewOrder')}
+                </h2>
+            </div>
+            <ProductCardGrid />
+        </div>
     );
 }
+
+

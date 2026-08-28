@@ -19,6 +19,7 @@ import { StepSurveyDetails } from './StepSurveyDetails';
 import { StepSchedule } from './StepSchedule';
 import { StepCheckout } from './StepCheckout';
 import { UnifiedHeader } from './UnifiedHeader';
+import { ReviewSubmissionModal } from './ReviewSubmissionModal';
 // Hanya Loader2 yang tersisa dari sisi main di sini: `Menu`/`Button` ikut hilang
 // bersama header mobile lama (digantikan AppNav), dan `getTodayDate` tidak lagi
 // dipakai sejak flow order disusun ulang.
@@ -129,6 +130,13 @@ export function MultiStepForm() {
   // Order sudah tersimpan → draft sengaja dibuang dan tidak boleh ditulis
   // ulang oleh efek penyimpanan di bawah saat render terakhir sebelum unmount.
   const isFinalizedRef = useRef(false);
+
+  // Modal konfirmasi khusus pengajuan jalur review manual
+  const [reviewModalData, setReviewModalData] = useState<{
+    isOpen: boolean;
+    email: string;
+    surveyTitle?: string;
+  } | null>(null);
 
   // Save to localStorage whenever state changes
   useEffect(() => {
@@ -334,16 +342,29 @@ export function MultiStepForm() {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
 
-      toast.success(auto ? t('slotLockedSuccess') : t('successFormSubmitted'));
-      navigate(auto ? `/dashboard/payment/${saved.id}` : '/dashboard?status=survey_submitted', {
-        replace: true,
-      });
+      if (!auto) {
+        setReviewModalData({
+          isOpen: true,
+          email: merged.email || user?.email || '',
+          surveyTitle: merged.title || '',
+        });
+      } else {
+        toast.success(t('slotLockedSuccess'));
+        navigate(`/dashboard/payment/${saved.id}`, {
+          replace: true,
+        });
+      }
       return true;
     } catch (error) {
       toast.dismiss(loadingToast);
       toast.error(t(orderSubmitErrorKey(error)));
       return false;
     }
+  };
+
+  const handleReviewModalConfirm = () => {
+    setReviewModalData(null);
+    navigate('/dashboard?status=survey_submitted', { replace: true });
   };
 
   const goToKilatSchedule = () => {
@@ -510,6 +531,13 @@ export function MultiStepForm() {
           />
         )}
       </div>
+
+      <ReviewSubmissionModal
+        isOpen={!!reviewModalData?.isOpen}
+        email={reviewModalData?.email || ''}
+        surveyTitle={reviewModalData?.surveyTitle}
+        onConfirm={handleReviewModalConfirm}
+      />
     </div>
   );
 }

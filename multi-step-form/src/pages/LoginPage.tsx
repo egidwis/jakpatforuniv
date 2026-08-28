@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { signInWithGoogle, signInWithPassword, signUp } from '../utils/supabase';
 import { Navigate, useLocation, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import logoMark from '../assets/Jakpat Navbar Logo.webp';
 import { ACADEMIC_STATUS_OPTIONS, DEPARTMENT_OPTIONS, UNIVERSITY_OPTIONS, REFERRAL_SOURCE_OPTIONS, collapseReferralSource } from '../constants/biodata';
@@ -17,6 +17,7 @@ export default function LoginPage() {
     const { t } = useLanguage();
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [mode, setMode] = useState<'login' | 'signup'>('login');
+    const [showPassword, setShowPassword] = useState(false);
 
     // Form States
     const [email, setEmail] = useState('');
@@ -104,9 +105,39 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen w-full flex flex-col justify-between bg-[#f8fafc] dark:bg-gray-900 px-4 py-8 selection:bg-blue-100 selection:text-jfu-primary">
-            <div className="flex-1 flex items-center justify-center py-4">
-                <div className="w-full max-w-md bg-white dark:bg-gray-800 border border-slate-200/90 dark:border-gray-700 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_-4px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden p-6 sm:p-8">
+        <div className="relative min-h-screen w-full flex flex-col justify-between bg-[#f8fafc] dark:bg-gray-900 px-4 py-8 overflow-hidden selection:bg-blue-100 selection:text-jfu-primary">
+            {/* Centered Ambient Aura Glow (Pusat pendaran dari tengah di balik kartu login) */}
+            <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none flex items-center justify-center">
+                {/* 1. Main Central Radial Glow (Pusat Biru Jakpat & Sky Blue) */}
+                <div
+                    className="absolute w-[700px] h-[700px] sm:w-[950px] sm:h-[950px] rounded-full transform-gpu"
+                    style={{
+                        background: 'radial-gradient(circle at center, rgba(24, 124, 255, 0.32) 0%, rgba(56, 189, 248, 0.22) 42%, rgba(244, 114, 182, 0.16) 65%, transparent 80%)',
+                        filter: 'blur(95px)',
+                    }}
+                />
+
+                {/* 2. Soft Pink/Rose Accent Ambient (Sedikit di kiri-atas tengah) */}
+                <div
+                    className="absolute -top-[12%] left-1/2 -translate-x-[65%] w-[550px] h-[550px] rounded-full transform-gpu"
+                    style={{
+                        background: 'radial-gradient(circle, rgba(251, 113, 133, 0.22) 0%, transparent 70%)',
+                        filter: 'blur(100px)',
+                    }}
+                />
+
+                {/* 3. Soft Sky Blue Ambient (Sedikit di kanan-bawah tengah) */}
+                <div
+                    className="absolute -bottom-[12%] left-1/2 translate-x-[15%] w-[600px] h-[600px] rounded-full transform-gpu"
+                    style={{
+                        background: 'radial-gradient(circle, rgba(24, 124, 255, 0.25) 0%, transparent 70%)',
+                        filter: 'blur(100px)',
+                    }}
+                />
+            </div>
+
+            <div className="relative z-10 flex-1 flex items-center justify-center py-4">
+                <div className="w-full max-w-md bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-slate-200/90 dark:border-gray-700 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden p-6 sm:p-8">
                     {/* Brand Header */}
                     <div className="flex flex-col items-center text-center mb-6">
                     <Link to="/dashboard" className="inline-block mb-3 hover:opacity-90 transition-opacity">
@@ -289,13 +320,28 @@ export default function LoginPage() {
                                     </Link>
                                 )}
                             </div>
-                            <input
-                                type="password"
-                                value={password} onChange={e => setPassword(e.target.value)}
-                                className={inputClass}
-                                placeholder={t('authPasswordPlaceholder')}
-                                disabled={isLoggingIn}
-                            />
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password} onChange={e => setPassword(e.target.value)}
+                                    className={`${inputClass} pr-10`}
+                                    placeholder={t('authPasswordPlaceholder')}
+                                    disabled={isLoggingIn}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none transition-colors cursor-pointer"
+                                    tabIndex={-1}
+                                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                >
+                                    {showPassword ? (
+                                        <EyeOff className="w-4 h-4" />
+                                    ) : (
+                                        <Eye className="w-4 h-4" />
+                                    )}
+                                </button>
+                            </div>
                         </div>
 
                         <Button
@@ -318,7 +364,7 @@ export default function LoginPage() {
             </div>
 
             {/* Clean bottom footer */}
-            <footer className="w-full max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 pb-2 text-xs text-slate-400 border-t border-slate-200/60 dark:border-gray-800">
+            <footer className="relative z-10 w-full max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 pb-2 text-xs text-slate-400 border-t border-slate-200/60 dark:border-gray-800">
                 <p>© {new Date().getFullYear()} Jakpat for Universities. All rights reserved.</p>
                 <div className="flex items-center gap-2">
                     <LanguageSwitcher />

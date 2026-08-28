@@ -53,9 +53,9 @@ const FIELD_LABEL_WIDTH = 'w-[150px] shrink-0 md:w-[175px]';
 
 function rowShell(hasError?: boolean, readOnly?: boolean) {
   return (
-    'rounded-xl border px-4 py-3 transition-colors ' +
-    (hasError ? 'border-rose-200 ' : readOnly ? 'border-gray-200 bg-gray-50/80 ' : 'border-gray-200 ') +
-    (readOnly ? 'cursor-not-allowed ' : 'focus-within:border-jfu-primary/50 focus-within:ring-1 focus-within:ring-jfu-primary/15')
+    'rounded-xl border px-4 py-3 transition-all shadow-2xs ' +
+    (hasError ? 'border-rose-300 bg-rose-50/20 ' : readOnly ? 'border-slate-200/80 bg-slate-50/80 ' : 'border-slate-200/80 bg-white ') +
+    (readOnly ? 'cursor-not-allowed ' : 'focus-within:border-jfu-primary/60 focus-within:ring-2 focus-within:ring-jfu-primary/10 hover:border-slate-300')
   );
 }
 
@@ -72,10 +72,10 @@ function LabelContent({
 }) {
   return (
     <>
-      <Icon className="w-4 h-4 shrink-0 text-gray-400 mt-0.5" aria-hidden="true" />
-      <span className="text-sm text-gray-600 leading-snug">
+      <Icon className="w-4 h-4 shrink-0 text-slate-400 mt-0.5" aria-hidden="true" />
+      <span className="text-xs md:text-sm font-medium text-slate-700 leading-snug select-none">
         {label}
-        {required && <span className="text-rose-500"> *</span>}
+        {required && <span className="text-rose-500 font-semibold ml-0.5">*</span>}
       </span>
       {tooltip && <InfoTooltip content={tooltip} />}
     </>
@@ -134,10 +134,10 @@ export function FieldRow({
       <div>
         <div className={rowShell(!!error, readOnly)}>
           <div className="flex items-center gap-3">
-            <label htmlFor={htmlFor} className={`flex items-center gap-2 min-w-0 shrink-0 ${labelWidth ?? FIELD_LABEL_WIDTH}`}>
+            <label htmlFor={htmlFor} className={`flex items-center gap-2 min-w-0 shrink-0 cursor-pointer ${labelWidth ?? FIELD_LABEL_WIDTH}`}>
               <LabelContent icon={icon} label={label} required={required} tooltip={tooltip} />
             </label>
-            <div className={`flex items-center min-w-0 flex-1 border-l border-gray-100 ${valueInset ?? 'pl-4'}`}>
+            <div className={`flex items-center min-w-0 flex-1 border-l border-slate-200/90 ${valueInset ?? 'pl-4'}`}>
               {children}
             </div>
           </div>
@@ -151,10 +151,10 @@ export function FieldRow({
     <div>
       <div className={rowShell(!!error, readOnly)}>
         <div className="flex [flex-direction:column] gap-1.5 md:[flex-direction:row] md:items-start md:gap-3">
-          <label htmlFor={htmlFor} className={`flex items-center md:items-start gap-2 min-w-0 [width:100%] md:[width:165px] md:shrink-0 md:pt-0.5 ${labelWidth ?? ''}`}>
+          <label htmlFor={htmlFor} className={`flex items-center md:items-start gap-2 min-w-0 [width:100%] md:[width:175px] md:shrink-0 md:pt-0.5 cursor-pointer ${labelWidth ?? ''}`}>
             <LabelContent icon={icon} label={label} required={required} tooltip={tooltip} />
           </label>
-          <div className="flex items-start min-w-0 [width:100%] md:[width:auto] md:flex-1 border-0 md:border-l md:border-gray-100 pl-6 md:pl-4">
+          <div className="flex items-start min-w-0 [width:100%] md:[width:auto] md:flex-1 border-0 md:border-l md:border-slate-200/90 pl-6 md:pl-4">
             {children}
           </div>
         </div>
@@ -196,15 +196,15 @@ export function FieldBlock({
   return (
     <div>
       <div className={rowShell(!!error, readOnly)}>
-        <label htmlFor={htmlFor} className="flex items-center gap-2">
+        <label htmlFor={htmlFor} className="flex items-center gap-2 cursor-pointer">
           <LabelContent icon={icon} label={label} required={required} tooltip={tooltip} />
         </label>
 
         {/* pl-6 = ikon w-4 + gap-2, jadi isi lurus di bawah teks label */}
-        <div className="mt-2 pl-6">{children}</div>
+        <div className="mt-2.5 pl-6">{children}</div>
 
         {counter && (
-          <div className="mt-1 pl-6 text-right text-[10px] font-medium tabular-nums text-gray-400">{counter}</div>
+          <div className="mt-1.5 pl-6 text-right text-[11px] font-semibold tabular-nums text-slate-400">{counter}</div>
         )}
       </div>
       <RowFooter error={error} hint={hint} />
@@ -219,8 +219,8 @@ export function FieldBlock({
  */
 export function SectionLabel({ children, tooltip }: { children: ReactNode; tooltip?: ReactNode }) {
   return (
-    <div className="flex items-center gap-0.5">
-      <h2 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{children}</h2>
+    <div className="flex items-center gap-1.5 mb-2.5">
+      <h2 className="text-sm md:text-base font-bold text-slate-900 tracking-tight">{children}</h2>
       {tooltip && <InfoTooltip content={tooltip} />}
     </div>
   );

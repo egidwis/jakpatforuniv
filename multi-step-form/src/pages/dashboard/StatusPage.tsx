@@ -7,7 +7,7 @@ import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check, ArrowUp, Copy } from 'lucide-react';
+import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check, ArrowUp, Copy, ClipboardList, ListPlus } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -31,7 +31,6 @@ import { ReviewPhase } from '@/components/status/ReviewPhase';
 import { SchedulePhase } from '@/components/status/SchedulePhase';
 import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
-import { PageHeader } from '@/components/PageHeader';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 
@@ -540,15 +539,24 @@ export function StatusPage() {
 
     if (loading) {
         return (
-            <div>
-                <PageHeader title={t('pageTitle')} />
-                <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 space-y-4">
+            <div className="max-w-4xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
+                {/* Skeleton 2 Kartu Buat Order */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <Skeleton className="h-28 rounded-2xl bg-slate-100" />
+                    <Skeleton className="h-28 rounded-2xl bg-slate-100" />
+                </div>
+
+                {/* Skeleton Header My Order & Tools */}
+                <div className="flex justify-between items-center pt-2">
+                    <Skeleton className="h-7 w-32 bg-slate-200" />
                     <div className="flex gap-2">
-                        {[1, 2, 3, 4].map((i) => (
-                            <Skeleton key={i} className="h-8 w-20 rounded-full bg-gray-100" />
-                        ))}
+                        <Skeleton className="h-9 w-9 rounded-md bg-slate-200" />
+                        <Skeleton className="h-9 w-9 rounded-md bg-slate-200" />
                     </div>
-                    {/* Skeleton mengikuti anatomi kartu Soft DNA */}
+                </div>
+
+                {/* Skeleton mengikuti anatomi kartu Soft DNA */}
+                <div className="space-y-4">
                     {[1, 2].map((i) => (
                         <div key={i} className="border border-slate-200/90 shadow-xs overflow-hidden bg-white rounded-2xl">
                             <div className="p-5 md:p-6 space-y-2 border-b border-slate-100">
@@ -578,13 +586,20 @@ export function StatusPage() {
 
     return (
         <div>
-            <PageHeader
-                title={t('pageTitle')}
-                action={
-                    <div className="flex items-center gap-1">
-                        {/* Filter status pindah dari baris chips ke dropdown di header;
-                            badge merah menjaga sinyal "butuh aksi" tetap terlihat tanpa klik. */}
-                        {submissions.length > 0 && (
+            <div className="max-w-4xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
+                {/* Hub produk — jalur masuk Buat Order selalu konsisten terlihat di atas */}
+                <CreateOrderCards />
+
+                {/* Header bagian Dashboard beserta filter dan refresh */}
+                <div className="flex items-center justify-between gap-3 pt-2 pb-1">
+                    <h1 className="text-lg md:text-xl font-bold text-[#1a1a1a] dark:text-white truncate flex items-center gap-2">
+                        <span>{t('pageTitle')}</span>
+                        <span className="text-sm font-normal text-slate-400">
+                            ({submissions.length})
+                        </span>
+                    </h1>
+                    {submissions.length > 0 && (
+                        <div className="flex items-center gap-1 shrink-0">
                             <DropdownMenu>
                                 <DropdownMenuTrigger
                                     aria-label={t('filterAll')}
@@ -620,45 +635,57 @@ export function StatusPage() {
                                     ))}
                                 </DropdownMenuContent>
                             </DropdownMenu>
-                        )}
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={handleRefresh}
-                            disabled={refreshing}
-                            title={t('refresh')}
-                            className="h-9 w-9 text-jfu-primary hover:bg-jfu-primary/10 hover:text-jfu-primary dark:text-gray-300"
-                        >
-                            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                        </Button>
-                    </div>
-                }
-            />
-
-            <div className="max-w-4xl mx-auto px-4 md:px-6 py-4">
-                {/* Hub produk — jalur masuk Buat Order setelah keluar dari navbar.
-                    Saat belum ada order, empty state di bawah yang memegang kartu
-                    produk (satu pintu masuk, tanpa duplikasi CTA). */}
-                {submissions.length > 0 && <CreateOrderCards />}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={handleRefresh}
+                                disabled={refreshing}
+                                title={t('refresh')}
+                                className="h-9 w-9 text-jfu-primary hover:bg-jfu-primary/10 hover:text-jfu-primary dark:text-gray-300"
+                            >
+                                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                            </Button>
+                        </div>
+                    )}
+                </div>
 
                 {submissions.length === 0 ? (
-                    /* Empty state = halaman landing user baru, rasa kartu landing page */
-                    <Card className="border border-slate-200/90 overflow-hidden shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] rounded-2xl">
-                        <CardContent className="flex flex-col items-center justify-center py-12 text-center px-6 bg-white">
-                            <div className="w-14 h-14 bg-blue-50 text-jfu-primary rounded-2xl flex items-center justify-center mb-4 border border-blue-100">
-                                <span className="text-2xl" aria-hidden="true">🚀</span>
+                    /* Modern, Clean & Elevated Empty State Card */
+                    <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">
+                        <CardContent className="flex flex-col items-center justify-center py-10 md:py-12 px-6 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-blue-50/80 border border-blue-100 flex items-center justify-center text-jfu-primary mb-4 shadow-xs">
+                                <ClipboardList className="w-7 h-7 stroke-[1.75]" />
                             </div>
-                            <h3 className="text-lg font-bold text-slate-900">{t('noOrdersTitle')}</h3>
-                            <p className="text-slate-500 max-w-sm mt-2 mb-6 text-sm">
+                            <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                                {t('noOrdersTitle')}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-slate-500 max-w-md mt-1.5 mb-6 leading-relaxed">
                                 {t('noSubmissionsDesc')}
                             </p>
 
-                            {/* Kartu produk menggantikan tombol generik "Buat Order
-                                Pertama" — ujung alur baca langsung memilih produk.
-                                Tanpa max-w agar proporsi kartu sama dengan versi
-                                di CreateOrderCards (hub "Buat Order"). */}
-                            <div className="w-full text-left">
-                                <ProductCardGrid />
+                            {/* Secondary Action Links */}
+                            <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
+                                <Link
+                                    to="/dashboard/submit-iklan"
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary text-white text-xs sm:text-sm font-semibold shadow-xs hover:bg-jfu-dark transition-all"
+                                >
+                                    <span>Pasang Iklan Survei</span>
+                                    <ChevronRight className="w-4 h-4" />
+                                </Link>
+                                <Link
+                                    to="/dashboard/forms/new"
+                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-semibold transition-all"
+                                >
+                                    <ListPlus className="w-4 h-4 text-slate-500" />
+                                    <span>Buat Kuesioner Baru</span>
+                                </Link>
+                                <Link
+                                    to="/dashboard/chat"
+                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-semibold transition-all"
+                                >
+                                    <MessageCircle className="w-4 h-4 text-slate-500" />
+                                    <span>Tanya Mimin</span>
+                                </Link>
                             </div>
                         </CardContent>
                     </Card>

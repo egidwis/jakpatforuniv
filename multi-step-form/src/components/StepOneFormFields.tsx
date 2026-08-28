@@ -81,21 +81,23 @@ export function ReviewInfoBanner({ formData }: { formData: SurveyFormData }) {
   const isAutoPath = isAutoApprovalPath(formData);
 
   return (
-    <div className="mx-auto max-w-xl mb-4 p-3.5 md:p-4 rounded-2xl bg-blue-50/80 border border-blue-100/90 flex items-start gap-3 text-xs md:text-sm leading-relaxed text-blue-900 shadow-sm">
-      <Info className="w-5 h-5 mt-0.5 shrink-0 text-jfu-primary" aria-hidden="true" />
-      <div>
-        <p className="font-semibold text-blue-950 text-sm md:text-base">
+    <div className="mx-auto max-w-xl mb-4 p-4 md:p-5 rounded-2xl bg-blue-50/70 backdrop-blur-xs border border-blue-200/70 flex items-start gap-3.5 text-xs md:text-sm leading-relaxed text-blue-900 shadow-xs">
+      <span className="w-9 h-9 rounded-xl bg-blue-100/80 text-jfu-primary flex items-center justify-center shrink-0 mt-0.5 border border-blue-200/60 shadow-2xs">
+        <Info className="w-5 h-5" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-blue-950 text-sm md:text-base">
           {isAutoPath ? t('reviewMethodAutoHint') : t('reviewMethodManualHint')}
           {' · '}
-          {isAutoPath ? t('adsEntryAutoRowTime') : t('adsEntryManualRowTime')}
+          <span className="font-semibold text-blue-800/90">{isAutoPath ? t('adsEntryAutoRowTime') : t('adsEntryManualRowTime')}</span>
         </p>
-        <p className="mt-1 text-blue-800/90 leading-relaxed">
+        <p className="mt-1 text-blue-800/85 leading-relaxed">
           {t('adsEntryReviewNotePart1')}{' '}
           <a
             href="/homepage/terms-conditions.html"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-jfu-primary underline hover:text-jfu-dark"
+            className="font-semibold text-jfu-primary underline hover:text-jfu-dark"
           >
             {t('termsConditions')}
           </a>
@@ -360,7 +362,7 @@ export function StepOneFormFields({
       )}
 
       {/* CARD 1 — INFORMASI & KONFIGURASI SURVEI */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
+      <div className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xs p-5 md:p-6 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden">
         {isGoogleImport && (
           <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
             <CheckCircle className="w-3.5 h-3.5 shrink-0" />
@@ -389,20 +391,6 @@ export function StepOneFormFields({
             required
             error={attemptedSubmit ? errors.surveyUrl : undefined}
             readOnly={fieldsReadOnly}
-            hint={
-              !fieldsReadOnly ? (
-                <span className="flex items-start gap-1 text-gray-400">
-                  <Lightbulb className="w-3 h-3 mt-0.5 shrink-0 text-amber-400" />
-                  <span>
-                    Lebih cepat lolos review &amp; monitoring langsung hasilnya — pakai{' '}
-                    <Link to="/dashboard/forms" className="font-semibold text-indigo-500 hover:text-indigo-700 underline decoration-indigo-300 hover:decoration-indigo-500 transition-colors">
-                      JFU Form
-                    </Link>
-                    , bisa import pertanyaan dari Google Form &amp; platform survey lainnya.
-                  </span>
-                </span>
-              ) : undefined
-            }
           >
             <textarea
               id="surveyUrl"
@@ -480,24 +468,10 @@ export function StepOneFormFields({
             <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">items</span>
           </FieldRow>
         </div>
-
-        {/* Switch to Google Form — jika mode manual */}
-        {!isGoogleImport && onSwitchToGoogle && (
-          <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-center gap-x-1 text-xs md:text-sm text-gray-500">
-            <span>{t('troubleFillingManual')}</span>
-            <button
-              type="button"
-              onClick={onSwitchToGoogle}
-              className="font-semibold text-jfu-primary hover:underline"
-            >
-              {t('importFromGoogleForm')}
-            </button>
-          </div>
-        )}
       </div>
 
       {/* CARD 2 — KONFIGURASI IKLAN & REWARD */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden">
+      <div className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xs p-5 md:p-6 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden">
         {/* SEKSI 2 — KONFIGURASI IKLAN */}
         <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
 
@@ -540,9 +514,8 @@ export function StepOneFormFields({
               placeholder={t('surveyDurationPlaceholder')}
               value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
               onChange={(e) => {
-                const val = e.target.value;
-                const intVal = parseInt(val);
-                updateFormData({ duration: isNaN(intVal) ? 0 : intVal });
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                updateFormData({ duration: parseInt(val) || 0 });
                 if (attemptedSubmit && errors.duration) {
                   setErrors({ ...errors, duration: undefined });
                 }
@@ -564,7 +537,7 @@ export function StepOneFormFields({
               id="criteriaResponden"
               ref={criteriaRespondenRef}
               rows={2}
-              className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[60px]`}
+              className={`${fieldInputClass} resize-none overflow-hidden leading-relaxed py-0.5 min-h-[72px]`}
               placeholder={t('respondentCriteriaPlaceholder')}
               value={formData.criteriaResponden}
               onChange={(e) => {
@@ -579,9 +552,8 @@ export function StepOneFormFields({
         </div>
 
         {/* SEKSI 3 — PENGATURAN INSENTIF */}
-        <div className="mt-6">
-          <SectionLabel>{t('incentiveSettings')}</SectionLabel>
-        </div>
+        <div className="border-t border-slate-100/90 mt-7 mb-5" />
+        <SectionLabel>{t('incentiveSettings')}</SectionLabel>
 
         <div className={fieldRowListClass}>
           <FieldRow
@@ -590,10 +562,11 @@ export function StepOneFormFields({
             htmlFor="prizePerWinner"
             required
             compact
-            labelWidth="w-[150px] md:w-[220px]"
             tooltip={prizeTooltip}
             error={
-              formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
+              attemptedSubmit && errors.prizePerWinner
+                ? errors.prizePerWinner
+                : formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
                 ? t('errorMinPrize')
                 : undefined
             }
@@ -607,7 +580,7 @@ export function StepOneFormFields({
               ) : undefined
             }
           >
-            <span className="mr-1.5 shrink-0 text-sm text-gray-400">Rp</span>
+            <span className="mr-1.5 shrink-0 text-sm font-semibold text-slate-500">Rp</span>
             <input
               id="prizePerWinner"
               type="text"
@@ -615,11 +588,15 @@ export function StepOneFormFields({
               pattern="[0-9]*"
               className={fieldInputClass}
               placeholder={t('prizePerWinnerPlaceholder')}
-              value={formData.prizePerWinner}
+              value={formData.prizePerWinner ? formData.prizePerWinner.toLocaleString('id-ID') : ''}
               onChange={(e) => {
-                updateFormData({ prizePerWinner: parseInt(e.target.value) || 0 });
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                const num = parseInt(val, 10) || 0;
+                updateFormData({ prizePerWinner: num });
                 if (attemptedSubmit && errors.prizePerWinner) {
-                  setErrors({ ...errors, prizePerWinner: undefined });
+                  if (num >= 25000) {
+                    setErrors({ ...errors, prizePerWinner: undefined });
+                  }
                 }
               }}
             />
@@ -631,10 +608,15 @@ export function StepOneFormFields({
             htmlFor="winnerCount"
             required
             compact
-            labelWidth="w-[150px] md:w-[220px]"
             tooltip={winnerTooltip}
             error={
-              formData.winnerCount > 0 && formData.winnerCount < 2 ? t('errorMinWinners') : undefined
+              attemptedSubmit && errors.winnerCount
+                ? errors.winnerCount
+                : formData.winnerCount > 0 && (formData.winnerCount < 2 || formData.winnerCount > 5)
+                ? formData.winnerCount < 2
+                  ? t('errorMinWinners')
+                  : t('errorMaxWinners')
+                : undefined
             }
           >
             <input
@@ -644,32 +626,35 @@ export function StepOneFormFields({
               pattern="[0-9]*"
               className={fieldInputClass}
               placeholder={t('winnerCountPlaceholder')}
-              value={formData.winnerCount}
+              value={formData.winnerCount || ''}
               onChange={(e) => {
-                const val = parseInt(e.target.value) || 0;
-                updateFormData({ winnerCount: Math.min(val, 5) });
+                const val = parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0;
+                updateFormData({ winnerCount: val });
                 if (attemptedSubmit && errors.winnerCount) {
-                  setErrors({ ...errors, winnerCount: undefined });
+                  if (val >= 2 && val <= 5) {
+                    setErrors({ ...errors, winnerCount: undefined });
+                  }
                 }
               }}
             />
+            <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">{t('winnerCountUnit')}</span>
           </FieldRow>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 pt-2">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-all hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 shadow-xs cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 text-slate-500" />
           {t('backButton')}
         </button>
         <button
           type="submit"
           disabled={isBlockedByPersonalData}
-          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-bold text-white transition-all hover:bg-jfu-dark shadow-xs cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
         >
           {t('continueToSummary')}
           <span aria-hidden="true">→</span>
