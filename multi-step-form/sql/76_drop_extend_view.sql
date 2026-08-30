@@ -1,0 +1,158 @@
+-- ============================================================
+-- Migrasi 76: CABUT view `form_submissions_extend` — langkah *contract*
+-- Task 11 selesai.
+--
+-- Ini penutup rangkaian `73` → `74` → `75`. Tabel aslinya sudah dijatuhkan
+-- `sql/52` (Deploy B, 2026-08-19) dan diganti VIEW yang bisa ditulisi di atas
+-- `ad_schedules`. View itu sengaja dibiarkan hidup sebagai jaring pengaman
+-- selama pembaca/penulisnya dipindah satu per satu. Sekarang tak ada lagi yang
+-- memakainya.
+--
+-- ── Kenapa AMAN sekarang (semuanya terukur di produksi, 2026-08-30) ───────
+--
+--   1. Nol fungsi mengaksesnya. Dari 13 fungsi yang menyebut namanya, 9 hanya
+--      memakainya sebagai STRING LITERAL nilai `ad_schedules.source_table`,
+--      dan 4 sisanya sudah dipindah oleh `sql/73`. Dua sebutan terakhir di
+--      `cron_activate_extends` + `sync_ad_schedule_from_submission` adalah
+--      KOMENTAR, bukan kode.
+--   2. Nol `pg_depend` — tidak ada view/rule lain yang berdiri di atasnya.
+--   3. Nol policy RLS, nol perintah `cron.job`, nol view lain yang menyebutnya.
+--   4. Nol pemanggilan `.from('form_submissions_extend')` tersisa di `src/` dan
+--      `functions/` — yang tersisa hanya komentar dan filter nilai
+--      `.eq('source_table', 'form_submissions_extend')`.
+--   5. **Log tepi**: hit terakhir ke `/rest/v1/form_submissions_extend` adalah
+--      2026-08-29 10:15 — SEBELUM deploy `73`–`75`, dan bentuk query-nya persis
+--      jalur `ownsAiringWindow` yang sudah dipindah. Sesudah deploy: nol hit.
+--      Semua lalu lintas kini ke `/rest/v1/ad_schedules?source_table=eq...`.
+--   6. Gerbang paritas `sql/46` §7(1) utuh: ordinal 1 = 1006 = jumlah order.
+--   7. `cron.job` jobid 1 (`*/15`): 96 jalan / 24 jam, **nol gagal**.
+--      ⚠️ Diverifikasi lewat `cron.job_run_details`, BUKAN `cron.job` —
+--      pelajaran insiden `sql/48`.
+--
+-- ── Yang ikut tertutup: lubang RLS ────────────────────────────────────────
+--
+-- View ini memberi `authenticated` GRANT INSERT/UPDATE/DELETE penuh, sementara
+-- ketiga trigger `INSTEAD OF`-nya `SECURITY DEFINER` milik `postgres` dan
+-- **nol memeriksa kepemilikan**. Artinya siapa pun yang login bisa menyunting
+-- jadwal iklan milik orang lain, melewati RLS `ad_schedules` yang hanya
+-- mengizinkan SELECT bagi `authenticated`. Pemilik produk memilih membiarkannya
+-- dan mempercepat sampai titik ini; `DROP VIEW` inilah penutupnya.
+--
+-- ── Yang TIDAK dikerjakan berkas ini ──────────────────────────────────────
+--
+-- Nilai data `ad_schedules.source_table = 'form_submissions_extend'` TETAP.
+-- Ia dipagari `ad_schedules_source_table_check` dan dipakai 9 fungsi sebagai
+-- literal. Menggantinya = migrasi data + menyentuh kesembilan fungsi, murni
+-- kosmetik. Itu Task 12 langkah 5, bukan bagian dari mencabut view.
+--
+-- Nol perubahan data. Nol baris `ad_schedules` tersentuh.
+-- ============================================================
+
+-- ============================================
+-- 1. Jatuhkan view-nya
+-- ============================================
+--
+-- Ketiga trigger `INSTEAD OF` (`trg_extend_view_insert/update/delete`) ikut
+-- terhapus bersama view — trigger tidak bisa hidup tanpa relasinya.
+-- Tanpa CASCADE dengan sengaja: kalau ternyata masih ada yang bergantung,
+-- perintah ini HARUS gagal, bukan diam-diam ikut menyeret objek lain.
+
+DROP VIEW IF EXISTS public.form_submissions_extend;
+
+-- ============================================
+-- 2. Buang tiga fungsi trigger yang jadi yatim
+-- ============================================
+--
+-- Sesudah langkah 1 ketiganya tidak menempel di mana pun. Dibiarkan hidup,
+-- mereka jadi ranjau: isinya penuh aturan jadwal yang MASIH TERLIHAT benar
+-- (`assert_schedule_window_free`, pewarisan `is_extra_ad`, `resync_ordinals`)
+-- padahal sudah tidak pernah jalan. Penerusnya yang sah:
+--
+--   extend_view_insert()  →  create_ad_schedule()            (sql/74)
+--   extend_view_update()  →  enforce_extend_schedule_rules() (sql/75)
+--                            + resync_ordinals_after_extend_move()
+--   extend_view_delete()  →  DELETE biasa ke `ad_schedules`
+--
+-- ⚠️ Jangan salin badan ketiganya ke tempat lain tanpa membaca
+-- `pg_get_functiondef()` produksi lebih dulu — `sync_ad_schedule_from_submission`
+-- pernah dihidupkan ulang dari berkas yang salah dan membangkitkan kembali
+-- cabang penghapus jadwal (insiden `sql/49` vs `sql/51`).
+
+DROP FUNCTION IF EXISTS public.extend_view_insert();
+DROP FUNCTION IF EXISTS public.extend_view_update();
+DROP FUNCTION IF EXISTS public.extend_view_delete();
+
+
+-- ============================================
+-- 3. Jalur pemulihan (kalau ternyata ada pemanggil tak terduga)
+-- ============================================
+--
+-- Nol data hilang: view ini proyeksi murni di atas `ad_schedules`, jadi seluruh
+-- isinya masih utuh di tabel. Memulihkannya = menempelkan kembali cangkangnya.
+--
+-- Untuk BACA saja (cukup untuk hampir semua kasus darurat) — tempel ini:
+--
+--   CREATE VIEW public.form_submissions_extend
+--     WITH (security_invoker = true) AS
+--   SELECT a.source_id AS id, a.submission_id, a.duration, a.start_date,
+--          a.end_date, a.slot_booked_by, a.slot_reserved_at,
+--          a.status AS submission_status, a.payment_status, a.prize_per_winner,
+--          a.winner_count, a.additional_prize_per_winner,
+--          a.is_new_period AS is_new_month, a.period_batch,
+--          a.total_cost::integer AS total_cost, a.voucher_code, a.admin_notes,
+--          a.created_at, a.updated_at, a.subtotal, a.ppn_amount, a.is_extra_ad
+--     FROM ad_schedules a
+--    WHERE a.source_table = 'form_submissions_extend'::text;
+--   GRANT SELECT ON public.form_submissions_extend TO authenticated, service_role;
+--
+-- ⚠️ Perhatikan `id` = `source_id`, BUKAN `ad_schedules.id`. Salah di sini
+-- membuat setiap pencarian per-id diam-diam nihil.
+--
+-- Untuk TULIS juga: jalankan ulang `sql/52` bagian trigger `INSTEAD OF`.
+-- Tapi pikir dua kali — GRANT tulis ke `authenticated` itulah lubang RLS yang
+-- baru saja ditutup berkas ini. Pulihkan SELECT saja kalau bisa.
+--
+-- Salinan tabel aslinya (15 baris, per 2026-08-19) tetap terparkir di
+-- `backup.form_submissions_extend_legacy` — jaring pengaman `sql/52`, jangan
+-- dihapus sebelum ada alasan kuat.
+
+
+-- ============================================
+-- 4. Verifikasi
+-- ============================================
+--
+-- (1) View benar-benar hilang, tabelnya tetap utuh:
+--   SELECT to_regclass('public.form_submissions_extend')            AS view_harus_null,
+--          (SELECT count(*) FROM ad_schedules
+--            WHERE source_table='form_submissions_extend')          AS extend_harus_11,
+--          (SELECT count(*) FROM ad_schedules WHERE ordinal=1)      AS ordinal1_harus_1006,
+--          (SELECT count(*) FROM form_submissions)                  AS orders_harus_1006;
+--
+-- (2) Ketiga fungsi yatim hilang, penerusnya ada:
+--   SELECT proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+--    WHERE n.nspname='public'
+--      AND proname IN ('extend_view_insert','extend_view_update','extend_view_delete',
+--                      'create_ad_schedule','enforce_extend_schedule_rules',
+--                      'resync_ordinals_after_extend_move');
+--   -- harapan: hanya tiga yang terakhir muncul
+--
+-- (3) Penjaga di `ad_schedules` masih lengkap (7 trigger):
+--   SELECT tgname FROM pg_trigger WHERE tgrelid='public.ad_schedules'::regclass
+--     AND NOT tgisinternal ORDER BY tgname;
+--   -- trg_ad_schedules_extend_resync, trg_ad_schedules_extend_rules,
+--   -- trg_ad_schedules_extra_ad_rules, trg_ad_schedules_guard_payment,
+--   -- trg_ad_schedules_period_batch, trg_ad_schedules_push_page_extra_ad,
+--   -- trg_assign_booking_id
+--
+-- (4) Cron tetap hidup SESUDAH view dicabut — tunggu satu siklus (≤15 menit):
+--   SELECT status, return_message, start_time FROM cron.job_run_details
+--    WHERE jobid=1 ORDER BY start_time DESC LIMIT 3;   -- nol 'failed'
+--
+-- (5) Tumpang tindih masih ditolak lewat tulisan LANGSUNG ke tabel (sql/75):
+--   sudah diuji di `sql/75` §3(2) — ulangi kalau ragu.
+--
+-- (6) Sidik jari status ordinal 1 tidak boleh bergerak karena berkas ini:
+--   cancelled=140, completed=8, live=177, paid=67, requested=482,
+--   scheduled=60, slot_reserved=46, unscheduled=25, waiting_payment=1
+--   (bergeser dari catatan sql/73 hanya di slot_reserved 45→46 dan
+--    unscheduled 26→25 — satu order memesan slot, aktivitas normal, bukan cron)

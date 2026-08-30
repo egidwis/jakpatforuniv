@@ -40,9 +40,15 @@
 > `ScheduleAgenda.tsx`. Pencarian tiga bentuk di tabel Submissions (§00K)
 > sudah diuji dan hijau.
 >
-> 🟢 **TASK 11 SELESAI — DEPLOY B MENDARAT 2026-08-19 (`sql/52`), lihat §00N.**
-> `form_submissions_extend` kini VIEW di atas `ad_schedules`; `ad_schedules`
-> resmi otoritatif untuk jadwal ke-2 dst. Sidik jari 21 kolom × 15 baris
+> 🟢 **TASK 11 BENAR-BENAR SELESAI — VIEW SUDAH DICABUT 2026-08-30 (`sql/73`–`76`),
+> lihat §00W.** `form_submissions_extend` **tidak ada lagi dalam bentuk apa pun**;
+> `to_regclass` → NULL. Seluruh pembaca/penulis kini langsung ke `ad_schedules`
+> dengan filter `source_table` eksplisit. ⚠️ Kalau kamu membaca §00N di bawah dan
+> mengira view-nya masih berdiri — tidak, §00N adalah keadaan 2026-08-19.
+>
+> 🟢 **DEPLOY B MENDARAT 2026-08-19 (`sql/52`), lihat §00N.**
+> Saat itu `form_submissions_extend` diubah jadi VIEW di atas `ad_schedules`;
+> `ad_schedules` resmi otoritatif untuk jadwal ke-2 dst. Sidik jari 21 kolom × 15 baris
 > **identik sebelum & sesudah**, dan sudah dibuktikan cocok SEBELUM `DROP TABLE`
 > dijalankan. RLS sekalian diperketat (`security_invoker = true`) atas keputusan
 > pemilik produk. ⚠️ Tiga jebakan ditemukan & ditutup — yang terpenting: **view
@@ -111,6 +117,63 @@ branch itu. Lihat §2.
 ---
 
 ## Yang menunggu tindakan
+
+### 00W. 🟢 TASK 11 SELESAI — view `form_submissions_extend` dicabut (`sql/73`–`76`, 2026-08-30)
+
+**Langkah *contract* yang sengaja ditinggalkan Deploy B akhirnya ditutup.** Sesudah
+`sql/52` (§00N) mengubah tabelnya jadi view, view itu dibiarkan hidup sebagai jaring
+pengaman. Sekarang seluruh pembaca/penulisnya sudah pindah ke `ad_schedules` dan
+view-nya dijatuhkan. `to_regclass('public.form_submissions_extend')` → **NULL**.
+
+| berkas | isi |
+|---|---|
+| `sql/73` | 4 fungsi berhenti membaca view — `cron_activate_extends`, `get_batch_rewards_bulk`, `get_page_active_period`, `get_schedule_batch_context` |
+| `sql/74` | RPC `create_ad_schedule()` menggantikan INSERT lewat view, memikul kelima aturan `extend_view_insert()` |
+| `sql/75` | penjaga `extend_view_update()` pindah ke trigger `ad_schedules` |
+| `sql/76` | `DROP VIEW` + 3 fungsi trigger yatim |
+
+Sisi kode: 8 berkas (`webhook.js` jalur uang, `supabase.ts` 6 titik, `ScheduleForm.tsx`,
+`storage-cleanup.js`, `InvoiceForm.tsx`, `PageBuilderModal.tsx`). Deploy 2026-08-30,
+uji browser pemilik produk lolos.
+
+**`sql/75` tidak ada di rencana, dan ternyata wajib.** Trigger `INSTEAD OF UPDATE`
+view bukan penyalin kolom — ia memikul `assert_schedule_window_free`, penurunan
+`review_status` dari induk, dan `resync_ad_schedule_ordinals`. Begitu penulisnya
+dipindah ke tabel, ketiganya **hilang tanpa satu error pun muncul**: menggeser tanggal
+jadwal ke-2 berhenti divalidasi tumpang tindihnya, padahal larangan "satu survei satu
+periode" adalah seluruh alasan `sql/38` ada. Pelajaran umumnya: **memindahkan penulis
+dari view ke tabel juga memindahkan tanggung jawab trigger `INSTEAD OF`-nya** — periksa
+badan trigger view sebelum mencabut, jangan cuma daftar pemanggil.
+
+**Lubang RLS ikut tertutup.** View memberi `authenticated` GRANT
+INSERT/UPDATE/DELETE penuh, sementara ketiga trigger `SECURITY DEFINER`-nya nol
+memeriksa kepemilikan — siapa pun yang login bisa menyunting jadwal orang lain,
+melewati RLS `ad_schedules` yang cuma mengizinkan SELECT. Pemilik produk memilih
+membiarkannya dan mempercepat sampai `DROP VIEW`; itulah yang menutupnya.
+
+| Verifikasi sesudah `DROP VIEW` | Hasil |
+|---|---|
+| `to_regclass` view | **NULL** |
+| Paritas `sql/46` §7(1) | **1006 = 1006** |
+| Baris extend di `ad_schedules` | **11**, utuh |
+| `cron_activate_extends()` dipanggil tanpa view | jalan, sidik jari extend **dan** 1006 ordinal 1 **identik** |
+| `cron.job_run_details` jobid 1 / 24 jam | 96 jalan, **0 gagal** |
+| Fungsi yatim `extend_view_*` | **0** tersisa, 3 penerusnya ada |
+| Trigger `ad_schedules` | **7**, lengkap |
+| `tsc` / vitest | 0 error / **280 lolos** |
+
+**Log tepi jadi gerbang terakhir sebelum mencabut** — layak diulang. Hit terakhir ke
+`/rest/v1/form_submissions_extend` adalah **2026-08-29 10:15**, sebelum deploy, dan
+bentuk query-nya persis jalur `ownsAiringWindow` yang sudah dipindah. Sesudah deploy:
+nol. Ini menangkap pemanggil di luar repo yang tidak akan pernah muncul lewat `grep`.
+
+**Jalan pulang tetap ada:** `sql/76` memuat `CREATE VIEW` siap tempel (⚠️ `id` =
+`source_id`, bukan `ad_schedules.id`), dan `backup.form_submissions_extend_legacy`
+(15 baris) masih terparkir. Nol data hilang — view itu proyeksi murni.
+
+**Yang TIDAK ikut:** nilai data `source_table = 'form_submissions_extend'` tetap,
+dipagari `ad_schedules_source_table_check` dan dipakai 9 fungsi sebagai literal.
+Itu Task 12 langkah 5 — kosmetik, bukan bagian mencabut view.
 
 ### 00J. 🟢 `sql/49` diam-diam membatalkan perbaikan `sql/46` — ditemukan & diperbaiki 2026-08-18
 
@@ -302,10 +365,16 @@ search bar papan Schedule → jadwalnya muncul; klik ikon salin di tabel →
 toast "Booking ID disalin!" dan clipboard berisi kode TANPA `#`, drawer TIDAK
 ikut terbuka.
 
-### 00N. 🟢 DEPLOY B SELESAI — `form_submissions_extend` kini VIEW (`sql/52`, 2026-08-19)
+### 00N. 🟢 DEPLOY B SELESAI — `form_submissions_extend` jadi VIEW (`sql/52`, 2026-08-19)
+
+> ⏭️ **Bagian ini keadaan 2026-08-19 — view-nya sudah TIDAK ADA sejak 2026-08-30
+> (`sql/76`, §00W).** Dibiarkan utuh karena cara derisking-nya layak diulang, bukan
+> karena masih berlaku. Tiga trigger `INSTEAD OF` yang dijelaskan di sini sudah
+> dijatuhkan; penerusnya `create_ad_schedule()` (`sql/74`) dan
+> `enforce_extend_schedule_rules()` (`sql/75`).
 
 **`ad_schedules` resmi otoritatif untuk jadwal ke-2 dst.** Tabel
-`form_submissions_extend` sudah tidak ada; namanya kini view di atas
+`form_submissions_extend` sudah tidak ada; namanya saat itu jadi view di atas
 `ad_schedules`, ditulis lewat tiga trigger `INSTEAD OF`.
 
 **Cara derisking-nya — pola yang layak diulang:** sidik jari 21 kolom × 15
@@ -2726,8 +2795,8 @@ berubah serentak. 8B-2 keluar dari urutan ini — ia pindah jadi prasyarat Phase
 | ~~**8D**~~ | ~~`ad_schedules` mengenali Kilat~~ | ✅ **selesai & live 2026-08-05** (`sql/45`). Prasyarat Phase 3 yang pertama — sudah lunas. |
 | ~~**9**~~ | ~~Pisahkan status order dari status jadwal~~ | ✅ **selesai 2026-08-08.** 9A = `sql/46` (cermin dapat sumbu kedua), 9B = dashboard peneliti membacanya. Diadu atas seluruh 971 order: 664 identik, 307 berubah, semuanya perbaikan. **Belum tayang** — ikut branch ini. |
 | **10** | Satukan aturan waktu & pembayaran | Cutoff 13.00/14.00 WIB berlaku seragam ke semua jadwal; `transactions`/`invoices` pakai `schedule_id`; **"Mark as Paid" jadi per-jadwal** (sekarang order-level dan bisa menandai lunas order tanpa jadwal sama sekali — 3 dari 522 order terukur begitu). |
-| **11** | Pindahkan pembaca, lalu contract | ⚠️ View kompatibilitas WAJIB ada sebelum tabel aslinya disentuh, bukan sesudah. **Diperkecil oleh 8B-1:** `respondents.js` tidak lagi membaca `form_submissions_extend` sama sekali (query massalnya diganti RPC). Sisa pembaca serverless tinggal dua — `functions/api/storage-cleanup.js:74` dan `functions/api/doku/webhook.js:497,516` — plus pembaca di `src/`. |
-| **12** | Istilah — semua jadi "Jadwal Iklan 1/2/3" | 🟡 **Separuh, sengaja.** Copy yang dibaca peneliti & admin ✅ selesai 2026-08-08. Sisa: identifier kode (`ExtendSection`, `FormSubmissionExtend`, `entity_type='extend'`) — menunggu Task 11 langkah 5, karena selama tabelnya masih bernama itu penggantian cuma memindahkan kebingungan. Plus nama item invoice `'Extend Iklan (ads)'` yang menunggu finance. Berhenti di API: nama field publik (`period_batch`, `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut berganti. |
+| **11** | Pindahkan pembaca, lalu contract | ✅ **SELESAI 2026-08-30** (`sql/73`–`76` + 8 berkas kode) — lihat §00W. View kompatibilitas dicabut, `to_regclass` NULL. ⚠️ Pelajaran yang dibawa: view kompatibilitas WAJIB ada sebelum tabel aslinya disentuh, bukan sesudah — **dan mencabutnya wajib memindahkan dulu tanggung jawab trigger `INSTEAD OF`-nya** (`sql/75`), yang tidak ada di rencana dan nyaris membuat validasi tumpang tindih hilang diam-diam. |
+| **12** | Istilah — semua jadi "Jadwal Iklan 1/2/3" | 🟡 **Separuh, sengaja.** Copy yang dibaca peneliti & admin ✅ selesai 2026-08-08. Sisa: identifier kode (`ExtendSection`, `FormSubmissionExtend`, `entity_type='extend'`) plus **nilai data** `ad_schedules.source_table = 'form_submissions_extend'`. 🔓 **Penahannya sudah lepas** — Task 11 selesai 2026-08-30 dan tabel/view bernama itu tidak ada lagi (§00W); `FormSubmissionExtend` bahkan sudah jadi tipe menganggur di `supabase.ts`. Yang tersisa murni kosmetik + satu migrasi data yang menyentuh 9 fungsi pemakai literal dan `ad_schedules_source_table_check`. Plus nama item invoice `'Extend Iklan (ads)'` yang menunggu finance. Berhenti di API: nama field publik (`period_batch`, `batch_status`, `can_select_winners`, `prize_per_winner`, `winner_count`, `jakpat_id`) **tidak** ikut berganti. |
 | **13** | Tagihan fleksibel per jadwal | ⬜ **Disetujui 2026-08-09, terkunci di belakang Task 11.** Satu jadwal boleh punya beberapa invoice: tagihan susulan jadi **piutang yang terlihat** dan **tidak pernah menghentikan iklan yang sedang tayang**. Plus **batal reservasi per jadwal** dan **`is_extra_ad` pindah ke `ad_schedules`** (hari ini ia sifat ORDER — lihat jebakan no. 17). Sumber kebenaran uang pindah dari `ad_schedules.total_cost` ke invoice, yang sekalian membunuh `hasEverPaid`. **Sejak 2026-08-18 ia juga pembuka Phase 4** — harga per jadwal yang dilahirkannya adalah yang selama ini hilang (§00G). Rencana lengkap: [`2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md`](superpowers/plans/2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) |
 
 Setelah Phase 2: **Phase 3** (tab "Jadwal Iklan" terpadu di admin) menyusut jadi

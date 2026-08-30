@@ -110,6 +110,7 @@ sistem dan kolomnya tetap `pending` selamanya. Untuk pertanyaan uang, baca
 | `73` | **Langkah *contract* Task 11**: empat fungsi berhenti membaca view `form_submissions_extend` — `cron_activate_extends`, `get_batch_rewards_bulk`, `get_page_active_period`, `get_schedule_batch_context`. Nol fungsi tersisa yang mengaksesnya, jadi `DROP VIEW` tinggal menunggu sisi kode |
 | `74` | RPC `create_ad_schedule()` menggantikan INSERT lewat view. Memikul lima aturan `extend_view_insert()` — terutama **warisan `is_extra_ad` dari ordinal 1**. Wewenangnya LEBIH KETAT dari view yang digantikan: admin/`service_role` saja |
 | `75` | Tiga penjaga `extend_view_update()` pindah dari VIEW ke TABEL (`assert_schedule_window_free`, sumbu review ikut induk, `resync_ad_schedule_ordinals`). **Inilah yang membuat `DROP VIEW` aman** — tanpa ini, menggeser tanggal jadwal ke-2 berhenti divalidasi tumpang tindihnya |
+| `76` | **Task 11 selesai**: view `form_submissions_extend` dicabut, beserta tiga fungsi trigger `extend_view_insert/update/delete` yang jadi yatim. Sekalian menutup lubang RLS — view itu memberi `authenticated` GRANT tulis penuh lewat trigger `SECURITY DEFINER` yang nol memeriksa kepemilikan. Jalur pemulihan lengkap ada di dalam berkasnya |
 
 ⚠️ **`sync_ad_schedule_from_submission()` ditulis ulang utuh oleh ENAM berkas** —
 `41`, `45`, `46`, `49`, `51`, `70`. `CREATE OR REPLACE` mengganti seluruh badan,
@@ -130,11 +131,11 @@ tidak melakukan apa-apa; sentuh kolom yang terdaftar, mis.
 yang benar-benar tayang. Kolom itu maju saat ditulis dan tidak pernah mundur
 sendiri. Untuk pertanyaan "sedang tayang atau tidak", tanggal menang atas kolom.
 
-## Status terap (51–75)
+## Status terap (51–76)
 
 Diverifikasi langsung ke produksi (`zewuzezbmrmpttysjvpg`) dengan memeriksa objek
 yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-08-19,
-`61_custom_mission_requests` dan `67`–`72` pada 2026-08-26, `73`–`75` pada 2026-08-30.
+`61_custom_mission_requests` dan `67`–`72` pada 2026-08-26, `73`–`76` pada 2026-08-30.
 
 | berkas | isi | ada di produksi |
 |---|---|---|
@@ -166,6 +167,7 @@ yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-0
 | `73_move_functions_off_extend_view` | 4 fungsi pindah dari view `form_submissions_extend` ke `ad_schedules` | ✅ diterapkan 2026-08-30 — 7 sidik jari identik sebelum/sesudah |
 | `74_create_ad_schedule_rpc` | RPC `create_ad_schedule()` — pengganti INSERT lewat view | ✅ diterapkan 2026-08-30 — gerbang non-admin & warisan `is_extra_ad` diuji hidup |
 | `75_extend_rules_move_to_table` | penjaga jendela + sumbu review + resync ordinal jadi trigger `ad_schedules` | ✅ diterapkan 2026-08-30 — tumpang tindih terbukti ditolak lewat tulisan langsung |
+| `76_drop_extend_view` | view `form_submissions_extend` + 3 fungsi trigger yatim dicabut | ✅ diterapkan 2026-08-30 — `to_regclass` NULL, paritas 1006=1006 utuh, 7 trigger `ad_schedules` lengkap |
 
 Berkas di bawah 51 tidak dicatat statusnya satu per satu: aplikasi tidak akan
 berjalan tanpanya, jadi keberadaannya sudah terbukti setiap hari. Kalau ragu,
