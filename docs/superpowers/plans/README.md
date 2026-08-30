@@ -3,16 +3,21 @@
 Folder ini berisi rencana implementasi yang ditulis sebelum eksekusi. Sebagian sudah
 selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sekali.
 
-**Diperbarui 2026-08-18.**
+**Diperbarui 2026-08-30.**
 
 > Rencana **bukan** status berjalan. Untuk "di mana posisi kita sekarang", baca
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — itu titik masuk resmi
 > pekerjaan Jadwal Iklan dan selalu lebih mutakhir dari file mana pun di sini.
 
-> ⚠️ Satu rencana di sini **bukan** bagian Jadwal Iklan:
-> [webhook DOKU](2026-08-10-doku-webhook-silent-failure.md) lahir dari insiden pembayaran dan
-> berdiri sendiri. Ia mengambil `sql/54` supaya tidak menggeser nomor `50`–`53` yang sudah
-> diklaim `reward_pools`/Task 11/Task 13.
+> ⚠️ **Dua** rencana di sini **bukan** bagian Jadwal Iklan.
+>
+> 1. [webhook DOKU](2026-08-10-doku-webhook-silent-failure.md) lahir dari insiden pembayaran
+>    dan berdiri sendiri. Ia mengambil `sql/54` supaya tidak menggeser nomor `50`–`53` yang
+>    sudah diklaim `reward_pools`/Task 11/Task 13.
+> 2. [Kenaikan harga + voucher klaim](2026-08-30-kenaikan-harga-voucher-klaim.md) lahir dari
+>    arahan direksi soal tarif. Ia menyentuh jalur uang yang sama tapi tidak bergantung pada
+>    satu pun task Jadwal Iklan, dan **ditahan sadar 2026-08-30** sampai langkah *contract*
+>    `form_submissions_extend` selesai.
 
 > ⚠️ `sql/55` juga **tidak** punya dokumen rencana di folder ini — perbaikan langsung dari
 > sesi chat 2026-08-13, bukan rencana pra-tulis. Ia mengubah `ensure_survey_page()` (Phase 1,
@@ -104,6 +109,7 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 
 | Rencana | Status | Ringkas |
 |---|---|---|
+| [2026-08-30-kenaikan-harga-voucher-klaim](2026-08-30-kenaikan-harga-voucher-klaim.md) | ⬜ **belum dieksekusi — ditahan 2026-08-30** atas permintaan pemilik produk, supaya langkah *contract* `form_submissions_extend` selesai lebih dulu. Nol baris kode berubah | Tangga tarif naik ke **200/350/500/650/800** (kesepakatan 2026-07-20 yang tak pernah dijalankan) — **+65,2%** atas bauran order nyata, ±Rp 29,8jt → 49,2jt/bulan. Dilunakkan **halaman "Klaim Voucher" self-serve**: potongan persen bercap, sekali per akun, bermasa berlaku. JFUSUHUD dibiarkan mati 31 Agu 2026 dan voucher klaim jadi penggantinya. ⚠️ **`calculateAdCostPerDay()` tidak punya parameter tanggal** sementara `create-payment.js` menghitung ulang harga tiap kali orang menekan bayar — menaikkan tarif begitu saja akan menagih **80 order approved-belum-bayar** rata-rata **+Rp 230.000** (total +Rp 18,4jt) tanpa ada yang memberi tahu. Karena itu tangga tarif dibuat **ber-tanggal**, dan Fase 1 dikirim sebagai **no-op**. ⚠️ Titik harga ada **TIGA**, bukan empat — `StepOneFormFields` itu tangga *hadiah responden*, bukan tarif iklan |
 | [2026-08-10-doku-webhook-silent-failure](2026-08-10-doku-webhook-silent-failure.md) | ✅ **kode selesai & teruji lokal 2026-08-10** · ✅ **`sql/54` diterapkan** · ✅ **dideploy 2026-08-18** · ✅ **TERBUKTI JALAN 2026-08-18** — baris pertama `doku_webhook_events` mendarat dari pembayaran produksi nyata Rp 1.498.500 (VA Mandiri, `http_status` 200, `outcome` `ok`), dan itu terjadi **sesudah** `sql/52` sehingga sekalian membuktikan jalur uang selamat di atas view | Webhook DOKU dulu balas 200 walau tulis DB gagal — pembayaran hilang diam-diam (insiden Nur Fitriana, Rp 499.500). Sebabnya semua `fetch` ke PostgREST tidak memeriksa `res.ok`. Sekarang: `sbFetch` + cek jumlah baris berubah, kunci service-role fail-closed, balas 500 supaya DOKU retry (dibatasi 5x), jejak permanen di `doku_webhook_events` (`sql/54`), email admin, banner di halaman Keuangan. **Cloudflare Observability TIDAK tersedia untuk Pages** — itu sebabnya loggingnya di Supabase. **Jalur uang — rilis sendiri; terapkan `sql/54` SEBELUM deploy** |
 | [2026-08-09-order-flow-reorder](2026-08-09-order-flow-reorder.md) | ✅ **masuk `main` 2026-08-18** · 🟡 **cron `sql/48` direm sejak 2026-08-10 — hidupkan lagi SESUDAH deploy** | Wizard order user dibalik: Detail → Ringkasan → Jadwal & Bayar (dulu Jadwal sebelum Review); layar jadwal+countdown digabung, kedaluwarsa pulih di tempat; P0 kebocoran data anon (`sql/47`); dua email transisi via pg_cron/pg_net (`sql/48`). Verifikasi 6 skenario baru lewat code-trace, klik manual di browser masih PR. **Baca kotak koreksi 2026-08-10 di kepalanya** — tiga hal menyimpang dari badan dokumen |
 | [2026-08-10-order-form-back-cancel](2026-08-10-order-form-back-cancel.md) | ✅ **selesai, commit `3663bed`, masuk `main` 2026-08-18** | Tiap step order form dapat tombol "Kembali" di sebelah CTA-nya, dan panah mundur di bar floating berubah jadi `X` "Batalkan Pesanan" berdialog konfirmasi (buang draft → `/dashboard`). **Baca kotak koreksi 2026-08-18 di kepalanya** — bar floating kini hanya di Step 1 & 2, jadi `X`-nya tidak terjangkau dari Step 3/4 (disengaja) |
