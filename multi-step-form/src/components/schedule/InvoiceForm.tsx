@@ -375,15 +375,16 @@ export function InvoiceForm({
       // sengaja tidak — lihat catatan `total_cost` di kepala berkas.
       if (entry.isExtension) {
         await supabase
-          .from('form_submissions_extend')
+          .from('ad_schedules')
           .update({
             total_cost: grandTotal,
             subtotal,
             ppn_amount: ppn,
-            submission_status: 'waiting_payment',
+            status: 'waiting_payment',
             payment_status: 'pending',
           })
-          .eq('id', entry.sourceId);
+          .eq('source_table', 'form_submissions_extend')
+          .eq('source_id', entry.sourceId);
       }
 
       toast.success('Link pembayaran berhasil dibuat!');

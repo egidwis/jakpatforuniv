@@ -773,15 +773,27 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
 
   if (isExtendPayment) {
     // ───── EXTEND PAYMENT ─────
+    // Langsung ke `ad_schedules`, bukan lagi lewat view `form_submissions_extend`
+    // (langkah contract Task 11). Dua pemetaan yang WAJIB dibawa:
+    //   view.id                → source_id  (BUKAN ad_schedules.id)
+    //   view.submission_status → status
+    // dan filter `source_table` yang dulu dikerjakan view harus ikut eksplisit,
+    // kalau tidak `source_id` bisa bertabrakan dengan id jadwal ordinal 1.
+    //
+    // Yang HILANG dan memang boleh hilang: `extend_view_update()` ikut
+    // menyegarkan `review_status` dari induk. Di jalur ini induknya tidak
+    // disentuh, jadi anaknya sudah sinkron sebelum & sesudah — terukur nol
+    // baris menyimpang 2026-08-30. Propagasi tetap dijaga
+    // `sync_ad_schedule_from_submission` saat induk yang berubah.
     console.log(`[Extend] Updating extend ${txn.extend_id} payment_status to ${formPaymentStatus}`);
     await sbPatchExpectingRows(
       sb,
-      `form_submissions_extend?id=eq.${txn.extend_id}`,
+      `ad_schedules?source_table=eq.form_submissions_extend&source_id=eq.${txn.extend_id}`,
       {
         payment_status: formPaymentStatus,
-        ...(formSubmissionStatus === 'paid' ? { submission_status: 'scheduled' } : {})
+        ...(formSubmissionStatus === 'paid' ? { status: 'scheduled' } : {})
       },
-      'STEP 5 PATCH form_submissions_extend'
+      'STEP 5 PATCH ad_schedules (jadwal ke-2 dst.)'
     );
 
     // Check if banner update is needed (new rewards = new banner).
@@ -789,14 +801,15 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
     // pembayaran yang SUDAH tercatat lunas ikut dianggap gagal & di-retry.
     if (formPaymentStatus === 'paid') {
       try {
+        // ⚠️ `is_new_month` pada view = `is_new_period` pada ad_schedules.
         const extRes = await sbFetch(
-          `${sb.url}/rest/v1/form_submissions_extend?id=eq.${txn.extend_id}&select=is_new_month,additional_prize_per_winner`,
+          `${sb.url}/rest/v1/ad_schedules?source_table=eq.form_submissions_extend&source_id=eq.${txn.extend_id}&select=is_new_period,additional_prize_per_winner`,
           { headers: sb.headers },
-          'STEP 5 SELECT extend untuk cek banner'
+          'STEP 5 SELECT jadwal ke-2 dst. untuk cek banner'
         );
         const extData = await extRes.json();
         const ext = Array.isArray(extData) && extData.length > 0 ? extData[0] : null;
-        if (ext && (ext.is_new_month || (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0))) {
+        if (ext && (ext.is_new_period || (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0))) {
           console.log(`[Extend] Setting requires_banner_update=true for submission ${formSubmissionId}`);
           await sbFetch(
             `${sb.url}/rest/v1/survey_pages?submission_id=eq.${formSubmissionId}`,

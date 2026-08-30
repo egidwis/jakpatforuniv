@@ -10,7 +10,7 @@ import { MAX_EXTRA_ADS_PER_DAY, MAX_REGULAR_ADS_PER_DAY } from '@/utils/constant
 import {
   fetchSlotAvailability, setScheduleExtraAd, supabase, updateExtendScheduleDates,
   updateScheduleDates,
-  type AdScheduleEntry, type FormSubmissionExtend,
+  type AdScheduleEntry,
 } from '@/utils/supabase';
 import { nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
 import { isAiringNowSchedule, isSchedulePaid } from '@/components/status/scheduleAxes';
@@ -400,27 +400,33 @@ export function ScheduleForm({
       );
     }
 
-    const extendData: FormSubmissionExtend = {
-      submission_id: submissionId,
-      duration,
-      start_date: startIso,
-      end_date: endIso,
-      submission_status: 'waiting_payment',
-      payment_status: 'pending',
-      prize_per_winner: resolved.isNewBatch ? prizePerWinner : 0,
-      winner_count: resolved.isNewBatch ? winnerCount : 0,
-      additional_prize_per_winner: !resolved.isNewBatch ? additionalPrize : 0,
-      is_new_month: resolved.isNewBatch,
-      total_cost: 0,
-      slot_booked_by: 'admin',
+    // Lewat RPC `create_ad_schedule` (sql/74), bukan `.insert()` ke tabel mana pun.
+    //
+    // Jalur lamanya menulis ke view `form_submissions_extend`, dan trigger
+    // `INSTEAD OF INSERT`-nya mengerjakan LIMA aturan — menurunkan
+    // `distribution_type`/`review_status` dari induk, mewarisi `is_extra_ad`,
+    // memanggil `assert_schedule_window_free`, memetakan `is_new_month`, lalu
+    // `resync_ad_schedule_ordinals`. RPC ini memindahkan pemanggilnya tanpa
+    // memindahkan kelima aturan itu ke TypeScript, tempat ia akan menyimpang.
+    const { error } = await supabase.rpc('create_ad_schedule', {
+      p_submission_id: submissionId,
+      p_start_date: startIso,
+      p_end_date: endIso,
+      p_duration: duration,
+      p_prize_per_winner: resolved.isNewBatch ? prizePerWinner : 0,
+      p_winner_count: resolved.isNewBatch ? winnerCount : 0,
+      p_additional_prize_per_winner: !resolved.isNewBatch ? additionalPrize : 0,
+      p_is_new_period: resolved.isNewBatch,
+      p_status: 'waiting_payment',
+      p_payment_status: 'pending',
+      p_total_cost: 0,
+      p_slot_booked_by: 'admin',
       // Dikirim EKSPLISIT, tidak dibiarkan kosong: kosong berarti "warisi
-      // jadwal ordinal 1" di `extend_view_insert()`, dan di sini admin sudah
-      // menyatakan pilihannya lewat toggle. Untuk order Kilat nilainya
-      // dibersihkan trigger — kolam tambahan tidak berlaku di sana.
-      is_extra_ad: isExtraMode,
-    };
-
-    const { error } = await supabase.from('form_submissions_extend').insert([extendData]);
+      // jadwal ordinal 1" di dalam RPC, dan di sini admin sudah menyatakan
+      // pilihannya lewat toggle. Untuk order Kilat nilainya dibersihkan
+      // trigger — kolam tambahan tidak berlaku di sana.
+      p_is_extra_ad: isExtraMode,
+    });
     if (error) throw error;
 
     toast.success('Jadwal iklan baru dibuat.');

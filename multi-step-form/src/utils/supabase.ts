@@ -695,26 +695,12 @@ export const getTransactionsByFormSubmissionId = async (formSubmissionId: string
   }
 };
 
-// Ambil semua extend durasi untuk sekumpulan submission sekaligus (batch).
-// Dipakai readonly di dashboard user (RLS mengizinkan user membaca extend miliknya).
-export const getExtendsBySubmissionIds = async (
-  submissionIds: string[]
-): Promise<FormSubmissionExtend[]> => {
-  if (!submissionIds.length) return [];
-  try {
-    const { data, error } = await supabase
-      .from('form_submissions_extend')
-      .select('*')
-      .in('submission_id', submissionIds)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return (data || []) as FormSubmissionExtend[];
-  } catch (error) {
-    console.error('Error getting extends by submission ids:', error);
-    return [];
-  }
-};
+// `getExtendsBySubmissionIds` DIHAPUS 2026-08-30 (langkah contract Task 11).
+// Ia satu-satunya pembaca `select('*')` dari view, dan ternyata KODE MATI —
+// nol pemanggil di seluruh repo, termasuk spec. Memindahkannya ke `ad_schedules`
+// berarti menulis pemeta kolom (source_id→id, status→submission_status,
+// is_new_period→is_new_month) untuk fungsi yang tidak pernah dipanggil siapa pun.
+// Preseden yang sama dipakai saat `updatePaymentStatus` dibuang di §00T.
 
 // Halaman iklan (survey_pages) per submission — link publik (slug) + jumlah
 // views, ditampilkan sebagai satu blok order-level (satu halaman dipakai
@@ -902,10 +888,14 @@ export const markScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Schedu
   if (txnErr) throw txnErr;
 
   if (entry.isExtension) {
+    // ⚠️ `entry.sourceId` = `ad_schedules.source_id`, BUKAN `ad_schedules.id`.
+    // Filter `source_table` ikut eksplisit: tanpa itu `source_id` bisa
+    // bertabrakan dengan id order pada baris ordinal 1.
     const { data, error } = await supabase
-      .from('form_submissions_extend')
-      .update({ payment_status: 'paid', submission_status: 'scheduled' })
-      .eq('id', entry.sourceId)
+      .from('ad_schedules')
+      .update({ payment_status: 'paid', status: 'scheduled' })
+      .eq('source_table', 'form_submissions_extend')
+      .eq('source_id', entry.sourceId)
       .select('id');
     if (error) throw error;
     assertScheduleRowTouched(data, entry);
@@ -967,10 +957,12 @@ export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Sche
   if (txnErr) throw txnErr;
 
   if (entry.isExtension) {
+    // Pemetaan sama seperti markScheduleAsPaid: source_id + filter source_table.
     const { data, error } = await supabase
-      .from('form_submissions_extend')
-      .update({ payment_status: 'pending', submission_status: 'waiting_payment' })
-      .eq('id', entry.sourceId)
+      .from('ad_schedules')
+      .update({ payment_status: 'pending', status: 'waiting_payment' })
+      .eq('source_table', 'form_submissions_extend')
+      .eq('source_id', entry.sourceId)
       .select('id');
     if (error) throw error;
     assertScheduleRowTouched(data, entry);
@@ -1965,11 +1957,15 @@ export const updateScheduleDates = async (
     //    the airing window. If the survey has a later schedule, the page's
     //    publish_* window belongs to cron_activate_extends, and rewriting it
     //    from the first schedule's period takes a running ad off the air.
+    // ⚠️ Filter `source_table` WAJIB. Tanpa itu baris ordinal 1 order ini
+    // sendiri ikut terhitung sebagai "jadwal lain", `ownsAiringWindow` selalu
+    // false, dan sinkronisasi ke survey_pages berhenti total tanpa error.
     const { data: otherSchedules, error: otherError } = await supabase
-      .from('form_submissions_extend')
+      .from('ad_schedules')
       .select('id')
+      .eq('source_table', 'form_submissions_extend')
       .eq('submission_id', submissionId)
-      .in('submission_status', ['waiting_payment', 'paid', 'scheduled', 'live'])
+      .in('status', ['waiting_payment', 'paid', 'scheduled', 'live'])
       .limit(1);
 
     // Fail safe: if the check itself failed, skip the sync rather than risk
@@ -2049,13 +2045,14 @@ export const updateExtendScheduleDates = async (
   minuteWib: number = 0
 ) => {
   const { error } = await supabase
-    .from('form_submissions_extend')
+    .from('ad_schedules')
     .update({
       start_date: toAiringStartIso(startYmd, hourWib, minuteWib),
       end_date: toAiringEndIso(startYmd, durationDays, hourWib, minuteWib),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', extendId);
+    .eq('source_table', 'form_submissions_extend')
+    .eq('source_id', extendId);
 
   if (error) throw error;
   return true;
@@ -2815,20 +2812,20 @@ export const cancelSchedule = async (entry: {
   const unpaidOnly = '("paid","completed")';
 
   if (entry.isExtension) {
-    // CHECK di form_submissions_extend menerima
-    // waiting_payment|paid|scheduled|live|completed|cancelled — dan di tabel
-    // ini `submission_status` MEMANG kosakata sumbu tayang, jadi 'cancelled'
-    // langsung tepat. Mirror menulisnya apa adanya ke `ad_schedules.status`.
+    // `ad_schedules.status` MEMANG kosakata sumbu tayang, jadi 'cancelled'
+    // langsung tepat — dulu ini ditulis lewat view sebagai `submission_status`,
+    // dan mirror-nya meneruskannya apa adanya ke kolom yang sama ini.
     const { data, error } = await supabase
-      .from('form_submissions_extend')
+      .from('ad_schedules')
       .update({
-        submission_status: 'cancelled',
+        status: 'cancelled',
         // Tanggal TETAP. Yang dilepas adalah tahanannya, bukan riwayatnya.
         slot_booked_by: null,
         slot_reserved_at: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', entry.sourceId)
+      .eq('source_table', 'form_submissions_extend')
+      .eq('source_id', entry.sourceId)
       .not('payment_status', 'in', unpaidOnly)
       .select('id');
     if (error) throw error;

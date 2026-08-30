@@ -70,9 +70,14 @@ export async function onRequestPost(context) {
         const candidateSubmissionIds = [...new Set(expiredPages.map(p => p.submission_id).filter(Boolean))];
         let protectedSubmissionIds = new Set();
         if (candidateSubmissionIds.length > 0) {
+            // Langsung ke `ad_schedules` (langkah contract Task 11). Filter
+            // `source_table` yang dulu dikerjakan view WAJIB ikut eksplisit —
+            // tanpa itu jadwal ordinal 1 ikut terbaca dan setiap halaman jadi
+            // "terlindungi", sehingga pembersihan tidak pernah menghapus apa pun.
             const { data: activeExtends } = await supabase
-                .from('form_submissions_extend')
+                .from('ad_schedules')
                 .select('submission_id, end_date, payment_status')
+                .eq('source_table', 'form_submissions_extend')
                 .in('submission_id', candidateSubmissionIds)
                 .eq('payment_status', 'paid')
                 .gte('end_date', sevenDaysAgo.toISOString());

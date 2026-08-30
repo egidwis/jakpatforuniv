@@ -180,11 +180,16 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 let hasOther = false;
                 if (submissionId) {
                     try {
+                        // Filter `source_table` WAJIB: tanpa itu baris ordinal 1
+                        // order ini sendiri ikut terhitung sebagai "jadwal lain",
+                        // hasOther selalu true, dan tanggal halaman tidak pernah
+                        // lagi disinkronkan.
                         const { data: others } = await supabase
-                            .from('form_submissions_extend')
+                            .from('ad_schedules')
                             .select('id')
+                            .eq('source_table', 'form_submissions_extend')
                             .eq('submission_id', submissionId)
-                            .in('submission_status', ['waiting_payment', 'paid', 'scheduled', 'live'])
+                            .in('status', ['waiting_payment', 'paid', 'scheduled', 'live'])
                             .limit(1);
                         hasOther = !!(others && others.length > 0);
                     } catch (e) {
