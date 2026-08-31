@@ -166,7 +166,25 @@ export function SubmissionDetailSheet({
   const [footerEl, setFooterEl] = useState<HTMLDivElement | null>(null);
 
   // Local state for Review tab inline editing & progressive disclosure
-  const [questionCountInput, setQuestionCountInput] = useState<number>(submission?.questionCount || 0);
+  /**
+   * ⚠️ TEKS, BUKAN ANGKA — supaya kotaknya bisa DIKOSONGKAN saat mengetik.
+   *
+   * Versi lama menyimpan angka dan menjepitnya di setiap ketukan tombol:
+   * `Math.max(1, parseInt(v) || 1)`. Menghapus isi kotak menghasilkan `""` →
+   * `parseInt` NaN → dijepit jadi **1**. Jadi admin yang menghapus "38" untuk
+   * mengetik "36" melihat kotaknya melompat ke "1", lalu ketikannya menempel
+   * di belakangnya jadi "136". Mengoreksi angka dengan cara paling wajar —
+   * hapus dulu, ketik ulang — mustahil.
+   */
+  const [qtyText, setQtyText] = useState<string>(String(submission?.questionCount || 0));
+  /** Admin sudah menyentuh kotak Qty dan belum menyimpannya lewat Approve. */
+  const [qtyDirty, setQtyDirty] = useState(false);
+
+  const parsedQty = parseInt(qtyText, 10);
+  /** Kosong atau <1 bukan koreksi yang sah — Approve ditahan, bukan menebak. */
+  const qtyIsValid = Number.isFinite(parsedQty) && parsedQty >= 1;
+  const questionCountInput = qtyIsValid ? parsedQty : (submission?.questionCount || 0);
+  const setQuestionCountInput = (n: number) => setQtyText(String(n));
   const [isRejectMode, setIsRejectMode] = useState(false);
   const [isSpamConfirmOpen, setIsSpamConfirmOpen] = useState(false);
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
@@ -179,6 +197,22 @@ export function SubmissionDetailSheet({
   // Dihitung dari `submission.status` mentah, bukan `lifecycle`: `lifecycle`
   // baru ada setelah early-return di bawah.
   const rawReviewStatus = submission?.status;
+
+  /**
+   * ⚠️ HANYA `submissionId` YANG BOLEH MERESET LAYAR INI.
+   *
+   * Dulu daftar dependensinya juga memuat `submission?.questionCount` dan
+   * `rawReviewStatus` — dua nilai yang berubah sebagai AKIBAT dari aksi admin
+   * sendiri. Jadi tepat sesudah Approve berhasil, seluruh isi efek ini
+   * dijalankan ulang pada order yang SAMA: tab dilempar dari Review ke Info
+   * (karena statusnya bukan lagi in_review), catatan review dikosongkan, dan
+   * kotak Qty ditimpa ulang. Itulah "halamannya reload sendiri" yang dilaporkan
+   * admin — dan angka yang ditulis ulang ke kotak Qty saat itu adalah angka
+   * dari baris yang belum sempat di-refresh, alias angka LAMA.
+   *
+   * Mereset karena order lain dibuka: benar. Mereset karena order ini berubah:
+   * membuang pekerjaan admin yang sedang berjalan.
+   */
   useEffect(() => {
     const opensOnReview = !rawReviewStatus
       || rawReviewStatus === 'in_review'
@@ -196,11 +230,26 @@ export function SubmissionDetailSheet({
     );
     setSubView(null);
     setQuestionCountInput(submission?.questionCount || 0);
+    setQtyDirty(false);
     setIsRejectMode(false);
     setIsSpamConfirmOpen(false);
     setIsCancelConfirmOpen(false);
     setIsSavingApprove(false);
-  }, [submissionId, submission?.questionCount, rawReviewStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submissionId]);
+
+  /**
+   * Kotak Qty mengikuti nilai tersimpan — KECUALI admin sedang mengetik.
+   *
+   * Tanpa cabang `qtyDirty`, refresh latar apa pun (dan yang paling sering:
+   * refresh yang dipicu penyimpanan Approve itu sendiri) menimpa angka yang
+   * baru diketik admin. Dengan `qtyDirty`, angka yang sudah tersimpan tetap
+   * menyusul ke layar, tapi ketikan yang belum disimpan tidak pernah hilang.
+   */
+  useEffect(() => {
+    if (qtyDirty) return;
+    setQuestionCountInput(submission?.questionCount || 0);
+  }, [submission?.questionCount, qtyDirty]);
 
   // Niat dari luar (baris tabel, kartu mobile) mendarat di tab yang benar; jadwal
   // mana yang disunting diresolusi SchedulePaymentTab setelah daftarnya termuat.
@@ -539,6 +588,9 @@ export function SubmissionDetailSheet({
           `Jumlah pertanyaan diperbarui menjadi ${questionCountInput} Q`
           + (priced ? ` · ${priced}` : ''),
         );
+        // Sudah mendarat di DB — penanda "belum disimpan" dilepas, dan kotaknya
+        // boleh ikut nilai tersimpan lagi pada refresh berikutnya.
+        setQtyDirty(false);
         onExtendCreated();
       }
       // `undefined`, bukan `''` — `updateFormStatus` menulis admin_notes kapan
@@ -577,17 +629,37 @@ export function SubmissionDetailSheet({
   // Minta Perbaikan). Keputusan langka dan tak terpulihkan — Batalkan Pesanan,
   // Tandai Tidak Valid — pindah ke menu ⋯. Kapasitasnya naik, lebarnya tidak.
   const stepperQty = (
-    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 shrink-0">
-      <span className="text-[11px] font-semibold text-slate-500">Qty:</span>
+    <div
+      className={`flex items-center gap-1.5 border rounded-md px-2 py-1 shrink-0 transition-colors ${
+        qtyDirty ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'
+      }`}
+    >
+      <span className={`text-[11px] font-semibold ${qtyDirty ? 'text-amber-700' : 'text-slate-500'}`}>
+        Qty:
+      </span>
       <input
         type="number"
         min="1"
-        value={questionCountInput}
-        onChange={(e) => setQuestionCountInput(Math.max(1, parseInt(e.target.value) || 1))}
-        className="w-11 h-6 text-xs font-semibold text-center bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+        value={qtyText}
+        onChange={(e) => {
+          setQtyText(e.target.value);
+          setQtyDirty(true);
+        }}
+        className={`w-11 h-6 text-xs font-semibold text-center bg-white border rounded focus:outline-none focus:ring-1 ${
+          qtyIsValid ? 'border-slate-200 focus:ring-blue-500' : 'border-red-300 focus:ring-red-500'
+        }`}
         title="Koreksi jumlah pertanyaan jika berbeda dengan klaim user"
       />
-      <span className="text-[11px] text-slate-500 font-medium">Q</span>
+      <span className={`text-[11px] font-medium ${qtyDirty ? 'text-amber-700' : 'text-slate-500'}`}>Q</span>
+      {/* Angka di kotak ini baru mendarat di database saat Approve ditekan.
+          Tanpa penanda itu, admin yang mengetik lalu berpindah tab / me-refresh
+          wajar menyangka koreksinya sudah tersimpan — lalu menemukan angka
+          lamanya kembali dan menyimpulkan sistemnya yang salah baca. */}
+      {qtyDirty && (
+        <span className="text-[10px] font-medium text-amber-700 whitespace-nowrap">
+          belum disimpan
+        </span>
+      )}
     </div>
   );
 
@@ -640,8 +712,14 @@ export function SubmissionDetailSheet({
     <Button
       type="button"
       size="sm"
-      disabled={isSavingApprove || !canApprove}
-      title={canApprove ? undefined : 'Order ini tidak punya link kuesioner untuk di-review'}
+      disabled={isSavingApprove || !canApprove || !qtyIsValid}
+      title={
+        !canApprove
+          ? 'Order ini tidak punya link kuesioner untuk di-review'
+          : !qtyIsValid
+            ? 'Isi jumlah pertanyaan (minimal 1) sebelum approve'
+            : undefined
+      }
       className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold disabled:opacity-50"
       onClick={handleApprove}
     >

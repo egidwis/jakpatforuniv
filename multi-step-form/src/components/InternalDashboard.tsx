@@ -23,6 +23,7 @@ import type { SurveySubmission, PaymentState, ReviewHistoryEntry, ExistingPage }
 import { deriveLifecycle } from './submissions/lifecycle';
 import { SubmissionListRow } from './submissions/SubmissionListRow';
 import { SubmissionDetailSheet } from './submissions/SubmissionDetailSheet';
+import { mergeServerRow } from './submissions/mergeServerRow';
 import { useRowSelection } from './data-list/useRowSelection';
 import { missedPaymentWindow } from '../utils/missedPaymentWindow';
 
@@ -752,7 +753,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
     previousStatus?: string
   ) => {
     try {
-      await updateFormStatus(submissionId, newStatus, notes, reviewHistory);
+      const savedRow = await updateFormStatus(submissionId, newStatus, notes, reviewHistory);
 
       if (previousStatus !== newStatus) {
         // Sengaja tidak di-`await`: email tidak boleh menahan layar, dan
@@ -760,20 +761,24 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
         void notifyReviewResult(submissionId, newStatus);
       }
 
-      const updateState = (prev: SurveySubmission[]) =>
-        prev.map(s =>
-          s.id === submissionId
-            ? {
-                ...s,
-                status: newStatus,
-                submission_status: newStatus,
-                admin_notes: notes !== undefined ? notes : s.admin_notes,
-                review_history: reviewHistory || s.review_history,
-              }
-            : s
-        );
-
-      setSubmissions(updateState);
+      // ⚠️ BARIS DARI SERVER, BUKAN TAMBALAN DARI SNAPSHOT LAYAR.
+      //
+      // Approve di tab Review menulis TIGA kali berurutan: `question_count`
+      // baru, harga yang dihitung ulang darinya, lalu status ini. Versi lama
+      // menyusun ulang barisnya sendiri (`{ ...s, status, admin_notes,
+      // review_history }`), jadi `...s` membawa `questionCount` dan
+      // `total_cost` SEBELUM koreksi ikut terbang — dan tambalan itu mendarat
+      // lebih dulu daripada `loadSubmissions()` yang menyusul (satu PATCH kecil
+      // vs satu GET 50 baris). Hasilnya: koreksi 38 → 36 Q tampak batal di
+      // layar padahal DB-nya benar, dan admin mengulanginya.
+      //
+      // Urutan sebaliknya sama rusaknya — tambalan yang mendarat belakangan
+      // menimpa data segar dengan snapshot basi. Karena itu bukan urutannya
+      // yang diperbaiki, melainkan sumbernya: `updateFormStatus` sudah
+      // memulangkan baris hasilnya lewat `.select()`; pakai baris itu.
+      setSubmissions((prev) =>
+        prev.map((s) => (s.id === submissionId ? mergeServerRow(s, savedRow) : s))
+      );
       // filteredSubmissions will be updated by useEffect
 
       toast.success('Status updated successfully');

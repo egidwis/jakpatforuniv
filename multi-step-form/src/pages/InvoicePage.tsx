@@ -178,22 +178,20 @@ export function InvoicePage() {
                 }
             }
 
-            if (transaction.entity_type === 'extend' && transaction.extend_id && (!sched.startDate || !sched.endDate)) {
-                try {
-                    const { data: extendRow } = await supabase
-                        .from('form_submissions_extend')
-                        .select('start_date, end_date, duration')
-                        .eq('id', transaction.extend_id)
-                        .maybeSingle();
-                    if (extendRow) {
-                        sched.startDate = sched.startDate || extendRow.start_date;
-                        sched.endDate = sched.endDate || extendRow.end_date;
-                        sched.duration = sched.duration ?? extendRow.duration;
-                    }
-                } catch (extErr) {
-                    console.warn('Extend row query unavailable:', extErr);
-                }
-            }
+            // ⚠️ TIDAK ADA LAGI CADANGAN LEWAT `form_submissions_extend`.
+            //
+            // Viewnya DICABUT di sql/76 (Task 11) — `to_regclass` sudah NULL di
+            // produksi. Cadangan ini bukan cuma mati, ia BERISIK dan MENYESATKAN:
+            // PostgREST membalas 404 untuk relasi yang tidak ada, jadi tiap
+            // invoice extend yang jatuh ke sini mencetak error di console yang
+            // tidak menandakan apa pun tentang invoice-nya.
+            //
+            // Dan ia memang tidak diperlukan: `ad_schedules` di atas sudah
+            // dicari lewat `source_id`, yang untuk jadwal ke-2 dst. PERSIS berisi
+            // id extend yang dulu dibaca di sini (`source_id = extend.id`,
+            // `source_table = 'form_submissions_extend'`). Satu lookup menutup
+            // kedua ordinal; yang kedua ini hanya menanyakan hal yang sama ke
+            // relasi yang sudah tidak ada.
 
             setSchedule(sched);
 
