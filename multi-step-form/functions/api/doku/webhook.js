@@ -33,6 +33,179 @@ import { sendWebhookAlert } from './_webhook-alert.js';
 // email alert tetap ada, jadi tidak ada yang hilang; yang berhenti hanya retry.
 const MAX_WRITE_ATTEMPTS = 5;
 
+// ============================================================================
+// PENOLAKAN PUN HARUS PUNYA JEJAK (2026-08-31)
+// ============================================================================
+// sql/54 menutup kegagalan TULIS. Yang masih buta: kegagalan MASUK. Ketiga
+// jalan penolakan di bawah dulu `return` sebelum recordWebhookEvent() sempat
+// dipanggil, jadi dari sisi kita "DOKU tidak pernah menelepon" dan "DOKU
+// menelepon lalu kita tolak" terlihat SAMA PERSIS: nol baris.
+//
+// Terukur mahal 2026-08-31 (invoice JFU-ac75fa15-1788158299791, Rp 555.000):
+// notification URL produk QRIS di dashboard DOKU menunjuk BO DOKU sendiri.
+// Membuktikannya butuh screenshot dashboard DOKU, karena database kita tidak
+// bisa membedakan kedua kemungkinan itu.
+//
+// Nilai-nilai ini WAJIB ada di CHECK constraint doku_webhook_events (sql/77).
+// Menambah nilai baru di sini tanpa migrasi = INSERT ditolak 400 oleh PostgREST
+// = penolakannya gagal dicatat = persis kebutaan yang sedang ditutup.
+export const REJECT_OUTCOMES = {
+  auth: 'rejected_auth',        // ditolak di gerbang autentikasi  → 401
+  payload: 'rejected_payload',  // lolos auth tapi badannya tak terbaca → 400
+  crash: 'handler_crashed',     // error tak terduga di handler    → 500
+};
+
+/**
+ * Nomor invoice dari badan mentah, tanpa mempercayainya.
+ *
+ * Dipakai HANYA untuk memberi nama pada baris audit penolakan — request yang
+ * ditolak tidak pernah menyentuh database selain lewat `recordWebhookEvent`.
+ * TIDAK PERNAH melempar: badan request yang ditolak justru yang paling mungkin
+ * bukan JSON, dan sebuah lemparan di sini akan menghapus jejak yang sedang
+ * dicoba direkam.
+ */
+export function sniffInvoiceNumber(rawBodyText) {
+  if (!rawBodyText || typeof rawBodyText !== 'string') return null;
+  try {
+    const d = JSON.parse(rawBodyText);
+    return d?.order?.invoice_number || d?.trxId || d?.payout?.invoice_number || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Gerbang autentikasi DOKU — memberi VERDICT, bukan Response.
+ *
+ * Sengaja dipisah dari `onRequest`: selama ia membalas sendiri, setiap cabang
+ * penolakan adalah `return` yang melewati pencatatan. Sebagai fungsi murni ia
+ * memaksa pemanggilnya melewati SATU titik yang mencatat, dan bisa diuji tanpa
+ * Cloudflare (lihat webhook.spec.js).
+ *
+ * Urutannya TIDAK boleh dibalik: cek secret harus mendahului deteksi format,
+ * karena format dipilih dari header yang DIKIRIM PEMANGGIL — tanpa itu penyerang
+ * bebas memilih cabang terlemah.
+ */
+export async function verifyDokuAuth({ headers, requestUrl, env, rawBodyText }) {
+  // ── Gerbang 1: secret di URL ──────────────────────────────────────────────
+  const providedSecret = new URL(requestUrl).searchParams.get('k');
+  const expectedSecret = env.DOKU_WEBHOOK_SECRET;
+  const secretOk = !!expectedSecret && providedSecret === expectedSecret;
+
+  if (!secretOk) {
+    if (env.WEBHOOK_ENFORCE_SECRET === 'true') {
+      console.error('[webhook] Rejected: missing/invalid ?k= secret (enforcement on)');
+      return { ok: false, httpStatus: 401, error: 'Unauthorized', detail: 'Secret ?k= hilang/salah (enforcement hidup).' };
+    }
+    console.warn('[webhook] MISSING SECRET — request without valid ?k= was still processed (enforcement off). Update the DOKU Notification URL, then set WEBHOOK_ENFORCE_SECRET=true.');
+  }
+
+  const secretKey = env.DOKU_SECRET_KEY;
+  const ourClientId = env.DOKU_CLIENT_ID || env.VITE_DOKU_CLIENT_ID;
+
+  // ── Gerbang 2: deteksi format lalu validasi sesuai formatnya ──────────────
+  // SNAP (Sub Account/SAC): CHANNEL-ID: H2H + X-PARTNER-ID
+  // SNAP B2B (Payouts):     X-Client-Key + X-Signature + X-Timestamp
+  // Jokul (legacy):         Client-Id + Signature (HMAC-SHA256)
+  const channelId = headers.get('CHANNEL-ID') || headers.get('Channel-Id');
+  const isSnapFormat = channelId === 'H2H' || headers.get('X-PARTNER-ID') || headers.get('X-Partner-Id');
+
+  const xClientKey = headers.get('x-client-key') || headers.get('X-Client-Key');
+  const xSignature = headers.get('x-signature') || headers.get('X-Signature');
+  const xTimestamp = headers.get('x-timestamp') || headers.get('X-Timestamp');
+  const isSnapB2BFormat = !!xClientKey && !!xSignature && !!xTimestamp;
+
+  if (isSnapFormat) {
+    // DOKU SNAP VA tidak mengirim Signature dalam format HMAC yang sama, jadi
+    // validasinya lewat kecocokan X-PARTNER-ID dengan Client ID kita.
+    const snapPartnerId = headers.get('X-PARTNER-ID') || headers.get('X-Partner-Id');
+    const snapExternalId = headers.get('X-EXTERNAL-ID') || headers.get('X-External-Id');
+    const snapTimestamp = headers.get('X-TIMESTAMP') || headers.get('X-Timestamp');
+
+    console.log(`[SNAP Webhook] CHANNEL-ID: ${channelId}, X-PARTNER-ID: ${snapPartnerId}, X-EXTERNAL-ID: ${snapExternalId}, X-TIMESTAMP: ${snapTimestamp}`);
+    console.log(`[SNAP Webhook] Signature headers (logged, not enforced): X-SIGNATURE: ${headers.get('X-SIGNATURE') || headers.get('X-Signature')}`);
+
+    if (!snapPartnerId || !snapExternalId || !snapTimestamp) {
+      console.error('[SNAP Webhook] Missing required SNAP headers');
+      return { ok: false, httpStatus: 401, error: 'Missing SNAP headers', detail: 'Header SNAP wajib tidak lengkap.' };
+    }
+
+    // Fail-closed: tanpa DOKU_CLIENT_ID kita tidak bisa memvalidasi siapa pun.
+    if (!ourClientId || snapPartnerId !== ourClientId) {
+      console.error(`[SNAP Webhook] X-PARTNER-ID mismatch or DOKU_CLIENT_ID unset: got ${snapPartnerId}`);
+      return { ok: false, httpStatus: 401, error: 'Partner ID mismatch', detail: `X-PARTNER-ID tidak cocok (dapat ${snapPartnerId}) atau DOKU_CLIENT_ID kosong.` };
+    }
+
+    console.log('[SNAP Webhook] Validated OK via X-PARTNER-ID match');
+    return { ok: true, format: 'snap' };
+  }
+
+  if (isSnapB2BFormat) {
+    console.log(`[SNAP B2B Webhook] X-CLIENT-KEY: ${xClientKey}, X-TIMESTAMP: ${xTimestamp}`);
+
+    if (!ourClientId || xClientKey !== ourClientId) {
+      console.error(`[SNAP B2B Webhook] X-CLIENT-KEY mismatch or DOKU_CLIENT_ID unset: got ${xClientKey}`);
+      return { ok: false, httpStatus: 401, error: 'Client Key mismatch', detail: `X-CLIENT-KEY tidak cocok (dapat ${xClientKey}) atau DOKU_CLIENT_ID kosong.` };
+    }
+
+    console.log('[SNAP B2B Webhook] Validated OK via X-CLIENT-KEY match');
+    return { ok: true, format: 'snap_b2b' };
+  }
+
+  // ── Jokul (legacy HMAC-SHA256) ────────────────────────────────────────────
+  const incomingSignature = headers.get('Signature');
+  const clientId = headers.get('Client-Id');
+  const requestId = headers.get('Request-Id');
+  const requestTimestamp = headers.get('Request-Timestamp');
+
+  if (!incomingSignature || !clientId || !requestId || !requestTimestamp || !secretKey) {
+    console.error('Missing required Jokul webhook headers or secret key', {
+      incomingSignature: !!incomingSignature,
+      clientId: !!clientId,
+      requestId: !!requestId,
+      requestTimestamp: !!requestTimestamp,
+      secretKey: !!secretKey,
+    });
+    return { ok: false, httpStatus: 401, error: 'Unauthorized or missing headers', detail: 'Header Jokul wajib / DOKU_SECRET_KEY tidak lengkap.' };
+  }
+
+  const requestTarget = new URL(requestUrl).pathname;
+
+  // 1. Digest: Base64(SHA256(Raw Request Body))
+  const enc = new TextEncoder();
+  const digestBuffer = await crypto.subtle.digest('SHA-256', enc.encode(rawBodyText));
+  const digest = btoa(String.fromCharCode(...new Uint8Array(digestBuffer)));
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secretKey),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signFor = async (target) => {
+    const stringToSign = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${target}\nDigest:${digest}`;
+    const buf = await crypto.subtle.sign('HMAC', key, enc.encode(stringToSign));
+    return 'HMACSHA256=' + btoa(String.fromCharCode(...new Uint8Array(buf)));
+  };
+
+  const mySignature = await signFor(requestTarget);
+  if (incomingSignature !== mySignature) {
+    console.error('Signature mismatch!');
+    console.error('Incoming:', incomingSignature);
+    console.error('Calculated:', mySignature);
+
+    // Fallback kalau yang beda hanya trailing slash pada Request-Target.
+    const fallbackTarget = requestTarget.endsWith('/') ? requestTarget.slice(0, -1) : requestTarget + '/';
+    if (incomingSignature !== (await signFor(fallbackTarget))) {
+      return { ok: false, httpStatus: 401, error: 'Invalid Signature', detail: 'Signature Jokul tidak cocok (termasuk varian trailing slash).' };
+    }
+  }
+
+  return { ok: true, format: 'jokul' };
+}
+
 export async function onRequest(context) {
   // Hanya terima metode POST
   if (context.request.method !== 'POST') {
@@ -46,184 +219,50 @@ export async function onRequest(context) {
   }
 
   // ======================================================================
-  // SECRET URL CHECK — must run BEFORE format detection. The format branch
-  // (SNAP / SNAP B2B / Jokul) is chosen from headers the CALLER sends, so an
-  // attacker can pick the weakest branch; the secret only closes that if it
-  // applies to every branch without exception.
-  // Rollout: with WEBHOOK_ENFORCE_SECRET !== 'true' requests without the
-  // secret are still processed but logged (stage A); set it to 'true' once
-  // the DOKU dashboard Notification URL carries ?k=<secret> (stage B).
+  // SATU PINTU MASUK, SATU TITIK PENCATATAN.
+  //
+  // Badan request dibaca DULUAN supaya penolakan pun bisa menyebut nomor
+  // invoice-nya. Itu aman: `verifyDokuAuth` tidak mempercayai isinya — badan
+  // cuma dipakai untuk menghitung digest Jokul dan untuk memberi nama pada
+  // baris audit. Urutan "cek secret SEBELUM deteksi format" tetap dijaga, kini
+  // di dalam fungsi itu.
   // ======================================================================
-  {
-    const requestUrl = new URL(context.request.url);
-    const providedSecret = requestUrl.searchParams.get('k');
-    const expectedSecret = context.env.DOKU_WEBHOOK_SECRET;
-    const secretOk = !!expectedSecret && providedSecret === expectedSecret;
-
-    if (!secretOk) {
-      if (context.env.WEBHOOK_ENFORCE_SECRET === 'true') {
-        console.error('[webhook] Rejected: missing/invalid ?k= secret (enforcement on)');
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-      console.warn('[webhook] MISSING SECRET — request without valid ?k= was still processed (enforcement off). Update the DOKU Notification URL, then set WEBHOOK_ENFORCE_SECRET=true.');
-    }
-  }
-
+  let rawBodyText = '';
   try {
-    const rawBodyText = await context.request.text();
-    const headers = context.request.headers;
+    rawBodyText = await context.request.text();
 
-    const secretKey = context.env.DOKU_SECRET_KEY;
-    const ourClientId = context.env.DOKU_CLIENT_ID || context.env.VITE_DOKU_CLIENT_ID;
+    const auth = await verifyDokuAuth({
+      headers: context.request.headers,
+      requestUrl: context.request.url,
+      env: context.env,
+      rawBodyText,
+    });
 
-    // ====================================================================
-    // DETECT FORMAT: SNAP (Sub Account/SAC) vs SNAP B2B (Payouts) vs Jokul (legacy)
-    // SNAP notifications use CHANNEL-ID: H2H and X-PARTNER-ID headers
-    // SNAP B2B notifications use X-Client-Key, X-Signature, X-Timestamp headers
-    // Jokul notifications use Client-Id and Signature headers
-    // ====================================================================
-    const channelId = headers.get('CHANNEL-ID') || headers.get('Channel-Id');
-    const isSnapFormat = channelId === 'H2H' || headers.get('X-PARTNER-ID') || headers.get('X-Partner-Id');
-
-    const xClientKey = headers.get('x-client-key') || headers.get('X-Client-Key');
-    const xSignature = headers.get('x-signature') || headers.get('X-Signature');
-    const xTimestamp = headers.get('x-timestamp') || headers.get('X-Timestamp');
-    const isSnapB2BFormat = !!xClientKey && !!xSignature && !!xTimestamp;
-
-    if (isSnapFormat) {
-      // ================================================================
-      // SNAP FORMAT VALIDATION (Sub Account / SAC notifications)
-      // DOKU SNAP VA notifications do NOT send Signature/X-Signature in
-      // the same HMAC-SHA256 format. They use a different SNAP BI symmetric
-      // signature (HMAC-SHA512 with different string-to-sign format).
-      // Since the notification headers from DOKU dashboard show no signature
-      // header at all, we validate via X-PARTNER-ID matching our client ID.
-      // ================================================================
-      const snapPartnerId = headers.get('X-PARTNER-ID') || headers.get('X-Partner-Id');
-      const snapExternalId = headers.get('X-EXTERNAL-ID') || headers.get('X-External-Id');
-      const snapTimestamp = headers.get('X-TIMESTAMP') || headers.get('X-Timestamp');
-
-      console.log(`[SNAP Webhook] CHANNEL-ID: ${channelId}, X-PARTNER-ID: ${snapPartnerId}, X-EXTERNAL-ID: ${snapExternalId}, X-TIMESTAMP: ${snapTimestamp}`);
-      // Log the real SNAP signature (NOT enforced yet) — material for building
-      // proper SNAP BI HMAC verification from actual payloads, not guesses.
-      console.log(`[SNAP Webhook] Signature headers (logged, not enforced): X-SIGNATURE: ${headers.get('X-SIGNATURE') || headers.get('X-Signature')}`);
-
-      if (!snapPartnerId || !snapExternalId || !snapTimestamp) {
-        console.error("[SNAP Webhook] Missing required SNAP headers");
-        return new Response(JSON.stringify({ error: "Missing SNAP headers" }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      // Validate that X-PARTNER-ID matches our configured DOKU Client ID.
-      // Fail-closed: without DOKU_CLIENT_ID configured we cannot validate anyone.
-      if (!ourClientId || snapPartnerId !== ourClientId) {
-        console.error(`[SNAP Webhook] X-PARTNER-ID mismatch or DOKU_CLIENT_ID unset: got ${snapPartnerId}`);
-        return new Response(JSON.stringify({ error: "Partner ID mismatch" }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      console.log("[SNAP Webhook] Validated OK via X-PARTNER-ID match");
-    } else if (isSnapB2BFormat) {
-      // ================================================================
-      // SNAP B2B FORMAT VALIDATION (Payouts / Disbursements / etc.)
-      // ================================================================
-      console.log(`[SNAP B2B Webhook] X-CLIENT-KEY: ${xClientKey}, X-TIMESTAMP: ${xTimestamp}`);
-
-      // Validate that X-CLIENT-KEY matches our configured DOKU Client ID.
-      // Fail-closed: without DOKU_CLIENT_ID configured we cannot validate anyone.
-      if (!ourClientId || xClientKey !== ourClientId) {
-        console.error(`[SNAP B2B Webhook] X-CLIENT-KEY mismatch or DOKU_CLIENT_ID unset: got ${xClientKey}`);
-        return new Response(JSON.stringify({ error: "Client Key mismatch" }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      console.log("[SNAP B2B Webhook] Validated OK via X-CLIENT-KEY match");
-    } else {
-      // ================================================================
-      // JOKUL FORMAT VALIDATION (legacy HMAC-SHA256 signature)
-      // ================================================================
-      const incomingSignature = headers.get('Signature');
-      const clientId = headers.get('Client-Id');
-      const requestId = headers.get('Request-Id');
-      const requestTimestamp = headers.get('Request-Timestamp');
-
-      if (!incomingSignature || !clientId || !requestId || !requestTimestamp || !secretKey) {
-        console.error("Missing required Jokul webhook headers or secret key", {
-          incomingSignature: !!incomingSignature,
-          clientId: !!clientId,
-          requestId: !!requestId,
-          requestTimestamp: !!requestTimestamp,
-          secretKey: !!secretKey
-        });
-        return new Response(JSON.stringify({ error: "Unauthorized or missing headers" }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      // Target path adalah path relative url, contoh: /api/doku/webhook
-      const requestTarget = new URL(context.request.url).pathname;
-
-      // 1. Generate Digest: Base64(SHA256(Raw Request Body))
-      const enc = new TextEncoder();
-      const digestBuffer = await crypto.subtle.digest('SHA-256', enc.encode(rawBodyText));
-      const digest = btoa(String.fromCharCode(...new Uint8Array(digestBuffer)));
-      
-      // 2. String To Sign
-      const componentStringToSign = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
-      
-      // 3. Generate HMAC SHA-256 Signature Server kita
-      const key = await crypto.subtle.importKey(
-        'raw', 
-        enc.encode(secretKey), 
-        { name: 'HMAC', hash: 'SHA-256' }, 
-        false, 
-        ['sign']
-      );
-      
-      const signatureBuffer = await crypto.subtle.sign(
-        'HMAC', 
-        key, 
-        enc.encode(componentStringToSign)
-      );
-      
-      const base64Sig = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
-      const mySignature = "HMACSHA256=" + base64Sig;
-
-      let isSignatureValid = (incomingSignature === mySignature);
-
-      // 4. Bandingkan Signature dari DOKU dengan hasil hitung kita
-      if (!isSignatureValid) {
-         console.error("Signature mismatch!");
-         console.error("Incoming:", incomingSignature);
-         console.error("Calculated:", mySignature);
-         
-         // Fallback for trailing slash mismatch if needed
-         const fallbackTarget = requestTarget.endsWith("/") ? requestTarget.slice(0, -1) : requestTarget + "/";
-         const fallbackString = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${fallbackTarget}\nDigest:${digest}`;
-         const sigBuf2 = await crypto.subtle.sign('HMAC', key, enc.encode(fallbackString));
-         const fallbackSig = "HMACSHA256=" + btoa(String.fromCharCode(...new Uint8Array(sigBuf2)));
-         
-         if (incomingSignature !== fallbackSig) {
-            return new Response(JSON.stringify({ error: "Invalid Signature" }), {
-               status: 401,
-               headers: { 'Content-Type': 'application/json' }
-            });
-         }
-      }
+    if (!auth.ok) {
+      return await rejectAndLog(context, {
+        rawBodyText,
+        outcome: REJECT_OUTCOMES.auth,
+        httpStatus: auth.httpStatus,
+        errorMessage: auth.detail,
+        responseBody: { error: auth.error },
+      });
     }
 
-    // Parse request body sekarang (karena aman)
-    const requestData = JSON.parse(rawBodyText);
+    // Dulu `JSON.parse` telanjang di sini: badan yang bukan JSON jatuh ke catch
+    // terluar, dibalas 500 TANPA jejak, lalu DOKU retry 5x untuk sesuatu yang
+    // tidak akan pernah berubah. Sekarang 400 + tercatat.
+    let requestData;
+    try {
+      requestData = JSON.parse(rawBodyText);
+    } catch (parseErr) {
+      return await rejectAndLog(context, {
+        rawBodyText,
+        outcome: REJECT_OUTCOMES.payload,
+        httpStatus: 400,
+        errorMessage: `Badan request bukan JSON: ${parseErr?.message || parseErr}`,
+        responseBody: { error: 'Invalid JSON body' },
+      });
+    }
     console.log('Valid DOKU Webhook received:', JSON.stringify(requestData));
 
     // ─── Payout Webhook Handler ──────────────────────────────────────
@@ -353,9 +392,12 @@ export async function onRequest(context) {
 
     if (!invoiceNumber) {
       console.error('Invoice Number / Payment ID not found in webhook data');
-      return new Response(JSON.stringify({ error: 'Invoice Number not found' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
+      return await rejectAndLog(context, {
+        rawBodyText,
+        outcome: REJECT_OUTCOMES.payload,
+        httpStatus: 400,
+        errorMessage: 'Payload lolos autentikasi tapi tidak memuat order.invoice_number maupun trxId.',
+        responseBody: { error: 'Invoice Number not found' },
       });
     }
 
@@ -464,14 +506,23 @@ export async function onRequest(context) {
     });
 
   } catch (error) {
+    // Crash tak terduga di handler. Dulu ini pun tidak meninggalkan jejak:
+    // balas 500, DOKU retry 5x, menyerah, dan kalau errornya deterministik
+    // (mis. bentuk payload baru yang bikin kode ini melempar) pembayarannya
+    // hilang persis seperti insiden 2026-08-10 — tanpa satu baris pun untuk
+    // ditelusuri. 500 tetap dipertahankan supaya DOKU retry; yang ditambahkan
+    // hanya jejaknya.
     console.error('Error processing DOKU webhook:', error);
 
-    return new Response(JSON.stringify({
-      success: false,
-      message: 'Error processing webhook: ' + error.message
-    }), {
-      status: 500, // Walaupun DOKU butuh 200, jika error syntax/kode harus 500
-      headers: { 'Content-Type': 'application/json' }
+    return await rejectAndLog(context, {
+      rawBodyText,
+      outcome: REJECT_OUTCOMES.crash,
+      httpStatus: 500, // Walaupun DOKU butuh 200, jika error syntax/kode harus 500
+      errorMessage: error?.stack || error?.message || String(error),
+      responseBody: {
+        success: false,
+        message: 'Error processing webhook: ' + error.message,
+      },
     });
   }
 }
@@ -888,6 +939,47 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
  * benar-benar mati), kembalikan 0 — artinya kita tetap meminta retry, yang
  * memang perilaku yang diinginkan saat gangguan transien.
  */
+/**
+ * Satu-satunya cara keluar untuk request yang DITOLAK — mencatat dulu, baru
+ * membalas.
+ *
+ * Ada supaya "tidak ada baris" kembali berarti satu hal saja: DOKU memang tidak
+ * pernah menelepon. Selama penolakan bisa `return` sendiri-sendiri, kalimat itu
+ * ambigu, dan ambiguitasnya mahal (lihat blok REJECT_OUTCOMES di atas).
+ *
+ * ⚠️ Endpoint ini publik, jadi ini juga jalur banjir: siapa pun bisa mem-POST
+ * sampah dan menumbuhkan tabel. Dua pembatasnya: `raw_payload` HANYA disimpan
+ * kalau badannya JSON yang sah dan di bawah RAW_PAYLOAD_MAX_CHARS (sampah acak
+ * dari pemindai internet tidak lolos keduanya), dan penolakan TIDAK pernah
+ * memicu email alert — kalau tidak, satu pemindai bisa jadi badai email.
+ * Kalau tabelnya tetap tumbuh liar, saring per outcome sebelum membuang jejaknya.
+ */
+const RAW_PAYLOAD_MAX_CHARS = 20_000;
+
+async function rejectAndLog(context, { rawBodyText, outcome, httpStatus, errorMessage, responseBody }) {
+  let rawPayload = null;
+  if (typeof rawBodyText === 'string' && rawBodyText.length > 0 && rawBodyText.length <= RAW_PAYLOAD_MAX_CHARS) {
+    try {
+      rawPayload = JSON.parse(rawBodyText);
+    } catch {
+      rawPayload = null; // bukan JSON — cukup dicatat lewat error_message
+    }
+  }
+
+  await recordWebhookEvent(context.env, {
+    invoiceNumber: sniffInvoiceNumber(rawBodyText),
+    outcome,
+    httpStatus,
+    errorMessage,
+    rawPayload,
+  });
+
+  return new Response(JSON.stringify(responseBody), {
+    status: httpStatus,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 async function countPriorWriteFailures(env, invoiceNumber) {
   if (!invoiceNumber) return 0;
   try {
