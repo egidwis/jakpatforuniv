@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "multi-step-form/src/components/InternalDashboard.tsx"
+        ],
+        "createdAt": "2026-08-31T10:13:53.745Z",
+        "reason": "Claude: false positive on hover-variant pairing. Both hits (L1155, L1344 Refresh buttons) are 'text-gray-500 hover:text-blue-600 hover:bg-blue-50' — bg-blue-50 only applies on hover, where the text also becomes blue-600, so gray never renders on the colored background. Pre-existing lines, untouched by the review-tab bugfix."
+      }
+    ]
+  }
+}
