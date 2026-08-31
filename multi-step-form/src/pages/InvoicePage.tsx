@@ -15,9 +15,21 @@ interface InvoiceItem {
     qty: number;
 }
 
+interface ScheduleInfo {
+    startDate?: string | null;
+    endDate?: string | null;
+    duration?: number | null;
+    distributionType?: string | null;
+    kilatSlotHour?: number | null;
+}
+
 interface InvoiceData {
     id: string; // Transaction ID
     payment_id: string;
+    form_submission_id?: string;
+    entity_type?: 'submission' | 'extend';
+    extend_id?: string | null;
+    billed_start_date?: string | null;
     amount: number;              // grand total (termasuk PPN utk invoice baru)
     subtotal?: number | null;    // DPP sebelum PPN (null utk invoice lama pra-PPN)
     ppn_rate?: number | null;    // tarif PPN saat transaksi (mis. 0.11)
@@ -29,10 +41,16 @@ interface InvoiceData {
     created_at: string;
     note: string | null;
     form_submissions: {
+        id?: string;
+        title?: string;
         full_name: string;
         email: string;
         phone_number: string;
         university: string;
+        start_date?: string | null;
+        end_date?: string | null;
+        duration?: number | null;
+        distribution_type?: string | null;
     } | null;
 }
 
@@ -80,6 +98,7 @@ export function InvoicePage() {
     const { paymentId } = useParams();
     const [data, setData] = useState<InvoiceData | null>(null);
     const [meta, setMeta] = useState<InvoiceMeta>({ paid_at: null, expires_at: null });
+    const [schedule, setSchedule] = useState<ScheduleInfo | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -106,10 +125,16 @@ export function InvoicePage() {
                 .select(`
           *,
           form_submissions (
+            id,
+            title,
             full_name,
             email,
             phone_number,
-            university
+            university,
+            start_date,
+            end_date,
+            duration,
+            distribution_type
           )
         `)
                 .eq('payment_id', paymentId)
@@ -117,6 +142,60 @@ export function InvoicePage() {
 
             if (error) throw error;
             setData(transaction);
+
+            // Derive schedule info
+            const sourceId = (transaction.entity_type === 'extend' && transaction.extend_id)
+                ? transaction.extend_id
+                : (transaction.form_submission_id || transaction.form_submissions?.id);
+
+            let sched: ScheduleInfo = {
+                startDate: transaction.billed_start_date || transaction.form_submissions?.start_date || null,
+                endDate: transaction.form_submissions?.end_date || null,
+                duration: transaction.form_submissions?.duration || null,
+                distributionType: transaction.form_submissions?.distribution_type || null,
+                kilatSlotHour: null,
+            };
+
+            if (sourceId) {
+                try {
+                    const { data: scheduleRow } = await supabase
+                        .from('ad_schedules')
+                        .select('start_date, end_date, duration, distribution_type, kilat_slot_hour')
+                        .eq('source_id', sourceId)
+                        .maybeSingle();
+
+                    if (scheduleRow) {
+                        sched = {
+                            startDate: scheduleRow.start_date || sched.startDate,
+                            endDate: scheduleRow.end_date || sched.endDate,
+                            duration: scheduleRow.duration ?? sched.duration,
+                            distributionType: scheduleRow.distribution_type || sched.distributionType,
+                            kilatSlotHour: scheduleRow.kilat_slot_hour ?? null,
+                        };
+                    }
+                } catch (schedErr) {
+                    console.warn('Ad schedule query unavailable:', schedErr);
+                }
+            }
+
+            if (transaction.entity_type === 'extend' && transaction.extend_id && (!sched.startDate || !sched.endDate)) {
+                try {
+                    const { data: extendRow } = await supabase
+                        .from('form_submissions_extend')
+                        .select('start_date, end_date, duration')
+                        .eq('id', transaction.extend_id)
+                        .maybeSingle();
+                    if (extendRow) {
+                        sched.startDate = sched.startDate || extendRow.start_date;
+                        sched.endDate = sched.endDate || extendRow.end_date;
+                        sched.duration = sched.duration ?? extendRow.duration;
+                    }
+                } catch (extErr) {
+                    console.warn('Extend row query unavailable:', extErr);
+                }
+            }
+
+            setSchedule(sched);
 
             // Pull paid_at / expires_at from the matching invoice row (best-effort).
             try {
@@ -148,18 +227,21 @@ export function InvoicePage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-100">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <div className="flex items-center justify-center min-h-screen bg-[#f8fafc] font-jakarta">
+                <Loader2 className="w-8 h-8 animate-spin text-[#0066cc]" />
             </div>
         );
     }
 
     if (error || !data) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-100">
+            <div className="flex items-center justify-center min-h-screen bg-[#f8fafc] font-jakarta">
                 <div className="text-center">
                     <h2 className="text-xl font-bold text-gray-900 mb-2">Error</h2>
-                    <p className="text-gray-500">{error}</p>
+                    <p className="text-gray-600 mb-4">{error || 'Invoice tidak ditemukan'}</p>
+                    <Button onClick={() => window.history.back()} variant="outline">
+                        Kembali
+                    </Button>
                 </div>
             </div>
         );
@@ -184,14 +266,21 @@ export function InvoicePage() {
         items = [{ category: 'Pembayaran', price: data.subtotal ?? data.amount, qty: 1 }];
     }
 
-    // Normalize any stale Kilat Add-on item that has 250.000 price to 200.000
+    // Normalize any stale Kilat Add-on item that has 250.000 price to 200.000, and rename Incentive to Reward
     let itemsWereCorrected = false;
     items = items.map((item) => {
-        if ((item.name === 'Add-on JFU Kilat' || item.category === 'Add-on JFU Kilat') && item.price === 250000) {
+        let updated = { ...item };
+        if ((updated.name === 'Add-on JFU Kilat' || updated.category === 'Add-on JFU Kilat') && updated.price === 250000) {
             itemsWereCorrected = true;
-            return { ...item, price: 200000 };
+            updated.price = 200000;
         }
-        return item;
+        if (updated.name && /incentive/i.test(updated.name)) {
+            updated.name = updated.name.replace(/incentive/gi, 'Reward');
+        }
+        if (updated.category && /incentive/i.test(updated.category)) {
+            updated.category = updated.category.replace(/incentive/gi, 'Reward');
+        }
+        return updated;
     });
 
     const itemsSubtotal = items.reduce((sum, item) => sum + (item.price * (item.qty || 1)), 0);
@@ -236,6 +325,43 @@ export function InvoicePage() {
         }) + ' WIB';
     };
 
+    const formatScheduleDate = (
+        startDate?: string | null,
+        endDate?: string | null,
+        duration?: number | null,
+        distType?: string | null,
+        kilatHour?: number | null,
+    ) => {
+        if (!startDate && !endDate) return 'Belum dijadwalkan';
+
+        const isKilat = distType === 'kilat';
+        const startStr = startDate ? formatDate(startDate) : '';
+        const endStr = endDate ? formatDate(endDate) : '';
+
+        if (isKilat) {
+            const wave = kilatHour ? ` · Slot ${kilatHour}:00 WIB` : '';
+            return `${startStr || endStr} (Kilat${wave})`;
+        }
+
+        const dur = duration || 1;
+        if (dur === 1 && startDate) {
+            return `${startStr} (1 Hari)`;
+        }
+
+        if (startDate && endDate) {
+            if (startStr === endStr) {
+                return `${startStr} (${dur} Hari)`;
+            }
+            return `${startStr} — ${endStr} (${dur} Hari)`;
+        }
+
+        if (startDate) {
+            return `${startStr} (${dur} Hari)`;
+        }
+
+        return endStr;
+    };
+
     const methodLabel = (() => {
         // Prefer the actual channel (QRIS / VA / e-wallet) when DOKU reported it.
         if (data.payment_channel) return formatPaymentChannel(data.payment_channel);
@@ -255,7 +381,46 @@ export function InvoicePage() {
     const showMaterai = data.amount > MATERAI_THRESHOLD;
 
     return (
-        <div className="min-h-screen bg-slate-100 p-4 md:p-8 print:bg-white print:p-0">
+        <div className="min-h-screen bg-[#f8fafc] font-jakarta p-4 md:p-8 print:bg-white print:p-0 relative overflow-x-hidden selection:bg-blue-100 selection:text-jfu-primary">
+            {/* Modern Mesh Aurora Glow (Selaras dengan Dashboard Peneliti) */}
+            <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none no-print" aria-hidden="true">
+                {/* Titik 1: Mid-Right — Pendaran Biru Jakpat Cerah & Sky Blue */}
+                <div
+                    className="absolute top-[10%] -right-[6%] md:right-[2%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
+                    style={{
+                        background: 'radial-gradient(circle at center, rgba(24, 124, 255, 0.22) 0%, rgba(56, 189, 248, 0.14) 45%, transparent 75%)',
+                        filter: 'blur(90px)',
+                    }}
+                />
+
+                {/* Titik 2: Mid-Left — Aksen Warm Rose / Blush Pink yang Hidup */}
+                <div
+                    className="absolute top-[18%] -left-[8%] md:-left-[4%] w-[550px] md:w-[800px] h-[550px] md:h-[800px] rounded-full pointer-events-none transform-gpu"
+                    style={{
+                        background: 'radial-gradient(circle at center, rgba(251, 113, 133, 0.18) 0%, rgba(244, 114, 182, 0.10) 45%, transparent 75%)',
+                        filter: 'blur(95px)',
+                    }}
+                />
+
+                {/* Titik 3: Lower-Right — Aksen Soft Rose Pink */}
+                <div
+                    className="absolute top-[55%] -right-[5%] md:right-[4%] w-[550px] md:w-[750px] h-[550px] md:h-[750px] rounded-full pointer-events-none transform-gpu"
+                    style={{
+                        background: 'radial-gradient(circle at center, rgba(244, 114, 182, 0.16) 0%, rgba(251, 113, 133, 0.08) 50%, transparent 75%)',
+                        filter: 'blur(95px)',
+                    }}
+                />
+
+                {/* Titik 4: Lower-Left — Pendaran Sky Cyan & Biru Jakpat Segar */}
+                <div
+                    className="absolute top-[65%] -left-[6%] md:left-[0%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
+                    style={{
+                        background: 'radial-gradient(circle at center, rgba(14, 165, 233, 0.20) 0%, rgba(24, 124, 255, 0.12) 45%, transparent 75%)',
+                        filter: 'blur(95px)',
+                    }}
+                />
+            </div>
+
             {/* Print styles */}
             <style>{`
         @media print {
@@ -269,40 +434,45 @@ export function InvoicePage() {
       `}</style>
 
             {/* Toolbar */}
-            <div className="max-w-[820px] mx-auto mb-6 flex justify-end gap-2 no-print">
-                <Button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700 shadow-sm">
+            <div className="relative z-10 max-w-[820px] mx-auto mb-6 flex justify-end gap-2 no-print">
+                <Button onClick={handlePrint} className="bg-[#0066cc] hover:bg-[#0055aa] text-white shadow-sm">
                     <Download className="w-4 h-4 mr-2" />
                     Unduh PDF
                 </Button>
             </div>
 
             {/* Document */}
-            <div className="page-container max-w-[820px] mx-auto bg-white shadow-lg rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="page-container relative z-10 max-w-[820px] mx-auto bg-white shadow-lg rounded-2xl border border-gray-200 overflow-hidden">
                 {/* Brand accent bar */}
-                <div className={`print-exact h-1.5 w-full ${isPaid ? 'bg-emerald-600' : 'bg-blue-600'}`} />
+                <div className={`print-exact h-1.5 w-full ${isPaid ? 'bg-emerald-600' : 'bg-[#0066cc]'}`} />
 
                 <div className="p-8 md:p-12">
                     {/* Header */}
                     <div className="flex justify-between items-start gap-6">
                         <div>
-                            <img src={jakpatLogo} alt="Jakpat" className="h-9 mb-4" />
-                            <h2 className="font-bold text-gray-900 text-base">Jakpat for Universities</h2>
-                            <p className="text-sm text-gray-500 mt-1">product@jakpat.net</p>
-                            <p className="text-sm text-gray-500">+62 877-5915-3120</p>
-                            <p className="text-sm text-gray-500">Yogyakarta, Indonesia</p>
+                            <div className="flex items-center gap-3 mb-2.5">
+                                <img src={jakpatLogo} alt="Jakpat" className="h-9 w-auto" />
+                                <h2 className="font-extrabold text-gray-900 text-lg md:text-xl leading-tight">Jakpat for Universities</h2>
+                            </div>
+                            <p className="text-[13px] text-gray-600 flex items-center gap-2">
+                                <span>product@jakpat.net</span>
+                                <span className="text-gray-300">•</span>
+                                <span>+62 877-5915-3120</span>
+                            </p>
+                            <p className="text-[13px] text-gray-400 mt-0.5">Yogyakarta, Indonesia</p>
                         </div>
                         <div className="text-right">
-                            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900">{docTitle}</h1>
-                            <p className="text-sm font-medium text-gray-400 mt-1 tabular">#{docNumber}</p>
-                            <div className="mt-3 flex justify-end">
+                            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900 leading-none">{docTitle}</h1>
+                            <p className="text-sm font-semibold text-gray-400 mt-1.5 tabular">#{docNumber}</p>
+                            <div className="mt-2.5 flex justify-end">
                                 {isPaid ? (
-                                    <span className="print-exact inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm font-bold px-3 py-1 rounded-full">
-                                        <CheckCircle2 className="w-4 h-4" />
+                                    <span className="print-exact inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1 rounded-full">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
                                         LUNAS
                                     </span>
                                 ) : (
-                                    <span className="print-exact inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 text-sm font-bold px-3 py-1 rounded-full">
-                                        <Clock className="w-4 h-4" />
+                                    <span className="print-exact inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-3 py-1 rounded-full">
+                                        <Clock className="w-3.5 h-3.5" />
                                         BELUM LUNAS
                                     </span>
                                 )}
@@ -311,162 +481,210 @@ export function InvoicePage() {
                     </div>
 
                     {/* Accent rule */}
-                    <div className={`print-exact h-px w-full my-8 ${isPaid ? 'bg-emerald-100' : 'bg-blue-100'}`} />
+                    <div className={`print-exact h-px w-full my-6 ${isPaid ? 'bg-emerald-100' : 'bg-[#0066cc]/15'}`} />
 
-                    {/* Parties + meta */}
-                    <div className="flex flex-col sm:flex-row justify-between gap-x-10 gap-y-8 mb-10">
-                        {/* Party block */}
-                        <div className="min-w-0">
-                            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2.5">
-                                {isPaid ? 'Diterima dari' : 'Ditagihkan kepada'}
+                    {/* Parties + Payment / Billing Details (Clean Balanced 2-Column Flex) */}
+                    <div className="flex justify-between items-start gap-6 mb-8">
+                        {/* Customer block */}
+                        <div className="min-w-0 flex-1">
+                            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+                                {isPaid ? 'Diterima Dari' : 'Ditagihkan Kepada'}
                             </h3>
-                            <p className="text-gray-900 font-semibold text-[15px]">{data.form_submissions?.full_name || 'N/A'}</p>
-                            <p className="text-sm text-gray-500 mt-1 break-words">{data.form_submissions?.email}</p>
-                            <p className="text-sm text-gray-500">{data.form_submissions?.phone_number}</p>
-                            <p className="text-sm text-gray-500 mt-1.5">{data.form_submissions?.university}</p>
+                            <p className="text-gray-900 font-bold text-base">{data.form_submissions?.full_name || 'N/A'}</p>
+                            {data.form_submissions?.university && (
+                                <p className="text-sm font-medium text-gray-700 mt-0.5">{data.form_submissions.university}</p>
+                            )}
+                            <div className="text-xs text-gray-500 mt-2 space-y-0.5">
+                                {data.form_submissions?.email && <p className="break-words">{data.form_submissions.email}</p>}
+                                {data.form_submissions?.phone_number && <p>{data.form_submissions.phone_number}</p>}
+                            </div>
                         </div>
 
-                        {/* Meta spec block — compact, fixed width, tidily aligned */}
-                        <div className="w-full sm:w-[280px] shrink-0">
-                            <dl className="text-sm divide-y divide-gray-100 rounded-lg border border-gray-100 bg-gray-50/60 print-exact">
-                                <div className="flex items-baseline justify-between gap-3 px-3.5 py-2">
-                                    <dt className="text-gray-400 font-medium whitespace-nowrap">{isPaid ? 'Receipt #' : 'Invoice #'}</dt>
-                                    <dd className="font-semibold text-gray-900 tabular text-right">{docNumber}</dd>
-                                </div>
-
-                                {isPaid && (
-                                    <div className="flex items-baseline justify-between gap-3 px-3.5 py-2">
-                                        <dt className="text-gray-400 font-medium whitespace-nowrap">Ref. Invoice</dt>
-                                        <dd className="text-gray-700 tabular text-right">{invoiceNumber}</dd>
-                                    </div>
-                                )}
-
-                                <div className="flex items-baseline justify-between gap-3 px-3.5 py-2">
-                                    <dt className="text-gray-400 font-medium whitespace-nowrap">Tanggal Terbit</dt>
-                                    <dd className="text-gray-700 text-right">{formatDate(data.created_at)}</dd>
-                                </div>
-
-                                {isPaid ? (
-                                    <div className="flex items-baseline justify-between gap-3 px-3.5 py-2">
-                                        <dt className="text-gray-400 font-medium whitespace-nowrap">Tanggal Bayar</dt>
-                                        <dd className="text-gray-700 text-right">{formatDateTime(paidDate)}</dd>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-baseline justify-between gap-3 px-3.5 py-2">
-                                        <dt className="text-gray-400 font-medium whitespace-nowrap">Jatuh Tempo</dt>
-                                        <dd className="text-gray-700 text-right">{formatDate(meta.expires_at)}</dd>
-                                    </div>
-                                )}
-
-                                <div className="flex items-baseline justify-between gap-3 px-3.5 py-2">
-                                    <dt className="text-gray-400 font-medium whitespace-nowrap">Metode</dt>
-                                    <dd className="text-gray-700 text-right">{methodLabel}</dd>
-                                </div>
-
-                                <div className="flex items-baseline justify-between gap-3 px-3.5 py-2">
-                                    <dt className="text-gray-400 font-medium whitespace-nowrap shrink-0">Ref. Pembayaran</dt>
-                                    <dd className="text-gray-600 text-[13px] tabular text-right break-all min-w-0">{data.payment_id}</dd>
-                                </div>
-                            </dl>
+                        {/* Payment / Billing Meta block */}
+                        <div className="shrink-0 text-left">
+                            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+                                {isPaid ? 'Detail Pembayaran' : 'Detail Tagihan'}
+                            </h3>
+                            <table className="text-sm text-left border-separate border-spacing-y-1">
+                                <tbody>
+                                    <tr>
+                                        <td className="text-gray-400 text-xs text-left">Tanggal Terbit</td>
+                                        <td className="text-gray-400 text-xs px-2 text-center">:</td>
+                                        <td className="font-medium text-gray-800 tabular text-left">{formatDate(data.created_at)}</td>
+                                    </tr>
+                                    {isPaid ? (
+                                        <tr>
+                                            <td className="text-gray-400 text-xs text-left">Tanggal Bayar</td>
+                                            <td className="text-gray-400 text-xs px-2 text-center">:</td>
+                                            <td className="font-medium text-gray-800 tabular text-left">{formatDateTime(paidDate)}</td>
+                                        </tr>
+                                    ) : (
+                                        <tr>
+                                            <td className="text-gray-400 text-xs text-left">Jatuh Tempo</td>
+                                            <td className="text-gray-400 text-xs px-2 text-center">:</td>
+                                            <td className="font-medium text-gray-800 tabular text-left">{formatDate(meta.expires_at)}</td>
+                                        </tr>
+                                    )}
+                                    <tr>
+                                        <td className="text-gray-400 text-xs text-left">Metode</td>
+                                        <td className="text-gray-400 text-xs px-2 text-center">:</td>
+                                        <td className="font-medium text-gray-800 text-left">{methodLabel}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="text-gray-400 text-xs text-left">Ref. Pembayaran</td>
+                                        <td className="text-gray-400 text-xs px-2 text-center">:</td>
+                                        <td className="font-mono text-xs text-gray-600 text-left">{data.payment_id}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
-                    {/* Items */}
-                    <div className="overflow-hidden rounded-xl border border-gray-200 mb-6">
+                    {/* Items Table */}
+                    <div className="overflow-hidden rounded-xl border border-gray-200 mb-6 shadow-2xs">
                         <table className="w-full text-sm">
-                            <thead className="print-exact bg-slate-900 text-white">
+                            <thead className="print-exact bg-slate-50 border-b border-gray-200 text-slate-600 text-[11px] font-bold uppercase tracking-wider">
                                 <tr>
-                                    <th className="py-3 px-4 text-left font-semibold">Deskripsi</th>
-                                    <th className="py-3 px-4 text-center font-semibold w-16">Qty</th>
-                                    <th className="py-3 px-4 text-right font-semibold w-32">Harga</th>
-                                    <th className="py-3 px-4 text-right font-semibold w-32">Sub-Total</th>
+                                    <th className="py-3 px-4 text-left">Deskripsi</th>
+                                    <th className="py-3 px-4 text-center w-16">Qty</th>
+                                    <th className="py-3 px-4 text-right w-32">Harga</th>
+                                    <th className="py-3 px-4 text-right w-32">Sub-Total</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {items.map((item, idx) => (
-                                    <tr key={idx} className="border-t border-gray-100">
-                                        <td className="py-3.5 px-4 text-gray-800">
-                                            <div className="font-semibold">{item.name || item.category}</div>
-                                            {item.name && item.name !== item.category && (
-                                                <div className="text-xs text-gray-400 mt-0.5">{item.category}</div>
-                                            )}
-                                        </td>
-                                        <td className="py-3.5 px-4 text-center text-gray-600 tabular">{item.qty}</td>
-                                        <td className="py-3.5 px-4 text-right text-gray-600 tabular">{formatCurrency(item.price)}</td>
-                                        <td className="py-3.5 px-4 text-right text-gray-900 font-semibold tabular">
-                                            {formatCurrency(item.price * item.qty)}
-                                        </td>
-                                    </tr>
-                                ))}
+                                {items.map((item, idx) => {
+                                    const itemName = item.name || item.category;
+                                    const isAdItem = itemName.toLowerCase().includes('jakpat for universities') || item.category.toLowerCase().includes('ads') || item.category === 'Pembayaran';
+                                    const isReward = itemName.toLowerCase().includes('reward') || item.category.toLowerCase().includes('reward');
+                                    const scheduleText = formatScheduleDate(
+                                        schedule?.startDate,
+                                        schedule?.endDate,
+                                        schedule?.duration,
+                                        schedule?.distributionType,
+                                        schedule?.kilatSlotHour
+                                    );
+
+                                    return (
+                                        <tr key={idx} className="border-t border-gray-100 hover:bg-slate-50/40 transition-colors">
+                                            <td className="py-3.5 px-4 text-gray-800">
+                                                <div className="font-semibold text-gray-900">{itemName}</div>
+                                                
+                                                {/* Sub-keterangan untuk item Iklan / Platform */}
+                                                {isAdItem && (
+                                                    <div className="mt-1.5 space-y-0.5 text-xs text-gray-600">
+                                                        {data.form_submissions?.title && (
+                                                            <div className="flex items-start gap-1.5 leading-relaxed">
+                                                                <span className="text-gray-400 select-none">•</span>
+                                                                <span><strong className="font-medium text-gray-700">Survei:</strong> {data.form_submissions.title}</span>
+                                                            </div>
+                                                        )}
+                                                        {scheduleText && scheduleText !== 'Belum dijadwalkan' && (
+                                                            <div className="flex items-start gap-1.5 leading-relaxed">
+                                                                <span className="text-gray-400 select-none">•</span>
+                                                                <span><strong className="font-medium text-gray-700">Jadwal:</strong> {scheduleText}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Sub-keterangan untuk item Reward Responden */}
+                                                {isReward && item.qty > 0 && (
+                                                    <div className="mt-1.5 text-xs text-gray-500 flex items-start gap-1.5 leading-relaxed">
+                                                        <span className="text-gray-400 select-none">•</span>
+                                                        <span>Distribusi reward untuk {item.qty} responden terpilih</span>
+                                                    </div>
+                                                )}
+
+                                                {/* Kategori sekunder bila ada */}
+                                                {!isAdItem && !isReward && item.name && item.name !== item.category && (
+                                                    <div className="text-xs text-gray-400 mt-0.5">{item.category}</div>
+                                                )}
+                                            </td>
+                                            <td className="py-3.5 px-4 text-center text-gray-600 tabular align-top">{item.qty}</td>
+                                            <td className="py-3.5 px-4 text-right text-gray-600 tabular align-top">{formatCurrency(item.price)}</td>
+                                            <td className="py-3.5 px-4 text-right text-gray-900 font-semibold tabular align-top">
+                                                {formatCurrency(item.price * item.qty)}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
 
-                    {/* Total + terbilang (Subtotal → PPN → Total bila invoice ber-PPN) */}
+                    {/* Summary (Subtotal → PPN → Total Hero Card) */}
                     <div className="flex flex-col items-end mb-10">
                         {hasPpn && (
-                            <div className="w-full sm:w-[320px] mb-2 text-sm">
-                                <div className="flex justify-between items-center py-1 text-gray-600">
-                                    <span>Subtotal</span>
-                                    <span className="tabular">{formatCurrency(subtotalValue)}</span>
+                            <div className="w-full sm:w-[320px] mb-2 text-sm space-y-1.5">
+                                <div className="flex justify-between items-center py-0.5 text-gray-600">
+                                    <span className="text-gray-500">Subtotal</span>
+                                    <span className="font-medium text-gray-800 tabular">{formatCurrency(subtotalValue)}</span>
                                 </div>
-                                <div className="flex justify-between items-center py-1 text-gray-600 border-b border-gray-200 pb-2">
-                                    <span>PPN 11%</span>
-                                    <span className="tabular">{formatCurrency(ppnAmount)}</span>
+                                <div className="flex justify-between items-center py-0.5 text-gray-600 border-b border-gray-200 pb-2">
+                                    <span className="text-gray-500">PPN 11%</span>
+                                    <span className="font-medium text-gray-800 tabular">{formatCurrency(ppnAmount)}</span>
                                 </div>
                             </div>
                         )}
-                        <div className="print-exact w-full sm:w-[320px] bg-slate-900 text-white rounded-xl px-5 py-4 flex justify-between items-center">
-                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">Total</span>
-                            <span className="font-bold text-2xl tabular">{formatCurrency(grandTotal)}</span>
+                        <div className="print-exact w-full sm:w-[320px] bg-[#0066cc] text-white rounded-xl px-5 py-4 flex justify-between items-center shadow-sm">
+                            <span className="text-xs font-bold uppercase tracking-wider text-blue-100">Total</span>
+                            <span className="font-bold text-2xl tabular text-white">{formatCurrency(grandTotal)}</span>
                         </div>
                         <p className="w-full sm:w-[320px] text-right text-xs italic text-gray-500 mt-2.5 leading-relaxed">
                             Terbilang: {terbilangCapitalized(grandTotal)}
                         </p>
                     </div>
 
-                    {/* Notes / action */}
+                    {/* Notes & Verification Footer */}
                     <div className="border-t border-gray-100 pt-7 text-sm">
-                        <p className="font-semibold text-gray-700 mb-1">Catatan</p>
                         {isPaid ? (
-                            <p className="text-gray-500">
-                                Pembayaran telah kami terima. Terima kasih telah menggunakan layanan Jakpat for Universities.
-                            </p>
-                        ) : (
-                            <>
-                                <p className="text-gray-500">
-                                    Silakan selesaikan pembayaran Anda melalui tombol di bawah ini.
+                            <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 print-exact text-xs text-gray-600 space-y-2">
+                                <div className="flex items-center gap-2 font-bold text-slate-800 text-[11px] uppercase tracking-wider">
+                                    <ShieldCheck className="w-4 h-4 text-[#0066cc]" />
+                                    <span>Tanda Terima Elektronik Sah</span>
+                                </div>
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    Pembayaran telah berhasil kami terima. Dokumen ini diterbitkan secara otomatis oleh sistem <strong>Jakpat for Universities</strong> serta sah dan mengikat untuk keperluan administrasi, LPPM, dan pelaporan keuangan kampus tanpa tanda tangan basah.
                                 </p>
-                                {data.payment_url && (
-                                    <div className="no-print mt-4">
-                                        <a
-                                            href={data.payment_url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors"
-                                        >
-                                            Bayar Sekarang
-                                            <ExternalLink className="w-4 h-4" />
-                                        </a>
-                                        <p className="flex items-center gap-1.5 text-xs text-gray-400 mt-2">
-                                            <ShieldCheck className="w-3.5 h-3.5" />
-                                            Pembayaran diproses secara aman melalui DOKU.
-                                        </p>
-                                    </div>
+                                {showMaterai && (
+                                    <p className="text-[11px] text-gray-400 pt-1.5 border-t border-slate-200/60">
+                                        * Untuk transaksi dengan nilai di atas {formatCurrency(MATERAI_THRESHOLD)}, e-meterai dapat dilampirkan atas permintaan.
+                                    </p>
                                 )}
-                            </>
-                        )}
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="font-bold text-gray-900 mb-1.5">Catatan Tagihan</p>
+                                    <p className="text-xs text-gray-600 leading-relaxed">
+                                        Silakan selesaikan pembayaran sebelum batas waktu berakhir melalui tautan pembayaran aman di bawah ini.
+                                    </p>
+                                    {data.payment_url && (
+                                        <div className="no-print mt-3.5">
+                                            <a
+                                                href={data.payment_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-2 bg-[#0066cc] hover:bg-[#0055aa] text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow-sm transition-colors"
+                                            >
+                                                Bayar Sekarang
+                                                <ExternalLink className="w-3.5 h-3.5" />
+                                            </a>
+                                            <p className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-2">
+                                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                Pembayaran diproses secara aman melalui payment gateway DOKU.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
 
-                        {showMaterai && (
-                            <p className="text-xs text-gray-400 mt-4">
-                                Untuk dokumen dengan nilai di atas {formatCurrency(MATERAI_THRESHOLD)}, materai/e-meterai dapat
-                                ditambahkan atas permintaan.
-                            </p>
+                                {showMaterai && (
+                                    <p className="text-[11px] text-gray-400">
+                                        * Untuk transaksi dengan nilai di atas {formatCurrency(MATERAI_THRESHOLD)}, e-meterai dapat dilampirkan atas permintaan.
+                                    </p>
+                                )}
+                            </div>
                         )}
-
-                        <p className="text-xs text-gray-400 mt-4 italic">
-                            Dokumen ini sah dan diterbitkan secara elektronik, sehingga tidak memerlukan tanda tangan.
-                        </p>
                     </div>
 
                     <div className="mt-8 text-center text-[10px] text-gray-400 uppercase tracking-wider">

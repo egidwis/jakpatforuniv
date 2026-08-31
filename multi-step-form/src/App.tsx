@@ -152,6 +152,9 @@ function AppContent() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
+        {/* Invoice Route - Standalone Full Screen (without container/footer wrapper) */}
+        <Route path="/invoices/:paymentId" element={<PrivateRoute><InvoicePage /></PrivateRoute>} />
+
         {/* Public Content Routes - Wrapped in Container */}
         <Route path="*" element={
           <PublicLayout>
@@ -160,7 +163,6 @@ function AppContent() {
               <Route path="/payment-success" element={<PaymentSuccessPage />} />
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
               <Route path="/payment-retry" element={<PaymentRetryPage />} />
-              <Route path="/invoices/:paymentId" element={<PrivateRoute><InvoicePage /></PrivateRoute>} />
               <Route path="/pages" element={<SurveyListingPage />} />
               <Route path="/pages/:slug" element={<SurveyPage />} />
               <Route path="/privacy-policy" element={<ExternalRedirect to="/homepage/privacy-policy.html" />} />

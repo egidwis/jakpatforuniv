@@ -50,7 +50,8 @@ import { SchedulePaymentTab } from './tabs/SchedulePaymentTab';
 import { PageTab } from './tabs/PageTab';
 import { ScheduleForm } from '@/components/schedule/ScheduleForm';
 import { InvoiceForm } from '@/components/schedule/InvoiceForm';
-import { updateFormDetails, previewOrderPrice, type AdScheduleEntry } from '@/utils/supabase';
+import { calculateTotalAdCost } from '@/utils/cost-calculator';
+import { updateFormDetails, type AdScheduleEntry } from '@/utils/supabase';
 import { repriceMessage } from '@/utils/repriceMessage';
 import { toast } from 'sonner';
 
@@ -508,21 +509,15 @@ export function SubmissionDetailSheet({
     // penjelasan, dan kolom `total_cost` di daftar admin masih angka lama.
     // Selisihnya disebut di depan supaya admin memutuskan sadar, bukan kaget.
     if (questionCountInput !== submission.questionCount && !lifecycle.isPaid) {
-      let newTotal: number | null = null;
-      try {
-        newTotal = await previewOrderPrice(submission.id, questionCountInput);
-      } catch (err) {
-        console.error('Gagal menghitung pratinjau harga:', err);
-      }
-      const oldTotal = submission.total_cost || 0;
+      const duration = Number(submission.duration) || 1;
+      const oldAdCost = calculateTotalAdCost(submission.questionCount || 0, duration);
+      const newAdCost = calculateTotalAdCost(questionCountInput, duration);
       const rupiah = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
-      const priceLine = newTotal === null
-        ? '\n\n(Harga baru gagal dihitung; harga akan disesuaikan setelah disimpan.)'
-        : newTotal === oldTotal
-          ? `\n\nHarga tidak berubah: ${rupiah(oldTotal)}.`
-          : `\n\nHarga berubah: ${rupiah(oldTotal)} → ${rupiah(newTotal)}.`;
+      const priceLine = oldAdCost === newAdCost
+        ? `Harga tidak berubah: ${rupiah(oldAdCost)}.`
+        : `Harga berubah: ${rupiah(oldAdCost)} → ${rupiah(newAdCost)}.`;
       const ok = window.confirm(
-        `Jumlah pertanyaan dikoreksi dari ${submission.questionCount} menjadi ${questionCountInput} Q.${priceLine}\n\nLanjutkan approve?`
+        `Jumlah pertanyaan dikoreksi dari ${submission.questionCount} menjadi ${questionCountInput} Q.\n${priceLine}\n*harga belum termasuk Reward dan PPN 11%\n\nLanjutkan approve?`
       );
       if (!ok) return;
     }
