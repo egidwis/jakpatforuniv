@@ -113,6 +113,21 @@ describe('cardStateOf — gerbang aturan 2', () => {
   it('slot yang masa tahannya lewat punya keadaan sendiri', () => {
     expect(cardStateOf(entry(), billing(), { holdLapsed: true })).toBe('hold_lapsed');
   });
+
+  it('slot yang masa tahannya lewat TETAP hold_lapsed walau ada openInvoice menggantung', () => {
+    // ⚠️ Tagihan lama ikut kedaluwarsa saat slotnya lepas — tidak boleh kembali ke waiting_payment
+    const openBill = billing({ openInvoice: { paymentId: 'JFU-123' } as any, billed: 355200, outstanding: 355200 });
+    expect(cardStateOf(entry(), openBill, { holdLapsed: true })).toBe('hold_lapsed');
+  });
+
+  it('pemesanan mandiri peneliti yang lewat 1 jam otomatis terdeteksi hold_lapsed', () => {
+    const expiredUserEntry = entry({
+      slotBookedBy: 'user',
+      slotReservedAt: '2026-08-01T00:00:00.000Z',
+    });
+    const openBill = billing({ openInvoice: { paymentId: 'JFU-123' } as any, billed: 355200, outstanding: 355200 });
+    expect(cardStateOf(expiredUserEntry, openBill)).toBe('hold_lapsed');
+  });
 });
 
 describe('isLateForSchedule — satu definisi', () => {

@@ -249,9 +249,17 @@ export function getSubmissionActionDot(lifecycle: LifecycleInfo): ActionDot | nu
   // bawaan mendapat titik MERAH halaman — menutupi titik ABU "slot kedaluwarsa"
   // yang seharusnya muncul. Cabang abu di bawah kini benar-benar terjangkau.
   if (isScheduleActive) {
-    return lifecycle.isActuallyExpired
-      ? { type: 'gray', label: 'Slot kedaluwarsa (Unpaid)' }
-      : { type: 'red', label: 'Perlu tindakan: Menunggu Pembayaran / Jadwal' };
+    // Menunggu pembayaran peneliti: invoice sudah terbit & menunggu dibayar.
+    // Admin tidak perlu melakukan tindakan apa-apa -> titik ABU-ABU.
+    if (lifecycle.stage === 'awaiting_payment' || (lifecycle.isPending && !lifecycle.isActuallyExpired)) {
+      return { type: 'gray', label: 'Menunggu pembayaran peneliti' };
+    }
+    // Slot kedaluwarsa: batas waktu pemesanan / pembayaran lewat.
+    // Admin PERLU melakukan tindakan (ganti tanggal / tagih baru) -> titik MERAH.
+    if (lifecycle.isActuallyExpired || lifecycle.stage === 'reserved_expired') {
+      return { type: 'red', label: 'Perlu tindakan: Slot kedaluwarsa' };
+    }
+    return { type: 'red', label: 'Perlu tindakan: Jadwal / Tagihan belum selesai' };
   }
 
   return null;

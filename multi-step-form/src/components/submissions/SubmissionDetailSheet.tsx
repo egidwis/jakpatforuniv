@@ -41,7 +41,7 @@ import {
 } from '../ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
-import { deriveLifecycle } from './lifecycle';
+import { deriveLifecycle, getSubmissionActionDot } from './lifecycle';
 import { ReviewStatusChip } from './ReviewStatusChip';
 import { ReviewTimeline, ReviewTimelineToggle } from './ReviewTimeline';
 import { InfoTab } from './tabs/InfoTab';
@@ -302,9 +302,10 @@ export function SubmissionDetailSheet({
   const canApprove = Boolean(submission.formUrl);
 
   // Dot status untuk tab Jadwal & Bayar:
+  // Dot notifikasi tab Reservasi Jadwal:
   // - Tidak aktif jika: masih dalam review/rejected/spam, sudah lunas (isPaid), atau sudah live/completed/page_scheduled
-  // - Dot abu-abu jika: slot kedaluwarsa (customer tidak lanjut bayar / timeout)
-  // - Dot merah jika: sudah di-approve dan masih dalam proses penjadwalan/pembayaran belum lunas
+  // - Dot abu-abu jika: menunggu pembayaran peneliti (invoice sudah terbit, admin tidak perlu aksi)
+  // - Dot merah jika: perlu tindakan admin (slot kedaluwarsa atau jadwal/tagihan belum selesai)
   const isScheduleActive =
     !isReviewActive &&
     displayStatus !== 'spam' &&
@@ -313,9 +314,9 @@ export function SubmissionDetailSheet({
     lifecycle.stage !== 'completed' &&
     lifecycle.stage !== 'page_scheduled';
 
-  const scheduleDotType: 'red' | 'gray' | null = isScheduleActive
-    ? (lifecycle.isActuallyExpired ? 'gray' : 'red')
-    : null;
+  const actionDot = getSubmissionActionDot(lifecycle);
+  const scheduleDot = !isReviewActive && isScheduleActive ? actionDot : null;
+  const scheduleDotType: 'red' | 'gray' | null = scheduleDot?.type ?? null;
 
   // Tab Page TIDAK punya titik notifikasi. Pekerjaan halaman dikerjakan admin
   // lain, dari papan Jadwal; menyalakan alarmnya di sini berarti menagih orang
@@ -349,13 +350,13 @@ export function SubmissionDetailSheet({
               </span>
             )}
             {isScheduleTab && scheduleDotType === 'red' && (
-              <span className="relative flex h-2 w-2 ml-0.5" title="Jadwal / Pembayaran belum selesai">
+              <span className="relative flex h-2 w-2 ml-0.5" title={scheduleDot?.label ?? 'Perlu tindakan pada Jadwal / Tagihan'}>
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
               </span>
             )}
             {isScheduleTab && scheduleDotType === 'gray' && (
-              <span className="relative flex h-2 w-2 ml-0.5" title="Slot kedaluwarsa (unpaid)">
+              <span className="relative flex h-2 w-2 ml-0.5" title={scheduleDot?.label ?? 'Menunggu pembayaran peneliti'}>
                 <span className="inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
               </span>
             )}

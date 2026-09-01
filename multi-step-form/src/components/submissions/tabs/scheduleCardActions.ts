@@ -1,6 +1,25 @@
 import type { AdScheduleEntry, ScheduleBilling } from '@/utils/supabase';
 import { isPaymentTooLateForDate, toWibYmd } from '@/utils/airing-window';
-import { isUnscheduled } from '@/pages/dashboard/schedule/scheduleModel';
+import { isSlotHoldReleased } from '@/utils/slotHold';
+import { holdStateOf, isUnscheduled } from '@/pages/dashboard/schedule/scheduleModel';
+
+/**
+ * Apakah tahanan slot jadwal ini sudah gugur / kedaluwarsa.
+ *
+ * Mencakup:
+ * 1. Hold 1 jam DOKU untuk pemesanan mandiri peneliti (`slot_booked_by === 'user'`).
+ * 2. Batas bayar 14.00 WIB pada hari tayang.
+ * 3. Status pembayaran eksplisit 'expired'.
+ */
+export function isEntryHoldLapsed(entry: AdScheduleEntry, now: number = Date.now()): boolean {
+  if (entry.paymentStatus === 'paid' || entry.paymentStatus === 'completed') return false;
+  return (
+    holdStateOf(entry, now) === 'lapsed' ||
+    isSlotHoldReleased({ slotBookedBy: entry.slotBookedBy, slotReservedAt: entry.slotReservedAt }, now) ||
+    entry.paymentStatus === 'expired' ||
+    Boolean(entry.startDate && isPaymentTooLateForDate(toWibYmd(new Date(entry.startDate)), new Date(now)))
+  );
+}
 
 /**
  * Keadaan sebuah kartu jadwal di drawer admin.
@@ -108,6 +127,12 @@ export function cardStateOf(
   if (isPaidSomehow) return 'paid';
   if (billing && billing.paid > 0) return 'partially_paid';
 
+  const holdLapsed = opts.holdLapsed ?? isEntryHoldLapsed(entry);
+
+  // Slot yang masa tahannya lewat: tagihan lama ikut kedaluwarsa bersama slotnya.
+  // Jangan biarkan openInvoice mengembalikan waiting_payment untuk tagihan yang slotnya sudah lepas.
+  if (holdLapsed) return 'hold_lapsed';
+
   /**
    * ⚠️ "ADA BARIS TAGIHAN" BUKAN "ADA TAGIHAN HIDUP".
    *
@@ -117,10 +142,6 @@ export function cardStateOf(
    * pembayaran". `openInvoice` menjawab pertanyaan yang sebenarnya.
    */
   if (billing?.openInvoice) return 'waiting_payment';
-
-  // Slot yang masa tahannya lewat: menawarkan "Buat Tagihan" untuk slot yang
-  // sudah lepas hanya memindahkan kekecewaan ke belakang.
-  if (opts.holdLapsed) return 'hold_lapsed';
 
   return 'awaiting_invoice';
 }
@@ -189,10 +210,16 @@ export function planCardActions(input: {
         ]),
       };
 
-    // Slotnya sudah lepas / tanggalnya tak bisa dikejar: yang perlu tanggal
-    // baru, bukan tagihan untuk tanggal yang sudah lewat.
+    // Slotnya sudah lepas / tanggalnya tak bisa dikejar: yang utama tanggal
+    // baru. Buat Tagihan tetap ada di menu bila admin ingin menerbitkan langsung.
     case 'hold_lapsed':
-      return { primary: schedule(), menu: withCancel(can.markPaid ? [markPaid] : []) };
+      return {
+        primary: schedule(),
+        menu: withCancel([
+          ...(can.createInvoice ? [{ id: 'invoice', label: 'Buat Tagihan' } as CardAction] : []),
+          ...(can.markPaid ? [markPaid] : []),
+        ]),
+      };
 
     case 'waiting_payment':
       return isLate

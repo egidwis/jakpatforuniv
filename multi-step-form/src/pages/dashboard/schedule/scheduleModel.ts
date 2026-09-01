@@ -85,7 +85,9 @@ export function chipKindOf(e: AdScheduleEntry, now: number = Date.now()): ChipKi
   if (e.status === 'scheduled') return 'page_scheduled';
   if (e.status === 'completed') return 'completed';
   if (e.status === 'paid') return 'paid';
-  if (e.status === 'waiting_payment') return 'awaiting_payment';
+  if (e.status === 'waiting_payment') {
+    return isExpiredHold(e, now) ? 'reserved_expired' : 'awaiting_payment';
+  }
   if (e.status === 'slot_reserved') {
     // Slot yang holdnya sudah kedaluwarsa sudah TIDAK ditahan lagi. Menampilkan
     // "Reserved" di papan pantau untuk slot yang sudah dilepas adalah kebohongan
@@ -284,6 +286,7 @@ export function holdStateOf(e: AdScheduleEntry, now: number): HoldState {
     if (e.paymentStatus === 'expired') return 'lapsed';
     // Hold DOKU 1 jam sudah lewat — slotnya sudah dilepas.
     if (kind === 'reserved_expired') return 'lapsed';
+    if (isExpiredHold(e, now)) return 'lapsed';
     // Batas bayar 14.00 WIB pada hari tayang (airing-window.ts).
     if (e.startDate && isPaymentTooLateForDate(toWibYmd(new Date(e.startDate)), new Date(now))) {
       return 'lapsed';

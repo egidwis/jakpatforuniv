@@ -23,7 +23,7 @@ import { recordedVsBilled } from '@/utils/billingCompare';
 // Keadaan kartu, aksinya, dan definisi "terlambat" hidup di SATU modul —
 // lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
 import {
-  cardStateOf, planCardActions, isLateForSchedule,
+  cardStateOf, planCardActions, isLateForSchedule, isEntryHoldLapsed,
   type CardState, type CardAction, type CardActionPlan,
 } from './scheduleCardActions';
 
@@ -129,23 +129,30 @@ interface CardActions {
 
 /** Satu baris tagihan di dalam daftar. */
 function InvoiceRow({
-  inv, index, total, entry, actions,
+  inv, index, total, entry, actions, isHoldLapsed,
 }: {
   inv: ScheduleInvoice;
   index: number;
   total: number;
   entry: AdScheduleEntry;
   actions: CardActions;
+  isHoldLapsed?: boolean;
 }) {
   const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
   const isLate = !inv.isPaid && ymd ? isPaymentTooLateForDate(ymd) : false;
+  const isHoldExpired = !inv.isPaid && (
+    Boolean(isHoldLapsed) ||
+    entry.paymentStatus === 'expired' ||
+    isEntryHoldLapsed(entry) ||
+    isLate
+  );
   const cutoff = ymd ? paymentCutoffInstant(ymd) : null;
 
   // Checkout yang ditinggalkan: baris `transactions` pending tanpa invoice.
   // Ia BUKAN tagihan — nol rupiah pernah ditagihkan — tapi tetap ditampilkan
   // supaya admin tahu peneliti sempat membuka halaman bayar.
   const isAbandoned = !inv.isPaid && !inv.isDead && inv.source === 'transaction';
-  const isStruck = inv.isDead || inv.isSuperseded || inv.isStale || isAbandoned || isLate;
+  const isStruck = inv.isDead || inv.isSuperseded || inv.isStale || isAbandoned || isLate || isHoldExpired;
   const invoiceUrl = inv.paymentId ? `/invoices/${inv.paymentId}` : null;
 
   /**
@@ -159,7 +166,7 @@ function InvoiceRow({
    * menjumlahkannya di "belum masuk" — tampak seperti bug padahal keduanya
    * benar untuk pertanyaan masing-masing. Karena itu labelnya dieja lengkap.
    */
-  const isBillable = !inv.isPaid && !inv.isDead && !inv.isSuperseded && !inv.isStale
+  const isBillable = !inv.isPaid && !inv.isDead && !inv.isSuperseded && !inv.isStale && !isHoldExpired
     && inv.source === 'invoice';
 
   /**
@@ -183,11 +190,8 @@ function InvoiceRow({
   const label =
     inv.isPaid ? null
     : inv.status.toLowerCase() === 'cancelled' ? 'Tagihan dibatalkan'
-    : inv.isDead ? 'Kedaluwarsa'
+    : inv.isDead || isHoldExpired ? 'Kedaluwarsa'
     : inv.isSuperseded ? 'Tersusul tagihan baru'
-    // Jadwalnya pindah sesudah tagihan ini terbit (sql/60). Tanggal LAMA-nya
-    // disebut supaya admin bisa mencocokkan dengan tagihan yang terlanjur
-    // dikirim ke peneliti — kalimat yang sama muncul di layar peneliti.
     : inv.isStale ? `Jadwal berubah — ditagihkan untuk ${
         inv.billedStartDate
           ? new Date(inv.billedStartDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
@@ -388,25 +392,13 @@ function BillingSection({
     );
   }
 
-  if (state === 'hold_lapsed') {
-    return (
-      <div className="rounded-lg border border-red-200 bg-red-50/60 px-3 py-2.5">
-        <p className="text-[11px] text-red-900 leading-snug font-medium">
-          Batas bayar terlewat — tanggalnya harus diganti.
-        </p>
-        <p className="text-[11px] text-red-800/80 leading-snug mt-0.5">
-          Tagihan yang sudah terbit tetap tercatat sebagai piutang, bukan dihapus.
-        </p>
-      </div>
-    );
-  }
-
   const invoices = billing?.invoices ?? [];
   // ⚠️ `isLate` DITERIMA, tidak dihitung ulang di sini. Dulu bagian ini punya
   // perhitungannya sendiri yang berbeda dari baris aksi di kartu yang SAMA
   // (yang satu mengecualikan `partially_paid`, yang satu tidak), jadi satu kartu
   // bisa mencoret tagihannya sambil tombolnya berkata tanggalnya masih hidup.
   const isLate = isLateForSchedule(entry, state);
+  const isHoldExpired = state === 'hold_lapsed' || isEntryHoldLapsed(entry);
 
   // ⚠️ CABANG "BELUM ADA TAGIHAN" DIUKUR DARI DAFTAR YANG KOSONG, BUKAN DARI
   // KEADAAN KARTU. Sebagian order dibayar di luar sistem dan tidak pernah punya
@@ -428,6 +420,19 @@ function BillingSection({
       );
     }
 
+    if (isHoldExpired) {
+      return (
+        <div className="space-y-2 pt-1 border-t border-slate-200">
+          <SectionHeader count={0} />
+          <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+            <p className="text-[11px] leading-snug text-amber-900">
+              Slot kedaluwarsa. Silakan atur tanggal tayang baru.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-2 pt-1 border-t border-slate-200">
         <SectionHeader count={0} />
@@ -440,11 +445,6 @@ function BillingSection({
               ? 'Batas waktu pembayaran untuk slot ini sudah terlewat. Silakan buat jadwal baru.'
               : 'Slot tayang sudah dipesan. Terbitkan tagihan supaya peneliti bisa membayar.'}
           </p>
-          {/* Tombolnya SENGAJA tidak di sini. Dulu blok ini menumbuhkan "Buat
-              Tagihan" + "Tandai Lunas" sendiri, di atas baris aksi yang juga
-              punya tombolnya — itulah cara kondisi `waiting_payment` sampai
-              menampilkan enam kontrol. Sekarang satu-satunya sumber aksi adalah
-              `planCardActions`. */}
         </div>
       </div>
     );
@@ -454,19 +454,23 @@ function BillingSection({
   // Ada riwayat tagihan, tapi semuanya sudah mati dan nol rupiah masuk —
   // yang dibutuhkan tagihan PERTAMA yang sungguhan, bukan susulan.
   const needsFreshInvoice = state === 'awaiting_invoice';
+  const liveInvoices = invoices.filter((i) => !isHoldExpired && (i.isPaid || (i.isPending && i.source === 'invoice' && !i.isSuperseded && !i.isStale && !isLate)));
+  const billedAmount = liveInvoices.reduce((sum, i) => sum + i.amount, 0);
+  const paidAmount = liveInvoices.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
+  const outstandingAmount = billedAmount - paidAmount;
 
   return (
     <div className="space-y-2 pt-1 border-t border-slate-200">
       <SectionHeader count={invoices.length} />
 
-      {b.billed > 0 && (
+      {billedAmount > 0 && (
         <div className="flex items-center justify-between gap-2 text-[11px] px-0.5">
           <span className="text-slate-500">
-            <strong className="font-semibold text-slate-700 tabular-nums">{formatIDR(b.billed)}</strong> ditagih
+            <strong className="font-semibold text-slate-700 tabular-nums">{formatIDR(billedAmount)}</strong> ditagih
           </span>
-          {b.outstanding > 0 ? (
+          {outstandingAmount > 0 ? (
             <span className="font-semibold text-amber-700 tabular-nums">
-              {formatIDR(b.outstanding)} belum masuk
+              {formatIDR(outstandingAmount)} belum masuk
             </span>
           ) : (
             <span className="font-semibold text-emerald-700">Lunas seluruhnya</span>
@@ -483,17 +487,12 @@ function BillingSection({
             total={invoices.length}
             entry={entry}
             actions={actions}
+            isHoldLapsed={isHoldExpired}
           />
         ))}
       </div>
 
-      {/*
-        Semua barisnya mati dan tidak ada uang yang masuk. Tanpa kalimat ini
-        admin cuma melihat daftar coretan lalu harus menyimpulkan sendiri
-        bahwa gilirannya yang bertindak — dan tombolnya berbunyi "Tagih
-        Susulan", padahal tidak ada tagihan pertama yang bisa disusuli.
-      */}
-      {needsFreshInvoice && (
+      {needsFreshInvoice && !isHoldExpired && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
           <p className="text-[11px] leading-snug text-amber-900">
             Tidak ada tagihan yang masih bisa dibayar
@@ -501,14 +500,6 @@ function BillingSection({
           </p>
         </div>
       )}
-
-      {/* ⚠️ NOL TOMBOL DI SINI, dan itu perubahan yang disengaja.
-          Dulu baris ini memuat "Terbitkan Tagihan"/"Tagih Susulan" — kadang
-          `disabled` dengan tooltip yang menjelaskan apa yang TIDAK bisa
-          dilakukan — plus tautan "Tandai belum lunas". Ketiganya sekarang hidup
-          di `CardActionBar`, yang secara struktural cuma bisa menampilkan satu
-          tombol di luar menu ⋯. Aksi yang tidak berlaku DIHILANGKAN, bukan
-          ditampilkan mati. */}
     </div>
   );
 }
@@ -680,7 +671,7 @@ function ScheduleCard({
    * ada satu pun penanda bahwa keduanya seharusnya angka yang sama.
    */
   const mismatch = recordedVsBilled(money, billing?.invoices ?? []);
-  const state = cardStateOf(entry, billing, { holdLapsed: needsBilling(entry) });
+  const state = cardStateOf(entry, billing);
   const isKilat = entry.distributionType === 'kilat';
   const isLate = isLateForSchedule(entry, state);
 
@@ -778,14 +769,21 @@ function ScheduleCard({
             <Copy className="w-3 h-3" />
           </button>
         </span>
-        {needsBilling(entry) && (
+        {isEntryHoldLapsed(entry) ? (
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1"
+            title="Batas waktu pemesanan slot ini telah kedaluwarsa."
+          >
+            <AlertTriangle className="w-2.5 h-2.5" /> kedaluwarsa
+          </span>
+        ) : needsBilling(entry) ? (
           <span
             className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1"
             title="Batas bayar 14.00 WIB pada hari tayang sudah lewat. Slotnya tidak dilepas — tagih manual, lalu jadwalkan ulang atau hapus dari list."
           >
             <AlertTriangle className="w-2.5 h-2.5" /> perlu ditagih
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -939,7 +937,7 @@ export function ScheduleCardList({
     const billed = orderTotalOf(entries);
     const unpaid = entries.filter((e) => {
       const s = cardStateOf(e, billings.get(e.id));
-      return s !== 'paid' && s !== 'cancelled';
+      return s !== 'paid' && s !== 'cancelled' && s !== 'hold_lapsed';
     }).length;
     return { billed, unpaid };
   }, [entries, billings]);

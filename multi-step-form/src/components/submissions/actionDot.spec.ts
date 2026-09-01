@@ -38,14 +38,20 @@ describe('getSubmissionActionDot', () => {
         expect(getSubmissionActionDot(lifecycleOf({ displayStatus: 'in_review' }))?.type).toBe('red');
     });
 
-    it('order yang menunggu jadwal/pembayaran tetap merah', () => {
+    it('order yang menunggu jadwal / perlu tagihan tetap merah', () => {
         expect(getSubmissionActionDot(lifecycleOf())?.type).toBe('red');
     });
 
-    it('slot kedaluwarsa memberi ABU, bukan merah', () => {
-        // Inilah cabang yang dulu bisa tertutup titik merah halaman.
+    it('order yang menunggu pembayaran peneliti memberi ABU, bukan merah', () => {
+        // Tagihan sudah terbit, admin tidak perlu aksi apa-apa -> indikator abu-abu
+        const dot = getSubmissionActionDot(lifecycleOf({ stage: 'awaiting_payment', isPending: true, isActuallyExpired: false }));
+        expect(dot).toEqual({ type: 'gray', label: 'Menunggu pembayaran peneliti' });
+    });
+
+    it('slot kedaluwarsa memberi MERAH, bukan abu-abu', () => {
+        // Slot kedaluwarsa memerlukan tindakan admin (ganti tanggal / batalkan / buat tagihan baru) -> merah
         const dot = getSubmissionActionDot(lifecycleOf({ isActuallyExpired: true }));
-        expect(dot).toEqual({ type: 'gray', label: 'Slot kedaluwarsa (Unpaid)' });
+        expect(dot).toEqual({ type: 'red', label: 'Perlu tindakan: Slot kedaluwarsa' });
     });
 
     it('order lunas yang halamannya masih draft TIDAK memberi titik', () => {
