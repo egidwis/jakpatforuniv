@@ -1,14 +1,13 @@
 import { cn } from '@/lib/utils';
-import { isBookingClosedForDate, toLocalYmd } from '@/utils/airing-window';
+import { isBookingClosedForDate, nowWib, toLocalYmd } from '@/utils/airing-window';
 
 // ─────────────────────────────────────────────────────────────
 // Kalender kapasitas slot — SATU-SATUNYA di aplikasi ini.
 //
-// Sebelumnya ada tiga salinan (SchedulePaymentView, ExtendSection,
-// RescheduleDialog) dan mereka TIDAK setuju satu sama lain: hanya salinan
-// RescheduleDialog yang memanggil `isBookingClosedForDate`, jadi dua permukaan
-// pemesanan lainnya mengizinkan admin memesan slot yang batas pesannya (13.00
-// WIB) sudah lewat. Berkas ini diangkat dari salinan yang benar itu.
+// Dipakai di formulir jadwal admin (ScheduleForm).
+// Admin diizinkan memilih tanggal hari ini kapan pun (termasuk lewat 14.00 WIB).
+// Tanggal sebelum hari ini (masa lalu) tetap ditutup.
+// Pengguna umum / non-admin tetap dibatasi lewat `SchedulePicker` & `isBookingClosedForDate`.
 //
 // ⚠️ JUMLAH KOLOM ADALAH PROP, BUKAN BREAKPOINT. Bentuk lamanya
 // `grid-cols-4 sm:grid-cols-7` — dan `sm:` mengukur VIEWPORT, bukan lebar
@@ -22,6 +21,19 @@ const COLUMN_CLASS: Record<4 | 7, string> = {
   4: 'grid-cols-4',
   7: 'grid-cols-7',
 };
+
+/**
+ * Menentukan apakah sebuah tanggal ditutup untuk pemesanan slot.
+ * - Untuk admin: tanggal hari ini dan masa depan selalu terbuka (meskipun lewat 14.00 WIB).
+ *   Hanya tanggal masa lalu (sebelum hari ini) yang ditutup.
+ * - Untuk non-admin: cutoff 13.00 WIB berlaku (`isBookingClosedForDate`).
+ */
+export function isSlotDateClosed(ymd: string, isAdmin: boolean = true, now: Date = new Date()): boolean {
+  if (isAdmin) {
+    return ymd < nowWib(now).ymd;
+  }
+  return isBookingClosedForDate(ymd, now);
+}
 
 export interface SlotCalendarProps {
   /** Hari yang ditawarkan, biasanya 14 hari ke depan. */
@@ -43,6 +55,12 @@ export interface SlotCalendarProps {
   onSelect: (ymd: string) => void;
   columns?: 4 | 7;
   isLoading?: boolean;
+  /**
+   * Apakah kalender ini dibuka oleh admin.
+   * Admin dan HANYA admin yang dapat memilih tanggal hari ini meskipun lewat pukul 14.00 WIB.
+   * Default: true (karena SlotCalendar adalah komponen kalender jadwal admin).
+   */
+  isAdmin?: boolean;
 }
 
 /**
@@ -83,10 +101,13 @@ export function SlotCalendar({
   onSelect,
   columns = 7,
   isLoading = false,
+  isAdmin = true,
 }: SlotCalendarProps) {
   if (isLoading) {
     return <SlotCalendarSkeleton columns={columns} count={days.length || DAYS_AHEAD} />;
   }
+
+  const currentWibYmd = nowWib().ymd;
 
   return (
     <div className={cn('[display:grid] gap-2', COLUMN_CLASS[columns])}>
@@ -101,7 +122,8 @@ export function SlotCalendar({
         const isFull = booked >= quota;
         const used = booked + (covered ? 1 : 0);
         const isOver = used > quota;
-        const isClosed = isBookingClosedForDate(ymd);
+        const isPastDate = ymd < currentWibYmd;
+        const isClosed = isSlotDateClosed(ymd, isAdmin);
         const disabled = isFull || isClosed;
         const isStart = selectedYmd === ymd;
 
@@ -112,8 +134,10 @@ export function SlotCalendar({
             disabled={disabled}
             onClick={() => onSelect(ymd)}
             title={
-              isClosed ? 'Sudah lewat batas pesan 13.00 WIB'
-                : isOver ? `Melebihi kuota harian (${quota}) kalau jadwal ini diambil`
+              isClosed
+                ? (isPastDate ? 'Tanggal sudah lewat' : 'Sudah lewat batas pesan 13.00 WIB')
+                : isOver
+                  ? `Melebihi kuota harian (${quota}) kalau jadwal ini diambil`
                   : undefined
             }
             className={cn(

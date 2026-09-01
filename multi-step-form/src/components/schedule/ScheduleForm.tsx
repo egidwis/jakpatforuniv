@@ -639,6 +639,7 @@ export function ScheduleForm({
           onSelect={setSelectedYmd}
           columns={columns}
           isLoading={isLoadingSlots}
+          isAdmin={true}
         />
       </div>
 
