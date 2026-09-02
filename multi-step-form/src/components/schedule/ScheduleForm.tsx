@@ -15,7 +15,7 @@ import {
 import { nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
 import { isAiringNowSchedule, isSchedulePaid } from '@/components/status/scheduleAxes';
 import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
-import { formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
+import { airingDayCount, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { KilatScheduleStep } from '@/components/KilatScheduleStep';
 import { DAYS_AHEAD, SlotCalendar, daysCoveredBy, nextDays } from './SlotCalendar';
 
@@ -76,6 +76,17 @@ async function fetchBatchContext(
 export interface ScheduleFormProps {
   mode: 'edit' | 'create';
   submissionId: string;
+  /**
+   * Jendela tayang ORDER-nya — sumber durasi awal untuk jadwal BARU.
+   *
+   * Mode create tidak punya `entry` untuk ditanyai, jadi tanpa ketiganya
+   * formulir ini tidak punya cara tahu order ini dijual berapa hari.
+   * `airingDayCount(start, end)` yang menang; `orderDuration` cadangan untuk
+   * order yang belum bertanggal.
+   */
+  orderStartDate?: string | null;
+  orderEndDate?: string | null;
+  orderDuration?: number | null;
   /**
    * Jadwal yang disunting. WAJIB untuk mode edit; mode create tidak memakainya
    * sama sekali — order yang belum punya jadwal pun harus bisa membuat satu.
@@ -143,6 +154,9 @@ export function formatBatchPeriod(batchStr?: string | null): string {
 export function ScheduleForm({
   mode,
   submissionId,
+  orderStartDate,
+  orderEndDate,
+  orderDuration,
   entry,
   isExtraAd = false,
   isKilatOrder = false,
@@ -160,9 +174,25 @@ export function ScheduleForm({
   const [selectedYmd, setSelectedYmd] = useState<string | null>(
     !isCreate && entry?.startDate ? toWibYmd(new Date(entry.startDate)) : null
   );
-  const [duration, setDuration] = useState(
-    isCreate ? 7 : Math.max(1, entry?.duration || 1)
-  );
+  /**
+   * Durasi awal jadwal BARU mengikuti ordernya, bukan angka bulat yang enak
+   * dilihat.
+   *
+   * ⚠️ Dulu `isCreate ? 7 : …` — tujuh hari dipatok tanpa melihat order sama
+   * sekali. Untuk order yang tayang 1 hari, setiap jadwal lanjutan lahir tujuh
+   * kali lebih panjang daripada yang dipesan, dan admin harus ingat
+   * membetulkannya SETIAP kali. Yang tidak diingat berubah jadi tagihan tujuh
+   * kali lipat — angka ini masuk ke `buildOrderInvoiceItems` sebagai `qty`.
+   *
+   * ⚠️ Diturunkan dari JENDELA TAYANG lewat `airingDayCount`, bukan dibaca dari
+   * kolom `duration`. Kolom itu bisa berbohong (terbukti di produksi); jendela
+   * start→end adalah yang benar-benar dijual. Kolomnya tetap jadi cadangan
+   * untuk order yang belum punya tanggal, lalu 7 sebagai cadangan terakhir.
+   */
+  const [duration, setDuration] = useState(() => {
+    if (!isCreate) return Math.max(1, entry?.duration || 1);
+    return Math.max(1, airingDayCount(orderStartDate, orderEndDate) || orderDuration || 7);
+  });
 
   const getInitialAiringTime = () => {
     if (!isCreate && entry?.startDate) {
