@@ -2793,6 +2793,53 @@ export const releaseExpiredSlot = async (submissionId: string) => {
  * Penautan jadwal→pembayaran memakai aturan yang sama dengan `fetchScheduleBilling`:
  * `entity_type = 'extend'` + `extend_id` untuk ordinal ≥2, sisanya milik ordinal 1.
  */
+/**
+ * Kenapa UPDATE ini menyentuh nol baris?
+ *
+ * ⚠️ ADA KARENA "0 BARIS" PUNYA DUA SEBAB YANG SANGAT BERBEDA, dan selama
+ * keduanya memakai kalimat yang sama, yang satu menyamar jadi yang lain.
+ * Penjaga `.not('payment_status','in',…)` memang bisa menahan baris yang
+ * BARUSAN lunas — itu sebab yang sah. Tapi RLS yang menolak juga pulang "0
+ * baris cocok", tanpa error, dan selama berhari-hari pesan "jadwal ini sudah
+ * lunas atau sudah dibatalkan" menutupi kenyataan bahwa `ad_schedules` tidak
+ * punya policy UPDATE sama sekali (sql/78).
+ *
+ * SELECT selalu diizinkan, jadi barisnya bisa dibaca ulang dan ditanya: apakah
+ * ia benar-benar sudah lunas/dibatalkan? Kalau TIDAK, penolakannya bukan soal
+ * keadaan — dan kalimatnya harus mengatakan itu, bukan menebak.
+ */
+async function explainNoRowsCancelling(
+  table: 'ad_schedules' | 'form_submissions',
+  filter: (q: any) => any,
+  subject: string,
+): Promise<string> {
+  try {
+    const { data } = await filter(
+      supabase.from(table).select(
+        table === 'ad_schedules' ? 'status, payment_status' : 'submission_status, payment_status',
+      ),
+    ).limit(1);
+    const row: any = Array.isArray(data) && data.length > 0 ? data[0] : null;
+
+    if (!row) return `${subject} tidak ditemukan. Muat ulang dulu.`;
+
+    if (['paid', 'completed'].includes(row.payment_status || '')) {
+      return `${subject} sudah lunas — tidak bisa dibatalkan dari sini.`;
+    }
+    const state = row.status ?? row.submission_status;
+    if (['cancelled', 'slot_cancelled'].includes(state || '')) {
+      return `${subject} sudah dibatalkan. Muat ulang dulu.`;
+    }
+
+    // Barisnya ada, belum lunas, belum dibatalkan — jadi bukan keadaannya yang
+    // menolak. Sisa tersangkanya izin tulis.
+    return `${subject} masih bisa dibatalkan, tapi perubahannya DITOLAK database `
+      + `(kemungkinan policy RLS pada \`${table}\`). Ini bug, bukan keadaan order — laporkan.`;
+  } catch {
+    return `${subject} gagal dibatalkan dan sebabnya tidak bisa dipastikan. Muat ulang dulu.`;
+  }
+}
+
 export const cancelSchedule = async (entry: {
   submissionId: string;
   sourceId: string;
@@ -2830,7 +2877,11 @@ export const cancelSchedule = async (entry: {
       .select('id');
     if (error) throw error;
     if (!data || data.length === 0) {
-      throw new Error('Jadwal ini sudah lunas atau sudah dibatalkan. Muat ulang dulu.');
+      throw new Error(await explainNoRowsCancelling(
+        'ad_schedules',
+        (q) => q.eq('source_table', 'form_submissions_extend').eq('source_id', entry.sourceId),
+        'Jadwal ini',
+      ));
     }
   } else {
     const { data, error } = await supabase
@@ -2855,7 +2906,11 @@ export const cancelSchedule = async (entry: {
       .select('id');
     if (error) throw error;
     if (!data || data.length === 0) {
-      throw new Error('Order ini sudah lunas atau sudah dibatalkan. Muat ulang dulu.');
+      throw new Error(await explainNoRowsCancelling(
+        'form_submissions',
+        (q) => q.eq('id', entry.submissionId),
+        'Order ini',
+      ));
     }
 
     // Halaman iklan ikut kehilangan jendela terbitnya — hanya untuk ordinal 1,
