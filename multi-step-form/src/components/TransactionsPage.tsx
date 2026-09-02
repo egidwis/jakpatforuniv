@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../utils/supabase';
+import { supabase, cancelInvoice } from '../utils/supabase';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,11 @@ import {
   type Transaction,
   parseTransactionNote,
   formatIDR,
+  matchesStatusFilter,
+  statusFilterLabel,
+  STATUS_FILTER_IDS,
 } from './transactions/types';
+import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import { TransactionListRow } from './transactions/TransactionListRow';
 import { TransactionDetailSheet } from './transactions/TransactionDetailSheet';
 import { WalletView } from './transactions/WalletView';
@@ -27,6 +31,15 @@ import { WebhookFailuresBanner } from './transactions/WebhookFailuresBanner';
 type FinanceTab = 'transaksi' | 'wallet';
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+/**
+ * PostgREST memotong hasil di 1000 baris tanpa error — persis cara papan
+ * Schedule diam-diam kehilangan tiap jadwal ber-ordinal >1. Di sini daftarnya
+ * disaring `status = 'pending'` (182 baris per 2026-09-02) jadi ia menyusut lagi
+ * setiap tagihan lunas atau dibatalkan; kalau suatu saat sungguh menyentuh
+ * batasnya, pola paginasinya sudah ada di `fetchAllAdSchedules` (`supabase.ts`).
+ */
+const POSTGREST_ROW_CAP = 1000;
 
 export function TransactionsPage() {
   const [activeTab, setActiveTab] = useState<FinanceTab>('transaksi');
@@ -37,29 +50,79 @@ export function TransactionsPage() {
   const [selectedMonth, setSelectedMonth] = useState<number>(-1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [openTransactionId, setOpenTransactionId] = useState<string | null>(null);
+  /**
+   * `payment_id` yang punya tagihan HIDUP di `invoices`.
+   *
+   * ⚠️ "PUNYA BARIS INVOICES" BUKAN UKURAN YANG BENAR — itu bug yang sudah
+   * dibayar dua kali di repo ini (`hasInvoices` vs `hasOpenInvoice`,
+   * `invoices.length` vs `openInvoice`). Baris tagihan tidak pernah dihapus,
+   * jadi begitu satu tagihan mati ukuran itu berbohong selamanya. Karena itu
+   * yang diambil hanya yang ber-`status = 'pending'`.
+   *
+   * Gunanya satu: memisahkan TAGIHAN dari CHECKOUT YANG DITINGGALKAN. Dari 219
+   * transaksi pending, hanya 66 (Rp 32,2 jt) tagihan sungguhan; 153 sisanya
+   * (Rp 1,1 miliar) cuma keranjang yang ditinggalkan peneliti dan tidak pernah
+   * dihitung sebagai piutang di mana pun. Hanya yang pertama boleh dibatalkan.
+   */
+  const [liveInvoiceIds, setLiveInvoiceIds] = useState<Set<string>>(new Set());
+  const [pendingCancel, setPendingCancel] = useState<ConfirmRequest | null>(null);
 
   const isXl = useMediaQuery('(min-width: 1280px)');
 
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(`
-          *,
-          form_submissions!inner(
-            id,
-            title,
-            full_name,
-            email,
-            start_date,
-            end_date
-          )
-        `)
-        .order('created_at', { ascending: false });
+      /*
+        ⚠️ DUA QUERY, BUKAN SATU `.in()`. `invoices` dan `transactions`
+        dijembatani `payment_id` — bukan foreign key — jadi PostgREST tidak bisa
+        meng-embed-nya. Godaan berikutnya adalah `.in('payment_id', [...219 id])`,
+        dan itu jebakan yang sudah memakan waktu: PostgREST menaruh filter di
+        query string, dan 700 UUID sudah ditolak `400` tanpa menyebut panjang
+        sama sekali (papan Schedule gagal memuat sejak hari pertama karenanya).
+        Menyaring di sisi `invoices` menghindarinya sepenuhnya.
+      */
+      const [txRes, invRes] = await Promise.all([
+        supabase
+          .from('transactions')
+          .select(`
+            *,
+            form_submissions!inner(
+              id,
+              title,
+              full_name,
+              email,
+              start_date,
+              end_date
+            )
+          `)
+          .order('created_at', { ascending: false }),
+        supabase.from('invoices').select('payment_id').eq('status', 'pending'),
+      ]);
 
-      if (error) throw error;
-      setTransactions(data || []);
+      if (txRes.error) throw txRes.error;
+      setTransactions(txRes.data || []);
+
+      /*
+        Kegagalan di sini GAGAL TERTUTUP, bukan melempar: daftar transaksi adalah
+        isi utama halaman dan tidak boleh ikut kosong karena query sekunder.
+        Set kosong berarti tombol "Batalkan tagihan" tidak muncul di baris mana
+        pun — arah yang benar untuk aksi merusak kalau kelayakannya tak diketahui.
+      */
+      if (invRes.error) {
+        console.error('Gagal memuat tagihan hidup:', invRes.error);
+        setLiveInvoiceIds(new Set());
+      } else {
+        const ids = (invRes.data || [])
+          .map((row: { payment_id: string | null }) => row.payment_id)
+          .filter((id): id is string => !!id);
+        if (ids.length >= POSTGREST_ROW_CAP) {
+          console.warn(
+            `[transaksi] Daftar tagihan hidup menyentuh batas ${POSTGREST_ROW_CAP} baris PostgREST — ` +
+            'sebagian tagihan tidak akan menawarkan tombol batal. Butuh paginasi.'
+          );
+        }
+        setLiveInvoiceIds(new Set(ids));
+      }
     } catch (error) {
       console.error('Error fetching transactions:', error);
       toast.error('Gagal memuat data transaksi');
@@ -87,16 +150,7 @@ export function TransactionsPage() {
         t.payment_id?.toLowerCase().includes(cleanSearch) ||
         (t.form_submission_id && t.form_submission_id.toLowerCase().includes(cleanSearch));
 
-      // Chip "Lunas" harus memakai definisi lunas yang sama dengan angka uang di
-      // atasnya; kalau tidak, jumlah barisnya tak akan pernah cocok dengan totalnya.
-      const matchesStatus =
-        statusFilter === 'all'
-          ? true
-          : statusFilter === 'completed'
-            ? isPaidTx(t)
-            : t.status === statusFilter;
-
-      return matchesSearch && isSameMonth && isSameYear && matchesStatus;
+      return matchesSearch && isSameMonth && isSameYear && matchesStatusFilter(t, statusFilter);
     });
   }, [transactions, searchTerm, selectedMonth, selectedYear, statusFilter]);
 
@@ -133,18 +187,77 @@ export function TransactionsPage() {
     [filteredTransactions]
   );
 
-  const statusCounts = {
-    all: transactions.length,
-    pending: transactions.filter((t) => t.status === 'pending').length,
-    completed: transactions.filter(isPaidTx).length,
-    failed: transactions.filter((t) => t.status === 'failed').length,
-  };
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: transactions.length };
+    for (const id of STATUS_FILTER_IDS) {
+      counts[id] = transactions.filter((t) => matchesStatusFilter(t, id)).length;
+    }
+    return counts;
+  }, [transactions]);
 
   const openTransaction = openTransactionId
     ? filteredTransactions.find((t) => t.id === openTransactionId) ??
       transactions.find((t) => t.id === openTransactionId) ??
       null
     : null;
+
+  /**
+   * Tagihan sungguhan yang masih hidup — satu-satunya yang boleh dibatalkan.
+   *
+   * Cerminan `canCancel` di `ScheduleCardList` (`!isPaid && !isDead &&
+   * source === 'invoice' && !!paymentId`). Seperti di sana, tagihan yang
+   * TERLEWAT batas bayar, tersusul, atau basi TETAP boleh dibatalkan — justru
+   * itu yang paling ingin dibersihkan admin. Menggerbangnya dengan "sudah
+   * lewat/dicoret" adalah bug yang sudah ditemukan sekali di kartu jadwal.
+   */
+  const canCancelInvoice = (t: Transaction): boolean =>
+    (t.status ?? '').trim().toLowerCase() === 'pending' &&
+    !!t.payment_id &&
+    liveInvoiceIds.has(t.payment_id);
+
+  /**
+   * ⚠️ KATA-KATANYA SENGAJA IDENTIK dengan tab Reservasi Jadwal
+   * (`SchedulePaymentTab.handleCancelInvoice`) — aksi yang sama harus berbunyi
+   * sama di permukaan mana pun. Baris ketiga bukan basa-basi hukum: membatalkan
+   * tagihan TIDAK memanggil API pembatalan DOKU, jadi VA yang sudah terbit masih
+   * bisa dibayar dari sisi bank, dan kalau uangnya sungguh masuk webhook
+   * menghidupkannya lagi sebagai lunas. Itu disengaja — uang yang benar-benar
+   * diterima harus selalu menang atas status di layar.
+   */
+  const handleCancelInvoice = (transaction: Transaction) => {
+    const paymentId = transaction.payment_id;
+    setPendingCancel({
+      title: 'Batalkan tagihan ini?',
+      highlight: formatIDR(transaction.amount),
+      lines: [
+        'Nominal itu berhenti dihitung sebagai piutang, dan jadwalnya bisa ditagih ulang.',
+        'Jadwal serta slotnya TIDAK dibatalkan — ini berlingkup tagihan saja.',
+        `Link bayar ${paymentId} yang sudah terlanjur dikirim masih bisa dibayar dari sisi bank. Kalau uangnya sungguh masuk, tagihan ini kembali jadi lunas.`,
+      ],
+      confirmLabel: 'Ya, Batalkan Tagihan',
+      tone: 'danger',
+      onConfirm: async () => {
+        try {
+          // Nilai kembaliannya DIPERIKSA. `.update()` tanpa `.select()` tidak
+          // melempar saat RLS menyaring hasilnya jadi nol baris — persis cara
+          // "Tandai Lunas" gagal diam-diam berbulan-bulan sebelum sql/59. Nol
+          // baris di sini berarti tagihannya sudah berubah status di permukaan
+          // lain, bukan sukses.
+          const changed = await cancelInvoice(paymentId);
+          if (changed === 0) {
+            toast.warning('Tidak ada yang berubah — tagihan ini mungkin sudah dibayar atau dibatalkan.');
+          } else {
+            toast.success(`Tagihan ${paymentId} dibatalkan.`);
+          }
+          // Menyegarkan daftar DAN daftar tagihan hidup sekaligus, jadi tombolnya
+          // hilang dari baris yang baru saja dibatalkan.
+          await fetchTransactions();
+        } catch (err: any) {
+          toast.error(err?.message || 'Gagal membatalkan tagihan');
+        }
+      },
+    });
+  };
 
   const handleExportCsv = () => {
     const headers = ['Transaction ID', 'Survey Title', 'Researcher', 'Payment Method', 'Payment Channel', 'Amount', 'Status', 'Created At', 'Invoice Number'];
@@ -266,7 +379,7 @@ export function TransactionsPage() {
                   className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-[11px] font-semibold pl-2.5 pr-1.5 py-1 transition-colors hover:bg-slate-700 animate-in fade-in zoom-in-95 duration-200"
                   title="Hapus filter status"
                 >
-                  Status: {statusFilter === 'pending' ? 'Menunggu' : statusFilter === 'completed' ? 'Lunas' : 'Gagal'}
+                  Status: {statusFilterLabel(statusFilter)}
                   <X className="w-3 h-3 ml-0.5" />
                 </button>
               )}
@@ -325,51 +438,23 @@ export function TransactionsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48 bg-white p-1 border shadow-md rounded-md z-50">
-                    <DropdownMenuItem
-                      onClick={() => setStatusFilter('all')}
-                      className={cn(
-                        'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
-                        statusFilter === 'all' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
-                      )}
-                    >
-                      <span>Semua</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setStatusFilter('pending')}
-                      className={cn(
-                        'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
-                        statusFilter === 'pending' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
-                      )}
-                    >
-                      <span>Menunggu</span>
-                      <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
-                        {statusCounts.pending}
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setStatusFilter('completed')}
-                      className={cn(
-                        'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
-                        statusFilter === 'completed' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
-                      )}
-                    >
-                      <span>Lunas</span>
-                      <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
-                        {statusCounts.completed}
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setStatusFilter('failed')}
-                      className={cn(
-                        'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
-                        statusFilter === 'failed' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
-                      )}
-                    >
-                      <span>Gagal</span>
-                      <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
-                        {statusCounts.failed}
-                      </span>
-                    </DropdownMenuItem>
+                    {(['all', ...STATUS_FILTER_IDS] as const).map((id) => (
+                      <DropdownMenuItem
+                        key={id}
+                        onClick={() => setStatusFilter(id)}
+                        className={cn(
+                          'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
+                          statusFilter === id ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                        )}
+                      >
+                        <span>{statusFilterLabel(id)}</span>
+                        {id !== 'all' && (
+                          <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
+                            {statusCounts[id]}
+                          </span>
+                        )}
+                      </DropdownMenuItem>
+                    ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
 
@@ -462,16 +547,22 @@ export function TransactionsPage() {
               variant="pane"
               transaction={openTransaction}
               onOpenChange={(open) => !open && setOpenTransactionId(null)}
+              onCancelInvoice={canCancelInvoice(openTransaction) ? handleCancelInvoice : undefined}
             />
           )}
         </div>
       )}
+
+      <ConfirmDialog request={pendingCancel} onDismiss={() => setPendingCancel(null)} />
 
       {/* Detail drawer (narrow screens) — ≥1280px uses the inline pane instead */}
       {!isXl && (
         <TransactionDetailSheet
           transaction={activeTab === 'transaksi' ? openTransaction : null}
           onOpenChange={(open) => !open && setOpenTransactionId(null)}
+          onCancelInvoice={
+            openTransaction && canCancelInvoice(openTransaction) ? handleCancelInvoice : undefined
+          }
         />
       )}
     </div>

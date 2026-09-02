@@ -1,4 +1,4 @@
-import { Copy, Download, Link as LinkIcon } from 'lucide-react';
+import { Ban, Copy, Download, Link as LinkIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Chip } from '../ui/chip';
@@ -8,16 +8,27 @@ import {
   type Transaction,
   parseTransactionNote,
   formatIDR,
-  STATUS_LABELS,
-  STATUS_CHIP_VARIANTS,
+  transactionStatusChip,
   methodChipInfo,
 } from './types';
+import { isPaidTx } from '@/utils/analytics/revenue';
 
 interface TransactionDetailSheetProps {
   transaction: Transaction | null;
   onOpenChange: (open: boolean) => void;
   /** 'sheet' renders a right drawer (default); 'pane' renders the inline reading pane */
   variant?: 'sheet' | 'pane';
+  /**
+   * Membatalkan tagihan ini. **Kehadiran prop inilah gerbangnya** — komponen ini
+   * tidak menghitung kelayakan sendiri.
+   *
+   * Alasannya bukan kerapian: syaratnya butuh data yang tidak ada di sini
+   * (adakah `invoices` ber-status `pending` untuk `payment_id` ini), dan
+   * menghitungnya di dua tempat adalah persis cara "ada baris tagihan" pernah
+   * dipakai menggantikan "ada tagihan hidup" — dua jawaban berbeda untuk satu
+   * pertanyaan. Induk yang memutuskan, sekali.
+   */
+  onCancelInvoice?: (transaction: Transaction) => void;
 }
 
 function copyToClipboard(value: string, label: string) {
@@ -54,11 +65,18 @@ export function TransactionDetailSheet({
   transaction,
   onOpenChange,
   variant = 'sheet',
+  onCancelInvoice,
 }: TransactionDetailSheetProps) {
+  // ⚠️ JANGAN MENAMBAH HOOK DI KOMPONEN INI. Early-return di bawah berjalan
+  // SEBELUM baris mana pun, jadi `useState`/`useEffect` di sini akan melanggar
+  // rules-of-hooks begitu `transaction` berganti null↔non-null. State dialog
+  // pembatalan sengaja hidup di `TransactionsPage`.
   if (!transaction) return null;
 
   const { items, memo } = parseTransactionNote(transaction.note);
   const method = methodChipInfo(transaction.payment_method, transaction.payment_channel, transaction.status);
+  const statusChip = transactionStatusChip(transaction.status);
+  const isPaid = isPaidTx(transaction);
   const title = transaction.form_submissions?.title || 'Judul tidak tersedia';
 
   const subtitle = (
@@ -70,8 +88,8 @@ export function TransactionDetailSheet({
 
   const chips = (
     <>
-      <Chip variant={STATUS_CHIP_VARIANTS[transaction.status]} size="sm">
-        {STATUS_LABELS[transaction.status]}
+      <Chip variant={statusChip.variant} size="sm">
+        {statusChip.label}
       </Chip>
       <Chip variant={method.variant} size="sm">
         {method.label}
@@ -187,29 +205,52 @@ export function TransactionDetailSheet({
     </>
   );
 
-  const footer = transaction.payment_url ? (
-    <div className="flex gap-2">
-      {transaction.status === 'pending' && (
+  /*
+    ⚠️ Gerbangnya `payment_url || onCancelInvoice`, bukan `payment_url` saja.
+    Sebelumnya seluruh footer lenyap tanpa `payment_url` — dan tagihan yang
+    paling ingin dibatalkan admin justru yang link bayarnya bermasalah.
+  */
+  const footer = transaction.payment_url || onCancelInvoice ? (
+    <div className="flex flex-col gap-2">
+      {transaction.payment_url && (
+        <div className="flex gap-2">
+          {transaction.status === 'pending' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-9"
+              onClick={() => copyToClipboard(transaction.payment_url, 'Link pembayaran')}
+            >
+              <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
+              Salin Link Bayar
+            </Button>
+          )}
+          <Button asChild size="sm" className="flex-1 h-9 bg-blue-600 hover:bg-blue-700">
+            <a
+              href={`/invoices/${transaction.payment_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              {/* `isPaidTx`, bukan `=== 'completed'`: 8 baris lunas ditulis
+                  DOKU sebagai `paid` dan dulu ditawari "Download Invoice"
+                  padahal uangnya sudah masuk. */}
+              {isPaid ? 'Download Receipt' : 'Download Invoice'}
+            </a>
+          </Button>
+        </div>
+      )}
+      {onCancelInvoice && (
         <Button
           variant="outline"
           size="sm"
-          className="flex-1 h-9"
-          onClick={() => copyToClipboard(transaction.payment_url, 'Link pembayaran')}
+          className="h-9 w-full text-red-600 border-red-200 hover:text-red-700 hover:border-red-300 hover:bg-red-50"
+          onClick={() => onCancelInvoice(transaction)}
         >
-          <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
-          Salin Link Bayar
+          <Ban className="w-3.5 h-3.5 mr-1.5" />
+          Batalkan tagihan
         </Button>
       )}
-      <Button asChild size="sm" className="flex-1 h-9 bg-blue-600 hover:bg-blue-700">
-        <a
-          href={`/invoices/${transaction.payment_id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Download className="w-3.5 h-3.5 mr-1.5" />
-          {transaction.status === 'completed' ? 'Download Receipt' : 'Download Invoice'}
-        </a>
-      </Button>
     </div>
   ) : undefined;
 

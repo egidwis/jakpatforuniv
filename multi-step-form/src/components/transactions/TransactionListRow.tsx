@@ -5,8 +5,7 @@ import { toast } from 'sonner';
 import {
   type Transaction,
   formatIDR,
-  STATUS_LABELS,
-  STATUS_CHIP_VARIANTS,
+  transactionStatusChip,
   methodChipInfo,
 } from './types';
 
@@ -26,6 +25,7 @@ interface TransactionListRowProps {
 export function TransactionListRow({ transaction, onOpen, active }: TransactionListRowProps) {
   const date = new Date(transaction.created_at);
   const method = methodChipInfo(transaction.payment_method, transaction.payment_channel, transaction.status);
+  const statusChip = transactionStatusChip(transaction.status);
   const title = transaction.form_submissions?.title || 'Judul tidak tersedia';
 
   return (
@@ -98,8 +98,8 @@ export function TransactionListRow({ transaction, onOpen, active }: TransactionL
 
       {/* Status chip */}
       <div className="shrink-0 sm:w-[88px]">
-        <Chip variant={STATUS_CHIP_VARIANTS[transaction.status]} size="sm">
-          {STATUS_LABELS[transaction.status]}
+        <Chip variant={statusChip.variant} size="sm">
+          {statusChip.label}
         </Chip>
       </div>
 

@@ -1,5 +1,6 @@
 import type { ChipVariant } from '../ui/chip';
 import { formatPaymentChannel } from '../../utils/paymentChannel';
+import { isPaidTx } from '@/utils/analytics/revenue';
 
 export interface Transaction {
   id: string;
@@ -7,7 +8,22 @@ export interface Transaction {
   payment_method: string;
   payment_channel?: string | null;
   amount: number;
-  status: 'pending' | 'completed' | 'failed';
+  /**
+   * ⚠️ SENGAJA `string`, BUKAN UNION.
+   *
+   * Sampai 2026-09-02 tipenya berbunyi `'pending' | 'completed' | 'failed'` —
+   * dan ketiganya bukan kosakata yang sebenarnya ditulis ke kolom ini. Terukur
+   * di produksi: `completed` 427, `pending` 219, `cancelled` 10, `paid` 8,
+   * `expired` 7, dan `failed` **nol baris, selamanya**. Jadi union itu salah di
+   * kedua arah — memuat kata yang tak pernah ada, dan melewatkan tiga yang ada.
+   *
+   * Penulisnya banyak dan tidak semuanya di repo ini: webhook DOKU (`paid`),
+   * `cancelInvoice()` (`cancelled`), sapuan kedaluwarsa (`expired`). Union
+   * mengunci kosakata di satu sisi sementara sisi lain terus tumbuh, dan
+   * akibatnya bukan error type — melainkan chip KOSONG di layar (lihat
+   * `transactionStatusChip`). Biarkan longgar di tipe, tegakkan di fungsi.
+   */
+  status: string;
   payment_url: string;
   note?: string;
   created_at: string;
@@ -52,22 +68,87 @@ export function parseTransactionNote(note?: string): ParsedNote {
 // di dalam modul transactions/ tidak perlu ikut disentuh.
 export { formatIDR } from '@/utils/currency';
 
-export const STATUS_LABELS: Record<Transaction['status'], string> = {
-  completed: 'Lunas',
-  pending: 'Menunggu',
-  failed: 'Gagal',
+/** Ditulis gateway & migrasi, jadi selalu dinormalkan sebelum dicocokkan. */
+const norm = (v: string | null | undefined): string => (v ?? '').trim().toLowerCase();
+
+/**
+ * Label & warna untuk SATU status transaksi.
+ *
+ * ⚠️ MENGGANTIKAN `STATUS_LABELS` + `STATUS_CHIP_VARIANTS`, dan bukan demi
+ * kerapian. Keduanya `Record<Transaction['status'], …>` di atas union tiga kata,
+ * jadi tiga status produksi (`cancelled`, `paid`, `expired` — 25 baris senilai
+ * Rp 12.031.460) menghasilkan `undefined` pada KEDUA peta. `undefined` sebagai
+ * `variant` membuat `Chip` jatuh ke `defaultVariants: slate`, dan `undefined`
+ * sebagai anak React tidak merender apa pun: hasilnya pil abu-abu KOSONG di
+ * kolom Status, tanpa satu pun error.
+ *
+ * Karena itu FALLBACK-nya wajib dan itulah inti perbaikan ini: status yang tidak
+ * dikenal **menampilkan dirinya sendiri**. Kata status berikutnya yang lahir
+ * hanya di satu sisi (webhook, migrasi, gateway) akan terbaca di layar sebagai
+ * teks mentah — jelek, tapi terlihat. Bisu adalah kegagalan; jelek bukan.
+ *
+ * Kosakata & warnanya meminjam `@/lib/status-tokens` — jangan mengarang yang
+ * baru di sini. `cancelled` slate dan `expired` merah memang sengaja BERBEDA:
+ * repo ini menjaga betul bedanya ("tidak ada yang kedaluwarsa, ada yang
+ * memutuskan" — `status/deriveOrderUiState.ts`).
+ */
+const STATUS_CHIPS: Record<string, { label: string; variant: ChipVariant }> = {
+  // Dua kata untuk satu arti. DOKU menulis `paid`, jalur lama menulis
+  // `completed`; keduanya uang yang benar-benar masuk, dan `isPaidTx` sudah
+  // menghitung keduanya ke "Pendapatan". Chip Metode yang menjelaskan CARANYA.
+  completed: { label: 'Lunas', variant: 'green' },
+  paid: { label: 'Lunas', variant: 'green' },
+  pending: { label: 'Menunggu', variant: 'amber' },
+  cancelled: { label: 'Dibatalkan', variant: 'slate' },
+  expired: { label: 'Kedaluwarsa', variant: 'red' },
+  // Nol baris di produksi, dan karena itu TIDAK ditawarkan di dropdown filter.
+  // Tetap dipetakan: webhook masih boleh menulisnya kapan saja.
+  failed: { label: 'Gagal', variant: 'red' },
 };
 
-export const STATUS_CHIP_VARIANTS: Record<Transaction['status'], ChipVariant> = {
-  completed: 'green',
-  pending: 'amber',
-  failed: 'red',
-};
+export function transactionStatusChip(
+  status: string | null | undefined
+): { label: string; variant: ChipVariant } {
+  const known = STATUS_CHIPS[norm(status)];
+  if (known) return known;
+  return { label: status?.trim() || '—', variant: 'slate' };
+}
+
+/**
+ * Status yang ditawarkan di dropdown filter halaman Transaksi.
+ *
+ * ⚠️ `failed` SENGAJA TIDAK ADA — nol baris di produksi, selamanya, sementara
+ * `cancelled`/`expired` (17 baris) tidak pernah punya entri. Daftar lamanya
+ * mencerminkan union tipe yang salah, bukan data yang ada.
+ */
+export const STATUS_FILTER_IDS = ['pending', 'completed', 'cancelled', 'expired'] as const;
+
+/** Label filter — diturunkan dari chip supaya keduanya tidak bisa menyimpang. */
+export const statusFilterLabel = (id: string): string =>
+  id === 'all' ? 'Semua' : transactionStatusChip(id).label;
+
+/**
+ * SATU definisi "baris ini cocok dengan filter", dipakai daftar tersaring DAN
+ * angka di dropdown. Menggandakannya adalah cara hitungan di pil berhenti cocok
+ * dengan jumlah baris yang benar-benar tampil.
+ *
+ * `completed` lewat `isPaidTx` — yang memuat `paid` juga — supaya jumlah barisnya
+ * cocok dengan angka "Pendapatan" di atasnya. Sisanya kesetaraan biasa, dinormalkan
+ * karena status ditulis gateway.
+ */
+export function matchesStatusFilter(
+  t: Pick<Transaction, 'status'>,
+  filter: string
+): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'completed') return isPaidTx(t);
+  return norm(t.status) === filter;
+}
 
 export function methodChipInfo(
   method: string,
   channel?: string | null,
-  status?: Transaction['status']
+  status?: string
 ): { label: string; variant: ChipVariant } {
   // Rows created by the old always-on simulation bug (see payment.ts history):
   // the data is fake, so say so — these need admin follow-up, not disguise.
@@ -81,7 +162,12 @@ export function methodChipInfo(
     // Channel is only known once the webhook's success notification arrives.
     // Unpaid → genuinely not chosen yet; paid without channel → legacy row
     // from before 23_add_payment_channel.sql (or a webhook shape we missed).
-    return status === 'completed'
+    //
+    // ⚠️ `isPaidTx`, BUKAN `status === 'completed'`. Berkas ini baru saja
+    // menyatakan `paid` dan `completed` sama-sama lunas di `STATUS_CHIPS`;
+    // dua definisi "lunas" dalam satu berkas adalah persis cara angka mulai
+    // menyimpang tanpa error.
+    return isPaidTx({ status: status ?? '' })
       ? { label: 'DOKU · channel tidak tercatat', variant: 'slate' }
       : { label: 'Menunggu channel', variant: 'slate' };
   }
