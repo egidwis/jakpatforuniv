@@ -148,3 +148,54 @@ describe('isLateForSchedule — satu definisi', () => {
     expect(isLateForSchedule(entry({ startDate: null }), 'waiting_payment', now)).toBe(false);
   });
 });
+
+describe('notify_slot — "Kabari via WA"', () => {
+  const ids = (p: ReturnType<typeof planCardActions>) =>
+    [...(p.primary ? [p.primary.id] : []), ...p.menu.map((a) => a.id)];
+
+  const withNotify = (state: CardState, e: Partial<AdScheduleEntry> = {}) =>
+    planCardActions({
+      state,
+      entry: entry({ slotBookedBy: 'admin', startDate: '2026-09-10T08:00:00Z', ...e }),
+      billing: billing(),
+      isLate: false,
+      can: { ...ALL, notifySlot: true },
+    });
+
+  it('muncul di menu saat slot sudah dipesan dan tagihan belum terbit', () => {
+    expect(ids(withNotify('awaiting_invoice'))).toContain('notify_slot');
+  });
+
+  it('TIDAK muncul saat slotBookedBy kosong', () => {
+    // 603 baris produksi ber-slot_booked_by NULL yang tak seorang pun pesan.
+    // Mengabari "slot Anda sudah dipesan" di sana adalah kebohongan.
+    expect(ids(withNotify('awaiting_invoice', { slotBookedBy: null }))).not.toContain('notify_slot');
+  });
+
+  it('TIDAK muncul saat jadwalnya belum bertanggal — isi pesannya justru tanggal itu', () => {
+    expect(ids(withNotify('awaiting_invoice', { startDate: null }))).not.toContain('notify_slot');
+  });
+
+  it('TIDAK muncul di keadaan mana pun selain awaiting_invoice', () => {
+    for (const s of STATES.filter((s) => s !== 'awaiting_invoice')) {
+      expect(ids(withNotify(s))).not.toContain('notify_slot');
+    }
+  });
+
+  it('TIDAK muncul kalau pemanggil tidak menyediakan handler-nya', () => {
+    const p = planCardActions({
+      state: 'awaiting_invoice',
+      entry: entry({ slotBookedBy: 'admin' }),
+      billing: billing(),
+      isLate: false,
+      can: ALL,
+    });
+    expect(ids(p)).not.toContain('notify_slot');
+  });
+
+  it('tidak pernah jadi aksi utama, dan tidak merusak', () => {
+    const p = withNotify('awaiting_invoice');
+    expect(p.primary?.id).not.toBe('notify_slot');
+    expect(p.menu.find((a) => a.id === 'notify_slot')?.destructive).toBeUndefined();
+  });
+});

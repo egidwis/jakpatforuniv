@@ -37,6 +37,21 @@ export interface OrderPricingInput {
   prizePerWinner?: number | null;
   voucherCode?: string | null;
   isKilat?: boolean;
+  /**
+   * Kapan masa berlaku voucher dinilai — `voucherInstantOf(order.created_at)`.
+   *
+   * ⚠️ BUKAN "sekarang". Setiap voucher punya tenggatnya sendiri, dan
+   * `create-payment.js` menilainya dengan `created_at` ORDER. Selama nilai ini
+   * tidak dioper, tagihan yang diterbitkan admin sehari sesudah tenggat
+   * menghitung harga PENUH sementara server menghitung harga berdiskon untuk
+   * order yang sama — dua angka untuk satu pesanan.
+   *
+   * Pada tagihan gabungan ia dinilai PER BUNDEL: satu tagihan boleh memuat
+   * pesanan yang lahir sebelum tenggat (didiskon) dan sesudahnya (harga penuh).
+   *
+   * Kosong = sekarang, mempertahankan perilaku pemanggil yang belum menyediakannya.
+   */
+  voucherInstantMs?: number;
 }
 
 /**
@@ -105,7 +120,7 @@ export function buildOrderInvoiceItems(
   const costPerDay = calculateAdCostPerDay(questionCount);
   const adCost = costPerDay * duration;
   const incentiveCost = calculateIncentiveCost(winnerCount, prizePerWinner);
-  const discount = calculateDiscount(input.voucherCode || undefined, adCost, incentiveCost, duration);
+  const discount = calculateDiscount(input.voucherCode || undefined, adCost, incentiveCost, duration, input.voucherInstantMs ?? Date.now());
 
   if (costPerDay > 0 && duration > 0) {
     // Kalau ada diskon, terapkan ke tarif harian supaya tampilannya bersih.
@@ -175,6 +190,8 @@ export function buildExtensionInvoiceItems(
      * layar sebelum link pembayaran dibuat.
      */
     voucherCode?: string | null;
+    /** Lihat `OrderPricingInput.voucherInstantMs`. */
+    voucherInstantMs?: number;
   }
 ): InvoiceItem[] {
   const items: InvoiceItem[] = [];
@@ -186,7 +203,7 @@ export function buildExtensionInvoiceItems(
     const incentiveCost = entry.isNewPeriod
       ? calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner)
       : 0;
-    const discount = calculateDiscount(opts.voucherCode || undefined, adCost, incentiveCost, duration);
+    const discount = calculateDiscount(opts.voucherCode || undefined, adCost, incentiveCost, duration, opts.voucherInstantMs ?? Date.now());
     const discountedPerDay = discount > 0
       ? Math.max(0, costPerDay - Math.ceil(discount / duration))
       : costPerDay;

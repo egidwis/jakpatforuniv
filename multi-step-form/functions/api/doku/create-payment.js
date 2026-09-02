@@ -180,6 +180,33 @@ export function computeTotalCostFromSubmission(sub) {
 }
 // ─── End server-side pricing ────────────────────────────────────────────────
 
+/**
+ * Apakah `payment_id` ini menaungi lebih dari satu pesanan (tagihan gabungan)?
+ *
+ * ⚠️ FAIL-CLOSED. Kalau pertanyaannya tidak bisa dijawab — jaringan, PostgREST
+ * error — jawabannya `true`, artinya link-nya TIDAK dipakai ulang dan tagihan
+ * baru diterbitkan. Menerbitkan tagihan kembar itu berisik dan bisa dibatalkan;
+ * mengirim peneliti ke tagihan milik grup itu menagih dia untuk pesanan orang
+ * lain — dan itu tidak bisa ditarik kembali sesudah dibayar.
+ */
+async function isGroupPayment(supabaseUrl, sbHeaders, paymentId) {
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${encodeURIComponent(paymentId)}&select=id&limit=2`,
+      { headers: sbHeaders }
+    );
+    if (!res.ok) {
+      console.warn(`[create-payment] Could not check whether ${paymentId} is a group bill (status ${res.status}); treating it as one.`);
+      return true;
+    }
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.length > 1;
+  } catch (e) {
+    console.warn(`[create-payment] Group-bill check failed for ${paymentId}; treating it as one:`, e);
+    return true;
+  }
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
 
@@ -432,9 +459,22 @@ export async function onRequest(context) {
           sameInstant(r.billed_start_date, billedStartDate) &&
           r.expires_at && new Date(r.expires_at).getTime() > Date.now()
         );
-        if (reusable) {
+        // ⚠️ JANGAN PERNAH PAKAI ULANG LINK TAGIHAN GABUNGAN.
+        //
+        // Sejak satu pembayaran boleh menaungi N jadwal, sebuah `payment_id`
+        // bisa dipakai N baris `invoices` — masing-masing membawa PORSINYA
+        // sendiri. Porsi itu persis sama dengan harga self-service pesanan itu,
+        // jadi seluruh syarat pakai-ulang di atas terpenuhi dan peneliti yang
+        // menekan "Bayar Sekarang" pada SATU pesanan akan dikirim ke halaman
+        // DOKU yang menagih TOTAL SELURUH GRUP.
+        //
+        // Satu permintaan tambahan, dan hanya saat ada kandidat.
+        if (reusable && !(await isGroupPayment(supabaseUrl, sbHeaders, reusable.payment_id))) {
           console.log(`[create-payment] Reusing live bill ${reusable.payment_id} for ${formSubmissionId}`);
           return json({ payment_url: reusable.invoice_url, payment_id: reusable.payment_id, reused: true }, 200);
+        }
+        if (reusable) {
+          console.log(`[create-payment] Bill ${reusable.payment_id} covers several orders; minting a separate one for ${formSubmissionId}`);
         }
       } else {
         console.warn(`[create-payment] Could not check live bills (status ${liveRes.status}); minting a new one.`);

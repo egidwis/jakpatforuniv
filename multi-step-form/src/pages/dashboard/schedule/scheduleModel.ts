@@ -5,7 +5,7 @@ import {
   type StatusToken,
   type LifecycleStage,
 } from '@/lib/status-tokens';
-import { isPaymentTooLateForDate, toWibYmd } from '@/utils/airing-window';
+import { formatWibDay, isPaymentTooLateForDate, toWibYmd } from '@/utils/airing-window';
 
 // ─────────────────────────────────────────────────────────────
 // Logika papan Schedule, tanpa JSX — supaya bisa dibaca dan diuji tanpa
@@ -18,22 +18,12 @@ import { isPaymentTooLateForDate, toWibYmd } from '@/utils/airing-window';
  * luar WIB harus tetap melihat hari dan jam yang sama dengan yang dilihat
  * peneliti — sebuah iklan yang tayang 15.00 WIB tidak boleh muncul di baris
  * hari sebelumnya hanya karena laptopnya disetel UTC.
+ *
+ * Formatternya pindah ke `utils/airing-window` — `utils/waMessage` butuh yang
+ * sama persis, dan `utils/` tidak boleh mengimpor dari `pages/`. Di-re-export
+ * dari sini supaya seluruh pemanggil lama tidak perlu diubah.
  */
-const WIB = 'Asia/Jakarta';
-
-const timeFmt = new Intl.DateTimeFormat('id-ID', {
-  timeZone: WIB, hour: '2-digit', minute: '2-digit', hour12: false,
-});
-const dayFmt = new Intl.DateTimeFormat('id-ID', {
-  timeZone: WIB, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-});
-const shortDayFmt = new Intl.DateTimeFormat('id-ID', {
-  timeZone: WIB, weekday: 'short', day: 'numeric', month: 'short',
-});
-
-export const formatWibTime = (iso: string) => timeFmt.format(new Date(iso)).replace(':', '.');
-export const formatWibDay = (iso: string) => dayFmt.format(new Date(iso));
-export const formatWibShort = (iso: string) => shortDayFmt.format(new Date(iso));
+export { formatWibTime, formatWibDay, formatWibShort } from '@/utils/airing-window';
 
 /**
  * "Belum dijadwalkan" punya DUA bentuk, dan keduanya harus mendarat di blok

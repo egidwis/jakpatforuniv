@@ -125,6 +125,12 @@ interface CardActions {
    * membiarkan admin buntu justru mendorongnya memakai tombol yang salah.
    */
   onOpenReview?: () => void;
+  /**
+   * Kabari peneliti via WhatsApp bahwa slotnya sudah dipesan, tagihan menyusul.
+   * Dipanggil SINKRON dari handler klik — tidak ada `await` sebelum WA terbuka,
+   * jadi pemblokir popup tidak menggigit di sini.
+   */
+  onNotifySlot?: (entry: AdScheduleEntry) => void;
 }
 
 /** Satu baris tagihan di dalam daftar. */
@@ -572,6 +578,7 @@ function CardActionBar({
       case 'mark_paid':       return actions.onMarkPaid?.(entry);
       case 'unmark_paid':     return actions.onUnmarkPaid?.(entry);
       case 'cancel_schedule': return actions.onCancelSchedule?.(entry);
+      case 'notify_slot':     return actions.onNotifySlot?.(entry);
       case 'open_review':     return actions.onOpenReview?.();
     }
   };
@@ -710,6 +717,7 @@ function ScheduleCard({
        * layar oleh admin yang tidak tahu asal-usulnya.
        */
       unmarkPaid: !!actions.onUnmarkPaid && billing?.paymentChannel === 'MANUAL_VERIFIED',
+      notifySlot: !!actions.onNotifySlot,
     },
   });
 
@@ -883,7 +891,7 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, billings, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onOpenReview,
+  entries, billings, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
 }: {
   entries: AdScheduleEntry[];
   billings: Map<string, ScheduleBilling>;
@@ -929,6 +937,8 @@ export function ScheduleCardList({
    * ke `schedule_id` dan mempertahankan tanggal alih-alih mengosongkannya.
    */
   onCancelSchedule: ((entry: AdScheduleEntry) => void) | null;
+  /** Kabari peneliti via WhatsApp — lihat `CardActions.onNotifySlot`. */
+  onNotifySlot?: (entry: AdScheduleEntry) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(() => pickDefaultOpen(entries, billings));
   const isOnly = entries.length === 1;
@@ -999,7 +1009,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onOpenReview }}
+          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview }}
         />
       ))}
     </div>

@@ -53,6 +53,7 @@ export type ActionId =
   | 'mark_paid'
   | 'unmark_paid'
   | 'cancel_schedule'
+  | 'notify_slot'     // WhatsApp "slotmu sudah dipesan, tagihan menyusul"
   | 'open_review';    // lompat ke tab Review
 
 export interface CardAction {
@@ -170,6 +171,7 @@ export function planCardActions(input: {
     unmarkPaid: boolean;
     cancelSchedule: boolean;
     createInvoice: boolean;
+    notifySlot?: boolean;
   };
 }): CardActionPlan {
   const { state, entry, billing, isLate, can } = input;
@@ -189,6 +191,18 @@ export function planCardActions(input: {
   const withCancel = (menu: CardAction[]) =>
     can.cancelSchedule ? [...menu, cancelSchedule] : menu;
 
+  /**
+   * "Kabari via WA" — slot sudah dipesan, tagihannya belum terbit.
+   *
+   * ⚠️ GERBANG KEDUA (`slotBookedBy`) BUKAN HIASAN. 603 baris produksi punya
+   * `slot_booked_by` NULL dan tidak seorang pun pernah memesannya; mengabari
+   * "slot Anda sudah dipesan" untuk reservasi yang tak pernah terjadi persis
+   * jenis kebohongan yang komentar di ScheduleCardList itu tulis. Tanggalnya
+   * ikut jadi syarat karena isi pesannya justru tanggal itu.
+   */
+  const canNotifySlot = Boolean(can.notifySlot) && Boolean(entry.slotBookedBy) && Boolean(entry.startDate);
+  const notifySlot: CardAction = { id: 'notify_slot', label: 'Kabari via WA' };
+
   switch (state) {
     // Nol aksi penagihan — bolanya di Fase ①. Satu-satunya afordansi adalah
     // penunjuk ke tempat kerjanya yang benar.
@@ -206,6 +220,7 @@ export function planCardActions(input: {
         primary: can.createInvoice ? { id: 'invoice', label: 'Buat Tagihan' } : schedule(),
         menu: withCancel([
           ...(can.createInvoice ? [schedule()] : []),
+          ...(canNotifySlot ? [notifySlot] : []),
           ...(can.markPaid ? [markPaid] : []),
         ]),
       };

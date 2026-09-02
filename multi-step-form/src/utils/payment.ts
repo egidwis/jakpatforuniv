@@ -22,6 +22,13 @@ export interface InvoiceData {
     email?: string;
     phoneNumber?: string;
   };
+  /**
+   * Berapa pesanan yang ditanggung satu pembayaran ini. Default 1.
+   *
+   * Menentukan ke mana peneliti mendarat sesudah membayar — lihat
+   * `createManualInvoice`. Tidak dikirim ke DOKU selain lewat `callback_url`.
+   */
+  bundleCount?: number;
 }
 
 // -------------------------------------------------------------------------------- //
@@ -94,10 +101,32 @@ export const createPayment = async (paymentData: PaymentData) => {
 // ==============================================================================
 export const createManualInvoice = async (invoiceData: InvoiceData) => {
   try {
-    const { formSubmissionId, amount, description, customerInfo } = invoiceData;
+    const { formSubmissionId, amount, description, customerInfo, bundleCount = 1 } = invoiceData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
+    // ⚠️ Memuat potongan SATU `formSubmissionId`, dan untuk tagihan gabungan itu
+    // sekadar kosmetik. Sejak satu pembayaran boleh menaungi N pesanan,
+    // `payment_id` BUKAN lagi kunci per-order — jangan ada kode baru yang
+    // membacanya begitu.
     const invoiceNumber = `JFU-INV-${formSubmissionId.substring(0,6)}-${Date.now()}`;
+
+    /**
+     * Ke mana peneliti mendarat sesudah membayar.
+     *
+     * Halaman `/payment-success` menarik SATU submission dan menampilkan
+     * detailnya; untuk pembayaran yang menanggung 4 survei, itu artinya
+     * halaman sukses yang menyebut satu survei saja. Tagihan gabungan
+     * diarahkan ke kuitansinya sendiri, yang memang memuat seluruh bundel.
+     * N=1 tidak berubah sedikit pun.
+     *
+     * ⚠️ Rutenya `/invoices/` (jamak) dan berada di balik `PrivateRoute`.
+     * Sesi peneliti hampir selalu masih hidup saat DOKU memantulkannya kembali;
+     * kalau tidak, PrivateRoute menyimpan URL-nya dan memulangkannya ke sini
+     * sesudah login.
+     */
+    const callbackUrl = bundleCount > 1
+      ? `${origin}/invoices/${invoiceNumber}`
+      : `${origin}/payment-success?id=${formSubmissionId}&source=gateway`;
     
     const requestData = {
       amount: amount,
@@ -109,7 +138,7 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
         email: customerInfo?.email || 'client@example.com',
         phone: customerInfo?.phoneNumber || ''
       },
-      callback_url: `${origin}/payment-success?id=${formSubmissionId}&source=gateway`,
+      callback_url: callbackUrl,
       payment_due_date: 60 * 24 * 7 // 7 Hari
     };
 

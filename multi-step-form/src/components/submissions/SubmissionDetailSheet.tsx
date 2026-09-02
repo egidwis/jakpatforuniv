@@ -53,6 +53,7 @@ import { InvoiceForm } from '@/components/schedule/InvoiceForm';
 import { calculateTotalAdCost } from '@/utils/cost-calculator';
 import { updateFormDetails, type AdScheduleEntry } from '@/utils/supabase';
 import { repriceMessage } from '@/utils/repriceMessage';
+import { openWhatsApp, reviewFeedbackMessage } from '@/utils/waMessage';
 import { toast } from 'sonner';
 
 const REASONS = {
@@ -67,16 +68,13 @@ function getSensitiveReason(keywords?: string[]) {
   return `Kuesioner Anda mengandung pertanyaan terkait data pribadi/sensitif${kwText}. Mohon hapus atau sesuaikan pertanyaan tersebut sesuai panduan kuesioner Jakpat.`;
 }
 
+/**
+ * ⚠️ SINKRON, jangan pernah dibungkus `await`. Pemblokir popup Safari & Chrome
+ * membuang `window.open` yang dipanggil sesudah await tanpa error apa pun.
+ * Isinya sendiri ada di `utils/waMessage` — dipakai bersama proses penjadwalan.
+ */
 function sendWhatsAppNotification(phone: string | undefined, researcherName: string, formTitle: string, note: string) {
-  const cleanPhone = (phone || '').replace(/[^0-9]/g, '').replace(/^0/, '62');
-  const message = `Halo Kak ${researcherName || 'Peneliti'},\n\nTerima kasih telah mengajukan kuesioner "${formTitle || 'Kuesioner'}" di Jakpat for Universities.\n\nSaat proses review, kami menemukan catatan berikut:\n📌 "${note}"\n\nMohon perbaiki kuesioner Anda, lalu buka dashboard Jakpat dan klik tombol "Saya Sudah Perbaiki Kuesioner" agar dapat kami proses kembali.\n\nTerima kasih! 🙏\nTim Reviewer Jakpat for Universities`;
-
-  if (cleanPhone) {
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
-  } else {
-    navigator.clipboard.writeText(message);
-    toast.info('Nomor WhatsApp tidak tersedia. Pesan notifikasi disalin ke clipboard.');
-  }
+  openWhatsApp(phone, reviewFeedbackMessage({ researcherName, formTitle, note }));
 }
 
 // Reservasi + Payment digabung jadi satu tab di Phase 3, dan sejak aksinya jadi
@@ -492,14 +490,26 @@ export function SubmissionDetailSheet({
         onCancel={closeSubView}
         onDone={finishSubView}
         actionsSlot={footerEl}
-        renderActions={({ canSave, isSaving, save, cancel }) => (
+        renderActions={({ canSave, isSaving, save, saveAndNotify, cancel }) => (
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="flex-1 h-9" onClick={cancel} disabled={isSaving}>
+            <Button variant="outline" size="sm" className="h-9 px-2.5" onClick={cancel} disabled={isSaving}>
               Batal
+            </Button>
+            {/* Pasangan yang sama dengan "Minta Perbaikan" / "+ WA" di tab Review:
+                aksi utamanya biru, kembarannya yang mengirim WhatsApp hijau. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-2.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+              onClick={saveAndNotify}
+              disabled={isSaving || !canSave}
+              title="Buat tagihan lalu kirim link-nya via WhatsApp"
+            >
+              <MessageCircle className="w-3.5 h-3.5 mr-1.5" />WA
             </Button>
             <Button
               size="sm"
-              className="flex-[2] h-9 bg-blue-600 hover:bg-blue-700 text-white"
+              className="flex-1 h-9 bg-blue-600 hover:bg-blue-700 text-white"
               onClick={save}
               disabled={isSaving || !canSave}
             >
@@ -514,6 +524,9 @@ export function SubmissionDetailSheet({
       <ScheduleForm
         mode={subView.kind === 'create' ? 'create' : 'edit'}
         submissionId={submission.id}
+        orderStartDate={submission.start_date}
+        orderEndDate={submission.end_date}
+        orderDuration={submission.duration}
         entry={subView.kind === 'edit' ? subView.entry : undefined}
         isExtraAd={subView.kind === 'create' ? subView.isExtraAd : undefined}
         isKilatOrder={submission.distribution_type === 'kilat'}

@@ -3,18 +3,19 @@ import { AlertTriangle, CalendarPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../ui/dialog';
+import { ConfirmDialog, type ConfirmRequest } from '../../ui/confirm-dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
   fetchAdSchedules, fetchScheduleBilling, markScheduleAsPaid, unmarkScheduleAsPaid, cancelInvoice, cancelSchedule,
   type AdScheduleEntry, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
-import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 import { ScheduleCardList, ScheduleCardSkeleton } from './ScheduleCardList';
 import { cardStateOf, pickTargetSchedule } from './scheduleCardActions';
 import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
+import { openWhatsApp, slotBookedMessage } from '@/utils/waMessage';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Jadwal & Bayar.
@@ -130,6 +131,26 @@ export function SchedulePaymentTab({
 
 
   /**
+   * "Kabari via WA" — slot sudah dipesan, tagihannya belum terbit.
+   *
+   * ⚠️ SINKRON, tanpa satu pun `await` sebelum WhatsApp terbuka. Ini yang
+   * membuatnya kebal pemblokir popup, tidak seperti "Buat & Kirim WA" di
+   * `InvoiceForm` yang harus menerbitkan tagihan lebih dulu. Jangan
+   * menjadikannya `async` "supaya seragam" — keseragaman itu mematikannya.
+   *
+   * Gerbangnya (slot benar-benar dipesan + jadwalnya bertanggal) ditegakkan
+   * `planCardActions`, jadi di sini tidak diulang.
+   */
+  const handleNotifySlot = useCallback((entry: AdScheduleEntry) => {
+    openWhatsApp(submission.phone_number, slotBookedMessage({
+      researcherName: submission.researcherName,
+      title: entry.title || submission.formTitle,
+      startDate: entry.startDate!,
+      bookingId: entry.bookingId,
+    }));
+  }, [submission.phone_number, submission.researcherName, submission.formTitle]);
+
+  /**
    * "Hapus dari list" — lepaskan slot jadwal yang batas bayarnya sudah lewat.
    *
    * Ini pasangan dari "Jadwalkan ulang", dan admin memilih salah satunya
@@ -206,23 +227,11 @@ export function SchedulePaymentTab({
   /**
    * Konfirmasi untuk aksi merusak — menggantikan `confirm()` mentah.
    *
-   * ⚠️ AKSI PALING MERUSAK DULU PUNYA KONFIRMASI PALING LEMAH. "Batalkan
-   * Jadwal" dan "Batalkan Tagihan" memakai `confirm()` bawaan browser — tanpa
-   * hierarki, tanpa nominal yang menonjol, dan di sebagian browser bisa
-   * dibungkam permanen oleh centang "jangan tampilkan lagi" — sementara
-   * "Tandai Lunas", yang tidak merusak apa pun, mendapat dialog terkaya.
-   * Ketimpangan itu yang dibalik di sini.
+   * Bentuk & alasannya kini hidup di `ui/confirm-dialog.tsx`, karena aksi yang
+   * sama ("Batalkan tagihan") juga ditawarkan dari halaman Transaksi. Tab ini
+   * tetap yang MEMEGANG state-nya — hanya rendernya yang dibagi.
    */
-  const [pendingConfirm, setPendingConfirm] = useState<{
-    title: string;
-    /** Baris penjelas; yang pertama paling penting. */
-    lines: string[];
-    /** Nominal/tanggal yang dipertaruhkan — dialog aksi uang WAJIB menyebutnya. */
-    highlight?: string;
-    confirmLabel: string;
-    tone: 'danger' | 'neutral';
-    onConfirm: () => void | Promise<void>;
-  } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<ConfirmRequest | null>(null);
 
   const handleMarkPaid = useCallback(async (entry: AdScheduleEntry) => {
     try {
@@ -408,6 +417,7 @@ export function SchedulePaymentTab({
             onUnmarkPaid={(entry) => void handleUnmarkPaid(entry)}
             onCancelInvoice={(inv) => void handleCancelInvoice(inv)}
             onCancelSchedule={(entry) => void handleCancelSchedule(entry)}
+            onNotifySlot={handleNotifySlot}
             onOpenReview={onOpenReview}
           />
         )}
@@ -478,60 +488,7 @@ export function SchedulePaymentTab({
         </DialogContent>
       </Dialog>
 
-      {/*
-        Satu dialog untuk SEMUA aksi merusak di tab ini. Bentuknya sengaja
-        sejajar dengan dialog "Tandai Lunas" di atas — hierarki judul yang sama,
-        nominal yang sama menonjolnya — supaya beratnya sebuah aksi terbaca dari
-        konsekuensinya, bukan dari kebetulan komponen mana yang dipakai.
-      */}
-      <Dialog open={!!pendingConfirm} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }}>
-        <DialogContent className="sm:max-w-[26rem] p-6">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-gray-900">
-              {pendingConfirm?.title}
-            </DialogTitle>
-          </DialogHeader>
-
-          {pendingConfirm?.highlight && (
-            <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-center">
-              <p className="text-sm font-bold text-slate-800">{pendingConfirm.highlight}</p>
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            {pendingConfirm?.lines.map((line, i) => (
-              <p key={i} className={cn('text-xs leading-relaxed', i === 0 ? 'text-slate-700 font-medium' : 'text-slate-500')}>
-                {line}
-              </p>
-            ))}
-          </div>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              variant="outline"
-              onClick={() => setPendingConfirm(null)}
-              className="text-xs font-semibold h-9 px-5 text-gray-600 border-gray-200 hover:bg-gray-50"
-            >
-              Batal
-            </Button>
-            <Button
-              className={cn(
-                'text-xs font-semibold h-9 px-5 text-white',
-                pendingConfirm?.tone === 'danger'
-                  ? 'bg-red-600 hover:bg-red-700'
-                  : 'bg-blue-600 hover:bg-blue-700',
-              )}
-              onClick={() => {
-                const pending = pendingConfirm;
-                setPendingConfirm(null);
-                void pending?.onConfirm();
-              }}
-            >
-              {pendingConfirm?.confirmLabel}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog request={pendingConfirm} onDismiss={() => setPendingConfirm(null)} />
     </>
   );
 }

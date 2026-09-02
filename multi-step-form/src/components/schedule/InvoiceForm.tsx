@@ -2,19 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import {
-  Check, Copy, CreditCard, ExternalLink, Loader2, Plus, Tag, Trash2,
+  Check, Copy, CreditCard, ExternalLink, Loader2, MessageCircle, Plus, Tag, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { PPN_RATE } from '@/utils/constants';
-import { calculateAdCostPerDay, calculateIncentiveCost, calculatePpn } from '@/utils/cost-calculator';
+import { calculateAdCostPerDay, calculateIncentiveCost, voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
 import {
-  createInvoice, createTransaction, getInvoicesByFormSubmissionId,
-  getTransactionsByFormSubmissionId, supabase,
-  type AdScheduleEntry, type Invoice, type Transaction,
+  getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, supabase,
+  type AdScheduleEntry,
 } from '@/utils/supabase';
+import {
+  closeTab, invoiceReadyMessage, openBlankTab, sendToTab,
+} from '@/utils/waMessage';
+import { bundleTotals, writeInvoiceRows, type InvoiceBundle } from './invoiceWrite';
 import { formatWibShort } from '@/pages/dashboard/schedule/scheduleModel';
 import {
   ITEM_CATEGORIES, buildExtensionInvoiceItems, buildOrderInvoiceItems, describeVoucher,
@@ -93,6 +95,15 @@ export interface InvoiceFormProps {
     prize_per_winner?: number | null;
     voucher_code?: string | null;
     distribution_type?: string | null;
+    /**
+     * `created_at` ORDER-nya — penentu masa berlaku voucher.
+     *
+     * Tanpa ini masa berlaku dinilai "sekarang", dan tagihan yang terbit sehari
+     * sesudah tenggat menampilkan harga penuh sementara `create-payment.js`
+     * (yang memakai `created_at`) menghitung harga berdiskon untuk order yang
+     * sama.
+     */
+    submittedAt?: string | null;
   };
   onCancel: () => void;
   onDone: () => void;
@@ -102,6 +113,8 @@ export interface InvoiceFormProps {
     canSave: boolean;
     isSaving: boolean;
     save: () => void;
+    /** Terbitkan tagihan LALU buka WhatsApp berisi link-nya. */
+    saveAndNotify: () => void;
     cancel: () => void;
   }) => React.ReactNode;
 }
@@ -130,9 +143,9 @@ export function InvoiceForm({
   const [voucher, setVoucher] = useState(submission.voucher_code || '');
   const [appliedVoucher, setAppliedVoucher] = useState(submission.voucher_code || '');
 
-  const subtotal = items.reduce((sum, it) => sum + it.qty * it.price, 0);
-  const ppn = calculatePpn(subtotal);
-  const grandTotal = subtotal + ppn;
+  // Satu sumber dengan jalur tulis dan dengan tagihan gabungan — layar dan
+  // baris database tidak boleh menghitung PPN dengan cara yang berbeda.
+  const { subtotal, ppn, amount: grandTotal } = bundleTotals(items);
 
   /** Prefill item sesuai jalur jadwalnya. */
   const prefill = useCallback(async () => {
@@ -161,6 +174,7 @@ export function InvoiceForm({
         poolWinnerCount,
         fallbackWinnerCount: submission.winnerCount || undefined,
         voucherCode: appliedVoucher,
+        voucherInstantMs: voucherInstantOf(submission.submittedAt),
       }));
       setNote('');
       return;
@@ -173,6 +187,7 @@ export function InvoiceForm({
       prizePerWinner: submission.prize_per_winner,
       voucherCode: appliedVoucher,
       isKilat: submission.distribution_type === 'kilat',
+      voucherInstantMs: voucherInstantOf(submission.submittedAt),
     });
     setItems(built.items);
     setNote(built.note);
@@ -274,7 +289,7 @@ export function InvoiceForm({
     setItems((prev) => prev.filter((it) => it.id !== id));
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (notify = false) => {
     const invalid = items.filter((it) => !it.name.trim() || it.price < 0 || it.qty < 1);
     if (invalid.length > 0) {
       toast.error('Mohon lengkapi semua item dengan benar');
@@ -285,24 +300,38 @@ export function InvoiceForm({
       return;
     }
 
+    /**
+     * ⚠️ TAB DIBUKA SINKRON, SEBELUM `await` PERTAMA.
+     *
+     * Safari & Chrome membuang `window.open` yang dipanggil sesudah await —
+     * tanpa error, tanpa tab. Tab Review tidak pernah kena ini karena di sana
+     * WA dikirim sinkron; di sini tagihannya harus terbit lebih dulu, jadi
+     * tabnya dibuka kosong sekarang dan diarahkan nanti.
+     *
+     * Ini akan terlihat seperti kerumitan yang bisa disederhanakan.
+     * Menyederhanakannya mematikan fiturnya.
+     */
+    const waTab = notify ? openBlankTab() : null;
+
     setIsSaving(true);
     try {
       const itemSummary = items.map((it) => `${it.name} (${it.qty}x)`).join(', ');
       const baseDescription = note.trim() ? `${itemSummary} - ${note.trim()}` : itemSummary;
       const description = entry.isExtension ? `[EXTEND] ${baseDescription}` : baseDescription;
 
-      const noteData: Record<string, unknown> = {
-        memo: note.trim(),
-        items: items.map(({ name, qty, price, category }) => ({ name, qty, price, category })),
-      };
-      // ⚠️ Voucher TIDAK lagi dititipkan di `note`. Sejak sql/53 ia punya kolom
+      // ⚠️ Voucher TIDAK dititipkan di `note`. Sejak sql/53 ia punya kolom
       // sendiri di `invoices` dan `transactions` — voucher milik TAGIHAN, bukan
       // order, jadi dua jadwal di order yang sama boleh berbeda. Menulis ke dua
-      // tempat sekaligus berarti dua sumber kebenaran; titipan lama di `note`
-      // sudah di-backfill ke kolomnya oleh migrasi itu.
-      if (entry.isExtension) noteData.extend_id = entry.sourceId;
-
+      // tempat sekaligus berarti dua sumber kebenaran.
       const voucherCode = appliedVoucher.trim() ? appliedVoucher.trim().toUpperCase() : null;
+
+      const bundle: InvoiceBundle = {
+        entry,
+        submissionId: submission.id,
+        items,
+        memo: note.trim(),
+        voucherCode,
+      };
 
       const paymentResponse = await createManualInvoice({
         formSubmissionId: submission.id,
@@ -315,45 +344,12 @@ export function InvoiceForm({
         },
       });
 
-      const attribution = entry.isExtension
-        ? { entity_type: 'extend' as const, extend_id: entry.sourceId }
-        : {};
-
-      const invoiceData: Invoice = {
-        form_submission_id: submission.id,
-        payment_id: paymentResponse.payment_id,
-        invoice_url: paymentResponse.invoice_url,
-        amount: grandTotal,
-        subtotal,
-        ppn_rate: PPN_RATE,
-        ppn_amount: ppn,
-        status: 'pending',
-        voucher_code: voucherCode,
-        // Jendela yang DITAGIHKAN, dibekukan saat tagihan terbit. Kalau
-        // jadwalnya kemudian pindah, `schedule_billing` menandai tagihan ini
-        // basi saat dibaca — itu yang menutup balapan admin-vs-peneliti
-        // tanpa mengunci apa pun (sql/60).
-        billed_start_date: entry.startDate ?? null,
-        ...attribution,
-      };
-      await createInvoice(invoiceData);
-
-      const transactionData: Transaction = {
-        form_submission_id: submission.id,
-        payment_id: paymentResponse.payment_id,
-        payment_method: 'doku',
-        amount: grandTotal,
-        subtotal,
-        ppn_rate: PPN_RATE,
-        ppn_amount: ppn,
-        status: 'pending',
-        payment_url: paymentResponse.invoice_url,
-        note: JSON.stringify(noteData),
-        voucher_code: voucherCode,
-        billed_start_date: entry.startDate ?? null,
-        ...attribution,
-      };
-      await createTransaction(transactionData);
+      // Menulis DAN membuktikan jumlahnya. Kalau ini melempar, barisnya sudah
+      // dibatalkan dan link-nya tidak boleh keluar — lihat `writeInvoiceRows`.
+      await writeInvoiceRows([bundle], {
+        paymentId: paymentResponse.payment_id,
+        invoiceUrl: paymentResponse.invoice_url,
+      }, grandTotal);
 
       // Hanya jadwal pertama (bukan perpanjangan) yang berarti "pesanan disetujui,
       // tagihan siap" — perpanjangan tidak pernah melalui review manual.
@@ -387,9 +383,21 @@ export function InvoiceForm({
           .eq('source_id', entry.sourceId);
       }
 
+      // Baru DI SINI link-nya boleh keluar: jumlah barisnya sudah terbukti.
+      if (notify) {
+        sendToTab(waTab, submission.phone_number, invoiceReadyMessage({
+          researcherName: submission.researcherName,
+          bundles: [{ title: submission.title || 'Survei Anda', startDate: entry.startDate }],
+          amount: grandTotal,
+          invoiceUrl: paymentResponse.invoice_url,
+        }));
+      }
+
       toast.success('Link pembayaran berhasil dibuat!');
       onDone();
     } catch (e: any) {
+      // Tab kosong yang menganga adalah kegagalan yang tidak menjelaskan dirinya.
+      closeTab(waTab);
       console.error('Gagal membuat tagihan:', e);
       toast.error(e?.message || 'Gagal membuat tagihan');
     } finally {
@@ -410,15 +418,31 @@ export function InvoiceForm({
 
   const canSave = !isLoading && subtotal > 0;
 
+  // ⚠️ DIBUNGKUS, tidak dioper langsung. `handleCreate` menerima `notify`
+  // sebagai argumen pertama, dan `onClick={handleCreate}` akan mengopernya
+  // MouseEvent — yang truthy, jadi setiap tagihan diam-diam membuka WhatsApp.
+  const save = () => handleCreate(false);
+  const saveAndNotify = () => handleCreate(true);
+
   const actionNode = renderActions
-    ? renderActions({ canSave, isSaving, save: handleCreate, cancel: onCancel })
+    ? renderActions({ canSave, isSaving, save, saveAndNotify, cancel: onCancel })
     : (
       <div className="flex items-center justify-end gap-2">
         <Button variant="outline" size="sm" onClick={onCancel} disabled={isSaving}>Batal</Button>
         <Button
           size="sm"
+          variant="outline"
+          className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+          onClick={saveAndNotify}
+          disabled={isSaving || !canSave}
+          title="Buat tagihan lalu kirim link-nya via WhatsApp"
+        >
+          <MessageCircle className="w-3.5 h-3.5 mr-1.5" />Buat &amp; Kirim WA
+        </Button>
+        <Button
+          size="sm"
           className="bg-blue-600 hover:bg-blue-700 text-white"
-          onClick={handleCreate}
+          onClick={save}
           disabled={isSaving || !canSave}
         >
           {isSaving

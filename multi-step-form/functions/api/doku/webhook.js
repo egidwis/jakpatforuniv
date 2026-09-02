@@ -622,28 +622,35 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   // 'completed' even though the invoice stays unpaid.
   // SNAP sends paidAmount.value as a decimal STRING (e.g. "10000.00"),
   // so compare with Number() on BOTH sides.
+  //
+  // ⚠️ MENJUMLAHKAN SEMUA BARIS, TIDAK LAGI `limit=1`.
+  // Satu pembayaran boleh menaungi N jadwal (tagihan gabungan): N baris
+  // berbagi satu `payment_id`, masing-masing membawa porsinya sendiri. Dengan
+  // `limit=1` yang terbaca hanya porsi satu pesanan, jadi pembayaran grup yang
+  // sah selalu ditolak `amount_mismatch` — sesudah uangnya masuk. Untuk N=1
+  // hasilnya identik dengan sebelumnya.
   // ====================================================================
+  const sumAmounts = (rows) => (Array.isArray(rows) && rows.length > 0
+    ? rows.reduce((total, row) => total + Number(row.amount || 0), 0)
+    : null);
+
   const invAmountRes = await sbFetch(
-    `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount&limit=1`,
+    `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount`,
     { headers: sb.headers },
     'STEP 0 SELECT invoices.amount'
   );
   const invAmountRows = await invAmountRes.json();
-  let expectedAmount = Array.isArray(invAmountRows) && invAmountRows.length > 0
-    ? Number(invAmountRows[0].amount)
-    : null;
+  let expectedAmount = sumAmounts(invAmountRows);
 
   // Legacy rows may exist only in transactions (pre-invoices flow).
   if (expectedAmount === null) {
     const txnAmountRes = await sbFetch(
-      `${sb.url}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount&limit=1`,
+      `${sb.url}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount`,
       { headers: sb.headers },
       'STEP 0 SELECT transactions.amount'
     );
     const txnAmountRows = await txnAmountRes.json();
-    expectedAmount = Array.isArray(txnAmountRows) && txnAmountRows.length > 0
-      ? Number(txnAmountRows[0].amount)
-      : null;
+    expectedAmount = sumAmounts(txnAmountRows);
   }
 
   if (expectedAmount !== null && !Number.isNaN(expectedAmount)) {
@@ -768,6 +775,92 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   console.log('Invoice PATCH:', JSON.stringify(invoiceUpdateData));
 
   // ====================================================================
+  // STEP 3-5: berputar untuk SETIAP jadwal yang barusan dilunasi
+  // ====================================================================
+  //
+  // Satu pembayaran boleh menaungi N jadwal (tagihan gabungan). STEP 1a dan
+  // STEP 2 di atas sudah mem-PATCH SEMUA baris ber-`payment_id` itu — yang dulu
+  // tidak ikut adalah bagian di bawah ini, yang hanya membaca baris [0]. Tanpa
+  // fan-out, hanya jadwal pertama yang lunas dan N-1 sisanya terdampar
+  // `pending` meski uangnya diterima penuh: halaman iklannya tidak lahir dan
+  // notifikasi tayangnya tidak pernah jalan.
+  //
+  // Untuk N=1 daftarnya berisi satu elemen dan hasilnya identik dengan
+  // sebelumnya.
+  const paidTargets = collectPaidTargets(updatedTransactions, invoiceUpdateData, formSubmissionId);
+  console.log(`[Webhook] ${invoiceNumber}: ${paidTargets.length} jadwal dilunasi oleh satu pembayaran`);
+
+  for (const target of paidTargets) {
+    // Sengaja TIDAK di-try/catch: kegagalan PATCH utama harus tetap menjadi
+    // write_failed -> HTTP 500 -> DOKU retry. Seluruh PATCH di dalamnya
+    // idempoten, jadi mengulang jadwal yang sudah beres tidak merusak apa pun —
+    // sementara menelan galat di sini akan meninggalkan jadwal `pending`
+    // selamanya dengan uang yang sudah masuk.
+    await applyPaidSchedule(sb, target, appStatus);
+  }
+
+  return { outcome: 'ok' };
+}
+
+/**
+ * Jadwal-jadwal yang barusan dilunasi satu pembayaran — satu tugas per jadwal.
+ *
+ * ⚠️ BARIS `transactions` DIUTAMAKAN. Hanya ia yang membawa
+ * `entity_type`/`extend_id`, dan itulah yang memilih rute extend di STEP 5.
+ * Baris `invoices` dipakai untuk jadwal yang tidak punya pasangan transaksi
+ * (Skenario B: tagihan admin lama, terukur 17 baris per 2026-08-10).
+ *
+ * ⚠️ Baris pra-sql/51 ber-`schedule_id` NULL dikunci per ORDER, bukan per
+ * jadwal — sama persis dengan perilaku lama. Dua jadwal NULL di satu order akan
+ * menyatu jadi satu tugas, dan itu memang yang terjadi sebelum fan-out ini ada;
+ * sql/51 sudah mengisi kolomnya untuk seluruh baris hidup.
+ */
+export function collectPaidTargets(txnRows, invRows, fallbackSubmissionId) {
+  const targets = new Map();
+
+  const push = (row) => {
+    if (!row) return;
+    const submissionId = row.form_submission_id || fallbackSubmissionId;
+    if (!submissionId) return;
+    const key = row.schedule_id || `submission:${submissionId}`;
+    if (targets.has(key)) return;
+    targets.set(key, {
+      form_submission_id: submissionId,
+      schedule_id: row.schedule_id ?? null,
+      entity_type: row.entity_type ?? null,
+      extend_id: row.extend_id ?? null
+    });
+  };
+
+  (Array.isArray(txnRows) ? txnRows : []).forEach(push);
+  (Array.isArray(invRows) ? invRows : []).forEach(push);
+
+  // Tidak ada baris sama sekali tidak mungkin sampai sini (STEP 1/2 sudah
+  // pulang lebih awal), tapi kalau toh terjadi, kerjakan ordernya seperti dulu.
+  if (targets.size === 0 && fallbackSubmissionId) {
+    targets.set(`submission:${fallbackSubmissionId}`, {
+      form_submission_id: fallbackSubmissionId,
+      schedule_id: null,
+      entity_type: null,
+      extend_id: null
+    });
+  }
+
+  return [...targets.values()];
+}
+
+/**
+ * Melunaskan SATU jadwal: menurunkan status dari tagihan terbarunya, lalu
+ * merutekan pembaruannya (extend vs order) berikut efek sekundernya.
+ *
+ * Isinya tidak berubah sedikit pun dari versi yang dulu berjalan sekali per
+ * pembayaran — yang berubah hanya bahwa ia sekarang dipanggil sekali per
+ * jadwal.
+ */
+async function applyPaidSchedule(sb, target, appStatus) {
+  const formSubmissionId = target.form_submission_id;
+
+  // ====================================================================
   // STEP 3: Apakah JADWAL INI lunas? — bukan "apakah ORDER ini lunas?"
   // ====================================================================
   //
@@ -787,7 +880,7 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   //
   // Baris yang BARUSAN dibayar sudah ada di tangan lewat `return=representation`
   // di STEP 2 — termasuk `schedule_id`-nya. Dipakai, bukan diambil ulang.
-  const paidScheduleId = paidInvoice?.schedule_id ?? paidTransaction?.schedule_id ?? null;
+  const paidScheduleId = target.schedule_id ?? null;
   // Baris lama sebelum sql/51 ber-schedule_id NULL. Untuk mereka pertahankan
   // perilaku lama supaya tidak ada regresi pada data historis.
   const scopeFilter = paidScheduleId
@@ -819,7 +912,7 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   // ====================================================================
   // STEP 5: Route update based on entity_type (extend vs submission)
   // ====================================================================
-  const txn = paidTransaction;
+  const txn = target;
   const isExtendPayment = txn && txn.entity_type === 'extend' && txn.extend_id;
 
   if (isExtendPayment) {
@@ -925,9 +1018,8 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
       }
     }
   }
-
-  return { outcome: 'ok' };
 }
+
 
 // ============================================================================
 // Jejak permanen — doku_webhook_events (sql/54)

@@ -1,27 +1,16 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../utils/supabase'; // Adjust path if needed, check structure
 import { Loader2, Download, CheckCircle2, Clock, ExternalLink, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { terbilangCapitalized } from '../utils/terbilang';
 import { formatPaymentChannel } from '../utils/paymentChannel';
-import { calculatePpn } from '../utils/cost-calculator';
+import { MATERAI_THRESHOLD, buildInvoiceDocument, groupMeta, sourceIdOf } from '../utils/groupedInvoice';
 import jakpatLogo from '../assets/Jakpat Navbar Logo.webp';
 
-interface InvoiceItem {
-    name?: string; // Added optional name
-    category: string;
-    price: number;
-    qty: number;
-}
-
-interface ScheduleInfo {
-    startDate?: string | null;
-    endDate?: string | null;
-    duration?: number | null;
-    distributionType?: string | null;
-    kilatSlotHour?: number | null;
-}
+// Bentuk item & jadwal tinggal di `utils/groupedInvoice` bersama agregasinya —
+// halaman ini tidak boleh punya definisi kedua yang bisa menyimpang darinya.
+import type { ScheduleInfo } from '../utils/groupedInvoice';
 
 interface InvoiceData {
     id: string; // Transaction ID
@@ -61,10 +50,6 @@ interface InvoiceMeta {
     expires_at: string | null;
 }
 
-// Stamp-duty (bea meterai) threshold under UU 10/2020. Below this, no materai
-// is required on a receipt; above it we surface a note (handled manually).
-const MATERAI_THRESHOLD = 5_000_000;
-
 // Derive a clean, short, professional document code from a messy payment_id.
 // Known payment_id formats:
 //   JFU-INV-<6hex>-<13digit-timestamp>  (manual invoice)
@@ -96,9 +81,12 @@ function shortDocCode(paymentId?: string | null): string {
 
 export function InvoicePage() {
     const { paymentId } = useParams();
+    // `data` = baris PERTAMA (blok pembeli & metode bayar); `rows` = seluruh
+    // grup, yang jadi sumber setiap angka uang di dokumen ini.
     const [data, setData] = useState<InvoiceData | null>(null);
+    const [rows, setRows] = useState<InvoiceData[]>([]);
     const [meta, setMeta] = useState<InvoiceMeta>({ paid_at: null, expires_at: null });
-    const [schedule, setSchedule] = useState<ScheduleInfo | null>(null);
+    const [schedules, setSchedules] = useState<Map<string, ScheduleInfo>>(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -110,17 +98,20 @@ export function InvoicePage() {
     // Kept at the top level so it isn't called conditionally after early returns.
     useEffect(() => {
         if (!data) return;
-        const isPaidDoc = ['completed', 'paid'].includes((data.status || '').toLowerCase());
+        // Sama dengan gerbang `doc.isPaid` di bawah: satu baris lunas tidak
+        // membuat dokumennya jadi kuitansi.
+        const isPaidDoc = rows.length > 0
+            && rows.every((r) => ['completed', 'paid'].includes((r.status || '').toLowerCase()));
         const num = `${isPaidDoc ? 'RCP' : 'INV'}-${shortDocCode(data.payment_id)}`;
         const prev = document.title;
         document.title = num;
         return () => { document.title = prev; };
-    }, [data]);
+    }, [data, rows]);
 
     const fetchInvoice = async () => {
         try {
             setLoading(true);
-            const { data: transaction, error } = await supabase
+            const { data: rows, error } = await supabase
                 .from('transactions')
                 .select(`
           *,
@@ -138,40 +129,43 @@ export function InvoicePage() {
           )
         `)
                 .eq('payment_id', paymentId)
-                .single();
+                .order('created_at', { ascending: true });
 
             if (error) throw error;
-            setData(transaction);
+            if (!rows || rows.length === 0) throw new Error('not found');
 
-            // Derive schedule info
-            const sourceId = (transaction.entity_type === 'extend' && transaction.extend_id)
-                ? transaction.extend_id
-                : (transaction.form_submission_id || transaction.form_submissions?.id);
+            /**
+             * ⚠️ N BARIS, BUKAN `.single()`.
+             *
+             * Satu `payment_id` boleh menaungi N pesanan (tagihan gabungan), dan
+             * `.single()` membalas PGRST116 begitu barisnya lebih dari satu —
+             * halaman ini MELEMPAR untuk setiap pembayaran gabungan. Baris
+             * pertama tetap dipakai untuk blok pembeli & metode bayar: grup
+             * dijangkar ke satu `auth_user_id`, jadi satu pembayaran selalu
+             * punya satu pembeli.
+             */
+            setData(rows[0]);
+            setRows(rows);
 
-            let sched: ScheduleInfo = {
-                startDate: transaction.billed_start_date || transaction.form_submissions?.start_date || null,
-                endDate: transaction.form_submissions?.end_date || null,
-                duration: transaction.form_submissions?.duration || null,
-                distributionType: transaction.form_submissions?.distribution_type || null,
-                kilatSlotHour: null,
-            };
-
-            if (sourceId) {
+            // Satu lookup jadwal per baris — tiap bundel punya jendela tayangnya
+            // sendiri, dan untuk jadwal ke-2 dst. kuncinya `extend_id`.
+            const sourceIds = [...new Set(rows.map(sourceIdOf).filter((v): v is string => !!v))];
+            const scheduleMap = new Map<string, ScheduleInfo>();
+            if (sourceIds.length > 0) {
                 try {
-                    const { data: scheduleRow } = await supabase
+                    const { data: scheduleRows } = await supabase
                         .from('ad_schedules')
-                        .select('start_date, end_date, duration, distribution_type, kilat_slot_hour')
-                        .eq('source_id', sourceId)
-                        .maybeSingle();
+                        .select('source_id, start_date, end_date, duration, distribution_type, kilat_slot_hour')
+                        .in('source_id', sourceIds);
 
-                    if (scheduleRow) {
-                        sched = {
-                            startDate: scheduleRow.start_date || sched.startDate,
-                            endDate: scheduleRow.end_date || sched.endDate,
-                            duration: scheduleRow.duration ?? sched.duration,
-                            distributionType: scheduleRow.distribution_type || sched.distributionType,
-                            kilatSlotHour: scheduleRow.kilat_slot_hour ?? null,
-                        };
+                    for (const r of scheduleRows || []) {
+                        scheduleMap.set(r.source_id, {
+                            startDate: r.start_date,
+                            endDate: r.end_date,
+                            duration: r.duration,
+                            distributionType: r.distribution_type,
+                            kilatSlotHour: r.kilat_slot_hour,
+                        });
                     }
                 } catch (schedErr) {
                     console.warn('Ad schedule query unavailable:', schedErr);
@@ -193,20 +187,20 @@ export function InvoicePage() {
             // kedua ordinal; yang kedua ini hanya menanyakan hal yang sama ke
             // relasi yang sudah tidak ada.
 
-            setSchedule(sched);
+            setSchedules(scheduleMap);
 
             // Pull paid_at / expires_at from the matching invoice row (best-effort).
             try {
-                const { data: invoiceRow } = await supabase
+                // ⚠️ `.maybeSingle()` juga melempar untuk grup. N baris, lalu
+                // `groupMeta` mengambil `paid_at` TERAKHIR dan `expires_at`
+                // TERAWAL — grup baru lunas saat baris terakhirnya lunas, tapi
+                // mati saat baris pertamanya kedaluwarsa.
+                const { data: invoiceRows } = await supabase
                     .from('invoices')
                     .select('paid_at, expires_at')
-                    .eq('payment_id', paymentId)
-                    .maybeSingle();
-                if (invoiceRow) {
-                    setMeta({
-                        paid_at: invoiceRow.paid_at ?? null,
-                        expires_at: invoiceRow.expires_at ?? null,
-                    });
+                    .eq('payment_id', paymentId);
+                if (invoiceRows && invoiceRows.length > 0) {
+                    setMeta(groupMeta(invoiceRows));
                 }
             } catch (metaErr) {
                 console.warn('Invoice meta (paid_at/expires_at) unavailable:', metaErr);
@@ -246,53 +240,21 @@ export function InvoicePage() {
     }
 
     // ---- Derived state -----------------------------------------------------
-    const isPaid = ['completed', 'paid'].includes((data.status || '').toLowerCase());
-
-    // Parse line items from the transaction note (JSON), with a safe fallback.
-    let items: InvoiceItem[] = [];
-    try {
-        if (data.note && data.note.trim().startsWith('{')) {
-            const parsed = JSON.parse(data.note);
-            items = parsed.items || [];
-        } else {
-            items = [{ category: 'Pembayaran', price: data.subtotal ?? data.amount, qty: 1 }];
-        }
-    } catch (e) {
-        items = [{ category: 'Pembayaran', price: data.subtotal ?? data.amount, qty: 1 }];
-    }
-    if (items.length === 0) {
-        items = [{ category: 'Pembayaran', price: data.subtotal ?? data.amount, qty: 1 }];
-    }
-
-    // Normalize any stale Kilat Add-on item that has 250.000 price to 200.000, and rename Incentive to Reward
-    let itemsWereCorrected = false;
-    items = items.map((item) => {
-        let updated = { ...item };
-        if ((updated.name === 'Add-on JFU Kilat' || updated.category === 'Add-on JFU Kilat') && updated.price === 250000) {
-            itemsWereCorrected = true;
-            updated.price = 200000;
-        }
-        if (updated.name && /incentive/i.test(updated.name)) {
-            updated.name = updated.name.replace(/incentive/gi, 'Reward');
-        }
-        if (updated.category && /incentive/i.test(updated.category)) {
-            updated.category = updated.category.replace(/incentive/gi, 'Reward');
-        }
-        return updated;
-    });
-
-    const itemsSubtotal = items.reduce((sum, item) => sum + (item.price * (item.qty || 1)), 0);
-    const subtotalValue = itemsWereCorrected
-        ? itemsSubtotal
-        : (data.subtotal ?? (data.amount - (data.ppn_amount ?? 0)));
-    const ppnAmount = itemsWereCorrected
-        ? calculatePpn(subtotalValue)
-        : (data.ppn_amount ?? 0);
-    const grandTotal = itemsWereCorrected
-        ? (subtotalValue + ppnAmount)
-        : data.amount;
-
-    const hasPpn = data.ppn_amount != null || itemsWereCorrected;
+    //
+    // ⚠️ SEMUANYA DARI SELURUH BARIS, BUKAN DARI `data`.
+    // Enam angka & label di halaman ini dulu diturunkan dari satu baris:
+    // item + judul survei + jadwal, meterai, INVOICE-vs-RECEIPT, subtotal/PPN/
+    // total, paid_at/expires_at, dan jadwalnya. Untuk pembayaran gabungan
+    // masing-masing harus naik ke tingkat grup — memperbaiki query-nya saja
+    // menghasilkan dokumen yang salah dengan tenang. Diuji di
+    // `groupedInvoice.spec.ts`, termasuk N=1 yang wajib identik dengan dulu.
+    const doc = buildInvoiceDocument(rows.length > 0 ? rows : [data], schedules);
+    const isPaid = doc.isPaid;
+    const isGroup = doc.bundles.length > 1;
+    const subtotalValue = doc.subtotal;
+    const ppnAmount = doc.ppn;
+    const grandTotal = doc.total;
+    const hasPpn = doc.hasPpn;
 
     // ---- Formatters --------------------------------------------------------
     const formatCurrency = (amount: number) =>
@@ -376,7 +338,7 @@ export function InvoicePage() {
     const docNumber = isPaid ? receiptNumber : invoiceNumber;
     const docTitle = isPaid ? 'RECEIPT' : 'INVOICE';
     const paidDate = meta.paid_at;
-    const showMaterai = data.amount > MATERAI_THRESHOLD;
+    const showMaterai = doc.showMaterai;
 
     return (
         <div className="min-h-screen bg-[#f8fafc] font-jakarta p-4 md:p-8 print:bg-white print:p-0 relative overflow-x-hidden selection:bg-blue-100 selection:text-jfu-primary">
@@ -550,60 +512,99 @@ export function InvoicePage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {items.map((item, idx) => {
-                                    const itemName = item.name || item.category;
-                                    const isAdItem = itemName.toLowerCase().includes('jakpat for universities') || item.category.toLowerCase().includes('ads') || item.category === 'Pembayaran';
-                                    const isReward = itemName.toLowerCase().includes('reward') || item.category.toLowerCase().includes('reward');
+                                {doc.bundles.map((bundle, bIdx) => {
                                     const scheduleText = formatScheduleDate(
-                                        schedule?.startDate,
-                                        schedule?.endDate,
-                                        schedule?.duration,
-                                        schedule?.distributionType,
-                                        schedule?.kilatSlotHour
+                                        bundle.schedule.startDate,
+                                        bundle.schedule.endDate,
+                                        bundle.schedule.duration,
+                                        bundle.schedule.distributionType,
+                                        bundle.schedule.kilatSlotHour,
                                     );
 
                                     return (
-                                        <tr key={idx} className="border-t border-gray-100 hover:bg-slate-50/40 transition-colors">
-                                            <td className="py-3.5 px-4 text-gray-800">
-                                                <div className="font-semibold text-gray-900">{itemName}</div>
-                                                
-                                                {/* Sub-keterangan untuk item Iklan / Platform */}
-                                                {isAdItem && (
-                                                    <div className="mt-1.5 space-y-0.5 text-xs text-gray-600">
-                                                        {data.form_submissions?.title && (
-                                                            <div className="flex items-start gap-1.5 leading-relaxed">
-                                                                <span className="text-gray-400 select-none">•</span>
-                                                                <span><strong className="font-medium text-gray-700">Survei:</strong> {data.form_submissions.title}</span>
-                                                            </div>
-                                                        )}
+                                        <Fragment key={bundle.sourceId || bIdx}>
+                                            {/*
+                                                Kepala bundel — HANYA saat satu pembayaran menanggung
+                                                beberapa pesanan. Tanpa ini, item empat survei berbaris
+                                                jadi satu daftar datar dan tidak ada cara membaca item
+                                                mana milik survei mana. Untuk N=1 tabelnya persis
+                                                seperti sebelumnya.
+                                            */}
+                                            {isGroup && (
+                                                <tr className="print-exact bg-slate-50/70 border-t border-gray-200">
+                                                    <td colSpan={3} className="py-2 px-4">
+                                                        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                                            Pesanan {bIdx + 1} dari {doc.bundles.length}
+                                                        </div>
+                                                        <div className="font-semibold text-gray-900 text-sm mt-0.5">{bundle.title}</div>
                                                         {scheduleText && scheduleText !== 'Belum dijadwalkan' && (
-                                                            <div className="flex items-start gap-1.5 leading-relaxed">
-                                                                <span className="text-gray-400 select-none">•</span>
-                                                                <span><strong className="font-medium text-gray-700">Jadwal:</strong> {scheduleText}</span>
+                                                            <div className="text-xs text-gray-600 mt-0.5">
+                                                                <strong className="font-medium text-gray-700">Jadwal:</strong> {scheduleText}
                                                             </div>
                                                         )}
-                                                    </div>
-                                                )}
+                                                    </td>
+                                                    <td className="py-2 px-4 text-right text-gray-900 font-semibold tabular align-bottom">
+                                                        {formatCurrency(bundle.amount)}
+                                                    </td>
+                                                </tr>
+                                            )}
 
-                                                {/* Sub-keterangan untuk item Reward Responden */}
-                                                {isReward && item.qty > 0 && (
-                                                    <div className="mt-1.5 text-xs text-gray-500 flex items-start gap-1.5 leading-relaxed">
-                                                        <span className="text-gray-400 select-none">•</span>
-                                                        <span>Distribusi reward untuk {item.qty} responden terpilih</span>
-                                                    </div>
-                                                )}
+                                            {bundle.items.map((item, idx) => {
+                                                const itemName = item.name || item.category || '';
+                                                const category = item.category || '';
+                                                const isAdItem = itemName.toLowerCase().includes('jakpat for universities') || category.toLowerCase().includes('ads') || category === 'Pembayaran';
+                                                const isReward = itemName.toLowerCase().includes('reward') || category.toLowerCase().includes('reward');
+                                                const qty = item.qty || 1;
 
-                                                {/* Kategori sekunder bila ada */}
-                                                {!isAdItem && !isReward && item.name && item.name !== item.category && (
-                                                    <div className="text-xs text-gray-400 mt-0.5">{item.category}</div>
-                                                )}
-                                            </td>
-                                            <td className="py-3.5 px-4 text-center text-gray-600 tabular align-top">{item.qty}</td>
-                                            <td className="py-3.5 px-4 text-right text-gray-600 tabular align-top">{formatCurrency(item.price)}</td>
-                                            <td className="py-3.5 px-4 text-right text-gray-900 font-semibold tabular align-top">
-                                                {formatCurrency(item.price * item.qty)}
-                                            </td>
-                                        </tr>
+                                                return (
+                                                    <tr key={`${bIdx}-${idx}`} className="border-t border-gray-100 hover:bg-slate-50/40 transition-colors">
+                                                        <td className={`py-3.5 px-4 text-gray-800 ${isGroup ? 'pl-8' : ''}`}>
+                                                            <div className="font-semibold text-gray-900">{itemName}</div>
+
+                                                            {/* Sub-keterangan untuk item Iklan / Platform.
+                                                                Judul & jadwal diambil dari BUNDEL-nya sendiri —
+                                                                di grup, `data.form_submissions` hanya milik
+                                                                pesanan pertama. Pada grup keduanya sudah tertulis
+                                                                di kepala bundel, jadi tidak diulang di sini. */}
+                                                            {isAdItem && !isGroup && (
+                                                                <div className="mt-1.5 space-y-0.5 text-xs text-gray-600">
+                                                                    {bundle.title && (
+                                                                        <div className="flex items-start gap-1.5 leading-relaxed">
+                                                                            <span className="text-gray-400 select-none">•</span>
+                                                                            <span><strong className="font-medium text-gray-700">Survei:</strong> {bundle.title}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {scheduleText && scheduleText !== 'Belum dijadwalkan' && (
+                                                                        <div className="flex items-start gap-1.5 leading-relaxed">
+                                                                            <span className="text-gray-400 select-none">•</span>
+                                                                            <span><strong className="font-medium text-gray-700">Jadwal:</strong> {scheduleText}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Sub-keterangan untuk item Reward Responden */}
+                                                            {isReward && qty > 0 && (
+                                                                <div className="mt-1.5 text-xs text-gray-500 flex items-start gap-1.5 leading-relaxed">
+                                                                    <span className="text-gray-400 select-none">•</span>
+                                                                    <span>Distribusi reward untuk {qty} responden terpilih</span>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Kategori sekunder bila ada */}
+                                                            {!isAdItem && !isReward && item.name && item.name !== category && (
+                                                                <div className="text-xs text-gray-400 mt-0.5">{category}</div>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3.5 px-4 text-center text-gray-600 tabular align-top">{qty}</td>
+                                                        <td className="py-3.5 px-4 text-right text-gray-600 tabular align-top">{formatCurrency(item.price)}</td>
+                                                        <td className="py-3.5 px-4 text-right text-gray-900 font-semibold tabular align-top">
+                                                            {formatCurrency(item.price * qty)}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </Fragment>
                                     );
                                 })}
                             </tbody>

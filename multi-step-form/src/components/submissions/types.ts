@@ -21,6 +21,17 @@ export interface ReviewHistoryEntry {
 
 export interface SurveySubmission {
   id: string;
+  /**
+   * Pemilik akun order ini — JANGKAR IDENTITAS PELANGGAN.
+   *
+   * ⚠️ Kelompokkan order per akun DENGAN INI, tidak pernah dengan
+   * `researcherEmail`: email yang tampil di baris adalah turunan `profiles`
+   * (dan untuk order lama jatuh ke `form_submissions.email`, kolom bebas per
+   * order), sementara `full_name`/`email` di baris order bisa berbeda-beda
+   * antar pesanan milik satu orang. Terukur 2026-09-02: 0 dari 352 order sejak
+   * Mei ber-`auth_user_id` NULL.
+   */
+  auth_user_id?: string | null;
   formId: string;
   formTitle: string;
   formUrl: string;

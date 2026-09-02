@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
-import { LogOut, Eye, EyeOff, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar, ShieldCheck, ArrowRight } from 'lucide-react';
+import { LogOut, Eye, EyeOff, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar, ShieldCheck, ArrowRight, Loader2, Plus } from 'lucide-react';
 import logoMark from '../assets/Jakpat Navbar Logo.webp';
 import { getFormSubmissionsPaginated, countSubmissionsByStatus, updateFormStatus, convertDistributionType, supabase } from '../utils/supabase';
 import { fetchProfileNames } from '../utils/profileNames';
@@ -25,6 +25,8 @@ import { SubmissionListRow } from './submissions/SubmissionListRow';
 import { SubmissionDetailSheet } from './submissions/SubmissionDetailSheet';
 import { mergeServerRow } from './submissions/mergeServerRow';
 import { useRowSelection } from './data-list/useRowSelection';
+import { BulkInvoiceDialog, findBillableOrdersForAccount } from './schedule/BulkInvoiceDialog';
+import { distinctAccounts } from './schedule/bulkInvoiceCandidates';
 import { missedPaymentWindow } from '../utils/missedPaymentWindow';
 
 /**
@@ -137,6 +139,10 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
 
   // Row selection (foundation for the upcoming bulk payment feature)
   const rowSelection = useRowSelection();
+  /** Pesanan dari luar halaman yang ditarik untuk ikut satu tagihan gabungan. */
+  const [bulkExtras, setBulkExtras] = useState<SurveySubmission[]>([]);
+  const [isFindingExtras, setIsFindingExtras] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   // Inline reading pane needs ≥1280px; below that the modal Sheet is used
   const isXl = useMediaQuery('(min-width: 1280px)');
@@ -257,6 +263,10 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
         const authNames = await fetchProfileNames(data.map((s: any) => s.auth_user_id));
         const transformed: SurveySubmission[] = data.map((sub: any) => ({
           id: sub.id,
+          // Sudah ikut terambil untuk `fetchProfileNames` di atas; tanpa baris
+          // ini ia tidak pernah sampai ke layar, dan tagihan gabungan tidak
+          // punya cara sah mengelompokkan order per pelanggan.
+          auth_user_id: sub.auth_user_id ?? null,
           formId: sub.id.substring(0, 8), // Mock ID from UUID
           formTitle: sub.title || 'Untitled Survey',
           formUrl: sub.survey_url,
@@ -513,6 +523,10 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   const clearSelection = rowSelection.clear;
   useEffect(() => {
     clearSelection();
+    // Pesanan tarikan ikut dibuang: ia bagian dari seleksi yang sama, dan
+    // membiarkannya hidup sesudah centangnya hilang meninggalkan sasaran
+    // tagihan yang tidak terlihat di layar mana pun.
+    setBulkExtras([]);
   }, [clearSelection, currentPage, currentDate, statusFilter, searchQuery, distTab, sortDir]);
 
   // Drawer reads fresh data by id; close it when the row leaves the dataset
@@ -1038,6 +1052,46 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   const pageAllSelected = rowSelection.allSelected(pageIds);
   const pageSomeSelected = rowSelection.someSelected(pageIds);
 
+  // ── Tagihan gabungan ─────────────────────────────────────────────────────
+  //
+  // Sasarannya = baris yang tercentang di halaman ini + pesanan yang ditarik
+  // lewat "Pesanan lain peneliti ini" (yang bisa berasal dari halaman/bulan
+  // lain, dan karena itu tidak punya baris untuk dicentang).
+  const bulkSelected = submissions.filter((s) => rowSelection.isSelected(s.id));
+  const bulkTargets = [...bulkSelected, ...bulkExtras];
+  const bulkAccounts = distinctAccounts(bulkTargets);
+
+  const clearBulkSelection = () => {
+    rowSelection.clear();
+    setBulkExtras([]);
+  };
+
+  const handleFindMoreOrders = async () => {
+    const anchor = bulkTargets[0];
+    if (!anchor?.auth_user_id) {
+      toast.error('Pesanan ini tidak punya akun pemilik — tidak bisa dikelompokkan.');
+      return;
+    }
+    setIsFindingExtras(true);
+    try {
+      const found = await findBillableOrdersForAccount(
+        anchor.auth_user_id,
+        bulkTargets.map((s) => s.id),
+      );
+      if (found.length === 0) {
+        toast.info('Tidak ada pesanan lain milik peneliti ini yang siap ditagih.');
+        return;
+      }
+      setBulkExtras((prev) => [...prev, ...found]);
+      toast.success(`${found.length} pesanan lain ditambahkan`);
+    } catch (e: any) {
+      console.error('Gagal mencari pesanan lain:', e);
+      toast.error('Gagal mencari pesanan lain milik peneliti ini.');
+    } finally {
+      setIsFindingExtras(false);
+    }
+  };
+
 
 
   const detailProps = {
@@ -1350,29 +1404,62 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
           </div>
 
           {/* Bulk Selection Bar (Yahoo Mail style — only rendered when rows are selected) */}
-          {rowSelection.count > 0 && (
-            <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-blue-50/95 border-b border-gray-200 min-h-[44px]">
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-semibold text-blue-900">
-                  {rowSelection.count} selected
+          {bulkTargets.length > 0 && (
+            <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-blue-50/95 border-b border-gray-200 min-h-[44px]">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-sm font-semibold text-blue-900 shrink-0">
+                  {bulkTargets.length} selected
+                  {bulkExtras.length > 0 && (
+                    <span className="font-medium text-blue-700"> (+{bulkExtras.length} luar halaman)</span>
+                  )}
                 </span>
-                <span className="h-4 w-px bg-blue-200" aria-hidden="true" />
+                <span className="h-4 w-px bg-blue-200 shrink-0" aria-hidden="true" />
+
+                {/*
+                  Seleksi sengaja hangus setiap ganti halaman/bulan/tab — seleksi tak
+                  terlihat yang menagih uang adalah kesalahan yang mahal. Tapi batch
+                  nyata bisa terbelah halaman, dan pencarian server tidak mencakup
+                  email peneliti. Tombol inilah gantinya: dijangkar `auth_user_id`.
+                */}
+                {bulkAccounts === 1 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={isFindingExtras}
+                    onClick={() => void handleFindMoreOrders()}
+                    className="h-7 px-2.5 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/50 shrink-0"
+                    title="Tarik pesanan lain milik peneliti ini yang siap ditagih, dari halaman/bulan mana pun"
+                  >
+                    {isFindingExtras
+                      ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Mencari…</>
+                      : <><Plus className="w-3.5 h-3.5 mr-1.5" /> Pesanan lain peneliti ini</>}
+                  </Button>
+                )}
+
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled
-                  className="h-7 px-2.5 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/50"
-                  title="Coming soon"
+                  disabled={bulkAccounts !== 1}
+                  onClick={() => setBulkDialogOpen(true)}
+                  className="h-7 px-2.5 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/50 shrink-0"
                 >
                   <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Create Bulk Payment
-                  <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide bg-blue-100/80 rounded px-1 py-0.5">Soon</span>
                 </Button>
+
+                {/* Alasan ditulis di bar, BUKAN tooltip: tombol `disabled` tidak
+                    memunculkan tooltip di sebagian besar browser, jadi tombol mati
+                    tanpa keterangan tidak pernah menjelaskan dirinya. */}
+                {bulkAccounts > 1 && (
+                  <span className="text-xs text-rose-700 font-medium truncate">
+                    {bulkAccounts} peneliti berbeda — satu pembayaran hanya boleh punya satu pembeli
+                  </span>
+                )}
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={rowSelection.clear}
-                className="h-7 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100/50 hover:text-blue-900"
+                onClick={clearBulkSelection}
+                className="h-7 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100/50 hover:text-blue-900 shrink-0"
               >
                 <X className="w-3.5 h-3.5 mr-1" /> Clear
               </Button>
@@ -1581,6 +1668,25 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
         </div>
       </div >
 
+
+      <BulkInvoiceDialog
+        submissions={bulkTargets}
+        open={bulkDialogOpen}
+        onClose={() => setBulkDialogOpen(false)}
+        onDone={() => {
+          setBulkDialogOpen(false);
+          clearBulkSelection();
+          loadSubmissions();
+        }}
+        onFixSchedule={(submissionId) => {
+          // Tanggalnya diisi di tab Reservasi Jadwal, lalu admin kembali dan
+          // menekan tombolnya lagi — dialog menghitung ulang kelayakan tiap
+          // kali dibuka.
+          setBulkDialogOpen(false);
+          setPendingSubView('schedule');
+          setOpenSubmissionId(submissionId);
+        }}
+      />
 
       <EditCriteriaModal
         isOpen={isEditCriteriaModalOpen}

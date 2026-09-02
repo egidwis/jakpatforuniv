@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verifyDokuAuth, sniffInvoiceNumber, REJECT_OUTCOMES, onRequest } from './webhook.js';
+import { verifyDokuAuth, sniffInvoiceNumber, REJECT_OUTCOMES, onRequest, collectPaidTargets } from './webhook.js';
 
 /*
   Yang dijaga di sini: SETIAP penolakan harus bisa dicatat.
@@ -209,5 +209,82 @@ describe('taksonomi outcome penolakan', () => {
         expect(REJECT_OUTCOMES.auth).toBe('rejected_auth');
         expect(REJECT_OUTCOMES.payload).toBe('rejected_payload');
         expect(REJECT_OUTCOMES.crash).toBe('handler_crashed');
+    });
+});
+
+// ============================================================================
+// Tagihan gabungan: satu pembayaran, N jadwal
+// ============================================================================
+//
+// Satu `payment_id` boleh dipakai N baris `invoices`/`transactions`. STEP 1a &
+// STEP 2 memang sudah mem-PATCH semuanya sejak dulu; yang dulu hanya membaca
+// baris [0] adalah STEP 3-5. Tanpa fan-out, N-1 jadwal terdampar `pending`
+// dengan uang yang sudah masuk.
+describe('collectPaidTargets — satu tugas per jadwal', () => {
+    const txn = (o) => ({ form_submission_id: 'o1', schedule_id: 's1', entity_type: null, extend_id: null, ...o });
+
+    it('N=1 menghasilkan tepat satu tugas (regresi jalur lama)', () => {
+        const t = collectPaidTargets([txn()], [{ form_submission_id: 'o1', schedule_id: 's1' }], 'o1');
+        expect(t).toHaveLength(1);
+        expect(t[0].form_submission_id).toBe('o1');
+        expect(t[0].schedule_id).toBe('s1');
+    });
+
+    it('N jadwal berbeda menghasilkan N tugas', () => {
+        const t = collectPaidTargets([
+            txn({ form_submission_id: 'o1', schedule_id: 's1' }),
+            txn({ form_submission_id: 'o2', schedule_id: 's2' }),
+            txn({ form_submission_id: 'o3', schedule_id: 's3' }),
+        ], [], 'o1');
+        expect(t.map((x) => x.schedule_id)).toEqual(['s1', 's2', 's3']);
+        expect(t.map((x) => x.form_submission_id)).toEqual(['o1', 'o2', 'o3']);
+    });
+
+    it('baris invoices dan pasangan transaksinya tidak dihitung dua kali', () => {
+        const t = collectPaidTargets(
+            [txn({ schedule_id: 's1' }), txn({ form_submission_id: 'o2', schedule_id: 's2' })],
+            [{ form_submission_id: 'o1', schedule_id: 's1' }, { form_submission_id: 'o2', schedule_id: 's2' }],
+            'o1',
+        );
+        expect(t).toHaveLength(2);
+    });
+
+    it('baris transactions MENANG — hanya ia yang membawa rute extend', () => {
+        // Kalau baris invoices yang menang, `entity_type` hilang dan pembayaran
+        // perpanjangan salah rute: form_submissions yang di-PATCH, bukan jadwalnya.
+        const t = collectPaidTargets(
+            [txn({ schedule_id: 's9', entity_type: 'extend', extend_id: 'ext-9' })],
+            [{ form_submission_id: 'o1', schedule_id: 's9', entity_type: null, extend_id: null }],
+            'o1',
+        );
+        expect(t).toHaveLength(1);
+        expect(t[0].entity_type).toBe('extend');
+        expect(t[0].extend_id).toBe('ext-9');
+    });
+
+    it('jadwal yang hanya punya baris invoices tetap ikut (Skenario B)', () => {
+        const t = collectPaidTargets([], [{ form_submission_id: 'o5', schedule_id: 's5' }], 'o5');
+        expect(t).toHaveLength(1);
+        expect(t[0].schedule_id).toBe('s5');
+    });
+
+    it('baris pra-sql/51 ber-schedule_id NULL dikunci per ORDER, seperti dulu', () => {
+        const t = collectPaidTargets([
+            txn({ form_submission_id: 'o7', schedule_id: null }),
+            txn({ form_submission_id: 'o7', schedule_id: null }),
+        ], [], 'o7');
+        expect(t).toHaveLength(1);
+        expect(t[0].schedule_id).toBeNull();
+    });
+
+    it('tidak pernah pulang kosong selama ordernya diketahui', () => {
+        const t = collectPaidTargets([], [], 'o1');
+        expect(t).toHaveLength(1);
+        expect(t[0].form_submission_id).toBe('o1');
+    });
+
+    it('baris tanpa form_submission_id memakai id order dari STEP 1', () => {
+        const t = collectPaidTargets([{ schedule_id: 's4' }], [], 'o4');
+        expect(t[0].form_submission_id).toBe('o4');
     });
 });

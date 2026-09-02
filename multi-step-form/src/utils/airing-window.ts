@@ -32,6 +32,28 @@ const wibParts = new Intl.DateTimeFormat('en-CA', {
     hour12: false,
 });
 
+const wibTimeFmt = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false,
+});
+const wibDayFmt = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+});
+const wibShortDayFmt = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta', weekday: 'short', day: 'numeric', month: 'short',
+});
+
+/**
+ * Tampilan WIB untuk layar dan pesan.
+ *
+ * Tinggal di sini, bukan di `scheduleModel`, karena `utils/` tidak boleh
+ * mengimpor dari `pages/` — dan `waMessage` butuh yang sama persis. Satu
+ * deklarasi, supaya papan jadwal dan pesan WhatsApp tidak pernah menyebut
+ * instant yang sama dengan tanggal berbeda.
+ */
+export const formatWibTime = (iso: string) => wibTimeFmt.format(new Date(iso)).replace(':', '.');
+export const formatWibDay = (iso: string) => wibDayFmt.format(new Date(iso));
+export const formatWibShort = (iso: string) => wibShortDayFmt.format(new Date(iso));
+
 export interface WibNow {
     /** Tanggal menurut kalender WIB, format YYYY-MM-DD */
     ymd: string;
