@@ -656,6 +656,273 @@ satu sinyal untuk dua pertanyaan.**
    dengan isi baris yang diredupkan, sehingga ia terbaca sebagai keterangan
    dan sempat dilaporkan "tidak ada" padahal sudah dirender.
 
+#### 🟢 "Batalkan tagihan" dapat permukaan kedua — halaman Transaksi (2026-09-02)
+
+**Dilaporkan sebagai bug tampilan, ternyata efek samping fitur ini.** Tiap pembatalan
+dari tab Reservasi Jadwal melahirkan satu baris **bisu** di halaman Keuangan → Transaksi:
+pil abu-abu tanpa tulisan di kolom Status.
+
+`transactions/types.ts` mendeklarasikan `status: 'pending' | 'completed' | 'failed'` dan
+dua peta label/warna di atas union itu. `cancelInvoice()` menulis `'cancelled'` ke
+**invoices DAN transactions**, jadi lookup-nya `undefined` di kedua peta — dan `undefined`
+tidak melempar apa pun: `Chip` jatuh ke `defaultVariants: slate`, `undefined` sebagai anak
+React tidak merender apa-apa. Nol type error, nol runtime error.
+
+Union itu ternyata salah di **kedua arah**. Terukur di produksi:
+
+| status | baris | nominal | chip sebelumnya |
+|---|---|---|---|
+| `completed` | 427 | Rp 296.520.660 | Lunas |
+| `pending` | 219 | Rp 1.137.067.139 | Menunggu |
+| `cancelled` | 10 | Rp 6.373.950 | **kosong** |
+| `paid` | 8 | Rp 3.447.500 | **kosong** |
+| `expired` | 7 | Rp 2.210.010 | **kosong** |
+| `failed` | **0** | — | label ada, barisnya tak pernah ada |
+
+⚠️ **Yang paling tajam: 8 baris `paid` adalah uang sungguhan** (MANUAL_VERIFIED,
+MANUAL_RECONCILED, Mayar). `isPaidTx` sudah menghitungnya ke "Pendapatan" dan filter
+"Lunas" sudah memasukkannya — halaman ini **menghitung uangnya lalu menolak menamainya**.
+Kelas bug yang sama dengan §00O jebakan 0: dua definisi "lunas" hidup di satu berkas.
+
+Perbaikannya bukan menambah tiga entri ke peta — itu akan bisu lagi pada kata berikutnya.
+`transactionStatusChip()` menormalkan status lalu **memberi fallback**: status tak dikenal
+menampilkan dirinya sendiri sebagai teks mentah. Jelek, tapi terlihat; bisu adalah
+kegagalan, jelek bukan. Tipe kolomnya dilonggarkan jadi `string` — penulisnya banyak dan
+tidak semuanya di repo ini.
+
+**Aksinya ikut dibawa** (permintaan pemilik produk): "Batalkan tagihan" kini juga di footer
+drawer halaman Transaksi. Nol SQL — `cancelInvoice()` berkunci `payment_id`, dan `sql/59`
+sudah memberi admin hak UPDATE di kedua tabel.
+
+⚠️ **Gerbangnya "punya invoice ber-`status = 'pending'`", BUKAN "punya baris `invoices`"** —
+pelajaran §00P di atas, diterapkan sebelum selisihnya lahir. Hari ini kedua rumus menjawab
+sama (66 dari 66 pasangannya `pending`); menulis yang benar sekarang gratis. Dari 219
+transaksi pending hanya **66 (Rp 32,2 jt)** tagihan sungguhan; **153 (Rp 1,1 miliar)**
+checkout yang ditinggalkan — dan hanya yang pertama yang dapat tombol.
+
+⚠️ **Jebakan #12 nyaris kena lagi.** Rancangan awalnya `.in('payment_id', [...219 id])`.
+Diganti `select('payment_id').eq('status','pending')` (182 baris) — URL-nya panjang tetap,
+apa pun jumlah barisnya, dan daftarnya menyusut sendiri tiap tagihan lunas/dibatalkan.
+Ada penjaga konsol kalau hasilnya menyentuh 1000 baris.
+
+Dialog konfirmasi aksi merusak diangkat jadi `ui/confirm-dialog.tsx` supaya kata-katanya —
+termasuk peringatan **"link DOKU tidak ikut mati"** yang wajib menurut §00O — tidak bisa
+menyimpang antara dua permukaan. Sekalian: dropdown filter berhenti menawarkan `failed`
+(nol baris) dan mulai menawarkan Dibatalkan & Kedaluwarsa. Sesudahnya
+219 + 434 + 10 + 7 = **670**, yaitu seluruh baris yang tampil — tiap baris punya rumah.
+
+Gerbang: `tsc -p tsconfig.app.json` **79** (baseline, nol error baru), vitest **333** lolos
+(+13 uji baru untuk `transactionStatusChip`/`matchesStatusFilter`), `npm run build` hijau.
+⬜ **Belum diuji di browser, belum dideploy.**
+
+#### 🔴 `ad_schedules` tidak pernah punya policy UPDATE — `sql/78` (2026-09-02)
+
+**Dilaporkan sebagai "jadwal ini kenapa tidak bisa dibatalkan?"** Kartu `#EAKD7WPQ`
+berstatus `waiting_payment` / `pending` — jelas belum lunas, jelas belum dibatalkan —
+tapi setiap klik "Batalkan Jadwal" membalas *"Jadwal ini sudah lunas atau sudah
+dibatalkan. Muat ulang dulu."*
+
+Sebabnya bukan di jadwal itu. `ad_schedules` punya RLS aktif dengan **hanya dua policy**:
+`ALL` untuk `service_role` dan `SELECT` untuk `authenticated`. **Nol policy UPDATE.**
+`GRANT UPDATE` ke `authenticated` ada, jadi izin tabelnya lolos dan yang menolak RLS-nya —
+diam-diam, sebagai "0 baris cocok". Dibuktikan langsung di prod (lalu di-rollback):
+
+    begin;
+      set local role authenticated;
+      set local request.jwt.claims = '{"email":"product@jakpat.net","role":"authenticated"}';
+      update ad_schedules set updated_at = now() where booking_id = 'EAKD7WPQ' returning id;
+    rollback;
+    -- sebelum sql/78: 0 baris. sesudah: 1 baris.
+
+⚠️ **Jendelanya lahir dari Task 11 sendiri.** Selama penulisnya masih view
+`form_submissions_extend`, tulisan admin masuk lewat view itu dan tidak pernah menyentuh
+policy tabel ini. `sql/73`–`75` memindahkan semua penulis ke `ad_schedules` langsung dan
+`sql/76` mencabut view-nya (2026-08-30). Sejak itu **setiap** tulisan admin dari browser ke
+jadwal ordinal ≥2 menyentuh nol baris:
+
+| jalur | akibatnya |
+|---|---|
+| `cancelSchedule()` | pesan palsu "sudah lunas" — gejala yang dilaporkan |
+| `markScheduleAsPaid()` | baris uangnya pindah, cermin jadwalnya tidak |
+| `unmarkScheduleAsPaid()` | sama, arah sebaliknya |
+| `updateExtendScheduleDates()` | tanggal baru tidak pernah tersimpan |
+| `InvoiceForm` (extend) | `total_cost`/`subtotal`/`ppn_amount` tidak pernah tercatat |
+
+Buktinya berderet: pembatalan extend terakhir yang berhasil **2026-08-29 10:15**, sehari
+sebelum view dicabut — dan tiga baris extend yang lahir sesudah itu semuanya
+`total_cost = 0`, termasuk `2DADYPA5` yang **sudah lunas Rp 999.000 via QRIS**. Webhook
+memakai `service_role` yang melewati RLS, jadi status pembayarannya berpindah dengan benar
+sementara nominalnya tidak pernah mendarat: dua penulis, satu lolos satu tidak.
+
+**Ditutup `sql/78`** — aditif, meniru "Admin Update Invoices"/"Admin Update Transactions"
+persis. SELECT peneliti tidak disentuh: peneliti tidak pernah menulis tabel ini dari
+browser (jalurnya lewat Pages Function ber-`service_role`). **Diterapkan & diverifikasi di
+prod 2026-09-02**; pembatalan `#EAKD7WPQ` langsung berhasil sesudahnya.
+
+⚠️ **Pesan galatnya ikut diperbaiki, dan ini bagian yang paling mahal.** "0 baris" punya
+dua sebab yang sangat berbeda — penjaga `.not('payment_status','in',…)` yang sah, dan RLS
+yang menolak — dan selama keduanya memakai kalimat yang sama, yang satu menyamar jadi yang
+lain selama berhari-hari. `explainNoRowsCancelling()` sekarang **membaca ulang barisnya**
+sebelum bicara: kalau ia benar-benar lunas/dibatalkan, katakan itu; kalau ia masih layak
+dibatalkan, katakan *"perubahannya DITOLAK database (kemungkinan policy RLS) — ini bug,
+bukan keadaan order"*.
+
+⬜ **Sisa yang BELUM terjelaskan — kalender kapasitas 4 Sep.** Sesudah pembatalan
+`#EAKD7WPQ` berhasil, layar "Jadwal iklan baru" memajang **4 Sep = 4/4** sementara kedua
+RPC kuota (`get_submission_slot_occupancy` + `get_extend_slot_occupancy`) hanya
+mengembalikan **3** baris yang menutupi tanggal itu — ketiganya `is_extra_ad = false`,
+milik peneliti lain, dan datanya diperiksa ulang sesudah cache klien segar (durasi
+sudah ikut order, jadi build-nya memang yang baru). Tanggal lain cocok persis (5–7 Sep
+0/4, 8–10 Sep 1/4).
+
+Hipotesis `is_extra_ad IS NULL` sudah diuji dan **salah**. Akibatnya kecil tapi nyata:
+satu slot yang masih bisa dijual tampil penuh. Belum ditelusuri lebih jauh — mulai dari
+`holdsSlot()` dan aritmetika hari di `fetchSlotAvailability`.
+
+#### 🟢 `total_cost` jadwal perpanjangan direkonsiliasi — `sql/79` (2026-09-02)
+
+Pembersihan setelah `sql/78`. Dari **lima** jadwal extend ber-`total_cost = 0`, hanya
+**satu** yang benar-benar salah:
+
+| booking | keadaan | ikut? |
+|---|---|---|
+| `2DADYPA5` | tagihan **LUNAS** Rp 999.000 (`JFU-INV-6a18c9-…`), cermin 0 | ✅ ditulis 999.000 / 900.000 / 99.000 |
+| `EAKD7WPQ` | satu-satunya tagihannya **dibatalkan**, jadwalnya juga | ❌ 0 memang benar |
+| `JYTST4EE` · `YAWWSSKX` · `52HCR8SG` | nol baris `invoices` & `transactions` | ❌ belum pernah ditagih |
+
+⚠️ **Menimpa kelimanya akan MENGARANG angka.** Syarat ikut: punya tagihan HIDUP
+(`paid`/`completed`, atau `pending` terbaru — bukan `cancelled`/`expired`), rinciannya
+lengkap dengan `amount = subtotal + ppn_amount`, dan cerminnya memang berbeda. Nilainya
+dibakukan di berkasnya, bukan dihitung saat dijalankan — pola `sql/72`. Idempoten
+(penjaga `total_cost = 0`), dan memuat kueri auditnya sendiri untuk dipakai lagi nanti.
+
+**Diterapkan prod 2026-09-02**, sisa penyimpangan **0**. Pendapatan tidak bergeser:
+analitik uang membaca `invoices`/`transactions`, bukan kolom ini. Yang diperbaiki adalah
+angka yang **dilihat** admin & peneliti.
+
+#### 🟢 Durasi jadwal baru berhenti dipatok 7 hari (2026-09-02)
+
+`ScheduleForm` mengawali mode create dengan `isCreate ? 7 : …` — tujuh hari dipatok tanpa
+melihat order sama sekali. Untuk order yang tayang 1 hari, setiap jadwal lanjutan lahir
+tujuh kali lebih panjang daripada yang dipesan, dan admin harus ingat membetulkannya
+**setiap kali**. Yang tidak diingat berubah jadi uang: angka itu masuk ke
+`buildOrderInvoiceItems` sebagai `qty`.
+
+Sekarang diturunkan dari jendela tayang order lewat **`airingDayCount(start, end)`** —
+⚠️ bukan dari kolom `duration`, yang terbukti bisa berbohong (jebakan #23 di bawah);
+start→end adalah yang benar-benar dijual. Cadangannya `duration`, lalu 7 sebagai cadangan
+terakhir. Mode edit tidak berubah.
+
+#### 🟢 Tagihan gabungan (satu link untuk N pesanan) + WhatsApp di dua momen (2026-09-02)
+
+Dua keluhan dari meja admin, keduanya soal langkah yang selama ini dikerjakan di luar
+sistem.
+
+**Terukur lebih dulu.** Sejak 1 Mei: 256 pesanan lunas, **24 tanpa satu pun baris
+pembayaran**; 20 di antaranya berada di hari yang sama dengan pesanan lain milik peneliti
+yang sama yang memang dibayar — sidik jari praktik "tagih satu, sisanya Tandai Lunas".
+Semuanya **satu peneliti**, **10 batch** sejak Juni, 2–5 pesanan per batch. Anggota batch
+lahir berselang menit, jadi selalu **berurutan** di daftar (peringkat 11–14, 37–39, 24–28…).
+
+**Bagian A — WhatsApp.** `utils/waMessage.ts` mengangkat `sendWhatsAppNotification` dari
+tab Review jadi modul bersama (normalisasi nomor + cadangan clipboard tidak boleh
+menyimpang antar permukaan). Dua momen baru: **"Buat & Kirim WA"** di formulir tagihan, dan
+**"Kabari via WA"** di menu kartu `awaiting_invoice`.
+
+⚠️ **Tenggatnya dihitung, bukan dikarang.** Umur tagihan admin 7 hari, tapi yang lebih
+sering mengikat adalah **14.00 WIB di hari tayang**. Menulis "berlaku 7 hari" pada jadwal
+yang tayang lusa adalah janji yang sistem sendiri akan langgar. Untuk tagihan gabungan
+yang dikutip adalah tenggat **paling awal** di antara bundelnya — grupnya atomik.
+
+⚠️ **Jebakan pemblokir popup.** `window.open` sesudah `await` dibuang Safari & Chrome tanpa
+error. Tab Review tidak pernah kena karena WA-nya dikirim sinkron. "Buat & Kirim WA" harus
+menerbitkan tagihan dulu, jadi polanya: buka tab kosong **sinkron di handler klik**,
+arahkan `location.href` sesudah tagihannya terbukti, `close()` kalau gagal. Ini akan tampak
+seperti kerumitan yang bisa disederhanakan — menyederhanakannya mematikan fiturnya.
+
+**Bagian B — satu `payment_id` untuk N pesanan.** Nol migrasi SQL: `payment_id` tidak punya
+unique index, webhook STEP 1a/2 sudah mem-PATCH semua baris yang cocok, dan
+`derive_schedule_id()` menempelkan tiap baris ke jadwalnya sendiri — jadi
+`schedule_billing_summary()`, `fetchScheduleBilling`, `markScheduleAsPaid`, dan analitik
+pendapatan tetap benar tanpa disentuh.
+
+Pintu masuknya **sudah ada**: bar seleksi bergaya Yahoo Mail di `InternalDashboard` lengkap
+dengan tombol "Create Bulk Payment" yang `disabled` + lencana "Soon". Empat tambalan yang
+diperlukan:
+
+1. **Identitas.** `SurveySubmission` hanya punya `researcherEmail`; grup wajib dijangkar
+   `auth_user_id` (sudah ikut terambil untuk `fetchProfileNames`, cuma tidak dipetakan).
+   0 dari 352 order sejak Mei ber-`auth_user_id` NULL. Tombolnya mati kalau seleksi
+   mencampur akun, **dengan alasan tertulis di bar** — tombol `disabled` tidak memunculkan
+   tooltip.
+2. **Seleksi hangus tiap ganti halaman**, dan itu sengaja. Tapi satu dari sepuluh batch
+   jatuh di peringkat 50–52 dengan `pageSize` 50 — terbelah dua halaman, mustahil dirakit.
+   Jawabannya bukan membuat seleksi bertahan lintas halaman (seleksi tak terlihat yang
+   menagih uang), melainkan **"+ Pesanan lain peneliti ini"** yang menarik kandidat lewat
+   `auth_user_id`, lepas dari halaman/bulan/tab.
+3. **Pencarian server tidak mencakup email** (hanya `title` + `full_name`, dan `full_name`
+   itu nama per-order, bukan nama yang tampil di baris) — alasan kedua kenapa (2)
+   diselesaikan lewat "+ pesanan lain", bukan lewat pencarian.
+4. **Kelayakan itu pertanyaan tentang JADWAL, bukan order.** Diselesaikan saat tombol
+   ditekan lewat `cardStateOf` — sumber yang sama dengan kartu Reservasi Jadwal — lalu
+   dialog membuka **daftar tinjauan**: yang ikut, dan yang dicoret beserta alasannya.
+
+⚠️ **Pencoretan harus terlihat, bukan hilang.** Bentuk paling umum dari order yang lolos
+review tapi belum ditagih adalah order **tanpa `start_date`** (`choose_schedule`): **9 dari
+10** order `approved` sejak Mei. Kalau baris seperti itu dijatuhkan diam-diam, kejadian
+normalnya adalah admin mencentang 4 dan hanya 1 yang ikut, tanpa penjelasan. Karena itu
+alasannya ditulis + diberi tombol **"Tentukan Jadwal"**. Kalau **semua** tercoret: nol
+panggilan DOKU, nol baris ditulis.
+
+⚠️ **Nominal DOKU = jumlah `amount` baris-barisnya.** `calculatePpn` membulatkan per baris,
+jadi Σ round(sᵢ×0,11) ≠ round(Σsᵢ×0,11). Selisih beberapa rupiah membuat verifikasi webhook
+menolak pembayaran yang sah — kegagalan yang baru terlihat sesudah uang masuk.
+
+⚠️ **`note` tiap baris HANYA memuat item pesanannya sendiri.** Untuk N=1 bentuk lama
+identik; untuk grup, menyalin seluruh item formulir ke tiap baris membuat kuitansi
+mencetak setiap item N kali dengan total N× lipat. Jebakan di penulis, bukan pembaca, dan
+diamnya sempurna: DOKU tetap menagih angka yang benar.
+
+⚠️ **Kegagalan tulis di tengah adalah satu-satunya yang bisa memakan uang.**
+`createManualInvoice` memanggil DOKU **lebih dulu**; kalau baris ke-3 dari 4 gagal, link-nya
+sudah hidup menagih total penuh sementara Σ baris lebih kecil → webhook menjawab
+`amount_mismatch` dan tidak menulis apa pun, padahal peneliti sudah membayar. Karena itu
+`writeInvoiceRows()` **membuktikan jumlahnya sebelum link dianggap sah**: tulis semua →
+baca ulang dari server → bandingkan; meleset → batalkan seluruh baris ber-`payment_id` itu
+dan lempar. Urutannya mengikat: verifikasi dulu, baru tampilkan/salin/kirim.
+
+⚠️ Pembersihannya lewat `cancelInvoice` (UPDATE), **bukan DELETE** — `transactions` tidak
+punya policy DELETE sama sekali, jadi penghapusan dari klien pulang "berhasil" dengan nol
+baris tersentuh dan meninggalkan baris transaksi yatim.
+
+Perubahan lain: webhook **STEP 0 menjumlahkan** seluruh baris (bukan `limit=1`) dan
+**STEP 3–5 jadi fan-out per jadwal** — tanpa itu hanya jadwal pertama yang lunas dan N−1
+sisanya terdampar `pending` meski uangnya diterima penuh. `create-payment.js` menolak
+memakai ulang link grup untuk satu pesanan (fail-closed). `InvoicePage` menerima N baris →
+satu dokumen: bundel per pesanan, dan **enam turunan** yang dulu dari satu baris naik ke
+tingkat grup — item+judul+jadwal, meterai, INVOICE-vs-RECEIPT, subtotal/PPN/total,
+`paid_at`/`expires_at`, dan jadwalnya.
+
+⚠️ **RECEIPT hanya kalau SEMUA baris lunas.** `markScheduleAsPaid` berlingkup
+`schedule_id`, jadi admin bisa melunasi satu anggota grup sendirian — dokumen berjudul
+RECEIPT padahal separuhnya belum dibayar adalah bukti pembayaran palsu.
+
+⚠️ **Voucher berlaku per bundel**, dinilai dengan `voucherInstantOf(order.created_at)` —
+sama dengan `create-payment.js`. Sebelumnya masa berlakunya dinilai "sekarang" **juga di
+jalur tunggal**, jadi tagihan yang terbit sehari sesudah tenggat menampilkan harga penuh
+sementara server menghitung berdiskon: dua angka untuk satu pesanan. `voucherInstantMs`
+kini dioper dari kedua permukaan.
+
+Callback DOKU untuk grup diarahkan ke `/invoices/<payment_id>` — halaman `/payment-success`
+menarik satu submission, jadi peneliti yang membayar 4 survei akan melihat halaman sukses
+satu survei. N=1 tidak berubah.
+
+**Gerbang:** `tsc -p tsconfig.app.json` **79** (baseline, nol error baru), vitest **411**
+lolos / 31 berkas (+78 uji baru: `waMessage`, `invoiceWrite`, `groupedInvoice`,
+`bulkInvoiceCandidates`, `notify_slot`, `collectPaidTargets`), `npm run build` hijau.
+⬜ **Belum diuji di browser.** Urutan uji wajib: regresi N=1 dulu (terbitkan & bayar
+tagihan tunggal seperti biasa), baru grup — kalau N=1 goyah, jangan sentuh grup.
+
 ⛔ **SATU PERMUKAAN BELUM DIUJI SAMA SEKALI: DASHBOARD PENELITI.**
 [`StatusPage`](../multi-step-form/src/pages/dashboard/StatusPage.tsx) berubah
 di rilis ini — peta pembayarannya dulu mengambil **transaksi pertama yang
@@ -3129,6 +3396,36 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
     "harga saat dipesan". **(b)** Jangan berasumsi ada rumus harga jadwal ke-2
     yang tinggal dipanggil ulang: `cost-calculator` hanya melayani order pertama.
     Ini penemuan yang menunda Phase 4 ke belakang Task 13 — lihat §00G.
+
+24. **Tabel ber-RLS tanpa policy UPDATE menolak tulisan admin sebagai "0 baris",
+    tanpa error. Sudah kambuh TIGA KALI.** `invoices` (`sql/24`), `transactions`
+    (`sql/59`), `ad_schedules` (`sql/78`) — ketiganya ditemukan dengan cara yang
+    persis sama: sebuah tulisan yang "berhasil" tanpa mengubah apa pun.
+
+    `GRANT UPDATE` bisa ADA sementara policy UPDATE tidak; PostgREST lalu membalas
+    "0 baris cocok", identik dengan no-op yang sah, dan supabase-js tidak melempar.
+    Penulis server (`functions/api/doku/*`) tidak pernah kena — `service_role`
+    melewati RLS — jadi gejalanya selalu setengah: satu jalur benar, satu jalur
+    bisu.
+
+    ⚠️ **Pemicu kambuhan ketiga: memindahkan penulis dari VIEW ke TABEL.** Selama
+    penulisnya view `form_submissions_extend`, tulisannya tidak pernah menyentuh
+    policy `ad_schedules`. `sql/73`–`76` memindahkannya, dan sejak itu setiap
+    tulisan admin ke jadwal ordinal ≥2 senyap. **Setiap kali sebuah penulis pindah
+    dari view ke tabel, audit `pg_policies` tabel itu sebelum percaya.**
+
+    Uji yang membedakan "tidak ada yang cocok" dari "ditolak RLS":
+
+        begin;
+          set local role authenticated;
+          set local request.jwt.claims = '{"email":"product@jakpat.net","role":"authenticated"}';
+          update <tabel> set updated_at = now() where <filter> returning id;
+        rollback;
+
+    Dan jangan pernah menerjemahkan "0 baris" jadi kalimat keadaan bisnis —
+    `cancelSchedule` melakukannya selama berhari-hari ("sudah lunas atau sudah
+    dibatalkan" untuk baris yang `pending`). Baca ulang barisnya, lalu katakan yang
+    sebenarnya (`explainNoRowsCancelling`).
 
 ---
 
