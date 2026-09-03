@@ -552,3 +552,36 @@ export function computeAlerts(entries: AdScheduleEntry[], now: number = Date.now
   }
   return { lateForPayment, paidWithoutPage, unscheduled, placeholderBanner };
 }
+
+/**
+ * Memeriksa apakah sebuah jadwal berada di dalam cakupan periode (bulan/tahun).
+ * Untuk yang belum dijadwalkan (unscheduled), diperiksa berdasarkan waktu order dibuat.
+ * `null` atau `month === -1` (ALL_MONTHS) berarti semua entri masuk.
+ */
+export function entryInPeriod(
+  e: AdScheduleEntry,
+  month: number,
+  _year: number,
+  monthWindow: { fromYmd: string; toYmd: string } | null
+): boolean {
+  if (month === -1 || !monthWindow) return true;
+
+  if (isUnscheduled(e)) {
+    const raw = e.submissionCreatedAt || e.createdAt;
+    if (!raw) return false;
+    const ymd = toWibYmd(new Date(raw));
+    return ymd >= monthWindow.fromYmd && ymd <= monthWindow.toYmd;
+  }
+
+  const days = airingDaysOf(e);
+  if (days.length > 0) {
+    return days.some((ymd) => ymd >= monthWindow.fromYmd && ymd <= monthWindow.toYmd);
+  }
+
+  if (e.startDate) {
+    const ymd = toWibYmd(new Date(e.startDate));
+    return ymd >= monthWindow.fromYmd && ymd <= monthWindow.toYmd;
+  }
+
+  return false;
+}

@@ -288,7 +288,7 @@ function GroupHeader({
 const asSingleDay = (e: AdScheduleEntry): DayEntry => ({ entry: e, dayIndex: 1, dayCount: 1 });
 
 export function ScheduleAgenda({
-  groups, unscheduledEntries, lapsedEntries, now, onOpen,
+  groups, unscheduledEntries, lapsedEntries, alertEntries, alertTitle, now, onOpen,
 }: {
   groups: DayGroup[];
   unscheduledEntries: AdScheduleEntry[];
@@ -299,11 +299,19 @@ export function ScheduleAgenda({
    * admin membuka drawer dan menjadwalkannya ulang.
    */
   lapsedEntries: AdScheduleEntry[];
+  /**
+   * Ketika filter alert/indikator chip aktif, tampilkan HANYA baris-baris
+   * yang relevan dengan alert tersebut (isolasi hasil filter).
+   */
+  alertEntries?: AdScheduleEntry[] | null;
+  alertTitle?: string;
   now: number;
   onOpen: (e: AdScheduleEntry) => void;
 }) {
-  const isEmpty =
-    groups.length === 0 && unscheduledEntries.length === 0 && lapsedEntries.length === 0;
+  const isAlertMode = alertEntries !== null && alertEntries !== undefined;
+  const isEmpty = isAlertMode
+    ? alertEntries.length === 0
+    : groups.length === 0 && unscheduledEntries.length === 0 && lapsedEntries.length === 0;
 
   return (
     <>
@@ -318,19 +326,20 @@ export function ScheduleAgenda({
         <span className="w-4 shrink-0" aria-hidden="true" />
       </div>
 
-      {/* Blok "Belum Dijadwalkan" berada DI LUAR periode dan selalu di atas:
-          order tanpa jendela tayang tidak punya tanggal untuk disaring, dan
-          justru itulah pekerjaan yang paling mudah terlupakan. */}
-      {/* Order tanpa jendela tayang. TIDAK tampil secara default — papan ini untuk
-          melihat jadwal, dan yang belum punya jadwal bukan jadwal. Ia muncul hanya
-          saat pil "belum dijadwalkan" dinyalakan, dan induknya yang memutuskan itu
-          (di sini daftarnya cukup dikosongkan).
+      {/* ── Mode Alert / Isolasi Chip ── */}
+      {isAlertMode && alertEntries.length > 0 && (
+        <div>
+          <GroupHeader label={alertTitle || 'Hasil Filter'} count={alertEntries.length} tone="warn" />
+          <div className="divide-y divide-gray-100">
+            {alertEntries.map((e) => (
+              <EntryRow key={e.id} item={asSingleDay(e)} now={now} onOpen={onOpen} />
+            ))}
+          </div>
+        </div>
+      )}
 
-          Pembungkus <div> ini BUKAN hiasan: ia jadi containing block pita sticky
-          di dalamnya, jadi pitanya berhenti menempel begitu bloknya habis. Tanpa
-          pembungkus, ia akan menempel sepanjang gulungan dan menimpa pita hari di
-          bawahnya. */}
-      {unscheduledEntries.length > 0 && (
+      {/* ── Mode Normal ── */}
+      {!isAlertMode && unscheduledEntries.length > 0 && (
         <div>
           <GroupHeader label="⚠ Belum dijadwalkan" count={unscheduledEntries.length} tone="warn" />
           <div className="divide-y divide-gray-100">
@@ -341,7 +350,7 @@ export function ScheduleAgenda({
         </div>
       )}
 
-      {lapsedEntries.length > 0 && (
+      {!isAlertMode && lapsedEntries.length > 0 && (
         <div>
           <GroupHeader label="⚠ Batas bayar terlewat" count={lapsedEntries.length} tone="warn" />
           <div className="divide-y divide-gray-100">
@@ -352,7 +361,7 @@ export function ScheduleAgenda({
         </div>
       )}
 
-      {groups.map((group) => (
+      {!isAlertMode && groups.map((group) => (
         <div key={group.ymd} id={dayGroupDomId(group.ymd)} className="scroll-mt-10">
           <GroupHeader
             label={group.label}
@@ -377,7 +386,9 @@ export function ScheduleAgenda({
 
       {isEmpty && (
         <p className="text-center text-sm text-gray-400 py-20">
-          Tidak ada jadwal pada periode ini dengan filter yang dipilih.
+          {isAlertMode
+            ? 'Tidak ada jadwal pada periode ini yang sesuai dengan filter.'
+            : 'Tidak ada jadwal pada periode ini dengan filter yang dipilih.'}
         </p>
       )}
     </>

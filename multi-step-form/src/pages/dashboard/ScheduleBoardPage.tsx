@@ -20,11 +20,13 @@ import { ScheduleAgenda, dayGroupDomId } from './schedule/ScheduleAgenda';
 import { AdsWeekBoard } from './schedule/AdsWeekBoard';
 import { ScheduleEntryDrawer } from './schedule/ScheduleEntryDrawer';
 import {
-  CANCELLED_CHIPS, CHIP_ORDER, chipKindOf, computeAlerts, groupByDay, holdStateOf,
-  isUnscheduled, matchesFilter, matchesQuery, tokenForChip,
+  CANCELLED_CHIPS, CHIP_ORDER, chipKindOf, computeAlerts, entryInPeriod, groupByDay, holdStateOf,
+  isUnscheduled, matchesFilter, matchesQuery, needsBannerSwap, paidPageNotReachable, tokenForChip,
   type ChipKind, type FilterState,
 } from './schedule/scheduleModel';
 import { PageBuilderModal } from '@/components/PageBuilder/PageBuilderModal';
+
+export type AlertFilterKind = 'lateForPayment' | 'paidWithoutPage' | 'placeholderBanner' | 'unscheduled';
 
 // ─────────────────────────────────────────────────────────────
 // Papan Schedule — PAPAN PANTAU, BUKAN TEMPAT KERJA.
@@ -92,6 +94,7 @@ export function ScheduleBoardPage({
   const [showUnscheduled, setShowUnscheduled] = useState(false);
   const [showLapsed, setShowLapsed] = useState(false);
   const [showPlaceholderBanner, setShowPlaceholderBanner] = useState(false);
+  const [activeAlert, setActiveAlert] = useState<AlertFilterKind | null>(null);
   const [query, setQuery] = useState('');
   const [now, setNow] = useState(() => Date.now());
 
@@ -100,6 +103,10 @@ export function ScheduleBoardPage({
   const [builderData, setBuilderData] = useState<any>(null);
   /** Lompat-otomatis ke hari ini SEKALI saja — lihat efeknya di bawah. */
   const didAutoJump = useRef(false);
+
+  const toggleAlert = (kind: AlertFilterKind) => {
+    setActiveAlert((prev) => (prev === kind ? null : kind));
+  };
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
@@ -139,37 +146,6 @@ export function ScheduleBoardPage({
     return Array.from(set).sort((a, b) => a - b);
   }, [entries]);
 
-  const filter: FilterState = useMemo(
-    () => ({ service, chips, showCancelled, showUnscheduled, showLapsed, showPlaceholderBanner, query }),
-    [service, chips, showCancelled, showUnscheduled, showLapsed, showPlaceholderBanner, query]
-  );
-
-  const filtered = useMemo(
-    () => entries.filter((e) => matchesFilter(e, filter, now)),
-    [entries, filter, now]
-  );
-
-  const chipCounts = useMemo(() => {
-    const counts = new Map<ChipKind, number>();
-    for (const e of entries) {
-      // Dihitung sebelum filter chip diterapkan, tapi SESUDAH filter layanan dan
-      // pencarian — supaya angkanya menjawab "kalau kupilih ini, berapa yang
-      // muncul", bukan angka global yang tidak berhubungan dengan layar.
-      if (service !== 'all' && (e.distributionType || 'regular') !== service) continue;
-      if (!matchesQuery(e, query)) continue;
-      const kind = chipKindOf(e, now);
-      counts.set(kind, (counts.get(kind) || 0) + 1);
-    }
-    return counts;
-  }, [entries, service, query, now]);
-
-  const cancelledCount = useMemo(
-    () => CANCELLED_CHIPS.reduce((sum, k) => sum + (chipCounts.get(k) || 0), 0),
-    [chipCounts]
-  );
-
-  const alerts = useMemo(() => computeAlerts(entries, now), [entries, now]);
-
   /**
    * `null` = "Semua Bulan": tidak ada jendela, jadi tidak ada hari yang dipotong.
    *
@@ -187,6 +163,101 @@ export function ScheduleBoardPage({
     };
   }, [month, year]);
 
+  /**
+   * Entri yang berada dalam periode yang sedang dilihat (bulan/tahun).
+   * Menjadi basis perhitungan chips indikator & daftar agenda.
+   */
+  const periodEntries = useMemo(
+    () => entries.filter((e) => entryInPeriod(e, month, year, monthWindow)),
+    [entries, month, year, monthWindow]
+  );
+
+  const filter: FilterState = useMemo(
+    () => ({ service, chips, showCancelled, showUnscheduled, showLapsed, showPlaceholderBanner, query }),
+    [service, chips, showCancelled, showUnscheduled, showLapsed, showPlaceholderBanner, query]
+  );
+
+  const filtered = useMemo(
+    () => entries.filter((e) => matchesFilter(e, filter, now)),
+    [entries, filter, now]
+  );
+
+  const chipCounts = useMemo(() => {
+    const counts = new Map<ChipKind, number>();
+    for (const e of periodEntries) {
+      // Dihitung sebelum filter chip diterapkan, tapi SESUDAH filter layanan dan
+      // pencarian — supaya angkanya menjawab "kalau kupilih ini, berapa yang
+      // muncul", ber-scope periode yang sedang dilihat.
+      if (service !== 'all' && (e.distributionType || 'regular') !== service) continue;
+      if (!matchesQuery(e, query)) continue;
+      const kind = chipKindOf(e, now);
+      counts.set(kind, (counts.get(kind) || 0) + 1);
+    }
+    return counts;
+  }, [periodEntries, service, query, now]);
+
+  const cancelledCount = useMemo(
+    () => CANCELLED_CHIPS.reduce((sum, k) => sum + (chipCounts.get(k) || 0), 0),
+    [chipCounts]
+  );
+
+  /** Angka alert dihitung HANYA dari periode yang sedang dilihat */
+  const alerts = useMemo(() => computeAlerts(periodEntries, now), [periodEntries, now]);
+
+  /**
+   * Ketika salah satu chip indikator diklik, saring dan sortir entri
+   * khusus untuk indikator tersebut.
+   */
+  const alertFilteredEntries = useMemo(() => {
+    if (!activeAlert) return null;
+    const base = periodEntries.filter((e) => {
+      if (service !== 'all' && (e.distributionType || 'regular') !== service) return false;
+      if (!matchesQuery(e, query)) return false;
+      const kind = chipKindOf(e, now);
+      if (CANCELLED_CHIPS.includes(kind) && !showCancelled) return false;
+
+      switch (activeAlert) {
+        case 'lateForPayment':
+          return !isUnscheduled(e) && holdStateOf(e, now) === 'lapsed';
+        case 'paidWithoutPage':
+          return paidPageNotReachable(e, now);
+        case 'placeholderBanner':
+          return needsBannerSwap(e);
+        case 'unscheduled':
+          return isUnscheduled(e);
+        default:
+          return true;
+      }
+    });
+
+    switch (activeAlert) {
+      case 'lateForPayment':
+        return base.sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+      case 'paidWithoutPage':
+      case 'placeholderBanner':
+        return base.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+      case 'unscheduled':
+        return base.sort((a, b) => (b.submissionCreatedAt || b.createdAt || '').localeCompare(a.submissionCreatedAt || a.createdAt || ''));
+      default:
+        return base;
+    }
+  }, [activeAlert, periodEntries, service, query, showCancelled, now]);
+
+  const alertTitle = useMemo(() => {
+    switch (activeAlert) {
+      case 'lateForPayment':
+        return '⚠ Perlu Ditagih (Batas Bayar Terlewat)';
+      case 'paidWithoutPage':
+        return '⚠ Halaman Belum Bisa Dibuka';
+      case 'placeholderBanner':
+        return '⚠ Banner Perlu Diupdate';
+      case 'unscheduled':
+        return '⚠ Belum Dijadwalkan';
+      default:
+        return '';
+    }
+  }, [activeAlert]);
+
   const unscheduledEntries = useMemo(
     () => filtered.filter(isUnscheduled),
     [filtered]
@@ -195,17 +266,12 @@ export function ScheduleBoardPage({
   /**
    * Jadwal yang tahanan slotnya gugur — di luar daftar hari, karena slotnya sudah
    * TIDAK ditahan lagi dan menghitungnya di sana membuat hari terlihat lebih penuh
-   * daripada yang bisa dijual. Tidak dipotong periode: pekerjaan yang tertinggal
-   * di bulan lalu tidak boleh hilang karena admin menggeser bulan.
+   * daripada yang bisa dijual.
    */
   const lapsedEntries = useMemo(
     () => (showLapsed
       ? filtered
           .filter((e) => !isUnscheduled(e) && holdStateOf(e, now) === 'lapsed')
-          // TERBARU DI ATAS, dan ini bukan selera. Terukur 2026-08-10: 12 dari
-          // 17 baris antrean ini tanggalnya Maret–Juni — tunggakan lama yang
-          // sekali dibersihkan lalu tidak kembali. Urutan menaik membuat empat
-          // baris yang benar-benar bisa ditagih terkubur di bawahnya.
           .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))
       : []),
     [filtered, showLapsed, now]
@@ -222,14 +288,19 @@ export function ScheduleBoardPage({
 
   /** Jadwal unik vs hari tayang: dua angka berbeda sejak daftar memekar per hari. */
   const shownScheduleCount = useMemo(() => {
+    if (alertFilteredEntries != null) {
+      return alertFilteredEntries.length;
+    }
     const ids = new Set<string>();
     unscheduledEntries.forEach((e) => ids.add(e.id));
     lapsedEntries.forEach((e) => ids.add(e.id));
     dayGroups.forEach((g) => g.entries.forEach((d) => ids.add(d.entry.id)));
     return ids.size;
-  }, [unscheduledEntries, lapsedEntries, dayGroups]);
+  }, [alertFilteredEntries, unscheduledEntries, lapsedEntries, dayGroups]);
 
-  const airingDayCount = dayGroups.reduce((n, g) => n + g.entries.length, 0);
+  const airingDayCount = alertFilteredEntries != null
+    ? alertFilteredEntries.length
+    : dayGroups.reduce((n, g) => n + g.entries.length, 0);
 
   const toggleChip = (kind: ChipKind) => {
     setChips((prev) => {
@@ -247,11 +318,13 @@ export function ScheduleBoardPage({
     setShowUnscheduled(false);
     setShowLapsed(false);
     setShowPlaceholderBanner(false);
+    setActiveAlert(null);
+    setQuery('');
   };
 
   const activeFilterCount =
     chips.size + (service !== 'all' ? 1 : 0) + (showCancelled ? 1 : 0) +
-    (showUnscheduled ? 1 : 0) + (showLapsed ? 1 : 0) + (showPlaceholderBanner ? 1 : 0);
+    (activeAlert ? 1 : (showUnscheduled ? 1 : 0) + (showLapsed ? 1 : 0) + (showPlaceholderBanner ? 1 : 0));
 
   const periodLabel = month === ALL_MONTHS ? 'Semua bulan' : `${MONTHS[month]} ${year}`;
 
@@ -450,55 +523,71 @@ export function ScheduleBoardPage({
             </>
           )}
 
-          {/* Tiga angka pekerjaan yang menunggu — SEKALIGUS pintu masuknya.
-              Dihitung atas SELURUH data, bukan periode yang sedang dilihat:
-              pekerjaan bulan lalu tidak boleh hilang karena admin ganti bulan.
-              Pil "belum dijadwalkan" adalah satu-satunya jalan menuju order tanpa
-              tanggal sejak bloknya tidak lagi tampil otomatis — empat di antaranya
-              sudah lunas, dan tidak ada layar lain yang menampilkannya. */}
+          {/* Empat angka pekerjaan yang menunggu — SEKALIGUS tombol filter cepat.
+              Dihitung HANYA atas periode yang sedang dilihat (bulan/tahun).
+              Menekan chip akan menyaring dan mengurutkan daftar jadwal sesuai kondisi tersebut. */}
           {!isLoading && isAgenda && (
             <div className="flex flex-wrap items-center gap-2 text-xs ml-auto">
-              {/* Bisa diklik: inilah SATU-SATUNYA jalan menuju jadwal yang sudah
-                  gugur sejak daftar hari berhenti memuatnya — dan justru itu yang
-                  paling bisa diselamatkan lewat reschedule. */}
-              <AlertPill
-                icon={Clock}
-                count={alerts.lateForPayment}
-                label="perlu ditagih"
-                tone="red"
-                active={showLapsed}
-                onClick={() => setShowLapsed((v) => !v)}
-                title={
-                  showLapsed
-                    ? 'Sembunyikan jadwal yang perlu ditagih'
-                    : 'Tampilkan jadwal yang perlu ditagih — slotnya MASIH ditahan, yang lewat batas bayarnya'
-                }
-              />
-              <AlertPill
-                icon={AlertTriangle}
-                count={alerts.paidWithoutPage}
-                label="halaman belum bisa dibuka"
-                tone="amber"
-                title="Iklan lunas yang halamannya belum dibuat atau masih draft — responden tidak bisa membukanya"
-              />
-              <AlertPill
-                icon={ImageIcon}
-                count={alerts.placeholderBanner}
-                label="banner default"
-                tone="amber"
-                active={showPlaceholderBanner}
-                onClick={() => setShowPlaceholderBanner((v) => !v)}
-                title="Halaman sudah terbit tapi masih memakai banner bawaan"
-              />
-              <AlertPill
-                icon={CalendarClock}
-                count={alerts.unscheduled}
-                label="belum dijadwalkan"
-                tone="slate"
-                active={showUnscheduled}
-                onClick={() => setShowUnscheduled((v) => !v)}
-                title={showUnscheduled ? 'Sembunyikan order tanpa jadwal' : 'Tampilkan order tanpa jadwal'}
-              />
+              {(alerts.lateForPayment > 0 || activeAlert === 'lateForPayment') && (
+                <AlertPill
+                  icon={Clock}
+                  count={alerts.lateForPayment}
+                  label="perlu ditagih"
+                  tone="red"
+                  active={activeAlert === 'lateForPayment'}
+                  onClick={() => toggleAlert('lateForPayment')}
+                  title={
+                    activeAlert === 'lateForPayment'
+                      ? 'Hapus filter perlu ditagih'
+                      : 'Filter jadwal yang lewat batas bayar pada periode ini'
+                  }
+                />
+              )}
+              {(alerts.paidWithoutPage > 0 || activeAlert === 'paidWithoutPage') && (
+                <AlertPill
+                  icon={AlertTriangle}
+                  count={alerts.paidWithoutPage}
+                  label="halaman belum bisa dibuka"
+                  tone="amber"
+                  active={activeAlert === 'paidWithoutPage'}
+                  onClick={() => toggleAlert('paidWithoutPage')}
+                  title={
+                    activeAlert === 'paidWithoutPage'
+                      ? 'Hapus filter halaman belum bisa dibuka'
+                      : 'Filter iklan lunas yang halamannya belum dibuat atau masih draft'
+                  }
+                />
+              )}
+              {(alerts.placeholderBanner > 0 || activeAlert === 'placeholderBanner') && (
+                <AlertPill
+                  icon={ImageIcon}
+                  count={alerts.placeholderBanner}
+                  label="banner perlu diupdate"
+                  tone="amber"
+                  active={activeAlert === 'placeholderBanner'}
+                  onClick={() => toggleAlert('placeholderBanner')}
+                  title={
+                    activeAlert === 'placeholderBanner'
+                      ? 'Hapus filter banner perlu diupdate'
+                      : 'Filter halaman terbit yang masih memakai banner bawaan'
+                  }
+                />
+              )}
+              {(alerts.unscheduled > 0 || activeAlert === 'unscheduled') && (
+                <AlertPill
+                  icon={CalendarClock}
+                  count={alerts.unscheduled}
+                  label="belum dijadwalkan"
+                  tone="slate"
+                  active={activeAlert === 'unscheduled'}
+                  onClick={() => toggleAlert('unscheduled')}
+                  title={
+                    activeAlert === 'unscheduled'
+                      ? 'Hapus filter belum dijadwalkan'
+                      : 'Filter order yang belum memiliki tanggal tayang'
+                  }
+                />
+              )}
             </div>
           )}
 
@@ -512,9 +601,17 @@ export function ScheduleBoardPage({
                 >
                   {activeFilterCount === 1 && service !== 'all'
                     ? serviceLabel(service)
-                    : activeFilterCount === 1 && chips.size === 1
-                      ? tokenForChip(Array.from(chips)[0]).label
-                      : `${activeFilterCount} filter`}
+                    : activeFilterCount === 1 && activeAlert
+                      ? activeAlert === 'lateForPayment'
+                        ? 'Perlu ditagih'
+                        : activeAlert === 'paidWithoutPage'
+                          ? 'Halaman belum bisa dibuka'
+                          : activeAlert === 'placeholderBanner'
+                            ? 'Banner perlu diupdate'
+                            : 'Belum dijadwalkan'
+                      : activeFilterCount === 1 && chips.size === 1
+                        ? tokenForChip(Array.from(chips)[0]).label
+                        : `${activeFilterCount} filter`}
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -568,8 +665,8 @@ export function ScheduleBoardPage({
 
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem
-                    checked={showUnscheduled}
-                    onCheckedChange={(v) => setShowUnscheduled(!!v)}
+                    checked={activeAlert === 'unscheduled' || showUnscheduled}
+                    onCheckedChange={() => toggleAlert('unscheduled')}
                     onSelect={(e) => e.preventDefault()}
                     className="text-sm cursor-pointer"
                   >
@@ -577,8 +674,8 @@ export function ScheduleBoardPage({
                     <span className="text-xs text-gray-400 tabular-nums">{alerts.unscheduled}</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
-                    checked={showLapsed}
-                    onCheckedChange={(v) => setShowLapsed(!!v)}
+                    checked={activeAlert === 'lateForPayment' || showLapsed}
+                    onCheckedChange={() => toggleAlert('lateForPayment')}
                     onSelect={(e) => e.preventDefault()}
                     className="text-sm cursor-pointer"
                   >
@@ -586,12 +683,21 @@ export function ScheduleBoardPage({
                     <span className="text-xs text-gray-400 tabular-nums">{alerts.lateForPayment}</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
-                    checked={showPlaceholderBanner}
-                    onCheckedChange={(v) => setShowPlaceholderBanner(!!v)}
+                    checked={activeAlert === 'paidWithoutPage'}
+                    onCheckedChange={() => toggleAlert('paidWithoutPage')}
                     onSelect={(e) => e.preventDefault()}
                     className="text-sm cursor-pointer"
                   >
-                    <span className="flex-1">Banner masih bawaan</span>
+                    <span className="flex-1">Halaman belum bisa dibuka</span>
+                    <span className="text-xs text-gray-400 tabular-nums">{alerts.paidWithoutPage}</span>
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={activeAlert === 'placeholderBanner' || showPlaceholderBanner}
+                    onCheckedChange={() => toggleAlert('placeholderBanner')}
+                    onSelect={(e) => e.preventDefault()}
+                    className="text-sm cursor-pointer"
+                  >
+                    <span className="flex-1">Banner perlu diupdate</span>
                     <span className="text-xs text-gray-400 tabular-nums">{alerts.placeholderBanner}</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
@@ -655,6 +761,8 @@ export function ScheduleBoardPage({
               groups={dayGroups}
               unscheduledEntries={showUnscheduled ? unscheduledEntries : []}
               lapsedEntries={lapsedEntries}
+              alertEntries={alertFilteredEntries}
+              alertTitle={alertTitle}
               now={now}
               onOpen={openEntry}
             />

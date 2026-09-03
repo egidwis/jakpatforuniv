@@ -34,7 +34,7 @@ export function AlertPill({
 
   if (!onClick) {
     return (
-      <span className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5', toneClass)}>
+      <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5', toneClass)}>
         {content}
       </span>
     );
@@ -46,7 +46,7 @@ export function AlertPill({
       onClick={onClick}
       title={title}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors',
+        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 transition-colors',
         active ? 'border-slate-800 bg-slate-800 text-white' : cn(toneClass, 'hover:border-gray-400')
       )}
     >
