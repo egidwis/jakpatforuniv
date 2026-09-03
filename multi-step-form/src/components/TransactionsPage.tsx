@@ -243,11 +243,26 @@ export function TransactionsPage() {
           // "Tandai Lunas" gagal diam-diam berbulan-bulan sebelum sql/59. Nol
           // baris di sini berarti tagihannya sudah berubah status di permukaan
           // lain, bukan sukses.
-          const changed = await cancelInvoice(paymentId);
-          if (changed === 0) {
+          const res = await cancelInvoice(paymentId);
+          if (res.changed === 0) {
             toast.warning('Tidak ada yang berubah — tagihan ini mungkin sudah dibayar atau dibatalkan.');
+          } else if (res.dokuCancelled) {
+            toast.success(`Tagihan ${paymentId} dibatalkan. Link bayarnya sudah dinonaktifkan di DOKU.`);
           } else {
-            toast.success(`Tagihan ${paymentId} dibatalkan.`);
+            /*
+              ⚠️ NADANYA MENGIKUTI KENYATAAN, BUKAN HARAPAN.
+
+              Pembatalan di database kita BERHASIL — itu sebabnya ini bukan
+              error. Yang gagal cuma mematikan link-nya di DOKU, dan itu
+              informasi yang harus sampai ke admin karena hanya dia yang bisa
+              menindaklanjuti (memberi tahu penelitinya). `toast.warning`,
+              bukan `success` yang menenangkan: menenangkan tanpa dasar persis
+              yang membuat insiden af004b84 terjadi.
+            */
+            toast.warning(
+              `Tagihan ${paymentId} dibatalkan, tapi link DOKU-nya MUNGKIN MASIH BISA DIBAYAR (${res.dokuReason}). Beri tahu penelitinya jangan membayar link yang lama.`,
+              { duration: 10000 },
+            );
           }
           // Menyegarkan daftar DAN daftar tagihan hidup sekaligus, jadi tombolnya
           // hilang dari baris yang baru saja dibatalkan.

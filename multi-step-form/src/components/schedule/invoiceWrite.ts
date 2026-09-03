@@ -66,6 +66,25 @@ export function groupTotals(bundles: InvoiceBundle[]): BundleTotals {
 export interface RowContext {
   paymentId: string;
   invoiceUrl: string;
+  /**
+   * Kapan link DOKU ini berhenti berlaku (ISO). Diturunkan dari menit yang
+   * benar-benar dikirim ke DOKU — lihat `invoiceLifetimeMinutes`.
+   *
+   * Sebelum ini hanya `create-payment.js` (jalur swalayan) yang mengisinya:
+   * 182 dari 183 invoice `pending` di produksi NULL, jadi tidak ada satu pun
+   * lapisan yang punya bukti umur untuk tagihan yang diterbitkan admin.
+   */
+  expiresAt?: string | null;
+  /**
+   * `Request-Id` yang dikirim ke DOKU saat link ini dibuat — kunci Cancel Order
+   * API (`original_request_id`, sql/84).
+   *
+   * ⚠️ HARUS DATANG DARI KONTEKS, BUKAN DARI QUERY. `cleanUp()` di bawah juga
+   * memanggil `cancelInvoice()`, dan di titik itu barisnya justru mungkin
+   * BELUM/TIDAK terbaca dari DB — padahal itu tempat terbaik memanggil Cancel
+   * Order, karena link-nya seharusnya tidak pernah ada.
+   */
+  dokuRequestId?: string | null;
 }
 
 export interface BuiltRows {
@@ -119,10 +138,20 @@ export function buildInvoiceRows(bundles: InvoiceBundle[], ctx: RowContext): Bui
       // kemudian pindah, `schedule_billing` menandai tagihan ini basi saat
       // dibaca — itu yang menutup balapan admin-vs-peneliti (sql/60).
       billed_start_date: entry.startDate ?? null,
+      doku_request_id: ctx.dokuRequestId ?? null,
       ...attribution,
     };
 
-    invoices.push({ ...shared, invoice_url: ctx.invoiceUrl });
+    /**
+     * ⚠️ `expires_at` HANYA DI BARIS INVOICE, JANGAN DI `shared`.
+     *
+     * `transactions` tidak punya kolom itu (diverifikasi produksi 2026-09-03).
+     * Menaruhnya di `shared` membuat INSERT transaksi ditolak PostgREST 400 →
+     * `writeInvoiceRows` membatalkan SELURUH baris dan melempar → tagihan gagal
+     * terbit padahal link DOKU-nya sudah hidup menagih. Godaannya besar karena
+     * setiap kolom lain di sini memang milik berdua.
+     */
+    invoices.push({ ...shared, invoice_url: ctx.invoiceUrl, expires_at: ctx.expiresAt ?? null });
     transactions.push({
       ...shared,
       payment_method: 'doku',
@@ -178,7 +207,7 @@ export async function writeInvoiceRows(
       await createTransaction(transactions[i]);
     }
   } catch (e: any) {
-    const cleaned = await cleanUp(ctx.paymentId);
+    const cleaned = await cleanUp(ctx.paymentId, ctx.dokuRequestId);
     throw new InvoiceWriteError(
       `Gagal menulis tagihan: ${e?.message || e}. Tagihan dibatalkan — jangan bagikan link pembayarannya.`,
       cleaned,
@@ -187,7 +216,7 @@ export async function writeInvoiceRows(
 
   const verified = await verifyWrittenAmount(ctx.paymentId, bundles.length, dokuAmount);
   if (!verified.ok) {
-    const cleaned = await cleanUp(ctx.paymentId);
+    const cleaned = await cleanUp(ctx.paymentId, ctx.dokuRequestId);
     throw new InvoiceWriteError(
       `${verified.reason} Tagihan dibatalkan — jangan bagikan link pembayarannya.`,
       cleaned,
@@ -242,9 +271,11 @@ async function verifyWrittenAmount(
  * baris yang dibaca webhook dan papan jadwal. `cancelInvoice` memakai UPDATE,
  * yang policy-nya ada di kedua tabel.
  */
-async function cleanUp(paymentId: string): Promise<boolean> {
+async function cleanUp(paymentId: string, dokuRequestId?: string | null): Promise<boolean> {
   try {
-    await cancelInvoice(paymentId);
+    // `dokuRequestId` DARI KONTEKS, bukan dari DB: di sini barisnya justru
+    // mungkin tidak pernah mendarat, sementara link DOKU-nya sudah hidup.
+    await cancelInvoice(paymentId, dokuRequestId);
     return true;
   } catch (e) {
     console.error('Gagal membersihkan tagihan yang gagal ditulis:', e);

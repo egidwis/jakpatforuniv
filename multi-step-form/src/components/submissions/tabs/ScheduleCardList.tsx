@@ -359,6 +359,25 @@ function BillingSection({
      * Sebabnya di tingkat order tetap diumumkan sekali, oleh banner tab.
      */
     const byOrder = ['spam', 'rejected', 'cancelled'].includes(entry.reviewStatus);
+
+    /*
+      ⚠️ KARTU INI DULU DIAM SEPENUHNYA SOAL UANG — dan diamnya mahal.
+
+      Membatalkan jadwal TIDAK mematikan link DOKU-nya; VA/QRIS yang sudah
+      terbit tetap bisa dibayar dari sisi bank. Pada order af004b84 peneliti
+      membayar link jadwal yang sudah dibatalkan, Rp 444.000 masuk ke jadwal
+      yang tidak ada lagi, dan tidak ada satu pun permukaan admin yang
+      memperingatkan bahwa link itu masih hidup.
+
+      Yang dicari: tagihan yang MASIH BISA DIBAYAR — belum lunas, belum mati,
+      belum lewat masa berlaku. Sesudah sql/82 tagihan milik jadwal batal
+      otomatis `isStale`, jadi ia keluar dari `openInvoice`; justru karena itu
+      barisnya harus dicari langsung di sini, bukan lewat ringkasan.
+    */
+    const payableInvoice = billing?.invoices.find(
+      (i) => i.isPending && i.source === 'invoice' && !i.isExpired && i.paymentUrl,
+    );
+
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-100/90 px-3 py-2.5 text-xs text-slate-600 space-y-1">
         <p className="font-semibold text-slate-700">Jadwal dibatalkan</p>
@@ -367,6 +386,19 @@ function BillingSection({
             ? 'Dinonaktifkan mengikuti status order.'
             : 'Kuota tanggal itu sudah dibebaskan. Review kuesioner tidak terpengaruh.'}
         </p>
+        {payableInvoice && (
+          <p className="flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 leading-snug !mt-2">
+            <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-amber-600" />
+            <span>
+              Link bayar <strong className="font-semibold tabular-nums">{formatIDR(payableInvoice.amount)}</strong>
+              {' '}masih bisa dibayar
+              {payableInvoice.expiresAt
+                ? <> sampai <strong className="font-semibold">{formatWibShort(payableInvoice.expiresAt)}</strong></>
+                : ' sampai 7 hari sejak tagihan terbit'}
+              . Batalkan tagihannya, dan beri tahu penelitinya jangan membayar link yang lama.
+            </span>
+          </p>
+        )}
       </div>
     );
   }

@@ -160,6 +160,31 @@ export function deriveScheduleMoney(
     };
   }
 
+  /*
+    ── Jadwal yang DIBATALKAN: tidak ada yang bisa dikatakan jujur ──
+
+    ⚠️ ESTIMASI ADALAH PENAWARAN; JADWAL YANG DIBATALKAN TIDAK SEDANG
+    DITAWARKAN.
+
+    Terukur di order af004b84: kartu jadwal #2 memajang "Estimasi Total
+    Rp 3.108.000" padahal `total_cost` baris itu 0 dan tagihan sungguhannya
+    Rp 444.000. Sebabnya persis di sini — `entry.totalCost > 0` dipakai sebagai
+    "sudah ditagih", jadwal batal itu bernilai 0, dan cabang di bawah menghitung
+    ulang 57 Qs × 7 hari dengan tarif HARI INI. Angka itu membantah header
+    kartunya sendiri ("Rp 999.000 ditagih") DAN invoice yang benar-benar terbit.
+
+    Untuk jadwal batal: tampilkan yang benar-benar tercatat, atau tidak sama
+    sekali. `total` 0 + `lines: null` membuat kartu memilih diam.
+  */
+  if (entry.status === 'cancelled') {
+    return {
+      total: 0,
+      isEstimate: false,
+      lines: null,
+      note: 'Jadwal dibatalkan — tidak ada nominal yang ditagihkan untuk jadwal ini.',
+    };
+  }
+
   // ── Belum ditagih: penawaran, bukan catatan ──────────────
   const duration = entry.duration || 0;
   const incentive = calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner);

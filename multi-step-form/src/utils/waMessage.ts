@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { formatWibDay, formatWibShort, paymentCutoffInstant, toWibYmd } from './airing-window';
 import { formatRupiah } from './currency';
+import { MAX_INVOICE_MINUTES } from './payment';
 
 /**
  * Pesan WhatsApp ke peneliti, dan cara membukanya.
@@ -13,8 +14,19 @@ import { formatRupiah } from './currency';
 
 const rupiah = (n: number) => `Rp ${formatRupiah(n)}`;
 
-/** Umur tagihan admin: 7 hari (`payment_due_date` di `createManualInvoice`). */
-export const ADMIN_INVOICE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Umur MAKSIMUM tagihan admin, dalam ms.
+ *
+ * ⚠️ SATU SUMBER dengan `payment_due_date` yang benar-benar dikirim ke DOKU
+ * (`MAX_INVOICE_MINUTES` di `payment.ts`). Sebelum Bagian 3 keduanya ditulis
+ * terpisah sebagai "7 hari"; begitu salah satunya berubah, pesan WhatsApp mulai
+ * menjanjikan link yang sudah mati — dan yang membacanya peneliti, bukan admin.
+ *
+ * Ini BATAS ATAS, bukan umur sesungguhnya: `paymentDeadline()` di bawah
+ * mengambil yang paling awal antara ini dan batas bayar jadwalnya, persis
+ * seperti `invoiceLifetimeMinutes()` melakukannya untuk link DOKU-nya.
+ */
+export const ADMIN_INVOICE_LIFETIME_MS = MAX_INVOICE_MINUTES * 60 * 1000;
 
 /**
  * Nomor WA dalam bentuk yang diterima wa.me: hanya digit, awalan 62.

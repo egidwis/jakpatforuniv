@@ -183,11 +183,30 @@ export async function onRequestPost(context) {
             // tidak menghapusnya, dan tanpa itu peneliti tidak tahu jadwal mana
             // yang dimaksud pada order berjadwal banyak. Kalau memang tidak ada,
             // barisnya hilang; aturan emas berlaku di email juga.
+            /*
+              ⚠️ CABANG INI TIDAK PERNAH MENYEBUT TAGIHAN — DAN INSIDEN
+              af004b84 LEWAT PERSIS DI SINI.
+
+              Cabang `moved` di bawah sudah benar sejak lama: "tagihan itu tidak
+              berlaku lagi … jangan bayar link yang lama". §00P menyebutnya
+              satu-satunya kalimat yang benar-benar mencegah kehilangan uang.
+              Pembatalan jadwal punya risiko yang SAMA PERSIS — link DOKU-nya
+              tetap hidup di sisi bank — tapi tidak punya kalimatnya.
+
+              Gerbangnya sama seperti `moved`: hanya untuk order yang BELUM
+              lunas. Order yang sudah dibayar tidak punya link menggantung untuk
+              dibayar keliru, dan memperingatkannya cuma menimbulkan cemas.
+            */
+            const unpaidNote = isPaid
+                ? ''
+                : `<p style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;">Kalau tagihan untuk tanggal ini sudah terlanjur Kakak terima, <strong>tagihan itu tidak berlaku lagi</strong> — <strong>jangan bayar link yang lama</strong>. Link pembayaran lama bisa saja masih terbuka, tapi uang yang masuk ke sana tidak otomatis menghidupkan jadwal yang sudah dibatalkan.</p>`;
+
             subject = 'Jadwal tayang iklanmu dibatalkan — Jakpat for Universities';
             bodyHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
                 <p>Kami mengabari bahwa <strong>tim Jakpat membatalkan jadwal tayang</strong>${surveyLine}${when ? ` yang dijadwalkan <strong>${when}</strong>` : ''}.</p>
                 <p>Kuota tanggal itu sudah kami bebaskan. <strong>Kuesionermu tetap lolos review</strong> — yang batal hanya tanggalnya, bukan pesanannya, dan Kakak tidak perlu mengajukan ulang apa pun.</p>
+                ${unpaidNote}
                 <p>Tim kami akan menghubungi Kakak untuk menetapkan tanggal penggantinya. Kalau butuh penjelasan lebih dulu, balas email ini atau chat Mimin lewat dashboard.</p>
                 ${bookingLine}
                 ${cta}

@@ -491,6 +491,8 @@ export interface Transaction {
   voucher_code?: string | null;
   /** Jendela tayang yang ditagihkan, dibekukan saat terbit (sql/60). */
   billed_start_date?: string | null;
+  /** `original_request_id` untuk Cancel Order API (sql/84). */
+  doku_request_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -513,7 +515,12 @@ export interface Invoice {
   /** Jendela tayang yang ditagihkan, dibekukan saat terbit (sql/60). */
   billed_start_date?: string | null;
   created_at?: string;
-  expires_at?: string;
+  /** Kapan link DOKU berhenti berlaku. NULL untuk baris pra-Bagian 3. */
+  expires_at?: string | null;
+  /** `original_request_id` untuk Cancel Order API (sql/84). */
+  doku_request_id?: string | null;
+  /** Kapan DOKU mengonfirmasi link-nya mati. NULL = tidak pernah (sql/84). */
+  doku_cancelled_at?: string | null;
   paid_at?: string;
 }
 
@@ -1008,10 +1015,91 @@ export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Sche
  * hasilnya jadi nol baris — persis cara "Tandai Lunas" gagal diam-diam selama
  * berbulan-bulan sebelum `sql/59`.
  */
-export const cancelInvoice = async (paymentId: string): Promise<number> => {
+export interface CancelInvoiceResult {
+  /** Baris yang benar-benar berubah, di kedua tabel. */
+  changed: number;
+  /** DOKU mengonfirmasi link bayarnya mati? */
+  dokuCancelled: boolean;
+  /** Kenapa tidak, kalau tidak. `null` saat berhasil. */
+  dokuReason: string | null;
+}
+
+/**
+ * Matikan link DOKU-nya lebih dulu, lalu catat hasilnya.
+ *
+ * ⚠️ KEGAGALANNYA TIDAK BOLEH MENAHAN PEMBATALAN. Kontrak yang sama dengan
+ * `notifyScheduleChange`: tidak pernah melempar, kabari lewat nilai balik.
+ * Membiarkan tagihan tetap hidup di sistem kita gara-gara satu HTTP gagal jauh
+ * lebih buruk daripada link DOKU yang mungkin masih terbuka — yang kedua sudah
+ * dijaga penjaga webhook `paid_on_dead_bill` (sql/80).
+ */
+async function killDokuLink(
+  paymentId: string,
+  knownRequestId?: string | null,
+): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    /*
+      ⚠️ `knownRequestId` MENANG ATAS QUERY, DAN ITU BUKAN OPTIMASI.
+
+      Jalur pembatalan manual punya barisnya di DB, jadi query di bawah sah.
+      Tapi `cleanUp()` di `invoiceWrite.ts` memanggil ini justru ketika
+      penulisan baris GAGAL — link DOKU-nya sudah hidup sementara barisnya
+      mungkin tidak pernah mendarat. Di situ query mengembalikan nol baris, dan
+      tanpa jalur konteks ini link yang seharusnya tidak pernah ada akan tetap
+      menagih. Itu tempat TERBAIK memanggil Cancel Order, bukan yang terburuk.
+    */
+    let requestId = knownRequestId ?? null;
+    if (!requestId) {
+      const { data } = await supabase
+        .from('invoices')
+        .select('doku_request_id')
+        .eq('payment_id', paymentId)
+        .limit(1)
+        .maybeSingle();
+      requestId = data?.doku_request_id ?? null;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/doku/cancel-order', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({
+        invoice_number: paymentId,
+        original_request_id: requestId,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const out = await res.json();
+    return { ok: !!out?.cancelled, reason: out?.cancelled ? null : (out?.message || out?.reason || 'Tidak diketahui') };
+  } catch (e: any) {
+    console.error('[cancelInvoice] gagal memanggil Cancel Order DOKU:', e);
+    return { ok: false, reason: e?.message || 'Panggilan ke DOKU gagal' };
+  }
+}
+
+export const cancelInvoice = async (
+  paymentId: string,
+  knownRequestId?: string | null,
+): Promise<CancelInvoiceResult> => {
+  // ⚠️ URUTANNYA MENGIKAT: DOKU DULU, BARU DATABASE. Kalau dibalik dan
+  // panggilan DOKU-nya lambat, ada jendela ketika baris kita sudah `cancelled`
+  // sementara link-nya masih hidup — dan justru di jendela itu peneliti yang
+  // sedang membuka halaman bayar akan membayarnya.
+  const doku = await killDokuLink(paymentId, knownRequestId);
+
   const { data: invRows, error: invErr } = await supabase
     .from('invoices')
-    .update({ status: 'cancelled' })
+    .update({
+      status: 'cancelled',
+      // Hanya diisi kalau DOKU BENAR-BENAR mengonfirmasi. NULL = dialog dan
+      // email wajib memakai cabang peringatan. Jangan pernah menuliskannya
+      // "optimistis" — kalimat menenangkan tanpa dasar persis yang membuat
+      // insiden af004b84 terjadi.
+      ...(doku.ok ? { doku_cancelled_at: new Date().toISOString() } : {}),
+    })
     .eq('payment_id', paymentId)
     .eq('status', 'pending')
     .select('id');
@@ -1025,7 +1113,11 @@ export const cancelInvoice = async (paymentId: string): Promise<number> => {
     .select('id');
   if (txnErr) throw txnErr;
 
-  return (invRows?.length || 0) + (txnRows?.length || 0);
+  return {
+    changed: (invRows?.length || 0) + (txnRows?.length || 0),
+    dokuCancelled: doku.ok,
+    dokuReason: doku.reason,
+  };
 };
 
 // Fungsi untuk update status form
@@ -3493,6 +3585,21 @@ export interface ScheduleInvoice {
   /** Jendela tayang yang ditagihkan baris ini saat ia terbit. */
   billedStartDate: string | null;
   /**
+   * Kapan link DOKU-nya berhenti berlaku. NULL = tidak diketahui — baris
+   * pra-Bagian 3 dan seluruh sisi `transactions` (yang tidak punya kolom ini).
+   */
+  expiresAt: string | null;
+  /**
+   * `expires_at` sudah lewat DAN uangnya belum masuk (sql/83).
+   *
+   * ⚠️ Dijawab DI DATABASE, bukan dihitung ulang di sini. Tidak ada cron yang
+   * mengedaluwarsakan tagihan, jadi status `pending` bertahan selamanya sesudah
+   * link-nya mati — 182 dari 183 baris produksi begitu per 2026-09-03. Kalau
+   * klien menghitungnya sendiri, ia akan berbeda dari `live` di
+   * schedule_billing_summary() dan angka di layar menyimpang tanpa satu pun error.
+   */
+  isExpired: boolean;
+  /**
    * Jadwalnya sudah berpindah sejak tagihan ini terbit, jadi ia menagih
    * jendela yang tidak ada lagi. Uang yang SUDAH masuk tidak pernah basi.
    */
@@ -3595,6 +3702,8 @@ export const fetchScheduleBilling = async (
       isPending: PENDING_PAYMENT_STATUSES.includes(status.toLowerCase()),
       billedStartDate: r.billed_start_date ?? null,
       isStale: !!r.is_stale,
+      expiresAt: r.expires_at ?? null,
+      isExpired: !!r.is_expired,
     };
     if (r.source_id) sourceIds.set(r.schedule_id, r.source_id);
     const list = bySchedule.get(r.schedule_id);

@@ -10,6 +10,7 @@ import {
   type AdScheduleEntry, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
+import { formatWibShort } from '@/utils/airing-window';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 import { ScheduleCardList, ScheduleCardSkeleton } from './ScheduleCardList';
@@ -173,7 +174,13 @@ export function SchedulePaymentTab({
       title: `Batalkan jadwal #${entry.bookingId}?`,
       highlight: when,
       lines: [
-        'Kuota hari itu langsung bebas dijual lagi, dan tagihan yang masih menggantung untuk jadwal ini ikut dimatikan.',
+        // ⚠️ Klausa "dan tagihan yang masih menggantung ikut dimatikan" DIBUANG:
+        // itu tidak pernah benar. `cancelSchedule()` tidak memanggil API
+        // pembatalan DOKU, jadi link bayarnya tetap hidup di sisi bank — persis
+        // yang terjadi pada order af004b84. Sesudah gerbang 6a, dialog ini juga
+        // hanya muncul ketika sudah TIDAK ada tagihan hidup, jadi kalimatnya
+        // bukan cuma salah, ia juga tidak relevan lagi.
+        'Kuota hari itu langsung bebas dijual lagi.',
         'Tanggalnya TETAP tercatat sebagai riwayat — jadi nanti masih bisa dijawab "jadwal mana yang dibatalkan, untuk tanggal apa".',
         'Ordernya tidak dihapus dan bisa dijadwalkan ulang kapan saja.',
         'Penelitinya akan menerima email berisi tanggal yang dibatalkan, dan bahwa kuesionernya tetap lolos review.',
@@ -303,23 +310,58 @@ export function SchedulePaymentTab({
   const handleCancelInvoice = useCallback(async (inv: ScheduleInvoice) => {
     if (!inv.paymentId) return;
     const paymentId = inv.paymentId;
+    /*
+      Sampai kapan link itu hidup. `expiresAt` baru terisi untuk tagihan yang
+      terbit sesudah Bagian 3; untuk baris lama kita hanya tahu aturannya
+      (7 hari sejak terbit) dan mengatakannya begitu — menyebut tanggal pasti
+      yang tidak kita punya justru lebih buruk daripada menyebut aturannya.
+    */
+    const expiryNote = inv.expiresAt
+      ? ` sampai ${formatWibShort(inv.expiresAt)}`
+      : ' sampai 7 hari sejak tagihan terbit';
     setPendingConfirm({
       title: 'Batalkan tagihan ini?',
       highlight: formatIDR(inv.amount),
       lines: [
         'Nominal itu berhenti dihitung sebagai piutang, dan jadwalnya bisa ditagih ulang.',
         'Jadwal serta slotnya TIDAK dibatalkan — ini berlingkup tagihan saja.',
-        `Link bayar ${paymentId} yang sudah terlanjur dikirim masih bisa dibayar dari sisi bank. Kalau uangnya sungguh masuk, tagihan ini kembali jadi lunas.`,
+        /*
+          ⚠️ DI SINILAH peringatan link-DOKU tinggal — bukan di dialog
+          pembatalan jadwal. Di sini admin BENAR-BENAR bisa bertindak.
+
+          Sesudah Bagian 2 (`paid_on_dead_bill`) kalimat keduanya berubah:
+          uang yang masuk ke tagihan mati TIDAK lagi menghidupkannya kembali
+          jadi lunas — ia dicatat, jadwalnya tidak disentuh, dan barisnya
+          masuk antrean admin. Membiarkan kalimat lama berarti menjanjikan
+          pemulihan otomatis yang sudah sengaja dicabut.
+        */
+        `Link bayar ${paymentId} yang sudah terlanjur dikirim MASIH BISA DIBAYAR dari sisi bank${expiryNote}.`,
+        'Kalau uangnya sungguh masuk, uang itu dicatat tapi jadwalnya TIDAK ikut bergerak — kartunya muncul di antrean webhook untuk diputuskan admin. Beri tahu penelitinya jangan membayar link yang lama.',
       ],
       confirmLabel: 'Ya, Batalkan Tagihan',
       tone: 'danger',
       onConfirm: async () => {
         try {
-          const changed = await cancelInvoice(paymentId);
-          if (changed === 0) {
+          const res = await cancelInvoice(paymentId);
+          if (res.changed === 0) {
             toast.warning('Tidak ada yang berubah — tagihan ini mungkin sudah dibayar atau dibatalkan.');
+          } else if (res.dokuCancelled) {
+            toast.success(`Tagihan ${paymentId} dibatalkan. Link bayarnya sudah dinonaktifkan di DOKU.`);
           } else {
-            toast.success(`Tagihan ${paymentId} dibatalkan.`);
+            /*
+              ⚠️ NADANYA MENGIKUTI KENYATAAN, BUKAN HARAPAN.
+
+              Pembatalan di database kita BERHASIL — itu sebabnya ini bukan
+              error. Yang gagal cuma mematikan link-nya di DOKU, dan itu
+              informasi yang harus sampai ke admin karena hanya dia yang bisa
+              menindaklanjuti (memberi tahu penelitinya). `toast.warning`,
+              bukan `success` yang menenangkan: menenangkan tanpa dasar persis
+              yang membuat insiden af004b84 terjadi.
+            */
+            toast.warning(
+              `Tagihan ${paymentId} dibatalkan, tapi link DOKU-nya MUNGKIN MASIH BISA DIBAYAR (${res.dokuReason}). Beri tahu penelitinya jangan membayar link yang lama.`,
+              { duration: 10000 },
+            );
           }
           reload();
           onExtendCreated();

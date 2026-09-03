@@ -188,8 +188,30 @@ export function planCardActions(input: {
   const canTopUp = can.createInvoice && billing?.openInvoice == null;
   const topUp: CardAction = { id: 'top_up', label: 'Tagih Susulan' };
 
+  /**
+   * Membatalkan JADWAL selagi tagihannya masih hidup adalah janji yang tidak
+   * bisa ditepati.
+   *
+   * Dialog "Batalkan Jadwal" berkata tagihan yang menggantung "ikut dimatikan";
+   * ia tidak. Link DOKU-nya tetap bisa dibayar dari sisi bank — itulah yang
+   * terjadi pada order af004b84, dan uangnya mendarat di jadwal yang sudah
+   * tidak ada. Urutan yang benar: matikan tagihannya dulu (di situ admin
+   * BENAR-BENAR bisa bertindak), baru batalkan jadwalnya.
+   *
+   * ⚠️ AKSINYA DIHILANGKAN, BUKAN `disabled`. Kontrak berkas ini. Alasannya
+   * dititipkan ke callout kartu pada state `waiting_payment` — tanpa kalimat
+   * itu tombolnya sekadar lenyap tanpa sebab, dan itu kebisuan yang sama
+   * dengan yang ditutup 65369c1.
+   *
+   * Bentuknya sengaja SAMA PERSIS dengan `canTopUp` di atas: satu definisi
+   * "ada tagihan hidup", bukan dua. `openInvoice` sudah sadar-kedaluwarsa
+   * sejak sql/83 — tanpa itu gerbang ini akan mencabut "Batalkan Jadwal" dari
+   * 75 jadwal yang tagihannya sudah mati berminggu-minggu.
+   */
+  const canCancelSchedule = can.cancelSchedule && billing?.openInvoice == null;
+
   const withCancel = (menu: CardAction[]) =>
-    can.cancelSchedule ? [...menu, cancelSchedule] : menu;
+    canCancelSchedule ? [...menu, cancelSchedule] : menu;
 
   /**
    * "Kabari via WA" — slot sudah dipesan, tagihannya belum terbit.

@@ -25,19 +25,33 @@ export interface BillingEvent {
   isSuperseded: boolean;
   isStale: boolean;
   source: 'invoice' | 'transaction';
+  /**
+   * Link bayarnya sudah lewat masa berlaku (sql/83). Opsional supaya pemanggil
+   * lama tidak perlu diubah — `undefined` diperlakukan sebagai "belum
+   * kedaluwarsa", yang persis perilaku sebelum kolom ini ada.
+   */
+  isExpired?: boolean;
 }
 
 /**
  * Tagihan yang IKUT DIHITUNG sebagai piutang/penerimaan jadwal ini.
  *
- * ⚠️ CERMINAN `live` DI `schedule_billing_summary()` (sql/53) — kalau salah
- * satu berubah, ubah keduanya. Diangkat ke sini supaya `fetchScheduleBilling`
- * dan pembandingan di bawah memakai definisi yang SAMA; menyalin predikatnya
- * adalah cara angka di layar mulai berbeda dari angka di database tanpa satu
- * pun error.
+ * ⚠️ CERMINAN `live` DI `schedule_billing_summary()` (sql/53, diperluas sql/83)
+ * — kalau salah satu berubah, ubah keduanya. Diangkat ke sini supaya
+ * `fetchScheduleBilling` dan pembandingan di bawah memakai definisi yang SAMA;
+ * menyalin predikatnya adalah cara angka di layar mulai berbeda dari angka di
+ * database tanpa satu pun error.
+ *
+ * ⚠️ `!isExpired` BUKAN KERAPIAN — ia yang membuat gerbang "batalkan jadwal"
+ * (Bagian 6a) bisa dipercaya. TIDAK ADA cron yang mengedaluwarsakan tagihan,
+ * jadi tanpa syarat ini sebuah tagihan yang link DOKU-nya sudah mati tetap
+ * terbaca `pending` selamanya, terus dihitung sebagai `openInvoice`, dan
+ * mengunci jadwalnya dari pembatalan tanpa alasan yang bisa dilihat admin.
+ * Terukur: 182 dari 183 invoice `pending` produksi sudah lewat 7 hari.
  */
 export function isLiveInvoice(i: BillingEvent): boolean {
-  return i.isPaid || (i.isPending && i.source === 'invoice' && !i.isSuperseded && !i.isStale);
+  return i.isPaid
+    || (i.isPending && i.source === 'invoice' && !i.isSuperseded && !i.isStale && !i.isExpired);
 }
 
 export interface RecordedVsBilled {

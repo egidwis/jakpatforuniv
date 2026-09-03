@@ -56,6 +56,52 @@ export const REJECT_OUTCOMES = {
 };
 
 /**
+ * Status tagihan yang sudah MATI — cerminan `payment_status_rank()` (sql/53)
+ * rank 2, bukan daftar baru.
+ *
+ * ⚠️ Kosakata "mati" hanya boleh punya SATU definisi. sql/53 memberi
+ * paid/completed = 3, expired/failed/cancelled = 2, pending = 1. Menulis
+ * daftar sendiri di sini berarti dua definisi yang akan menyimpang diam-diam
+ * begitu salah satunya berubah — dan yang menyimpang menentukan apakah uang
+ * sungguhan menggerakkan jadwal.
+ *
+ * `lower()` disengaja: sql/53 juga membandingkan lower(coalesce(status,'')).
+ */
+export const DEAD_BILL_STATUSES = ['expired', 'failed', 'cancelled'];
+
+export function isDeadBillStatus(status) {
+  return DEAD_BILL_STATUSES.includes(String(status ?? '').toLowerCase());
+}
+
+/**
+ * Verdict "tagihan ini sudah mati" — murni, supaya bisa diuji tanpa jaringan.
+ *
+ * Dipisah dengan alasan yang sama seperti `verifyDokuAuth`: yang perlu dijaga
+ * bukan cuma nilainya, tapi bahwa pemanggilnya berhenti SEBELUM tulisan
+ * pertama. Mengembalikan `null` = lanjut ke jalur normal.
+ *
+ * ⚠️ CAMPURAN HIDUP+MATI JUGA DIANGGAP MATI. Untuk tagihan gabungan (N baris
+ * satu `payment_id`), grup yang sebagian dibatalkan justru ambiguitas yang
+ * paling tidak boleh diterapkan otomatis — kita tidak bisa tahu porsi mana yang
+ * dimaksud peneliti. `errorMessage` menyebut baris mana yang mana supaya admin
+ * bisa memutuskan tanpa membuka DOKU.
+ */
+export function deadBillOutcome({ billRows, billTable, invoiceNumber, amount }) {
+  const rows = Array.isArray(billRows) ? billRows : [];
+  const dead = rows.filter((row) => isDeadBillStatus(row?.status));
+  if (dead.length === 0) return null;
+
+  const breakdown = rows
+    .map((row) => `${row?.status ?? 'null'} Rp ${Number(row?.amount || 0)}`)
+    .join(', ');
+
+  return {
+    outcome: 'paid_on_dead_bill',
+    errorMessage: `Uang Rp ${Number(amount)} sudah diterima DOKU untuk ${invoiceNumber}, tapi ${dead.length} dari ${rows.length} baris ${billTable} sudah mati (${breakdown}). Jadwal SENGAJA tidak disentuh dan pembayaran ini BELUM tercatat sebagai pendapatan — pindahkan ke tagihan yang hidup atau proses sebagai kelebihan bayar.`,
+  };
+}
+
+/**
  * Nomor invoice dari badan mentah, tanpa mempercayainya.
  *
  * Dipakai HANYA untuk memberi nama pada baris audit penolakan — request yang
@@ -468,9 +514,14 @@ export async function onRequest(context) {
 
     // Alert hanya untuk yang butuh manusia. Untuk write_failed cukup pada
     // percobaan PERTAMA — kalau tidak, retry DOKU berubah jadi banjir email.
+    // `paid_on_dead_bill` yang paling butuh manusia dari semuanya: uangnya sudah
+    // di DOKU, buku kita bilang `cancelled`, dan TIDAK ADA lapisan lain yang
+    // akan menyusulkannya. Tanpa alert, satu-satunya jejaknya cuma baris audit
+    // yang mungkin tidak dibuka siapa pun sampai rekonsiliasi bulanan.
     const needsAlert =
       outcome === 'amount_mismatch' ||
       outcome === 'no_submission_found' ||
+      outcome === 'paid_on_dead_bill' ||
       (outcome === 'write_failed' && attempt === 1);
 
     if (needsAlert) {
@@ -634,23 +685,29 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
     ? rows.reduce((total, row) => total + Number(row.amount || 0), 0)
     : null);
 
+  // `status` ikut diambil di SELECT yang SAMA — penjaga tagihan-mati di bawah
+  // butuh pre-state, dan menempelkannya di sini berarti nol round-trip tambahan.
   const invAmountRes = await sbFetch(
-    `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount`,
+    `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount,status`,
     { headers: sb.headers },
     'STEP 0 SELECT invoices.amount'
   );
   const invAmountRows = await invAmountRes.json();
   let expectedAmount = sumAmounts(invAmountRows);
+  let billRows = Array.isArray(invAmountRows) ? invAmountRows : [];
+  let billTable = 'invoices';
 
   // Legacy rows may exist only in transactions (pre-invoices flow).
   if (expectedAmount === null) {
     const txnAmountRes = await sbFetch(
-      `${sb.url}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount`,
+      `${sb.url}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount,status`,
       { headers: sb.headers },
       'STEP 0 SELECT transactions.amount'
     );
     const txnAmountRows = await txnAmountRes.json();
     expectedAmount = sumAmounts(txnAmountRows);
+    billRows = Array.isArray(txnAmountRows) ? txnAmountRows : [];
+    billTable = 'transactions';
   }
 
   if (expectedAmount !== null && !Number.isNaN(expectedAmount)) {
@@ -664,6 +721,35 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
         errorMessage: `Webhook membawa ${JSON.stringify(amount)}, invoice di database bernilai ${expectedAmount}. Tidak ada yang ditulis.`
       };
     }
+  }
+
+  // ====================================================================
+  // STEP 0b: TAGIHAN YANG SUDAH MATI TIDAK BOLEH MENGGERAKKAN JADWAL
+  // ====================================================================
+  // Order af004b84 (2026-09-02): peneliti membayar lewat link DOKU milik jadwal
+  // yang dibatalkan 20 menit sesudah tagihannya terbit. STEP 5 mencoba
+  // menghidupkan kembali jadwal batal itu, penjaga irisan sql/75 menolaknya, dan
+  // kita membalas 500 tiga kali. Di sana penjaga irisan KEBETULAN menangkapnya —
+  // jendelanya bertabrakan dengan jadwal pengganti. Untuk ordinal 1 tidak ada
+  // yang akan menangkap apa pun (`trg_submission_no_overlap` hanya menyala pada
+  // `UPDATE OF start_date, end_date`), jadi jadwal yang sengaja dibatalkan akan
+  // hidup lagi tanpa satu pun tanda.
+  //
+  // Uang yang masuk selalu boleh diterapkan ke BUKU BESAR; tidak pernah otomatis
+  // ke JADWAL. Karena itu: nol tulisan, 200, antrekan ke admin — presedennya
+  // persis `amount_mismatch` di atas. 500 hanya membakar percobaan DOKU (batas 5;
+  // insiden itu sudah memakai 3) untuk kondisi yang tidak akan pernah berubah
+  // dengan di-retry.
+  //
+  // ⚠️ INI MENUKAR KEGAGALAN BERISIK DENGAN KEGAGALAN SUNYI DI BUKU. Uangnya ada
+  // di DOKU sementara baris kita bilang `cancelled` — pendapatan KURANG HITUNG
+  // sampai admin bertindak. Karena itu errorMessage di bawah WAJIB membawa
+  // nominal dan status per baris: banner admin adalah satu-satunya yang
+  // menanggungnya sekarang.
+  const deadBill = deadBillOutcome({ billRows, billTable, invoiceNumber, amount });
+  if (deadBill) {
+    console.error(`[Webhook] PAID ON DEAD BILL for ${invoiceNumber}: ${deadBill.errorMessage} No DB writes performed.`);
+    return deadBill;
   }
 
   // ====================================================================

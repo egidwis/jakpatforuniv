@@ -199,3 +199,68 @@ describe('notify_slot — "Kabari via WA"', () => {
     expect(p.menu.find((a) => a.id === 'notify_slot')?.destructive).toBeUndefined();
   });
 });
+
+// ============================================================================
+// Bagian 6a — jadwal tidak bisa dibatalkan selagi tagihannya masih hidup
+// ============================================================================
+//
+// Dialog "Batalkan Jadwal" berkata tagihan yang menggantung "ikut dimatikan".
+// Ia tidak: link DOKU-nya tetap bisa dibayar dari sisi bank. Order af004b84
+// membuktikannya — jadwal dibatalkan 10.44, uangnya masuk keesokan malamnya.
+// Urutan yang benar: matikan tagihannya dulu, baru batalkan jadwalnya.
+describe('planCardActions — gerbang tagihan hidup', () => {
+  const ids = (p: ReturnType<typeof planCardActions>) => p.menu.map((a) => a.id);
+  const live = { paymentId: 'x', isPaid: false } as any;
+
+  it('tagihan hidup MENGHILANGKAN "Batalkan Jadwal" dari menu', () => {
+    const p = plan('waiting_payment', { billing: billing({ openInvoice: live }) });
+    expect(ids(p)).not.toContain('cancel_schedule');
+  });
+
+  it('DIHILANGKAN, bukan ditampilkan disabled — kontrak berkas ini', () => {
+    // "Tagih Susulan" yang disabled berikut tooltipnya adalah pola yang
+    // diganti: ia memakan ruang untuk memberi tahu apa yang tidak bisa
+    // dilakukan. Penjelasannya milik callout kartu, bukan menu.
+    const p = plan('waiting_payment', { billing: billing({ openInvoice: live }) });
+    expect(p.menu.find((a) => a.id === 'cancel_schedule')).toBeUndefined();
+    expect(p.primary?.id).not.toBe('cancel_schedule');
+  });
+
+  it('tanpa tagihan hidup, aksinya kembali muncul', () => {
+    const p = plan('waiting_payment', { billing: billing({ openInvoice: null }) });
+    expect(ids(p)).toContain('cancel_schedule');
+  });
+
+  it('tagihan LUNAS tidak menghalangi — hanya yang HIDUP & belum dibayar', () => {
+    // `openInvoice` sudah berarti "hidup DAN belum lunas"
+    // (`live.find(i => !i.isPaid)`), jadi uang yang sudah masuk tidak boleh
+    // mengunci pembatalan. Diuji di `partially_paid`, bukan `paid`: state
+    // `paid` memang SENGAJA nol aksi pembatalan (keputusan produk yang sudah
+    // ada, bukan efek gerbang ini).
+    const p = plan('partially_paid', { billing: billing({ openInvoice: null, paid: 100000 }) });
+    expect(ids(p)).toContain('cancel_schedule');
+  });
+
+  it('tagihan MATI/kedaluwarsa tidak menghalangi', () => {
+    // Ini prasyarat (b): `openInvoice` sadar-kedaluwarsa sejak sql/83. Tanpa
+    // itu, 182 dari 183 invoice `pending` produksi — yang link DOKU-nya sudah
+    // mati berminggu-minggu — akan mengunci 75 jadwal dari pembatalan.
+    const p = plan('awaiting_invoice', { billing: billing({ openInvoice: null }) });
+    expect(ids(p)).toContain('cancel_schedule');
+  });
+
+  it('gerbangnya tidak menyentuh aksi lain', () => {
+    // Yang dicabut HANYA pembatalan jadwal; kartu tetap punya jalan keluar.
+    const withBill = plan('waiting_payment', { billing: billing({ openInvoice: live }) });
+    expect(withBill.primary !== null || withBill.menu.length > 0).toBe(true);
+  });
+
+  it('izin admin tetap berlaku di atas gerbang ini', () => {
+    // Gerbangnya MENAMBAH syarat, tidak menggantikan `can.cancelSchedule`.
+    const p = planCardActions({
+      state: 'waiting_payment', entry: entry(), billing: billing({ openInvoice: null }),
+      isLate: false, can: { ...ALL, cancelSchedule: false },
+    });
+    expect(ids(p)).not.toContain('cancel_schedule');
+  });
+});

@@ -35,6 +35,14 @@ const OUTCOME_LABELS: Record<string, string> = {
   no_submission_found: 'Invoice tidak dikenali',
   payout: 'Payout bermasalah',
   forwarded_jm: 'Forward ke Jakpat Mission gagal',
+  // sql/80 — uang sah, tagihannya sudah mati.
+  paid_on_dead_bill: 'Dibayar di tagihan mati',
+  // sql/77 — request yang ditolak sebelum fase tulis. Tanpa entri di ketiga
+  // peta ini, chip-nya mencetak slug mentah dan hint-nya kosong: kelas bug
+  // yang persis ditutup 65369c1.
+  rejected_auth: 'Ditolak: autentikasi',
+  rejected_payload: 'Ditolak: payload tak terbaca',
+  handler_crashed: 'Handler error',
 };
 
 const OUTCOME_VARIANTS: Record<string, ChipVariant> = {
@@ -43,6 +51,12 @@ const OUTCOME_VARIANTS: Record<string, ChipVariant> = {
   no_submission_found: 'amber',
   payout: 'slate',
   forwarded_jm: 'slate',
+  // Merah: uangnya sudah diterima dan BELUM tercatat sebagai pendapatan.
+  // Ini bukan peringatan, ini selisih buku yang menunggu orang.
+  paid_on_dead_bill: 'red',
+  rejected_auth: 'orange',
+  rejected_payload: 'orange',
+  handler_crashed: 'red',
 };
 
 const OUTCOME_HINTS: Record<string, string> = {
@@ -52,6 +66,17 @@ const OUTCOME_HINTS: Record<string, string> = {
     'Jumlah yang dibayar berbeda dari nilai invoice — tidak ada yang ditulis, ini disengaja. Cocokkan angkanya sebelum menandai lunas apa pun.',
   no_submission_found:
     'Invoice ini tidak ada di transactions maupun invoices. Kirim ulang notifikasi tidak akan menolong — telusuri di dashboard DOKU siapa yang membayar.',
+  // ⚠️ JANGAN tawarkan "Kirim Ulang Notifikasi" di sini. Mengirim ulang hanya
+  // menghasilkan paid_on_dead_bill lagi — penolakannya disengaja, bukan
+  // kegagalan teknis. Yang dibutuhkan keputusan manusia.
+  paid_on_dead_bill:
+    'Uang SUDAH diterima DOKU tapi BELUM tercatat sebagai pendapatan: tagihannya sudah dibatalkan/kedaluwarsa, jadi jadwalnya sengaja tidak disentuh. Pindahkan pembayaran ini ke tagihan yang masih hidup, atau proses sebagai kelebihan bayar. Kirim ulang notifikasi tidak akan menolong.',
+  rejected_auth:
+    'DOKU menelepon dan KITA yang menolak di gerbang autentikasi — bedakan dari "tidak ada baris sama sekali", yang berarti DOKU tidak pernah menelepon. Periksa notification URL & secret ?k= di dashboard DOKU.',
+  rejected_payload:
+    'Autentikasi lolos, tapi badan request tidak terbaca atau tanpa nomor invoice. Lihat raw_payload di doku_webhook_events.',
+  handler_crashed:
+    'Error tak terduga di handler. DOKU akan retry; kalau berulang, baca error_message dan raw_payload sebelum menyentuh data apa pun.',
 };
 
 function formatWib(iso: string): string {

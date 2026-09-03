@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verifyDokuAuth, sniffInvoiceNumber, REJECT_OUTCOMES, onRequest, collectPaidTargets } from './webhook.js';
+import { verifyDokuAuth, sniffInvoiceNumber, REJECT_OUTCOMES, onRequest, collectPaidTargets, deadBillOutcome, isDeadBillStatus } from './webhook.js';
 
 /*
   Yang dijaga di sini: SETIAP penolakan harus bisa dicatat.
@@ -209,6 +209,80 @@ describe('taksonomi outcome penolakan', () => {
         expect(REJECT_OUTCOMES.auth).toBe('rejected_auth');
         expect(REJECT_OUTCOMES.payload).toBe('rejected_payload');
         expect(REJECT_OUTCOMES.crash).toBe('handler_crashed');
+    });
+});
+
+// ============================================================================
+// Tagihan yang sudah mati tidak boleh menggerakkan jadwal (sql/80)
+// ============================================================================
+//
+// Order af004b84 (2026-09-02): peneliti membayar lewat link DOKU milik jadwal
+// yang dibatalkan 20 menit sesudah tagihannya terbit. STEP 5 mencoba
+// menghidupkan kembali jadwal batal itu; penjaga irisan sql/75 menolak, dan
+// kita membalas 500 tiga kali. Penjaga irisan itu KEBETULAN ada — untuk ordinal
+// 1 tidak ada yang akan menangkap apa pun, dan jadwal yang sengaja dibatalkan
+// akan hidup lagi tanpa satu pun tanda.
+describe('deadBillOutcome — uang sah, tagihan mati', () => {
+    const args = (rows) => ({
+        billRows: rows, billTable: 'invoices',
+        invoiceNumber: 'JFU-INV-af004b-1788319498664', amount: 444000,
+    });
+
+    it('tagihan pending TIDAK dicegat — jalur lama harus utuh', () => {
+        expect(deadBillOutcome(args([{ status: 'pending', amount: 444000 }]))).toBeNull();
+    });
+
+    it('tagihan lunas TIDAK dicegat — pembayaran ulang/idempoten tetap lewat', () => {
+        expect(deadBillOutcome(args([{ status: 'paid', amount: 444000 }]))).toBeNull();
+    });
+
+    it('tagihan cancelled dicegat sebagai paid_on_dead_bill', () => {
+        const v = deadBillOutcome(args([{ status: 'cancelled', amount: 444000 }]));
+        expect(v?.outcome).toBe('paid_on_dead_bill');
+    });
+
+    it('expired dan failed juga mati — rank 2 di payment_status_rank (sql/53)', () => {
+        expect(deadBillOutcome(args([{ status: 'expired', amount: 1 }]))?.outcome).toBe('paid_on_dead_bill');
+        expect(deadBillOutcome(args([{ status: 'failed', amount: 1 }]))?.outcome).toBe('paid_on_dead_bill');
+    });
+
+    it('grup CAMPURAN hidup+mati juga dicegat', () => {
+        // Ini justru yang paling tidak boleh diterapkan otomatis: kita tidak
+        // bisa tahu porsi mana yang dimaksud peneliti.
+        const v = deadBillOutcome(args([
+            { status: 'pending', amount: 200000 },
+            { status: 'cancelled', amount: 244000 },
+        ]));
+        expect(v?.outcome).toBe('paid_on_dead_bill');
+    });
+
+    it('pesannya membawa nominal DAN status per baris', () => {
+        // Sesudah sql/80 tidak ada tulisan sama sekali, jadi baris audit ini
+        // satu-satunya yang menanggung uangnya. Pesan tanpa angka = admin harus
+        // membuka DOKU untuk tahu apa yang terjadi.
+        const v = deadBillOutcome(args([
+            { status: 'pending', amount: 200000 },
+            { status: 'cancelled', amount: 244000 },
+        ]));
+        expect(v.errorMessage).toContain('444000');
+        expect(v.errorMessage).toContain('JFU-INV-af004b-1788319498664');
+        expect(v.errorMessage).toContain('cancelled Rp 244000');
+        expect(v.errorMessage).toContain('pending Rp 200000');
+    });
+
+    it('nol baris = bukan tagihan mati, itu urusan no_submission_found', () => {
+        expect(deadBillOutcome(args([]))).toBeNull();
+        expect(deadBillOutcome({ ...args([]), billRows: undefined })).toBeNull();
+    });
+
+    it('kosakata "mati" mengikuti payment_status_rank, bukan daftar sendiri', () => {
+        // sql/53: paid/completed=3, expired/failed/cancelled=2, pending=1.
+        // Dua definisi yang menyimpang = uang sungguhan salah rute.
+        expect(isDeadBillStatus('CANCELLED')).toBe(true);
+        expect(isDeadBillStatus('completed')).toBe(false);
+        expect(isDeadBillStatus('pending')).toBe(false);
+        expect(isDeadBillStatus(null)).toBe(false);
+        expect(isDeadBillStatus(undefined)).toBe(false);
     });
 });
 

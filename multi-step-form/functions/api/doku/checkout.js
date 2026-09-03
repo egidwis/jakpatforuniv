@@ -132,10 +132,35 @@ export async function onRequest(context) {
         });
     }
 
-    // Return the successful result from DOKU directly to frontend
-    return new Response(resultText, { 
-      status: 200, 
-      headers: {'Content-Type': 'application/json'} 
+    /*
+      ⚠️ `request_id` IKUT DIPULANGKAN, DAN ITU BUKAN KELENGKAPAN.
+
+      Sampai sql/84 nilai ini hanya di-`console.log` lalu dibuang. Padahal
+      Cancel Order API (`POST /checkout/v3/cancellations`) MENUNTUTNYA sebagai
+      `original_request_id` — jadi setiap link yang pernah kita terbitkan tidak
+      bisa dimatikan lagi, selamanya. 183 tagihan `pending` di produksi
+      kehilangannya dengan cara ini, termasuk yang dibayar keliru pada insiden
+      order af004b84.
+
+      Pemanggil WAJIB menuliskannya ke `invoices.doku_request_id` di transaksi
+      yang sama dengan `payment_id`. Nilai yang pulang tapi tidak disimpan sama
+      saja dengan tidak pernah ada.
+    */
+    let payload;
+    try {
+      payload = JSON.parse(resultText);
+    } catch {
+      // DOKU membalas 200 dengan badan yang tidak bisa dibaca — teruskan apa
+      // adanya, jangan menukar kegagalan yang jelas dengan crash di sini.
+      return new Response(resultText, {
+        status: 200,
+        headers: {'Content-Type': 'application/json'}
+      });
+    }
+
+    return new Response(JSON.stringify({ ...payload, request_id: requestId }), {
+      status: 200,
+      headers: {'Content-Type': 'application/json'}
     });
     
   } catch (error) {

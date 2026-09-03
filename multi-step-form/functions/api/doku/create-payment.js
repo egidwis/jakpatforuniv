@@ -642,6 +642,10 @@ export async function onRequest(context) {
       // angkanya segini", bukan klaim bahwa vouchernya sah.
       voucher_code: voucherApplied,
       billed_start_date: billedStartDate,
+      // `original_request_id` untuk Cancel Order API (sql/84). Sampai kolom ini
+      // ada, nilainya cuma di-console.log lalu dibuang — dan setiap link yang
+      // pernah terbit jadi tidak bisa dimatikan lagi, selamanya.
+      doku_request_id: requestId,
     };
     const invoiceRow = {
       form_submission_id: formSubmissionId,
@@ -655,6 +659,7 @@ export async function onRequest(context) {
       voucher_code: voucherApplied,
       billed_start_date: billedStartDate,
       expires_at: expiresAt,
+      doku_request_id: requestId,
     };
 
     const [txRes, invRes] = await Promise.all([

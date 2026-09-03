@@ -13,7 +13,7 @@ import {
   fetchAdSchedules, fetchScheduleBilling, supabase,
   type AdScheduleEntry, type ScheduleBilling,
 } from '@/utils/supabase';
-import { formatWibShort } from '@/utils/airing-window';
+import { formatWibShort, toWibYmd } from '@/utils/airing-window';
 import {
   closeTab, invoiceReadyMessage, openBlankTab, sendToTab,
 } from '@/utils/waMessage';
@@ -167,6 +167,17 @@ export function BulkInvoiceDialog({
           phoneNumber: buyer.phone_number || '',
         },
         bundleCount: payload.length,
+        /**
+         * Yang PALING AWAL dari seluruh bundel — link harus mati saat jadwal
+         * PERTAMA yang dibiayainya kehilangan haknya, bukan yang terakhir.
+         * Memakai yang terakhir berarti link masih hidup untuk jadwal yang
+         * batas bayarnya sudah lewat berhari-hari.
+         */
+        airingStartYmd: payload
+          .map((b) => b.entry.startDate)
+          .filter((d): d is string => !!d)
+          .map((d) => toWibYmd(new Date(d)))
+          .sort()[0],
       });
 
       // Menulis DAN membuktikan jumlahnya. Kalau melempar, seluruh barisnya
@@ -174,6 +185,8 @@ export function BulkInvoiceDialog({
       await writeInvoiceRows(payload, {
         paymentId: paymentResponse.payment_id,
         invoiceUrl: paymentResponse.invoice_url,
+        expiresAt: paymentResponse.expires_at,
+        dokuRequestId: paymentResponse.doku_request_id,
       }, amount);
 
       if (buyer.researcherEmail) {

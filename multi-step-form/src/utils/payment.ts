@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { supabase } from './supabase';
+import { paymentCutoffInstant } from './airing-window';
 
 interface PaymentData {
   formSubmissionId: string;
@@ -29,6 +30,49 @@ export interface InvoiceData {
    * `createManualInvoice`. Tidak dikirim ke DOKU selain lewat `callback_url`.
    */
   bundleCount?: number;
+  /**
+   * Tanggal tayang (YYYY-MM-DD) jadwal yang ditagih — untuk bundel, yang
+   * PALING AWAL. Link harus mati saat jadwal pertama yang dibiayainya
+   * kehilangan haknya, bukan saat yang terakhir.
+   *
+   * Kalau tidak diisi, umur link jatuh ke 7 hari seperti sebelumnya. Itu jalur
+   * warisan, bukan default yang diinginkan.
+   */
+  airingStartYmd?: string;
+}
+
+/**
+ * Umur link DOKU (menit) untuk jadwal yang tayang `ymd`.
+ *
+ * ⚠️ 7 HARI MATI ADALAH KEABADIAN UNTUK JADWAL YANG BISA MATI DALAM 20 MENIT.
+ * Order af004b84: tagihan terbit 10.25, jadwalnya dibatalkan 10.44, dan
+ * link-nya masih menagih sampai 9 Sep. Peneliti membayarnya jam 20.10 keesokan
+ * harinya — uang sah ke jadwal yang sudah tidak ada.
+ *
+ * Batas atasnya tetap 7 hari (tagihan jauh hari tidak perlu hidup lebih lama
+ * dari itu), batas bawahnya 14.00 WIB di hari tayang — `paymentCutoffInstant`,
+ * yang sadar-WIB. Jangan pernah menghitung offset ini dari jam device: mesin
+ * admin tidak selalu di WIB, dan salah zona di sini berarti link mati beberapa
+ * jam terlalu cepat atau terlalu lambat.
+ *
+ * Mengembalikan `null` kalau cutoff-nya kurang dari `MIN_INVOICE_MINUTES` lagi
+ * — pemanggil WAJIB menolak menerbitkan, bukan meng-clamp. Link yang lahir
+ * sekarat lebih buruk daripada penolakan yang jelas: peneliti terlanjur
+ * menerima link, membayarnya gagal, dan tidak ada yang tahu kenapa.
+ */
+export const MAX_INVOICE_MINUTES = 60 * 24 * 7;
+/** Sama dengan default `create-payment.js` (`dueDate … : 60`) — konvensi berkas ini. */
+export const MIN_INVOICE_MINUTES = 60;
+
+export function invoiceLifetimeMinutes(
+  airingStartYmd: string | undefined,
+  now: Date = new Date(),
+): number | null {
+  if (!airingStartYmd) return MAX_INVOICE_MINUTES;
+  const cutoffMs = paymentCutoffInstant(airingStartYmd).getTime() - now.getTime();
+  const minutes = Math.floor(cutoffMs / 60000);
+  if (minutes < MIN_INVOICE_MINUTES) return null;
+  return Math.min(minutes, MAX_INVOICE_MINUTES);
 }
 
 // -------------------------------------------------------------------------------- //
@@ -101,7 +145,18 @@ export const createPayment = async (paymentData: PaymentData) => {
 // ==============================================================================
 export const createManualInvoice = async (invoiceData: InvoiceData) => {
   try {
-    const { formSubmissionId, amount, description, customerInfo, bundleCount = 1 } = invoiceData;
+    const { formSubmissionId, amount, description, customerInfo, bundleCount = 1, airingStartYmd } = invoiceData;
+
+    // Umur link mengikuti batas bayar jadwal yang dibiayainya. `null` = cutoff
+    // sudah kurang dari 60 menit lagi → TOLAK, jangan terbitkan link sekarat.
+    const dueMinutes = invoiceLifetimeMinutes(airingStartYmd);
+    if (dueMinutes === null) {
+      throw new Error(
+        'Tagihan tidak diterbitkan: batas pelunasan jadwal ini (14.00 WIB) kurang dari 60 menit lagi, '
+        + 'jadi link bayarnya akan mati sebelum sempat dipakai. Jadwalkan ulang ke tanggal berikutnya '
+        + 'atau tandai lunas secara manual.',
+      );
+    }
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
     // ⚠️ Memuat potongan SATU `formSubmissionId`, dan untuk tagihan gabungan itu
@@ -139,7 +194,7 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
         phone: customerInfo?.phoneNumber || ''
       },
       callback_url: callbackUrl,
-      payment_due_date: 60 * 24 * 7 // 7 Hari
+      payment_due_date: dueMinutes
     };
 
     // /api/doku/checkout is admin-gated by functions/api/doku/_middleware.js;
@@ -168,7 +223,21 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
 
     return {
       payment_id: data.response.order.invoice_number,
-      invoice_url: data.response.payment.url
+      invoice_url: data.response.payment.url,
+      // Kapan link ini berhenti berlaku. Dihitung dari menit yang BENAR-BENAR
+      // dikirim ke DOKU, bukan dari aturan yang ditulis ulang di pemanggil —
+      // dua perhitungan berarti dua kebenaran, dan yang di layar akan berbohong
+      // begitu salah satunya berubah.
+      expires_at: new Date(Date.now() + dueMinutes * 60000).toISOString(),
+      /**
+       * `Request-Id` yang dipakai saat memanggil DOKU — WAJIB disimpan.
+       *
+       * Cancel Order API menuntutnya sebagai `original_request_id`. Sampai
+       * sql/84 nilainya cuma di-console.log lalu dibuang, jadi tidak satu pun
+       * dari 183 tagihan `pending` produksi bisa dimatikan lagi. Nilai yang
+       * pulang tapi tidak ditulis sama saja dengan tidak pernah ada.
+       */
+      doku_request_id: data.request_id ?? null,
     };
   } catch (err: any) {
     console.error('Error creating DOKU manual invoice:', err);

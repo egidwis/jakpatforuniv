@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { calculateAdCostPerDay, calculateIncentiveCost, voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
+import { toWibYmd } from '@/utils/airing-window';
 import {
   getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, supabase,
   type AdScheduleEntry,
@@ -342,6 +343,10 @@ export function InvoiceForm({
           email: submission.researcherEmail || 'client@example.com',
           phoneNumber: submission.phone_number || '',
         },
+        // Umur link mengikuti batas bayar JADWAL INI, bukan 7 hari mati.
+        // `toWibYmd` karena `start_date` TIMESTAMPTZ (08:00Z = 15.00 WIB) dan
+        // mesin admin tidak selalu di WIB.
+        airingStartYmd: entry.startDate ? toWibYmd(new Date(entry.startDate)) : undefined,
       });
 
       // Menulis DAN membuktikan jumlahnya. Kalau ini melempar, barisnya sudah
@@ -349,6 +354,8 @@ export function InvoiceForm({
       await writeInvoiceRows([bundle], {
         paymentId: paymentResponse.payment_id,
         invoiceUrl: paymentResponse.invoice_url,
+        expiresAt: paymentResponse.expires_at,
+        dokuRequestId: paymentResponse.doku_request_id,
       }, grandTotal);
 
       // Hanya jadwal pertama (bukan perpanjangan) yang berarti "pesanan disetujui,
