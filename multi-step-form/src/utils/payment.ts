@@ -88,6 +88,38 @@ export const checkPaymentGatewayStatus = async (): Promise<boolean> => {
 // ==============================================================================
 // CREATE PAYMENT (Form User / Self-Service Checkout)
 // ==============================================================================
+/**
+ * Checkout ditolak karena pesanannya sudah masuk TAGIHAN GABUNGAN.
+ *
+ * ⚠️ KELASNYA SENDIRI, BUKAN `Error` POLOS — dan itu bukan kerapian. Pemanggil
+ * harus bisa membedakan "gagal, coba lagi" dari "jangan coba lagi, bayar di
+ * link ini": yang pertama pantas diberi tombol ulang, yang kedua justru harus
+ * MENCABUT tombol itu. Tanpa pembedaan ini, tombol "coba lagi" akan menekan
+ * endpoint yang sudah memutuskan tidak akan pernah mengabulkannya.
+ */
+export class GroupBillError extends Error {
+  readonly paymentUrl: string | null;
+  readonly paymentId: string | null;
+  /** Berapa pesanan yang ditanggung link itu. 0 = tidak diketahui. */
+  readonly memberCount: number;
+  /** Total yang BENAR-BENAR akan ditagih halaman DOKU-nya. 0 = tidak diketahui. */
+  readonly total: number;
+
+  constructor(message: string, info: {
+    paymentUrl?: string | null;
+    paymentId?: string | null;
+    memberCount?: number;
+    total?: number;
+  }) {
+    super(message);
+    this.name = 'GroupBillError';
+    this.paymentUrl = info.paymentUrl ?? null;
+    this.paymentId = info.paymentId ?? null;
+    this.memberCount = info.memberCount ?? 0;
+    this.total = info.total ?? 0;
+  }
+}
+
 export const createPayment = async (paymentData: PaymentData) => {
   try {
     const { formSubmissionId, expiredAt } = paymentData;
@@ -129,6 +161,26 @@ export const createPayment = async (paymentData: PaymentData) => {
     const serverError = err?.response?.data?.error;
     const serverDetail = err?.response?.data?.detail;
     const status = err?.response?.status;
+
+    /*
+      409 + `group_bill` = pesanan ini sudah ditanggung tagihan gabungan.
+      Bukan kegagalan yang bisa diulang: endpoint-nya sengaja MENOLAK mencetak
+      tagihan kedua (lihat catatan A3 di `create-payment.js`), karena dua link
+      hidup untuk satu jadwal berarti dua-duanya bisa dibayar.
+    */
+    if (status === 409 && err?.response?.data?.group_bill) {
+      const data = err.response.data;
+      throw new GroupBillError(
+        serverError || 'Pesanan ini sudah termasuk tagihan gabungan.',
+        {
+          paymentUrl: data.payment_url ?? null,
+          paymentId: data.payment_id ?? null,
+          memberCount: Number(data.group_count || 0),
+          total: Number(data.group_total || 0),
+        },
+      );
+    }
+
     console.error(
       '[create-payment] gagal'
       + (status ? ` (HTTP ${status})` : '')

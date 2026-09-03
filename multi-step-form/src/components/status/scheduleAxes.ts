@@ -67,6 +67,19 @@ export interface SchedulePaymentInfo {
     paid: number;
     outstanding: number;
     /**
+     * Link bayarnya sudah lewat masa berlaku (`is_expired`, sql/83) — uangnya
+     * belum masuk dan DOKU sudah menolaknya.
+     *
+     * ⚠️ BARISNYA TETAP `pending` DI TABEL. Tidak ada cron yang
+     * mengedaluwarsakan tagihan (182 dari 183 baris produksi begitu per
+     * 2026-09-03), jadi status `pending` saja BUKAN bukti link masih hidup.
+     * Kartu yang tetap menawarkan tombol memulangkan peneliti ke halaman DOKU
+     * yang menolaknya tanpa penjelasan — persis pola insiden af004b84.
+     */
+    isExpired: boolean;
+    /** Kapan link itu berhenti berlaku, ISO. Null = tidak diketahui. */
+    expiresAt: string | null;
+    /**
      * Tanggal tayang yang DITAGIHKAN tagihan basi terakhir, ISO — atau null.
      *
      * Terisi hanya kalau jadwalnya berpindah sesudah tagihan itu terbit

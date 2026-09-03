@@ -6,6 +6,7 @@ import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
 import {
   type Transaction,
+  type TxGroupInfo,
   parseTransactionNote,
   formatIDR,
   transactionStatusChip,
@@ -29,6 +30,16 @@ interface TransactionDetailSheetProps {
    * pertanyaan. Induk yang memutuskan, sekali.
    */
   onCancelInvoice?: (transaction: Transaction) => void;
+  /**
+   * Tagihan gabungan yang menaungi transaksi ini, kalau ada.
+   *
+   * ⚠️ DUA TOMBOL DI FOOTER MEMBUKA BENDA BERNOMINAL GRUP, bukan nominal baris
+   * ini: "Download Invoice" membuka dokumen seluruh bundel, dan "Salin Link
+   * Bayar" menyalin link yang menagih TOTAL. Admin yang menyalinnya dari baris
+   * Rp 1,11jt sedang mengirim tagihan Rp 3,33jt. Prop ini yang membuat
+   * selisih itu terbaca sebelum tombolnya ditekan.
+   */
+  group?: TxGroupInfo;
 }
 
 function copyToClipboard(value: string, label: string) {
@@ -66,6 +77,7 @@ export function TransactionDetailSheet({
   onOpenChange,
   variant = 'sheet',
   onCancelInvoice,
+  group,
 }: TransactionDetailSheetProps) {
   // ⚠️ JANGAN MENAMBAH HOOK DI KOMPONEN INI. Early-return di bawah berjalan
   // SEBELUM baris mana pun, jadi `useState`/`useEffect` di sini akan melanggar
@@ -77,6 +89,7 @@ export function TransactionDetailSheet({
   const method = methodChipInfo(transaction.payment_method, transaction.payment_channel, transaction.status);
   const statusChip = transactionStatusChip(transaction.status);
   const isPaid = isPaidTx(transaction);
+  const isGroup = !!group && group.count > 1;
   const title = transaction.form_submissions?.title || 'Judul tidak tersedia';
 
   const subtitle = (
@@ -160,11 +173,35 @@ export function TransactionDetailSheet({
           </div>
         )}
         <div className="flex items-center justify-between border-t border-gray-200 pt-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {isGroup ? 'Porsi pesanan ini' : 'Total'}
+          </span>
           <span className="text-base font-bold text-gray-900 font-mono">
             {formatIDR(transaction.amount)}
           </span>
         </div>
+
+        {/*
+          ⚠️ ANGKA GRUP DISEBUT DI SEBELAH ANGKA BARIS. Keduanya benar untuk
+          pertanyaan masing-masing — "berapa harga pesanan ini" vs "berapa yang
+          ditagih link bayarnya" — dan sebelum ini hanya yang pertama pernah
+          tampil, tepat di atas dua tombol yang membuka yang kedua.
+        */}
+        {isGroup && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2.5 space-y-1">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-900">
+              ⛓ Tagihan gabungan · {group!.count} pesanan
+            </p>
+            <p className="flex items-center justify-between text-xs text-slate-700">
+              <span>Total yang ditagih link ini</span>
+              <span className="font-bold font-mono">{formatIDR(group!.total)}</span>
+            </p>
+            <p className="text-[11px] text-slate-500 leading-snug">
+              Baris ini pesanan ke-{group!.memberIds.indexOf(String(transaction.id)) + 1} dari {group!.count}.
+              Membatalkan atau melunasinya berlaku untuk SEMUA pesanan di tagihan ini.
+            </p>
+          </div>
+        )}
       </DetailSheetSection>
 
       <DetailSheetSection title="Pembayaran">
@@ -222,7 +259,7 @@ export function TransactionDetailSheet({
               onClick={() => copyToClipboard(transaction.payment_url, 'Link pembayaran')}
             >
               <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
-              Salin Link Bayar
+              {isGroup ? `Salin Link Bayar (${formatIDR(group!.total)})` : 'Salin Link Bayar'}
             </Button>
           )}
           <Button asChild size="sm" className="flex-1 h-9 bg-blue-600 hover:bg-blue-700">
@@ -236,6 +273,7 @@ export function TransactionDetailSheet({
                   DOKU sebagai `paid` dan dulu ditawari "Download Invoice"
                   padahal uangnya sudah masuk. */}
               {isPaid ? 'Download Receipt' : 'Download Invoice'}
+              {isGroup && ` (${group!.count} pesanan)`}
             </a>
           </Button>
         </div>

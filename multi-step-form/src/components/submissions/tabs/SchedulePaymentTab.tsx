@@ -6,8 +6,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ConfirmDialog, type ConfirmRequest } from '../../ui/confirm-dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
-  fetchAdSchedules, fetchScheduleBilling, markScheduleAsPaid, unmarkScheduleAsPaid, cancelInvoice, cancelSchedule,
-  type AdScheduleEntry, type ScheduleBilling, type ScheduleInvoice,
+  fetchAdSchedules, fetchScheduleBilling, fetchInvoiceGroups, markScheduleAsPaid, settleGroupAsPaid,
+  unmarkScheduleAsPaid, unsettleGroupAsPaid, cancelInvoice, cancelSchedule,
+  type AdScheduleEntry, type InvoiceGroup, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
 import { formatWibShort } from '@/utils/airing-window';
@@ -80,6 +81,15 @@ export function SchedulePaymentTab({
 }) {
   const [schedules, setSchedules] = useState<AdScheduleEntry[]>([]);
   const [billings, setBillings] = useState<Map<string, ScheduleBilling>>(new Map());
+  /**
+   * Anggota tiap tagihan gabungan yang menyentuh order ini, dikunci `payment_id`.
+   *
+   * ⚠️ PENGAMBILAN TERPISAH, DAN MEMANG HARUS. `schedule_billing_bulk()`
+   * dijangkar ke SATU `submission_id`; anggota sebuah tagihan gabungan justru
+   * tersebar di ORDER-ORDER LAIN. Menurunkan jumlah anggota dari `billings`
+   * selalu menjawab 1 — tepat pada kasus yang pertanyaannya diajukan.
+   */
+  const [groups, setGroups] = useState<Map<string, InvoiceGroup>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [localReloadKey, setLocalReloadKey] = useState(0);
 
@@ -95,6 +105,12 @@ export function SchedulePaymentTab({
           fetchScheduleBilling(submissionId),
         ]);
         if (!cancelled) { setSchedules(rows); setBillings(bill); }
+
+        // Nol query tambahan untuk order tanpa tagihan sama sekali.
+        const paymentIds = Array.from(bill.values())
+          .flatMap((b) => b.invoices.map((i) => i.paymentId));
+        const groupMap = await fetchInvoiceGroups(paymentIds);
+        if (!cancelled) setGroups(groupMap);
       } catch (e) {
         console.error('Gagal memuat jadwal order:', e);
       } finally {
@@ -240,6 +256,71 @@ export function SchedulePaymentTab({
    */
   const [pendingConfirm, setPendingConfirm] = useState<ConfirmRequest | null>(null);
 
+  /**
+   * Tagihan gabungan yang menaungi tagihan TERBUKA jadwal ini — atau null.
+   *
+   * Sengaja hanya `openInvoice`: itu satu-satunya baris yang akan disentuh
+   * pelunasan, dan satu-satunya yang link DOKU-nya masih menagih.
+   */
+  const openGroupOf = useCallback((entry: AdScheduleEntry): InvoiceGroup | null => {
+    const pid = billings.get(entry.id)?.openInvoice?.paymentId;
+    const g = pid ? groups.get(pid) : undefined;
+    return g && g.memberCount > 1 ? g : null;
+  }, [billings, groups]);
+
+  /**
+   * Grup dari tagihan yang sudah LUNAS di jadwal ini — cakupan pembalikan.
+   *
+   * Grup yang lunas tidak punya `openInvoice` lagi, jadi `openGroupOf` di atas
+   * akan menjawab null tepat di kartu yang menawarkan "Tandai Belum Lunas".
+   */
+  const paidGroupOf = useCallback((entry: AdScheduleEntry): InvoiceGroup | null => {
+    const pid = billings.get(entry.id)?.invoices.find((i) => i.isPaid)?.paymentId;
+    const g = pid ? groups.get(pid) : undefined;
+    return g && g.memberCount > 1 ? g : null;
+  }, [billings, groups]);
+
+  /**
+   * Pelunasan manual satu tagihan GABUNGAN.
+   *
+   * ⚠️ LAPORANNYA PER ANGGOTA, BUKAN BORONGAN. `settleGroupAsPaid` melunasi
+   * dalam loop yang tidak transaksional: `assertScheduleRowTouched` melempar
+   * pada nol baris (mis. admin selain `product@jakpat.net`, ditolak
+   * `guard_extend_payment_columns` sql/33), jadi 3 dari 4 bisa berhasil. Toast
+   * hijau tunggal di situ adalah kebohongan yang sama kelasnya dengan
+   * "Tandai Lunas" yang gagal senyap sebelum sql/59.
+   */
+  const handleSettleGroup = useCallback(async (group: InvoiceGroup) => {
+    try {
+      const res = await settleGroupAsPaid(group.paymentId);
+
+      if (res.failed.length > 0) {
+        toast.warning(
+          `${res.settled.length} dari ${group.memberCount} pesanan ditandai lunas. `
+          + `GAGAL: ${res.failed.map((f) => `${f.title} (${f.reason})`).join('; ')}`,
+          { duration: 12000 },
+        );
+      } else if (!res.dokuCancelled) {
+        // Uangnya sudah diterima di luar sistem, tapi link-nya mungkin masih
+        // hidup menagih total penuh — persis jendela bayar-ganda B2, cuma
+        // pindah pemicu. Admin satu-satunya yang bisa menindaklanjuti.
+        toast.warning(
+          `${group.memberCount} pesanan ditandai lunas, tapi link DOKU-nya MUNGKIN MASIH BISA DIBAYAR `
+          + `(${res.dokuReason}). Beri tahu penelitinya jangan membayar link yang lama.`,
+          { duration: 12000 },
+        );
+      } else {
+        toast.success(`${group.memberCount} pesanan ditandai lunas. Link bayarnya sudah dinonaktifkan di DOKU.`);
+      }
+
+      setPendingPaid(null);
+      reload();
+      onExtendCreated();
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menandai lunas');
+    }
+  }, [reload, onExtendCreated]);
+
   const handleMarkPaid = useCallback(async (entry: AdScheduleEntry) => {
     try {
       const touched = await markScheduleAsPaid(entry);
@@ -269,6 +350,53 @@ export function SchedulePaymentTab({
    * benar-benar dibayar lewat DOKU yang bisa lolos ke jalur ini.
    */
   const handleUnmarkPaid = useCallback(async (entry: AdScheduleEntry) => {
+    const group = paidGroupOf(entry);
+
+    /*
+      ⚠️ TAGIHAN GABUNGAN DIBALIK UTUH, TIDAK PERNAH SEPARUH.
+      Membalik satu anggota membuat `/invoices/<payment_id>` berhenti jadi
+      RECEIPT dan kembali jadi INVOICE bernominal PENUH — untuk pesanan yang
+      uangnya sudah diterima. Dokumen itu dipakai pertanggungjawaban dana
+      kampus; separuh-lunas di sana bukan cuma membingungkan, ia salah.
+    */
+    if (group) {
+      setPendingConfirm({
+        title: `Batalkan status lunas ${group.memberCount} pesanan ini?`,
+        highlight: formatIDR(group.total),
+        lines: [
+          `Tagihan ${group.paymentId} menaungi ${group.memberCount} pesanan, dan SEMUANYA ikut `
+            + `kembali jadi "menunggu bayar": ${group.members.map((m) => m.title).join(', ')}.`,
+          'Ini hanya membalik pelunasan yang ditandai MANUAL — bukan pembayaran lewat DOKU, dan bukan rekonsiliasi warisan (kanal MANUAL_RECONCILED, sql/71).',
+          // Yang paling mudah disalahpahami: pembalikan TIDAK menghidupkan
+          // kembali link bayarnya. Ia sudah dimatikan saat grup dilunasi, dan
+          // DOKU tidak punya "batalkan pembatalan".
+          `⚠️ Link bayar lamanya TIDAK hidup kembali — ia sudah dimatikan di DOKU saat grup ini dilunasi. `
+            + `Kalau memang harus ditagih ulang, terbitkan tagihan BARU.`,
+        ],
+        confirmLabel: `Ya, Batalkan Status Lunas ${group.memberCount} Pesanan`,
+        tone: 'danger',
+        onConfirm: async () => {
+          try {
+            const res = await unsettleGroupAsPaid(group.paymentId);
+            if (res.failed.length > 0) {
+              toast.warning(
+                `${res.reverted.length} dari ${group.memberCount} pesanan kembali "menunggu bayar". `
+                + `GAGAL: ${res.failed.map((f) => `${f.title} (${f.reason})`).join('; ')}`,
+                { duration: 12000 },
+              );
+            } else {
+              toast.success(`${group.memberCount} pesanan kembali "menunggu bayar". Terbitkan tagihan baru kalau masih ditagih.`);
+            }
+            reload();
+            onExtendCreated();
+          } catch (err: any) {
+            toast.error(err?.message || 'Gagal membatalkan status lunas');
+          }
+        },
+      });
+      return;
+    }
+
     setPendingConfirm({
       title: `Batalkan status lunas jadwal #${entry.bookingId}?`,
       lines: [
@@ -292,15 +420,23 @@ export function SchedulePaymentTab({
         }
       },
     });
-  }, [reload, onExtendCreated]);
+  }, [reload, onExtendCreated, paidGroupOf]);
 
   /**
-   * Batalkan SATU tagihan yang belum dibayar.
+   * Batalkan SATU TAGIHAN yang belum dibayar — satu `payment_id`, dan untuk
+   * tagihan gabungan itu berarti SELURUH pesanan yang ditanggungnya.
    *
-   * ⚠️ BUKAN pembatalan jadwal, dan bukan refund. Jadwalnya tetap berdiri,
-   * slotnya tidak dilepas, dan tagihan lain di jadwal yang sama tidak
-   * tersentuh. Tagihan lunas tidak pernah sampai ke sini — tombolnya digerbang
-   * di kartu, dan `cancelInvoice()` mengulang syarat itu di DB.
+   * ⚠️ KALIMAT "TAGIHAN LAIN TIDAK TERSENTUH" DULU BERDIRI DI SINI, DAN IA
+   * BERBOHONG SEJAK TAGIHAN GABUNGAN ADA. `cancelInvoice()` meng-UPDATE semua
+   * baris ber-`payment_id` itu — dan memang harus, link DOKU tidak bisa
+   * dibatalkan separuh. Admin yang membatalkan dari kartu pesanan #2 diam-diam
+   * mematikan tagihan #1, #3, #4. Yang salah bukan fungsinya, melainkan teks
+   * yang ditulis sebelum grup ada.
+   *
+   * ⚠️ BUKAN pembatalan jadwal, dan bukan refund. Jadwalnya tetap berdiri dan
+   * slotnya tidak dilepas. Tagihan lunas tidak pernah sampai ke sini —
+   * tombolnya digerbang di kartu, dan `cancelInvoice()` mengulang syarat itu
+   * di DB.
    *
    * Nilai kembaliannya DIPERIKSA. `.update()` tanpa `.select()` tidak melempar
    * error saat RLS menyaring hasilnya jadi nol baris; itu persis cara "Tandai
@@ -319,12 +455,23 @@ export function SchedulePaymentTab({
     const expiryNote = inv.expiresAt
       ? ` sampai ${formatWibShort(inv.expiresAt)}`
       : ' sampai 7 hari sejak tagihan terbit';
+    const group = groups.get(paymentId);
+    const isGroup = !!group && group.memberCount > 1;
+
     setPendingConfirm({
-      title: 'Batalkan tagihan ini?',
-      highlight: formatIDR(inv.amount),
+      title: isGroup ? `Batalkan tagihan gabungan ${group!.memberCount} pesanan ini?` : 'Batalkan tagihan ini?',
+      highlight: formatIDR(isGroup ? group!.total : inv.amount),
       lines: [
-        'Nominal itu berhenti dihitung sebagai piutang, dan jadwalnya bisa ditagih ulang.',
-        'Jadwal serta slotnya TIDAK dibatalkan — ini berlingkup tagihan saja.',
+        // Cakupan sebenarnya, DISEBUT LEBIH DULU — sebelum kalimat apa pun
+        // tentang akibat, karena akibat itu berlaku untuk semuanya.
+        isGroup && `Tagihan ini menaungi ${group!.memberCount} pesanan, dan SEMUANYA ikut dibatalkan `
+          + `(link DOKU tidak bisa dibatalkan separuh): ${group!.members.map((m) => m.title).join(', ')}.`,
+        isGroup
+          ? 'Nominal itu berhenti dihitung sebagai piutang, dan ketiga jadwalnya bisa ditagih ulang — terpisah atau digabung lagi.'
+          : 'Nominal itu berhenti dihitung sebagai piutang, dan jadwalnya bisa ditagih ulang.',
+        isGroup
+          ? 'Jadwal serta slot pesanan-pesanan itu TIDAK dibatalkan — ini berlingkup tagihan saja.'
+          : 'Jadwal serta slotnya TIDAK dibatalkan — ini berlingkup tagihan saja.',
         /*
           ⚠️ DI SINILAH peringatan link-DOKU tinggal — bukan di dialog
           pembatalan jadwal. Di sini admin BENAR-BENAR bisa bertindak.
@@ -422,6 +569,13 @@ export function SchedulePaymentTab({
     ['in_review', 'pending'].includes(submission.submission_status || '') ||
     ['in_review', 'pending'].includes(submission.status || '');
 
+  /**
+   * Grup yang akan dilunasi kalau dialog "Tandai Lunas" dikonfirmasi. Dihitung
+   * di sini, sekali — bukan di dalam JSX, supaya tombol dan teksnya mustahil
+   * memakai cakupan yang berbeda.
+   */
+  const pendingGroup = pendingPaid ? openGroupOf(pendingPaid) : null;
+
   const canAddSchedule =
     submission.distribution_type !== 'kilat' &&
     !isSpamOrRejected &&
@@ -451,6 +605,7 @@ export function SchedulePaymentTab({
           <ScheduleCardList
             entries={schedules}
             billings={billings}
+            groups={groups}
             submission={submission}
             onEditSchedule={onEditSchedule}
             onCreateSchedule={onCreateSchedule}
@@ -492,7 +647,9 @@ export function SchedulePaymentTab({
         >
           <DialogHeader className="space-y-1 text-center sm:text-center">
             <DialogTitle className="text-base font-bold text-gray-900 leading-snug">
-              Tandai Jadwal Iklan {pendingPaid?.ordinal} Lunas?
+              {pendingGroup
+                ? `Tandai ${pendingGroup.memberCount} Pesanan Lunas?`
+                : `Tandai Jadwal Iklan ${pendingPaid?.ordinal} Lunas?`}
             </DialogTitle>
             <DialogDescription className="text-xs text-amber-600 font-semibold leading-relaxed">
               Pastikan dana transfer manual benar-benar sudah diterima.
@@ -501,16 +658,51 @@ export function SchedulePaymentTab({
 
           {/* Booking ID dipajang eksplisit: dialog yang cuma bilang "jadwal ini"
               tidak bisa diadu dengan bukti transfer yang ada di tangan admin. */}
-          <div className="text-[11px] text-gray-500 bg-slate-50/80 border border-slate-100 rounded-lg p-3.5 leading-relaxed space-y-1.5">
-            <p>
-              Yang dilunasi hanya tagihan{' '}
-              <span className="font-mono font-semibold text-gray-700">#{pendingPaid?.bookingId}</span>
-              {!isSingleSchedule && <> — jadwal lain pada order ini <span className="font-semibold text-gray-700">tidak ikut berubah</span></>}.
-            </p>
-            {pendingPaid && pendingPaid.totalCost > 0 && (
-              <p className="font-semibold text-gray-700">{formatIDR(pendingPaid.totalCost)}</p>
-            )}
-          </div>
+          {pendingGroup ? (
+            /*
+              ⚠️ DAFTARNYA DISEBUT SATU PER SATU, TERMASUK JUDUL PESANAN LAIN.
+              Anggota tagihan gabungan tersebar di ORDER yang berbeda, jadi
+              admin yang mengklik dari drawer pesanan #2 tidak punya cara lain
+              melihat pesanan mana saja yang ikut berubah status. Dialog yang
+              cuma berkata "3 pesanan" mengulang kebohongan cakupan yang justru
+              sedang diperbaiki.
+            */
+            <div className="text-[11px] text-gray-500 bg-slate-50/80 border border-slate-100 rounded-lg p-3.5 leading-relaxed space-y-2 text-left">
+              <p>
+                Tagihan{' '}
+                <span className="font-mono font-semibold text-gray-700">{pendingGroup.paymentId}</span>{' '}
+                menaungi <span className="font-semibold text-gray-700">{pendingGroup.memberCount} pesanan</span> —
+                semuanya ikut ditandai lunas:
+              </p>
+              <ul className="space-y-1">
+                {pendingGroup.members.map((m, i) => (
+                  <li key={m.scheduleId ?? i} className="flex items-center justify-between gap-2">
+                    <span className="truncate text-gray-700">{i + 1}. {m.title}</span>
+                    <span className="tabular-nums shrink-0">{formatIDR(m.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="font-semibold text-gray-700 border-t border-slate-200 pt-1.5 flex items-center justify-between">
+                <span>Total</span>
+                <span className="tabular-nums">{formatIDR(pendingGroup.total)}</span>
+              </p>
+              <p className="text-amber-700">
+                Link bayarnya dimatikan di DOKU lebih dulu. Kalau DOKU menolak, kamu akan diberi tahu —
+                link lama masih bisa dibayar dari sisi bank.
+              </p>
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-500 bg-slate-50/80 border border-slate-100 rounded-lg p-3.5 leading-relaxed space-y-1.5">
+              <p>
+                Yang dilunasi hanya tagihan{' '}
+                <span className="font-mono font-semibold text-gray-700">#{pendingPaid?.bookingId}</span>
+                {!isSingleSchedule && <> — jadwal lain pada order ini <span className="font-semibold text-gray-700">tidak ikut berubah</span></>}.
+              </p>
+              {pendingPaid && pendingPaid.totalCost > 0 && (
+                <p className="font-semibold text-gray-700">{formatIDR(pendingPaid.totalCost)}</p>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-center gap-3">
             <Button
@@ -522,9 +714,12 @@ export function SchedulePaymentTab({
             </Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 px-5"
-              onClick={() => { if (pendingPaid) void handleMarkPaid(pendingPaid); }}
+              onClick={() => {
+                if (pendingGroup) void handleSettleGroup(pendingGroup);
+                else if (pendingPaid) void handleMarkPaid(pendingPaid);
+              }}
             >
-              Ya, Tandai Lunas
+              {pendingGroup ? `Ya, Tandai ${pendingGroup.memberCount} Pesanan Lunas` : 'Ya, Tandai Lunas'}
             </Button>
           </div>
         </DialogContent>

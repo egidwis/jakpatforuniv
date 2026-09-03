@@ -189,3 +189,50 @@ describe('groupMeta', () => {
     expect(groupMeta([])).toEqual({ paid_at: null, expires_at: null });
   });
 });
+
+describe('buildInvoiceDocument — grup SEPARUH lunas (keadaan ketiga)', () => {
+  /*
+    `isPaid` menjawab "semua lunas?", dan jawabannya `false` sama untuk grup yang
+    nol rupiah masuk DAN grup yang 2 dari 3 pesanannya sudah dibayar. Sebelum
+    ini keduanya dirender identik: INVOICE bernominal PENUH lengkap dengan
+    tombol bayar — mengundang pembayaran kedua atas uang yang sudah diterima.
+
+    Bisa terjadi lewat dua jalan: `unmarkScheduleAsPaid` membalik satu anggota,
+    atau `settleGroupAsPaid` gagal di anggota terakhir (loopnya tidak
+    transaksional).
+  */
+  const tiga = (statuses: string[]) =>
+    statuses.map((status, i) =>
+      row({ status, form_submission_id: `o${i + 1}`, form_submissions: { id: `o${i + 1}`, title: `Survei ${i + 1}` } }),
+    );
+
+  it('menghitung yang sudah masuk dan SISANYA, bukan cuma total', () => {
+    const doc = buildInvoiceDocument(tiga(['paid', 'pending', 'paid']));
+
+    expect(doc.total).toBe(666000);
+    expect(doc.paidTotal).toBe(444000);
+    expect(doc.outstanding).toBe(222000);
+    expect(doc.isPartiallyPaid).toBe(true);
+    // Tetap BUKAN kuitansi — satu baris belum lunas.
+    expect(doc.isPaid).toBe(false);
+  });
+
+  it('nol rupiah masuk BUKAN "sebagian lunas"', () => {
+    const doc = buildInvoiceDocument(tiga(['pending', 'pending', 'pending']));
+    expect(doc.paidTotal).toBe(0);
+    expect(doc.outstanding).toBe(666000);
+    expect(doc.isPartiallyPaid).toBe(false);
+  });
+
+  it('semua lunas BUKAN "sebagian lunas" — itu kuitansi', () => {
+    const doc = buildInvoiceDocument(tiga(['paid', 'completed', 'paid']));
+    expect(doc.isPaid).toBe(true);
+    expect(doc.isPartiallyPaid).toBe(false);
+    expect(doc.outstanding).toBe(0);
+  });
+
+  it('N=1 tidak pernah "sebagian lunas"', () => {
+    expect(buildInvoiceDocument([row({ status: 'pending' })]).isPartiallyPaid).toBe(false);
+    expect(buildInvoiceDocument([row({ status: 'paid' })]).isPartiallyPaid).toBe(false);
+  });
+});

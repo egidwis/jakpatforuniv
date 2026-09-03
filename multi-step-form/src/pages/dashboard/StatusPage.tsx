@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, dismissSubmission, cancelOrder, updateFormStatus, prepareForReschedule, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, fetchInvoiceGroups, dismissSubmission, cancelOrder, updateFormStatus, prepareForReschedule, type AdScheduleEntry, type FormSubmission, type InvoiceGroup } from '@/utils/supabase';
 import type { ReviewHistoryEntry } from '@/components/submissions/types';
 import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +31,7 @@ import { ReviewPhase } from '@/components/status/ReviewPhase';
 import { SchedulePhase } from '@/components/status/SchedulePhase';
 import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
+import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 
@@ -110,6 +111,17 @@ export function StatusPage() {
     // Pembayaran per JADWAL, dikunci `sourceId` (= `transactions.extend_id`
     // untuk jadwal ke-2 dst.), bersarang per order.
     const [schedulePayments, setSchedulePayments] = useState<Record<string, SchedulePaymentMap>>({});
+    /**
+     * Tagihan gabungan yang menaungi jadwal-jadwal peneliti ini, dikunci
+     * `payment_id`.
+     *
+     * ⚠️ HIDUP DI TINGKAT HALAMAN, BUKAN DI DALAM KARTU ORDER, dan itu memang
+     * satu-satunya tempat yang mungkin: anggota sebuah tagihan gabungan tersebar
+     * di ORDER-ORDER YANG BERBEDA. Komponen yang cuma memegang satu order tidak
+     * akan pernah bisa menjawab "berapa pesanan yang ditanggung tagihan ini" —
+     * ia selalu menjawab 1, tepat pada kasus yang pertanyaannya diajukan.
+     */
+    const [invoiceGroups, setInvoiceGroups] = useState<Map<string, InvoiceGroup>>(new Map());
     // Halaman iklan per submission (slug + views) — blok order-level di bawah list jadwal
     const [surveyPages, setSurveyPages] = useState<Record<string, { views: number; slug: string | null }>>({});
     const [searchParams, setSearchParams] = useSearchParams();
@@ -275,6 +287,8 @@ export function StatusPage() {
                                         // menguranginya lagi di sini.
                                         paid: b.paid,
                                         outstanding: b.outstanding,
+                                        isExpired: !!b.openInvoice?.isExpired,
+                                        expiresAt: b.openInvoice?.expiresAt ?? null,
                                         staleBilledFor: b.openInvoice ? null : (b.staleInvoice?.billedStartDate ?? null),
                                     };
                                 });
@@ -303,7 +317,19 @@ export function StatusPage() {
                                 // Task 13 — sisipan invoice-nya gagal senyap). Ia TIDAK
                                 // bisa menghidupkan link mati: `links` hanya pernah diisi
                                 // dari transaksi ber-status `pending`.
-                                links[submission.id] = ownBilling.paymentUrl ?? links[submission.id] ?? null;
+                                /*
+                                  ⚠️ LINK YANG SUDAH KEDALUWARSA TIDAK DIPASANG.
+                                  `is_expired` (sql/83) dihitung di DB dari
+                                  `expires_at`; barisnya sendiri tetap `pending`
+                                  karena tidak ada cron yang mematikannya. Tanpa
+                                  penjaga ini kartu ordinal 1 menawarkan "Bayar
+                                  Sekarang" ke halaman DOKU yang menolaknya —
+                                  peneliti tidak diberi tahu apa pun soal
+                                  kenapa, dan admin tidak pernah tahu ia mencoba.
+                                */
+                                links[submission.id] = ownBilling.isExpired
+                                    ? null
+                                    : (ownBilling.paymentUrl ?? links[submission.id] ?? null);
                                 if (ownBilling.paymentId) foundTransactionId = ownBilling.paymentId;
                             }
                         } catch (e) {
@@ -353,6 +379,18 @@ export function StatusPage() {
                 if (!bySub[s.submissionId]) bySub[s.submissionId] = [];
                 bySub[s.submissionId].push(s);
             });
+
+            /*
+              Anggota tiap tagihan ditanyakan langsung ke `invoices`, BUKAN
+              dirakit dari `schedPayments` di atas. Peta itu hanya memuat order
+              yang lolos filter halaman ini (yang `dismissed_at`/`spam` sudah
+              dibuang), jadi grup yang salah satu anggotanya tersaring akan
+              menghasilkan total yang LEBIH KECIL daripada yang ditagih link
+              DOKU-nya — persis kelas cacat yang perbaikan ini ada untuk menutup.
+            */
+            const allPaymentIds = Object.values(schedPayments)
+                .flatMap((m) => Object.values(m).map((p) => p.paymentId));
+            setInvoiceGroups(await fetchInvoiceGroups(allPaymentIds));
 
             setSchedulesBySubmission(bySub);
             setSchedulePayments(schedPayments);
@@ -696,7 +734,10 @@ export function StatusPage() {
                         ) : (
                             <div className="space-y-4">
                                 {filtered.map(({ submission, pays, ui }) => {
-                                    const cards = buildScheduleCards(ui, pays, invoiceIds[submission.id!] || null, t, submission);
+                                    const cards = buildScheduleCards(
+                                        ui, pays, invoiceIds[submission.id!] || null, t, submission,
+                                        (sourceId) => groupInfoFor(invoiceGroups, pays[sourceId]?.paymentId, sourceId),
+                                    );
                                     const pageInfo = submission.id ? surveyPages[submission.id] : undefined;
                                     const activePhase = getActiveDashboardPhase(ui.currentStep);
                                     /**

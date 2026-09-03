@@ -13,6 +13,7 @@ import {
     ExternalLink,
     FileText,
     Gift,
+    Layers,
     Plus,
     RotateCcw,
     Zap,
@@ -623,6 +624,54 @@ function Banner({ tone, icon, title, lines, cta }: {
     );
 }
 
+/**
+ * Blok "tagihan gabungan" di kartu peneliti — dipakai kartu LEAD (di dalam
+ * banner bayar) dan kartu yang sudah lunas (di bawah banner).
+ *
+ * ⚠️ DUA ANGKA, KEDUANYA DISEBUT. "Porsi pesanan ini" menjawab *berapa harga
+ * pesanan ini*, "TOTAL DIBAYAR" menjawab *berapa yang akan ditagih halaman
+ * DOKU*. Sebelum ini hanya yang pertama yang tampil, tepat di sebelah tombol
+ * yang membuka yang kedua — untuk grup 3 pesanan @Rp 1,11jt, tiga kartu sama
+ * berbunyi Rp 1.110.000 dan ketiganya membuka halaman Rp 3.330.000. Membuang
+ * salah satunya menghidupkan lagi cacat itu dari sisi yang berlawanan.
+ */
+function GroupBillBlock({ group, portion, t }: {
+    group: NonNullable<ScheduleCard['booking']['group']>;
+    /** Porsi jadwal INI. `null` = jangan tampilkan barisnya. */
+    portion: number | null;
+    t: (key: TranslationKey, params?: Record<string, string>) => string;
+}) {
+    return (
+        <span className="block rounded-lg border border-blue-200/70 bg-blue-50/50 px-2.5 py-2 space-y-1">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-blue-900">
+                <Layers className="w-3.5 h-3.5 shrink-0" />
+                {t('groupBillChip', { count: String(group.memberCount) })}
+            </span>
+            {portion != null && (
+                <span className="flex items-center justify-between gap-2 text-xs text-slate-600">
+                    <span>{t('groupBillPortion')}</span>
+                    <span className="tabular-nums">{formatIDR(portion)}</span>
+                </span>
+            )}
+            <span className="flex items-center justify-between gap-2 text-xs font-bold text-slate-900 border-t border-blue-200/70 pt-1">
+                <span>{t('groupBillTotal')}</span>
+                <span className="tabular-nums">{formatIDR(group.total)}</span>
+            </span>
+            {group.others.length > 0 && (
+                <span className="block pt-0.5">
+                    <span className="block text-[11px] text-slate-500">{t('groupBillAlsoIncluded')}</span>
+                    {group.others.map((o, i) => (
+                        <span key={i} className="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                            <span className="truncate">· {o.title}</span>
+                            <span className="tabular-nums shrink-0">{formatIDR(o.amount)}</span>
+                        </span>
+                    ))}
+                </span>
+            )}
+        </span>
+    );
+}
+
 const bannerIcon = 'w-4 h-4';
 
 function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
@@ -785,12 +834,53 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
         */
         const isPartial = b.paid > 0 && b.outstanding > 0;
 
+        /*
+          ⚠️ ANGGOTA GRUP YANG BUKAN LEAD TIDAK PUNYA TOMBOL, DAN ITU BUKAN
+          KEHILANGAN FUNGSI — ia satu-satunya cara menjawab "berapa yang saya
+          bayar" dengan jujur. Link DOKU-nya menagih total grup; kartu ini cuma
+          tahu porsinya sendiri. Menunjuk ke lead memindahkan pertanyaannya ke
+          kartu yang memang memegang seluruh jawabannya.
+
+          Tujuannya `/invoices/<payment_id>` (BUKAN anchor ke kartu lead):
+          kartu lead bisa sedang tersaring filter dashboard, sementara dokumen
+          grupnya selalu memuat seluruh bundel dan link bayarnya sekaligus.
+        */
+        if (b.group && !b.group.isLead) {
+            return (
+                <Banner
+                    tone="slate"
+                    icon={<Layers className={bannerIcon} />}
+                    title={t('groupBillFollowerTitle')}
+                    lines={[
+                        t('groupBillFollowerBody', {
+                            count: String(b.group.memberCount - 1),
+                            title: b.group.leadTitle,
+                        }),
+                        t('groupBillFollowerHint'),
+                    ]}
+                    cta={
+                        <Link to={`/invoices/${b.group.paymentId}`} className="block max-md:w-full md:inline-block">
+                            <Button size="sm" variant="outline" className={`${ctaButtonClass} gap-1.5`}>
+                                <FileText className="w-3.5 h-3.5" />
+                                {t('groupBillFollowerCta')}
+                            </Button>
+                        </Link>
+                    }
+                />
+            );
+        }
+
+        const payLabel = b.group
+            ? t('groupBillPayCta', { amount: formatIDR(b.group.total) })
+            : isPartial ? t('payRemaining') : t('payNow');
+
         return (
             <Banner
                 tone="amber"
                 icon={<CreditCard className={bannerIcon} />}
                 title={isPartial ? t('bannerTitleWaitingPaymentPartial') : t('bannerTitleWaitingPayment')}
                 lines={[
+                    b.group && <GroupBillBlock key="grp" group={b.group} portion={b.amount} t={t} />,
                     isPartial && t('bannerSubPartiallyPaid', {
                         paid: formatIDR(b.paid),
                         due: formatIDR(b.outstanding),
@@ -802,7 +892,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                         <a href={b.payUrl} target="_blank" rel="noopener noreferrer" className="block max-md:w-full md:inline-block">
                             <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal} gap-1.5`}>
                                 <CreditCard className="w-3.5 h-3.5" />
-                                {isPartial ? t('payRemaining') : t('payNow')}
+                                {payLabel}
                                 <ExternalLink className="w-3.5 h-3.5 opacity-70" />
                             </Button>
                         </a>
@@ -810,7 +900,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                         <Link to={b.payUrl} className="block max-md:w-full md:inline-block">
                             <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal} gap-1.5`}>
                                 <CreditCard className="w-3.5 h-3.5" />
-                                {isPartial ? t('payRemaining') : t('payNow')}
+                                {payLabel}
                             </Button>
                         </Link>
                     )
@@ -841,11 +931,17 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 tone="amber"
                 icon={<AlertCircle className={bannerIcon} />}
                 title={t('bannerTitleExpired')}
-                lines={
-                    card.kind === 'extend'
+                lines={[
+                    ...(card.kind === 'extend'
                         ? [t('scheduleExpiredHint')]
-                        : [t('bannerSubExpired'), nextStepLine('bannerSubPickNewDate')]
-                }
+                        : [t('bannerSubExpired'), nextStepLine('bannerSubPickNewDate')]),
+                    /*
+                      Grup yang kedaluwarsa mati SEKALIGUS — satu link, satu masa
+                      berlaku. Menyebutnya di sini mencegah peneliti mencari-cari
+                      "tagihan yang lain" yang memang tidak pernah terpisah.
+                    */
+                    b.group && t('groupBillExpiredNote'),
+                ]}
                 cta={rescheduleCta}
             />
         );
@@ -939,6 +1035,26 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                                 </AccordionPrimitive.Header>
                                 <AccordionContent className="pb-4 pt-1.5 space-y-4 bg-white -mx-3.5 px-3.5 border-t border-slate-100">
                                     <ScheduleBanner card={card} onReschedule={onReschedule} canSelfReschedule={selfReschedule} />
+                                    {/*
+                                      ⚠️ CHIP GRUP TETAP ADA SESUDAH LUNAS. Justru di
+                                      situ ia paling berguna: satu transfer Rp 3,33jt
+                                      untuk tiga pesanan hanya bisa dicocokkan dengan
+                                      mutasi bank kalau layarnya mengatakan ketiganya
+                                      memang satu pembayaran. `paid` tidak punya banner
+                                      (sengaja), jadi barisnya hidup di sini.
+                                    */}
+                                    {card.booking.group && card.booking.state === 'paid' && (
+                                        <p className="flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                                            <Layers className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                                            <span>{t('groupBillPaidNote', { count: String(card.booking.group.memberCount - 1) })}</span>
+                                            <Link
+                                                to={`/invoices/${card.booking.group.paymentId}`}
+                                                className="font-semibold text-jfu-primary hover:underline shrink-0"
+                                            >
+                                                {t('viewReceiptLink')}
+                                            </Link>
+                                        </p>
+                                    )}
                                     <InfoSection card={card} muted={pendingReview} />
                                 </AccordionContent>
                             </AccordionItem>

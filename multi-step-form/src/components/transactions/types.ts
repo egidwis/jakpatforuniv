@@ -181,3 +181,56 @@ export function methodChipInfo(
   }
   return { label: method, variant: 'slate' };
 }
+
+/**
+ * Anggota tiap tagihan gabungan di dalam DAFTAR YANG SEDANG DIMUAT.
+ *
+ * ⚠️ DITURUNKAN DARI DAFTARNYA SENDIRI, BUKAN DARI QUERY BARU — dan itu
+ * keputusan, bukan kemalasan. Halaman ini sengaja tidak pernah memakai
+ * `.in('payment_id', [...])`: PostgREST menaruh filter di query string, dan 700
+ * UUID sudah ditolak `400` tanpa menyebut panjangnya sama sekali (papan Schedule
+ * gagal memuat sejak hari pertama karenanya). Setiap anggota tagihan gabungan
+ * punya baris `transactions` sendiri yang lahir dalam detik yang sama, jadi
+ * mereka selalu berdampingan di daftar yang sama.
+ *
+ * ⚠️ BATASNYA: kalau batas 1.000 baris PostgREST kebetulan memotong TEPAT di
+ * tengah sebuah grup, `count` di sini mengecil. Akibatnya cuma badge yang
+ * kurang lengkap — nol angka uang diturunkan dari sini.
+ */
+export interface TxGroupInfo {
+  paymentId: string;
+  count: number;
+  /** Σ porsi seluruh anggota — nominal yang BENAR-BENAR ditagih link DOKU-nya. */
+  total: number;
+  /** Id transaksi anggota, urut lahir; dipakai untuk nomor "ke berapa dari N". */
+  memberIds: string[];
+}
+
+export function buildTxGroupIndex(transactions: Transaction[]): Map<string, TxGroupInfo> {
+  const byPayment = new Map<string, Transaction[]>();
+  for (const tx of transactions) {
+    if (!tx.payment_id) continue;
+    const list = byPayment.get(tx.payment_id);
+    if (list) list.push(tx);
+    else byPayment.set(tx.payment_id, [tx]);
+  }
+
+  const out = new Map<string, TxGroupInfo>();
+  for (const [paymentId, rows] of byPayment) {
+    // Urutan lahir, lalu id — anggota grup lahir dalam detik yang sama, jadi
+    // `created_at` saja tidak menjamin urutan yang stabil antar-render.
+    const sorted = [...rows].sort((a, b) => {
+      const at = new Date(a.created_at || '').getTime();
+      const bt = new Date(b.created_at || '').getTime();
+      if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt;
+      return String(a.id).localeCompare(String(b.id));
+    });
+    out.set(paymentId, {
+      paymentId,
+      count: sorted.length,
+      total: sorted.reduce((sum, t) => sum + (Number(t.amount) || 0), 0),
+      memberIds: sorted.map((t) => String(t.id)),
+    });
+  }
+  return out;
+}

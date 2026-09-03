@@ -788,6 +788,24 @@ export const translations = {
     bannerSubWaitingPaymentSlotsLimited: "Ad slots are limited each day. Complete your payment before your date fills up.",
     bannerTitleWaitingPaymentPartial: "Complete the remaining payment",
     bannerSubPartiallyPaid: "We have received {paid}. {due} remaining.",
+    /*
+      Tagihan gabungan: satu link DOKU untuk N pesanan. Kalimat-kalimat ini ada
+      karena tanpa mereka peneliti membaca porsi satu pesanan lalu mendarat di
+      halaman yang menagih total seluruh grup — cacat A1. Kalau ada yang mau
+      memendekkannya: nominal dan jumlah pesanan TIDAK boleh hilang dari
+      kalimat yang memegang tombol bayar.
+    */
+    groupBillChip: "Combined invoice · {count} orders",
+    groupBillPortion: "This order's share",
+    groupBillTotal: "TOTAL DUE",
+    groupBillAlsoIncluded: "Paid together with:",
+    groupBillPayCta: "Pay {amount}",
+    groupBillFollowerTitle: "Part of a combined invoice",
+    groupBillFollowerBody: "This order is billed together with {count} other order(s) on a single invoice — pay it from «{title}».",
+    groupBillFollowerHint: "Paying once settles every order on that invoice.",
+    groupBillFollowerCta: "View combined invoice",
+    groupBillPaidNote: "Paid together with {count} other order(s) on one invoice.",
+    groupBillExpiredNote: "That combined invoice has expired. Contact our team for a new one — do not pay the old link.",
     bannerTitleExpired: "Reservation expired",
     bannerSubExpired: "The payment deadline passed, so the date you reserved was released automatically. You do not need to resubmit your questionnaire.",
     bannerSubPickNewDate: "Pick a new date that is still available.",
@@ -1709,6 +1727,17 @@ export const translations = {
     bannerSubWaitingPaymentSlotsLimited: "Slot iklan terbatas setiap hari. Selesaikan pembayaran sebelum tanggalmu terisi.",
     bannerTitleWaitingPaymentPartial: "Selesaikan sisa pembayaran",
     bannerSubPartiallyPaid: "{paid} sudah kami terima. Sisa {due}.",
+    groupBillChip: "Tagihan gabungan · {count} pesanan",
+    groupBillPortion: "Porsi pesanan ini",
+    groupBillTotal: "TOTAL DIBAYAR",
+    groupBillAlsoIncluded: "Ikut dibayar sekalian:",
+    groupBillPayCta: "Bayar {amount}",
+    groupBillFollowerTitle: "Termasuk tagihan gabungan",
+    groupBillFollowerBody: "Pesanan ini ditagih bersama {count} pesanan lain dalam satu tagihan — bayar dari «{title}».",
+    groupBillFollowerHint: "Sekali bayar, seluruh pesanan di tagihan itu lunas.",
+    groupBillFollowerCta: "Lihat tagihan gabungan",
+    groupBillPaidNote: "Dibayar bersama {count} pesanan lain dalam satu tagihan.",
+    groupBillExpiredNote: "Tagihan gabungan itu sudah kedaluwarsa. Hubungi tim kami untuk tagihan baru — jangan bayar link yang lama.",
     bannerTitleExpired: "Reservasi kedaluwarsa",
     // "otomatis" di SINI benar — yang lepas adalah hold 1 jam, dan tidak ada
     // manusia yang menekannya. Jangan menyalinnya ke `slot_cancelled`.

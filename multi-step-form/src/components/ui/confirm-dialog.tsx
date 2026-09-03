@@ -16,8 +16,15 @@ import { cn } from '@/lib/utils';
  */
 export interface ConfirmRequest {
   title: string;
-  /** Baris penjelas; yang pertama paling penting. */
-  lines: string[];
+  /**
+   * Baris penjelas; yang pertama paling penting.
+   *
+   * `null`/`false` disaring — aturan emas yang sama dengan `Banner` di sisi
+   * peneliti: baris yang syaratnya tidak terpenuhi DIHILANGKAN, bukan diisi
+   * kalimat penampung. Dialog aksi uang tidak boleh memuat satu pun kalimat
+   * yang kebetulan tidak berlaku.
+   */
+  lines: (string | null | false)[];
   /** Nominal/tanggal yang dipertaruhkan — dialog aksi uang WAJIB menyebutnya. */
   highlight?: string;
   confirmLabel: string;
@@ -57,7 +64,7 @@ export function ConfirmDialog({
         )}
 
         <div className="space-y-1.5">
-          {request?.lines.map((line, i) => (
+          {request?.lines.filter(Boolean).map((line, i) => (
             <p key={i} className={cn('text-xs leading-relaxed', i === 0 ? 'text-slate-700 font-medium' : 'text-slate-500')}>
               {line}
             </p>

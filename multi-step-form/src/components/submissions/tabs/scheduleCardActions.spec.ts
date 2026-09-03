@@ -264,3 +264,78 @@ describe('planCardActions — gerbang tagihan hidup', () => {
     expect(ids(p)).not.toContain('cancel_schedule');
   });
 });
+
+describe('planCardActions — cakupan "Tandai Lunas" pada tagihan gabungan', () => {
+  /*
+    B2: `markScheduleAsPaid()` berlingkup `schedule_id`, jadi pada anggota
+    tagihan gabungan ia membalik SATU baris jadi lunas sementara link DOKU-nya
+    tetap menagih total penuh — porsi yang sama bisa terbayar dua kali. Aksinya
+    TIDAK dicabut (alur "peneliti transfer di luar DOKU, admin melunasi seluruh
+    batch" justru yang melahirkan fitur ini); yang harus berubah namanya, supaya
+    cakupannya terbaca SEBELUM tombolnya ditekan.
+  */
+  const label = (p: ReturnType<typeof planCardActions>) =>
+    [p.primary, ...p.menu].find((a) => a?.id === 'mark_paid')?.label;
+
+  it('tetap "Tandai Lunas" untuk tagihan biasa', () => {
+    expect(label(plan('waiting_payment', { openInvoiceMemberCount: 1 }))).toBe('Tandai Lunas');
+  });
+
+  it('tanpa keterangan jumlah anggota, perilakunya persis seperti sebelum fitur ini ada', () => {
+    expect(label(plan('waiting_payment'))).toBe('Tandai Lunas');
+  });
+
+  it('menyebut jumlah pesanan saat tagihannya gabungan', () => {
+    expect(label(plan('waiting_payment', { openInvoiceMemberCount: 3 }))).toBe('Tandai Lunas (3 pesanan)');
+  });
+
+  it('aksinya TIDAK dicabut — cuma berganti cakupan', () => {
+    const p = plan('waiting_payment', { openInvoiceMemberCount: 3 });
+    expect([p.primary, ...p.menu].some((a) => a?.id === 'mark_paid')).toBe(true);
+  });
+
+  it('ditandai `warns` supaya dialog konsekuensinya wajib muncul', () => {
+    const grup = [plan('waiting_payment', { openInvoiceMemberCount: 4 }).primary].find((a) => a?.id === 'mark_paid');
+    expect(grup?.warns).toBe(true);
+  });
+});
+
+describe('planCardActions — cakupan "Tandai Belum Lunas" pada tagihan gabungan', () => {
+  /*
+    Cermin dari blok di atas, dan cacatnya lahir dari perbaikannya:
+    `settleGroupAsPaid` menulis `payment_channel = 'MANUAL_VERIFIED'` di tiap
+    baris — nilai itulah gerbang yang memunculkan aksi ini. Cakupannya WAJIB
+    ikut grup, kalau tidak membalik satu anggota memecah grup jadi separuh-lunas
+    dan kuitansinya berubah kembali jadi tagihan bernominal penuh.
+
+    Sumber angkanya BEDA dari `mark_paid`: grup yang sudah lunas tidak punya
+    `openInvoice` lagi.
+  */
+  const label = (p: ReturnType<typeof planCardActions>) =>
+    [p.primary, ...p.menu].find((a) => a?.id === 'unmark_paid')?.label;
+
+  const paidPlan = (paidInvoiceMemberCount?: number) =>
+    planCardActions({
+      state: 'paid', entry: entry(), billing: billing({ isSettled: true }),
+      isLate: false, can: ALL, paidInvoiceMemberCount,
+    });
+
+  it('tetap "Tandai Belum Lunas" untuk tagihan biasa', () => {
+    expect(label(paidPlan(1))).toBe('Tandai Belum Lunas');
+    expect(label(paidPlan())).toBe('Tandai Belum Lunas');
+  });
+
+  it('menyebut jumlah pesanan saat tagihannya gabungan', () => {
+    expect(label(paidPlan(3))).toBe('Tandai Belum Lunas (3 pesanan)');
+  });
+
+  it('TIDAK memakai angka `openInvoiceMemberCount` — grup lunas tak punya tagihan terbuka', () => {
+    const p = planCardActions({
+      state: 'paid', entry: entry(), billing: billing({ isSettled: true }),
+      isLate: false, can: ALL,
+      openInvoiceMemberCount: 1,      // benar: tidak ada tagihan terbuka
+      paidInvoiceMemberCount: 4,      // inilah cakupan pembalikannya
+    });
+    expect(label(p)).toBe('Tandai Belum Lunas (4 pesanan)');
+  });
+});

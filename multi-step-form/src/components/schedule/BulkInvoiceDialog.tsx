@@ -19,7 +19,7 @@ import {
 } from '@/utils/waMessage';
 import type { SurveySubmission } from '@/components/submissions/types';
 import { buildExtensionInvoiceItems, buildOrderInvoiceItems, type InvoiceItem } from './invoiceItems';
-import { bundleTotals, groupTotals, writeInvoiceRows, type InvoiceBundle } from './invoiceWrite';
+import { bundleTotals, groupTotals, writeInvoiceRows, InvoiceWriteError, type InvoiceBundle } from './invoiceWrite';
 import {
   distinctAccounts, planBulkInvoice, type BulkCandidate, type BulkRejection,
 } from './bulkInvoiceCandidates';
@@ -76,20 +76,35 @@ export function BulkInvoiceDialog({
    * sini, lalu `planBulkInvoice` memutuskan dengan `cardStateOf` — sumber yang
    * sama dengan kartu Reservasi Jadwal.
    */
+  /**
+   * Ambil keadaan TERKINI dan putuskan ulang kelayakannya — tanpa menyentuh
+   * state.
+   *
+   * Dipakai dua kali: saat dialog dibuka, dan lagi TEPAT SEBELUM memanggil DOKU
+   * (lihat `handleCreate`). Karena itu ia tidak boleh menulis state sendiri;
+   * pemanggil kedua perlu membandingkan hasilnya dengan yang sedang dipajang
+   * sebelum memutuskan apa yang terjadi pada layar.
+   */
+  const loadPlan = useCallback(async () => {
+    const ids = submissions.map((s) => s.id);
+    const entries: AdScheduleEntry[] = await fetchAdSchedules(ids);
+
+    const billings = new Map<string, ScheduleBilling>();
+    const perOrder = await Promise.all(ids.map((id) => fetchScheduleBilling(id)));
+    for (const map of perOrder) {
+      for (const [scheduleId, billing] of map) billings.set(scheduleId, billing);
+    }
+
+    return planBulkInvoice({ submissions, entries, billings });
+    // Alasan dependensi `targetKey`-saja sama dengan `resolve` di bawah.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKey]);
+
   const resolve = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const ids = submissions.map((s) => s.id);
-      const entries: AdScheduleEntry[] = await fetchAdSchedules(ids);
-
-      const billings = new Map<string, ScheduleBilling>();
-      const perOrder = await Promise.all(ids.map((id) => fetchScheduleBilling(id)));
-      for (const map of perOrder) {
-        for (const [scheduleId, billing] of map) billings.set(scheduleId, billing);
-      }
-
-      const plan = planBulkInvoice({ submissions, entries, billings });
+      const plan = await loadPlan();
       setRejected(plan.rejected);
       setBundles(plan.candidates.map((c) => ({ ...c, items: buildItems(c, appliedVoucher) })));
     } catch (e: any) {
@@ -144,6 +159,38 @@ export function BulkInvoiceDialog({
 
     setIsSaving(true);
     try {
+      /*
+        ⚠️ KELAYAKAN DIPERIKSA ULANG TEPAT SEBELUM MEMANGGIL DOKU (B1).
+
+        Sampai sekarang himpunan kandidat dibekukan saat dialog DIBUKA dan tidak
+        pernah ditanya lagi — jendelanya selebar lamanya dialog terbuka (admin
+        mengetik voucher, membaca daftar tinjauan). Di jendela itu peneliti bisa
+        membayar salah satu pesanan, admin lain bisa menagih pesanan yang sama,
+        atau jadwalnya dibatalkan/dipindah; grupnya tetap terbit. Tidak ada
+        pengaman di DB: `payment_id` tak punya unique index dan tak ada
+        partial-unique `schedule_id`, jadi aturan "satu tagihan terbuka per
+        jadwal" hidup MURNI di logika baca-lalu-putuskan ini.
+
+        Kalau himpunannya berubah: BERHENTI, gambar ulang, minta admin menekan
+        lagi. Nol panggilan DOKU — link yang sudah terbit tidak bisa ditarik,
+        dan link yang salah isi jauh lebih mahal daripada satu klik tambahan.
+      */
+      const fresh = await loadPlan();
+      const before = bundles.map((b) => b.entry.id).sort().join(',');
+      const after = fresh.candidates.map((c) => c.entry.id).sort().join(',');
+      if (before !== after) {
+        closeTab(waTab);
+        setRejected(fresh.rejected);
+        setBundles(fresh.candidates.map((c) => ({ ...c, items: buildItems(c, appliedVoucher) })));
+        toast.warning(
+          'Daftar pesanan berubah sejak dialog ini dibuka — tidak ada tagihan yang dibuat. '
+          + 'Periksa daftar yang baru, lalu tekan lagi.',
+          { duration: 10000 },
+        );
+        setIsSaving(false);
+        return;
+      }
+
       const payload = bundles.map(toInvoiceBundle(appliedVoucher));
       const amount = groupTotals(payload).amount;
 
@@ -222,7 +269,28 @@ export function BulkInvoiceDialog({
     } catch (e: any) {
       closeTab(waTab);
       console.error('Gagal membuat tagihan gabungan:', e);
-      toast.error(e?.message || 'Gagal membuat tagihan gabungan');
+
+      /*
+        ⚠️ ROLLBACK YANG GAGAL HARUS BERISIK, DAN TIDAK BOLEH HILANG SENDIRI (B5).
+
+        `cleanedUp === false` berarti baris-barisnya tinggal `pending` di
+        database sementara link DOKU-nya mungkin masih hidup: piutang palsu, DAN
+        N jadwal terkunci di `waiting_payment` sehingga tidak bisa ditagih ulang
+        sampai ada manusia yang membereskannya. Toast merah yang lenyap dalam 4
+        detik untuk keadaan seperti itu adalah cara kejadiannya tidak pernah
+        ditindaklanjuti — persis kelas kebisuan yang ditutup di seluruh berkas
+        ini. `duration: Infinity` menuntut admin menutupnya sendiri.
+      */
+      if (e instanceof InvoiceWriteError && !e.cleanedUp) {
+        toast.error(
+          `${e.message} ⚠️ PEMBERSIHANNYA GAGAL: baris tagihannya `
+          + `masih menggantung di database dan jadwalnya terkunci menunggu bayar. `
+          + `Batalkan tagihan itu manual dari halaman Transaksi sebelum menagih ulang.`,
+          { duration: Infinity },
+        );
+      } else {
+        toast.error(e?.message || 'Gagal membuat tagihan gabungan');
+      }
     } finally {
       setIsSaving(false);
     }

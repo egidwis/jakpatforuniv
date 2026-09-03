@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   type Transaction,
+  type TxGroupInfo,
   formatIDR,
   transactionStatusChip,
   methodChipInfo,
@@ -14,6 +15,15 @@ interface TransactionListRowProps {
   onOpen: (id: string) => void;
   /** Row currently open in the detail pane */
   active?: boolean;
+  /**
+   * Tagihan gabungan yang menaungi baris ini, kalau ada.
+   *
+   * ⚠️ TANPA INI BARIS-BARISNYA TIDAK BISA DIBEDAKAN DARI TIGA PEMBAYARAN
+   * TERPISAH. Nominal per baris memang benar (itu porsi pesanannya), tapi
+   * ketiganya satu transfer — dan tanpa penandanya, admin yang mencocokkan
+   * mutasi bank mencari tiga masukan sebesar Rp 1,11jt yang tidak pernah ada.
+   */
+  group?: TxGroupInfo;
 }
 
 /**
@@ -22,7 +32,7 @@ interface TransactionListRowProps {
  * live in the drawer. Responsive hiding uses plain `hidden sm:block`
  * wrappers (never `hidden md:flex` — styles.css overrides `.flex`).
  */
-export function TransactionListRow({ transaction, onOpen, active }: TransactionListRowProps) {
+export function TransactionListRow({ transaction, onOpen, active, group }: TransactionListRowProps) {
   const date = new Date(transaction.created_at);
   const method = methodChipInfo(transaction.payment_method, transaction.payment_channel, transaction.status);
   const statusChip = transactionStatusChip(transaction.status);
@@ -76,6 +86,14 @@ export function TransactionListRow({ transaction, onOpen, active }: TransactionL
           <span className="truncate flex-1">
             {transaction.payment_id || '—'}
           </span>
+          {group && group.count > 1 && (
+            <span
+              className="shrink-0 ml-1 inline-flex items-center rounded bg-blue-50 text-blue-700 border border-blue-200 px-1 text-[10px] font-bold tabular-nums"
+              title={`Tagihan gabungan — ${group.count} pesanan, total ${formatIDR(group.total)}`}
+            >
+              ⛓{group.memberIds.indexOf(String(transaction.id)) + 1}/{group.count}
+            </span>
+          )}
           <Copy className="w-3.5 h-3.5 text-gray-400 group-hover/copy:text-gray-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
         </button>
       </div>

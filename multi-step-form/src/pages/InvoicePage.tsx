@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../utils/supabase'; // Adjust path if needed, check structure
 import { Loader2, Download, CheckCircle2, Clock, ExternalLink, ShieldCheck } from 'lucide-react';
@@ -85,6 +85,8 @@ export function InvoicePage() {
     // grup, yang jadi sumber setiap angka uang di dokumen ini.
     const [data, setData] = useState<InvoiceData | null>(null);
     const [rows, setRows] = useState<InvoiceData[]>([]);
+    /** Cermin `rows` untuk interval polling — lihat efek penyegaran di bawah. */
+    const rowsRef = useRef<InvoiceData[]>([]);
     const [meta, setMeta] = useState<InvoiceMeta>({ paid_at: null, expires_at: null });
     const [schedules, setSchedules] = useState<Map<string, ScheduleInfo>>(new Map());
     const [loading, setLoading] = useState(true);
@@ -92,6 +94,51 @@ export function InvoicePage() {
 
     useEffect(() => {
         fetchInvoice();
+    }, [paymentId]);
+
+    /**
+     * Menyegarkan diri selama dokumennya masih INVOICE (A2).
+     *
+     * ⚠️ HALAMAN INI ADALAH TEMPAT PENDARATAN SESUDAH BAYAR untuk tagihan
+     * gabungan — `createManualInvoice` mengarahkan `callback_url` ke sini saat
+     * `bundleCount > 1`. Webhook DOKU biasanya mendarat beberapa detik SESUDAH
+     * peneliti dipantulkan kembali, jadi tanpa penyegaran yang ia lihat tepat
+     * setelah membayar adalah dokumen berjudul INVOICE lengkap dengan tombol
+     * "Bayar Sekarang" — undangan membayar dua kali.
+     *
+     * `StatusPage` (visibilitychange) dan `PaymentSuccess` (poll 5 detik)
+     * keduanya sudah punya mekanisme ini sejak lama; halaman pendaratan khusus
+     * grup justru satu-satunya yang tidak. Polanya sengaja disalin dari
+     * `PaymentSuccess`, bukan direka baru.
+     *
+     * Berhenti sendiri begitu SELURUH baris lunas — `paidRef`, bukan state,
+     * supaya interval tidak perlu dipasang ulang tiap render.
+     */
+    useEffect(() => {
+        if (!paymentId) return;
+
+        const allPaid = () =>
+            rowsRef.current.length > 0
+            && rowsRef.current.every((r) => ['completed', 'paid'].includes((r.status || '').toLowerCase()));
+
+        if (allPaid()) return;
+
+        const poll = setInterval(() => {
+            if (allPaid()) { clearInterval(poll); return; }
+            void fetchInvoice({ silent: true });
+        }, 5000);
+
+        // Kembali dari tab DOKU sering lebih cepat daripada detak berikutnya.
+        const onVisible = () => {
+            if (document.visibilityState === 'visible' && !allPaid()) void fetchInvoice({ silent: true });
+        };
+        document.addEventListener('visibilitychange', onVisible);
+
+        return () => {
+            clearInterval(poll);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [paymentId]);
 
     // Set a meaningful document title (used as the filename for "Save as PDF").
@@ -108,9 +155,15 @@ export function InvoicePage() {
         return () => { document.title = prev; };
     }, [data, rows]);
 
-    const fetchInvoice = async () => {
+    /**
+     * `silent` = penyegaran latar: JANGAN mengosongkan layar dan JANGAN
+     * mengubah dokumen yang sudah tampil jadi halaman error kalau jaringan
+     * sesekali gagal. Dokumen yang sudah benar di layar lebih berguna daripada
+     * "Invoice not found" karena satu request meleset.
+     */
+    const fetchInvoice = async ({ silent = false }: { silent?: boolean } = {}) => {
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             const { data: rows, error } = await supabase
                 .from('transactions')
                 .select(`
@@ -146,6 +199,7 @@ export function InvoicePage() {
              */
             setData(rows[0]);
             setRows(rows);
+            rowsRef.current = rows;
 
             // Satu lookup jadwal per baris — tiap bundel punya jendela tayangnya
             // sendiri, dan untuk jadwal ke-2 dst. kuncinya `extend_id`.
@@ -207,9 +261,9 @@ export function InvoicePage() {
             }
         } catch (err: any) {
             console.error('Error fetching invoice:', err);
-            setError('Invoice not found or deleted.');
+            if (!silent) setError('Invoice not found or deleted.');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
@@ -251,6 +305,14 @@ export function InvoicePage() {
     const doc = buildInvoiceDocument(rows.length > 0 ? rows : [data], schedules);
     const isPaid = doc.isPaid;
     const isGroup = doc.bundles.length > 1;
+    /*
+      ⚠️ KEADAAN KETIGA: SEBAGIAN LUNAS. Sebelum ini dokumen hanya mengenal
+      "semua lunas" dan "tidak", jadi grup yang 2 dari 3 pesanannya sudah
+      dibayar dirender identik dengan grup yang nol rupiah masuk — INVOICE
+      bernominal PENUH, lengkap dengan tombol bayar. Peneliti yang sudah
+      membayar Rp 2.220.000 diundang membayar Rp 3.330.000 lagi.
+    */
+    const isPartial = doc.isPartiallyPaid;
     const subtotalValue = doc.subtotal;
     const ppnAmount = doc.ppn;
     const grandTotal = doc.total;
@@ -533,8 +595,18 @@ export function InvoicePage() {
                                             {isGroup && (
                                                 <tr className="print-exact bg-slate-50/70 border-t border-gray-200">
                                                     <td colSpan={3} className="py-2 px-4">
-                                                        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                                            Pesanan {bIdx + 1} dari {doc.bundles.length}
+                                                        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2 flex-wrap">
+                                                            <span>Pesanan {bIdx + 1} dari {doc.bundles.length}</span>
+                                                            {/*
+                                                                Ditampilkan HANYA saat grupnya belum lunas seluruhnya.
+                                                                Pada RECEIPT semua bundel lunas, jadi chip di tiap baris
+                                                                cuma mengulang apa yang sudah dikatakan kop dokumen.
+                                                            */}
+                                                            {!isPaid && bundle.isPaid && (
+                                                                <span className="print-exact inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal">
+                                                                    <CheckCircle2 className="w-3 h-3" /> Lunas
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div className="font-semibold text-gray-900 text-sm mt-0.5">{bundle.title}</div>
                                                         {scheduleText && scheduleText !== 'Belum dijadwalkan' && (
@@ -629,6 +701,24 @@ export function InvoicePage() {
                             <span className="text-xs font-bold uppercase tracking-wider text-blue-100">Total</span>
                             <span className="font-bold text-2xl tabular text-white">{formatCurrency(grandTotal)}</span>
                         </div>
+                        {/*
+                            ⚠️ SISA, BUKAN CUMA TOTAL. Angka yang harus dibayar
+                            peneliti pada grup separuh-lunas adalah `outstanding`;
+                            `grandTotal` di atas tetap ditampilkan karena itulah
+                            nilai dokumen ini — dua angka, dua pertanyaan.
+                        */}
+                        {isPartial && (
+                            <div className="w-full sm:w-[320px] mt-2.5 space-y-1 text-sm">
+                                <div className="flex justify-between items-center text-emerald-700">
+                                    <span className="text-xs font-semibold">Sudah dibayar</span>
+                                    <span className="font-semibold tabular">{formatCurrency(doc.paidTotal)}</span>
+                                </div>
+                                <div className="flex justify-between items-center border-t border-gray-200 pt-1">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Sisa</span>
+                                    <span className="font-bold tabular text-gray-900">{formatCurrency(doc.outstanding)}</span>
+                                </div>
+                            </div>
+                        )}
                         <p className="w-full sm:w-[320px] text-right text-xs italic text-gray-500 mt-2.5 leading-relaxed">
                             Terbilang: {terbilangCapitalized(grandTotal)}
                         </p>
@@ -656,9 +746,19 @@ export function InvoicePage() {
                                 <div>
                                     <p className="font-bold text-gray-900 mb-1.5">Catatan Tagihan</p>
                                     <p className="text-xs text-gray-600 leading-relaxed">
-                                        Silakan selesaikan pembayaran sebelum batas waktu berakhir melalui tautan pembayaran aman di bawah ini.
+                                        {isPartial
+                                            ? `${doc.bundles.filter((b) => b.isPaid).length} dari ${doc.bundles.length} pesanan pada tagihan ini sudah lunas. `
+                                              + 'Sisa pembayarannya diurus tim kami — jangan membayar lewat link lama, karena link itu menagih total penuh.'
+                                            : 'Silakan selesaikan pembayaran sebelum batas waktu berakhir melalui tautan pembayaran aman di bawah ini.'}
                                     </p>
-                                    {data.payment_url && (
+                                    {/*
+                                        ⚠️ TOMBOL DICABUT SAAT SEBAGIAN SUDAH LUNAS, dan itu bukan kehati-hatian
+                                        berlebihan: link DOKU tidak bisa menagih separuh. Membiarkannya berarti
+                                        menawarkan pembayaran Rp 3,33jt kepada orang yang tinggal berutang
+                                        Rp 1,11jt — dan uang yang telanjur masuk lewat situ tidak bisa ditarik
+                                        kembali. Sisanya ditagih lewat tagihan BARU.
+                                    */}
+                                    {data.payment_url && !isPartial && (
                                         <div className="no-print mt-3.5">
                                             <a
                                                 href={data.payment_url}

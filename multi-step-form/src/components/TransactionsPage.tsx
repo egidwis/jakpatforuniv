@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { supabase, cancelInvoice } from '../utils/supabase';
+import { supabase, cancelInvoice, fetchInvoiceGroups } from '../utils/supabase';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import {
 } from './transactions/types';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import { TransactionListRow } from './transactions/TransactionListRow';
+import { buildTxGroupIndex } from './transactions/types';
 import { TransactionDetailSheet } from './transactions/TransactionDetailSheet';
 import { WalletView } from './transactions/WalletView';
 import { WebhookFailuresBanner } from './transactions/WebhookFailuresBanner';
@@ -154,6 +155,16 @@ export function TransactionsPage() {
     });
   }, [transactions, searchTerm, selectedMonth, selectedYear, statusFilter]);
 
+  /**
+   * Tagihan gabungan di dalam daftar ini, dikunci `payment_id`.
+   *
+   * Diturunkan dari SELURUH `transactions` yang dimuat, bukan dari hasil filter:
+   * anggota yang tersaring keluar (mis. filter status) tetap harus ikut
+   * menghitung "3 pesanan", kalau tidak badge-nya berbohong justru saat
+   * daftarnya dipersempit.
+   */
+  const groupIndex = useMemo(() => buildTxGroupIndex(transactions), [transactions]);
+
   const totalRevenue = useMemo(
     () =>
       filteredTransactions
@@ -218,21 +229,38 @@ export function TransactionsPage() {
   /**
    * ⚠️ KATA-KATANYA SENGAJA IDENTIK dengan tab Reservasi Jadwal
    * (`SchedulePaymentTab.handleCancelInvoice`) — aksi yang sama harus berbunyi
-   * sama di permukaan mana pun. Baris ketiga bukan basa-basi hukum: membatalkan
-   * tagihan TIDAK memanggil API pembatalan DOKU, jadi VA yang sudah terbit masih
-   * bisa dibayar dari sisi bank, dan kalau uangnya sungguh masuk webhook
-   * menghidupkannya lagi sebagai lunas. Itu disengaja — uang yang benar-benar
-   * diterima harus selalu menang atas status di layar.
+   * sama di permukaan mana pun. Termasuk cakupannya: untuk TAGIHAN GABUNGAN,
+   * `cancelInvoice()` mematikan seluruh pesanan yang ditanggung `payment_id`
+   * itu (link DOKU tidak bisa dibatalkan separuh), dan halaman ini justru yang
+   * paling mudah salah membacanya — barisnya per transaksi, jadi admin melihat
+   * satu baris dan mengira satu pesanan.
+   *
+   * ⚠️ ASYNC, karena anggota grupnya harus ditanyakan lebih dulu. Dialognya
+   * baru muncul sesudah jawabannya ada: dialog uang yang menyebut cakupan yang
+   * belum diketahui lebih buruk daripada dialog yang telat sepersekian detik.
    */
-  const handleCancelInvoice = (transaction: Transaction) => {
+  const handleCancelInvoice = async (transaction: Transaction) => {
     const paymentId = transaction.payment_id;
+    const group = (await fetchInvoiceGroups([paymentId])).get(paymentId);
+    const isGroup = !!group && group.memberCount > 1;
+
     setPendingCancel({
-      title: 'Batalkan tagihan ini?',
-      highlight: formatIDR(transaction.amount),
+      title: isGroup ? `Batalkan tagihan gabungan ${group!.memberCount} pesanan ini?` : 'Batalkan tagihan ini?',
+      highlight: formatIDR(isGroup ? group!.total : transaction.amount),
       lines: [
+        isGroup && `Tagihan ini menaungi ${group!.memberCount} pesanan, dan SEMUANYA ikut dibatalkan `
+          + `(link DOKU tidak bisa dibatalkan separuh): ${group!.members.map((m) => m.title).join(', ')}.`,
         'Nominal itu berhenti dihitung sebagai piutang, dan jadwalnya bisa ditagih ulang.',
         'Jadwal serta slotnya TIDAK dibatalkan — ini berlingkup tagihan saja.',
-        `Link bayar ${paymentId} yang sudah terlanjur dikirim masih bisa dibayar dari sisi bank. Kalau uangnya sungguh masuk, tagihan ini kembali jadi lunas.`,
+        /*
+          Kalimat lama berbunyi "kalau uangnya sungguh masuk, tagihan ini
+          kembali jadi lunas". Itu sudah TIDAK benar sejak `paid_on_dead_bill`
+          (sql/80): uang ke tagihan mati dicatat, jadwalnya TIDAK digerakkan,
+          dan barisnya masuk antrean admin. Membiarkannya berarti menjanjikan
+          pemulihan otomatis yang sengaja dicabut.
+        */
+        `Link bayar ${paymentId} yang sudah terlanjur dikirim MASIH BISA DIBAYAR dari sisi bank sampai masa berlakunya habis.`,
+        'Kalau uangnya sungguh masuk, uang itu dicatat tapi jadwalnya TIDAK ikut bergerak — kartunya muncul di antrean webhook untuk diputuskan admin. Beri tahu penelitinya jangan membayar link yang lama.',
       ],
       confirmLabel: 'Ya, Batalkan Tagihan',
       tone: 'danger',
@@ -544,6 +572,7 @@ export function TransactionsPage() {
                       transaction={transaction}
                       onOpen={setOpenTransactionId}
                       active={isXl && transaction.id === openTransactionId}
+                      group={transaction.payment_id ? groupIndex.get(transaction.payment_id) : undefined}
                     />
                   ))}
                 </div>
@@ -563,6 +592,7 @@ export function TransactionsPage() {
               transaction={openTransaction}
               onOpenChange={(open) => !open && setOpenTransactionId(null)}
               onCancelInvoice={canCancelInvoice(openTransaction) ? handleCancelInvoice : undefined}
+              group={openTransaction.payment_id ? groupIndex.get(openTransaction.payment_id) : undefined}
             />
           )}
         </div>
@@ -578,6 +608,7 @@ export function TransactionsPage() {
           onCancelInvoice={
             openTransaction && canCancelInvoice(openTransaction) ? handleCancelInvoice : undefined
           }
+          group={openTransaction?.payment_id ? groupIndex.get(openTransaction.payment_id) : undefined}
         />
       )}
     </div>

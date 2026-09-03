@@ -6,7 +6,7 @@ import {
   rebookSlotForSubmission,
   fetchScheduleBilling,
 } from '../utils/supabase';
-import { createPayment } from '../utils/payment';
+import { createPayment, GroupBillError } from '../utils/payment';
 import { toast } from 'sonner';
 import {
   CreditCard,
@@ -321,6 +321,23 @@ export function PaymentCheckoutPage() {
         });
         if (!cancelled) await loadSubmission();
       } catch (e) {
+        /*
+          ⚠️ 409 TAGIHAN GABUNGAN BUKAN KEGAGALAN — ia jawaban yang benar.
+          Pesanan ini sudah ditanggung satu link bersama pesanan lain, jadi
+          server menolak mencetak yang kedua (A3). Kalau ditelan seperti error
+          biasa, halaman ini berakhir tanpa link bayar sama sekali dan peneliti
+          terdampar: tagihannya ADA, cuma tidak terlihat dari sini.
+
+          `fetchScheduleBilling` di `loadSubmission` seharusnya sudah
+          menemukannya lewat `openInvoice`; kalau ternyata tidak (mis. barisnya
+          milik jadwal lain di order yang sama), link dari 409 itu yang dipakai.
+        */
+        if (e instanceof GroupBillError && e.paymentUrl && !cancelled) {
+          console.info('[payment] Order ini ditanggung tagihan gabungan; memakai link grupnya.');
+          setLivePayUrl(e.paymentUrl);
+          if (e.paymentId) setInvoicePaymentId(e.paymentId);
+          return;
+        }
         // Sengaja senyap — tombol bayar masih jadi jaring pengamannya.
         console.warn('[payment] Gagal menerbitkan tagihan otomatis:', e);
       }

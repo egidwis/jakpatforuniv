@@ -3,7 +3,9 @@ import {
   transactionStatusChip,
   matchesStatusFilter,
   statusFilterLabel,
+  buildTxGroupIndex,
   STATUS_FILTER_IDS,
+  type Transaction,
 } from './types';
 
 /**
@@ -97,5 +99,58 @@ describe('daftar filter', () => {
       expect(statusFilterLabel(id)).toBeTruthy();
       expect(statusFilterLabel(id)).not.toBe('—');
     }
+  });
+});
+
+describe('buildTxGroupIndex', () => {
+  /*
+    Halaman Transaksi memajang SATU BARIS PER PESANAN, jadi tagihan gabungan
+    tampil sebagai tiga baris @Rp 1,11jt tanpa satu pun tanda bahwa ketiganya
+    satu transfer Rp 3,33jt. Nominal barisnya benar; yang hilang adalah
+    kaitannya — dan admin yang mencocokkan mutasi bank mencari tiga masukan yang
+    tidak pernah ada.
+
+    Sengaja diturunkan dari daftar yang sudah dimuat: halaman ini tidak boleh
+    memakai `.in('payment_id', [...])` (lihat catatan di `fetchTransactions`).
+  */
+  const tx = (o: Partial<Transaction>): Transaction => ({
+    id: 't1', payment_id: 'JFU-INV-abc', payment_method: 'doku', amount: 1_110_000,
+    status: 'pending', payment_url: 'https://pay/x', created_at: '2026-09-03T10:00:00Z',
+    updated_at: '2026-09-03T10:00:00Z', form_submission_id: 'o1', ...o,
+  } as Transaction);
+
+  it('mengelompokkan baris ber-payment_id sama, dengan Σ porsi sebagai total', () => {
+    const idx = buildTxGroupIndex([
+      tx({ id: 't1', form_submission_id: 'o1' }),
+      tx({ id: 't2', form_submission_id: 'o2' }),
+      tx({ id: 't3', form_submission_id: 'o3' }),
+    ]);
+    const g = idx.get('JFU-INV-abc')!;
+
+    expect(g.count).toBe(3);
+    expect(g.total).toBe(3_330_000);
+  });
+
+  it('penomorannya stabil — urut lahir, lalu id', () => {
+    const idx = buildTxGroupIndex([
+      tx({ id: 'tc', created_at: '2026-09-03T10:00:02Z' }),
+      tx({ id: 'ta', created_at: '2026-09-03T10:00:01Z' }),
+      tx({ id: 'tb', created_at: '2026-09-03T10:00:01Z' }),
+    ]);
+    expect(idx.get('JFU-INV-abc')!.memberIds).toEqual(['ta', 'tb', 'tc']);
+  });
+
+  it('tagihan biasa tetap berjumlah satu — badge grup tidak boleh muncul', () => {
+    const idx = buildTxGroupIndex([tx({ id: 't1' }), tx({ id: 't2', payment_id: 'JFU-INV-lain' })]);
+    expect(idx.get('JFU-INV-abc')!.count).toBe(1);
+    expect(idx.get('JFU-INV-lain')!.count).toBe(1);
+  });
+
+  it('baris tanpa payment_id diabaikan, bukan disatukan jadi satu grup', () => {
+    const idx = buildTxGroupIndex([
+      tx({ id: 't1', payment_id: '' as unknown as string }),
+      tx({ id: 't2', payment_id: '' as unknown as string }),
+    ]);
+    expect(idx.size).toBe(0);
   });
 });

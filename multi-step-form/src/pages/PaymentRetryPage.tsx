@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { getFormSubmissionById, releaseExpiredSlot } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
-import { createPayment } from '../utils/payment';
+import { createPayment, GroupBillError } from '../utils/payment';
 import { ErrorPage } from '../components/ErrorPage';
 
 export default function PaymentRetryPage() {
@@ -11,6 +11,11 @@ export default function PaymentRetryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  /**
+   * Terisi kalau pesanan ini ternyata sudah ditanggung tagihan gabungan.
+   * Selama ia terisi, tombol "bayar ulang" DICABUT — lihat catatan di `catch`.
+   */
+  const [groupBill, setGroupBill] = useState<GroupBillError | null>(null);
 
   useEffect(() => {
     // Ambil ID dari URL query parameter
@@ -127,6 +132,24 @@ export default function PaymentRetryPage() {
     } catch (error) {
       console.error('Error saat memproses pembayaran ulang:', error);
       toast.dismiss(loadingToast);
+
+      /*
+        ⚠️ TAGIHAN GABUNGAN: JANGAN TAWARKAN "COBA LAGI".
+        Server sudah memutuskan tidak akan pernah mencetak tagihan kedua untuk
+        pesanan ini (A3) — mengulang hanya menghasilkan 409 yang sama. Yang
+        dibutuhkan peneliti justru link yang SUDAH ada, plus alasan kenapa
+        nominalnya lebih besar daripada harga satu pesanan.
+
+        Halaman ini publik & tanpa autentikasi (dibuka dari email), jadi
+        tujuannya link DOKU-nya langsung — bukan `/invoices/<payment_id>` yang
+        ada di balik PrivateRoute.
+      */
+      if (error instanceof GroupBillError) {
+        setGroupBill(error);
+        toast.warning(error.message, { duration: 10000 });
+        return;
+      }
+
       toast.error('Terjadi kesalahan saat memproses pembayaran. Silakan coba lagi.');
     } finally {
       setIsProcessing(false);
@@ -170,22 +193,58 @@ export default function PaymentRetryPage() {
               </ul>
             </div>
 
-            <p className="text-gray-600 mb-6 text-center">
-              Silakan klik tombol di bawah untuk mencoba pembayaran lagi.
-            </p>
+            {groupBill ? (
+              /*
+                Nominal grup DISEBUT, dan itu syarat kejujurannya. Blok "Detail
+                Survey" di atas memajang `total_cost` pesanan INI; tanpa kalimat
+                di bawah, tombolnya membuka halaman DOKU bernominal lain tanpa
+                satu pun penjelasan — cacat A1 yang sama, cuma pindah halaman.
+              */
+              <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-2">
+                <p className="font-semibold">Pesanan ini sudah termasuk tagihan gabungan.</p>
+                <p className="leading-relaxed">
+                  {groupBill.memberCount > 1
+                    ? <>Satu tagihan menanggung <strong>{groupBill.memberCount} pesanan</strong> sekaligus
+                        {groupBill.total > 0 && <>, total <strong>Rp {new Intl.NumberFormat('id-ID').format(groupBill.total)}</strong></>}.
+                        Membayarnya sekali melunasi semuanya.</>
+                    : <>Bayar lewat link tagihan yang sudah ada — jangan membuat tagihan baru.</>}
+                </p>
+                <p className="text-xs text-amber-800">
+                  Kami tidak menerbitkan tagihan kedua untuk pesanan yang sama: dua link hidup berarti
+                  keduanya bisa terbayar.
+                </p>
+              </div>
+            ) : (
+              <p className="text-gray-600 mb-6 text-center">
+                Silakan klik tombol di bawah untuk mencoba pembayaran lagi.
+              </p>
+            )}
 
             <div className="flex justify-center space-x-4">
               <a href="/" className="button button-secondary">
                 Kembali ke Beranda
               </a>
 
-              <button
-                onClick={handleRetryPayment}
-                disabled={isProcessing}
-                className={`button ${isProcessing ? 'button-disabled' : 'button-primary'}`}
-              >
-                {isProcessing ? 'Memproses...' : 'Bayar Sekarang'}
-              </button>
+              {groupBill?.paymentUrl ? (
+                <a
+                  href={groupBill.paymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="button button-primary"
+                >
+                  Buka Tagihan Gabungan
+                </a>
+              ) : (
+                <button
+                  onClick={handleRetryPayment}
+                  /* Tombolnya dicabut, bukan sekadar gagal berulang: server sudah
+                     memutuskan permintaan ini tidak akan pernah dikabulkan. */
+                  disabled={isProcessing || !!groupBill}
+                  className={`button ${isProcessing || groupBill ? 'button-disabled' : 'button-primary'}`}
+                >
+                  {isProcessing ? 'Memproses...' : 'Bayar Sekarang'}
+                </button>
+              )}
             </div>
           </div>
         )}

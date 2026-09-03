@@ -858,6 +858,10 @@ const assertScheduleRowTouched = (rows: unknown[] | null, entry: AdScheduleEntry
  *   ordinal 1  → form_submissions.payment_status='paid', submission_status='paid'
  *   ordinal ≥2 → form_submissions_extend.payment_status='paid',
  *                submission_status='scheduled'
+ *              + survey_pages.requires_banner_update=true kalau hadiahnya berubah
+ *                (`flagStaleBannerForExtend`, padanan STEP 5 webhook — sampai
+ *                2026-09-03 efek inilah yang membuat kalimat "IDENTIK" di atas
+ *                tidak benar)
  *
  * `'scheduled'` untuk perpanjangan BUKAN pilihan bebas: `cron_activate_extends()`
  * (sql/36) hanya mengangkat baris `scheduled` + `paid` jadi `live`. Menulis
@@ -906,6 +910,7 @@ export const markScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Schedu
       .select('id');
     if (error) throw error;
     assertScheduleRowTouched(data, entry);
+    await flagStaleBannerForExtend(entry);
   } else {
     const { data, error } = await supabase
       .from('form_submissions')
@@ -918,6 +923,59 @@ export const markScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Schedu
 
   return { invoices: invRows?.length || 0, transactions: txnRows?.length || 0 };
 };
+
+/**
+ * Tandai banner halaman iklan sebagai BASI — padanan STEP 5 di webhook DOKU.
+ *
+ * ⚠️ TANPA INI, KLAIM DI KEPALA `markScheduleAsPaid` TIDAK BENAR. Docblock-nya
+ * berbunyi "efek sampingnya sengaja dibuat IDENTIK dengan jalur webhook DOKU",
+ * padahal satu efek tidak pernah ikut: `functions/api/doku/webhook.js` (STEP 5,
+ * cabang extend) menyalakan `requires_banner_update` ketika perpanjangannya
+ * membuka periode hadiah baru atau menambah hadiah — pelunasan manual tidak.
+ *
+ * Akibat kalau dilewatkan: `cron_activate_extends()` memindahkan jendela publish
+ * halaman ke jadwal baru dan menyalakannya `live`, lalu `/api/surveys`
+ * menyajikan banner LAMA ke app Jakpat — iklan yang tayang menjanjikan nominal
+ * hadiah periode sebelumnya, dan tidak ada satu pun permukaan yang memberi tahu
+ * siapa pun. Chip "Banner perlu diupdate" di `PageDetailDrawer` adalah
+ * SATU-SATUNYA pembacanya; ia tidak menggerakkan cron, API, atau gerbang aksi
+ * mana pun.
+ *
+ * ⚠️ Nol perpanjangan pernah dilunasi manual di produksi (9 lunas, semuanya
+ * lewat gateway per 2026-09-03) — dan itu BUKAN bukti risikonya kecil: jadwal
+ * ke-2 memang belum dirilis ke peneliti, settingnya masih di dashboard admin.
+ * Begitu tagihan gabungan dipakai sebagaimana mestinya (peneliti transfer di
+ * luar DOKU, admin melunasi seluruh batch), jalur inilah yang jadi jalur utama.
+ *
+ * ⚠️ MENELAN GALATNYA SENDIRI, sama dengan webhook. Ini penanda untuk mata
+ * admin; membiarkannya menggagalkan pelunasan yang UANGNYA SUDAH DITERIMA
+ * adalah pertukaran yang salah arah. Nol baris juga sah — order Kilat tidak
+ * pernah punya halaman (guard `ensure_survey_page`, sql/42).
+ *
+ * Syaratnya dibaca dari `entry`, bukan di-SELECT ulang seperti webhook: di sana
+ * yang ada di tangan hanya `extend_id`, di sini barisnya sudah utuh.
+ */
+async function flagStaleBannerForExtend(entry: AdScheduleEntry): Promise<void> {
+  const rewardChanged = entry.isNewPeriod || (entry.additionalPrizePerWinner ?? 0) > 0;
+  if (!rewardChanged) return;
+
+  try {
+    const { data, error } = await supabase
+      .from('survey_pages')
+      .update({ requires_banner_update: true })
+      .eq('submission_id', entry.submissionId)
+      .select('id');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      console.info(
+        `[markScheduleAsPaid] Jadwal #${entry.bookingId} membuka hadiah baru, tapi order `
+        + `${entry.submissionId} belum punya halaman iklan — penanda banner basi dilewati.`,
+      );
+    }
+  } catch (e) {
+    console.error('[markScheduleAsPaid] Gagal menandai banner basi (pelunasan TETAP sah):', e);
+  }
+}
 
 /**
  * Batalkan pelunasan manual — invers `markScheduleAsPaid()`.
@@ -987,7 +1045,8 @@ export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Sche
 };
 
 /**
- * Batalkan SATU tagihan — bukan jadwalnya, bukan pembayarannya.
+ * Batalkan SATU TAGIHAN (= satu `payment_id`, N pesanan kalau ia gabungan) —
+ * bukan jadwalnya, bukan pembayarannya.
  *
  * Sebelum ini tidak ada jalan keluar untuk tagihan yang salah terbit: ia
  * menggantung selamanya. Akibatnya terukur di produksi saat fitur ini dibuat —
@@ -1004,11 +1063,18 @@ export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Sche
  * pembatalan, melainkan REFUND — dan refund diurus finance di luar sistem
  * (keputusan pemilik produk 2026-08-09).
  *
- * ⚠️ INI TIDAK MEMATIKAN LINK DOKU. Kami tidak memanggil API pembatalan DOKU,
- * jadi VA yang sudah terbit masih bisa dibayar dari sisi bank. Kalau uangnya
- * sungguh datang, webhook tetap mencatatnya dan tagihan ini hidup lagi sebagai
- * lunas. Itu DISENGAJA: uang yang benar-benar diterima harus selalu menang
- * atas status di layar — kebalikannya berarti kehilangan pembayaran.
+ * ⚠️ INI MEMATIKAN LINK DOKU LEBIH DULU (`killDokuLink`, sejak sql/84) — dan
+ * kalimat ini dulu berbunyi sebaliknya. Panggilannya boleh GAGAL tanpa menahan
+ * pembatalan; `dokuCancelled: false` yang memberi tahu admin bahwa VA-nya masih
+ * bisa dibayar dari sisi bank. Kalau uangnya tetap datang, penjaga
+ * `paid_on_dead_bill` (sql/80) mencatatnya TANPA menghidupkan jadwalnya —
+ * uang yang diterima tidak pernah hilang, tapi ia juga tidak lagi diam-diam
+ * memindahkan jadwal yang sudah dibatalkan.
+ *
+ * ⚠️ CAKUPANNYA SELURUH `payment_id`, jadi untuk tagihan gabungan ia mematikan
+ * SEMUA anggotanya sekaligus. Itu satu-satunya perilaku yang mungkin — link
+ * DOKU tidak bisa dibatalkan separuh — tapi pemanggil WAJIB mengatakannya di
+ * dialog. Pakai `fetchInvoiceGroups()` untuk menyebut berapa pesanan yang ikut.
  *
  * Mengembalikan jumlah baris yang benar-benar berubah. ⚠️ Jangan buang nilai
  * itu: `.update()` tanpa `.select()` TIDAK melempar error saat RLS menyaring
@@ -1118,6 +1184,327 @@ export const cancelInvoice = async (
     dokuCancelled: doku.ok,
     dokuReason: doku.reason,
   };
+};
+
+/**
+ * ── TAGIHAN GABUNGAN (satu `payment_id`, N pesanan) ────────────────────────
+ *
+ * ⚠️ `schedule_billing_bulk()` TIDAK BISA MENJAWAB INI, dan itu bukan detail
+ * implementasi. RPC itu dijangkar ke SATU `submission_id`, sementara anggota
+ * sebuah tagihan gabungan justru tersebar di ORDER-ORDER YANG BERBEDA — jadi
+ * menurunkan "berapa pesanan yang ditanggung tagihan ini" dari hasilnya selalu
+ * menjawab 1, tepat pada kasus yang pertanyaannya diajukan.
+ *
+ * Karena itu jumlah anggotanya ditanyakan langsung ke `invoices`, dikunci
+ * `payment_id`. Aman untuk kedua sisi: RLS `Users Select Invoices` menyaring
+ * lewat `form_submissions.auth_user_id`, dan satu grup selalu dijangkar ke SATU
+ * peneliti (`distinctAccounts` di `bulkInvoiceCandidates.ts`) — jadi peneliti
+ * melihat seluruh anggotanya, dan tidak pernah milik orang lain.
+ */
+export interface InvoiceGroupMember {
+  paymentId: string;
+  /** `ad_schedules.id` — null hanya untuk baris warisan pra-sql/51. */
+  scheduleId: string | null;
+  /**
+   * `ad_schedules.source_id` — KUNCI YANG DIPAKAI KARTU PENELITI (`sourceId` di
+   * `airingPeriods.ts` / `SchedulePaymentMap`). Tanpa ini kartu tidak punya cara
+   * mengenali dirinya sendiri di dalam daftar anggota, dan "siapa yang memegang
+   * tombol bayar" jadi tebakan.
+   */
+  sourceId: string | null;
+  submissionId: string | null;
+  bookingId: string | null;
+  /** Judul survei yang ditanggung baris ini; '(tanpa judul)' kalau kosong. */
+  title: string;
+  /** Porsi baris ini, BUKAN total grup. */
+  amount: number;
+  status: string;
+  isPaid: boolean;
+  ordinal: number | null;
+  startDate: string | null;
+}
+
+export interface InvoiceGroup {
+  paymentId: string;
+  /** Urut tanggal tayang paling awal dulu — anggota pertama adalah "lead". */
+  members: InvoiceGroupMember[];
+  memberCount: number;
+  /**
+   * Σ porsi tiap anggota. ⚠️ JANGAN dihitung dari satu baris dikali N: PPN 11%
+   * dibulatkan per baris, jadi `Σ round(sᵢ×0,11) ≠ round(Σsᵢ×0,11)`.
+   */
+  total: number;
+  allPaid: boolean;
+}
+
+const PAID_ROW_STATUSES = ['paid', 'completed'];
+
+/**
+ * Anggota tiap tagihan yang disebut `paymentIds`.
+ *
+ * Selalu mengembalikan entri untuk `payment_id` yang punya baris — termasuk
+ * yang beranggota SATU. Pemanggil yang memutuskan (`memberCount > 1`), supaya
+ * tidak ada dua definisi "ini grup atau bukan" yang bisa menyimpang.
+ *
+ * Kegagalannya tidak melempar: peta kosong berarti "tidak ada yang diketahui
+ * soal grup", dan seluruh permukaan jatuh ke perilaku per-jadwal seperti
+ * sebelum fitur ini ada. Layar tidak boleh gelap gara-gara hiasan.
+ */
+export const fetchInvoiceGroups = async (
+  paymentIds: (string | null | undefined)[],
+): Promise<Map<string, InvoiceGroup>> => {
+  const ids = Array.from(new Set(paymentIds.filter((v): v is string => !!v)));
+  const out = new Map<string, InvoiceGroup>();
+  if (ids.length === 0) return out;
+
+  try {
+    const { data: rows, error } = await supabase
+      .from('invoices')
+      .select('payment_id, schedule_id, form_submission_id, amount, status')
+      .in('payment_id', ids);
+    if (error) throw error;
+
+    const invRows = (rows || []) as any[];
+    if (invRows.length === 0) return out;
+
+    const scheduleIds = Array.from(
+      new Set(invRows.map((r) => r.schedule_id).filter((v): v is string => !!v)),
+    );
+    const schedById = new Map<string, any>();
+    if (scheduleIds.length > 0) {
+      const { data: scheds } = await supabase
+        .from('ad_schedules')
+        .select('id, submission_id, source_id, ordinal, booking_id, start_date')
+        .in('id', scheduleIds);
+      for (const s of scheds || []) schedById.set(s.id, s);
+    }
+
+    const submissionIds = Array.from(new Set([
+      ...invRows.map((r) => r.form_submission_id),
+      ...Array.from(schedById.values()).map((s) => s.submission_id),
+    ].filter((v): v is string => !!v)));
+    const titleById = new Map<string, string>();
+    if (submissionIds.length > 0) {
+      const { data: subs } = await supabase
+        .from('form_submissions')
+        .select('id, title')
+        .in('id', submissionIds);
+      for (const s of subs || []) titleById.set(s.id, s.title || '');
+    }
+
+    const byPayment = new Map<string, InvoiceGroupMember[]>();
+    for (const r of invRows) {
+      const sched = r.schedule_id ? schedById.get(r.schedule_id) : null;
+      const submissionId = sched?.submission_id ?? r.form_submission_id ?? null;
+      const status = String(r.status || '');
+      const member: InvoiceGroupMember = {
+        paymentId: r.payment_id,
+        scheduleId: r.schedule_id ?? null,
+        sourceId: sched?.source_id ?? r.form_submission_id ?? null,
+        submissionId,
+        bookingId: sched?.booking_id ?? null,
+        title: (submissionId ? titleById.get(submissionId) : '') || '(tanpa judul)',
+        amount: Number(r.amount || 0),
+        status,
+        isPaid: PAID_ROW_STATUSES.includes(status.toLowerCase()),
+        ordinal: sched?.ordinal ?? null,
+        startDate: sched?.start_date ?? null,
+      };
+      const list = byPayment.get(member.paymentId);
+      if (list) list.push(member);
+      else byPayment.set(member.paymentId, [member]);
+    }
+
+    for (const [paymentId, members] of byPayment) {
+      /*
+        Urutan = tanggal tayang paling awal dulu, dan ini BUKAN kosmetik.
+        Anggota itulah yang memegang tombol bayar di dashboard peneliti, dan
+        jadwal itu pula yang mematikan link duluan (`invoiceLifetimeMinutes`) —
+        jadi kartu yang menagih adalah kartu dengan tenggat paling ketat.
+        Yang tak bertanggal ditaruh di belakang, bukan dianggap paling awal.
+      */
+      members.sort((a, b) => {
+        const at = a.startDate ? new Date(a.startDate).getTime() : Number.MAX_SAFE_INTEGER;
+        const bt = b.startDate ? new Date(b.startDate).getTime() : Number.MAX_SAFE_INTEGER;
+        if (at !== bt) return at - bt;
+        return (a.ordinal ?? 0) - (b.ordinal ?? 0);
+      });
+      out.set(paymentId, {
+        paymentId,
+        members,
+        memberCount: members.length,
+        total: members.reduce((sum, m) => sum + m.amount, 0),
+        allPaid: members.length > 0 && members.every((m) => m.isPaid),
+      });
+    }
+    return out;
+  } catch (e) {
+    console.error('[fetchInvoiceGroups] gagal memuat anggota tagihan gabungan:', e);
+    return out;
+  }
+};
+
+/** Hasil pelunasan manual satu tagihan gabungan — per anggota, bukan borongan. */
+export interface GroupSettleResult {
+  /** Anggota yang benar-benar jadi lunas. */
+  settled: { bookingId: string | null; title: string }[];
+  /** Anggota yang gagal, beserta alasan DB-nya. */
+  failed: { bookingId: string | null; title: string; reason: string }[];
+  /** Baris tagihan yang ikut ditandai, dijumlahkan seluruh anggota. */
+  touched: ScheduleBillingTouch;
+  dokuCancelled: boolean;
+  dokuReason: string | null;
+}
+
+/**
+ * "Tandai Lunas" berskala GRUP — pelunasan manual satu tagihan gabungan.
+ *
+ * ⚠️ CAKUPANNYA, BUKAN AKSINYA, YANG DULU SALAH. `markScheduleAsPaid()`
+ * menyaring `schedule_id`, jadi memakainya pada anggota grup membalik SATU
+ * baris jadi lunas sementara link DOKU-nya tetap menagih total penuh. Tidak ada
+ * lapisan yang menangkapnya: webhook STEP 0 menjumlahkan kolom `amount` (yang
+ * tidak berubah oleh pembalikan status) sehingga tetap cocok, dan STEP 0b tidak
+ * menyala karena `paid` bukan status mati. Ujungnya porsi yang sama dibayar dua
+ * kali, dalam uang sungguhan, tanpa satu pun tanda di layar mana pun.
+ *
+ * ⚠️ URUTANNYA MENGIKAT — DOKU DULU, BARU DATABASE. Sama dengan `cancelInvoice`:
+ * kalau dibalik, ada jendela ketika baris kita sudah `paid` sementara link-nya
+ * masih hidup, dan justru di jendela itu peneliti yang sedang membuka halaman
+ * bayar akan membayarnya. Kegagalan mematikan link TIDAK menahan pelunasan —
+ * dilaporkan lewat nilai balik (`dokuCancelled`), kontrak yang sama.
+ *
+ * ⚠️ LOOP-NYA TIDAK TRANSAKSIONAL. `assertScheduleRowTouched` melempar pada nol
+ * baris (mis. admin selain `product@jakpat.net` yang ditolak
+ * `guard_extend_payment_columns`, sql/33), jadi 3 dari 4 anggota bisa berhasil.
+ * Pemanggil WAJIB melaporkan angkanya — jangan pernah mengklaim sukses borongan.
+ */
+export const settleGroupAsPaid = async (paymentId: string): Promise<GroupSettleResult> => {
+  const groups = await fetchInvoiceGroups([paymentId]);
+  const group = groups.get(paymentId);
+  if (!group || group.memberCount === 0) {
+    throw new Error(`Tagihan ${paymentId} tidak punya baris anggota — tidak ada yang bisa dilunasi.`);
+  }
+
+  const doku = await killDokuLink(paymentId);
+
+  // Satu pengambilan untuk seluruh anggota, lalu dicocokkan lewat `id` jadwal.
+  // `markScheduleAsPaid` menuntut entry yang UTUH (ia membaca `isExtension`,
+  // `sourceId`, `bookingId`) — merakit bentuk mirip-entry di sini berarti
+  // menyalin aturan ordinal-1-vs-ordinal-≥2 yang justru tidak boleh disalin.
+  const submissionIds = Array.from(
+    new Set(group.members.map((m) => m.submissionId).filter((v): v is string => !!v)),
+  );
+  const entries = await fetchAdSchedules(submissionIds);
+  const entryById = new Map(entries.map((e) => [e.id, e]));
+
+  const result: GroupSettleResult = {
+    settled: [],
+    failed: [],
+    touched: { invoices: 0, transactions: 0 },
+    dokuCancelled: doku.ok,
+    dokuReason: doku.reason,
+  };
+
+  for (const member of group.members) {
+    const entry = member.scheduleId ? entryById.get(member.scheduleId) : undefined;
+    if (!entry) {
+      result.failed.push({
+        bookingId: member.bookingId,
+        title: member.title,
+        reason: 'baris jadwalnya tidak ditemukan',
+      });
+      continue;
+    }
+    try {
+      const touched = await markScheduleAsPaid(entry);
+      result.touched.invoices += touched.invoices;
+      result.touched.transactions += touched.transactions;
+      result.settled.push({ bookingId: entry.bookingId, title: member.title });
+    } catch (err: any) {
+      result.failed.push({
+        bookingId: entry.bookingId,
+        title: member.title,
+        reason: err?.message || 'gagal tanpa keterangan',
+      });
+    }
+  }
+
+  return result;
+};
+
+/** Hasil pembalikan pelunasan satu tagihan gabungan — per anggota, bukan borongan. */
+export interface GroupUnsettleResult {
+  /** Anggota yang benar-benar kembali "menunggu bayar". */
+  reverted: { bookingId: string | null; title: string }[];
+  failed: { bookingId: string | null; title: string; reason: string }[];
+  touched: ScheduleBillingTouch;
+}
+
+/**
+ * "Tandai Belum Lunas" berskala GRUP — invers `settleGroupAsPaid()`.
+ *
+ * ⚠️ CACAT CERMIN B2, DAN IA LAHIR DARI PERBAIKANNYA. `settleGroupAsPaid`
+ * menulis `payment_channel = 'MANUAL_VERIFIED'` di tiap baris — dan justru nilai
+ * itulah gerbang yang memunculkan "Tandai Belum Lunas" di kartu. Jadi sesudah
+ * satu grup dilunasi, tiap anggota menawarkan pembalikan SENDIRI-SENDIRI, dan
+ * `unmarkScheduleAsPaid()` menyaring `schedule_id`. Membalik satu anggota
+ * memecah grup jadi separuh-lunas: dokumen `/invoices/<payment_id>` berhenti
+ * jadi RECEIPT dan kembali jadi INVOICE **bernominal penuh** — untuk pesanan
+ * yang uangnya sudah diterima.
+ *
+ * ⚠️ TIDAK ADA PANGGILAN DOKU DI SINI, DAN ITU BUKAN KELALAIAN. Link-nya sudah
+ * dimatikan saat grup dilunasi (`killDokuLink` di `settleGroupAsPaid`), dan API
+ * DOKU tidak punya "batalkan pembatalan". Membalik status di sisi kita TIDAK
+ * menghidupkan kembali link bayarnya — pemanggil WAJIB mengatakan itu di dialog,
+ * karena langkah berikutnya adalah menerbitkan tagihan BARU, bukan mengirim
+ * ulang link lama.
+ *
+ * Sama seperti settle: loopnya tidak transaksional, jadi laporannya per anggota.
+ */
+export const unsettleGroupAsPaid = async (paymentId: string): Promise<GroupUnsettleResult> => {
+  const groups = await fetchInvoiceGroups([paymentId]);
+  const group = groups.get(paymentId);
+  if (!group || group.memberCount === 0) {
+    throw new Error(`Tagihan ${paymentId} tidak punya baris anggota — tidak ada yang bisa dibalik.`);
+  }
+
+  const submissionIds = Array.from(
+    new Set(group.members.map((m) => m.submissionId).filter((v): v is string => !!v)),
+  );
+  const entries = await fetchAdSchedules(submissionIds);
+  const entryById = new Map(entries.map((e) => [e.id, e]));
+
+  const result: GroupUnsettleResult = {
+    reverted: [],
+    failed: [],
+    touched: { invoices: 0, transactions: 0 },
+  };
+
+  for (const member of group.members) {
+    const entry = member.scheduleId ? entryById.get(member.scheduleId) : undefined;
+    if (!entry) {
+      result.failed.push({
+        bookingId: member.bookingId,
+        title: member.title,
+        reason: 'baris jadwalnya tidak ditemukan',
+      });
+      continue;
+    }
+    try {
+      const touched = await unmarkScheduleAsPaid(entry);
+      result.touched.invoices += touched.invoices;
+      result.touched.transactions += touched.transactions;
+      result.reverted.push({ bookingId: entry.bookingId, title: member.title });
+    } catch (err: any) {
+      result.failed.push({
+        bookingId: entry.bookingId,
+        title: member.title,
+        reason: err?.message || 'gagal tanpa keterangan',
+      });
+    }
+  }
+
+  return result;
 };
 
 // Fungsi untuk update status form
@@ -2937,6 +3324,13 @@ export const cancelSchedule = async (entry: {
   sourceId: string;
   isExtension: boolean;
   paymentStatus: string | null;
+  /**
+   * `ad_schedules.id`. Opsional demi pemanggil lama, tapi TANPA-nya blok
+   * `invoices` di bawah tidak bisa membedakan tagihan jadwal ini dari anggota
+   * lain sebuah tagihan gabungan — lihat catatannya di sana. Seluruh pemanggil
+   * hari ini mengoper `AdScheduleEntry` utuh, jadi ia selalu ada.
+   */
+  id?: string;
 }) => {
   // Penjaga yang sama dengan releaseExpiredSlot: yang sudah lunas tidak
   // pernah dilepas dari sini, apa pun yang diklik admin.
@@ -3033,7 +3427,19 @@ export const cancelSchedule = async (entry: {
     const { error } = await supabase
       .from('transactions')
       .update({ status: 'expired', updated_at: new Date().toISOString() })
-      .in('id', mine.map((t) => t.id));
+      .in('id', mine.map((t) => t.id))
+      /*
+        ⚠️ `.eq('status','pending')` MENGULANG SYARAT SELECT DI ATAS, DAN ITU
+        BUKAN KEMUBAZIRAN. Antara SELECT dan UPDATE ini ada jendela nyata:
+        webhook DOKU boleh mendarat di sela keduanya dan membalik barisnya jadi
+        `completed`. Tanpa penjaga ini, pembatalan jadwal menimpanya kembali
+        jadi `expired` — uang yang sungguh diterima kalah oleh status di layar,
+        persis kebalikan dari aturan yang dipegang seluruh berkas ini.
+
+        Blok `invoices` di bawah sudah memakai penjaga yang sama sejak awal;
+        asimetri dalam satu fungsi yang sama adalah kelalaian, bukan desain.
+      */
+      .eq('status', 'pending');
     if (error) throw error;
   }
 
@@ -3051,11 +3457,28 @@ export const cancelSchedule = async (entry: {
       .from('transactions').select('payment_id').in('id', mine.map((t) => t.id));
     const paymentIds = (pids || []).map((r: any) => r.payment_id).filter(Boolean);
     if (paymentIds.length > 0) {
-      const { error } = await supabase
+      const q = supabase
         .from('invoices')
         .update({ status: 'expired' })
         .in('payment_id', paymentIds)
         .eq('status', 'pending');
+        /*
+          ⚠️ `payment_id` SAJA TIDAK LAGI BERARTI "TAGIHAN JADWAL INI".
+          Sejak tagihan gabungan, satu `payment_id` boleh menaungi N pesanan —
+          jadi filter lama mematikan baris invoice milik pesanan LAIN sementara
+          baris `transactions` mereka (yang disaring `mine` di atas) tetap
+          `pending`. Satu tagihan hidup di dua tabel; mematikan separuhnya
+          meninggalkan grup dalam keadaan yang tidak bisa dijelaskan layar mana
+          pun.
+
+          `schedule_id` NULL sengaja ikut lolos: baris pra-sql/51 tidak pernah
+          punya kolom itu terisi, dan menyaringnya habis akan menghidupkan lagi
+          tagihan hantu yang blok ini justru ada untuk menutup.
+        */
+      const scoped = entry.id
+        ? q.or(`schedule_id.eq.${entry.id},schedule_id.is.null`)
+        : q;
+      const { error } = await scoped;
       if (error) throw error;
     }
   }

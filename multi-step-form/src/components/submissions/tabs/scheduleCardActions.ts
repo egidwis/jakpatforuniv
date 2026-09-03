@@ -173,14 +173,64 @@ export function planCardActions(input: {
     createInvoice: boolean;
     notifySlot?: boolean;
   };
+  /**
+   * Berapa pesanan yang ditanggung `billing.openInvoice`. 1 (atau tak diisi)
+   * berarti tagihan biasa.
+   *
+   * ⚠️ TIDAK BISA DITURUNKAN DARI `billing`. `schedule_billing_bulk()` dijangkar
+   * ke SATU order, sementara anggota tagihan gabungan tersebar di order-order
+   * yang berbeda — jadi apa pun yang dihitung dari `billing` selalu menjawab 1,
+   * tepat pada kasus yang pertanyaannya diajukan. Pemanggil yang mengoper
+   * jawabannya (`fetchInvoiceGroups`).
+   */
+  openInvoiceMemberCount?: number;
+  /**
+   * Berapa pesanan yang ditanggung tagihan yang sudah LUNAS di jadwal ini —
+   * cakupan "Tandai Belum Lunas".
+   *
+   * ⚠️ SUMBERNYA BEDA DARI `openInvoiceMemberCount`, dan itu bukan kemubaziran.
+   * Begitu grup lunas, `billing.openInvoice` jadi null (tidak ada lagi tagihan
+   * terbuka), jadi menurunkan cakupan pembalikan dari sana selalu menjawab 1 —
+   * tepat pada kartu yang menawarkan pembalikan itu.
+   */
+  paidInvoiceMemberCount?: number;
 }): CardActionPlan {
   const { state, entry, billing, isLate, can } = input;
+  const memberCount = input.openInvoiceMemberCount ?? 1;
+  const paidMemberCount = input.paidInvoiceMemberCount ?? 1;
 
   const scheduleLabel = isUnscheduled(entry) ? 'Tentukan Jadwal' : 'Ganti Tanggal';
   const schedule = (warns = false): CardAction => ({ id: 'schedule', label: scheduleLabel, warns });
   const cancelSchedule: CardAction = { id: 'cancel_schedule', label: 'Batalkan Jadwal', destructive: true };
-  const markPaid: CardAction = { id: 'mark_paid', label: 'Tandai Lunas' };
-  const unmarkPaid: CardAction = { id: 'unmark_paid', label: 'Tandai Belum Lunas' };
+  /**
+   * ⚠️ LABELNYA MENYEBUT CAKUPANNYA — dan itu penutup B2 sekaligus pencegah
+   * pengulangan B3.
+   *
+   * `markScheduleAsPaid()` berlingkup `schedule_id`, jadi pada anggota tagihan
+   * gabungan ia membalik SATU baris jadi lunas sementara link DOKU-nya tetap
+   * menagih total penuh — porsi yang sama bisa terbayar dua kali tanpa satu pun
+   * tanda di layar. Aksinya TIDAK dicabut (menolaknya justru mematikan alur yang
+   * melahirkan fitur ini: peneliti transfer di luar DOKU, admin melunasi seluruh
+   * batch); yang berubah cakupan dan namanya. Pelaksananya `settleGroupAsPaid`.
+   */
+  const markPaid: CardAction = {
+    id: 'mark_paid',
+    label: memberCount > 1 ? `Tandai Lunas (${memberCount} pesanan)` : 'Tandai Lunas',
+    warns: memberCount > 1,
+  };
+  /**
+   * ⚠️ CAKUPANNYA IKUT GRUP — cermin `markPaid` di atas.
+   *
+   * `unmarkScheduleAsPaid()` menyaring `schedule_id`, jadi membalik SATU anggota
+   * grup memecahnya jadi separuh-lunas: dokumen `/invoices/<payment_id>` berhenti
+   * jadi RECEIPT dan kembali jadi INVOICE bernominal PENUH untuk pesanan yang
+   * uangnya sudah diterima. Pelaksananya `unsettleGroupAsPaid`.
+   */
+  const unmarkPaid: CardAction = {
+    id: 'unmark_paid',
+    label: paidMemberCount > 1 ? `Tandai Belum Lunas (${paidMemberCount} pesanan)` : 'Tandai Belum Lunas',
+    warns: paidMemberCount > 1,
+  };
 
   // Aturan satu-tagihan-terbuka-per-jadwal: peneliti hanya melihat tagihan
   // TERAKHIR, jadi menerbitkan yang kedua selagi ada yang menggantung akan

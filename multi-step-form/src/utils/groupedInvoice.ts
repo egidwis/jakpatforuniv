@@ -73,6 +73,22 @@ export interface InvoiceDocument {
   total: number;
   /** RECEIPT hanya kalau SEMUA baris lunas — lihat catatan di bawah. */
   isPaid: boolean;
+  /**
+   * Σ nominal bundel yang SUDAH lunas, dan sisanya.
+   *
+   * ⚠️ ADA KEADAAN KETIGA, DAN DOKUMEN INI DULU BUTA TERHADAPNYA. `isPaid`
+   * menjawab "semua lunas?" — jawabannya `false` sama untuk grup yang nol
+   * rupiah masuk DAN grup yang 2 dari 3 pesanannya sudah dibayar. Keduanya
+   * dirender identik: INVOICE bernominal PENUH, lengkap dengan tombol bayar.
+   *
+   * Grup separuh-lunas bukan hipotesis: `unmarkScheduleAsPaid` bisa membalik
+   * satu anggota, dan `settleGroupAsPaid` bisa gagal di anggota ke-3 (loopnya
+   * tidak transaksional).
+   */
+  paidTotal: number;
+  outstanding: number;
+  /** Ada yang lunas, tapi tidak semua. */
+  isPartiallyPaid: boolean;
   hasPpn: boolean;
   showMaterai: boolean;
   /** Baris mana pun boleh mengoreksi item basi (Kilat 250rb → 200rb). */
@@ -188,6 +204,8 @@ export function buildInvoiceDocument(
 
   const sum = (pick: (b: DocBundle) => number) => bundles.reduce((s, b) => s + pick(b), 0);
   const total = sum((b) => b.amount);
+  const paidTotal = bundles.filter((b) => b.isPaid).reduce((s, b) => s + b.amount, 0);
+  const allPaid = bundles.length > 0 && bundles.every((b) => b.isPaid);
 
   return {
     bundles,
@@ -204,7 +222,10 @@ export function buildInvoiceDocument(
      * satu anggota grup sendirian. Dokumen berjudul RECEIPT padahal separuh
      * grupnya belum dibayar adalah bukti pembayaran palsu.
      */
-    isPaid: bundles.length > 0 && bundles.every((b) => b.isPaid),
+    isPaid: allPaid,
+    paidTotal,
+    outstanding: total - paidTotal,
+    isPartiallyPaid: !allPaid && paidTotal > 0,
     hasPpn: rows.some((r) => r.ppn_amount != null) || bundles.some((b) => b.ppn > 0),
     // Gerbangnya TOTAL GRUP, bukan porsi satu pesanan: empat pesanan @1,5jt
     // memang melewati ambang meterai meski tak satu pun melewatinya sendiri.

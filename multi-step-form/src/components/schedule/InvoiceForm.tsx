@@ -17,7 +17,7 @@ import {
 import {
   closeTab, invoiceReadyMessage, openBlankTab, sendToTab,
 } from '@/utils/waMessage';
-import { bundleTotals, writeInvoiceRows, type InvoiceBundle } from './invoiceWrite';
+import { bundleTotals, writeInvoiceRows, InvoiceWriteError, type InvoiceBundle } from './invoiceWrite';
 import { formatWibShort } from '@/pages/dashboard/schedule/scheduleModel';
 import {
   ITEM_CATEGORIES, buildExtensionInvoiceItems, buildOrderInvoiceItems, describeVoucher,
@@ -406,7 +406,20 @@ export function InvoiceForm({
       // Tab kosong yang menganga adalah kegagalan yang tidak menjelaskan dirinya.
       closeTab(waTab);
       console.error('Gagal membuat tagihan:', e);
-      toast.error(e?.message || 'Gagal membuat tagihan');
+
+      // Kembar dari cabang yang sama di `BulkInvoiceDialog` — baris yatim
+      // mengunci jadwalnya di `waiting_payment`, jadi kabarnya tidak boleh
+      // ikut hilang bersama toast. Lihat alasan lengkapnya di sana.
+      if (e instanceof InvoiceWriteError && !e.cleanedUp) {
+        toast.error(
+          `${e.message} ⚠️ PEMBERSIHANNYA GAGAL: baris tagihannya masih menggantung di database `
+          + `dan jadwalnya terkunci menunggu bayar. Batalkan tagihan itu manual dari halaman `
+          + `Transaksi sebelum menagih ulang.`,
+          { duration: Infinity },
+        );
+      } else {
+        toast.error(e?.message || 'Gagal membuat tagihan');
+      }
     } finally {
       setIsSaving(false);
     }

@@ -11,6 +11,7 @@ import {
 import { airingWindowState } from '@/utils/airing-window';
 import { airingDaysOf } from '@/pages/dashboard/schedule/scheduleModel';
 import type { OrderUiState } from './deriveOrderUiState';
+import type { ScheduleGroupInfo } from './invoiceGroups';
 
 type TFn = (key: TranslationKey) => string;
 
@@ -134,6 +135,16 @@ export interface ScheduleCard {
          * `outstanding`. Lihat `SchedulePaymentInfo`. */
         paid: number;
         outstanding: number;
+        /**
+         * Tagihan gabungan yang menaungi jadwal ini — `null` untuk tagihan biasa.
+         *
+         * ⚠️ ANGKA DI TOMBOL BAYAR DIAMBIL DARI `group.total`, BUKAN `amount`.
+         * `amount` tetap porsi jadwal ini (dan memang harus: rincian uang di
+         * kartu berbicara tentang jadwal ini). Yang ditagih link DOKU-nya adalah
+         * total grup — dua angka berbeda yang keduanya benar untuk pertanyaan
+         * masing-masing, jadi keduanya harus disebut, bukan dipilih salah satu.
+         */
+        group: ScheduleGroupInfo | null;
     };
     /**
      * Uang jadwal ini, diturunkan `deriveScheduleMoney` — FUNGSI YANG SAMA
@@ -214,6 +225,15 @@ export function buildScheduleCards(
     /** Dibutuhkan `deriveScheduleMoney`: `question_count` dan
      * `distribution_type` tinggal di order, bukan di baris jadwal. */
     submission: FormSubmission,
+    /**
+     * Tagihan gabungan yang menaungi jadwal ber-`sourceId` ini, kalau ada.
+     *
+     * Sengaja sebuah FUNGSI, bukan peta: grupnya melintasi ORDER (anggotanya
+     * tersebar di beberapa `form_submissions`), sementara fungsi ini dipanggil
+     * sekali per order. Yang merakit petanya `StatusPage`, yang memegang seluruh
+     * order peneliti; berkas ini cuma bertanya.
+     */
+    groupOf: (sourceId: string) => ScheduleGroupInfo | null = () => null,
 ): ScheduleCard[] {
     const now = new Date();
     const cards: ScheduleCard[] = [];
@@ -250,6 +270,7 @@ export function buildScheduleCards(
         } else bookingState = 'paid'; // step 3 atau 4
 
         const pubState = publicationStateOf(first, now);
+        const firstGroup = groupOf(first.sourceId);
 
         cards.push({
             key: 'original',
@@ -274,7 +295,17 @@ export function buildScheduleCards(
                 state: bookingState,
                 amount: first.totalCost,
                 subtotal: subtotalOf(first),
-                payUrl: bookingState === 'waiting_payment' ? ui.finalPaymentLink : null,
+                /*
+                  ⚠️ ANGGOTA GRUP YANG BUKAN LEAD TIDAK MEMEGANG LINK.
+                  Link DOKU-nya menagih TOTAL grup; memasangnya di tiap kartu
+                  berarti tiga tombol untuk satu pembayaran, masing-masing
+                  bertuliskan nominal yang bukan nominal yang akan ditagih.
+                  Kartu pengikut menunjuk ke lead — `SchedulePhase` merender
+                  kalimatnya.
+                */
+                payUrl: bookingState === 'waiting_payment' && (firstGroup?.isLead ?? true)
+                    ? ui.finalPaymentLink
+                    : null,
                 isExternalLink: !!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard'),
                 deadline: ui.paymentDeadline,
                 deadlineCause: ui.paymentDeadlineCause,
@@ -285,6 +316,7 @@ export function buildScheduleCards(
                 staleBilledFor: staleDateOf(payments[first.sourceId]),
                 paid: payments[first.sourceId]?.paid ?? 0,
                 outstanding: payments[first.sourceId]?.outstanding ?? 0,
+                group: firstGroup,
             },
             money: deriveScheduleMoney(first, submission),
             publication: {
@@ -308,7 +340,14 @@ export function buildScheduleCards(
         let bookingState: BookingState;
         if (status === 'cancelled') bookingState = 'cancelled';
         else if (status === 'waiting_payment') {
-            if (pay?.status === 'expired') bookingState = 'expired';
+            /*
+              ⚠️ `pending` BUKAN BUKTI LINK MASIH HIDUP. Tidak ada cron yang
+              mengedaluwarsakan tagihan, jadi baris yang link-nya sudah mati
+              tetap `pending` selamanya — 182 dari 183 baris produksi begitu.
+              `isExpired` (sql/83) yang menjawabnya, dan tanpa cabang ini kartu
+              menawarkan tombol ke halaman DOKU yang menolaknya tanpa penjelasan.
+            */
+            if (pay?.status === 'expired' || pay?.isExpired) bookingState = 'expired';
             else if (pay?.status === 'pending' && pay.paymentUrl) bookingState = 'waiting_payment';
             else bookingState = 'awaiting_invoice'; // admin belum menerbitkan tagihannya
         } else {
@@ -316,6 +355,7 @@ export function buildScheduleCards(
         }
 
         const pubState = publicationStateOf(s, now);
+        const group = groupOf(s.sourceId);
 
         cards.push({
             key: s.sourceId,
@@ -340,7 +380,10 @@ export function buildScheduleCards(
                 state: bookingState,
                 amount: pay?.amount || s.totalCost,
                 subtotal: subtotalOf(s),
-                payUrl: bookingState === 'waiting_payment' ? pay?.paymentUrl || null : null,
+                // Lihat catatan di cabang ordinal 1: hanya lead yang memegang link.
+                payUrl: bookingState === 'waiting_payment' && (group?.isLead ?? true)
+                    ? pay?.paymentUrl || null
+                    : null,
                 isExternalLink: true,
                 deadline: null,
                 deadlineCause: null,
@@ -349,6 +392,7 @@ export function buildScheduleCards(
                 staleBilledFor: staleDateOf(pay),
                 paid: pay?.paid ?? 0,
                 outstanding: pay?.outstanding ?? 0,
+                group,
             },
             money: deriveScheduleMoney(s, submission),
             publication: {

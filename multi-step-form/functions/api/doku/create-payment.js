@@ -183,27 +183,47 @@ export function computeTotalCostFromSubmission(sub) {
 /**
  * Apakah `payment_id` ini menaungi lebih dari satu pesanan (tagihan gabungan)?
  *
- * ⚠️ FAIL-CLOSED. Kalau pertanyaannya tidak bisa dijawab — jaringan, PostgREST
- * error — jawabannya `true`, artinya link-nya TIDAK dipakai ulang dan tagihan
- * baru diterbitkan. Menerbitkan tagihan kembar itu berisik dan bisa dibatalkan;
- * mengirim peneliti ke tagihan milik grup itu menagih dia untuk pesanan orang
- * lain — dan itu tidak bisa ditarik kembali sesudah dibayar.
+ * ⚠️ TIGA KEADAAN, BUKAN DUA — dan pemisahan `'unknown'` dari `'group'` ADALAH
+ * fiturnya. Versi pertama mengembalikan boolean yang fail-closed ke `true`, dan
+ * itu benar selama akibatnya cuma "jangan pakai ulang, cetak yang baru".
+ * Sekarang akibat `'group'` adalah MENOLAK checkout — jadi kalau gangguan
+ * jaringan tetap dipetakan ke `'group'`, satu PostgREST yang batuk akan
+ * memblokir checkout swalayan yang sah dan peneliti tidak punya jalan bayar
+ * sama sekali.
+ *
+ *   'solo'    → satu baris. Pakai ulang link-nya (perilaku lama).
+ *   'group'   → >1 baris. TOLAK: link ini menagih total seluruh grup.
+ *   'unknown' → tidak bisa dijawab. Cetak tagihan baru (perilaku lama saat
+ *               gagal). Berisik, bisa dibatalkan admin — dan yang penting,
+ *               tidak pernah menagih peneliti untuk pesanan yang bukan miliknya.
  */
-async function isGroupPayment(supabaseUrl, sbHeaders, paymentId) {
+async function groupPaymentState(supabaseUrl, sbHeaders, paymentId) {
   try {
     const res = await fetch(
-      `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${encodeURIComponent(paymentId)}&select=id&limit=2`,
+      // `amount` ikut, dan `limit` DIBUANG: jawabannya bukan cuma "grup atau
+      // bukan" lagi, tapi juga berapa pesanan dan berapa TOTAL yang ditagih —
+      // dua angka yang harus ikut di badan 409 supaya halaman bayar bisa
+      // mengatakan kenapa nominalnya lebih besar dari harga satu pesanan.
+      `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${encodeURIComponent(paymentId)}&select=id,amount`,
       { headers: sbHeaders }
     );
     if (!res.ok) {
-      console.warn(`[create-payment] Could not check whether ${paymentId} is a group bill (status ${res.status}); treating it as one.`);
-      return true;
+      console.warn(`[create-payment] Could not check whether ${paymentId} is a group bill (status ${res.status}); minting a separate one.`);
+      return { state: 'unknown', count: 0, total: 0 };
     }
     const rows = await res.json();
-    return Array.isArray(rows) && rows.length > 1;
+    if (!Array.isArray(rows)) return { state: 'unknown', count: 0, total: 0 };
+    return {
+      state: rows.length > 1 ? 'group' : 'solo',
+      count: rows.length,
+      // ⚠️ Σ porsi tiap baris, BUKAN satu porsi dikali N: PPN 11% dibulatkan
+      // per baris, jadi mengalikannya meleset beberapa rupiah dari yang
+      // benar-benar ditagih DOKU.
+      total: rows.reduce((sum, r) => sum + Number(r.amount || 0), 0),
+    };
   } catch (e) {
-    console.warn(`[create-payment] Group-bill check failed for ${paymentId}; treating it as one:`, e);
-    return true;
+    console.warn(`[create-payment] Group-bill check failed for ${paymentId}; minting a separate one:`, e);
+    return { state: 'unknown', count: 0, total: 0 };
   }
 }
 
@@ -469,12 +489,46 @@ export async function onRequest(context) {
         // DOKU yang menagih TOTAL SELURUH GRUP.
         //
         // Satu permintaan tambahan, dan hanya saat ada kandidat.
-        if (reusable && !(await isGroupPayment(supabaseUrl, sbHeaders, reusable.payment_id))) {
+        const group = reusable
+          ? await groupPaymentState(supabaseUrl, sbHeaders, reusable.payment_id)
+          : null;
+
+        if (group?.state === 'solo') {
           console.log(`[create-payment] Reusing live bill ${reusable.payment_id} for ${formSubmissionId}`);
           return json({ payment_url: reusable.invoice_url, payment_id: reusable.payment_id, reused: true }, 200);
         }
+
+        /*
+          ⚠️ MENOLAK, BUKAN MENCETAK — dan ini penutup cacat A3.
+
+          Sampai sekarang pesanan yang sudah masuk tagihan gabungan tetap
+          mendapat `payment_id` KEDUA di sini. Akibatnya berantai: jadwal itu
+          punya dua tagihan hidup, `billed` berlipat, `isSettled` jadi false
+          sehingga kartu penelitinya sendiri berbunyi "Lunas sebagian" untuk
+          pesanan yang sudah ia bayar penuh, piutang admin menggelembung (persis
+          kelas yang sql/81 bersihkan dengan tangan) — dan yang terburuk, DUA
+          link tetap bisa dibayar. Itu pembayaran ganda sungguhan.
+
+          Aman diarahkan ke link grupnya: satu grup dijangkar ke SATU
+          `auth_user_id` (`distinctAccounts` di `bulkInvoiceCandidates.ts`),
+          jadi link itu tidak pernah memuat pesanan orang lain.
+
+          409, bukan 400: ini konflik keadaan, bukan permintaan yang cacat.
+        */
+        if (group?.state === 'group') {
+          console.log(`[create-payment] ${formSubmissionId} is already covered by group bill ${reusable.payment_id}; refusing to mint a second one.`);
+          return json({
+            error: 'Pesanan ini sudah termasuk tagihan gabungan — bayar lewat link tagihan itu, jangan buat tagihan baru.',
+            payment_url: reusable.invoice_url,
+            payment_id: reusable.payment_id,
+            group_bill: true,
+            group_count: group.count,
+            group_total: group.total,
+          }, 409);
+        }
+
         if (reusable) {
-          console.log(`[create-payment] Bill ${reusable.payment_id} covers several orders; minting a separate one for ${formSubmissionId}`);
+          console.log(`[create-payment] Group state of ${reusable.payment_id} unknown; minting a separate one for ${formSubmissionId}`);
         }
       } else {
         console.warn(`[create-payment] Could not check live bills (status ${liveRes.status}); minting a new one.`);

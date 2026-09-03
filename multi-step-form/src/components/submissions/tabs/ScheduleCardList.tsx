@@ -10,7 +10,8 @@ import {
 } from '../../ui/dropdown-menu';
 import { Skeleton } from '../../ui/skeleton';
 import { cn } from '@/lib/utils';
-import type { AdScheduleEntry, ScheduleBilling, ScheduleInvoice } from '@/utils/supabase';
+import type { AdScheduleEntry, InvoiceGroup, ScheduleBilling, ScheduleInvoice } from '@/utils/supabase';
+import { InvoiceGroupPanel } from './InvoiceGroupPanel';
 import { formatIDR } from '@/utils/currency';
 import { copyToClipboard } from '../types';
 import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
@@ -135,7 +136,7 @@ interface CardActions {
 
 /** Satu baris tagihan di dalam daftar. */
 function InvoiceRow({
-  inv, index, total, entry, actions, isHoldLapsed,
+  inv, index, total, entry, actions, isHoldLapsed, group,
 }: {
   inv: ScheduleInvoice;
   index: number;
@@ -143,6 +144,8 @@ function InvoiceRow({
   entry: AdScheduleEntry;
   actions: CardActions;
   isHoldLapsed?: boolean;
+  /** Tagihan gabungan yang menaungi baris ini, kalau ada. */
+  group?: InvoiceGroup;
 }) {
   const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
   const isLate = !inv.isPaid && ymd ? isPaymentTooLateForDate(ymd) : false;
@@ -318,7 +321,19 @@ function InvoiceRow({
                 className="text-[10px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2 decoration-red-300 hover:decoration-red-600 transition-colors"
                 onClick={() => actions.onCancelInvoice!(inv)}
               >
-                Batalkan tagihan
+                {/*
+                  ⚠️ ANGKANYA DI LABEL, BUKAN CUMA DI DIALOG (B3).
+                  `cancelInvoice()` meng-UPDATE seluruh baris ber-`payment_id`
+                  itu — dan memang harus, link DOKU tidak bisa dibatalkan
+                  separuh. Yang salah selama ini teksnya: tombol berbunyi
+                  "Batalkan tagihan" di kartu pesanan #2 sambil diam-diam
+                  mematikan tagihan #1, #3, #4. Dialognya menyebut daftarnya;
+                  labelnya menyebut jumlahnya, supaya cakupan itu sudah terbaca
+                  SEBELUM tombolnya ditekan.
+                */}
+                {group && group.memberCount > 1
+                  ? `Batalkan tagihan (${group.memberCount} pesanan)`
+                  : 'Batalkan tagihan'}
               </button>
             )}
           </div>
@@ -339,12 +354,14 @@ function InvoiceRow({
  * supaya tidak terbaca sebagai aturan yang masih berlaku.
  */
 function BillingSection({
-  entry, billing, state, actions,
+  entry, billing, state, actions, groups,
 }: {
   entry: AdScheduleEntry;
   billing: ScheduleBilling | undefined;
   state: CardState;
   actions: CardActions;
+  /** Anggota tiap tagihan gabungan, dikunci `payment_id`. */
+  groups: Map<string, InvoiceGroup>;
 }) {
   if (state === 'cancelled') {
     /**
@@ -488,7 +505,6 @@ function BillingSection({
     );
   }
 
-  const b = billing!;
   // Ada riwayat tagihan, tapi semuanya sudah mati dan nol rupiah masuk —
   // yang dibutuhkan tagihan PERTAMA yang sungguhan, bukan susulan.
   const needsFreshInvoice = state === 'awaiting_invoice';
@@ -496,6 +512,16 @@ function BillingSection({
   const billedAmount = liveInvoices.reduce((sum, i) => sum + i.amount, 0);
   const paidAmount = liveInvoices.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
   const outstandingAmount = billedAmount - paidAmount;
+
+  // Tagihan gabungan yang menyentuh jadwal ini, tanpa duplikat.
+  const groupPanels = Array.from(
+    new Map(
+      invoices
+        .map((i) => (i.paymentId ? groups.get(i.paymentId) : undefined))
+        .filter((g): g is InvoiceGroup => !!g && g.memberCount > 1)
+        .map((g) => [g.paymentId, g] as const),
+    ).values(),
+  );
 
   return (
     <div className="space-y-2 pt-1 border-t border-slate-200">
@@ -526,9 +552,25 @@ function BillingSection({
             entry={entry}
             actions={actions}
             isHoldLapsed={isHoldExpired}
+            group={inv.paymentId ? groups.get(inv.paymentId) : undefined}
           />
         ))}
       </div>
+
+      {/*
+        Panel anggota grup, sekali per kartu — bukan sekali per baris tagihan.
+        Tagihan gabungan yang sudah mati pun tetap ditampilkan: pertanyaan
+        "pesanan mana lagi yang ikut" justru paling sering diajukan SESUDAH
+        sesuatu tidak beres.
+      */}
+      {groupPanels.map((g) => (
+        <InvoiceGroupPanel
+          key={g.paymentId}
+          group={g}
+          currentScheduleId={entry.id}
+          expiresAt={invoices.find((i) => i.paymentId === g.paymentId)?.expiresAt ?? null}
+        />
+      ))}
 
       {needsFreshInvoice && !isHoldExpired && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
@@ -685,7 +727,7 @@ function SectionHeader({ count }: { count: number }) {
 }
 
 function ScheduleCard({
-  entry, billing, submission, isOpen, isOnly, onToggle, actions,
+  entry, billing, submission, isOpen, isOnly, onToggle, actions, groups,
 }: {
   entry: AdScheduleEntry;
   billing: ScheduleBilling | undefined;
@@ -699,6 +741,7 @@ function ScheduleCard({
   isOnly: boolean;
   onToggle: () => void;
   actions: CardActions;
+  groups: Map<string, InvoiceGroup>;
 }) {
   const money = deriveScheduleMoney(entry, submission);
   /**
@@ -751,6 +794,24 @@ function ScheduleCard({
       unmarkPaid: !!actions.onUnmarkPaid && billing?.paymentChannel === 'MANUAL_VERIFIED',
       notifySlot: !!actions.onNotifySlot,
     },
+    /*
+      Cakupan "Tandai Lunas". Diambil dari tagihan yang MASIH TERBUKA — itu
+      satu-satunya yang akan disentuh pelunasan, dan satu-satunya yang link
+      DOKU-nya masih menagih.
+    */
+    openInvoiceMemberCount: billing?.openInvoice?.paymentId
+      ? groups.get(billing.openInvoice.paymentId)?.memberCount ?? 1
+      : 1,
+    /*
+      Cakupan "Tandai Belum Lunas" datang dari tagihan yang sudah LUNAS, bukan
+      dari `openInvoice` — grup yang lunas tidak punya tagihan terbuka lagi.
+      `invoices` urut terbaru dulu, jadi `find` mengambil pelunasan terakhir,
+      pasangan dari `billing.paymentChannel` yang menggerbangi aksinya.
+    */
+    paidInvoiceMemberCount: (() => {
+      const paidId = billing?.invoices.find((i) => i.isPaid)?.paymentId;
+      return paidId ? groups.get(paidId)?.memberCount ?? 1 : 1;
+    })(),
   });
 
   const booker = entry.slotBookedBy?.toLowerCase();
@@ -877,7 +938,7 @@ function ScheduleCard({
         </div>
       )}
 
-      <BillingSection entry={entry} billing={billing} state={state} actions={actions} />
+      <BillingSection entry={entry} billing={billing} state={state} actions={actions} groups={groups} />
 
       {/* Baris "Peneliti melihat" — lihat `ResearcherSeesLine`. */}
       <ResearcherSeesLine state={state} isLate={isLate} billing={billing} />
@@ -923,10 +984,19 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, billings, submission, onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
+  entries, billings, submission, groups = new Map(), onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
 }: {
   entries: AdScheduleEntry[];
   billings: Map<string, ScheduleBilling>;
+  /**
+   * Anggota tiap tagihan gabungan, dikunci `payment_id` — dari
+   * `fetchInvoiceGroups()`.
+   *
+   * Default peta kosong: tanpa data grup seluruh permukaan ini jatuh ke
+   * perilaku per-jadwal seperti sebelum fitur ini ada. Layar tidak boleh gelap
+   * gara-gara satu query tambahan gagal.
+   */
+  groups?: Map<string, InvoiceGroup>;
   submission: { questionCount?: number | null; distribution_type?: string | null; submission_status?: string | null; status?: string | null };
   onEditSchedule: (entry: AdScheduleEntry) => void;
   onCreateSchedule?: (isExtraAd: boolean) => void;
@@ -1042,6 +1112,7 @@ export function ScheduleCardList({
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
           actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview }}
+          groups={groups}
         />
       ))}
     </div>

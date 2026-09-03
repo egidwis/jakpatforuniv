@@ -145,6 +145,8 @@ describe('buildScheduleCards — sebagian dibayar', () => {
             amount: 233_100,
             paid: 100_000,
             outstanding: 133_100,
+            isExpired: false,
+            expiresAt: null,
             staleBilledFor: null,
         },
     };
@@ -345,5 +347,112 @@ describe('airingStartHourWib — P3', () => {
 
     it('tanpa tanggal, nol tebakan', () => {
         expect(airingStartHourWib(cardFor({ startDate: null, endDate: null }))).toBeNull();
+    });
+});
+
+describe('buildScheduleCards — tagihan gabungan (A1)', () => {
+    /*
+      Cacat yang ditutup: kartu memajang PORSI pesanannya sendiri di sebelah
+      tombol yang membuka link DOKU bernominal TOTAL GRUP. Untuk grup 3 pesanan
+      @Rp 1,11jt, tiga kartu sama berbunyi Rp 1.110.000 dan ketiganya membuka
+      halaman Rp 3.330.000.
+
+      Dua janji yang dijaga di sini: hanya LEAD yang memegang link, dan
+      `booking.group.total` membawa nominal yang sebenarnya ditagih.
+    */
+    const groupInfo = (over: Partial<NonNullable<ReturnType<typeof buildScheduleCards>[number]['booking']['group']>> = {}) => ({
+        paymentId: 'JFU-INV-abc-1',
+        total: 3_330_000,
+        memberCount: 3,
+        isLead: true,
+        leadTitle: 'Survei Satu',
+        others: [
+            { title: 'Riset UMKM', amount: 1_110_000, isPaid: false },
+            { title: 'Tracer Study', amount: 1_110_000, isPaid: false },
+        ],
+        allPaid: false,
+        ...over,
+    });
+
+    it('kartu LEAD tetap memegang link, dan membawa total grup', () => {
+        const [card] = buildScheduleCards(
+            uiOf(scheduleOf()), {}, null, t, submissionOf(), () => groupInfo(),
+        );
+
+        expect(card.booking.payUrl).toBe('https://pay.example/abc');
+        expect(card.booking.group?.total).toBe(3_330_000);
+        // `amount` tetap porsi jadwal ini — dua angka, keduanya benar untuk
+        // pertanyaan masing-masing. Yang dilarang cuma memakai yang satu untuk
+        // menjawab pertanyaan yang lain.
+        expect(card.booking.amount).toBe(233_100);
+    });
+
+    it('kartu PENGIKUT kehilangan tombol bayarnya', () => {
+        const [card] = buildScheduleCards(
+            uiOf(scheduleOf()), {}, null, t, submissionOf(), () => groupInfo({ isLead: false }),
+        );
+
+        expect(card.booking.payUrl).toBeNull();
+        expect(card.booking.group?.isLead).toBe(false);
+    });
+
+    it('tanpa grup, kartu berperilaku persis seperti sebelum fitur ini ada', () => {
+        const [card] = buildScheduleCards(uiOf(scheduleOf()), {}, null, t, submissionOf());
+
+        expect(card.booking.group).toBeNull();
+        expect(card.booking.payUrl).toBe('https://pay.example/abc');
+    });
+
+    it('jadwal ke-2 dst.: pengikut kehilangan tombol, lead menyimpannya', () => {
+        const later = scheduleOf({
+            id: 'sched-2', ordinal: 2, isExtension: true, sourceId: 'ext-1',
+            status: 'waiting_payment',
+        });
+        const payments: SchedulePaymentMap = {
+            'ext-1': {
+                paymentUrl: 'https://pay.example/grup', paymentId: 'JFU-INV-abc-1',
+                status: 'pending', amount: 1_110_000, paid: 0, outstanding: 1_110_000,
+                isExpired: false, expiresAt: null, staleBilledFor: null,
+            },
+        };
+
+        const [, pengikut] = buildScheduleCards(
+            uiOf(scheduleOf(), [later]), payments, null, t, submissionOf(),
+            (sourceId) => (sourceId === 'ext-1' ? groupInfo({ isLead: false }) : null),
+        );
+        expect(pengikut.booking.payUrl).toBeNull();
+
+        const [, lead] = buildScheduleCards(
+            uiOf(scheduleOf(), [later]), payments, null, t, submissionOf(),
+            (sourceId) => (sourceId === 'ext-1' ? groupInfo({ isLead: true }) : null),
+        );
+        expect(lead.booking.payUrl).toBe('https://pay.example/grup');
+    });
+});
+
+describe('buildScheduleCards — link kedaluwarsa (Case 6)', () => {
+    it('`pending` yang sudah lewat masa berlaku dibaca sebagai kedaluwarsa, bukan siap bayar', () => {
+        /*
+          Tidak ada cron yang mengedaluwarsakan tagihan: 182 dari 183 baris
+          produksi tetap `pending` sesudah link-nya mati. Tanpa cabang
+          `isExpired`, kartu menawarkan tombol ke halaman DOKU yang menolaknya
+          tanpa penjelasan — pola insiden af004b84.
+        */
+        const later = scheduleOf({
+            id: 'sched-2', ordinal: 2, isExtension: true, sourceId: 'ext-1',
+            status: 'waiting_payment',
+        });
+        const payments: SchedulePaymentMap = {
+            'ext-1': {
+                paymentUrl: 'https://pay.example/mati', paymentId: 'JFU-INV-mati',
+                status: 'pending', amount: 1_110_000, paid: 0, outstanding: 1_110_000,
+                isExpired: true, expiresAt: '2026-09-01T07:00:00.000Z', staleBilledFor: null,
+            },
+        };
+
+        const [, kartu] = buildScheduleCards(uiOf(scheduleOf(), [later]), payments, null, t, submissionOf());
+
+        expect(kartu.booking.state).toBe('expired');
+        expect(kartu.booking.payUrl).toBeNull();
     });
 });
