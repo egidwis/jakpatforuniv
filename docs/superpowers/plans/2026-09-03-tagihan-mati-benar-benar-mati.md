@@ -365,6 +365,10 @@ tanpa sebab, dan itu jenis kebisuan yang sama dengan yang ditutup `65369c1`.
 > | `slot_reserved` | 18 |
 > | `unscheduled` | 2 |
 >
+> **[⚠️ ANGKA INI SALAH — diukur ulang sesudah deploy: 11, bukan 75. Ia dihitung
+> dari jadwal ber-invoice `pending`, bukan dari `openInvoice` yang menyaring lagi
+> lewat `isSuperseded`/`isStale`. Alasan sesungguhnya menjalankan `sql/81` adalah
+> piutang: 97% di antaranya link mati. Lihat §00X di progress doc.]**
 > **75 jadwal** yang wajar dibatalkan admin kehilangan aksinya, dan admin harus
 > membatalkan dulu tagihan yang mati berminggu-minggu lalu. Dua hal harus mendahului 6a:
 > (a) satu migrasi bersih-bersih sekali jalan yang mengedaluwarsakan `pending` renta, dan

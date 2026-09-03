@@ -1,8 +1,19 @@
 -- ============================================================================
 -- 81 — Kedaluwarsakan tagihan `pending` yang link DOKU-nya sudah lama mati
 -- ============================================================================
--- PRASYARAT untuk gerbang "batalkan jadwal" (Bagian 6a). Tanpa ini, gerbang itu
--- MENCABUT aksi "Batalkan Jadwal" dari 75 jadwal yang wajar dibatalkan admin.
+-- DUA ALASAN, DAN YANG KEDUA JAUH LEBIH BESAR.
+--
+-- 1. Prasyarat gerbang "batalkan jadwal" (Bagian 6a): tanpa ini, 11 jadwal
+--    kehilangan aksi "Batalkan Jadwal" karena tagihan renta mereka masih
+--    terbaca hidup. (Angka "75" yang sempat ditulis di sini SALAH — ia dihitung
+--    dari jadwal ber-invoice `pending`, bukan dari `openInvoice` yang menyaring
+--    lagi lewat isSuperseded/isStale.)
+-- 2. PIUTANG. Dari Rp 18.772.750 piutang berjalan, Rp 18.162.250 — 97%, 40
+--    baris — berasal dari tagihan yang link DOKU-nya SUDAH MATI. Angka piutang
+--    di setiap papan hari ini hampir seluruhnya fiksi. Sesudah migrasi ini ia
+--    turun ke ~Rp 610.500, yaitu satu tagihan yang memang masih hidup.
+--    ⚠️ Ini perubahan angka yang FINANCE AKAN LIHAT. Kabari mereka: ini
+--    pembetulan pencatatan, bukan piutang yang hilang.
 --
 -- Terukur di produksi 2026-09-03:
 --   183 invoice `pending`, 182 di antaranya sudah lewat 7 hari — yang paling
@@ -35,7 +46,7 @@
 --
 -- ⚠️ MIGRASI INI KODENYA SUDAH TAYANG LEBIH DULU (deploy 2026-09-03), jadi
 -- selama ia belum diterapkan gerbang 6a sedang mencabut aksi "Batalkan Jadwal"
--- dari 75 jadwal hidup. Ini kebalikan jebakan biasa "DB mendahului kode" —
+-- dari 11 jadwal hidup. Ini kebalikan jebakan biasa "DB mendahului kode" —
 -- di sini KODE yang mendahului DB, dan akibatnya terlihat di meja admin.
 -- ============================================================================
 

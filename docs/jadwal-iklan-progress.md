@@ -104,9 +104,10 @@ yang mulai tayang sebelum deploy kehilangan emailnya secara permanen.
 gerbang "jadwal tidak bisa dibatalkan selama tagihannya masih hidup", tapi
 [`sql/81`](../multi-step-form/sql/81_expire_zombie_pending_bills.sql) — yang
 mengedaluwarsakan 181 invoice `pending` renta — **belum diterapkan**. Selama itu
-**75 jadwal kehilangan aksi "Batalkan Jadwal"** di produksi. Baca §00X sebelum
-menyentuh tab Reservasi Jadwal. Migrasinya sudah siap dan ditahan sadar: ia
-menyentuh 400 baris di dua tabel uang, jadi butuh persetujuan pemilik produk.
+**11 jadwal kehilangan aksi "Batalkan Jadwal"** di produksi — dan yang jauh lebih
+besar: **97% angka piutang adalah fiksi**. Baca §00X. Migrasinya sudah siap dan
+ditahan sadar: ia menyentuh 400 baris di dua tabel uang, jadi butuh persetujuan
+pemilik produk.
 
 **Kalau kamu kembali setelah lama:** per 2026-08-05 `main` sudah di-deploy dan
 DB serta kode sempat sejajar — tidak ada lubang di deret `sql/`. Yang tayang
@@ -142,9 +143,30 @@ peneliti tetap `waiting_payment` — sehari sebelum tayang.
 > Ini kebalikan §00A/§00B — di sini **kode mendahului DB**, dan akibatnya terlihat.
 > Gerbang 6a ("jadwal tidak bisa dibatalkan selama tagihannya masih hidup") sudah
 > hidup di produksi, sementara 181 invoice `pending` renta belum dikedaluwarsakan.
-> Selama itu **75 jadwal kehilangan aksi "Batalkan Jadwal"**: `requested` 55,
-> `slot_reserved` 18, `unscheduled` 2. Admin harus membatalkan dulu tagihan yang
-> link-nya mati berminggu-minggu sebelum bisa membatalkan jadwal apa pun.
+>
+> **⚠️ Koreksi 2026-09-03 — angka "75 jadwal" yang sempat ditulis di sini SALAH.**
+> Ia dihitung dari jadwal yang punya baris invoice `pending`, padahal gerbangnya
+> memakai `openInvoice`, yang menyaring lagi lewat `isSuperseded` dan `isStale` —
+> dan `sql/82` (bagian dari deploy yang sama) justru membuat tagihan milik jadwal
+> batal jadi basi, sehingga sebagian besar kandidat gugur sendiri. Membandingkan
+> angka pra-perbaikan dengan gerbang pasca-perbaikan. Diukur ulang setelah deploy:
+>
+> | Status jadwal | Terkunci |
+> |---|---|
+> | `slot_reserved` | 9 |
+> | `unscheduled` | 2 |
+> | `requested` | 1 |
+>
+> **12 jadwal, dan satu di antaranya (`S4HPHJ32`) tagihannya terbit hari itu juga —
+> jadi ia memang SEHARUSNYA terkunci.** Yang benar-benar terdampak: **11**, semuanya
+> bertagihan renta Jan–Agu.
+>
+> **Alasan sesungguhnya menjalankan `sql/81` bukan gerbang itu, melainkan piutang.**
+> Dari Rp 18.772.750 piutang berjalan, **Rp 18.162.250 (97%, 40 baris)** berasal dari
+> tagihan yang link DOKU-nya sudah mati — uang yang tidak bisa lagi ditagih lewat
+> link itu, tapi masih dihitung sebagai piutang di setiap papan. Sesudah `sql/81`
+> angkanya turun ke ~Rp 610.500. **Itu perubahan angka yang finance akan lihat**,
+> jadi kabari mereka; ini pembetulan, bukan kehilangan.
 >
 > Migrasinya sudah ditulis lengkap
 > ([`sql/81`](../multi-step-form/sql/81_expire_zombie_pending_bills.sql)) dengan
