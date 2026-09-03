@@ -44,10 +44,18 @@
 -- cerminannya lagi) plus Bagian 3 — `invoices.expires_at` mulai ditulis untuk
 -- tagihan ADMIN, bukan cuma tagihan swalayan.
 --
--- ⚠️ MIGRASI INI KODENYA SUDAH TAYANG LEBIH DULU (deploy 2026-09-03), jadi
--- selama ia belum diterapkan gerbang 6a sedang mencabut aksi "Batalkan Jadwal"
--- dari 11 jadwal hidup. Ini kebalikan jebakan biasa "DB mendahului kode" —
--- di sini KODE yang mendahului DB, dan akibatnya terlihat di meja admin.
+-- ✅ DITERAPKAN 2026-09-03, sesudah kodenya tayang (jendela pendek "kode
+--    mendahului DB" — kebalikan jebakan biasa). Hasil terverifikasi:
+--      piutang    Rp 18.772.750 → Rp 610.500
+--      pendapatan Rp 301.189.160 — TIDAK bergerak, 438 baris tetap
+--      snapshot   400 baris, SEMUANYA old_status='pending' (nol baris lunas)
+--      jadwal terkunci gerbang 6a: 12 → 1 (yang tersisa memang seharusnya —
+--                 tagihannya terbit hari itu, jadi migrasi ini melewatinya)
+--
+-- Catatan yang layak diingat: invoice ber-`expires_at` TERISI sengaja dilewati
+-- di sini, dan itu bukan celah — `is_expired` milik sql/83 yang menangkapnya.
+-- Terbukti pada JFU-d696325a-… (19 Agu): tidak disentuh migrasi ini, tetap
+-- keluar dari piutang. Dua mekanisme, dua populasi, tidak tumpang tindih.
 -- ============================================================================
 
 -- 1. Snapshot dulu — 400 baris berubah status, dan satu-satunya jalan pulang

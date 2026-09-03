@@ -100,14 +100,10 @@ dan kali ini ia **tidak diam** — cron `notify-primary-ads-live` menandai order
 sebagai "sudah dinotifikasi" padahal endpoint-nya belum ada, jadi setiap order
 yang mulai tayang sebelum deploy kehilangan emailnya secara permanen.
 
-🟠 **DAN SEKARANG KEBALIKANNYA: KODE MENDAHULUI DB.** Deploy 2026-09-03 membawa
-gerbang "jadwal tidak bisa dibatalkan selama tagihannya masih hidup", tapi
-[`sql/81`](../multi-step-form/sql/81_expire_zombie_pending_bills.sql) — yang
-mengedaluwarsakan 181 invoice `pending` renta — **belum diterapkan**. Selama itu
-**11 jadwal kehilangan aksi "Batalkan Jadwal"** di produksi — dan yang jauh lebih
-besar: **97% angka piutang adalah fiksi**. Baca §00X. Migrasinya sudah siap dan
-ditahan sadar: ia menyentuh 400 baris di dua tabel uang, jadi butuh persetujuan
-pemilik produk.
+🟢 **Kesejajaran DB↔kode untuk `sql/80`–`84` PULIH 2026-09-03.** `sql/81` menyusul
+diterapkan di hari yang sama; **piutang berjalan turun dari Rp 18.772.750 ke
+Rp 610.500** karena 97%-nya ternyata tagihan yang link DOKU-nya sudah mati.
+Pendapatan tidak bergerak sedikit pun. Detail & verifikasi di §00X.
 
 **Kalau kamu kembali setelah lama:** per 2026-08-05 `main` sudah di-deploy dan
 DB serta kode sempat sejajar — tidak ada lubang di deret `sql/`. Yang tayang
@@ -138,11 +134,28 @@ kembali jadwal batal itu (`status='scheduled'`), penjaga irisan `sql/75` menolak
 (P0001), dan webhook membalas HTTP 500 tiga kali. Jadwal yang benar-benar dipesan
 peneliti tetap `waiting_payment` — sehari sebelum tayang.
 
-> 🔴 **SISA SATU: `sql/81` BELUM DITERAPKAN, KODENYA SUDAH TAYANG.**
+> 🟢 **`sql/81` DITERAPKAN 2026-09-03 — kesejajaran DB↔kode pulih di hari yang sama.**
 >
-> Ini kebalikan §00A/§00B — di sini **kode mendahului DB**, dan akibatnya terlihat.
-> Gerbang 6a ("jadwal tidak bisa dibatalkan selama tagihannya masih hidup") sudah
-> hidup di produksi, sementara 181 invoice `pending` renta belum dikedaluwarsakan.
+> Sempat ada jendela pendek di mana **kode mendahului DB** (kebalikan §00A/§00B):
+> gerbang 6a sudah tayang sementara 181 invoice `pending` renta belum
+> dikedaluwarsakan.
+>
+> | Verifikasi sesudah `sql/81` | Hasil |
+> |---|---|
+> | **Piutang berjalan** | **Rp 18.772.750 → Rp 610.500** |
+> | Pendapatan | **Rp 301.189.160 — tidak bergerak**, 438 baris tetap |
+> | Snapshot `backup.bills_expired_by_sql81` | **400 baris, SEMUANYA `old_status='pending'`** — nol baris lunas tersentuh |
+> | Jadwal terkunci gerbang 6a | **12 → 1** |
+> | Tagihan renta yang masih mengaku hidup | **0** |
+>
+> Satu jadwal (`S4HPHJ32`) tetap terkunci **dan itu benar** — tagihannya terbit hari
+> itu juga, jadi `sql/81` memang melewatinya (syaratnya >7 hari).
+>
+> **Dua mekanisme terbukti saling melengkapi, bukan tumpang tindih.** Invoice
+> `JFU-d696325a-…` (19 Agu) tidak disentuh `sql/81` karena `expires_at`-nya terisi —
+> `create-payment.js` mengelola umurnya sendiri dan tidak boleh ditimpa. Ia tetap
+> keluar dari piutang, ditangkap `is_expired` milik `sql/83`. `sql/81` mengurus baris
+> ber-`expires_at` NULL (warisan), `sql/83` mengurus yang punya tenggat sungguhan.
 >
 > **⚠️ Koreksi 2026-09-03 — angka "75 jadwal" yang sempat ditulis di sini SALAH.**
 > Ia dihitung dari jadwal yang punya baris invoice `pending`, padahal gerbangnya
@@ -186,7 +199,7 @@ Yang gagal tiga asumsi di hulu:
 | berkas | isi |
 |---|---|
 | `sql/80` | outcome `paid_on_dead_bill` di CHECK `doku_webhook_events` (9 → 10 nilai) |
-| `sql/81` | ⏸️ **belum diterapkan** — kedaluwarsakan 181 invoice + 219 transaksi `pending` renta |
+| `sql/81` | ✅ kedaluwarsakan 181 invoice + 219 transaksi `pending` renta — **piutang Rp 18,77jt → Rp 610.500** |
 | `sql/82` | `is_stale` juga benar saat jadwalnya `cancelled` |
 | `sql/83` | **tidak ada di rencana.** `schedule_billing` + `_bulk` + `_summary` sadar `expires_at`/`is_expired` |
 | `sql/84` | `invoices.doku_request_id`, `invoices.doku_cancelled_at`, `transactions.doku_request_id` |
