@@ -54,9 +54,10 @@ dijalankan, jadi mengganti nama hanya memutus jejak.
 `add_extra_ad_column.sql` tidak bernomor — ia mendahului skema penomoran. Sudah
 diterapkan (kolom `survey_pages.is_extra_ad` ada di produksi).
 
-`ops_cleanup_test_account_tegarerputra.sql` **bukan migrasi**. Ia skrip
-pembersihan sekali pakai untuk satu akun; jangan dijalankan sebagai bagian dari
-urutan.
+`ops_cleanup_test_account_tegarerputra.sql`, `ops_cleanup_test_order_af91c0.sql`,
+`ops_fix_order_af004b84_dead_bill_payment.sql`, dan `ops_cancel_test_submission_sada.sql`
+**bukan migrasi**. Mereka skrip operasional sekali pakai untuk perbaikan/pembersihan
+data testing dan insiden; jangan dijalankan sebagai bagian dari urutan migrasi.
 
 ## Rantai bacaan
 
