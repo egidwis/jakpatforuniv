@@ -123,6 +123,135 @@ branch itu. Lihat §2.
 
 ## Yang menunggu tindakan
 
+### 00Y. 🟠 Tagihan gabungan: sisi peneliti & race condition (audit 2026-09-03)
+
+**Di luar alur Jadwal Iklan.** Lanjutan langsung dari rilis tagihan gabungan
+(`2500729`), yang catatan rilisnya sendiri menulis *"⛔ SATU PERMUKAAN BELUM
+DIUJI SAMA SEKALI: DASHBOARD PENELITI."*
+
+Audit menemukan **tiga cacat sisi peneliti** dan **enam race**, semuanya sebelum
+tagihan gabungan pertama pernah terbit di produksi (query `group by payment_id
+having count(*) > 1` → **nol baris**; nol peneliti punya ≥2 pesanan belum lunas
+bertanggal ke depan). Jadi seluruh perbaikan mendarat **sebelum** pemakaian
+pertama, bukan sesudah insiden — pertama kalinya untuk jalur uang di repo ini.
+
+| # | Temuan | Akibatnya kalau dibiarkan |
+|---|---|---|
+| A1 | Kartu peneliti memajang **porsi** pesanannya, tombolnya membuka link bernominal **total grup** | Grup 3×Rp 1,11jt: tiga kartu berbunyi Rp 1.110.000, ketiganya membuka halaman Rp 3.330.000 |
+| A2 | `/invoices/:paymentId` (pendaratan sesudah bayar untuk grup) tidak pernah menyegarkan diri | Tepat sesudah membayar, layarnya berjudul **INVOICE** + tombol "Bayar Sekarang" |
+| A3 | `create-payment.js` **mencetak** `payment_id` kedua untuk pesanan yang sudah masuk grup | Dua link hidup, dua-duanya bisa dibayar; `billed` berlipat; kartu penelitinya sendiri berbunyi "Lunas sebagian" |
+| B1 | Kelayakan dibekukan saat `BulkInvoiceDialog` dibuka, tak pernah diperiksa ulang | Grup terbit untuk jadwal yang sudah dibayar/dibatalkan di tab lain. **Nol pengaman di DB**: `payment_id` tak punya unique index |
+| B2 | "Tandai Lunas" berlingkup **jadwal**, link grup tidak | Admin melunasi 1 dari 3, link tetap menagih penuh → porsi yang sama terbayar dua kali |
+| B3 | Dialog "Batalkan tagihan" berkata *"tagihan lain tidak tersentuh"* | `cancelInvoice()` mematikan seluruh grup — teksnya ditulis sebelum grup ada |
+| B4 | `cancelSchedule()` meng-UPDATE `transactions` **tanpa** `.eq('status','pending')` | Webhook yang mendarat di sela SELECT–UPDATE ditimpa jadi `expired` |
+| B5 | Rollback `writeInvoiceRows` usaha-terbaik, gagalnya cuma `toast.error` 4 detik | Baris yatim mengunci N jadwal di `waiting_payment` |
+| B6 | Tidak ada penyapu kedaluwarsa | **Ditunda** — lihat jebakan no. 25 |
+
+Audit lanjutan atas **jalur uang** (halaman Transaksi, dokumen invoice/kuitansi,
+Analytics) menemukan tiga lagi — semuanya cacat **pembacaan**, bukan aritmetika:
+
+| # | Temuan | Akibatnya kalau dibiarkan |
+|---|---|---|
+| C1 | "Tandai Belum Lunas" masih berlingkup **jadwal** — cermin B2, dan lahir DARI perbaikannya | `settleGroupAsPaid` menulis `payment_channel='MANUAL_VERIFIED'`, dan nilai itulah gerbang aksi ini. Membalik 1 anggota memecah grup jadi separuh-lunas: kuitansi berubah kembali jadi **INVOICE bernominal penuh** untuk pesanan yang uangnya sudah diterima, dengan link yang sudah dimatikan |
+| C2 | `DocBundle.isPaid` **dihitung tapi tidak pernah dirender** | Grup separuh-lunas tampil seolah nol rupiah masuk, lengkap dengan tombol bayar total penuh — mengundang pembayaran kedua |
+| C3 | Halaman Transaksi & detail sheet buta grup | 3 baris @Rp 1,11jt tanpa tanda bahwa ketiganya satu transfer; "Salin Link Bayar" di baris Rp 1,11jt menyalin link Rp 3,33jt |
+
+**Aman, tidak perlu ditangani:** (a) pengiriman webhook ganda dari DOKU — STEP 1a/2
+mem-PATCH ke end-state yang sama dan fan-out STEP 3–5 idempoten; (b) **seluruh
+angka agregat**. `TransactionsPage.totalRevenue`, `categoryRevenue`,
+`analytics/revenue.ts`, `splitPpn`, dan `schedule_billing_summary` semuanya
+memakai **Σ per baris**, jadi grup terhitung tepat sekali. `paidOrders`/AOV
+memang per ORDER (3 untuk grup N=3) dan itu benar — labelnya "Order lunas".
+`entity_type` ada di `TX_COLUMNS` tapi tidak pernah dipakai memfilter, jadi
+anggota grup yang jadwal ke-2 tidak terbuang dari revenue. **Nol perubahan di
+Analytics.**
+
+**Yang dikerjakan (2026-09-03, belum dideploy):**
+
+- **Kartu peneliti sadar-grup.** Modul murni baru `components/status/invoiceGroups.ts`
+  memutuskan siapa **lead** — anggota dengan tanggal tayang paling awal, karena
+  jadwal itu pula yang mematikan link duluan (`invoiceLifetimeMinutes`). Hanya
+  lead yang memegang tombol, dan nominalnya **total grup**. Pengikut menunjuk ke
+  `/invoices/<payment_id>`. Chip grup tetap ada **sesudah lunas** — itu satu-satunya
+  cara peneliti mencocokkan satu transfer Rp 3,33jt dengan tiga pesanan.
+- **`groupPaymentState()` tiga keadaan** menggantikan boolean fail-closed.
+  `'group'` → **409** + link + jumlah + total; `'unknown'` → **tetap mencetak**.
+  Pemisahan itu bukan kerapian: memetakan gangguan jaringan ke `'group'` akan
+  memblokir checkout swalayan yang sah.
+- **"Tandai Lunas" berskala grup, BUKAN ditolak.** Menolaknya justru mematikan
+  alur yang melahirkan fitur ini (peneliti transfer di luar DOKU, admin melunasi
+  batch). `settleGroupAsPaid()`: matikan link DOKU **dulu** → `markScheduleAsPaid()`
+  per anggota → **laporan per anggota** (loopnya tidak transaksional).
+- **Revalidasi tepat sebelum memanggil DOKU** — himpunan berubah → berhenti,
+  gambar ulang, **nol panggilan DOKU**. Jendelanya menyempit dari "selama dialog
+  terbuka" jadi di bawah satu detik.
+- **Cakupan disebut di LABEL, bukan cuma di dialog**: "Tandai Lunas (3 pesanan)",
+  "Batalkan tagihan (3 pesanan)".
+- `is_expired` akhirnya dihormati di layar peneliti — kartu berhenti menawarkan
+  tombol ke link yang sudah mati (pola af004b84).
+- **`unsettleGroupAsPaid()`** (C1) — membalik seluruh anggota, laporan per anggota,
+  dan **nol panggilan DOKU**: link-nya sudah mati sejak grup dilunasi, dan DOKU
+  tidak punya "batalkan pembatalan". Dialognya mengatakan itu, karena langkah
+  berikutnya adalah menerbitkan tagihan **baru**. Cakupannya diturunkan dari
+  tagihan yang sudah **lunas**, bukan `openInvoice` — grup yang lunas tidak punya
+  tagihan terbuka lagi, jadi `openInvoiceMemberCount` selalu menjawab 1 tepat di
+  kartu yang menawarkan pembalikan.
+- **Dokumen mengenal keadaan ketiga** (C2): `paidTotal` / `outstanding` /
+  `isPartiallyPaid` di `groupedInvoice.ts`; chip `✓ Lunas` per bundel, blok
+  "Sudah dibayar / Sisa", dan **tombol bayar dicabut** saat sebagian lunas —
+  link DOKU tidak bisa menagih separuh.
+- **Halaman Transaksi sadar grup** (C3): badge `⛓2/3` di baris, "Total" jadi
+  "Porsi pesanan ini" di detail sheet + blok total grup, dan label tombol menyebut
+  cakupannya. `buildTxGroupIndex()` diturunkan **dari daftar yang sudah dimuat**,
+  bukan query baru — berkas itu punya catatan keras bahwa `.in('payment_id', […])`
+  sudah pernah memakan waktu (700 UUID → `400` tanpa keterangan).
+- **`flagStaleBannerForExtend()`** — padanan STEP 5 webhook yang selama ini tidak
+  ada di jalur manual: perpanjangan berhadiah baru yang dilunasi manual tidak
+  pernah menyalakan `requires_banner_update`, jadi `cron_activate_extends()`
+  menayangkan halaman dengan banner LAMA dan `/api/surveys` menyajikan nominal
+  hadiah periode sebelumnya. Menelan galatnya sendiri — penanda untuk mata admin
+  tidak boleh menggagalkan pelunasan yang uangnya sudah diterima.
+
+> ⚠️ **"0 dari 9" BUKAN bukti risiko rendah.** Sembilan perpanjangan lunas di
+> produksi, nol dilunasi manual — tapi itu karena **jadwal ke-2 belum dirilis ke
+> peneliti** (settingnya masih di dashboard admin), bukan karena jalurnya jarang.
+> Justru alur yang melahirkan tagihan gabungan (peneliti transfer di luar DOKU,
+> admin melunasi seluruh batch) menjadikan pelunasan manual sebagai jalur UTAMA.
+> Jangan pakai angka dasar dari fitur yang belum dirilis untuk menakar risiko.
+
+> ⚠️ **Panel grup admin sengaja TIDAK membawa tombolnya sendiri.** Aksinya tetap
+> di `planCardActions` — invarian tab ini "maksimal satu tombol di luar menu ⋯",
+> dan kartu dibuat **secara struktural** tidak bisa menumbuhkan tombol kedua. Dua
+> permukaan aksi uang = dua gerbang yang bisa menyimpang, pola yang dibongkar saat
+> `PaymentSection` dibubarkan.
+
+**Gerbang:** `tsc -p tsconfig.app.json` 77 error (baseline 79), `vitest`
+**481 lolos / 35 berkas** (dari 411/31), `npm run build` hijau.
+**Nol migrasi SQL** — `derive_schedule_id()` (sql/51) dan `schedule_billing_bulk()`
+sudah menyediakan semuanya.
+
+> ⬜ **SUDAH DI-COMMIT KE `main`, BELUM DI-PUSH, BELUM DIUJI DI BROWSER.**
+> Urutannya mengikat: **regresi
+> N=1 dulu** (terbitkan tagihan tunggal, bayar di sandbox, pastikan
+> `payment-success` + kartu peneliti + papan admin berpindah). Kalau N=1 goyah,
+> jangan sentuh grup. Baru kemudian: grup N=3 dari mata peneliti, pantulan
+> `/invoices/<payment_id>` yang harus berubah sendiri jadi RECEIPT, penolakan
+> `/payment-retry`, race B1 dua tab, cakupan B3, dan "Tandai Lunas (3 pesanan)"
+> pada grup yang memuat jadwal ordinal ≥2 (barisnya wajib jadi `scheduled`+`paid`,
+> bukan `paid`+`paid`, supaya `cron_activate_extends()` tetap mengangkatnya).
+>
+> Ditambah, untuk C1–C3 dan penanda banner:
+> **(1)** sesudah "Tandai Lunas (3 pesanan)", `/invoices/<payment_id>` harus jadi
+> RECEIPT **dan** link DOKU-nya ditolak sandbox; **(2)** lalu "Tandai Belum Lunas
+> (3 pesanan)" → ketiganya kembali `waiting_payment` sekaligus, dokumennya kembali
+> INVOICE, dan **tidak ada** panggilan DOKU di Network tab; **(3)** paksa keadaan
+> separuh-lunas lewat SQL (satu baris `invoices` → `paid`) dan pastikan dokumennya
+> memajang chip per bundel + "Sudah dibayar / Sisa" dan **tombol bayarnya hilang**;
+> **(4)** halaman Transaksi: tiga baris ber-badge `⛓1/3`–`⛓3/3`, detail sheet
+> menyebut "Porsi pesanan ini" + total grup; **(5)** lunasi manual satu
+> perpanjangan yang `is_new_period` → chip "Banner perlu diupdate" muncul di
+> `PageDetailDrawer` halaman ordernya.
+
 ### 00X. 🟠 Tagihan yang dibatalkan tidak pernah benar-benar mati (`sql/80`–`84`, 2026-09-03)
 
 **Di luar alur Jadwal Iklan** — lahir dari insiden pembayaran, seperti §00A/webhook.
