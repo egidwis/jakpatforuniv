@@ -100,6 +100,14 @@ dan kali ini ia **tidak diam** — cron `notify-primary-ads-live` menandai order
 sebagai "sudah dinotifikasi" padahal endpoint-nya belum ada, jadi setiap order
 yang mulai tayang sebelum deploy kehilangan emailnya secara permanen.
 
+🟠 **DAN SEKARANG KEBALIKANNYA: KODE MENDAHULUI DB.** Deploy 2026-09-03 membawa
+gerbang "jadwal tidak bisa dibatalkan selama tagihannya masih hidup", tapi
+[`sql/81`](../multi-step-form/sql/81_expire_zombie_pending_bills.sql) — yang
+mengedaluwarsakan 181 invoice `pending` renta — **belum diterapkan**. Selama itu
+**75 jadwal kehilangan aksi "Batalkan Jadwal"** di produksi. Baca §00X sebelum
+menyentuh tab Reservasi Jadwal. Migrasinya sudah siap dan ditahan sadar: ia
+menyentuh 400 baris di dua tabel uang, jadi butuh persetujuan pemilik produk.
+
 **Kalau kamu kembali setelah lama:** per 2026-08-05 `main` sudah di-deploy dan
 DB serta kode sempat sejajar — tidak ada lubang di deret `sql/`. Yang tayang
 memuat Phase 0/1, jembatan + papan jadwal Kilat, Task 8B-1, 8C, dan 8D.
@@ -117,6 +125,135 @@ branch itu. Lihat §2.
 ---
 
 ## Yang menunggu tindakan
+
+### 00X. 🟠 Tagihan yang dibatalkan tidak pernah benar-benar mati (`sql/80`–`84`, 2026-09-03)
+
+**Di luar alur Jadwal Iklan** — lahir dari insiden pembayaran, seperti §00A/webhook.
+[Rencananya](superpowers/plans/2026-09-03-tagihan-mati-benar-benar-mati.md).
+
+Order `af004b84` membayar Rp 444.000 lewat link DOKU milik jadwal yang **sudah
+dibatalkan 20 menit sesudah tagihannya terbit**. STEP 5 webhook mencoba menghidupkan
+kembali jadwal batal itu (`status='scheduled'`), penjaga irisan `sql/75` menolak
+(P0001), dan webhook membalas HTTP 500 tiga kali. Jadwal yang benar-benar dipesan
+peneliti tetap `waiting_payment` — sehari sebelum tayang.
+
+> 🔴 **SISA SATU: `sql/81` BELUM DITERAPKAN, KODENYA SUDAH TAYANG.**
+>
+> Ini kebalikan §00A/§00B — di sini **kode mendahului DB**, dan akibatnya terlihat.
+> Gerbang 6a ("jadwal tidak bisa dibatalkan selama tagihannya masih hidup") sudah
+> hidup di produksi, sementara 181 invoice `pending` renta belum dikedaluwarsakan.
+> Selama itu **75 jadwal kehilangan aksi "Batalkan Jadwal"**: `requested` 55,
+> `slot_reserved` 18, `unscheduled` 2. Admin harus membatalkan dulu tagihan yang
+> link-nya mati berminggu-minggu sebelum bisa membatalkan jadwal apa pun.
+>
+> Migrasinya sudah ditulis lengkap
+> ([`sql/81`](../multi-step-form/sql/81_expire_zombie_pending_bills.sql)) dengan
+> snapshot ke `backup.bills_expired_by_sql81` dan SQL pembalikannya. Ia ditahan
+> sadar: menyentuh **400 baris di dua tabel uang** (181 invoice + 219 transaksi),
+> jadi butuh persetujuan pemilik produk, bukan diselipkan.
+
+**Ini bukan kegagalan webhook** — webhook justru satu-satunya lapisan yang berisik.
+Yang gagal tiga asumsi di hulu:
+
+| Asumsi | Kenyataan | Ditutup |
+|---|---|---|
+| `is_stale` (`sql/60`, §00P) menangkap tagihan yang tidak berlaku | Rumusnya `billed_start_date <> start_date`, dan `cancelSchedule()` **sengaja mempertahankan tanggal** — tagihan jadwal batal punya `is_stale = false`. Detektornya melihat jadwal yang *pindah*, buta terhadap yang *mati* | `sql/82` |
+| Link DOKU kedaluwarsa sendiri, tak perlu ditutup manual | Benar secara harfiah, tapi umurnya dipatok `60*24*7` = **7 hari** — keabadian untuk jadwal yang bisa mati dalam 20 menit | Bagian 3 |
+| Uang yang masuk selalu boleh diterapkan ke jadwalnya | Berlaku untuk **buku besar**, tidak untuk **jadwal**. Di sini penjaga irisan kebetulan menangkapnya; untuk **ordinal 1 ia tidak akan menangkap apa pun** (`trg_submission_no_overlap` hanya menyala `UPDATE OF start_date, end_date`) | `sql/80` |
+
+| berkas | isi |
+|---|---|
+| `sql/80` | outcome `paid_on_dead_bill` di CHECK `doku_webhook_events` (9 → 10 nilai) |
+| `sql/81` | ⏸️ **belum diterapkan** — kedaluwarsakan 181 invoice + 219 transaksi `pending` renta |
+| `sql/82` | `is_stale` juga benar saat jadwalnya `cancelled` |
+| `sql/83` | **tidak ada di rencana.** `schedule_billing` + `_bulk` + `_summary` sadar `expires_at`/`is_expired` |
+| `sql/84` | `invoices.doku_request_id`, `invoices.doku_cancelled_at`, `transactions.doku_request_id` |
+
+**Perilaku baru webhook:** uang yang mendarat di tagihan mati (rank 2 di
+`payment_status_rank`) → **nol tulisan, HTTP 200**, kartunya masuk antrean admin.
+Presedennya persis `amount_mismatch`; 500 hanya membakar percobaan DOKU (batas 5,
+insiden ini sudah memakai 3). Campuran hidup+mati pada tagihan gabungan **juga**
+dianggap mati — grup yang sebagian dibatalkan justru ambiguitas yang paling tidak
+boleh diterapkan otomatis.
+
+> ⚠️ **Ini menukar kegagalan berisik dengan kegagalan sunyi DI BUKU.** Nol tulisan
+> berarti uangnya ada di DOKU sementara buku kita bilang `cancelled`. Sebelumnya
+> uang itu setidaknya mendarat di `transactions`; sekarang pendapatan **kurang
+> hitung** sampai admin bertindak. `WebhookFailuresBanner` karena itu berubah dari
+> informasi jadi **penanggung beban** — barisnya wajib membawa nominal dan
+> `payment_id`. **Rekonsiliasi DOKU-vs-buku harus tahu kelas selisih baru ini ada.**
+
+**Tiga temuan yang tidak ada di rencana dan mengubah pekerjaannya:**
+
+1. **`transactions` tidak punya kolom `expires_at`.** `buildInvoiceRows` menyusun
+   baris invoice dan transaksi dari objek `shared` yang sama; menaruh `expires_at`
+   di sana = INSERT transaksi ditolak 400 → `writeInvoiceRows` membatalkan seluruh
+   baris → **tagihan gagal terbit padahal link DOKU sudah hidup menagih.** Kolomnya
+   hanya milik baris invoice.
+2. **Tidak ada cron yang mengedaluwarsakan tagihan.** `cron.job` cuma berisi
+   `activate-extends` + dua notifier; yang membalik `pending` hanya `cancelSchedule()`
+   dan `cancelInvoice()`, keduanya dipicu manusia. Jadi `pending` bertahan
+   **selamanya** sesudah link-nya mati — **182 dari 183** baris produksi begitu, yang
+   tertua 29 Des 2025. `sql/81` membersihkan yang lama; `sql/83` mencegahnya tumbuh
+   lagi dari nol, karena tanpa itu setiap tagihan baru mengulang masalah yang sama.
+3. **Tiga outcome `sql/77` (`rejected_auth`/`rejected_payload`/`handler_crashed`)
+   tidak pernah ditambahkan** ke `OUTCOME_LABELS`/`VARIANTS`/`HINTS` — chip mencetak
+   slug mentah, hint kosong. Kelas bug yang persis ditutup `65369c1`, sudah ada di
+   repo sebelum insiden ini. Ikut ditutup.
+
+**Dua dialog di tab yang sama menyatakan hal berlawanan**, dan yang benar ada di
+dialog yang salah. Dialog *batalkan tagihan* berkata link-nya masih bisa dibayar (✅);
+dialog *batalkan jadwal* berkata tagihan menggantung "ikut dimatikan" (❌ — tidak
+pernah benar). Klausa itu dibuang, peringatannya pindah ke tempat admin benar-benar
+bisa bertindak, dan email pembatalan akhirnya memuat kalimat yang selama ini hanya
+dimiliki cabang `moved`: *"jangan bayar link yang lama"* — digerbang `isPaid`, sama
+seperti `moved`. §00P menyebutnya satu-satunya kalimat yang benar-benar mencegah
+kehilangan uang; insiden ini lewat persis di cabang yang tidak memilikinya.
+
+**Kartu jadwal batal berhenti mengarang harga.** Kartu #2 order ini memajang
+"Estimasi Total **Rp 3.108.000**" padahal `total_cost` baris itu **0** dan tagihan
+sungguhannya Rp 444.000 — `deriveScheduleMoney` memakai `totalCost > 0` sebagai
+"sudah ditagih", lalu jatuh ke cabang estimasi dan menghitung ulang 57 Qs × 7 hari
+dengan tarif hari ini. Angka itu membantah header kartunya sendiri ("Rp 999.000
+ditagih") **dan** invoice yang benar-benar terbit. Estimasi adalah *penawaran*;
+jadwal yang dibatalkan tidak sedang ditawarkan.
+
+| Verifikasi produksi 2026-09-03 | Hasil |
+|---|---|
+| Jadwal order `af004b84` | #1 `7AX5JAZH` paid · #2 `DSTSANY2` **scheduled/paid** (4–5 Sep) |
+| Pembayaran `…664` | menempel jadwal **hidup**, bukan jadwal batal |
+| Pendapatan order | **Rp 999.000**, terhitung **sekali** |
+| Baris ber-`schedule_id` NULL | **0** di seluruh `invoices`/`transactions` |
+| Event webhook terbuka | **0** (3 ditutup) |
+| Piutang total sesudah `sql/83` | **tidak bergerak** — Rp 18.772.750, open 41, stale 10 |
+| Pengecualian `sql/60` | utuh: `billed_start_date` NULL tidak basi; lunas tidak pernah basi (4 contoh di jadwal batal) |
+| `tsc` / vitest | **77 = baseline** / **434 lolos** (32 berkas, +24 tes baru) |
+| Advisor Supabase | **0 ERROR**; 1 INFO `backup.ad_schedules_deleted` RLS-tanpa-policy — bentuk yang memang diinginkan `sql/61` |
+
+**Penghapusan keras satu baris jadwal — pengecualian, bukan preseden.** Jadwal #2
+(`EAKD7WPQ`, 4–11 Sep) murni salah input admin: iklan 7 hari dengan harga 1 hari,
+jendela 7 harinya sendiri artefak bug yang diperbaiki `153f68a`. Ia **dihapus** dari
+`ad_schedules` (snapshot di `backup.ad_schedules_deleted`) dan #3 dinomori ulang jadi
+#2 lewat `resync_ad_schedule_ordinals()` — bukan UPDATE tangan, supaya tidak lahir
+aturan urutan kedua. Ini **tidak** melanggar "matikan, bukan hapus": yang dilindungi
+aturan itu riwayat **uang**, dan uangnya justru dipertahankan utuh. Rekamannya di
+[`sql/ops_fix_order_af004b84_dead_bill_payment.sql`](../multi-step-form/sql/ops_fix_order_af004b84_dead_bill_payment.sql).
+**Tombol hapus jadwal untuk admin tetap TIDAK dibuat** — kalau salah input berulang,
+yang dibangun jalur "batalkan + sembunyikan" (`dismissed_at`, `sql/69`).
+
+**Yang TIDAK dikerjakan:** backfill `doku_request_id` untuk 183 tagihan lama
+(nilainya tidak pernah ditulis ke mana pun — tidak ada sumber untuk memulihkannya,
+jadi link-link itu **tidak bisa** dimatikan lewat API dan harus dibiarkan
+kedaluwarsa); trigger DB yang memblokir `cancelled → scheduled` untuk ordinal 1 (akan
+ikut memblokir pembatalan-yang-dibatalkan yang sah — menukar bug senyap dengan pintu
+terkunci); pengalihan uang otomatis ke tagihan hidup bernominal sama ("nominal sama"
+bukan bukti "maksudnya sama").
+
+**Belum diuji:** Cancel Order API (`POST /checkout/v3/cancellations`) belum dicoba di
+sandbox DOKU. Yang harus diuji **bukan** HTTP 200-nya, melainkan **membuka link-nya
+di browser** dan memastikan benar-benar tidak bisa dibayar — plus tiga penolakan yang
+harus anggun: tagihan sudah dibayar, sudah kedaluwarsa, dan baris ber-`doku_request_id`
+NULL (jangan panggil API-nya sama sekali).
 
 ### 00W. 🟢 TASK 11 SELESAI — view `form_submissions_extend` dicabut (`sql/73`–`76`, 2026-08-30)
 
@@ -3429,6 +3566,34 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 
 ---
 
+25. **TIDAK ADA cron yang mengedaluwarsakan tagihan.** `cron.job` hanya berisi
+   `activate-extends` dan dua notifier; satu-satunya yang membalik status
+   `pending` adalah `cancelSchedule()` dan `cancelInvoice()` — keduanya dipicu
+   manusia. Jadi begitu link DOKU-nya mati, baris kita tetap `pending`
+   **selamanya**: terukur 2026-09-03, **182 dari 183** invoice `pending` sudah
+   lewat 7 hari, yang tertua **29 Des 2025**. Setiap gerbang yang membaca
+   `status` saja akan salah — "pending" berarti "belum pernah dibayar", bukan
+   "masih bisa dibayar". Yang menjawab pertanyaan kedua adalah `is_expired`
+   (`sql/83`), dan ia dijawab **di database**, bukan dihitung ulang di klien:
+   `isLiveInvoice` wajib tetap cermin `live` di `schedule_billing_summary()`.
+26. **`transactions` tidak punya kolom `expires_at`, `invoices` punya.** Bukan
+   kelalaian yang aman: `buildInvoiceRows` menyusun baris invoice DAN transaksi
+   dari satu objek `shared`, jadi menambahkan kolom yang hanya dimiliki salah
+   satunya membuat INSERT sisi lain ditolak PostgREST 400 → `writeInvoiceRows`
+   membatalkan **seluruh** baris dan melempar → **tagihan gagal terbit padahal
+   link DOKU-nya sudah hidup menagih**. Sebelum menambah kolom ke `shared`,
+   pastikan KEDUA tabel memilikinya; kalau tidak, taruh di baris yang berhak saja.
+27. **Menghapus baris `ad_schedules` bisa memutus uang dari jadwalnya tanpa satu
+   error pun.** `invoices_schedule_id_fkey` dan `transactions_schedule_id_fkey`
+   dua-duanya **ON DELETE SET NULL** (`pg_constraint.confdeltype='n'`), dan
+   `schedule_billing()` membaca `schedule_id` — jadi DELETE yang mendahului
+   pemindahan uang membuat nominalnya lenyap dari setiap papan jadwal, diam-diam.
+   Urutannya mengikat: **pindahkan dulu, verifikasi, baru hapus.** Terkait:
+   `derive_schedule_id()` pulang di baris pertama kalau `schedule_id` sudah
+   terisi, jadi `UPDATE ... SET extend_id = X` **wajib** disertai
+   `schedule_id = null` kalau ingin trigger menurunkannya ulang — tanpa itu
+   barisnya menunjuk **dua jadwal berbeda** dan papan membaca yang salah.
+
 ## Peta dokumen
 
 | File | Isi |
@@ -3442,4 +3607,6 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
 | [`superpowers/plans/2026-08-09-order-flow-reorder.md`](superpowers/plans/2026-08-09-order-flow-reorder.md) | **Rencana reorder flow order user** — Ringkasan sebelum Jadwal, gabung layar jadwal+bayar, P0 kebocoran anon, dua email transisi. ✅ committed 2026-08-10, masuk `main` 2026-08-18. **Tidak termasuk daftar Task 8–13 di atas** — workstream terpisah yang menumpang branch yang sama |
 | `multi-step-form/sql/36`–`49` | Migrasi; tiap file memuat pre-check, verifikasi, dan rollback-nya sendiri di bagian bawah. Deretnya **utuh** sejak 2026-08-05 — lubang di `43` sudah ditutup. `46` = Task 9A (dua sumbu); `47`/`48` dipakai reorder flow order (P0 anon + email transisi); `49` dipakai perbaikan bug jam tayang kustom ordinal 1 (**bukan** `reward_pools` — tabrakan nomor ditemukan 2026-08-10, dua kali). `reward_pools` bergeser jadi `sql/50` |
+| [`superpowers/plans/2026-09-03-tagihan-mati-benar-benar-mati.md`](superpowers/plans/2026-09-03-tagihan-mati-benar-benar-mati.md) | **Rencana "tagihan yang dibatalkan harus benar-benar mati"** — dari insiden pembayaran order `af004b84`. **Di luar alur Jadwal Iklan.** Dieksekusi & dideploy 2026-09-03; status berjalan di §00X |
+| `multi-step-form/sql/80`–`84` | **Di luar alur Jadwal Iklan.** Insiden tagihan mati 2026-09-03 ([rencananya](superpowers/plans/2026-09-03-tagihan-mati-benar-benar-mati.md)). `80` = outcome `paid_on_dead_bill`; `81` = bersih-bersih tagihan zombie (⚠️ **belum diterapkan**, menahan gerbang 6a); `82` = `is_stale` kenal jadwal `cancelled`; `83` = billing sadar kedaluwarsa (**tidak ada di rencana** — lihat jebakan no. 25); `84` = `doku_request_id` + `doku_cancelled_at`. Rekaman perbaikan datanya di `sql/ops_fix_order_af004b84_dead_bill_payment.sql` |
 | `multi-step-form/sql/54` | **Di luar alur Jadwal Iklan.** `doku_webhook_events` — jejak permanen notifikasi DOKU, dari insiden webhook 2026-08-10 ([rencananya](superpowers/plans/2026-08-10-doku-webhook-silent-failure.md)). Sengaja mengambil `54` dan bukan `50`, supaya tiga rencana yang sudah mengklaim `50`–`53` (`reward_pools`, Task 11, Task 13) tidak perlu bergeser untuk keempat kalinya — migrasi-migrasi itu saling independen, jadi urutan penerapan tidak jadi soal. **Nomor bebas berikutnya untuk pekerjaan Jadwal Iklan tetap `50`.** |

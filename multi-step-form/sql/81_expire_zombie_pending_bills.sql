@@ -28,9 +28,15 @@
 -- yang sudah tercatat — ia hanya berhenti berpura-pura link mati masih bisa
 -- dibayar.
 --
--- Sekali jalan. Yang mencegahnya kambuh adalah sql/82 + Bagian 3
--- (`invoices.expires_at` mulai ditulis untuk tagihan admin, bukan cuma tagihan
--- swalayan), plus gerbang yang sadar-kedaluwarsa di sisi baca.
+-- Sekali jalan. Yang mencegahnya kambuh adalah sql/83 (`schedule_billing` +
+-- `_bulk` + `_summary` menjawab `is_expired`, dan `isLiveInvoice` jadi
+-- cerminannya lagi) plus Bagian 3 — `invoices.expires_at` mulai ditulis untuk
+-- tagihan ADMIN, bukan cuma tagihan swalayan.
+--
+-- ⚠️ MIGRASI INI KODENYA SUDAH TAYANG LEBIH DULU (deploy 2026-09-03), jadi
+-- selama ia belum diterapkan gerbang 6a sedang mencabut aksi "Batalkan Jadwal"
+-- dari 75 jadwal hidup. Ini kebalikan jebakan biasa "DB mendahului kode" —
+-- di sini KODE yang mendahului DB, dan akibatnya terlihat di meja admin.
 -- ============================================================================
 
 -- 1. Snapshot dulu — 400 baris berubah status, dan satu-satunya jalan pulang

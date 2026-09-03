@@ -3,13 +3,13 @@
 Folder ini berisi rencana implementasi yang ditulis sebelum eksekusi. Sebagian sudah
 selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sekali.
 
-**Diperbarui 2026-08-30.**
+**Diperbarui 2026-09-03.**
 
 > Rencana **bukan** status berjalan. Untuk "di mana posisi kita sekarang", baca
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — itu titik masuk resmi
 > pekerjaan Jadwal Iklan dan selalu lebih mutakhir dari file mana pun di sini.
 
-> ⚠️ **Dua** rencana di sini **bukan** bagian Jadwal Iklan.
+> ⚠️ **Tiga** rencana di sini **bukan** bagian Jadwal Iklan.
 >
 > 1. [webhook DOKU](2026-08-10-doku-webhook-silent-failure.md) lahir dari insiden pembayaran
 >    dan berdiri sendiri. Ia mengambil `sql/54` supaya tidak menggeser nomor `50`–`53` yang
@@ -18,6 +18,12 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 >    arahan direksi soal tarif. Ia menyentuh jalur uang yang sama tapi tidak bergantung pada
 >    satu pun task Jadwal Iklan, dan **ditahan sadar 2026-08-30** sampai langkah *contract*
 >    `form_submissions_extend` selesai.
+> 3. [Tagihan yang dibatalkan harus benar-benar mati](2026-09-03-tagihan-mati-benar-benar-mati.md)
+>    lahir dari insiden pembayaran order `af004b84` — uang mendarat di link DOKU milik jadwal
+>    yang sudah dibatalkan. Seperti rencana webhook di atas, ia berdiri sendiri; ia mengambil
+>    `sql/80`–`84`. **Dieksekusi & dideploy 2026-09-03**, tapi ⚠️ **`sql/81` belum diterapkan
+>    sementara kodenya sudah tayang** — 75 jadwal sedang kehilangan aksi "Batalkan Jadwal".
+>    Status berjalan di [§00X](../../jadwal-iklan-progress.md).
 
 > ⚠️ `sql/55` juga **tidak** punya dokumen rencana di folder ini — perbaikan langsung dari
 > sesi chat 2026-08-13, bukan rencana pra-tulis. Ia mengubah `ensure_survey_page()` (Phase 1,
@@ -109,6 +115,7 @@ selesai dan disimpan sebagai catatan sejarah; sebagian belum dijalankan sama sek
 
 | Rencana | Status | Ringkas |
 |---|---|---|
+| [2026-09-03-tagihan-mati-benar-benar-mati](2026-09-03-tagihan-mati-benar-benar-mati.md) | ✅ **dieksekusi & DIDEPLOY 2026-09-03** — `sql/80`·`82`·`83`·`84` diterapkan & diverifikasi · 🔴 **`sql/81` BELUM diterapkan padahal kodenya sudah tayang** · ⬜ Cancel Order API belum diuji di sandbox | **Di luar alur Jadwal Iklan** — insiden pembayaran order `af004b84`: uang mendarat di link DOKU milik jadwal yang sudah dibatalkan 20 menit sesudah tagihannya terbit. Tiga asumsi hulu yang gagal: `is_stale` buta terhadap jadwal yang *mati* (hanya melihat yang *pindah*, karena `cancelSchedule()` mempertahankan tanggal); umur link dipatok 7 hari; dan "uang masuk boleh diterapkan ke jadwalnya" — benar untuk **buku besar**, tidak untuk **jadwal**. Sekarang: outcome `paid_on_dead_bill` (nol tulisan, 200, antrean admin), umur link mengikuti batas bayar jadwal dengan lantai 60 menit yang **menolak** alih-alih meng-clamp, gerbang "batalkan tagihannya dulu", dan Cancel Order API DOKU. ⚠️ **Menukar kegagalan berisik dengan kegagalan sunyi DI BUKU** — pendapatan kurang hitung sampai admin bertindak; rekonsiliasi harus tahu kelas selisih ini ada. ⚠️ **`sql/81` menahan gerbang 6a**: selama belum diterapkan, 75 jadwal kehilangan aksi "Batalkan Jadwal". Temuan di luar rencana: `transactions` **tidak punya** `expires_at`; **tidak ada cron** yang mengedaluwarsakan tagihan (182/183 baris `pending` sudah lewat 7 hari, tertua Des 2025); tiga outcome `sql/77` tidak pernah masuk peta label banner. Status berjalan di [§00X](../../jadwal-iklan-progress.md) |
 | [2026-08-30-kenaikan-harga-voucher-klaim](2026-08-30-kenaikan-harga-voucher-klaim.md) | ⬜ **belum dieksekusi — ditahan 2026-08-30** atas permintaan pemilik produk, supaya langkah *contract* `form_submissions_extend` selesai lebih dulu. Nol baris kode berubah | Tangga tarif naik ke **200/350/500/650/800** (kesepakatan 2026-07-20 yang tak pernah dijalankan) — **+65,2%** atas bauran order nyata, ±Rp 29,8jt → 49,2jt/bulan. Dilunakkan **halaman "Klaim Voucher" self-serve**: potongan persen bercap, sekali per akun, bermasa berlaku. JFUSUHUD dibiarkan mati 31 Agu 2026 dan voucher klaim jadi penggantinya. ⚠️ **`calculateAdCostPerDay()` tidak punya parameter tanggal** sementara `create-payment.js` menghitung ulang harga tiap kali orang menekan bayar — menaikkan tarif begitu saja akan menagih **80 order approved-belum-bayar** rata-rata **+Rp 230.000** (total +Rp 18,4jt) tanpa ada yang memberi tahu. Karena itu tangga tarif dibuat **ber-tanggal**, dan Fase 1 dikirim sebagai **no-op**. ⚠️ Titik harga ada **TIGA**, bukan empat — `StepOneFormFields` itu tangga *hadiah responden*, bukan tarif iklan |
 | [2026-08-10-doku-webhook-silent-failure](2026-08-10-doku-webhook-silent-failure.md) | ✅ **kode selesai & teruji lokal 2026-08-10** · ✅ **`sql/54` diterapkan** · ✅ **dideploy 2026-08-18** · ✅ **TERBUKTI JALAN 2026-08-18** — baris pertama `doku_webhook_events` mendarat dari pembayaran produksi nyata Rp 1.498.500 (VA Mandiri, `http_status` 200, `outcome` `ok`), dan itu terjadi **sesudah** `sql/52` sehingga sekalian membuktikan jalur uang selamat di atas view | Webhook DOKU dulu balas 200 walau tulis DB gagal — pembayaran hilang diam-diam (insiden Nur Fitriana, Rp 499.500). Sebabnya semua `fetch` ke PostgREST tidak memeriksa `res.ok`. Sekarang: `sbFetch` + cek jumlah baris berubah, kunci service-role fail-closed, balas 500 supaya DOKU retry (dibatasi 5x), jejak permanen di `doku_webhook_events` (`sql/54`), email admin, banner di halaman Keuangan. **Cloudflare Observability TIDAK tersedia untuk Pages** — itu sebabnya loggingnya di Supabase. **Jalur uang — rilis sendiri; terapkan `sql/54` SEBELUM deploy** |
 | [2026-08-09-order-flow-reorder](2026-08-09-order-flow-reorder.md) | ✅ **masuk `main` 2026-08-18** · 🟡 **cron `sql/48` direm sejak 2026-08-10 — hidupkan lagi SESUDAH deploy** | Wizard order user dibalik: Detail → Ringkasan → Jadwal & Bayar (dulu Jadwal sebelum Review); layar jadwal+countdown digabung, kedaluwarsa pulih di tempat; P0 kebocoran data anon (`sql/47`); dua email transisi via pg_cron/pg_net (`sql/48`). Verifikasi 6 skenario baru lewat code-trace, klik manual di browser masih PR. **Baca kotak koreksi 2026-08-10 di kepalanya** — tiga hal menyimpang dari badan dokumen |
