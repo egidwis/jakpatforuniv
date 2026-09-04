@@ -5,6 +5,33 @@
 >
 > Nol baris kode berubah sejauh ini. Seluruh angka di dokumen ini **diukur langsung
 > ke produksi** (`zewuzezbmrmpttysjvpg`) pada 2026-08-30, bukan diperkirakan.
+>
+> ---
+>
+> ⚠️ **KOREKSI 2026-09-04 — strateginya diganti, rancangan teknisnya dipakai ulang.**
+> Baca [`2026-09-04-transisi-harga-iklan-okt-jan.md`](2026-09-04-transisi-harga-iklan-okt-jan.md)
+> **sebelum** mengeksekusi apa pun di sini. Yang berubah:
+>
+> 1. **Bantalannya bukan lagi halaman "Klaim Voucher"** (Fase 2+3 di bawah). Halaman
+>    klaim punya *risiko penemuan* — peneliti yang tidak menemukannya menghadapi +65%
+>    mentah. Penggantinya **Harga Perkenalan otomatis** yang berlaku tanpa satu klik.
+>    Halaman klaim tidak dibuang: ia turun jadi **lantai harga permanen segmen
+>    mahasiswa**, tenggat 1 Jan 2027, dan **tidak lagi memblokir kenaikan**.
+> 2. **Kenaikannya bertahap, bukan sekali lompat** — 1 Okt (efektif ±0%) → 1 Des (≈+33%)
+>    → 1 Jan 2027 (harga penuh). Fase 4 di bawah ("Nyalakan kenaikannya") diganti jadwal
+>    tiga langkah.
+> 3. **Empat temuan review kode 2026-09-04** menambah/mengurangi daftar kerja di bawah:
+>    `SubmissionDetailSheet.tsx:576-577` **ternyata titik harga** dan tidak ada di daftar
+>    mana pun · `SchedulePhase` **sudah bukan** titik harga (semuanya lewat
+>    `deriveScheduleMoney`) · `deriveScheduleMoney` juga kehilangan tanggal **voucher**,
+>    bukan cuma tanggal tarif · **JFUFEB memakai cap Rp 300.000/hari yang berlaku sampai
+>    20 Feb 2027** — terhadap tangga baru itu jadi diskon 40–62% yang tak pernah
+>    diputuskan siapa pun.
+> 4. Angka JFUSUHUD final: **33 order, 25 lunas** (dokumen ini mencatat 23 — ia masih
+>    laku sampai hari terakhir, 31 Agu).
+>
+> Yang **tetap berlaku penuh** dari dokumen ini: dampak **+65,2%**, bauran tier, tangga
+> **200/350/500/650/800**, dan seluruh temuan `atMs` (§"Temuan yang WAJIB dibereskan").
 
 ## Kenapa dokumen ini ada
 
