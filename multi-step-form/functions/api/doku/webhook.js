@@ -74,6 +74,55 @@ export function isDeadBillStatus(status) {
 }
 
 /**
+ * Status tagihan yang BERWENANG menentukan `payment_status` sebuah jadwal.
+ *
+ * ⚠️ "TERBARU" BUKAN "BERWENANG", DAN MENYAMAKANNYA MEMATIKAN IKLAN YANG SUDAH
+ * DIBAYAR.
+ *
+ * Terukur di order af004b84, 2026-09-04. Jadwal `DSTSANY2` punya DUA tagihan:
+ * `…664` LUNAS (terbit 10.25) dan `…458` DIBATALKAN (terbit 11.00). STEP 3 dulu
+ * memakai `order=created_at.desc&limit=1`, jadi yang terbaca adalah yang
+ * dibatalkan — dan STEP 4 menimpa `payment_status='paid'` jadi `'cancelled'`.
+ * Akibat berantainya senyap total:
+ *   `cron_activate_extends` menyaring `payment_status='paid'` → dilewati
+ *   → `status` tak pernah jadi `live`
+ *   → `survey_pages.publish_start_date` tak pernah dipindah
+ *   → halaman survei DI LUAR masa tayang → peneliti tidak bisa membukanya,
+ *     padahal uangnya sudah masuk dan hari tayangnya sudah tiba.
+ *
+ * Bentuk "lunas lama + dibatalkan baru di jadwal yang sama" bukan kasus aneh: ia
+ * lahir setiap kali admin memindahkan pembayaran ke jadwal lain lalu
+ * membatalkan tagihan kembarnya — persis pemulihan insiden af004b84 itu sendiri.
+ *
+ * Aturannya mengikuti `payment_status_rank()` (sql/53): **rank tertinggi
+ * menang**, baru `created_at` sebagai pemecah seri. Uang yang sudah masuk tidak
+ * bisa dibatalkan oleh baris yang lebih muda — prinsip yang sama dengan
+ * "uang yang sudah masuk tidak pernah basi" di `is_stale` (sql/60).
+ *
+ * `null` = tidak ada baris; pemanggil memakai status dari webhook apa adanya.
+ */
+export function authoritativeInvoiceStatus(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const rank = (status) => {
+    const s = String(status ?? '').toLowerCase();
+    if (s === 'paid' || s === 'completed') return 3;
+    if (s === 'expired' || s === 'failed' || s === 'cancelled') return 2;
+    if (s === 'pending') return 1;
+    return 0;
+  };
+
+  let best = null;
+  for (const row of rows) {
+    if (!best) { best = row; continue; }
+    const d = rank(row?.status) - rank(best?.status);
+    if (d > 0) best = row;
+    else if (d === 0 && String(row?.created_at || '') > String(best?.created_at || '')) best = row;
+  }
+  return best?.status || null;
+}
+
+/**
  * Verdict "tagihan ini sudah mati" — murni, supaya bisa diuji tanpa jaringan.
  *
  * Dipisah dengan alasan yang sama seperti `verifyDokuAuth`: yang perlu dijaga
@@ -972,27 +1021,30 @@ async function applyPaidSchedule(sb, target, appStatus) {
   const scopeFilter = paidScheduleId
     ? `schedule_id=eq.${encodeURIComponent(paidScheduleId)}`
     : `form_submission_id=eq.${formSubmissionId}`;
+  // ⚠️ TANPA `limit=1`. Lihat `authoritativeInvoiceStatus()` — "terbaru" bukan
+  // "berwenang", dan membaca satu baris teratas saja adalah bug yang mematikan
+  // iklan yang sudah dibayar.
   const latestInvoiceRes = await sbFetch(
-    `${sb.url}/rest/v1/invoices?${scopeFilter}&order=created_at.desc&limit=1`,
+    `${sb.url}/rest/v1/invoices?${scopeFilter}&select=status,created_at&order=created_at.desc&limit=50`,
     { headers: sb.headers },
-    'STEP 3 SELECT invoice terbaru'
+    'STEP 3 SELECT invoice lingkup ini'
   );
   const latestInvoices = await latestInvoiceRes.json();
   console.log(
-    `Latest invoice SELECT (lingkup: ${paidScheduleId ? `schedule ${paidScheduleId}` : `order ${formSubmissionId}`}):`,
+    `Invoice SELECT (lingkup: ${paidScheduleId ? `schedule ${paidScheduleId}` : `order ${formSubmissionId}`}):`,
     JSON.stringify(latestInvoices)
   );
 
   // ====================================================================
-  // STEP 4: Determine form payment_status from latest invoice
+  // STEP 4: Determine form payment_status — BERWENANG, bukan TERBARU
   // ====================================================================
   let formPaymentStatus = appStatus === 'completed' ? 'paid' : appStatus;
   let formSubmissionStatus = appStatus === 'completed' ? 'paid' : undefined;
 
-  if (Array.isArray(latestInvoices) && latestInvoices.length > 0) {
-    const latestStatus = latestInvoices[0].status;
-    formPaymentStatus = latestStatus === 'paid' ? 'paid' : (latestStatus || 'pending');
-    formSubmissionStatus = latestStatus === 'paid' ? 'paid' : undefined;
+  const authoritative = authoritativeInvoiceStatus(latestInvoices);
+  if (authoritative) {
+    formPaymentStatus = authoritative === 'paid' ? 'paid' : authoritative;
+    formSubmissionStatus = authoritative === 'paid' ? 'paid' : undefined;
   }
 
   // ====================================================================

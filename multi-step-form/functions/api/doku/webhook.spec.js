@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verifyDokuAuth, sniffInvoiceNumber, REJECT_OUTCOMES, onRequest, collectPaidTargets, deadBillOutcome, isDeadBillStatus } from './webhook.js';
+import { verifyDokuAuth, sniffInvoiceNumber, REJECT_OUTCOMES, onRequest, collectPaidTargets, deadBillOutcome, isDeadBillStatus, authoritativeInvoiceStatus } from './webhook.js';
 
 /*
   Yang dijaga di sini: SETIAP penolakan harus bisa dicatat.
@@ -360,5 +360,85 @@ describe('collectPaidTargets — satu tugas per jadwal', () => {
     it('baris tanpa form_submission_id memakai id order dari STEP 1', () => {
         const t = collectPaidTargets([{ schedule_id: 's4' }], [], 'o4');
         expect(t[0].form_submission_id).toBe('o4');
+    });
+});
+
+
+// ============================================================================
+// STEP 4: "terbaru" BUKAN "berwenang"
+// ============================================================================
+//
+// Order af004b84, 2026-09-04 — iklan yang SUDAH DIBAYAR tidak tayang di hari
+// tayangnya. Jadwal DSTSANY2 punya dua tagihan: …664 LUNAS (10.25) dan …458
+// DIBATALKAN (11.00). STEP 3 mengambil `order=created_at.desc&limit=1`, jadi
+// yang terbaca yang dibatalkan, dan STEP 4 menimpa payment_status jadi
+// 'cancelled'. Rantai senyapnya: cron melewatinya → status tak pernah `live` →
+// publish_start_date tak dipindah → halaman survei di luar masa tayang.
+describe('authoritativeInvoiceStatus — rank menang atas kebaruan', () => {
+    const inv = (status, created_at) => ({ status, created_at });
+
+    it('LUNAS lama mengalahkan DIBATALKAN baru (regresi af004b84)', () => {
+        // Persis bentuk yang lahir setiap kali admin memindahkan pembayaran ke
+        // jadwal lain lalu membatalkan tagihan kembarnya.
+        expect(authoritativeInvoiceStatus([
+            inv('cancelled', '2026-09-02T11:00:00Z'),
+            inv('paid', '2026-09-02T10:25:00Z'),
+        ])).toBe('paid');
+    });
+
+    it('LUNAS lama mengalahkan KEDALUWARSA baru', () => {
+        expect(authoritativeInvoiceStatus([
+            inv('expired', '2026-09-03T00:00:00Z'),
+            inv('paid', '2026-09-01T00:00:00Z'),
+        ])).toBe('paid');
+    });
+
+    it('`completed` dihargai sama dengan `paid` (rank 3, sql/53)', () => {
+        expect(authoritativeInvoiceStatus([
+            inv('cancelled', '2026-09-03T00:00:00Z'),
+            inv('completed', '2026-09-01T00:00:00Z'),
+        ])).toBe('completed');
+    });
+
+    it('tanpa yang lunas, yang TERBARU menang — perilaku lama dipertahankan', () => {
+        // Penerbitan ulang tagihan harus tetap bisa menggeser jadwal kembali ke
+        // pending. Yang dilarang cuma MENURUNKAN dari lunas.
+        expect(authoritativeInvoiceStatus([
+            inv('pending', '2026-09-03T00:00:00Z'),
+            inv('cancelled', '2026-09-01T00:00:00Z'),
+        ])).toBe('cancelled');
+        expect(authoritativeInvoiceStatus([
+            inv('cancelled', '2026-09-03T00:00:00Z'),
+            inv('pending', '2026-09-01T00:00:00Z'),
+        ])).toBe('cancelled');
+    });
+
+    it('seri rank dipecah oleh created_at TERBARU', () => {
+        expect(authoritativeInvoiceStatus([
+            inv('pending', '2026-09-01T00:00:00Z'),
+            inv('pending', '2026-09-03T00:00:00Z'),
+        ])?.length).toBeGreaterThan(0);
+        expect(authoritativeInvoiceStatus([
+            inv('cancelled', '2026-09-01T00:00:00Z'),
+            inv('expired', '2026-09-03T00:00:00Z'),
+        ])).toBe('expired');
+    });
+
+    it('satu baris = baris itu, apa pun statusnya', () => {
+        expect(authoritativeInvoiceStatus([inv('pending', '2026-09-01T00:00:00Z')])).toBe('pending');
+        expect(authoritativeInvoiceStatus([inv('paid', '2026-09-01T00:00:00Z')])).toBe('paid');
+    });
+
+    it('nol baris → null, pemanggil pakai status dari webhook', () => {
+        expect(authoritativeInvoiceStatus([])).toBeNull();
+        expect(authoritativeInvoiceStatus(null)).toBeNull();
+        expect(authoritativeInvoiceStatus(undefined)).toBeNull();
+    });
+
+    it('status tak dikenal (rank 0) kalah dari apa pun yang dikenal', () => {
+        expect(authoritativeInvoiceStatus([
+            inv('ngawur', '2026-09-03T00:00:00Z'),
+            inv('pending', '2026-09-01T00:00:00Z'),
+        ])).toBe('pending');
     });
 });
