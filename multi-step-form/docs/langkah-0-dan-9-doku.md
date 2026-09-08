@@ -1,8 +1,12 @@
-# Langkah 0 & 9 — dua hal yang harus dikerjakan manusia
+# Langkah 0 & 9
 
-Dua gerbang tersisa dari Rencana A (link pembayaran yang bisa dipanggil pulang).
-Kode dan migrasinya sudah siap; `sql/85` bahkan sudah live di produksi. Yang
-menahan deploy cuma dua berkas ini.
+Dua gerbang terakhir Rencana A (link pembayaran yang bisa dipanggil pulang).
+Kode dan migrasinya sudah siap; `sql/85` bahkan sudah live di produksi.
+
+| | Status |
+|---|---|
+| **Langkah 0** — buktikan Cancel Order mematikan link | ⛔ **Satu-satunya yang menahan deploy.** Butuh Anda: terbitkan tagihan uji, batalkan dari dashboard, buka link-nya di browser |
+| **Langkah 9** — setelan kadaluarsa dashboard DOKU | ✅ **Diputuskan 2026-09-08: dibiarkan kosong selamanya.** Tidak jadi ditanyakan ke DOKU |
 
 ---
 
@@ -130,56 +134,66 @@ bekerja". Kalau Cara A sudah hijau, Cara B tidak perlu dijalankan.
 
 ---
 
-## Langkah 9 — satu pertanyaan ke DOKU
+## Langkah 9 — DIPUTUSKAN, tidak jadi ditanyakan ke DOKU
 
-**Latar belakangnya.** Di dashboard DOKU, Pengaturan Kadaluarsa → Batas Waktu
-saat ini **0 Jam 0 Menit** (belum disetel). Sementara itu sistem kami selalu
-mengirim `payment.payment_due_date` sendiri di setiap request, dihitung dari
-jadwal tayang yang dibiayai tagihan itu.
+**Keputusan pemilik produk (2026-09-08): "Batas Waktu" di Pengaturan Kadaluarsa
+dashboard DOKU DIBIARKAN `0 Jam 0 Menit` — selamanya — supaya kedaluwarsa murni
+diatur sistem ini.**
 
-Yang tidak kami ketahui: kalau nilai dashboard disetel, ia **melengkapi** atau
-**menimpa** nilai yang kami kirim? Jawabannya menentukan tindakan yang
-berlawanan, jadi ini tidak boleh ditebak.
+### Kenapa pertanyaannya jadi tidak perlu
 
-### Draf pesan
+Rencana semula menanyakan ke DOKU apakah nilai dashboard itu sekadar *default*
+untuk request tanpa `payment.payment_due_date`, atau *menimpa* nilai API.
+Jawabannya menentukan dua tindakan yang berlawanan.
 
-> Selamat siang, Tim DOKU.
->
-> Kami ingin memastikan satu hal soal Pengaturan Kadaluarsa (Expiry Settings) di
-> dashboard merchant, untuk produk Checkout.
->
-> Saat ini setiap request `POST /checkout/v1/payment` dari sistem kami selalu
-> menyertakan `payment.payment_due_date` dengan nilai yang kami hitung sendiri
-> per transaksi (berbeda-beda, mengikuti jadwal layanan yang dibayar).
->
-> Pertanyaannya: **nilai "Batas Waktu" di Pengaturan Kadaluarsa dashboard itu
-> berlaku sebagai DEFAULT untuk request yang tidak mengirim
-> `payment.payment_due_date`, atau ia MENIMPA nilai yang kami kirim lewat API?**
->
-> Kami menanyakannya karena kedua kemungkinan itu menuntut tindakan yang
-> berlawanan: kalau ia hanya default, kami ingin menyetelnya sebagai jaring
-> pengaman; kalau ia menimpa nilai API, menyetelnya justru akan merusak aturan
-> kedaluwarsa per-transaksi yang sudah kami bangun.
->
-> Dua pertanyaan susulan yang berkaitan:
->
-> 1. Fitur **Recover Abandoned Cart** — benarkah ia memberi pelanggan akses ke
->    halaman pembayaran yang sudah kedaluwarsa (sampai 3 kali)? Kalau ya, apakah
->    ia bisa mengabaikan `payment_due_date` yang kami kirim?
-> 2. **Cancel Order** (`POST /checkout/v3/cancellations`) — sesudah berhasil,
->    apakah halaman pembayarannya langsung menolak pembayaran baru, atau ada
->    jeda propagasi? Dan kanal pembayaran apa saja yang TIDAK bisa dibatalkan
->    lewat endpoint ini?
->
-> Terima kasih banyak.
+Keputusan ini menutup keduanya sekaligus, dan itu yang membuatnya lebih tegas
+daripada rencana semula: **membiarkannya kosong benar di KEDUA kemungkinan.**
 
-### Cara menindaklanjuti jawabannya
-
-| Jawaban DOKU | Tindakan |
+| Kalau ternyata… | Membiarkan kosong berarti… |
 |---|---|
-| Hanya **default** | Setel dashboard ke **7 hari (10.080 menit)** = `MAX_INVOICE_MINUTES`. Jaring pengaman untuk endpoint masa depan yang lupa mengirim field-nya. |
-| **Menimpa** nilai API | **Jangan disentuh.** Menyetelnya akan mematahkan aturan cutoff 14.00 WIB. Biarkan 0 Jam 0 Menit. |
+| ia hanya **default** | tidak ada yang berubah — tidak ada satu pun request kami yang mengandalkannya |
+| ia **menimpa** nilai API | kita tidak pernah merusak aturan cutoff 14.00 WIB |
 
-**⚠️ Terlepas dari jawabannya: jangan menyalakan Recover Abandoned Cart.** Fitur
-itu (sekarang mati) memberi pelanggan akses ke halaman yang sudah kedaluwarsa —
-ia membatalkan aturan cutoff yang baru saja dibangun.
+Menyetelnya hanya berguna di satu dari dua kemungkinan; mengosongkannya aman di
+dua-duanya. Tidak ada informasi dari DOKU yang bisa mengubah itu.
+
+### ⚠️ Yang hilang, dan penggantinya
+
+Nilai dashboard tadinya direncanakan jadi **jaring pengaman** untuk endpoint masa
+depan yang lupa mengirim `payment.payment_due_date`. Dengan dashboard dikosongkan
+selamanya, jaring itu tidak ada: endpoint baru yang lupa akan melahirkan link
+yang umurnya ditentukan DOKU, bukan kami — membatalkan seluruh aturan cutoff
+14.00 WIB **tanpa satu pun error**. Kegagalannya sunyi: link-nya terbit,
+terlihat normal, dan baru terasa salah berminggu-minggu kemudian saat seseorang
+membayar jadwal yang sudah lewat.
+
+Jaringnya dipindahkan ke **`functions/api/doku/dueDate.spec.js`**. Ia memindai
+seluruh berkas di `functions/api/doku/` dan menuntut: setiap berkas yang
+memanggil `/checkout/v1/payment` WAJIB mengirim `payment_due_date` di dalam
+objek `payment`-nya, dengan lantai default 60 menit yang sama. Daftar
+penerbitnya dikunci, jadi menambah endpoint baru adalah tindakan **sadar** —
+orang yang menambahkannya harus lewat berkas itu, dan karena itu membaca
+alasannya.
+
+Sengaja tes **sumber**, bukan tes unit: yang perlu dijaga bukan perilaku dua
+endpoint yang sudah ada — itu sudah benar — melainkan endpoint yang **belum
+ditulis**. Diverifikasi merah dengan menaruh endpoint pura-pura yang lupa
+mengirim field-nya.
+
+### Yang TETAP berlaku
+
+⚠️ **Jangan menyalakan Recover Abandoned Cart.** Fitur itu (sekarang mati)
+memberi pelanggan akses ke halaman pembayaran yang sudah kedaluwarsa sampai 3
+kali — ia membatalkan aturan cutoff yang baru saja dibangun. Ini terpisah dari
+setelan Batas Waktu dan tidak ikut diputuskan di atas.
+
+### Kalau suatu saat tetap ingin bertanya
+
+Dua hal yang masih belum kita ketahui dan tidak terjawab oleh keputusan ini —
+keduanya soal perilaku, bukan setelan:
+
+1. **Cancel Order** — sesudah berhasil, apakah halaman pembayarannya langsung
+   menolak, atau ada jeda propagasi? Dan kanal apa saja yang tidak bisa
+   dibatalkan? (Langkah 0 akan menjawab sebagian dari ini secara empiris.)
+2. **Recover Abandoned Cart** — benarkah ia bisa mengabaikan `payment_due_date`
+   yang kami kirim? Selama fiturnya mati, ini tidak mendesak.
