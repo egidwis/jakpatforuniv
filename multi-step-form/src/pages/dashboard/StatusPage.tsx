@@ -26,6 +26,7 @@ import {
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { type SchedulePaymentMap } from '@/components/status/scheduleAxes';
+import { payLinkPath } from '@/utils/payLink';
 import { Phase } from '@/components/status/PhaseRail';
 import { ReviewPhase } from '@/components/status/ReviewPhase';
 import { SchedulePhase } from '@/components/status/SchedulePhase';
@@ -236,22 +237,39 @@ export function StatusPage() {
                                 if (pickedTx?.payment_id) {
                                     foundTransactionId = pickedTx.payment_id;
                                 }
-                                // ⚠️ HANYA TRANSAKSI YANG MASIH BISA DIBAYAR.
-                                //
-                                // Dulu ini memakai `mainTx[0].payment_url` — transaksi
-                                // TERBARU, apa pun statusnya. Sesudah order dijadwalkan
-                                // ulang, transaksi terbarunya `expired`, jadi tombol
-                                // "Bayar Sekarang" peneliti mengantar ke halaman DOKU
-                                // "order anda telah kadaluarsa". Terlihat di W2XPPGF5
-                                // (2026-08-19): link 18 Agu masih dipasang untuk jadwal
-                                // yang sudah dipindah ke 30 Agu.
-                                //
-                                // `mainTx` sudah urut terbaru dulu, jadi `find` di sini
-                                // mengambil yang pending PALING BARU.
-                                const payableTx = mainTx.find((tx) => tx.status === 'pending');
-                                if (submission.payment_status !== 'paid' && payableTx?.payment_url) {
-                                    links[submission.id] = payableTx.payment_url;
-                                }
+                                /*
+                                  ⚠️ CABANG INI DULU MEMASANG LINK BAYAR DARI
+                                  `transactions`, DAN SEKARANG TIDAK LAGI.
+
+                                  Ia menyaring `status === 'pending'` — PENDING,
+                                  BUKAN BELUM-KEDALUWARSA. Dan `transactions`
+                                  tidak punya kolom `expires_at` sama sekali
+                                  (diverifikasi produksi, dicatat di sql/83),
+                                  jadi jalur ini BUTA SECARA STRUKTURAL: tidak
+                                  ada cara memperbaikinya di tempatnya.
+
+                                  ⚠️ JANGAN "MEMPERBAIKINYA" DENGAN MENAMBAH
+                                  KOLOM `expires_at` KE `transactions`.
+                                  `buildInvoiceRows` menyusun baris invoice DAN
+                                  transaksi dari objek `shared` yang sama, dan
+                                  `expires_at` di sana pernah membuat INSERT
+                                  transaksi ditolak 400 — yang menggagalkan
+                                  SELURUH tagihan.
+
+                                  Yang menjawab sekarang `schedule_billing_bulk`
+                                  lewat `payMap` di bawah, dengan predikat
+                                  `live` yang sama dengan layar admin. Di sana
+                                  `pending` di `transactions` memang sengaja
+                                  TIDAK dianggap piutang: itu checkout yang
+                                  DITINGGALKAN, bukan tagihan. Yang hilang cuma
+                                  tombol untuk beberapa checkout telantar —
+                                  peneliti yang benar-benar ingin membayar
+                                  mendapat tagihan baru dari `create-payment`.
+
+                                  `foundTransactionId` di atas TETAP diambil:
+                                  ia cuma menamai invoice di layar, tidak
+                                  menagih apa pun.
+                                */
                             }
 
                             // Peta pembayaran per jadwal, dikunci `sourceId`.
@@ -271,11 +289,14 @@ export function StatusPage() {
                             const payMap: SchedulePaymentMap = {};
                             try {
                                 const billings = await fetchScheduleBilling(submission.id);
-                                billings.forEach((b) => {
+                                billings.forEach((b, scheduleId) => {
                                     const shown = b.openInvoice ?? b.invoices.find((i) => i.isPaid) ?? null;
                                     payMap[b.sourceId] = {
                                         paymentUrl: b.openInvoice?.paymentUrl || null,
                                         paymentId: shown?.paymentId || null,
+                                        // Kunci Map-nya `ad_schedules.id`; kunci payMap-nya
+                                        // `sourceId`. Keduanya beda untuk jadwal ke-2 dst.
+                                        scheduleId,
                                         // `isSettled`, bukan "ada yang pernah lunas":
                                         // jadwal yang masih menyisakan tagihan
                                         // susulan harus tetap terbaca menunggu bayar.
@@ -311,12 +332,6 @@ export function StatusPage() {
                             const ownBilling = payMap[submission.id];
                             if (ownBilling) {
                                 payMapAnswered = true;
-                                // `?? links[...]` mempertahankan transaksi pending yang
-                                // sudah ditemukan di atas untuk kasus langka "checkout
-                                // ada, barisnya cuma di `transactions`" (5 order per
-                                // Task 13 — sisipan invoice-nya gagal senyap). Ia TIDAK
-                                // bisa menghidupkan link mati: `links` hanya pernah diisi
-                                // dari transaksi ber-status `pending`.
                                 /*
                                   ⚠️ LINK YANG SUDAH KEDALUWARSA TIDAK DIPASANG.
                                   `is_expired` (sql/83) dihitung di DB dari
@@ -326,10 +341,28 @@ export function StatusPage() {
                                   Sekarang" ke halaman DOKU yang menolaknya —
                                   peneliti tidak diberi tahu apa pun soal
                                   kenapa, dan admin tidak pernah tahu ia mencoba.
+
+                                  ⚠️ CADANGAN `?? links[...]` SUDAH DIBUANG.
+                                  Ia dulu mempertahankan transaksi `pending`
+                                  yang dirakit di cabang warisan di atas —
+                                  cabang yang kini tidak lagi memasang link
+                                  karena `transactions` buta terhadap
+                                  kedaluwarsa. Membiarkan `??` berarti
+                                  menyediakan pintu belakang bagi nilai yang
+                                  tidak akan pernah datang lagi, dan pembaca
+                                  berikutnya akan mengira jalur itu masih hidup.
+
+                                  Ordinal 1 memakai link perantara juga —
+                                  `sourceId` untuk ordinal 1 memang id
+                                  submission-nya, tapi resolver butuh
+                                  `ad_schedules.id`, jadi ia diambil dari
+                                  `scheduleId` yang dibawa `payMap`.
                                 */
                                 links[submission.id] = ownBilling.isExpired
                                     ? null
-                                    : (ownBilling.paymentUrl ?? links[submission.id] ?? null);
+                                    : (ownBilling.scheduleId
+                                        ? payLinkPath(ownBilling.scheduleId)
+                                        : ownBilling.paymentUrl ?? null);
                                 if (ownBilling.paymentId) foundTransactionId = ownBilling.paymentId;
                             }
                         } catch (e) {
@@ -351,8 +384,32 @@ export function StatusPage() {
                                     if (!foundTransactionId && mainInvoices[0].payment_id) {
                                         foundTransactionId = mainInvoices[0].payment_id;
                                     }
-                                    if (submission.payment_status !== 'paid' && mainInvoices[0].invoice_url && !links[submission.id]) {
-                                        links[submission.id] = mainInvoices[0].invoice_url;
+                                    /*
+                                      ⚠️ `mainInvoices[0]` DULU DIPASANG TANPA CEK APA PUN —
+                                      invoice pertama, apa pun statusnya, apa pun umurnya.
+
+                                      Cabang ini hanya melayani order yang TIDAK punya baris
+                                      jadwal sama sekali (15 per Task 11), jadi
+                                      `schedule_billing` tidak bisa menjawabnya. Tapi
+                                      `invoices` PUNYA `expires_at` — tidak seperti
+                                      `transactions` di atas — jadi di sini gerbangnya bisa
+                                      dipasang langsung, dan predikatnya dibuat sama dengan
+                                      `live` (sql/83): masih `pending`, dan belum lewat
+                                      `expires_at`. NULL `expires_at` = tidak diketahui,
+                                      bukan mati (aturan sql/60 yang sama).
+                                    */
+                                    const payable = mainInvoices.find((inv) =>
+                                        String(inv.status || '').toLowerCase() === 'pending'
+                                        && !!inv.invoice_url
+                                        && (!inv.expires_at || new Date(inv.expires_at).getTime() > Date.now())
+                                    );
+                                    if (submission.payment_status !== 'paid' && payable && !links[submission.id]) {
+                                        // Link perantara kalau jadwalnya diketahui — walau di
+                                        // cabang ini biasanya tidak, karena justru order tanpa
+                                        // jadwal yang sampai ke sini.
+                                        links[submission.id] = payable.schedule_id
+                                            ? payLinkPath(payable.schedule_id)
+                                            : payable.invoice_url;
                                     }
                                 }
                             } catch (e) {

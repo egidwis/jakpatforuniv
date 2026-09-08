@@ -17,6 +17,21 @@ export const AIRING_HOUR_WIB = 15;
 export const BOOKING_CUTOFF_HOUR_WIB = 13;
 export const PAYMENT_CUTOFF_HOUR_WIB = 14;
 
+/*
+  ⚠️ JARAK ANTARA KEDUA CUTOFF DI ATAS ADALAH SEBUAH KONTRAK, BUKAN KEBETULAN.
+
+  14 − 13 = 1 jam = PERSIS `MIN_INVOICE_MINUTES` di `payment.ts`. Itulah yang
+  membuat cabang `invoiceLifetimeMinutes(...) === null` MUSTAHIL DICAPAI
+  PENELITI: pemesanan sah paling akhir untuk tayang hari-H adalah 12:59:59, dan
+  itu selalu menyisakan lebih dari 60 menit ke 14.00. Penolakan itu karena itu
+  de facto GERBANG ADMIN — lihat catatannya di `invoiceLifetimeMinutes`.
+
+  Menggeser salah satu angka di atas (atau menaikkan lantai di `payment.ts`)
+  akan membuat jalur peneliti diam-diam mulai kena penolakan yang bukan untuk
+  mereka. Kaitannya dijaga `invoiceLifetime.spec.ts` → describe "invarian
+  cutoff"; ubah angkanya di sini dan tes itu MERAH, bukan diam.
+*/
+
 /** WIB = UTC+7, jadi jam X WIB = jam (X-7) UTC pada tanggal yang sama. */
 const WIB_UTC_OFFSET_HOURS = 7;
 

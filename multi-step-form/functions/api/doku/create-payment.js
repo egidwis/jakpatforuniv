@@ -227,6 +227,89 @@ async function groupPaymentState(supabaseUrl, sbHeaders, paymentId) {
   }
 }
 
+/**
+ * Matikan satu link pembayaran DOKU — `POST /checkout/v3/cancellations`.
+ *
+ * ⚠️ KEMBARAN `functions/api/doku/cancel-order.js`, DAN ITU DISENGAJA.
+ * Endpoint itu admin-gated di `_middleware.js` (`PUBLIC_ENDPOINTS` cuma
+ * `webhook` + `create-payment`), sementara yang memanggil jalur ini adalah
+ * PENELITI tanpa sesi admin — jadi ia tidak bisa dipanggil dari sini. Alasan
+ * yang sama membuat penandatanganan checkout di berkas ini juga di-inline:
+ * tiap Pages Function di-bundle sendiri-sendiri, jadi impor lintas berkas
+ * gagal.
+ *
+ * Langkah tanda tangannya WAJIB identik dengan `cancel-order.js`
+ * (digest -> component string -> HMAC). Kalau satu berubah, ubah keduanya.
+ *
+ * TIDAK PERNAH MELEMPAR: pemanggilnya sedang di tengah menerbitkan tagihan
+ * baru, dan kegagalan mematikan yang lama tidak boleh menggagalkan itu.
+ */
+async function cancelDokuOrder(env, invoiceNumber, originalRequestId) {
+  // Tanpa `original_request_id` API-nya tidak bisa dipanggil sama sekali —
+  // seluruh tagihan pra-sql/84 begitu, dan nilainya tidak bisa dipulihkan.
+  // Alasan lengkapnya di `cancel-order.js`.
+  if (!originalRequestId) {
+    return { cancelled: false, reason: 'no_request_id' };
+  }
+
+  const clientId = env.DOKU_CLIENT_ID || env.VITE_DOKU_CLIENT_ID;
+  const secretKey = env.DOKU_SECRET_KEY;
+  if (!clientId || !secretKey) {
+    return { cancelled: false, reason: 'credentials_missing' };
+  }
+
+  const REQUEST_TARGET = '/checkout/v3/cancellations';
+  const bodyString = JSON.stringify({
+    order: { invoice_number: invoiceNumber },
+    payment: { original_request_id: originalRequestId },
+    note: 'Digantikan tagihan baru (jalur swalayan)',
+  });
+
+  try {
+    const enc = new TextEncoder();
+    const requestId = crypto.randomUUID();
+    const requestTimestamp = new Date().toISOString().slice(0, 19) + 'Z';
+
+    const digestBuffer = await crypto.subtle.digest('SHA-256', enc.encode(bodyString));
+    const digest = btoa(String.fromCharCode(...new Uint8Array(digestBuffer)));
+    const componentStringToSign =
+      `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}` +
+      `\nRequest-Target:${REQUEST_TARGET}\nDigest:${digest}`;
+
+    const key = await crypto.subtle.importKey(
+      'raw', enc.encode(secretKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    );
+    const sigBuffer = await crypto.subtle.sign('HMAC', key, enc.encode(componentStringToSign));
+    const signature = 'HMACSHA256=' + btoa(String.fromCharCode(...new Uint8Array(sigBuffer)));
+
+    const base = (env.DOKU_ENV === 'production' || env.VITE_DOKU_ENV === 'production')
+      ? 'https://api.doku.com'
+      : 'https://api-sandbox.doku.com';
+
+    const res = await fetch(base + REQUEST_TARGET, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Client-Id': clientId,
+        'Request-Id': requestId,
+        'Request-Timestamp': requestTimestamp,
+        'Signature': signature,
+      },
+      body: bodyString,
+    });
+
+    if (!res.ok) {
+      // Tiga penolakan yang WAJAR: sudah dibayar, sudah kedaluwarsa, kanal
+      // kartu. Ketiganya bukan kerusakan — daftar lengkapnya di cancel-order.js.
+      const text = await res.text().catch(() => '');
+      return { cancelled: false, reason: `HTTP ${res.status}: ${text.slice(0, 200)}` };
+    }
+    return { cancelled: true, reason: null };
+  } catch (e) {
+    return { cancelled: false, reason: e?.message || 'Panggilan ke DOKU gagal' };
+  }
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
 
@@ -428,14 +511,20 @@ export async function onRequest(context) {
     // jadi tagihannya tetap bisa dibayar; yang hilang cuma deteksi basi untuk
     // satu baris. Itu kehilangan yang jauh lebih murah.
     let billedStartDate = null;
+    // `id` jadwalnya ikut diambil supaya pencabutan di bawah bisa dikunci ke
+    // JADWAL, bukan ke ORDER. Order berjadwal banyak berbagi satu
+    // `form_submission_id`, jadi lingkup order akan mematikan tagihan jadwal
+    // lain yang tidak sedang diganti.
+    let billedScheduleId = null;
     try {
       const schedRes = await fetch(
         `${supabaseUrl}/rest/v1/ad_schedules?submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
-        `&ordinal=eq.1&select=start_date&limit=1`,
+        `&ordinal=eq.1&select=id,start_date&limit=1`,
         { headers: sbHeaders }
       );
       if (schedRes.ok) {
         const rows = await schedRes.json();
+        if (Array.isArray(rows) && rows[0]?.id) billedScheduleId = rows[0].id;
         if (Array.isArray(rows) && rows[0]?.start_date) billedStartDate = rows[0].start_date;
         else console.warn(`[create-payment] ad_schedules ordinal 1 kosong untuk ${formSubmissionId}; billed_start_date dibiarkan NULL.`);
       } else {
@@ -459,10 +548,13 @@ export async function onRequest(context) {
     // `expires_at` = baris lama yang umurnya tak bisa dibuktikan → jangan
     // dipakai ulang; lebih baik terbitkan baru daripada mengirim peneliti ke
     // halaman DOKU yang sudah mati.
+    // Tagihan lama jadwal INI yang tidak bisa dipakai ulang — dicabut sesudah
+    // blok di bawah selesai memutuskan. Lihat catatan panjangnya di sana.
+    let supersededBills = [];
     try {
       const liveRes = await fetch(
         `${supabaseUrl}/rest/v1/invoices?form_submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
-        `&status=eq.pending&select=payment_id,invoice_url,amount,billed_start_date,expires_at` +
+        `&status=eq.pending&select=payment_id,invoice_url,amount,billed_start_date,expires_at,schedule_id,doku_request_id` +
         `&order=created_at.desc&limit=10`,
         { headers: sbHeaders }
       );
@@ -489,6 +581,28 @@ export async function onRequest(context) {
         // DOKU yang menagih TOTAL SELURUH GRUP.
         //
         // Satu permintaan tambahan, dan hanya saat ada kandidat.
+        /*
+          ⚠️ YANG TIDAK BISA DIPAKAI ULANG HARUS DICABUT, BUKAN DITINGGALKAN.
+
+          Sampai sekarang cabang ini mencetak `payment_id` baru dan membiarkan
+          yang lama HIDUP. Akibatnya dua link bisa dibayar untuk jadwal yang
+          sama — dan yang kedua harus direfund. Terlihat di produksi: booking
+          `5AGPY3QV` dengan dua tagihan Rp 555.000 yang dua-duanya `pending`.
+
+          ⚠️ LINGKUPNYA JADWAL, BUKAN ORDER. Order berjadwal banyak berbagi satu
+          `form_submission_id`, jadi menyaring dengan itu saja akan mematikan
+          tagihan jadwal LAIN yang tidak sedang diganti. `billed_start_date`
+          dipakai sebagai cadangan hanya kalau `schedule_id`-nya tidak terbaca
+          (baris pra-sql/51).
+        */
+        supersededBills = (Array.isArray(rows) ? rows : []).filter((r) =>
+          r.payment_id &&
+          r !== reusable &&
+          (billedScheduleId
+            ? r.schedule_id === billedScheduleId
+            : sameInstant(r.billed_start_date, billedStartDate))
+        );
+
         const group = reusable
           ? await groupPaymentState(supabaseUrl, sbHeaders, reusable.payment_id)
           : null;
@@ -535,6 +649,55 @@ export async function onRequest(context) {
       }
     } catch (e) {
       console.warn('[create-payment] Live-bill check failed; minting a new one:', e);
+    }
+
+    // ── CABUT TAGIHAN LAMA SEBELUM MENCETAK YANG BARU ────────────────────
+    //
+    // ⚠️ ENDPOINT INI TIDAK BISA MEMANGGIL `/api/doku/cancel-order`.
+    // Endpoint itu admin-gated di `_middleware.js` (`PUBLIC_ENDPOINTS` hanya
+    // `webhook` + `create-payment`), dan yang memanggil jalur ini adalah
+    // PENELITI tanpa sesi admin. Karena itu pembatalannya di-inline di bawah —
+    // alasan yang sama persis dengan penandatanganan checkout yang sudah
+    // di-inline di berkas ini: Pages Function di-bundle sendiri-sendiri,
+    // sehingga impor lintas berkas gagal.
+    //
+    // ⚠️ Ia KEMBARAN `cancel-order.js`. Langkah tanda tangannya wajib identik
+    // (digest → component string → HMAC); kalau satu berubah, ubah keduanya.
+    //
+    // Kegagalannya TIDAK menahan penerbitan: peneliti tidak boleh gagal membayar
+    // gara-gara satu HTTP ke DOKU. Sisanya ditanggung penjaga webhook
+    // `paid_on_dead_bill` (sql/80) dan `paid_on_stale_bill` (sql/85).
+    for (const old of supersededBills) {
+      try {
+        /*
+          ⚠️ TAGIHAN GABUNGAN DILEWATI. Satu `payment_id` bisa menaungi pesanan
+          milik jadwal lain; mematikannya dari jalur swalayan berarti mencabut
+          tagihan orang yang tidak sedang meminta apa pun. Kalau sampai ada,
+          itu keputusan admin — bukan efek samping sebuah klik "Bayar".
+        */
+        const st = await groupPaymentState(supabaseUrl, sbHeaders, old.payment_id);
+        if (st?.state !== 'solo') {
+          console.warn(`[create-payment] Skip revoking ${old.payment_id}: group/unknown state (${st?.state}).`);
+          continue;
+        }
+
+        const killed = await cancelDokuOrder(env, old.payment_id, old.doku_request_id);
+        console.log(`[create-payment] Revoked superseded bill ${old.payment_id}: ${killed.cancelled ? 'DOKU ok' : killed.reason}`);
+
+        // Barisnya ditutup apa pun jawaban DOKU: dari sisi buku kita tagihan
+        // ini memang sudah tidak berwenang. Kalau DOKU menolak, `is_stale` /
+        // penjaga webhook yang menanggung sisanya.
+        await fetch(
+          `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${encodeURIComponent(old.payment_id)}&status=eq.pending`,
+          { method: 'PATCH', headers: sbHeaders, body: JSON.stringify({ status: 'cancelled' }) }
+        );
+        await fetch(
+          `${supabaseUrl}/rest/v1/transactions?payment_id=eq.${encodeURIComponent(old.payment_id)}&status=eq.pending`,
+          { method: 'PATCH', headers: sbHeaders, body: JSON.stringify({ status: 'expired' }) }
+        );
+      } catch (e) {
+        console.error(`[create-payment] Failed to revoke superseded bill ${old.payment_id}:`, e);
+      }
     }
 
     // 2. Invoice number — same self-service format (JFU-<8chars>-<ts>).

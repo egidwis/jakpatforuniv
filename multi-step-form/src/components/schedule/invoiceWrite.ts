@@ -1,8 +1,8 @@
 import { PPN_RATE } from '@/utils/constants';
 import { calculatePpn } from '@/utils/cost-calculator';
 import {
-  cancelInvoice, createInvoice, createTransaction, supabase,
-  type AdScheduleEntry, type Invoice, type Transaction,
+  cancelInvoice, createInvoice, createTransaction, killDokuLinksForSchedule, supabase,
+  type AdScheduleEntry, type DokuKillReport, type Invoice, type Transaction,
 } from '@/utils/supabase';
 import type { InvoiceItem } from './invoiceItems';
 
@@ -197,6 +197,46 @@ export async function writeInvoiceRows(
 ): Promise<void> {
   if (bundles.length === 0) {
     throw new InvoiceWriteError('Tidak ada pesanan yang ditagihkan', false);
+  }
+
+  /*
+    ⚠️ TAGIHAN LAMA DICABUT SEBELUM YANG BARU DITULIS.
+
+    Sampai sekarang penerbitan tagihan kedua meninggalkan yang pertama HIDUP.
+    Terlihat di produksi: booking `5AGPY3QV` punya dua tagihan Rp 555.000
+    (6 dan 7 Sep), dua-duanya `pending`. `is_superseded` (sql/83) tidak
+    menangkapnya — ia hanya menyala oleh baris LUNAS, jadi dua tagihan
+    `pending` memang bisa hidup berdampingan. Dua link hidup berarti keduanya
+    bisa terbayar, dan yang kedua harus direfund.
+
+    Tempatnya di sini, bukan di `createManualInvoice`: fungsi ini satu-satunya
+    pintu tulis yang dilewati BAIK `InvoiceForm` (satuan) MAUPUN
+    `BulkInvoiceDialog` (gabungan). Menaruhnya di pemanggil berarti dua
+    salinan, dan yang terlewat adalah yang lebih jarang dipakai.
+
+    ⚠️ Link BARU-nya sudah hidup saat baris ini jalan (`createManualInvoice`
+    memanggil DOKU lebih dulu). Itu aman: barisnya belum ditulis, jadi
+    penyapuan di bawah tidak mungkin mengenainya — ia menyaring
+    `invoices.status = 'pending'` untuk `schedule_id` ini, dan baris baru itu
+    baru lahir beberapa baris di bawah.
+
+    Kegagalannya TIDAK menahan penerbitan: kontrak `killDokuLinksForSchedule`.
+    Yang menanggung sisanya penjaga webhook `paid_on_stale_bill` (sql/85).
+  */
+  const supersededKills: DokuKillReport[] = [];
+  for (const bundle of bundles) {
+    supersededKills.push(
+      await killDokuLinksForSchedule(bundle.entry.id, { markCancelled: true }),
+    );
+  }
+  const failedKills = supersededKills.flatMap((k) => k.failures);
+  if (failedKills.length > 0) {
+    // Tidak melempar — tagihannya tetap terbit. Tapi jejaknya wajib ada:
+    // ini satu-satunya tempat yang tahu link lama mana yang gagal mati.
+    console.error(
+      '[writeInvoiceRows] tagihan lama gagal dimatikan di DOKU:',
+      failedKills.map((f) => `${f.paymentId}: ${f.reason}`).join('; '),
+    );
   }
 
   const { invoices, transactions } = buildInvoiceRows(bundles, ctx);

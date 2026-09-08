@@ -50,6 +50,16 @@ const PAID_AIRING = ['paid', 'scheduled', 'live', 'completed'];
 export interface SchedulePaymentInfo {
     paymentUrl: string | null;
     paymentId: string | null;
+    /**
+     * `ad_schedules.id` — kunci resolver `/bayar/<id>`.
+     *
+     * ⚠️ BUKAN kunci peta ini. Peta ini dikunci `sourceId` (id
+     * `form_submissions` untuk ordinal 1, id extend untuk sisanya), sementara
+     * resolver menerima `ad_schedules.id`. Untuk jadwal ke-2 dst. keduanya
+     * TIDAK PERNAH sama, jadi memakai kunci petanya akan menghasilkan URL yang
+     * tidak menemukan tagihan apa pun — tanpa error.
+     */
+    scheduleId: string | null;
     /** Status transaksi: pending | paid | expired | failed */
     status: string | null;
     amount: number;

@@ -3,6 +3,7 @@ import type { ReviewHistoryEntry } from '../components/submissions/types';
 import { toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
 import { isPlaceholderBannerUrl } from './page-banner';
 import { isLiveInvoice } from './billingCompare';
+import { compareLeadOrder } from './payLink';
 import {
   calculateAdCostPerDay,
   calculateTotalAdCost,
@@ -1146,6 +1147,133 @@ async function killDokuLink(
   }
 }
 
+/** Hasil pencabutan link DOKU untuk SATU jadwal. */
+export interface DokuKillReport {
+  /** `payment_id` unik yang dicoba dimatikan. */
+  attempted: number;
+  /** Yang DOKU konfirmasi mati. */
+  cancelled: number;
+  /** Yang gagal, beserta alasannya — WAJIB dilaporkan ke admin. */
+  failures: { paymentId: string; reason: string }[];
+}
+
+/**
+ * Matikan link DOKU setiap tagihan yang masih menggantung untuk SATU jadwal.
+ *
+ * Dipakai di titik-titik ketika sebuah link BERHENTI BERWENANG tapi tidak
+ * sedang "dibatalkan" secara eksplisit — pembatalan jadwal, penggantian
+ * tanggal, dan penerbitan tagihan penyalip. Sebelum ini hanya `cancelInvoice()`
+ * dan `settleGroupAsPaid()` yang pernah memanggil Cancel Order, sehingga tiga
+ * momen itu meninggalkan link hidup yang masih bisa dibayar.
+ *
+ * ⚠️ KONTRAKNYA SAMA DENGAN `cancelInvoice`: DOKU DULU, DATABASE KEMUDIAN, dan
+ * kegagalan TIDAK menahan aksi pemanggilnya. Membiarkan admin gagal mengganti
+ * tanggal gara-gara satu HTTP ke DOKU jauh lebih buruk daripada link yang
+ * mungkin masih terbuka — yang kedua sudah ditanggung penjaga webhook
+ * `paid_on_dead_bill` (sql/80) dan `paid_on_stale_bill` (sql/85).
+ *
+ * ⚠️ TAGIHAN GABUNGAN MATI SEURUHNYA, dan itu memang yang benar. Satu
+ * `payment_id` boleh menaungi N pesanan, dan DOKU hanya punya SATU link untuk
+ * nomor itu — tidak ada "matikan porsinya saja". Membiarkannya hidup lebih
+ * buruk: sejak STEP 0b/0c, webhook menolak uang yang mendarat di grup yang
+ * sebagian sudah mati, jadi peneliti akan membayar sesuatu yang pasti kami
+ * tolak — persis ongkos refund yang seluruh rencana ini ada untuk mencegah.
+ * Anggota yang tersisa perlu tagihan baru; `attempted` di laporan ini yang
+ * memberi tahu pemanggil bahwa itu terjadi.
+ */
+export const killDokuLinksForSchedule = async (
+  scheduleId: string | null | undefined,
+  opts: {
+    /**
+     * Tandai juga baris tagihan jadwal ini `cancelled` sesudah DOKU dijawab.
+     *
+     * Dipakai oleh pemanggil yang TIDAK punya logika penutupan barisnya
+     * sendiri (Ganti Tanggal, penerbitan tagihan penyalip). `cancelSchedule()`
+     * membiarkannya `false` karena ia sudah menutup barisnya dengan aturan
+     * lingkup grup yang lebih halus.
+     *
+     * ⚠️ Kenapa perlu, padahal `is_stale` (sql/60→82) sudah otomatis menyala
+     * begitu tanggalnya pindah: kolom turunan itu benar untuk setiap LAYAR,
+     * tapi `status` tetap berbunyi `pending` selamanya — dan tidak ada cron
+     * yang membetulkannya. Kode masa depan yang membaca `status` saja (dan
+     * itu sudah pernah terjadi) akan melihat tagihan hidup.
+     */
+    markCancelled?: boolean;
+  } = {},
+): Promise<DokuKillReport> => {
+  const report: DokuKillReport = { attempted: 0, cancelled: 0, failures: [] };
+  if (!scheduleId) return report;
+
+  try {
+    /*
+      Disaring `status = 'pending'`, BUKAN lewat predikat `live` sql/83.
+      Bedanya disengaja: yang sudah lewat `expires_at` memang sudah mati di
+      mata DOKU, tapi baris warisan ber-`expires_at` NULL juga `pending` — dan
+      justru merekalah yang link-nya bisa hidup tanpa batas. Menyaring dengan
+      `live` akan MELEWATKAN mereka.
+    */
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('payment_id, doku_request_id')
+      .eq('schedule_id', scheduleId)
+      .eq('status', 'pending');
+    if (error) throw error;
+
+    const seen = new Map<string, string | null>();
+    for (const row of (data || []) as any[]) {
+      if (row?.payment_id && !seen.has(row.payment_id)) {
+        seen.set(row.payment_id, row.doku_request_id ?? null);
+      }
+    }
+
+    for (const [paymentId, requestId] of seen) {
+      report.attempted += 1;
+      const out = await killDokuLink(paymentId, requestId);
+      if (out.ok) report.cancelled += 1;
+      else report.failures.push({ paymentId, reason: out.reason || 'Tidak diketahui' });
+    }
+
+    if (opts.markCancelled && seen.size > 0) {
+      /*
+        ⚠️ DISARING `schedule_id`, BUKAN `payment_id`. Satu `payment_id` boleh
+        menaungi N pesanan; mematikan barisnya lewat nomor tagihan akan
+        menutup porsi pesanan LAIN yang tidak sedang dipindah. Aturan lingkup
+        yang sama dipegang blok `invoices` di `cancelSchedule()`.
+
+        Kegagalannya dicatat, tidak dilempar: link DOKU-nya sudah mati (bagian
+        yang benar-benar berbahaya), dan menahan aksi pemanggil di sini
+        melanggar kontrak fungsi ini.
+      */
+      const { error: invErr } = await supabase
+        .from('invoices')
+        .update({ status: 'cancelled' })
+        .eq('schedule_id', scheduleId)
+        .eq('status', 'pending');
+      if (invErr) {
+        console.error('[killDokuLinksForSchedule] gagal menutup baris invoices:', invErr);
+        report.failures.push({ paymentId: '(baris invoices)', reason: invErr.message });
+      }
+
+      // Satu tagihan hidup di DUA tabel; melewatkan salah satunya
+      // meninggalkan tagihan hantu (pelajaran yang sama dengan `cancelSchedule`).
+      const { error: txErr } = await supabase
+        .from('transactions')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('schedule_id', scheduleId)
+        .eq('status', 'pending');
+      if (txErr) {
+        console.error('[killDokuLinksForSchedule] gagal menutup baris transactions:', txErr);
+        report.failures.push({ paymentId: '(baris transactions)', reason: txErr.message });
+      }
+    }
+  } catch (e: any) {
+    console.error('[killDokuLinksForSchedule] gagal mengumpulkan tagihan:', e);
+    report.failures.push({ paymentId: '(tidak terbaca)', reason: e?.message || 'Query gagal' });
+  }
+
+  return report;
+};
+
 export const cancelInvoice = async (
   paymentId: string,
   knownRequestId?: string | null,
@@ -1323,12 +1451,11 @@ export const fetchInvoiceGroups = async (
         jadi kartu yang menagih adalah kartu dengan tenggat paling ketat.
         Yang tak bertanggal ditaruh di belakang, bukan dianggap paling awal.
       */
-      members.sort((a, b) => {
-        const at = a.startDate ? new Date(a.startDate).getTime() : Number.MAX_SAFE_INTEGER;
-        const bt = b.startDate ? new Date(b.startDate).getTime() : Number.MAX_SAFE_INTEGER;
-        if (at !== bt) return at - bt;
-        return (a.ordinal ?? 0) - (b.ordinal ?? 0);
-      });
+      // ⚠️ Aturannya dipindah ke `payLink.ts` dan TIDAK boleh disalin balik ke
+      // sini. Ia punya kembaran di SQL (`lead` di `authoritative_payment_url()`,
+      // sql/85) yang dipakai resolver `/bayar/` untuk memutuskan siapa yang
+      // boleh diteruskan ke DOKU. Dua salinan TypeScript berarti tiga definisi.
+      members.sort(compareLeadOrder);
       out.set(paymentId, {
         paymentId,
         members,
@@ -3331,12 +3458,29 @@ export const cancelSchedule = async (entry: {
    * hari ini mengoper `AdScheduleEntry` utuh, jadi ia selalu ada.
    */
   id?: string;
-}) => {
+}): Promise<DokuKillReport> => {
   // Penjaga yang sama dengan releaseExpiredSlot: yang sudah lunas tidak
   // pernah dilepas dari sini, apa pun yang diklik admin.
   if (['paid', 'completed'].includes(entry.paymentStatus || '')) {
     throw new Error('Jadwal yang sudah lunas tidak bisa dibatalkan dari sini.');
   }
+
+  /*
+    ⚠️ DOKU DULU, DATABASE KEMUDIAN — dan urutannya mengikat, sama seperti
+    `cancelInvoice`. Kalau dibalik dan panggilan DOKU-nya lambat, ada jendela
+    ketika baris kita sudah mati sementara link-nya masih menagih; justru di
+    jendela itu peneliti yang sedang membuka halaman bayar akan membayarnya.
+
+    Ini yang HILANG sampai sekarang, dan yang membuat kalimat "tagihan yang
+    masih menggantung ikut dimatikan" dibuang dari dialog konfirmasi
+    (SchedulePaymentTab). Kalimat itu boleh kembali sesudah baris ini ada.
+
+    Gerbang 6a (`scheduleCardActions.ts`) memang hanya menawarkan "Batalkan
+    Jadwal" ketika sudah tidak ada tagihan HIDUP — jadi normalnya nol. Yang
+    tidak nol: baris warisan ber-`expires_at` NULL, yang `pending` selamanya
+    dan link-nya tidak pernah punya tanggal mati.
+  */
+  const dokuKill = await killDokuLinksForSchedule(entry.id);
 
   // ⚠️ Penjaga lunas diulang DI DALAM query, bukan cuma dari `entry` yang bisa
   // basi: pembayaran bisa mendarat lewat webhook DOKU tepat saat admin mengklik.
@@ -3483,7 +3627,7 @@ export const cancelSchedule = async (entry: {
     }
   }
 
-  return true;
+  return dokuKill;
 };
 
 /**

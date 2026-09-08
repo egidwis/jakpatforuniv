@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { calculateAdCostPerDay, calculateIncentiveCost, voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
+import { payLinkUrl } from '@/utils/payLink';
 import { toWibYmd } from '@/utils/airing-window';
 import {
   getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, supabase,
@@ -368,7 +369,14 @@ export function InvoiceForm({
             name: submission.researcherName || 'Kak',
             email: submission.researcherEmail,
             title: submission.title || undefined,
-            invoiceUrl: paymentResponse.invoice_url,
+            /*
+              ⚠️ LINK PERANTARA, BUKAN URL DOKU MENTAH. URL DOKU menagih untuk
+              keadaan saat ia dicetak, selamanya — dan email tidak bisa ditarik
+              kembali. Order af004b84 dibayar lewat link seperti itu, 20 menit
+              sesudah jadwalnya dibatalkan. `/bayar/<id>` menjawab keadaan HARI
+              INI setiap kali diklik. Lihat `payLink.ts`.
+            */
+            invoiceUrl: payLinkUrl(entry.id),
             amount: grandTotal,
           }),
         }).catch((err) => console.error('Failed to send invoice-ready email:', err));
@@ -396,7 +404,9 @@ export function InvoiceForm({
           researcherName: submission.researcherName,
           bundles: [{ title: submission.title || 'Survei Anda', startDate: entry.startDate }],
           amount: grandTotal,
-          invoiceUrl: paymentResponse.invoice_url,
+          // Link perantara, alasan sama dengan email di atas — dan WhatsApp
+          // lebih sulit ditarik daripada email.
+          invoiceUrl: payLinkUrl(entry.id),
         }));
       }
 

@@ -9,6 +9,7 @@ import {
 import { formatIDR } from '@/utils/currency';
 import { voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
+import { leadOf, payLinkUrl } from '@/utils/payLink';
 import {
   fetchAdSchedules, fetchScheduleBilling, supabase,
   type AdScheduleEntry, type ScheduleBilling,
@@ -236,6 +237,23 @@ export function BulkInvoiceDialog({
         dokuRequestId: paymentResponse.doku_request_id,
       }, amount);
 
+      /*
+        ⚠️ LINK PERANTARA MILIK LEAD, BUKAN URL DOKU MENTAH.
+
+        Satu tagihan gabungan punya satu link, dan resolver dikunci ke JADWAL —
+        jadi yang dipakai adalah jadwal LEAD-nya. `leadOf` memakai aturan yang
+        sama dengan `fetchInvoiceGroups()` dan dengan `lead` di sql/85, supaya
+        resolver meneruskan (bukan melempar ke halaman invoice) saat diklik.
+      */
+      const leadBundle = leadOf(
+        bundles.map((b) => ({
+          startDate: b.entry.startDate,
+          ordinal: b.entry.ordinal ?? null,
+          entry: b.entry,
+        })),
+      );
+      const bundlePayUrl = leadBundle ? payLinkUrl(leadBundle.entry.id) : paymentResponse.invoice_url;
+
       if (buyer.researcherEmail) {
         fetch('/api/send-invoice-ready-email', {
           method: 'POST',
@@ -244,7 +262,7 @@ export function BulkInvoiceDialog({
             name: buyer.researcherName || 'Kak',
             email: buyer.researcherEmail,
             title: bundles.map((b) => b.title).join(', '),
-            invoiceUrl: paymentResponse.invoice_url,
+            invoiceUrl: bundlePayUrl,
             amount,
           }),
         }).catch((err) => console.error('Failed to send invoice-ready email:', err));
@@ -256,7 +274,7 @@ export function BulkInvoiceDialog({
           researcherName: buyer.researcherName,
           bundles: bundles.map((b) => ({ title: b.title, startDate: b.entry.startDate })),
           amount,
-          invoiceUrl: paymentResponse.invoice_url,
+          invoiceUrl: bundlePayUrl,
         }));
       }
 

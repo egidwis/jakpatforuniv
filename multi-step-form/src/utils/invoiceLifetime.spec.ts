@@ -4,6 +4,11 @@ import {
   MAX_INVOICE_MINUTES,
   MIN_INVOICE_MINUTES,
 } from './payment';
+import {
+  BOOKING_CUTOFF_HOUR_WIB,
+  PAYMENT_CUTOFF_HOUR_WIB,
+  isBookingClosedForDate,
+} from './airing-window';
 
 /*
   Umur link DOKU harus mengikuti jadwal yang dibiayainya.
@@ -67,5 +72,74 @@ describe('invoiceLifetimeMinutes', () => {
     // `const dueDate = Number(paymentDueDate) > 0 ? … : 60` — konvensi berkas
     // ini. Dua angka berbeda berarti dua definisi "terlalu pendek".
     expect(MIN_INVOICE_MINUTES).toBe(60);
+  });
+});
+
+
+/*
+  ═══════════════════════════════════════════════════════════════════════════
+  INVARIAN CUTOFF — kaitan yang selama ini tidak tercatat di mana pun
+  ═══════════════════════════════════════════════════════════════════════════
+
+  `BOOKING_CUTOFF_HOUR_WIB = 13` dan `PAYMENT_CUTOFF_HOUR_WIB = 14`
+  (airing-window.ts) berjarak PERSIS `MIN_INVOICE_MINUTES = 60` (payment.ts).
+
+  Kebetulan itu yang membuat cabang `invoiceLifetimeMinutes(...) === null`
+  MUSTAHIL DICAPAI PENELITI: pemesanan sah paling akhir untuk tayang hari-H
+  adalah 12:59:59, yang selalu menyisakan lebih dari 60 menit ke 14.00. Jadi
+  penolakan itu de facto GERBANG ADMIN — konsekuensi commit `920b3cb` (1 Sep
+  2026) yang sengaja melonggarkan cutoff untuk admin di `ScheduleForm`
+  sementara `createManualInvoice` tidak ikut dilonggarkan.
+
+  Tiga konstanta itu hidup di DUA berkas dan tidak ada satu baris pun yang
+  menyebut kaitannya. `airing-window.test.ts` menguji kedua ambang secara
+  TERPISAH; tes di atas menguji lantai 60 lewat instant buatan
+  (`minutesBefore(..., 59)`), bukan lewat cutoff pemesanan. Geser cutoff ke
+  13.30, atau naikkan lantainya ke 90, dan jalur peneliti diam-diam mulai kena
+  penolakan yang bukan untuk mereka — TANPA SATU TES PUN GAGAL.
+
+  Blok ini yang membuatnya MERAH, bukan diam.
+*/
+describe('invarian cutoff: 13.00 / 14.00 / 60 menit', () => {
+  const MINUTES_PER_HOUR = 60;
+
+  it('jarak dua cutoff TIDAK BOLEH kurang dari lantai umur tagihan', () => {
+    const gapMinutes = (PAYMENT_CUTOFF_HOUR_WIB - BOOKING_CUTOFF_HOUR_WIB) * MINUTES_PER_HOUR;
+    expect(gapMinutes).toBeGreaterThanOrEqual(MIN_INVOICE_MINUTES);
+  });
+
+  /*
+    Yang di atas menjaga ANGKANYA; yang di bawah menyatakan MAKSUDNYA. Keduanya
+    perlu: seseorang bisa saja menaikkan lantai DAN cutoff bersamaan dengan
+    aritmetika yang benar tapi arah yang salah.
+  */
+  it('pemesanan sah PALING AKHIR untuk tayang hari-H tidak pernah menghasilkan null', () => {
+    const ymd = '2026-09-10';
+    // 12:59:59 WIB = 05:59:59 UTC. Satu detik lagi dan `isBookingClosedForDate`
+    // akan menutupnya, jadi inilah instant paling mepet yang masih bisa memesan.
+    const lastLegalBooking = new Date(`${ymd}T05:59:59.000Z`);
+
+    expect(isBookingClosedForDate(ymd, lastLegalBooking)).toBe(false);
+    expect(invoiceLifetimeMinutes(ymd, lastLegalBooking)).not.toBeNull();
+  });
+
+  it('satu detik SESUDAHNYA pemesanannya memang sudah ditutup — bukan tagihannya yang menolak', () => {
+    const ymd = '2026-09-10';
+    const justClosed = new Date(`${ymd}T06:00:00.000Z`); // 13:00:00 WIB
+
+    // Penjaga yang benar untuk peneliti adalah cutoff PEMESANAN...
+    expect(isBookingClosedForDate(ymd, justClosed)).toBe(true);
+    // ...dan pada detik itu umur tagihannya masih sah (tepat 60 menit).
+    // Artinya: yang menolak peneliti SELALU cutoff pemesanan, tidak pernah
+    // penolakan `null` di `invoiceLifetimeMinutes`.
+    expect(invoiceLifetimeMinutes(ymd, justClosed)).toBe(MIN_INVOICE_MINUTES);
+  });
+
+  it('cabang null memang ada, tapi hanya bisa dicapai SESUDAH cutoff pemesanan (jalur admin)', () => {
+    const ymd = '2026-09-10';
+    const adminLate = new Date(`${ymd}T06:30:00.000Z`); // 13.30 WIB — admin saja
+
+    expect(isBookingClosedForDate(ymd, adminLate)).toBe(true);
+    expect(invoiceLifetimeMinutes(ymd, adminLate)).toBeNull();
   });
 });

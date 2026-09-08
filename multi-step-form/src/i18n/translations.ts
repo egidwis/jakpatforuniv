@@ -301,7 +301,6 @@ export const translations = {
     paymentPhaseTitle: "Complete your payment",
     paymentPhaseSubtitle: "Pay before the time runs out to secure your airing slot.",
     timerLabelHold: "Time left:",
-    timerLabelCutoff: "Today's payment cut-off (14:00 WIB) — time left",
     timerConsequenceNote: "If the time runs out, the slot is released to other advertisers. Your survey details stay saved.",
     // Jadwal yang dibuat admin tidak punya umur — lihat utils/slotHold.ts.
     slotHeldByAdminLabel: "Slot held for you by our team",
@@ -786,6 +785,9 @@ export const translations = {
     bannerSubWaitingPaymentSlot: "Pay before {time} so the date you reserved is not released.",
     bannerSubWaitingPaymentCutoff: "Pay before {time} so we still have time to prepare your ad. Your date stays reserved until then.",
     bannerSubWaitingPaymentSlotsLimited: "Ad slots are limited each day. Complete your payment before your date fills up.",
+    // Tenggat MEMBAYAR — bukan "umur link". Sejak resolver /bayar/<id>, URL yang
+    // dipegang peneliti tidak pernah mati; yang habis adalah haknya atas tanggal itu.
+    bannerSubWaitingPaymentBill: "Please pay by {time} on {date} to keep this airing date. After that we will need to reschedule it with you.",
     bannerTitleWaitingPaymentPartial: "Complete the remaining payment",
     bannerSubPartiallyPaid: "We have received {paid}. {due} remaining.",
     /*
@@ -1191,7 +1193,6 @@ export const translations = {
     paymentPhaseTitle: "Selesaikan pembayaran",
     paymentPhaseSubtitle: "Bayar sebelum batas waktu untuk mengamankan slot tayang.",
     timerLabelHold: "Sisa waktu:",
-    timerLabelCutoff: "Batas bayar hari ini (14.00 WIB) — sisa",
     timerConsequenceNote: "Kalau waktunya habis, slot dilepas untuk pemesan lain. Detail surveimu tetap tersimpan.",
     // Jadwal yang dibuat admin tidak punya umur — lihat utils/slotHold.ts.
     slotHeldByAdminLabel: "Slot ditahan admin untukmu",
@@ -1725,6 +1726,7 @@ export const translations = {
     bannerSubWaitingPaymentSlot: "Bayar sebelum {time} agar tanggal yang kamu pesan tidak dilepas.",
     bannerSubWaitingPaymentCutoff: "Bayar sebelum {time} agar kami sempat menyiapkan iklanmu. Tanggalmu aman sampai batas itu.",
     bannerSubWaitingPaymentSlotsLimited: "Slot iklan terbatas setiap hari. Selesaikan pembayaran sebelum tanggalmu terisi.",
+    bannerSubWaitingPaymentBill: "Mohon dibayar paling lambat {time} tanggal {date} agar tanggal tayang ini tetap jadi milikmu. Lewat dari itu kami perlu menjadwalkan ulang bersamamu.",
     bannerTitleWaitingPaymentPartial: "Selesaikan sisa pembayaran",
     bannerSubPartiallyPaid: "{paid} sudah kami terima. Sisa {due}.",
     groupBillChip: "Tagihan gabungan · {count} pesanan",

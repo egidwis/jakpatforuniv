@@ -9,6 +9,41 @@ import {
     type SchedulePaymentMap,
 } from './scheduleAxes';
 import { airingWindowState } from '@/utils/airing-window';
+import { payLinkPath } from '@/utils/payLink';
+import { slotReleaseDeadline } from '@/utils/slotHold';
+
+/**
+ * Tenggat yang ditampilkan kartu — dan aturan emasnya, di satu tempat.
+ *
+ * ⚠️ ATURAN EMAS: `{time}` hanya boleh muncul kalau `deadline` MEMANG ada.
+ * Selama tenggatnya cuma dua (hold slot dan cutoff 14.00), aturan itu dijaga
+ * dengan tangan di `SchedulePhase`. Sekarang tenggatnya tiga, dan menjaganya
+ * dengan tangan di tiga cabang adalah cara ia akhirnya dilanggar.
+ *
+ * Kalau `deriveOrderUiState` sudah punya jawaban ('slot' / 'cutoff'), itu yang
+ * menang: ia lebih spesifik — ia tahu apa KONSEKUENSINYA kalau lewat. Tenggat
+ * bayar cuma dipakai saat tidak ada konsekuensi lain yang bisa disebut.
+ */
+function billDeadline(
+    known: Date | null,
+    knownCause: 'slot' | 'cutoff' | null,
+    expiresAt: string | null,
+): { deadline: Date | null; deadlineCause: 'slot' | 'cutoff' | 'bill' | null } {
+    if (knownCause) return { deadline: known, deadlineCause: knownCause };
+    if (!expiresAt) return { deadline: null, deadlineCause: null };
+
+    const at = new Date(expiresAt);
+    if (Number.isNaN(at.getTime())) return { deadline: null, deadlineCause: null };
+    /*
+      Tenggat yang SUDAH LEWAT bukan tenggat. Menyebutnya berarti kartu
+      berbunyi "bayar sebelum 13.59" pada pukul 20.00 — kalimat yang membuat
+      pembacanya merasa ditipu, bukan diberi tahu. Keadaan itu punya
+      bannernya sendiri (`isExpired`).
+    */
+    if (at.getTime() <= Date.now()) return { deadline: null, deadlineCause: null };
+
+    return { deadline: at, deadlineCause: 'bill' };
+}
 import { airingDaysOf } from '@/pages/dashboard/schedule/scheduleModel';
 import type { OrderUiState } from './deriveOrderUiState';
 import type { ScheduleGroupInfo } from './invoiceGroups';
@@ -117,8 +152,21 @@ export interface ScheduleCard {
         isExternalLink: boolean;
         /** Deadline bayar efektif (lihat `deriveOrderUiState`) */
         deadline: Date | null;
-        /** Konsekuensi kalau deadline lewat — menentukan kalimat bannernya */
-        deadlineCause: 'slot' | 'cutoff' | null;
+        /**
+         * Konsekuensi kalau deadline lewat — menentukan kalimat bannernya.
+         *
+         *   'slot'   → reservasi peneliti sendiri, lepas 1 jam
+         *   'cutoff' → 14.00 WIB hari tayang; slotnya TIDAK lepas, yang habis
+         *              adalah waktu kami menyiapkan halaman iklan
+         *   'bill'   → tenggat MEMBAYAR, dari `expires_at` tagihannya
+         *   null     → benar-benar tidak ada tenggat yang jujur bisa disebut
+         *
+         * ⚠️ 'bill' MENYEBUT TENGGAT BAYAR, BUKAN "UMUR LINK". Sejak resolver
+         * `/bayar/<id>` ada, URL yang dipegang peneliti TIDAK PERNAH mati — ia
+         * menyesuaikan diri. Yang habis adalah haknya atas tanggal itu.
+         * Mengatakan "link kedaluwarsa" jadi salah secara harfiah.
+         */
+        deadlineCause: 'slot' | 'cutoff' | 'bill' | null;
         invoicePaymentId: string | null;
         isPaidForLabel: boolean; // menentukan label "Invoice" vs "Kwitansi"
         /**
@@ -303,12 +351,43 @@ export function buildScheduleCards(
                   Kartu pengikut menunjuk ke lead — `SchedulePhase` merender
                   kalimatnya.
                 */
+                /*
+                  ⚠️ LINK PERANTARA, BUKAN `ui.finalPaymentLink`.
+
+                  Tombol di dalam aplikasi tidak WAJIB lewat resolver — layar
+                  membaca ulang keadaannya tiap muat, jadi ia jarang basi. Yang
+                  didapat dari menyeragamkannya adalah NOL CABANG yang bisa
+                  menyimpang: satu jalur untuk email, WhatsApp, salinan admin,
+                  dan tombol ini. Cabang yang jarang dilewati adalah cabang yang
+                  paling lama salah tanpa ketahuan.
+
+                  Efek sampingnya bagus: tombol yang tagihannya sudah mati
+                  mendarat di halaman kalimat KAMI, bukan di halaman DOKU yang
+                  menolak tanpa penjelasan.
+
+                  Butuh `first.id` (`ad_schedules.id`); baris tanpa id jatuh ke
+                  perilaku lama.
+                */
                 payUrl: bookingState === 'waiting_payment' && (firstGroup?.isLead ?? true)
-                    ? ui.finalPaymentLink
+                    ? (first.id ? payLinkPath(first.id) : ui.finalPaymentLink)
                     : null,
-                isExternalLink: !!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard'),
-                deadline: ui.paymentDeadline,
-                deadlineCause: ui.paymentDeadlineCause,
+                /*
+                  `/bayar/...` BUKAN rute SPA — ia Pages Function. Jadi ia harus
+                  dinavigasi penuh lewat `<a href>`, bukan `<Link to>` yang akan
+                  mencoba merutekannya di klien lalu mendarat di 404.
+                */
+                isExternalLink: first.id
+                    ? true
+                    : (!!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard')),
+                /*
+                  ⚠️ CABANG `null` DULU JATUH KE "SLOT IKLAN TERBATAS" TANPA JAM.
+                  Untuk ordinal 1 itu terjadi pada slot yang DIPESAN ADMIN:
+                  pelepasannya manual, jadi memang tidak ada tenggat LEPAS yang
+                  jujur. Tapi tenggat MEMBAYAR tetap ada — `expires_at` sudah
+                  diangkut sampai ke sini lalu tidak pernah dirender.
+                */
+                ...billDeadline(ui.paymentDeadline, ui.paymentDeadlineCause,
+                                payments[first.sourceId]?.expiresAt ?? null),
                 // Belum lolos review = belum ada tagihan; jangan tampilkan baris
                 // Invoice walau ada baris nyasar di tabel transactions.
                 invoicePaymentId: bookingState === 'in_review' ? null : invoiceId,
@@ -380,13 +459,39 @@ export function buildScheduleCards(
                 state: bookingState,
                 amount: pay?.amount || s.totalCost,
                 subtotal: subtotalOf(s),
-                // Lihat catatan di cabang ordinal 1: hanya lead yang memegang link.
+                // Lihat catatan di cabang ordinal 1: hanya lead yang memegang
+                // link, dan link-nya perantara (`/bayar/<ad_schedules.id>`).
                 payUrl: bookingState === 'waiting_payment' && (group?.isLead ?? true)
-                    ? pay?.paymentUrl || null
+                    ? (s.id ? payLinkPath(s.id) : pay?.paymentUrl || null)
                     : null,
                 isExternalLink: true,
-                deadline: null,
-                deadlineCause: null,
+                /*
+                  ⚠️ DULU DUA BARIS INI LITERAL `null`, DAN ITU AKAN JADI
+                  KEBOHONGAN BEGITU PHASE 4 MENDARAT.
+
+                  Selama seluruh jadwal ke-2 dst. dipesan ADMIN, `null` memang
+                  benar: pelepasannya manual, tidak ada jam yang jujur bisa
+                  disebut. Phase 4 membuka penjadwalan swalayan — dan jadwal
+                  ke-2 yang dipesan PENELITI punya hold 1 jam yang nyata. Kalau
+                  cabangnya tetap ditentukan JENIS KARTU, kartunya akan
+                  menjanjikan tenggat bayar (bisa berhari-hari lagi) untuk slot
+                  yang mati 60 menit lagi.
+
+                  Karena itu cabangnya ditentukan DATANYA: `slotReleaseDeadline`
+                  (slotHold.ts) yang memutuskan apakah ada hold, bukan
+                  `card.kind`. `null` dari fungsi itu berarti "tidak pernah
+                  lepas sendiri" — bukan "sudah lepas".
+                */
+                ...(() => {
+                    const holdAt = slotReleaseDeadline({
+                        slotBookedBy: s.slotBookedBy,
+                        slotReservedAt: s.slotReservedAt,
+                    });
+                    if (holdAt !== null) {
+                        return { deadline: new Date(holdAt), deadlineCause: 'slot' as const };
+                    }
+                    return billDeadline(null, null, pay?.expiresAt ?? null);
+                })(),
                 invoicePaymentId: pay?.paymentId || null,
                 isPaidForLabel: bookingState === 'paid',
                 staleBilledFor: staleDateOf(pay),

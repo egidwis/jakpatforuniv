@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '../utils/supabase'; // Adjust path if needed, check structure
+import { fetchInvoiceGroups, supabase } from '../utils/supabase'; // Adjust path if needed, check structure
+import { payLinkPath } from '../utils/payLink';
 import { Loader2, Download, CheckCircle2, Clock, ExternalLink, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { terbilangCapitalized } from '../utils/terbilang';
@@ -88,6 +89,17 @@ export function InvoicePage() {
     /** Cermin `rows` untuk interval polling — lihat efek penyegaran di bawah. */
     const rowsRef = useRef<InvoiceData[]>([]);
     const [meta, setMeta] = useState<InvoiceMeta>({ paid_at: null, expires_at: null });
+    /**
+     * `ad_schedules.id` milik anggota LEAD — kunci resolver `/bayar/<id>`.
+     *
+     * ⚠️ Halaman ini cuma memegang `payment_id`, sementara resolver dikunci ke
+     * JADWAL. Untuk tagihan gabungan, jadwal mana yang benar bukan tebakan:
+     * yang memegang link adalah LEAD-nya, dan `fetchInvoiceGroups()` sudah
+     * mengurutkan anggotanya dengan aturan yang sama persis dengan `lead` di
+     * `authoritative_payment_url()` (sql/85). Jangan pernah mengambil
+     * `members[0]` dari sumber lain.
+     */
+    const [leadScheduleId, setLeadScheduleId] = useState<string | null>(null);
     const [schedules, setSchedules] = useState<Map<string, ScheduleInfo>>(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -259,6 +271,16 @@ export function InvoicePage() {
             } catch (metaErr) {
                 console.warn('Invoice meta (paid_at/expires_at) unavailable:', metaErr);
             }
+
+            // Jadwal LEAD untuk menyusun link `/bayar/`. Kegagalannya tidak
+            // fatal: tombolnya jatuh ke URL DOKU seperti sebelumnya.
+            try {
+                const groups = paymentId ? await fetchInvoiceGroups([paymentId]) : null;
+                const lead = paymentId ? groups?.get(paymentId)?.members?.[0] : null;
+                setLeadScheduleId(lead?.scheduleId ?? null);
+            } catch (grpErr) {
+                console.warn('Lead schedule untuk link bayar tidak terbaca:', grpErr);
+            }
         } catch (err: any) {
             console.error('Error fetching invoice:', err);
             if (!silent) setError('Invoice not found or deleted.');
@@ -313,6 +335,29 @@ export function InvoicePage() {
       membayar Rp 2.220.000 diundang membayar Rp 3.330.000 lagi.
     */
     const isPartial = doc.isPartiallyPaid;
+    /*
+      ⚠️ GERBANG KEDALUWARSA — `expires_at` SUDAH DIAMBIL DAN SUDAH DICETAK DI
+      TABEL DI ATAS, TAPI TIDAK PERNAH MENGGERBANG TOMBOLNYA.
+
+      Akibatnya halaman ini menawarkan "Bayar Sekarang" untuk tagihan yang
+      link-nya sudah mati: peneliti mengklik, mendarat di halaman DOKU yang
+      menolak, dan tidak diberi tahu apa pun soal apa yang harus dilakukan.
+
+      `groupMeta` mengambil `expires_at` TERAWAL untuk grup — grup mati saat
+      baris pertamanya kedaluwarsa, karena link-nya cuma satu.
+
+      Uang yang sudah masuk tidak pernah "kedaluwarsa" (aturan yang sama dengan
+      sql/83), jadi `isPaid` tidak pernah lewat sini.
+    */
+    const isExpired = !isPaid
+        && !!meta.expires_at
+        && new Date(meta.expires_at).getTime() < Date.now();
+
+    /*
+      Link perantara kalau jadwalnya diketahui; URL DOKU sebagai cadangan untuk
+      baris warisan yang tidak punya `schedule_id`. Lihat `payLink.ts`.
+    */
+    const payHref = leadScheduleId ? payLinkPath(leadScheduleId) : data.payment_url;
     const subtotalValue = doc.subtotal;
     const ppnAmount = doc.ppn;
     const grandTotal = doc.total;
@@ -749,7 +794,10 @@ export function InvoicePage() {
                                         {isPartial
                                             ? `${doc.bundles.filter((b) => b.isPaid).length} dari ${doc.bundles.length} pesanan pada tagihan ini sudah lunas. `
                                               + 'Sisa pembayarannya diurus tim kami — jangan membayar lewat link lama, karena link itu menagih total penuh.'
-                                            : 'Silakan selesaikan pembayaran sebelum batas waktu berakhir melalui tautan pembayaran aman di bawah ini.'}
+                                            : isExpired
+                                                ? 'Batas waktu pembayaran tagihan ini sudah lewat, jadi tautan pembayarannya tidak lagi berlaku. '
+                                                  + 'Hubungi tim kami untuk mendapatkan tagihan baru — dokumen ini tetap bisa disimpan sebagai catatan.'
+                                                : 'Silakan selesaikan pembayaran sebelum batas waktu berakhir melalui tautan pembayaran aman di bawah ini.'}
                                     </p>
                                     {/*
                                         ⚠️ TOMBOL DICABUT SAAT SEBAGIAN SUDAH LUNAS, dan itu bukan kehati-hatian
@@ -758,7 +806,7 @@ export function InvoicePage() {
                                         Rp 1,11jt — dan uang yang telanjur masuk lewat situ tidak bisa ditarik
                                         kembali. Sisanya ditagih lewat tagihan BARU.
                                     */}
-                                    {data.payment_url && !isPartial && (
+                                    {payHref && !isPartial && !isExpired && (
                                         <div className="no-print mt-3.5">
                                             <a
                                                 href={data.payment_url}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verifyDokuAuth, sniffInvoiceNumber, REJECT_OUTCOMES, onRequest, collectPaidTargets, deadBillOutcome, isDeadBillStatus, authoritativeInvoiceStatus } from './webhook.js';
+import { verifyDokuAuth, sniffInvoiceNumber, REJECT_OUTCOMES, onRequest, collectPaidTargets, deadBillOutcome, staleBillOutcome, isDeadBillStatus, authoritativeInvoiceStatus } from './webhook.js';
 
 /*
   Yang dijaga di sini: SETIAP penolakan harus bisa dicatat.
@@ -222,6 +222,67 @@ describe('taksonomi outcome penolakan', () => {
 // kita membalas 500 tiga kali. Penjaga irisan itu KEBETULAN ada — untuk ordinal
 // 1 tidak ada yang akan menangkap apa pun, dan jadwal yang sengaja dibatalkan
 // akan hidup lagi tanpa satu pun tanda.
+describe('staleBillOutcome — uang sah, tagihan HIDUP tapi tak berwenang', () => {
+    /*
+      Kasus yang lolos dari sql/80 dan jadi alasan sql/85 ada: admin membatalkan
+      pesanan karena salah setup jadwal, menjadwalkan tanggal BARU, lalu peneliti
+      membayar lewat link invoice jadwal LAMA. Status barisnya tidak pernah
+      berubah — tetap `pending` — jadi `deadBillOutcome` melihat tagihan sehat.
+    */
+    const args = (verdicts) => ({
+        verdicts,
+        invoiceNumber: 'JFU-INV-af004b-1788319498664',
+        amount: 444000,
+    });
+    const sehat = {
+        booking_id: 'K3M9PQ7T', billed_start_date: '2026-09-10T08:00:00+00:00',
+        current_start_date: '2026-09-10T08:00:00+00:00',
+        is_stale: false, is_superseded: false,
+    };
+
+    it('tagihan yang masih berwenang TIDAK dicegat — jalur normal harus utuh', () => {
+        expect(staleBillOutcome(args([sehat]))).toBeNull();
+    });
+
+    it('nol verdict (baris pra-sql/51 tanpa schedule_id) TIDAK dicegat', () => {
+        expect(staleBillOutcome(args([]))).toBeNull();
+        expect(staleBillOutcome(args(undefined))).toBeNull();
+    });
+
+    it('tanggal jadwalnya pindah → paid_on_stale_bill', () => {
+        const v = staleBillOutcome(args([{ ...sehat, is_stale: true,
+            current_start_date: '2026-09-17T08:00:00+00:00' }]));
+        expect(v?.outcome).toBe('paid_on_stale_bill');
+    });
+
+    it('tersalip tagihan lunas → paid_on_stale_bill', () => {
+        const v = staleBillOutcome(args([{ ...sehat, is_superseded: true }]));
+        expect(v?.outcome).toBe('paid_on_stale_bill');
+    });
+
+    it('kalimatnya menyebut KODE JADWAL dan KEDUA tanggal — tanpa itu admin harus membuka DOKU', () => {
+        const v = staleBillOutcome(args([{ ...sehat, is_stale: true,
+            current_start_date: '2026-09-17T08:00:00+00:00' }]));
+        expect(v.errorMessage).toContain('#K3M9PQ7T');
+        expect(v.errorMessage).toContain('2026-09-10');   // yang ditagih
+        expect(v.errorMessage).toContain('2026-09-17');   // jadwalnya kini
+        expect(v.errorMessage).toContain('444000');
+    });
+
+    it('campuran berwenang + basi tetap dicegat, dan menyebut porsinya', () => {
+        const v = staleBillOutcome(args([sehat, { ...sehat, booking_id: 'ZZ11ZZ22', is_stale: true }]));
+        expect(v?.outcome).toBe('paid_on_stale_bill');
+        expect(v.errorMessage).toContain('1 dari 2');
+    });
+
+    it('membedakan sebabnya, karena tindakan adminnya beda', () => {
+        expect(staleBillOutcome(args([{ ...sehat, is_stale: true }])).errorMessage)
+            .toContain('tanggalnya pindah');
+        expect(staleBillOutcome(args([{ ...sehat, is_superseded: true }])).errorMessage)
+            .toContain('tersalip tagihan lunas');
+    });
+});
+
 describe('deadBillOutcome — uang sah, tagihan mati', () => {
     const args = (rows) => ({
         billRows: rows, billTable: 'invoices',
