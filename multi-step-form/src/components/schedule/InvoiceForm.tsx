@@ -359,6 +359,20 @@ export function InvoiceForm({
         dokuRequestId: paymentResponse.doku_request_id,
       }, grandTotal);
 
+      /*
+        ⚠️ Tagihan yang lahir tanpa `doku_request_id` TIDAK BISA dicabut lewat
+        Cancel Order selamanya — satu-satunya yang mematikannya adalah waktu.
+        Itu keadaan yang harus diketahui admin SEKARANG, bukan berjam-jam
+        kemudian saat pembatalannya dicoba dan gagal tanpa sebab yang jelas.
+      */
+      if (!paymentResponse.doku_request_id) {
+        toast.warning(
+          'Tagihan terbit, tapi DOKU tidak memulangkan request_id — link ini TIDAK bisa dimatikan lewat tombol Batalkan Tagihan. ' +
+          'Ia berhenti sendiri saat masa bayarnya habis.',
+          { duration: 12000 },
+        );
+      }
+
       // Hanya jadwal pertama (bukan perpanjangan) yang berarti "pesanan disetujui,
       // tagihan siap" — perpanjangan tidak pernah melalui review manual.
       if (!entry.isExtension && submission.researcherEmail) {

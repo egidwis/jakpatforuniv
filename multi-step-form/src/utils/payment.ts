@@ -303,6 +303,30 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
       throw new Error('Invalid response from DOKU checkout');
     }
 
+    /*
+      ⚠️ TAGIHAN TANPA `request_id` LAHIR SUDAH TIDAK BISA DICABUT.
+
+      Cancel Order menuntutnya sebagai `original_request_id`; tanpa itu link
+      DOKU-nya tidak bisa dimatikan lewat API SELAMANYA — yang tersisa cuma
+      menunggu `expires_at` lewat.
+
+      Terjadi sungguhan 8 Sep 2026 pada tagihan uji Rp 1.110: satu-satunya
+      baris tanpa `request_id` sejak sql/84 dideploy (3 Sep 09.15), dan
+      ketiadaannya baru ketahuan saat pembatalannya dicoba — berjam-jam
+      kemudian, lewat pesan galat yang tidak menyebut sebabnya.
+
+      Tidak melempar: menolak menerbitkan tagihan gara-gara ini akan menahan
+      penagihan yang sah demi masalah yang jauh lebih ringan. Tapi ia TIDAK
+      boleh sunyi — pemanggil memeriksa `doku_request_id` pada nilai balik dan
+      memperingatkan admin di layar.
+    */
+    if (!data.request_id) {
+      console.error(
+        `[createManualInvoice] DOKU tidak memulangkan request_id untuk ${data.response.order.invoice_number} — ` +
+        'link ini TIDAK akan bisa dimatikan lewat Cancel Order.'
+      );
+    }
+
     return {
       payment_id: data.response.order.invoice_number,
       invoice_url: data.response.payment.url,

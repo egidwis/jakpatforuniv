@@ -1139,8 +1139,54 @@ async function killDokuLink(
       }),
       signal: AbortSignal.timeout(15000),
     });
-    const out = await res.json();
-    return { ok: !!out?.cancelled, reason: out?.cancelled ? null : (out?.message || out?.reason || 'Tidak diketahui') };
+    /*
+      ⚠️ `res.json()` LANGSUNG PERNAH MENGHAPUS SATU-SATUNYA PETUNJUK YANG ADA.
+
+      Uji Langkah 0 pertama (8 Sep 2026, tagihan uji Rp 1.110) memulangkan
+      pesan `Failed to execute 'json' on 'Response': Unexpected end of JSON
+      input` ke layar admin. Itu bukan jawaban DOKU — itu galat parser kita
+      sendiri terhadap badan respons KOSONG. Akibatnya alasan sebenarnya
+      hilang, dan admin diberi kalimat yang tidak bisa ditindaklanjuti siapa
+      pun.
+
+      Sekarang: baca sebagai teks dulu, baru coba parse. Badan yang tidak bisa
+      diurai TETAP dilaporkan apa adanya beserta status HTTP-nya — potongan
+      mentah itu yang membedakan "endpoint tidak ada" (HTML/kosong) dari "DOKU
+      menolak" (JSON ber-alasan), dan tanpanya diagnosis butuh satu putaran uji
+      penuh lagi.
+    */
+    const status = res.status;
+    const raw = await res.text().catch(() => '');
+
+    let out: any = null;
+    if (raw.trim()) {
+      try { out = JSON.parse(raw); } catch { /* ditangani di bawah */ }
+    }
+
+    if (out === null) {
+      const snippet = raw.trim() ? raw.trim().slice(0, 120) : '(badan respons kosong)';
+      console.error(`[killDokuLink] respons tak terbaca dari /api/doku/cancel-order — HTTP ${status}: ${snippet}`);
+      return { ok: false, reason: `Respons tak terbaca dari server (HTTP ${status}: ${snippet})` };
+    }
+
+    if (out.cancelled) return { ok: true, reason: null };
+
+    /*
+      `no_request_id` DIBEDAKAN, karena tindakannya berbeda dan sudah pasti.
+      Tagihan tanpa `doku_request_id` TIDAK BISA dimatikan lewat API selamanya —
+      mencoba lagi tidak akan pernah menolong. Yang menanggungnya cuma waktu
+      (`expires_at`) dan penjaga webhook. Mengatakannya apa adanya jauh lebih
+      berguna daripada "mungkin masih bisa dibayar" yang terdengar seperti
+      kegagalan sementara.
+    */
+    if (out.reason === 'no_request_id') {
+      return {
+        ok: false,
+        reason: 'tagihan ini tidak menyimpan request_id DOKU, jadi link-nya TIDAK BISA dimatikan lewat API — ia berhenti sendiri saat masa bayarnya habis',
+      };
+    }
+
+    return { ok: false, reason: out.message || out.reason || `Tidak diketahui (HTTP ${status})` };
   } catch (e: any) {
     console.error('[cancelInvoice] gagal memanggil Cancel Order DOKU:', e);
     return { ok: false, reason: e?.message || 'Panggilan ke DOKU gagal' };
