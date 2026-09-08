@@ -49,11 +49,25 @@ order uji, bukan order peneliti.
 1. **Terbitkan tagihan uji** dari dashboard admin pada order uji. Catat
    `payment_id`-nya (format `JFU-INV-…`).
 
-2. **Buka link DOKU-nya di browser.** Pastikan halamannya **HIDUP**.
+2. **⚠️ PASTIKAN DULU TAGIHANNYA PUNYA `doku_request_id`.** Tanpa nilai itu
+   Cancel Order tidak pernah ditembakkan ke DOKU sama sekali, dan link yang
+   tetap hidup **bukan bukti apa-apa** — ujinya batal tanpa Anda sadari. Ini
+   sudah terjadi sekali (8 Sep, tagihan uji Rp 1.110):
+
+   ```sql
+   select payment_id, doku_request_id is not null as siap_diuji, expires_at
+     from invoices where payment_id = 'JFU-INV-…';
+   ```
+
+   `siap_diuji = false` → **jangan diteruskan.** Terbitkan tagihan baru.
+   (Sejak 8 Sep dialog penerbit juga memperingatkan langsung di layar kalau
+   ini terjadi — tapi peringatan itu baru muncul sesudah deploy berikutnya.)
+
+3. **Buka link DOKU-nya di browser.** Pastikan halamannya **HIDUP**.
    Ini kondisi awal — tanpa memastikannya, "menolak" sesudahnya tidak
    membuktikan apa pun.
 
-3. **Klik "Batalkan Tagihan"** pada tagihan itu, dan **baca toast-nya**.
+4. **Klik "Batalkan Tagihan"** pada tagihan itu, dan **baca toast-nya**.
    Toast-nya sudah dirancang menjawab pertanyaan Langkah 0 secara langsung:
 
    | Toast | Artinya |
@@ -62,11 +76,11 @@ order uji, bukan order peneliti.
    | 🟠 *"…tapi link DOKU-nya **MUNGKIN MASIH BISA DIBAYAR** (alasan)"* | DOKU menolak. **Salin alasannya persis** — itu datanya. |
    | 🟠 *"Tidak ada yang berubah…"* | Salah sasaran: tagihannya sudah dibayar/dibatalkan. Ulangi dengan tagihan uji yang baru. |
 
-4. **Buka lagi URL yang sama di browser.** ⚠️ **Inilah ujiannya.** Toast hijau
+5. **Buka lagi URL yang sama di browser.** ⚠️ **Inilah ujiannya.** Toast hijau
    pun belum membuktikan apa-apa — yang membuktikan cuma halaman DOKU yang
    menolak.
 
-5. **Pastikan di database** angka yang selama ini nol akhirnya terisi:
+6. **Pastikan di database** angka yang selama ini nol akhirnya terisi:
 
    ```sql
    select payment_id, status, doku_cancelled_at
@@ -77,13 +91,13 @@ order uji, bukan order peneliti.
 
    Satu baris di sini = angka "0 baris seumur hidup" akhirnya patah.
 
-6. **Klik "Batalkan Tagihan" sekali lagi** pada tagihan yang sama. Ini menguji
+7. **Klik "Batalkan Tagihan" sekali lagi** pada tagihan yang sama. Ini menguji
    penolakan "sudah dibatalkan": harus jadi toast oranye berisi alasan, bukan
    layar yang rusak.
 
 #### Cara membaca hasilnya
 
-| Yang terlihat di browser (langkah 4) | Artinya |
+| Yang terlihat di browser (langkah 5) | Artinya |
 |---|---|
 | Halaman **menolak** | ✅ Langkah 0 HIJAU. Rencana A boleh dideploy utuh. |
 | Halaman **masih hidup**, walau toast hijau | ⛔ Langkah 0 MERAH — dan ini temuan besar, bukan kegagalan uji. DOKU membalas 200 tanpa benar-benar mematikan link. Langkah 3 tidak punya dasar; link perantara (Langkah 4–8) jadi SATU-SATUNYA pertahanan. Deploy Langkah 4–8 saja, dan **naikkan** prioritas Langkah 2 (penjaga webhook), bukan turunkan. |
