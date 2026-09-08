@@ -194,7 +194,7 @@ ditinggalkan sebagai peringatan sementara di Phase 3 ("Tandai Lunas" order-level
 Tiga alasan urutan dasarnya, dan yang ketiga yang menentukan:
 
 1. **Phase 4 tidak diblokir kode, melainkan keputusan produk yang belum ada** — di mana
-   pool hadiah tinggal untuk **83 order** yang sudah mendanai hadiah tanpa punya tanggal
+   pool hadiah tinggal untuk ~~83~~ **2 order** (ukur ulang 2026-09-08) yang sudah mendanai hadiah tanpa punya tanggal
    sama sekali. Menunda deploy ke belakang keputusan itu berarti menunda tanpa tanggal.
 2. **Batchnya jadi tak terbaca.** Branch ini sudah ~49 commit di depan `main`. Menambah
    Phase 4 membuat satu deploy memuat revamp visual + papan Schedule + penulisan ulang
