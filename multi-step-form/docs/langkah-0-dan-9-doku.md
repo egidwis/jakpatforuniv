@@ -15,15 +15,99 @@ sekali pun terbukti bekerja. Kalau ternyata ia tidak mematikan apa pun, kita
 akan mengira link sudah dicabut padahal masih menagih — keadaan yang lebih
 berbahaya daripada tahu ia hidup.
 
-### Yang dibutuhkan
+**Ada dua cara. Pakai Cara A.**
 
-Kredensial **sandbox** DOKU. Ini akun TERPISAH dari produksi: Client-Id dan
-Secret-Key-nya berbeda. `.env` di repo ini berisi kredensial **produksi**
+---
+
+### Cara A — lewat dashboard admin (disarankan)
+
+Tombol **"Batalkan Tagihan"** di dashboard admin **sudah memanggil Cancel Order
+hari ini**. Ia bukan kode baru: `cancelInvoice()` → `killDokuLink()` →
+`/api/doku/cancel-order` sudah live sejak `sql/84`, dan terbukti jalan — 14
+tagihan yang terbit dalam 24 jam terakhir sudah menyimpan `doku_request_id`.
+
+Cara ini **lebih baik daripada naskah terpisah**, bukan cuma lebih mudah: ia
+menguji jalur nyata sampai ujung — gerbang admin di `_middleware.js`, pencarian
+`doku_request_id`, panggilan ke DOKU, DAN tulisan `doku_cancelled_at` ke
+database. Naskah di Cara B hanya menguji API DOKU-nya sendiri.
+
+#### ⚠️ Sebelum mulai: JANGAN membatalkan tagihan peneliti sungguhan
+
+Saat ini ada **10 tagihan `pending` milik peneliti sungguhan** yang punya
+`doku_request_id` — semuanya tampak "bisa dibatalkan" di layar. Membatalkan
+salah satunya berarti mematikan link bayar orang yang sedang menunggu.
+
+**Terbitkan tagihan uji Anda sendiri.** Nominal kecil (mis. Rp 10.000) pada
+order uji, bukan order peneliti.
+
+#### Langkahnya
+
+1. **Terbitkan tagihan uji** dari dashboard admin pada order uji. Catat
+   `payment_id`-nya (format `JFU-INV-…`).
+
+2. **Buka link DOKU-nya di browser.** Pastikan halamannya **HIDUP**.
+   Ini kondisi awal — tanpa memastikannya, "menolak" sesudahnya tidak
+   membuktikan apa pun.
+
+3. **Klik "Batalkan Tagihan"** pada tagihan itu, dan **baca toast-nya**.
+   Toast-nya sudah dirancang menjawab pertanyaan Langkah 0 secara langsung:
+
+   | Toast | Artinya |
+   |---|---|
+   | 🟢 *"Link bayarnya sudah **dinonaktifkan di DOKU**."* | DOKU mengonfirmasi. Lanjut ke langkah 4. |
+   | 🟠 *"…tapi link DOKU-nya **MUNGKIN MASIH BISA DIBAYAR** (alasan)"* | DOKU menolak. **Salin alasannya persis** — itu datanya. |
+   | 🟠 *"Tidak ada yang berubah…"* | Salah sasaran: tagihannya sudah dibayar/dibatalkan. Ulangi dengan tagihan uji yang baru. |
+
+4. **Buka lagi URL yang sama di browser.** ⚠️ **Inilah ujiannya.** Toast hijau
+   pun belum membuktikan apa-apa — yang membuktikan cuma halaman DOKU yang
+   menolak.
+
+5. **Pastikan di database** angka yang selama ini nol akhirnya terisi:
+
+   ```sql
+   select payment_id, status, doku_cancelled_at
+     from invoices
+    where doku_cancelled_at is not null
+    order by doku_cancelled_at desc;
+   ```
+
+   Satu baris di sini = angka "0 baris seumur hidup" akhirnya patah.
+
+6. **Klik "Batalkan Tagihan" sekali lagi** pada tagihan yang sama. Ini menguji
+   penolakan "sudah dibatalkan": harus jadi toast oranye berisi alasan, bukan
+   layar yang rusak.
+
+#### Cara membaca hasilnya
+
+| Yang terlihat di browser (langkah 4) | Artinya |
+|---|---|
+| Halaman **menolak** | ✅ Langkah 0 HIJAU. Rencana A boleh dideploy utuh. |
+| Halaman **masih hidup**, walau toast hijau | ⛔ Langkah 0 MERAH — dan ini temuan besar, bukan kegagalan uji. DOKU membalas 200 tanpa benar-benar mematikan link. Langkah 3 tidak punya dasar; link perantara (Langkah 4–8) jadi SATU-SATUNYA pertahanan. Deploy Langkah 4–8 saja, dan **naikkan** prioritas Langkah 2 (penjaga webhook), bukan turunkan. |
+
+#### Yang perlu dicatat, apa pun hasilnya
+
+Tiga penolakan yang sudah diantisipasi `cancel-order.js`. Kalau salah satunya
+muncul, salin **kalimat persisnya** dari toast:
+
+1. tagihan yang sudah **dibayar**
+2. tagihan yang sudah **kedaluwarsa**
+3. **kanal kartu** (tidak didukung DOKU)
+
+Kalimat aslinya yang menentukan apakah terjemahan kita ke admin sudah benar.
+
+---
+
+### Cara B — naskah terpisah, untuk sandbox
+
+Pakai ini **hanya kalau** Anda tidak mau menyentuh DOKU produksi sama sekali,
+atau ingin menangkap **badan jawaban mentah** DOKU untuk ketiga penolakan (Cara
+A hanya memperlihatkan kalimat yang sudah diterjemahkan).
+
+Butuh kredensial **sandbox** DOKU. Ini akun TERPISAH dari produksi: Client-Id
+dan Secret-Key-nya berbeda. `.env` di repo ini berisi kredensial **produksi**
 (`VITE_DOKU_ENV=production`), jadi menukar `DOKU_ENV` saja tidak cukup — dan
 menjalankan uji ini dengan kredensial produksi akan mematikan link pembayaran
-peneliti sungguhan.
-
-### Langkahnya
+peneliti sungguhan. Naskahnya menolak jalan kalau mendeteksi itu.
 
 ```bash
 export DOKU_CLIENT_ID='BRN-xxxx-sandbox'
@@ -31,44 +115,18 @@ export DOKU_SECRET_KEY='SK-xxxx-sandbox'
 export DOKU_PROBE_CONFIRM_SANDBOX=1
 
 node scripts/doku-cancel-order-probe.mjs create
-#   → cetak payment_url
-
-#   ⚠️ BUKA payment_url DI BROWSER. Pastikan halamannya HIDUP.
-#      Tanpa memastikan kondisi awal, "menolak" sesudahnya tidak
-#      membuktikan apa pun.
+#   → cetak payment_url. BUKA DI BROWSER, pastikan HIDUP.
 
 node scripts/doku-cancel-order-probe.mjs cancel
-#   → cetak jawaban mentah DOKU
-
-#   ⚠️ BUKA LAGI URL YANG SAMA. Inilah ujiannya.
+#   → cetak jawaban mentah DOKU. BUKA LAGI URL YANG SAMA.
 
 node scripts/doku-cancel-order-probe.mjs cancel
 #   → sekali lagi, untuk melihat penolakan "sudah dibatalkan"
 ```
 
-### Cara membaca hasilnya
-
-| Yang terlihat di browser sesudah cancel | Artinya |
-|---|---|
-| Halaman **menolak** | ✅ Langkah 0 HIJAU. Rencana A boleh dideploy utuh. |
-| Halaman **masih hidup** | ⛔ Langkah 0 MERAH — dan ini temuan besar, bukan kegagalan uji. Langkah 3 tidak punya dasar; link perantara (Langkah 4–8) jadi SATU-SATUNYA pertahanan. Deploy Langkah 4–8 saja, dan naikkan prioritas Langkah 2 (penjaga webhook), bukan turunkan. |
-
-**⚠️ HTTP 200 bukan bukti.** Satu-satunya bukti adalah halaman DOKU yang menolak
-di browser. Ini catatan yang sudah ditulis di plan sejak awal dan belum pernah
-dikerjakan; jangan diselesaikan dengan membaca status code.
-
-### Yang perlu dicatat, apa pun hasilnya
-
-Tiga penolakan yang sudah diantisipasi `cancel-order.js` — salin **kode dan
-kalimat persisnya** dari jawaban DOKU untuk masing-masing:
-
-1. tagihan yang sudah **dibayar**
-2. tagihan yang sudah **kedaluwarsa**
-3. **kanal kartu** (tidak didukung DOKU)
-
-Ketiganya harus mendarat ke admin sebagai kalimat yang bisa ditindaklanjuti,
-bukan sebagai crash. Kalimat aslinya yang menentukan apakah terjemahan kita
-sudah benar.
+⚠️ Cara B **tidak** menguji gerbang admin, pencarian `doku_request_id`, maupun
+tulisan `doku_cancelled_at`. Ia hanya menjawab "apakah API DOKU-nya sendiri
+bekerja". Kalau Cara A sudah hijau, Cara B tidak perlu dijalankan.
 
 ---
 
