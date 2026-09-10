@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | 🔓 **TERBUKA & jadi pekerjaan berikutnya** — Task 13 sudah tayang 2026-08-19, harga per jadwal tersedia. ⚠️ Prasyarat `reward_pools` (8B-2, `sql/50`) **belum ada di mana pun** — diperiksa 2026-08-19: tabelnya NULL di produksi dan berkas `sql/50` belum pernah ditulis |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | 🔓 **TERBUKA & jadi pekerjaan berikutnya.** Prasyarat link bayar sudah lunas 2026-09-10 (§00Z) — Phase 4 melipatgandakan link yang beredar, jadi jebakan itu harus tertutup lebih dulu. ⚠️ Yang MASIH memblokir: `reward_pools` (8B-2, `sql/50`) **belum ada di mana pun** (diperiksa 2026-08-19, masih benar), `sql/86` belum ditulis, dan **tiga penjaga order-scoped di `create-payment.js` menolak 100% pembayaran Phase 4** — lihat rencananya |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -122,6 +122,130 @@ branch itu. Lihat §2.
 ---
 
 ## Yang menunggu tindakan
+
+### 00Z. 🟢 Link bayar berwenang — Rencana A-2 + `sql/87` (2026-09-10)
+
+**Di luar alur Jadwal Iklan**, tapi **prasyarat Phase 4**: Phase 4 melipatgandakan
+jumlah link bayar yang beredar, jadi jebakan hari ini harus tertutup lebih dulu.
+
+Rencana A (resolver `/bayar/<ad_schedules.id>` menggantikan URL DOKU mentah)
+dideploy 2026-09-10. Uji manual sesudahnya menemukan peneliti **tetap terdampar**.
+Sesudah menelusuri SELURUH permukaan, sebabnya **empat hal berbeda** — dan tidak
+satu pun "belum dideploy".
+
+| # | Sebab | Akibatnya |
+|---|---|---|
+| 1 | **JEBAKAN — regresi Rencana A sendiri.** `StatusPage` mengganti `ownBilling.paymentUrl` (bisa `null`) dengan `payLinkPath(scheduleId)` (tak pernah `null`) | Nilai itu dipakai di HULU sebagai penanda keberadaan (`finalPaymentLink ? 'waiting_payment' : 'awaiting_invoice'`), jadi **setiap kartu selamanya menawarkan "Bayar Sekarang"**; resolver menjawab jujur "tidak ada tagihan", dan di situlah pembayaran berhenti |
+| 2 | `InvoicePage` menghitung `payHref` lalu memakainya **hanya sebagai gerbang tampil**; `href`-nya tetap `data.payment_url` | Halaman ini juga tujuan `302` resolver untuk anggota grup non-lead, jadi lompatan yang benar pun berakhir di link mentah |
+| 3 | Delapan cadangan `? payLink : urlMentah` | Cabang mentahnya menyala tepat ketika kita **tidak punya** `schedule_id` — yaitu ketika link itu justru tidak bisa dijamin masih berwenang. Terbalik |
+| 4 | Halaman konfirmasi membaca `form_submissions.total_cost` | Layar kami **Rp 277.500**, DOKU menagih **Rp 1.110** |
+
+⚠️ **Gerbang `isExpired` di jalur ordinal 1 adalah KODE MATI, dan itu bukan
+temuan kosmetik.** `payMap[...].isExpired` diturunkan dari `openInvoice`, yang
+disaring `isLiveInvoice()` — dan predikat itu sudah mensyaratkan `!isExpired`
+untuk tagihan `pending`. Jadi nilainya **selalu `false`**. Satu-satunya sinyal
+yang benar-benar bekerja di sana memang `paymentUrl`. Siapa pun yang kelak
+"memperbaiki" jalur ini dengan menyandarkan diri pada `isExpired` akan menulis
+penjaga yang tidak pernah menyala.
+
+**Angka yang membuat penghapusan cadangan aman** (produksi, 2026-09-10):
+`invoices.schedule_id` kosong **1 dari ~460** baris (8 bulan),
+`transactions.schedule_id` **1 dari 723**, dan **NOL** di antara tagihan yang
+masih hidup. `CopyInvoiceDropdown` bukan sekadar ternari: normalisernya tidak
+pernah menyalin `schedule_id` dari `transactions`, jadi **100%** baris asal
+transaksi menyalin URL mentah — bukan "hanya baris warisan" seperti klaim
+komentarnya.
+
+**Yang dikerjakan** (commit `37d2234`, `7578a5c`, `3c86e12` di `main`):
+
+- Aturan link diangkat jadi `payLinkForBill()` — **KEBERADAAN** dari `paymentUrl`,
+  **BENTUK** dari `scheduleId`. Komponen React tidak bisa dikunci tes; fungsi
+  murni bisa.
+- Delapan cadangan dibuang, termasuk empat permukaan admin (admin menyalinnya
+  lalu mengirim ke peneliti lewat WhatsApp — itu bukan pengecualian).
+- `payLinkUrl` **mengunci origin**. Root `_middleware.js` menyajikan apex
+  `jakpatforuniv.com` sebagai homepage statis, jadi `/bayar/` di sana adalah
+  halaman depan: link mati yang terlihat hidup, di inbox orang, berhari-hari.
+  `localhost` & `*.pages.dev` sengaja dibiarkan.
+- **Tagihan PERPANJANGAN akhirnya dapat email dari kami.** Gerbang
+  `!entry.isExtension` membuat jalur itu bisu total, sehingga satu-satunya kabar
+  yang sampai adalah "Pesanan Baru" dari DOKU — yang membawa URL mentah.
+- Halaman konfirmasi: nominal dari baris `invoices` (kalau tak terbaca,
+  blok nominalnya **disembunyikan** — tidak ada jalan mundur ke angka order),
+  CTA bertingkat, dan "Tutup halaman ini" dibuang (`window.close()` diam saja
+  untuk tab yang datang dari redirect DOKU — tombol mati).
+
+**`sql/87` diterapkan & diverifikasi 2026-09-10:**
+
+- `reason = 'bill_cancelled'` memisahkan **tagihan** yang dibatalkan dari
+  **jadwal** yang dibatalkan. Sebelumnya keadaan itu jatuh ke penampung akhir
+  `ELSE 'expired'` dan penelitinya dibaca *"batas waktu sudah lewat, silakan
+  jadwalkan ulang"* — salah faktanya, dan salah **arah tindakannya**: ia menyuruh
+  orang membuang slot yang masih dipegangnya. Terukur: dari 114 jadwal
+  ber-`reason='expired'`, tepat **2** yang salah — `ZS4ZNN96` (tayang 14 Sep) dan
+  `MM36J2EW` (22 Sep), **keduanya jadwal hidup** (`slot_reserved`).
+- `invoices.doku_cancel_last_error` — jawaban DOKU akhirnya tersimpan.
+- ⚠️ Ia juga **mencabut hibah `anon`** yang datang diam-diam dari
+  `pg_default_acl`: schema `public` memberi `anon` EXECUTE pada **setiap** fungsi
+  baru, dan `REVOKE ALL FROM PUBLIC` tidak menyentuh hibah langsung ke sebuah
+  role. Berkas `sql/85` di repo karena itu **tidak mereproduksi ACL produksi** —
+  periksa `pg_proc.proacl`, jangan berasumsi dari berkasnya.
+
+Verifikasi: `bill_cancelled` tepat 2 jadwal, `expired` 114 → 112, vonis lain nol
+bergeser, `live` masih sepakat 100% dengan `schedule_billing_summary()` (nol
+selisih), ACL `postgres | authenticated | service_role`.
+
+---
+
+#### 🔴 TERJAWAB: kenapa Cancel Order DOKU tidak pernah berhasil
+
+**Fiturnya tidak pernah aktif di akun DOKU ini.** Penolakan pertama yang pernah
+tersimpan (tagihan `JFU-INV-5b73a8-1789044625252`, lewat kolom baru sql/87):
+
+```
+HTTP 400 · {"error":{"message":"Merchant not support cancel order,
+            please do activation through DOKU dashboard."}}
+```
+
+Bukan tanda tangan yang salah, bukan `request_id` yang hilang, bukan jembatan
+dev — sebuah **setelan akun**. Empat percobaan sebelumnya batal karena sebab
+lain, jadi sebab yang sebenarnya baru terlihat pada percobaan kelima: yang
+pertama punya tempat untuk mencatatnya.
+
+**Ini meralat asumsi di §00X.** `invoices.doku_cancelled_at` akan tetap **nol
+baris** sampai setelan itu dinyalakan lewat dashboard DOKU (atau lewat support
+DOKU). **Mencoba lagi tidak akan pernah menolong** — bedakan dari kegagalan
+sementara.
+
+Yang menanggung sementara itu, dan semuanya sudah live: resolver `/bayar/` (nol
+bergantung pada Cancel Order), `expires_at`, serta penjaga webhook
+`paid_on_dead_bill` (`sql/80`) dan `paid_on_stale_bill` (`sql/85`). Yang **tidak**
+tertutup: tab DOKU yang telanjur terbuka, dan link di email DOKU yang sudah
+terkirim — untuk keduanya, kalimat "beri tahu penelitinya" di toast admin masih
+satu-satunya jalan.
+
+Kalimatnya sudah sampai ke admin: `explainDokuRejection()` menerjemahkan jawaban
+DOKU jadi **sebab** (yang lama tautologi — ia mengulang akibat yang sudah
+dikatakan toast pembungkusnya), `dokuLinkWarning()` menyusunnya jadi judul +
+deskripsi, dan badan aslinya dikunci sebagai kasus pertama di
+`cancelOrderRejection.spec.js`.
+
+**⬜ Menunggu manusia:** aktifkan Cancel Order di dashboard DOKU, lalu uji dengan
+tagihan **uji sendiri** (jangan tagihan peneliti sungguhan). Kalau
+`doku_cancelled_at` akhirnya terisi, buka link DOKU lamanya di browser dan
+pastikan ia menolak — bukti terakhir yang belum pernah ada.
+
+**⬜ Menunggu manusia (2):** matikan "Pesanan Baru", "Pesanan akan Kedaluwarsa",
+"Pesanan Kedaluwarsa" di notifikasi email DOKU. **Biarkan nyala** "Pesanan
+Berhasil" (webhook kita **nol** mengirim email lunas ke peneliti — ini
+satu-satunya tanda terima mereka) dan "Pesanan Gagal". Prasyaratnya sudah lunas
+(email tagihan perpanjangan). Sesudah menukar setelan, terbitkan satu tagihan uji
+dan pastikan yang masuk **tepat satu** email — pemetaan label DOKU ke email nyata
+belum pernah dibuktikan empiris.
+
+Rencananya: [`plans/README.md`](superpowers/plans/README.md) baris "link bayar
+berwenang". Gerbang mesin pada pohon akhir: **615 tes hijau / 46 berkas**,
+`tsc -p tsconfig.app.json` = **77** (baseline), build sukses.
 
 ### 00Y. 🟠 Tagihan gabungan: sisi peneliti & race condition (audit 2026-09-03)
 
@@ -332,6 +456,14 @@ Yang gagal tiga asumsi di hulu:
 | `sql/82` | `is_stale` juga benar saat jadwalnya `cancelled` |
 | `sql/83` | **tidak ada di rencana.** `schedule_billing` + `_bulk` + `_summary` sadar `expires_at`/`is_expired` |
 | `sql/84` | `invoices.doku_request_id`, `invoices.doku_cancelled_at`, `transactions.doku_request_id` |
+
+> 🔴 **RALAT 2026-09-10 — `doku_cancelled_at` tidak akan pernah terisi sampai
+> DOKU mengaktifkan fiturnya.** Penolakan pertama yang pernah tersimpan berbunyi
+> *"Merchant not support cancel order, please do activation through DOKU
+> dashboard."* Cancel Order **tidak pernah aktif di akun ini** — bukan tanda
+> tangan yang salah, bukan `request_id` yang hilang. **Mencoba lagi tidak akan
+> menolong.** Lihat §00Z; kolom yang menangkapnya lahir di `sql/87`.
+
 
 **Perilaku baru webhook:** uang yang mendarat di tagihan mati (rank 2 di
 `payment_status_rank`) → **nol tulisan, HTTP 200**, kartunya masuk antrean admin.
@@ -3774,4 +3906,5 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | [`superpowers/plans/2026-09-03-tagihan-mati-benar-benar-mati.md`](superpowers/plans/2026-09-03-tagihan-mati-benar-benar-mati.md) | **Rencana "tagihan yang dibatalkan harus benar-benar mati"** — dari insiden pembayaran order `af004b84`. **Di luar alur Jadwal Iklan.** Dieksekusi & dideploy 2026-09-03; status berjalan di §00X |
 | `multi-step-form/sql/80`–`84` | **Di luar alur Jadwal Iklan.** Insiden tagihan mati 2026-09-03 ([rencananya](superpowers/plans/2026-09-03-tagihan-mati-benar-benar-mati.md)). `80` = outcome `paid_on_dead_bill`; `81` = bersih-bersih tagihan zombie (✅ **diterapkan 2026-09-03** — piutang berjalan Rp 18.772.750 → Rp 610.500, nol baris lunas tersentuh; gerbang 6a lepas); `82` = `is_stale` kenal jadwal `cancelled`; `83` = billing sadar kedaluwarsa (**tidak ada di rencana** — lihat jebakan no. 25); `84` = `doku_request_id` + `doku_cancelled_at`. Rekaman perbaikan datanya di `sql/ops_fix_order_af004b84_dead_bill_payment.sql` |
 | `multi-step-form/sql/85` (**DUA berkas**) | **Di luar alur Jadwal Iklan.** ⚠️ **Nomor `85` dipakai dua kali** — `85_stale_bill_and_authoritative_url` (jalur uang, diterapkan 2026-09-08) dan `85_add_ai_prescreening_to_submissions` (kolom `form_submissions.ai_prescreening`, diterapkan 2026-09-10). Keduanya lahir di branch paralel yang sama-sama melihat `84` sebagai tertinggi; objeknya tak berhubungan, keduanya sudah di produksi, jadi **sengaja tidak diganti nama**. Yang jalur uang: `authoritative_payment_url()` — satu tempat yang menjawab "tagihan mana yang berwenang untuk jadwal ini", dipakai resolver `/bayar/<ad_schedules.id>` — plus outcome `paid_on_stale_bill`, sengaja **dipisah** dari `paid_on_dead_bill` karena tindakan adminnya berbeda: pindahkan uangnya vs kembalikan. Duduk perkara penomorannya di [`multi-step-form/sql/README.md`](../multi-step-form/sql/README.md). ⚠️ `86` masih kosong dan tetap dipesan untuk pelebaran `create_ad_schedule()` di Phase 4 |
+| `multi-step-form/sql/87` | **Di luar alur Jadwal Iklan**, tapi prasyarat Phase 4. `reason = 'bill_cancelled'` (memisahkan TAGIHAN yang dibatalkan dari JADWAL yang dibatalkan — sebelumnya jatuh ke `ELSE 'expired'` dan menyuruh peneliti membuang slot yang masih dipegangnya) + `invoices.doku_cancel_last_error` (jawaban DOKU akhirnya tersimpan; penolakan pertamanya langsung menjawab kenapa Cancel Order tidak pernah berhasil). ⚠️ Ia juga **mencabut hibah `anon`** yang datang dari `pg_default_acl` — lihat §00Z. ✅ diterapkan & diverifikasi 2026-09-10. `86` **tetap dipesan** untuk pelebaran `create_ad_schedule()` di Phase 4 |
 | `multi-step-form/sql/54` | **Di luar alur Jadwal Iklan.** `doku_webhook_events` — jejak permanen notifikasi DOKU, dari insiden webhook 2026-08-10 ([rencananya](superpowers/plans/2026-08-10-doku-webhook-silent-failure.md)). Sengaja mengambil `54` dan bukan `50`, supaya tiga rencana yang sudah mengklaim `50`–`53` (`reward_pools`, Task 11, Task 13) tidak perlu bergeser untuk keempat kalinya — migrasi-migrasi itu saling independen, jadi urutan penerapan tidak jadi soal. **Nomor bebas berikutnya untuk pekerjaan Jadwal Iklan tetap `50`.** |
