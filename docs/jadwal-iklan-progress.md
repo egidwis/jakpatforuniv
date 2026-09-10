@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | 🔓 **TERBUKA & jadi pekerjaan berikutnya.** Prasyarat link bayar sudah lunas 2026-09-10 (§00Z) — Phase 4 melipatgandakan link yang beredar, jadi jebakan itu harus tertutup lebih dulu. ⚠️ Yang MASIH memblokir: `reward_pools` (8B-2, `sql/50`) **belum ada di mana pun** (diperiksa 2026-08-19, masih benar), `sql/86` belum ditulis, dan **tiga penjaga order-scoped di `create-payment.js` menolak 100% pembayaran Phase 4** — lihat rencananya |
+| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | 🔓 **TERBUKA & jadi pekerjaan berikutnya** — rencana lengkap + kesiapan terukur di [`plans/2026-09-10-phase-4-penjadwalan-swalayan.md`](superpowers/plans/2026-09-10-phase-4-penjadwalan-swalayan.md). Prasyarat link bayar sudah lunas 2026-09-10 (§00Z). Permintaan naik jadi **18 perpanjangan seumur hidup, 11 sejak 1 Agustus**. ⚠️ **Empat dari lima penghalang masih berdiri** (diverifikasi ke produksi 10 Sep): `reward_pools`/`sql/50` tabelnya tidak ada & berkasnya belum ditulis; `sql/86` belum ditulis dan `create_ad_schedule` **tidak punya `p_slot_reserved_at`**; pelepasan hold jadwal ke-2 nol implementasi; **tiga penjaga order-scoped di `create-payment.js` menolak 100% sasaran Phase 4**. 🔴 Satu keputusan pemilik produk (kirim sebelum tangga tarif 1 Okt?) memblokir urutan rilis |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -230,18 +230,49 @@ dikatakan toast pembungkusnya), `dokuLinkWarning()` menyusunnya jadi judul +
 deskripsi, dan badan aslinya dikunci sebagai kasus pertama di
 `cancelOrderRejection.spec.js`.
 
-**⬜ Menunggu manusia:** aktifkan Cancel Order di dashboard DOKU, lalu uji dengan
-tagihan **uji sendiri** (jangan tagihan peneliti sungguhan). Kalau
-`doku_cancelled_at` akhirnya terisi, buka link DOKU lamanya di browser dan
-pastikan ia menolak — bukti terakhir yang belum pernah ada.
+**✅ Cancel Order DIAKTIFKAN 2026-09-10** — toggle "Pembatalan Pesanan" di
+*Pengaturan Halaman Checkout → Pengaturan Sistem*.
 
-**⬜ Menunggu manusia (2):** matikan "Pesanan Baru", "Pesanan akan Kedaluwarsa",
-"Pesanan Kedaluwarsa" di notifikasi email DOKU. **Biarkan nyala** "Pesanan
-Berhasil" (webhook kita **nol** mengirim email lunas ke peneliti — ini
-satu-satunya tanda terima mereka) dan "Pesanan Gagal". Prasyaratnya sudah lunas
-(email tagihan perpanjangan). Sesudah menukar setelan, terbitkan satu tagihan uji
-dan pastikan yang masuk **tepat satu** email — pemetaan label DOKU ke email nyata
-belum pernah dibuktikan empiris.
+⚠️ **BATASAN BARU YANG BARU TERBACA DI LAYAR ITU, dan ia tidak ada di dokumen
+mana pun sebelumnya:**
+
+> *"Hanya pesanan dengan metode pembayaran Virtual Account atau Kode QR yang bisa
+> dibatalkan"*
+
+Jadi Cancel Order **tidak pernah** mencakup kartu kredit. Terukur di produksi:
+dari transaksi DOKU yang kanalnya diketahui, **6 dari 201 kartu kredit (~3%)** —
+sisanya QRIS (136) dan VA (59), semuanya tercakup. `cancel-order.js` sudah
+mengantisipasinya sejak awal ("kanal kartu — tidak didukung DOKU"), tapi
+sebabnya baru sekarang tercatat.
+
+⚠️ Dan ada jebakan waktu di sini: `payment_channel` baru terisi **sesudah**
+dibayar. Saat sebuah tagihan dibatalkan, kanalnya biasanya **belum diketahui**
+(180 baris DOKU produksi ber-`payment_channel` NULL) — jadi jangan menurunkan
+"bisa dibatalkan atau tidak" dari kolom itu sebelum pembayaran terjadi.
+
+**⬜ Bukti terakhir masih belum ada.** `doku_cancelled_at` tetap nol baris sampai
+ada pembatalan yang berhasil sesudah aktivasi. Ujinya: terbitkan tagihan **uji
+sendiri** (⚠️ **jangan** tagihan peneliti sungguhan — per 2026-09-10 ada tepat
+**satu** tagihan hidup di produksi, `JFU-INV-5e3966-…` senilai Rp 677.100 milik
+peneliti nyata), batalkan, lalu:
+
+```sql
+select payment_id, doku_cancelled_at, doku_cancel_last_error
+  from invoices where payment_id = '<tagihan uji>';
+```
+
+Kalau `doku_cancelled_at` terisi, **buka link DOKU lamanya di browser** dan
+pastikan ia menolak. Itu bukti yang belum pernah ada seumur hidup sistem ini.
+
+**✅ Tiga email DOKU DIMATIKAN 2026-09-10** — "Pesanan Baru", "Pesanan
+Kedaluwarsa", "Pesanan akan Kedaluwarsa" dimatikan; **"Pesanan Berhasil" dan
+"Pesanan Gagal" tetap nyala**, persis rencana. "Pesanan Berhasil" wajib tetap
+nyala karena `webhook.js` kita **nol** mengirim email lunas ke peneliti — ia
+satu-satunya tanda terima mereka.
+
+**⬜ Sisa satu verifikasi:** terbitkan satu tagihan dan pastikan yang masuk
+**tepat satu** email (dari kami, bukan DOKU). Pemetaan label DOKU ke email nyata
+belum pernah dibuktikan empiris — labelnya masuk akal, tapi belum dilihat.
 
 Rencananya: [`plans/README.md`](superpowers/plans/README.md) baris "link bayar
 berwenang". Gerbang mesin pada pohon akhir: **615 tes hijau / 46 berkas**,
@@ -457,12 +488,15 @@ Yang gagal tiga asumsi di hulu:
 | `sql/83` | **tidak ada di rencana.** `schedule_billing` + `_bulk` + `_summary` sadar `expires_at`/`is_expired` |
 | `sql/84` | `invoices.doku_request_id`, `invoices.doku_cancelled_at`, `transactions.doku_request_id` |
 
-> 🔴 **RALAT 2026-09-10 — `doku_cancelled_at` tidak akan pernah terisi sampai
-> DOKU mengaktifkan fiturnya.** Penolakan pertama yang pernah tersimpan berbunyi
-> *"Merchant not support cancel order, please do activation through DOKU
-> dashboard."* Cancel Order **tidak pernah aktif di akun ini** — bukan tanda
-> tangan yang salah, bukan `request_id` yang hilang. **Mencoba lagi tidak akan
-> menolong.** Lihat §00Z; kolom yang menangkapnya lahir di `sql/87`.
+> 🟡 **RALAT 2026-09-10 — sebabnya akhirnya diketahui, dan sudah diperbaiki.**
+> Penolakan pertama yang pernah tersimpan berbunyi *"Merchant not support cancel
+> order, please do activation through DOKU dashboard."* Cancel Order **tidak
+> pernah aktif di akun ini** — bukan tanda tangan yang salah, bukan `request_id`
+> yang hilang, melainkan sebuah setelan akun. Fiturnya **sudah diaktifkan
+> 2026-09-10**, tapi `doku_cancelled_at` masih nol baris: belum ada pembatalan
+> yang berhasil sesudah itu. ⚠️ DOKU juga membatasinya ke **Virtual Account &
+> QRIS saja** — kartu kredit tidak pernah tercakup. Lihat §00Z; kolom yang
+> menangkap sebabnya lahir di `sql/87`.
 
 
 **Perilaku baru webhook:** uang yang mendarat di tagihan mati (rank 2 di
@@ -3899,6 +3933,7 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | [`superpowers/plans/2026-08-08-task-11-ad-schedules-otoritatif.md`](superpowers/plans/2026-08-08-task-11-ad-schedules-otoritatif.md) | **Rencana Task 11** — `ad_schedules` jadi otoritatif, `form_submissions_extend` pensiun, `booking_id` lahir. Disetujui 2026-08-08, **terkunci sampai Phase 3 mendarat di `main`** |
 | [`superpowers/plans/2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md`](superpowers/plans/2026-08-09-task-13-tagihan-fleksibel-per-jadwal.md) | **Rencana Task 13** — multi-invoice per jadwal (tagihan susulan jadi piutang), batal reservasi per jadwal, Extra Ad jadi sifat jadwal. Disetujui 2026-08-09, **terkunci sampai Task 11 mendarat & dideploy** (butuh `schedule_id`) |
 | [`superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md`](superpowers/plans/2026-08-05-phase-3-jadwal-iklan-terpadu.md) | **Rencana Phase 3** — judulnya sudah basi; baca kotak koreksi di kepalanya sebelum mengeksekusi apa pun dari sana |
+| [`superpowers/plans/2026-09-10-phase-4-penjadwalan-swalayan.md`](superpowers/plans/2026-09-10-phase-4-penjadwalan-swalayan.md) | **Rencana Phase 4** — penjadwalan swalayan di dashboard peneliti. Ditulis 2026-09-10 sebagai **serah-terima**: seluruh pengukuran kesiapannya dilakukan langsung ke produksi pada tanggal itu, jadi sesi berikutnya tidak perlu menurunkannya ulang. ⬜ belum dieksekusi; baca bagian "Kesiapan" di kepalanya sebelum apa pun |
 | [`superpowers/plans/2026-08-03-jadwal-iklan-redesign.md`](superpowers/plans/2026-08-03-jadwal-iklan-redesign.md) | Rencana Phase 2 lengkap, Task 8–12 |
 | [`superpowers/plans/2026-08-03-phase-0-test-checklist.md`](superpowers/plans/2026-08-03-phase-0-test-checklist.md) | Checklist uji setelah deploy frontend |
 | [`superpowers/plans/2026-08-09-order-flow-reorder.md`](superpowers/plans/2026-08-09-order-flow-reorder.md) | **Rencana reorder flow order user** — Ringkasan sebelum Jadwal, gabung layar jadwal+bayar, P0 kebocoran anon, dua email transisi. ✅ committed 2026-08-10, masuk `main` 2026-08-18. **Tidak termasuk daftar Task 8–13 di atas** — workstream terpisah yang menumpang branch yang sama |
