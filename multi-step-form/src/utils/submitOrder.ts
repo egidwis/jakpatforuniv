@@ -11,6 +11,7 @@ import type { TranslationKey } from '../i18n/translations';
 import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from './constants';
 import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } from './airing-window';
 import { checkoutBlocker, type CheckoutBlockerCode } from './orderReadiness';
+import { auditSubmissionForm } from './auditService';
 
 /**
  * Sebab-sebab gagal yang punya kalimat sendiri untuk user. Kodenya, bukan
@@ -238,9 +239,22 @@ export async function submitOrder({
       }
     }
 
-    return mode.mode === 'reschedule'
+    const savedRecord = mode.mode === 'reschedule'
       ? await updateFormSubmissionById(mode.submissionId, submissionData)
       : await saveFormSubmission(submissionData);
+
+    // Trigger AI pre-screening in background (fire-and-forget, non-blocking)
+    if (savedRecord?.id && submissionData.survey_url) {
+      auditSubmissionForm(
+        savedRecord.id,
+        submissionData.survey_url,
+        submissionData.question_count || 0
+      ).catch(err => {
+        console.warn('[submitOrder] Background AI audit skipped/failed (non-fatal):', err);
+      });
+    }
+
+    return savedRecord;
   } catch (saveError) {
     console.error('Error saat menyimpan data:', saveError);
     throw new OrderSubmitError('save_failed');

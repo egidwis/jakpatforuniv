@@ -469,6 +469,7 @@ export interface FormSubmission {
   created_at?: string;
   updated_at?: string;
   distribution_type?: 'regular' | 'kilat';
+  ai_prescreening?: any;
 }
 
 // Tipe data untuk transactions

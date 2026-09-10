@@ -421,7 +421,13 @@ export function SubmissionDetailSheet({
         />
       )}
       {activeTab === 'review' && (
-        <ReviewTab submission={submission} onEditFormDetails={onEditFormDetails} />
+        <ReviewTab
+          submission={submission}
+          onEditFormDetails={onEditFormDetails}
+          onAuditComplete={(result) => {
+            if (submission) submission.ai_prescreening = result;
+          }}
+        />
       )}
       {activeTab === 'schedule-payment' && (
         <SchedulePaymentTab

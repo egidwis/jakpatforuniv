@@ -76,6 +76,40 @@ export interface SurveySubmission {
   invoiceName?: string;
   invoiceEmail?: string;
   invoicePhone?: string;
+  ai_prescreening?: FormAuditResult | null;
+}
+
+export interface FormAuditFinding {
+  type: 'phone' | 'email' | 'nik' | 'name' | 'address' | 'nim' | 'ewallet' | 'other';
+  snippet: string;
+  context: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface FormAuditResult {
+  status: 'clean' | 'warning' | 'flagged' | 'failed';
+  audited_at: string;
+  source_platform: 'google_forms' | 'microsoft_forms' | 'typeform' | 'qualtrics' | 'other';
+  url: string;
+  question_count: {
+    reported: number;
+    actual_detected: number;
+    diff: number;
+    status: 'match' | 'mismatch_over' | 'mismatch_under';
+  };
+  pii: {
+    has_pii: boolean;
+    findings: FormAuditFinding[];
+    status: 'clean' | 'warning' | 'violation';
+  };
+  randomizer: {
+    detected: boolean;
+    signals: string[];
+  };
+  recommendation: 'ready_to_approve' | 'needs_manual_review' | 'reject_or_revise';
+  summary: string;
+  detected_questions_sample?: string[];
+  error_message?: string;
 }
 
 export interface PaymentState {

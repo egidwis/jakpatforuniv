@@ -312,6 +312,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
           dismissed_at: sub.dismissed_at,
           distribution_type: sub.distribution_type,
           kilat_slot_hour: sub.kilat_slot_hour,
+          ai_prescreening: sub.ai_prescreening || null,
           has_transactions: false, // Default, will verify below
         }));
 

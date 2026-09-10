@@ -7,8 +7,9 @@ import {
   TooltipTrigger,
 } from '../../ui/tooltip';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
-import type { SurveySubmission } from '../types';
+import type { SurveySubmission, FormAuditResult } from '../types';
 import { copyToClipboard } from '../types';
+import { AuditScorecard } from '../AuditScorecard';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Review (default) — survey preview & review decision inputs
@@ -17,9 +18,11 @@ import { copyToClipboard } from '../types';
 export function ReviewTab({
   submission,
   onEditFormDetails,
+  onAuditComplete,
 }: {
   submission: SurveySubmission;
   onEditFormDetails: (submission: SurveySubmission) => void;
+  onAuditComplete?: (newResult: FormAuditResult) => void;
 }) {
   const actionButtons = (
     <div className="flex items-center gap-0.5 shrink-0 ml-auto">
@@ -79,6 +82,16 @@ export function ReviewTab({
 
   return (
     <>
+      {/* AI Pre-Screening Audit Card */}
+      {submission.formUrl && (
+        <DetailSheetSection className="pb-0">
+          <AuditScorecard
+            submission={submission}
+            onAuditComplete={onAuditComplete}
+          />
+        </DetailSheetSection>
+      )}
+
       {/* Survey preview */}
       <DetailSheetSection className="flex flex-col flex-1 h-full">
         {submission.formUrl ? (

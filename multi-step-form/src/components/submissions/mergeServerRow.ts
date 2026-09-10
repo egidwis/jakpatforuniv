@@ -63,6 +63,7 @@ export function mergeServerRow(
   take('distribution_type', 'distribution_type');
   take('kilat_slot_hour', 'kilat_slot_hour');
   take('detected_keywords', 'detected_keywords');
+  take('ai_prescreening', 'ai_prescreening');
   take('phone_number', 'phone_number');
   take('university', 'university');
   take('department', 'department');
