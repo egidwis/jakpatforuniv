@@ -70,11 +70,82 @@ function performFastRegexScan(text) {
   };
 }
 
+function parseGoogleFormsPublicData(html) {
+  if (!html) return null;
+  const match = html.match(/FB_PUBLIC_LOAD_DATA_\s*=\s*(\[[\s\S]+?\]);\s*<\/script>/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    const items = parsed?.[1]?.[1];
+    if (!Array.isArray(items)) return null;
+
+    const questions = [];
+    for (const item of items) {
+      const title = item[1];
+      const typeCode = item[3];
+      // Type 8 is page break / section header without question
+      if (typeCode === 8 && !title) continue;
+
+      const desc = item[2] || '';
+      let options = [];
+      if (item[4] && item[4][0] && Array.isArray(item[4][0][1])) {
+        options = item[4][0][1].map(opt => opt[0]).filter(Boolean);
+      }
+
+      if (title) {
+        let qText = title;
+        if (desc) qText += ` (${desc})`;
+        if (options.length > 0) qText += ` [Opsi: ${options.join(', ')}]`;
+        questions.push(qText);
+      }
+    }
+
+    if (questions.length > 0) {
+      return {
+        formTitle: parsed?.[1]?.[8] || parsed?.[1]?.[0] || '',
+        questions,
+        totalQuestions: questions.length,
+        fullText: questions.map((q, idx) => `[Pertanyaan ${idx + 1}] ${q}`).join('\n\n')
+      };
+    }
+  } catch (err) {
+    console.warn('[audit-submission] Error parsing FB_PUBLIC_LOAD_DATA_:', err);
+  }
+  return null;
+}
+
 async function extractContentFromUrl(url, env) {
   let extractedText = '';
   let extractorUsed = 'fetch_fallback';
 
-  // 1. Try Cloudflare Browser Rendering if env.MYBROWSER is present
+  // Strategy 1: Google Forms Direct Schema Parser (Bypasses page breaks & branching, extracts 100% of questions)
+  const isGForm = url.toLowerCase().includes('docs.google.com/forms') || url.toLowerCase().includes('forms.gle');
+  if (isGForm) {
+    try {
+      console.log('[audit-submission] Attempting Google Forms schema extraction for:', url);
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        redirect: 'follow'
+      });
+      if (res.ok) {
+        const html = await res.text();
+        const gformData = parseGoogleFormsPublicData(html);
+        if (gformData && gformData.questions.length > 0) {
+          console.log(`[audit-submission] Successfully extracted ${gformData.totalQuestions} questions from Google Forms schema!`);
+          return {
+            extractedText: gformData.fullText,
+            extractorUsed: 'google_forms_schema'
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[audit-submission] Google Forms direct fetch failed, falling back:', err.message);
+    }
+  }
+
+  // Strategy 2: Cloudflare Browser Rendering with Multi-Page / Logic Stepper
   if (env && env.MYBROWSER) {
     let browser;
     try {
@@ -87,10 +158,72 @@ async function extractContentFromUrl(url, env) {
       );
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
 
-      extractedText = await page.evaluate(() => {
-        return document.body ? document.body.innerText : '';
-      });
-      extractorUsed = 'cloudflare_puppeteer';
+      // Check if rendered page has Google Forms data in DOM
+      const pageHtml = await page.content();
+      const gformData = parseGoogleFormsPublicData(pageHtml);
+      if (gformData && gformData.questions.length > 0) {
+        console.log(`[audit-submission] Successfully extracted ${gformData.totalQuestions} questions via browser DOM!`);
+        extractedText = gformData.fullText;
+        extractorUsed = 'google_forms_schema';
+      } else {
+        // Multi-page advancing loop (e.g. for MS Forms, Typeform, etc.)
+        const allPages = [];
+        const initialText = await page.evaluate(() => document.body ? document.body.innerText : '');
+        if (initialText) allPages.push(initialText);
+
+        // Run through up to 5 steps of Next/Berikutnya
+        for (let step = 0; step < 5; step++) {
+          const advanced = await page.evaluate(() => {
+            // Auto-select affirmative screening options ("Ya", "Setuju", "Bersedia", "Yes", or first radio)
+            const labels = Array.from(document.querySelectorAll('label, div[role="radio"], span'));
+            for (const el of labels) {
+              const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+              if (txt === 'ya' || txt === 'yes' || txt === 'setuju' || txt === 'bersedia') {
+                const target = el.querySelector('input') || el;
+                target.click();
+                break;
+              }
+            }
+
+            // Click the first unselected radio if any
+            const unselectedRadio = document.querySelector('input[type="radio"]:not(:checked), div[role="radio"][aria-checked="false"]');
+            if (unselectedRadio) {
+              unselectedRadio.click();
+            }
+
+            // Look for "Berikutnya" / "Next" / "Lanjut" / "Mulai"
+            const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+            for (const btn of buttons) {
+              const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+              const autoId = btn.getAttribute('data-automation-id') || '';
+              if (
+                txt === 'berikutnya' ||
+                txt === 'next' ||
+                txt === 'lanjut' ||
+                txt === 'mulai' ||
+                txt === 'start' ||
+                autoId === 'nextButton'
+              ) {
+                btn.click();
+                return true;
+              }
+            }
+            return false;
+          });
+
+          if (!advanced) break;
+
+          // Wait 1.5s for DOM transition
+          await new Promise(r => setTimeout(r, 1500));
+          const stepText = await page.evaluate(() => document.body ? document.body.innerText : '');
+          if (stepText && !allPages.includes(stepText)) {
+            allPages.push(stepText);
+          }
+        }
+
+        extractedText = allPages.join('\n\n--- HALAMAN / SECTION BERIKUTNYA ---\n\n');
+        extractorUsed = 'cloudflare_puppeteer_stepper';
+      }
     } catch (browserError) {
       console.warn('[audit-submission] Cloudflare Browser Rendering failed, falling back to direct fetch:', browserError.message);
     } finally {
@@ -102,7 +235,7 @@ async function extractContentFromUrl(url, env) {
     }
   }
 
-  // 2. Fallback: Direct Fetch (CORS bypassed on server-side)
+  // Strategy 3: Direct Fetch fallback
   if (!extractedText) {
     try {
       console.log('[audit-submission] Direct fetch fallback for:', url);
@@ -115,7 +248,13 @@ async function extractContentFromUrl(url, env) {
       });
       if (res.ok) {
         const rawHtml = await res.text();
-        extractedText = cleanHtmlToText(rawHtml);
+        const gform = parseGoogleFormsPublicData(rawHtml);
+        if (gform && gform.questions.length > 0) {
+          extractedText = gform.fullText;
+          extractorUsed = 'google_forms_schema';
+        } else {
+          extractedText = cleanHtmlToText(rawHtml);
+        }
       } else {
         console.warn(`[audit-submission] Fetch failed with status: ${res.status}`);
       }
