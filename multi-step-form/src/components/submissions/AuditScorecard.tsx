@@ -261,16 +261,25 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
             </span>
           </div>
           {audit.question_count.status === 'match' ? (
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+            <span
+              className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
+              title={`Aktual: ${audit.question_count.actual_detected} pertanyaan, Order: ${audit.question_count.reported} pertanyaan`}
+            >
               {audit.question_count.actual_detected} / {audit.question_count.reported} (Sesuai)
             </span>
           ) : audit.question_count.status === 'mismatch_over' ? (
-            <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
-              {audit.question_count.actual_detected} (+{audit.question_count.diff} Lebih)
+            <span
+              className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded"
+              title={`Total di form: ${audit.question_count.actual_detected} pertanyaan. Dilaporkan saat order: ${audit.question_count.reported} pertanyaan (Kelebihan ${audit.question_count.diff} pertanyaan)`}
+            >
+              {audit.question_count.actual_detected} (Order: {audit.question_count.reported} · +{audit.question_count.diff})
             </span>
           ) : (
-            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
-              {audit.question_count.actual_detected} ({audit.question_count.diff} Kurang)
+            <span
+              className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded"
+              title={`Total di form: ${audit.question_count.actual_detected} pertanyaan. Dilaporkan saat order: ${audit.question_count.reported} pertanyaan (Kurang ${Math.abs(audit.question_count.diff)} pertanyaan)`}
+            >
+              {audit.question_count.actual_detected} (Order: {audit.question_count.reported} · {audit.question_count.diff})
             </span>
           )}
         </div>
