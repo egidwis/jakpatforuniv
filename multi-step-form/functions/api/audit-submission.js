@@ -114,6 +114,70 @@ function parseGoogleFormsPublicData(html) {
   return null;
 }
 
+async function parseMicrosoftFormsData(url) {
+  try {
+    console.log('[audit-submission] Attempting Microsoft Forms schema extraction for:', url);
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      },
+      redirect: 'follow'
+    });
+    if (!res.ok) return null;
+
+    const text = await res.text();
+    const match = text.match(/window\.OfficeFormServerInfo\s*=\s*(\{[\s\S]+?\});/);
+    if (!match) return null;
+
+    const info = JSON.parse(match[1]);
+    if (!info.prefetchFormUrl) return null;
+
+    const formRes = await fetch(info.prefetchFormUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'antiForgeryToken': info.antiForgeryToken || ''
+      }
+    });
+
+    if (!formRes.ok) return null;
+    const formData = await formRes.json();
+    if (!formData || !Array.isArray(formData.questions)) return null;
+
+    const questions = [];
+    for (const q of formData.questions) {
+      const type = q.type || '';
+      // Skip pure group headers (e.g. MatrixChoiceGroup), keep actual input sub-questions
+      if (type === 'Question.MatrixChoiceGroup') {
+        continue;
+      }
+      const rawTitle = (q.title || '').replace(/<[^>]+>/g, '').trim();
+      const rawSubtitle = (q.subtitle || '').replace(/<[^>]+>/g, '').trim();
+      let choicesStr = '';
+      if (Array.isArray(q.choices) && q.choices.length > 0) {
+        choicesStr = ` [Opsi: ${q.choices.map(c => (c.description || '').replace(/<[^>]+>/g, '').trim()).filter(Boolean).join(', ')}]`;
+      }
+      if (rawTitle) {
+        questions.push(`[${type}] ${rawTitle}${rawSubtitle ? ` (${rawSubtitle})` : ''}${choicesStr}`);
+      }
+    }
+
+    if (questions.length > 0) {
+      console.log(`[audit-submission] Successfully extracted ${questions.length} questions from Microsoft Forms API!`);
+      return {
+        formTitle: formData.title || '',
+        questions,
+        totalQuestions: questions.length,
+        fullText: questions.map((q, idx) => `[Pertanyaan ${idx + 1}] ${q}`).join('\n\n')
+      };
+    }
+  } catch (err) {
+    console.warn('[audit-submission] Error parsing Microsoft Forms schema:', err.message);
+  }
+  return null;
+}
+
 async function extractContentFromUrl(url, env) {
   let extractedText = '';
   let extractorUsed = 'fetch_fallback';
@@ -145,7 +209,21 @@ async function extractContentFromUrl(url, env) {
     }
   }
 
-  // Strategy 2: Cloudflare Browser Rendering with Multi-Page / Logic Stepper
+  // Strategy 2: Microsoft Forms Direct Schema Parser (Bypasses multi-page & branching logic, extracts 100% of questions)
+  const isMsForm = url.toLowerCase().includes('forms.office.com') ||
+                   url.toLowerCase().includes('forms.microsoft.com') ||
+                   url.toLowerCase().includes('forms.cloud.microsoft');
+  if (isMsForm) {
+    const msData = await parseMicrosoftFormsData(url);
+    if (msData && msData.questions.length > 0) {
+      return {
+        extractedText: msData.fullText,
+        extractorUsed: 'microsoft_forms_schema'
+      };
+    }
+  }
+
+  // Strategy 3: Cloudflare Browser Rendering with Multi-Page / Logic Stepper
   if (env && env.MYBROWSER) {
     let browser;
     try {
