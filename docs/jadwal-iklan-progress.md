@@ -123,6 +123,59 @@ branch itu. Lihat §2.
 
 ## Yang menunggu tindakan
 
+### 00-kartu. 🟢 Kartu Reservasi Jadwal berhenti menyamakan «dibatalkan», «kedaluwarsa», dan «lewat batas bayar» (2026-09-11)
+
+**Nol migrasi SQL. Seluruhnya frontend** — commit `24a27c2` di `main`, **belum dipush,
+belum dideploy**.
+
+**Pemicunya.** Order `5b73a872` punya dua jadwal yang sama-sama `status='cancelled'` dan
+sama-sama berbadge merah «kedaluwarsa», tapi kartunya berbunyi berbeda. Kartu #2 bahkan
+mencetak tiga cerita sekaligus: panel «Jadwal dibatalkan», badge «kedaluwarsa», dan
+«Peneliti melihat: Batas bayar terlewat — perlu tanggal tayang baru».
+
+**Tiga cacat, satu pola — dua keadaan berbeda berbagi satu kata** (terukur di produksi 10 Sep):
+
+| # | Yang terlihat | Sebabnya | Skala |
+|---|---|---|---|
+| 1 | Jadwal **batal** berbadge «kedaluwarsa» | `isEntryHoldLapsed()` tanpa penjaga batal. Tanggal yang `sql/62` simpan sebagai **riwayat** dibaca sebagai tenggat, dan `payment_status='expired'` yang ditulis `cancelSchedule()` **sendiri** untuk ordinal 1 menyalakan klausa lain | **86 dari 148** jadwal batal |
+| 2 | Slot admin yang lewat batas bayar 14.00 berbadge «kedaluwarsa», seolah slotnya lepas | `b4af05f` (1 Sep) menaruh cabang «kedaluwarsa» di depan «perlu ditagih», padahal kondisinya sudah mencakup yang kedua — badge «perlu ditagih» mati total | ±15 jadwal aktif |
+| 3 | Header «Rp X ditagih» | Menjumlahkan **harga tercatat** (`orderTotalOf`), termasuk jadwal batal dan harga yang tak pernah ditagih; tagihan susulan justru tak terlihat | 3 dari 17 order ber-header menggelembung (Rp 500.610); `f483f8c1` & `6a18c955` kurang Rp 61.050 & Rp 100.000 |
+
+**Yang berubah** — #2 dan #3 atas keputusan pemilik produk 11 Sep:
+
+- **Batal ≠ kedaluwarsa.** `isEntryHoldLapsed` dipagari `CANCELLED_CHIPS` (pagar yang sama
+  dengan `holdStateOf`); `isLateForSchedule` memperlakukan `'cancelled'` seperti `'paid'`.
+  Kartu batal: chip abu «dibatalkan», judul diredam (cermin `mutedTitle` di SchedulePhase),
+  dan «Peneliti melihat: Jadwal tayang dibatalkan tim Jakpat — tidak ada langkah untuk
+  peneliti».
+- **Lepas ≠ lewat batas bayar.** `lapseKindOf()` memisahkan `'released'` → «kedaluwarsa»
+  (hold 1 jam peneliti lewat, atau `payment_status='expired'`) dari `'past_cutoff'` →
+  **«lewat batas bayar»** (slotnya tidak lepas sendiri). Urutannya meniru
+  `deriveOrderUiState` (expired sebelum too_late), jadi «Peneliti melihat» selalu menyebut
+  layar yang sungguh dibaca penelitinya. Chip, callout, dan label baris tagihan ikut.
+  Pil papan Schedule juga bernama «lewat batas bayar» — ⚠️ **ini mengembalikan nama
+  sebelum §00-slot**, yang pada 10 Agu menggantinya jadi «perlu ditagih». Sekarang satu
+  kata di tiga layar: kartu, papan, dan layar peneliti («Batas bayar terlewat»).
+- **Header = uang tagihan, bukan harga.** `orderMoneyOf()` menjumlahkan `cardMoneyOf()`
+  tiap kartu — fungsi yang sama yang kini dipakai bagian tagihan kartu, dengan
+  `isLiveInvoice` sebagai satu-satunya definisi tagihan hidup. Bunyinya «Rp X ditagih ·
+  Rp Y lunas», atau «belum ada tagihan di sistem» (`b672d1ae`) / «tidak ada tagihan yang
+  berlaku» (`5b73a872`). Uang lunas tidak lagi lenyap dari kartu yang slotnya gugur, dan
+  jadwal batal yang memegang uang kini menyebutnya di panelnya (**4 jadwal, Rp 429.000** —
+  sebelumnya tak terlihat di kartu mana pun).
+
+**Verifikasi:** 19 uji baru di `scheduleCardActions.spec.ts` (fixture dari baris
+produksi), seluruh suite 634/634, `tsc -p tsconfig.app.json` nol error di berkas yang
+disentuh.
+
+**Belum:** uji browser drawer admin (butuh login admin), push, deploy.
+
+⚠️ **Jebakan yang paling mudah terulang:** setiap predikat «kedaluwarsa / terlambat /
+lapsed» atas `AdScheduleEntry` wajib memeriksa **batal dulu** (`CANCELLED_CHIPS`, jangan
+literal `'cancelled'` baru) — tanggal jadwal batal adalah riwayat, dan
+`payment_status='expired'` bisa jadi jejak **pembatalan**, bukan kedaluwarsa. Dan
+`orderTotalOf` adalah harga tercatat, **bukan** uang tagihan.
+
 ### 00Z. 🟢 Link bayar berwenang — Rencana A-2 + `sql/87` (2026-09-10)
 
 **Di luar alur Jadwal Iklan**, tapi **prasyarat Phase 4**: Phase 4 melipatgandakan
@@ -1037,7 +1090,7 @@ lengkap di kepala [`sql/53`](../multi-step-form/sql/53_schedule_billing.sql):
    piutang kalau ada pembayaran lunas **yang lebih baru** di jadwal yang sama
    (tanda ia diterbitkan ulang). Faktual, bukan ambang umur yang dikarang —
    sengaja TIDAK memakai "pending tua = mati", karena antrean "perlu ditagih"
-   masih memuat entri Maret–Juni yang sungguh ditagih.
+   (kini «lewat batas bayar», §00-kartu) masih memuat entri Maret–Juni yang sungguh ditagih.
 
 **Hasilnya:** piutang total **Rp 1.106.009.261 → Rp 21.922.163**. Dua invarian
 dijaga dan keduanya 0: nol jadwal ber-`outstanding` tanpa tagihan terbuka, nol
@@ -1454,6 +1507,11 @@ Terukur di produksi tepat sebelum perbaikan:
 - Badge **"perlu ditagih"** di kartu jadwal + pil papan Schedule berganti nama dari "lewat
   batas bayar". Baris antrean diurut **terbaru di atas** — tanpa itu, 12 tunggakan
   Maret–Juni mengubur 4 baris yang benar-benar bisa ditagih.
+
+  > **RALAT 2026-09-11 — namanya kembali jadi «lewat batas bayar».** Badge di kartu mati
+  > sejak `b4af05f` (1 Sep), tertutup cabang «kedaluwarsa». Pemilik produk memilih nama
+  > yang meniru layar peneliti («Batas bayar terlewat»), di kartu DAN di pil. Lihat
+  > §00-kartu sebelum membaliknya lagi.
 
 ⚠️ **Ini fondasi Task 13 Langkah 3, dan dokumen Task 13 sudah dikoreksi** — langkah itu kini
 **menggantikan** `releaseScheduleSlot`, bukan menulis fungsi kedua di sebelahnya. Yang
