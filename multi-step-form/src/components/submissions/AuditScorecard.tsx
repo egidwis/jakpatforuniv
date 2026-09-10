@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -30,17 +30,23 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
     submission.ai_prescreening
   );
 
+  const autoTriggeredMap = useRef<Record<string, boolean>>({});
   const audit = localAudit || submission.ai_prescreening;
 
-  const handleRunAudit = async () => {
+  // Sync state when active submission changes
+  useEffect(() => {
+    setLocalAudit(submission.ai_prescreening);
+  }, [submission.id, submission.ai_prescreening]);
+
+  const handleRunAudit = async (isAuto: boolean = false) => {
     if (!submission.formUrl) {
-      toast.error('Submission tidak memiliki URL form');
+      if (!isAuto) toast.error('Submission tidak memiliki URL form');
       return;
     }
 
     setIsAuditing(true);
     try {
-      toast.info('Memulai AI Pre-Screening kuesioner...');
+      if (!isAuto) toast.info('Memulai AI Pre-Screening kuesioner...');
       const result = await auditSubmissionForm(
         submission.id,
         submission.formUrl,
@@ -50,14 +56,22 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
       if (onAuditComplete) {
         onAuditComplete(result);
       }
-      toast.success('Audit selesai diproses!');
+      if (!isAuto) toast.success('Audit selesai diproses!');
     } catch (err: any) {
       console.error('Audit failed:', err);
-      toast.error(`Audit gagal: ${err.message || 'Terjadi kesalahan sistem'}`);
+      if (!isAuto) toast.error(`Audit gagal: ${err.message || 'Terjadi kesalahan sistem'}`);
     } finally {
       setIsAuditing(false);
     }
   };
+
+  // Auto-trigger on mount / submission change if audit not yet present
+  useEffect(() => {
+    if (!audit && submission.formUrl && !isAuditing && !autoTriggeredMap.current[submission.id]) {
+      autoTriggeredMap.current[submission.id] = true;
+      handleRunAudit(true);
+    }
+  }, [submission.id, submission.formUrl, audit, isAuditing]);
 
   const handleCopyReviewNotes = () => {
     if (!audit) return;
@@ -93,7 +107,37 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // State 1: Chưa diaudit / Not Yet Audited
+  // State 1: Sedang memindai otomatis (Scanning in progress)
+  if (isAuditing && !audit) {
+    return (
+      <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 via-purple-50/50 to-blue-50/70 p-4 flex items-center justify-between gap-3 shadow-2xs animate-pulse">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 flex items-center justify-center shrink-0">
+            <RotateCw className="w-4 h-4 animate-spin text-indigo-600" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-bold text-gray-900 dark:text-white">
+                Sedang Memindai Kuesioner via AI...
+              </h4>
+              <span className="text-[10px] bg-indigo-100 text-indigo-700 font-semibold px-1.5 py-0.2 rounded">
+                Auto-Audit
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Mengekstrak DOM pertanyaan, mencocokkan jumlah kuota, & memindai PII...
+            </p>
+          </div>
+        </div>
+
+        <span className="text-[11px] font-semibold text-indigo-600 bg-white/80 dark:bg-gray-800/80 px-2.5 py-1 rounded-full border border-indigo-200 shrink-0">
+          Memproses...
+        </span>
+      </div>
+    );
+  }
+
+  // State 2: Belum diaudit / Manual Trigger Fallback
   if (!audit) {
     return (
       <div className="rounded-xl border border-dashed border-indigo-200 bg-gradient-to-r from-indigo-50/50 via-purple-50/30 to-blue-50/50 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
@@ -118,7 +162,7 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
 
         <Button
           size="sm"
-          onClick={handleRunAudit}
+          onClick={() => handleRunAudit(false)}
           disabled={isAuditing}
           className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shrink-0 shadow-sm flex items-center gap-1.5"
         >
