@@ -262,24 +262,24 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
           </div>
           {audit.question_count.status === 'match' ? (
             <span
-              className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
-              title={`Aktual: ${audit.question_count.actual_detected} pertanyaan, Order: ${audit.question_count.reported} pertanyaan`}
+              className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded"
+              title={`Order: ${audit.question_count.reported} · Aktual: ${audit.question_count.actual_detected} pertanyaan`}
             >
-              {audit.question_count.actual_detected} / {audit.question_count.reported} (Sesuai)
+              {audit.question_count.actual_detected} Pertanyaan (Sesuai)
             </span>
           ) : audit.question_count.status === 'mismatch_over' ? (
             <span
-              className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded"
-              title={`Total di form: ${audit.question_count.actual_detected} pertanyaan. Dilaporkan saat order: ${audit.question_count.reported} pertanyaan (Kelebihan ${audit.question_count.diff} pertanyaan)`}
+              className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded"
+              title={`Total di kuesioner: ${audit.question_count.actual_detected} pertanyaan. Dilaporkan saat order: ${audit.question_count.reported} pertanyaan (Kelebihan ${audit.question_count.diff} pertanyaan)`}
             >
-              {audit.question_count.actual_detected} (Order: {audit.question_count.reported} · +{audit.question_count.diff})
+              {audit.question_count.actual_detected} Pertanyaan
             </span>
           ) : (
             <span
-              className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded"
-              title={`Total di form: ${audit.question_count.actual_detected} pertanyaan. Dilaporkan saat order: ${audit.question_count.reported} pertanyaan (Kurang ${Math.abs(audit.question_count.diff)} pertanyaan)`}
+              className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded"
+              title={`Total di kuesioner: ${audit.question_count.actual_detected} pertanyaan. Dilaporkan saat order: ${audit.question_count.reported} pertanyaan (Kurang ${Math.abs(audit.question_count.diff)} pertanyaan)`}
             >
-              {audit.question_count.actual_detected} (Order: {audit.question_count.reported} · {audit.question_count.diff})
+              {audit.question_count.actual_detected} Pertanyaan
             </span>
           )}
         </div>

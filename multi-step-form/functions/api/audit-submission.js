@@ -358,8 +358,8 @@ Tugas Anda adalah memeriksa teks formulir kuesioner survei hasil scraping dan me
 
 Kategori yang harus dievaluasi:
 1. "question_count":
-   - Hitung estimasi jumlah pertanyaan aktual yang ada di kuesioner.
-   - Bandingkan dengan jumlah pertanyaan yang dilaporkan peneliti (reported: ${reportedQuestionCount || 0}).
+   - Hitung estimasi jumlah pertanyaan aktual yang ada di kuesioner (catatan penting: pada pertanyaan tabel Likert / Matrix / Grid, setiap baris sub-pernyataan dihitung sebagai 1 butir pertanyaan).
+   - Bandingkan dengan jumlah pertanyaan yang dilaporkan peneliti saat order (reported: ${reportedQuestionCount || 0}).
    - Tentukan status: "match" (jika sama atau selisih 0), "mismatch_over" (pertanyaan aktual lebih banyak dari yang dilaporkan), atau "mismatch_under" (pertanyaan aktual lebih sedikit).
 
 2. "pii" (Personal Identifiable Information / Data Pribadi):
@@ -403,7 +403,7 @@ Format balasan HARUS HANYA JSON murni tanpa markdown/backticks, dengan struktur:
     "signals": ["sinyal 1"]
   },
   "recommendation": "ready_to_approve" | "needs_manual_review" | "reject_or_revise",
-  "summary": "Ringkasan kesimpulan dalam 1-2 kalimat Bahasa Indonesia yang jelas untuk admin.",
+  "summary": "Ringkasan kesimpulan dalam 1-2 kalimat Bahasa Indonesia yang jelas untuk admin. Jika ada selisih jumlah pertanyaan, jelaskan dengan lugas (contoh: 'Jumlah pertanyaan aktual di kuesioner sebanyak 40 butir (termasuk baris pernyataan dalam tabel Grid), melebihi paket yang dilaporkan saat order yaitu 2 pertanyaan (kelebihan 38 butir).')",
   "detected_questions_sample": ["Contoh pertanyaan 1", "Contoh pertanyaan 2"]
 }`;
 
