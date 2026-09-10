@@ -358,11 +358,11 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
           const [ { data: transactions, error: trxError }, { data: invoices, error: invError } ] = await Promise.all([
             supabase
               .from('transactions')
-              .select('payment_id, form_submission_id, status, created_at, payment_url, amount')
+              .select('payment_id, form_submission_id, status, created_at, payment_url, amount, schedule_id')
               .in('form_submission_id', submissionIds),
             supabase
               .from('invoices')
-              .select('payment_id, form_submission_id, status, created_at, invoice_url, amount')
+              .select('payment_id, form_submission_id, status, created_at, invoice_url, amount, schedule_id')
               .in('form_submission_id', submissionIds)
           ]);
 
@@ -382,6 +382,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                 status: inv.status,
                 created_at: inv.created_at,
                 payment_url: inv.invoice_url,
+                schedule_id: inv.schedule_id ?? null,
                 amount: inv.amount
               });
             }
@@ -396,6 +397,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                 status: tx.status,
                 created_at: tx.created_at,
                 payment_url: tx.payment_url,
+                schedule_id: tx.schedule_id ?? null,
                 amount: tx.amount
               });
             }
@@ -432,7 +434,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
            * di sana satu invoice lunas dipakai mengumumkan "Lunas" walau masih
            * ada tagihan susulan terbuka.
            */
-          const paymentMap: Record<string, { hasInvoices: boolean, hasOpenInvoice: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestAmount: number, hasEverPaid: boolean, latestPaymentId?: string | null }> = {};
+          const paymentMap: Record<string, { hasInvoices: boolean, hasOpenInvoice: boolean, latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null, invoiceCount: number, latestPaymentUrl: string | null, latestScheduleId?: string | null, latestAmount: number, hasEverPaid: boolean, latestPaymentId?: string | null }> = {};
 
           if (mergedTx.length > 0) {
             transformed.forEach(sub => {
@@ -463,6 +465,12 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                   latestStatus: latestStatus,
                   invoiceCount: subTxs.length,
                   latestPaymentUrl: latestPendingTx?.payment_url || subTxs[0].payment_url || null,
+                  // Jadwal dari baris yang SAMA dengan URL-nya — kalau diambil
+                  // dari baris lain, link yang disalin admin menunjuk tagihan
+                  // yang bukan yang dilihatnya.
+                  latestScheduleId: latestPendingTx
+                    ? (latestPendingTx.schedule_id ?? null)
+                    : (subTxs[0].schedule_id ?? null),
                   latestAmount: subTxs[0].amount || 0,
                   hasEverPaid: hasEverPaid,
                   latestPaymentId: subTxs[0].payment_id || null,

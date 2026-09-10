@@ -354,10 +354,19 @@ export function InvoicePage() {
         && new Date(meta.expires_at).getTime() < Date.now();
 
     /*
-      Link perantara kalau jadwalnya diketahui; URL DOKU sebagai cadangan untuk
-      baris warisan yang tidak punya `schedule_id`. Lihat `payLink.ts`.
+      Link perantara, TANPA cadangan ke URL DOKU mentah.
+
+      ⚠️ Cadangan `: data.payment_url` sengaja dibuang. Ia menyala tepat saat
+      kita TIDAK bisa menjamin link itu masih berwenang — yaitu saat tagihannya
+      tidak tertaut jadwal. Dan dokumen ini sering DISIMPAN lalu dibuka lagi
+      berhari-hari kemudian, jadi cadangannya bertahan jauh lebih lama daripada
+      keadaannya. Ongkosnya terukur: `invoices.schedule_id` kosong pada 1 dari
+      ~460 baris (8 bulan) dan NOL di antara tagihan yang masih hidup.
+
+      Konsekuensinya sadar: baris warisan tanpa `schedule_id` kehilangan tombol
+      bayarnya, bukan mendapat tombol yang mungkin menagih keadaan lama.
     */
-    const payHref = leadScheduleId ? payLinkPath(leadScheduleId) : data.payment_url;
+    const payHref = leadScheduleId ? payLinkPath(leadScheduleId) : null;
     const subtotalValue = doc.subtotal;
     const ppnAmount = doc.ppn;
     const grandTotal = doc.total;
@@ -808,8 +817,16 @@ export function InvoicePage() {
                                     */}
                                     {payHref && !isPartial && !isExpired && (
                                         <div className="no-print mt-3.5">
+                                            {/*
+                                              ⚠️ `payHref`, BUKAN `data.payment_url`.
+                                              Selama berbulan-bulan `payHref` dihitung lalu dipakai HANYA
+                                              sebagai gerbang tampil, sementara tombolnya tetap membawa URL
+                                              DOKU mentah. Halaman ini juga tujuan `302` resolver untuk
+                                              anggota grup non-lead — jadi lompatan yang benar pun berakhir
+                                              di link mentah.
+                                            */}
                                             <a
-                                                href={data.payment_url}
+                                                href={payHref}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="inline-flex items-center gap-2 bg-[#0066cc] hover:bg-[#0055aa] text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow-sm transition-colors"

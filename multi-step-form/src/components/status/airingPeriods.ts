@@ -365,20 +365,26 @@ export function buildScheduleCards(
                   mendarat di halaman kalimat KAMI, bukan di halaman DOKU yang
                   menolak tanpa penjelasan.
 
-                  Butuh `first.id` (`ad_schedules.id`); baris tanpa id jatuh ke
-                  perilaku lama.
+                  ⚠️ TIDAK ADA LAGI CADANGAN KE URL DOKU MENTAH. Cabang itu
+                  dulu menyala tepat saat kita TIDAK bisa menjamin link-nya
+                  masih berwenang — yaitu saat jadwalnya tidak punya id. Aturan
+                  hari ini: ada `schedule_id` → `/bayar/<id>`, atau tombolnya
+                  tidak dirender. `AdScheduleEntry.id` sendiri non-nullable,
+                  jadi cabang `null` di bawah praktis tak terjangkau; ia ditulis
+                  supaya string kosong pun gagal MENUTUP, bukan gagal membuka.
                 */
-                payUrl: bookingState === 'waiting_payment' && (firstGroup?.isLead ?? true)
-                    ? (first.id ? payLinkPath(first.id) : ui.finalPaymentLink)
+                payUrl: bookingState === 'waiting_payment' && (firstGroup?.isLead ?? true) && first.id
+                    ? payLinkPath(first.id)
                     : null,
                 /*
                   `/bayar/...` BUKAN rute SPA — ia Pages Function. Jadi ia harus
                   dinavigasi penuh lewat `<a href>`, bukan `<Link to>` yang akan
                   mencoba merutekannya di klien lalu mendarat di 404.
                 */
-                isExternalLink: first.id
-                    ? true
-                    : (!!ui.finalPaymentLink && !ui.finalPaymentLink.startsWith('/dashboard')),
+                // `payUrl` kini hanya bisa `/bayar/<id>` atau `null`, dan
+                // `/bayar/` SELALU Pages Function — jadi tidak ada lagi
+                // kemungkinan rute SPA yang perlu dibedakan di sini.
+                isExternalLink: true,
                 /*
                   ⚠️ CABANG `null` DULU JATUH KE "SLOT IKLAN TERBATAS" TANPA JAM.
                   Untuk ordinal 1 itu terjadi pada slot yang DIPESAN ADMIN:
@@ -461,8 +467,8 @@ export function buildScheduleCards(
                 subtotal: subtotalOf(s),
                 // Lihat catatan di cabang ordinal 1: hanya lead yang memegang
                 // link, dan link-nya perantara (`/bayar/<ad_schedules.id>`).
-                payUrl: bookingState === 'waiting_payment' && (group?.isLead ?? true)
-                    ? (s.id ? payLinkPath(s.id) : pay?.paymentUrl || null)
+                payUrl: bookingState === 'waiting_payment' && (group?.isLead ?? true) && s.id
+                    ? payLinkPath(s.id)
                     : null,
                 isExternalLink: true,
                 /*

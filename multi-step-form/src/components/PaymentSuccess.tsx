@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, RefreshCcw, Loader2, MessageCircle, LayoutDashboard } from 'lucide-react';
-import { getFormSubmissionById } from '../utils/supabase';
+import { CheckCircle2, RefreshCcw, Loader2, MessageCircle, LayoutDashboard, ExternalLink } from 'lucide-react';
+import { fetchScheduleBilling, getFormSubmissionById, supabase } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
+import { payLinkPath } from '../utils/payLink';
+import { pickSuccessBill, type SuccessBillEvent } from '../utils/paymentSuccessBill';
 import { ErrorPage } from './ErrorPage';
 import { airingDayCount } from '../pages/dashboard/schedule/scheduleModel';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -36,7 +38,33 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isFromGateway, setIsFromGateway] = useState(false);
+  /*
+    ⚠️ `isFromGateway` DIBUANG BERSAMA TOMBOL "Tutup halaman ini".
+    Ia satu-satunya pembacanya, dan tombol itu sendiri mati: `window.close()`
+    hanya bekerja untuk tab yang dibuka skrip, sementara halaman ini datang
+    dari redirect DOKU. Parameter `?source=gateway` tetap dikirim
+    `create-payment` — kalau suatu saat ada yang benar-benar membutuhkannya,
+    bacalah di sana, jangan hidupkan tombolnya lagi.
+  */
+
+  /*
+    ⚠️ NOMINAL DIBACA DARI TAGIHAN, BUKAN DARI ORDER.
+
+    Halaman ini dulu mencetak `form_submissions.total_cost / subtotal /
+    ppn_amount` di bawah judul "Total Pembayaran" — biaya ORDER. Terukur di
+    produksi: layar kami Rp 277.500, DOKU menagih Rp 1.110. Normalnya sama,
+    dan itulah yang membuatnya berbahaya: ia benar cukup lama untuk dipercaya,
+    lalu berbohong tepat pada tagihan susulan / top-up hadiah / harga yang
+    di-reprice.
+
+    `null` berarti **sembunyikan blok nominal**. Tidak ada jalan mundur ke
+    angka order: angka yang salah lebih buruk daripada angka yang tidak ada.
+  */
+  const [bill, setBill] = useState<
+    { paymentId: string | null; amount: number; subtotal: number | null; ppn: number | null } | null
+  >(null);
+  /** Jadwal yang ditunjuk tombol "Lanjutkan Pembayaran" — lihat `pickSuccessBill`. */
+  const [payScheduleId, setPayScheduleId] = useState<string | null>(null);
 
   // Dibaca oleh polling supaya interval-nya tidak perlu dibuat ulang tiap kali
   // datanya berubah (dan tidak menutup nilai `formData` yang basi).
@@ -79,12 +107,72 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
     }
   };
 
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    setIsFromGateway(urlParams.get('source') === 'gateway');
+  /**
+   * Tagihan yang sedang dilihat orang ini — dan berapa persisnya DOKU menagih.
+   *
+   * ⚠️ GAGAL LUNAK, SELALU. Kalau apa pun di sini meleset, blok nominalnya
+   * disembunyikan dan halaman tetap utuh: judulnya, jadwal tayangnya, dan
+   * tombolnya jauh lebih penting daripada tiga baris angka. Yang TIDAK boleh
+   * terjadi adalah jatuh kembali ke biaya order.
+   */
+  const loadBill = async (id: string) => {
+    try {
+      const billing = await fetchScheduleBilling(id);
 
+      const events: SuccessBillEvent[] = [];
+      billing.forEach((b, scheduleId) => {
+        for (const inv of b.invoices) {
+          events.push({
+            scheduleId,
+            paymentId: inv.paymentId,
+            amount: inv.amount,
+            createdAt: inv.createdAt ?? null,
+            isPaid: inv.isPaid,
+            isOpen: b.openInvoice?.paymentId === inv.paymentId,
+          });
+        }
+      });
+
+      // Cadangan jadwal: ordinal 1 dikunci `sourceId === id` (aturan yang sama
+      // dengan `payMap` di StatusPage). Dipakai supaya tombolnya tetap ada
+      // walau tak ada tagihan berarti — keputusan pemilik produk.
+      let ordinalOne: string | null = null;
+      billing.forEach((b, scheduleId) => { if (b.sourceId === id) ordinalOne = scheduleId; });
+
+      const picked = pickSuccessBill(events, ordinalOne);
+      setPayScheduleId(picked.scheduleId);
+
+      if (!picked.bill?.paymentId) { setBill(null); return; }
+
+      /*
+        `schedule_billing_bulk` tidak memulangkan `subtotal`/`ppn_amount`, jadi
+        rinciannya diambil langsung dari barisnya. Peneliti boleh membacanya:
+        policy "Users Select Invoices" mengizinkan lewat `form_submission_id`.
+        Kalau baris itu tak terbaca, `amount` dari RPC tetap dipakai — total
+        yang benar tanpa rincian lebih baik daripada rincian yang mengarang.
+      */
+      const { data: row } = await supabase
+        .from('invoices')
+        .select('subtotal, ppn_amount, amount')
+        .eq('payment_id', picked.bill.paymentId)
+        .maybeSingle();
+
+      setBill({
+        paymentId: picked.bill.paymentId,
+        amount: Number(row?.amount ?? picked.bill.amount) || picked.bill.amount,
+        subtotal: row?.subtotal != null ? Number(row.subtotal) : null,
+        ppn: row?.ppn_amount != null ? Number(row.ppn_amount) : null,
+      });
+    } catch (e) {
+      console.warn('Rincian tagihan tidak terbaca; blok nominal disembunyikan:', e);
+      setBill(null);
+    }
+  };
+
+  useEffect(() => {
     if (formId) {
       fetchFormData(formId);
+      void loadBill(formId);
     } else {
       setLoading(false);
       setError(t('successNotFound'));
@@ -113,6 +201,10 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
           if (data.payment_status === 'paid' || data.payment_status === 'completed') {
             isPaidRef.current = true;
             clearInterval(poll);
+            // Sekali saja, saat statusnya berbalik: tagihannya berpindah dari
+            // "terbuka" ke "lunas", dan blok nominalnya harus ikut menyebut
+            // baris yang sama — bukan tertinggal di keadaan sebelumnya.
+            void loadBill(formId);
           }
         }
       } catch (e) {
@@ -222,44 +314,94 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
               <dt className="text-gray-500">{t('successOrderIdLabel')}</dt>
               <dd className="font-mono text-xs text-gray-700 text-right break-all">{formData.id}</dd>
             </div>
-            {formData.ppn_amount != null && (
+            {/*
+                ⚠️ SELURUH BLOK NOMINAL BERSUMBER DARI `bill` (baris `invoices`),
+                BUKAN DARI `formData` (biaya order). Kalau `bill` null, blok ini
+                TIDAK ADA sama sekali — tidak ada jalan mundur ke angka order.
+                Lihat catatan lengkapnya di `paymentSuccessBill.ts`.
+            */}
+            {bill && bill.paymentId && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">{t('successInvoiceLabel')}</dt>
+                <dd className="font-mono text-xs text-gray-700 text-right break-all">{bill.paymentId}</dd>
+              </div>
+            )}
+            {bill && bill.subtotal != null && bill.ppn != null && (
               <>
                 <div className="flex justify-between gap-4">
                   <dt className="text-gray-500">{t('subtotal')}</dt>
-                  <dd className="text-gray-700">
-                    Rp {new Intl.NumberFormat('id-ID').format(formData.subtotal ?? formData.total_cost - formData.ppn_amount)}
-                  </dd>
+                  <dd className="text-gray-700">Rp {new Intl.NumberFormat('id-ID').format(bill.subtotal)}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-gray-500">{t('ppn')}</dt>
-                  <dd className="text-gray-700">Rp {new Intl.NumberFormat('id-ID').format(formData.ppn_amount)}</dd>
+                  <dd className="text-gray-700">Rp {new Intl.NumberFormat('id-ID').format(bill.ppn)}</dd>
                 </div>
               </>
             )}
-            <div className="flex justify-between gap-4 pt-2 border-t border-gray-200">
-              <dt className="font-bold text-gray-900">{t('totalPayment')}</dt>
-              <dd className="font-bold text-gray-900">
-                Rp {new Intl.NumberFormat('id-ID').format(formData.total_cost)}
-              </dd>
-            </div>
+            {bill ? (
+              <div className="flex justify-between gap-4 pt-2 border-t border-gray-200">
+                <dt className="font-bold text-gray-900">{t('totalPayment')}</dt>
+                <dd className="font-bold text-gray-900">
+                  Rp {new Intl.NumberFormat('id-ID').format(bill.amount)}
+                </dd>
+              </div>
+            ) : (
+              <div className="pt-2 border-t border-gray-200">
+                <p className="text-xs text-gray-400 leading-relaxed">{t('successBillUnreadable')}</p>
+              </div>
+            )}
           </dl>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {/* Jalan kembali ke dashboard SELALU ada. Kalau popup DOKU sempat
-              diblokir dan terbuka di tab yang sama, "tutup halaman ini" akan
-              menjadi jalan buntu — jadi ia hanya boleh jadi tombol sekunder. */}
-          <a
-            href="/dashboard"
-            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
-          >
-            <LayoutDashboard size={18} />
-            {t('successViewOrders')}
-          </a>
+        {/*
+            ⚠️ CTA BERTINGKAT, BUKAN EMPAT TOMBOL SEJAJAR.
 
-          {!isPaid && (
+            Layar ini dulu memajang empat aksi dengan bobot yang hampir sama —
+            dashboard, refresh, WhatsApp, "tutup halaman" — jadi tidak satu pun
+            di antaranya terbaca sebagai langkah berikutnya. Untuk orang yang
+            pembayarannya BELUM selesai, langkah berikutnya cuma satu:
+            kembali membayar.
+
+            Susunannya karena itu berbeda menurut keadaan:
+              MENUNGGU → [Lanjutkan Pembayaran] · [Cek status] · teks kecil
+              LUNAS    → [Lihat My Order]       · teks kecil
+        */}
+        <div className="flex flex-col gap-3">
+          {!isPaid && payScheduleId && (
+            <>
+              {/*
+                ⚠️ `/bayar/<schedule_id>`, BUKAN URL DOKU. Halaman ini bisa
+                dibiarkan terbuka berjam-jam; membiarkan resolver yang menjawab
+                berarti satu sumber kebenaran, dan tagihan yang telanjur
+                dibatalkan mendapat kalimat sebab — bukan halaman DOKU basi.
+
+                Tombolnya TETAP ADA walau tagihannya sudah batal (keputusan
+                pemilik produk). Halaman ini sengaja tidak ikut menghitung
+                "tagihan mana yang berwenang": itu akan jadi salinan kedua dari
+                aturan yang sudah hidup di `authoritative_payment_url()`.
+              */}
+              <a
+                href={payLinkPath(payScheduleId)}
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                {t('successContinuePayment')}
+                <ExternalLink size={16} />
+              </a>
+              <p className="text-[11px] text-gray-400 -mt-1">{t('successBackToPaymentHint')}</p>
+            </>
+          )}
+
+          {isPaid ? (
+            <a
+              href="/dashboard"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+            >
+              <LayoutDashboard size={18} />
+              {t('successViewOrders')}
+            </a>
+          ) : (
             <button
-              onClick={() => fetchFormData(formId!, true)}
+              onClick={() => { void fetchFormData(formId!, true); void loadBill(formId!); }}
               disabled={isRefreshing}
               className="w-full py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
             >
@@ -268,22 +410,33 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
             </button>
           )}
 
-          <button
-            onClick={openWhatsApp}
-            className="w-full py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2"
-          >
-            <MessageCircle size={16} />
-            {t('successContactSupport')}
-          </button>
+          {/*
+            Baris ketiga: teks, bukan tombol. Keduanya jalan keluar yang sah,
+            tapi tidak satu pun langkah berikutnya — dan tombol yang bobotnya
+            setara dengan tombol bayar justru menariknya menjauh dari bayar.
 
-          {isFromGateway && (
+            ⚠️ "Tutup halaman ini" DIBUANG. `window.close()` hanya bekerja
+            untuk tab yang dibuka skrip; datang dari redirect DOKU ia diam
+            saja — tombol mati yang mengajari orang bahwa tombol di layar ini
+            tidak selalu berfungsi.
+          */}
+          <div className="flex items-center justify-center gap-3 text-xs text-gray-400 pt-1">
+            {!isPaid && (
+              <>
+                <a href="/dashboard" className="hover:text-gray-600 transition-colors underline underline-offset-2">
+                  {t('successViewOrders')}
+                </a>
+                <span aria-hidden="true">·</span>
+              </>
+            )}
             <button
-              onClick={() => window.close()}
-              className="text-xs text-gray-400 hover:text-gray-600 transition-colors py-1"
+              onClick={openWhatsApp}
+              className="hover:text-gray-600 transition-colors underline underline-offset-2 inline-flex items-center gap-1"
             >
-              {t('successCloseTab')}
+              <MessageCircle size={12} />
+              {t('successContactSupport')}
             </button>
-          )}
+          </div>
         </div>
       </div>
     </div>

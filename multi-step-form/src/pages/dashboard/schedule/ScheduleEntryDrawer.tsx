@@ -29,6 +29,7 @@ import { copyToClipboard } from '@/components/submissions/types';
 import { formatIDR } from '@/utils/currency';
 import { bannerSavePatch, isPlaceholderBannerUrl } from '@/utils/page-banner';
 import { publicPagePath, publicPageUrl } from '@/utils/page-url';
+import { payLinkUrl } from '@/utils/payLink';
 import {
   fetchScheduleBilling,
   getScheduledPageBySubmission,
@@ -889,12 +890,18 @@ export function ScheduleEntryDrawer({
                     >
                       <FileText className="w-3 h-3" /> Lihat Kuitansi
                     </a>
-                  ) : billing?.openInvoice?.paymentUrl ? (
+                  ) : billing?.openInvoice?.paymentUrl && entry?.id ? (
+                    /*
+                      ⚠️ `payLinkUrl(entry.id)`, BUKAN `openInvoice.paymentUrl`.
+                      `paymentUrl` tetap jadi SINYAL ("ada tagihan terbuka");
+                      yang disalin bentuk perantaranya. Menukar keduanya persis
+                      cara jebakan kartu peneliti lahir — lihat `payLinkForBill`.
+                    */
                     <Button
                       size="sm"
                       variant="outline"
                       className="w-full h-7 text-[11px] font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-2xs"
-                      onClick={() => copyToClipboard(billing.openInvoice!.paymentUrl!, 'Link pembayaran disalin!')}
+                      onClick={() => copyToClipboard(payLinkUrl(entry.id), 'Link bayar disalin — selalu mengarah ke tagihan yang berlaku.')}
                     >
                       <Copy className="w-3 h-3 mr-1 text-slate-500" /> Salin Link Bayar
                     </Button>

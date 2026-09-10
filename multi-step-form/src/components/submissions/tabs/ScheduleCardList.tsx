@@ -20,6 +20,7 @@ import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils
 import { holdStateOf, isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { orderTotalOf } from '@/utils/orderTotals';
 import { deriveScheduleMoney } from '@/utils/scheduleMoney';
+import { payLinkUrl } from '@/utils/payLink';
 import { recordedVsBilled } from '@/utils/billingCompare';
 // Keadaan kartu, aksinya, dan definisi "terlambat" hidup di SATU modul —
 // lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
@@ -236,10 +237,21 @@ function InvoiceRow({
             </span>
           )}
 
-          {inv.paymentUrl && !inv.isPaid && !isStruck && (
+          {/*
+            ⚠️ YANG DISALIN `payLinkUrl(entry.id)`, BUKAN `inv.paymentUrl`.
+            `inv.paymentUrl` URL DOKU mentah — ia menagih keadaan saat dicetak,
+            selamanya, dan yang disalin admin dari sini masuk ke WhatsApp
+            peneliti.
+
+            Untuk tagihan GABUNGAN, `entry.id` bisa jadi anggota non-lead — dan
+            itu tidak apa-apa: resolver yang memilih lead (`authoritative_payment_url`,
+            sql/85), lalu melempar ke halaman invoice grup. Aturan lead TIDAK
+            boleh disalin ke sini; ia sudah hidup di tiga tempat.
+          */}
+          {inv.paymentUrl && !inv.isPaid && !isStruck && entry.id && (
             <button
               type="button"
-              onClick={() => copyToClipboard(inv.paymentUrl!, 'Link bayar berhasil disalin!')}
+              onClick={() => copyToClipboard(payLinkUrl(entry.id), 'Link bayar disalin — selalu mengarah ke tagihan yang berlaku.')}
               className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
               title="Salin link bayar"
             >

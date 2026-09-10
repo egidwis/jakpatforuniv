@@ -27,17 +27,92 @@ export const payLinkPath = (scheduleId: ScheduleUuid): string =>
   `/bayar/${scheduleId}`;
 
 /**
+ * Host yang PASTI menjalankan resolver `/bayar/`.
+ *
+ * Root `functions/_middleware.js` merutekan per-domain: `jakpatforuniv.com`
+ * disajikan sebagai homepage statis dan TIDAK pernah memanggil `next()`, jadi
+ * `/bayar/<id>` di sana mendarat di halaman depan — bukan 404, bukan resolver.
+ * Link mati yang terlihat hidup.
+ */
+export const PAY_LINK_CANONICAL_ORIGIN = 'https://submit.jakpatforuniv.com';
+
+/**
+ * Origin yang boleh dipakai apa adanya: yang benar-benar menjalankan Pages
+ * Functions. Sisanya dipaksa ke host kanonik.
+ */
+const originServesResolver = (origin: string): boolean => {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname.startsWith('submit.')
+      || hostname.endsWith('.pages.dev')
+      || hostname === 'localhost'
+      || hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+};
+
+/**
  * URL penuh — dipakai di email, WhatsApp, dan salin-link.
  *
- * ⚠️ `origin` WAJIB `submit.` (atau *.pages.dev). Root `functions/_middleware.js`
- * merutekan per-domain: `jakpatforuniv.com` disajikan sebagai homepage statis,
- * jadi `/bayar/...` di sana mendarat di halaman depan, bukan di resolver.
- * Menurunkannya dari `window.location.origin` benar untuk dashboard admin, yang
- * memang selalu dibuka di `submit.`.
+ * ⚠️ ORIGIN-NYA DIKUNCI, bukan disalin apa adanya dari `window.location`.
+ * Link yang keluar dari sini bertahan berhari-hari di inbox seseorang, jadi ia
+ * tidak boleh mewarisi domain yang kebetulan sedang dibuka admin. Apex
+ * `jakpatforuniv.com` khususnya: di sana `/bayar/` adalah homepage.
+ *
+ * `localhost` dan `*.pages.dev` sengaja DIBIARKAN — keduanya menjalankan
+ * resolver, dan memaksa preview/dev ke produksi akan menyamarkan link uji
+ * sebagai link sungguhan.
  */
 export const payLinkUrl = (scheduleId: ScheduleUuid, origin?: string): string => {
-  const base = origin ?? (typeof window !== 'undefined' ? window.location.origin : '');
+  const raw = origin ?? (typeof window !== 'undefined' ? window.location.origin : '');
+  const base = raw && originServesResolver(raw) ? raw : PAY_LINK_CANONICAL_ORIGIN;
   return `${base}${payLinkPath(scheduleId)}`;
+};
+
+/** Yang dibutuhkan untuk memutuskan sebuah jadwal punya tagihan yang bisa dibayar. */
+export interface BillPayLinkSource {
+  /**
+   * URL tagihan yang MASIH TERBUKA (`openInvoice`) — `null` berarti jadwal ini
+   * TIDAK punya tagihan hidup sama sekali.
+   *
+   * ⚠️ INI SINYALNYA, bukan sekadar isi. Lihat catatan di `payLinkForBill`.
+   */
+  paymentUrl: string | null;
+  /** `ad_schedules.id`, kalau diketahui. */
+  scheduleId: ScheduleUuid | null;
+  /** `is_expired` (sql/83) — lihat catatan soal keterbatasannya di bawah. */
+  isExpired: boolean;
+}
+
+/**
+ * Bentuk link bayar untuk SATU jadwal — atau `null` kalau tidak ada yang bisa
+ * dibayar.
+ *
+ * ⚠️ ADA KARENA ATURAN INI PERNAH DITUKAR, DAN PENUKARANNYA MEMBUAT PENELITI
+ * TERDAMPAR. Nilai ini dipakai di hulu sebagai PENANDA KEBERADAAN — kartu
+ * jadwal memilih `waiting_payment` vs `awaiting_invoice` dari ada/tidaknya ia
+ * (`airingPeriods.ts`, cabang `step === 2`). Saat bentuknya diganti dari URL
+ * DOKU menjadi `payLinkPath(scheduleId)`, nilainya berhenti bisa `null`:
+ * `scheduleId` selalu ada, jadi kartunya SELAMANYA menawarkan "Bayar Sekarang"
+ * — lalu resolver menjawab jujur "tidak ada tagihan", dan orangnya berhenti di
+ * situ dengan uang di tangan.
+ *
+ * Aturannya karena itu dipisah tegas:
+ *   KEBERADAAN diambil dari `paymentUrl` (ada tagihan terbuka atau tidak)
+ *   BENTUK     diambil dari `scheduleId` (`/bayar/<id>`, bukan URL DOKU)
+ *
+ * ⚠️ `isExpired` DI SINI HAMPIR SELALU `false`, DAN ITU BUKAN BUG DI FUNGSI INI.
+ * `openInvoice` disaring `isLiveInvoice()`, yang untuk tagihan `pending` sudah
+ * mensyaratkan `!isExpired` — jadi sebuah tagihan yang kedaluwarsa tidak pernah
+ * sampai ke sini sebagai `openInvoice`; ia hilang dari `paymentUrl` lebih dulu.
+ * Syaratnya tetap ditulis untuk pemanggil yang membawa tagihan dari jalur lain
+ * (mis. `invoices` mentah), TAPI JANGAN mengandalkannya sendirian: gerbang yang
+ * benar-benar bekerja adalah `paymentUrl`.
+ */
+export const payLinkForBill = (bill: BillPayLinkSource): string | null => {
+  if (bill.isExpired || !bill.paymentUrl) return null;
+  return bill.scheduleId ? payLinkPath(bill.scheduleId) : bill.paymentUrl;
 };
 
 /** Yang dibutuhkan untuk mengurutkan anggota sebuah tagihan gabungan. */

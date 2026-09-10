@@ -13,6 +13,7 @@ import {
   methodChipInfo,
 } from './types';
 import { isPaidTx } from '@/utils/analytics/revenue';
+import { payLinkUrl } from '@/utils/payLink';
 
 interface TransactionDetailSheetProps {
   transaction: Transaction | null;
@@ -247,16 +248,28 @@ export function TransactionDetailSheet({
     Sebelumnya seluruh footer lenyap tanpa `payment_url` — dan tagihan yang
     paling ingin dibatalkan admin justru yang link bayarnya bermasalah.
   */
+  /*
+    ⚠️ YANG DISALIN LINK PERANTARA, BUKAN `transaction.payment_url`.
+
+    Tombol ini dulu menyalin URL DOKU mentah tanpa satu pun percabangan — dan
+    yang disalin admin dari sini berakhir di WhatsApp peneliti, tempat ia
+    bertahan jauh lebih lama daripada keadaan yang dicetaknya.
+
+    Tanpa `schedule_id`, resolver tidak punya apa pun untuk ditanyakan; tombolnya
+    tidak dirender, dan admin memakai halaman invoice.
+  */
+  const payLink = transaction.schedule_id ? payLinkUrl(transaction.schedule_id) : null;
+
   const footer = transaction.payment_url || onCancelInvoice ? (
     <div className="flex flex-col gap-2">
       {transaction.payment_url && (
         <div className="flex gap-2">
-          {transaction.status === 'pending' && (
+          {transaction.status === 'pending' && payLink && (
             <Button
               variant="outline"
               size="sm"
               className="flex-1 h-9"
-              onClick={() => copyToClipboard(transaction.payment_url, 'Link pembayaran')}
+              onClick={() => copyToClipboard(payLink, 'Link bayar')}
             >
               <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
               {isGroup ? `Salin Link Bayar (${formatIDR(group!.total)})` : 'Salin Link Bayar'}

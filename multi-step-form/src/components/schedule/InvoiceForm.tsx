@@ -373,9 +373,23 @@ export function InvoiceForm({
         );
       }
 
-      // Hanya jadwal pertama (bukan perpanjangan) yang berarti "pesanan disetujui,
-      // tagihan siap" — perpanjangan tidak pernah melalui review manual.
-      if (!entry.isExtension && submission.researcherEmail) {
+      /*
+        ⚠️ GERBANG `!entry.isExtension` SUDAH DICABUT — DAN ITU PRASYARAT
+        MEMATIKAN NOTIFIKASI DOKU.
+
+        Dulu perpanjangan yang ditagih satuan tidak pernah dapat email dari
+        kami: satu-satunya yang sampai ke peneliti adalah "Pesanan Baru" dari
+        DOKU, yang membawa URL DOKU MENTAH — link yang tidak bisa ditarik dan
+        menagih keadaan saat ia dicetak. Selama kebisuan itu ada, mematikan
+        notifikasi DOKU sama dengan menerbitkan tagihan yang tidak diketahui
+        siapa pun.
+
+        Yang dibedakan cuma KALIMATNYA (`variant`), bukan jalurnya: perpanjangan
+        tidak pernah melalui review, dan tanggalnya sudah dipilih — jadi
+        "pesananmu disetujui" dan "setelah bayar, pilih jadwal" dua-duanya
+        salah di sana. `BulkInvoiceDialog` tidak pernah punya gerbang ini.
+      */
+      if (submission.researcherEmail) {
         fetch('/api/send-invoice-ready-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -383,6 +397,8 @@ export function InvoiceForm({
             name: submission.researcherName || 'Kak',
             email: submission.researcherEmail,
             title: submission.title || undefined,
+            variant: entry.isExtension ? 'extension' : 'order',
+            airingStart: entry.startDate || undefined,
             /*
               ⚠️ LINK PERANTARA, BUKAN URL DOKU MENTAH. URL DOKU menagih untuk
               keadaan saat ia dicetak, selamanya — dan email tidak bisa ditarik
@@ -453,7 +469,7 @@ export function InvoiceForm({
     try {
       await navigator.clipboard.writeText(url);
       setCopiedId(paymentId);
-      toast.success('Link pembayaran disalin!');
+      toast.success('Link bayar disalin. Link ini selalu mengarah ke tagihan yang berlaku.');
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
       toast.error('Gagal menyalin link');
@@ -701,17 +717,28 @@ export function InvoiceForm({
                     </span>
                   )}
                 </span>
-                {inv.invoice_url && (
+                {/*
+                  ⚠️ KEDUA TOMBOL INI DULU MEMBAWA `inv.invoice_url` MENTAH — nol
+                  percabangan `payLink`, padahal yang disalin admin dari sini
+                  berakhir di WhatsApp peneliti.
+
+                  Yang dipakai `entry.id`, bukan kolom di baris tagihannya:
+                  seluruh daftar ini sudah disaring `belongsToSchedule(row, entry)`,
+                  jadi tiap baris memang milik jadwal ini. Resolver yang
+                  memutuskan tagihan mana yang berwenang saat link diklik — itu
+                  justru yang membuat baris lama aman disalin.
+                */}
+                {inv.invoice_url && entry.id && (
                   <span className="flex items-center gap-1 shrink-0">
                     <Button
                       variant="outline" size="sm" className="h-7 px-2 text-[10px]"
-                      onClick={() => window.open(inv.invoice_url!, '_blank')}
+                      onClick={() => window.open(payLinkUrl(entry.id), '_blank')}
                     >
                       <ExternalLink className="w-3 h-3 mr-1" /> Buka
                     </Button>
                     <Button
                       variant="outline" size="sm" className="h-7 px-2 text-[10px]"
-                      onClick={() => copyLink(inv.invoice_url!, inv.payment_id)}
+                      onClick={() => copyLink(payLinkUrl(entry.id), inv.payment_id)}
                     >
                       {copiedId === inv.payment_id
                         ? <><Check className="w-3 h-3 mr-1 text-green-600" /> Tersalin</>

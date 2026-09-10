@@ -26,7 +26,7 @@ import {
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { type SchedulePaymentMap } from '@/components/status/scheduleAxes';
-import { payLinkPath } from '@/utils/payLink';
+import { payLinkForBill, payLinkPath } from '@/utils/payLink';
 import { Phase } from '@/components/status/PhaseRail';
 import { ReviewPhase } from '@/components/status/ReviewPhase';
 import { SchedulePhase } from '@/components/status/SchedulePhase';
@@ -357,12 +357,29 @@ export function StatusPage() {
                                   submission-nya, tapi resolver butuh
                                   `ad_schedules.id`, jadi ia diambil dari
                                   `scheduleId` yang dibawa `payMap`.
+
+                                  ⚠️ GERBANGNYA PERNAH DITUKAR DI SINI, DAN ITU
+                                  MEMBUAT PENELITI TERDAMPAR. Nilai ini dibaca
+                                  di hulu sebagai PENANDA KEBERADAAN — kartu
+                                  jadwal memilih `waiting_payment` vs
+                                  `awaiting_invoice` dari ada/tidaknya ia. Saat
+                                  isinya diganti `payLinkPath(scheduleId)`
+                                  polos, ia berhenti bisa `null` (`scheduleId`
+                                  selalu ada — ia kunci Map `fetchScheduleBilling`),
+                                  jadi kartunya selamanya menawarkan "Bayar
+                                  Sekarang" untuk jadwal yang seluruh tagihannya
+                                  sudah dibatalkan.
+
+                                  ⚠️ `isExpired` SENDIRIAN TIDAK MENJAGA APA PUN
+                                  di jalur ini: `openInvoice` sudah disaring
+                                  `isLiveInvoice()`, yang mensyaratkan
+                                  `!isExpired` untuk tagihan `pending`. Yang
+                                  benar-benar menjawab "ada yang bisa dibayar?"
+                                  adalah `paymentUrl`. Aturannya kini tinggal di
+                                  `payLinkForBill` supaya bisa dikunci tes —
+                                  komponen ini tidak bisa.
                                 */
-                                links[submission.id] = ownBilling.isExpired
-                                    ? null
-                                    : (ownBilling.scheduleId
-                                        ? payLinkPath(ownBilling.scheduleId)
-                                        : ownBilling.paymentUrl ?? null);
+                                links[submission.id] = payLinkForBill(ownBilling);
                                 if (ownBilling.paymentId) foundTransactionId = ownBilling.paymentId;
                             }
                         } catch (e) {
@@ -404,12 +421,20 @@ export function StatusPage() {
                                         && (!inv.expires_at || new Date(inv.expires_at).getTime() > Date.now())
                                     );
                                     if (submission.payment_status !== 'paid' && payable && !links[submission.id]) {
-                                        // Link perantara kalau jadwalnya diketahui — walau di
-                                        // cabang ini biasanya tidak, karena justru order tanpa
-                                        // jadwal yang sampai ke sini.
+                                        /*
+                                          ⚠️ TANPA CADANGAN `: payable.invoice_url`.
+                                          Cabang ini melayani order yang tidak punya baris
+                                          jadwal sama sekali, jadi justru DI SINI-lah
+                                          `schedule_id` paling mungkin kosong — dan justru
+                                          di situ URL DOKU mentah paling tidak bisa
+                                          dijamin masih berwenang. Tanpa jadwal, resolver
+                                          tidak punya apa pun untuk ditanyakan; yang benar
+                                          adalah tidak menawarkan tombol, bukan menawarkan
+                                          tombol yang tak bisa dijaga.
+                                        */
                                         links[submission.id] = payable.schedule_id
                                             ? payLinkPath(payable.schedule_id)
-                                            : payable.invoice_url;
+                                            : null;
                                     }
                                 }
                             } catch (e) {

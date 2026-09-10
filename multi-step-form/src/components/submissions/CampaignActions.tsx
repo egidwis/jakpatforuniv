@@ -7,6 +7,7 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
+import { payLinkUrl } from '@/utils/payLink';
 import type { LifecycleInfo } from './lifecycle';
 
 // ─────────────────────────────────────────────────────────────
@@ -290,13 +291,26 @@ export function PaymentAction({
         <button
           className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-amber-50/80 border border-amber-200/70 rounded-md truncate cursor-pointer hover:bg-amber-100/80 transition-colors"
           onClick={() => {
-            const url = paymentData.latestPaymentUrl;
-            if (url) {
-              navigator.clipboard.writeText(url);
-              import('sonner').then(({ toast }) => toast.success('Payment link copied!'));
-            }
+            /*
+              ⚠️ YANG DISALIN LINK PERANTARA, BUKAN `latestPaymentUrl`.
+              `latestPaymentUrl` URL DOKU mentah — ia menagih keadaan saat
+              dicetak, selamanya, dan yang disalin admin dari sini masuk ke
+              WhatsApp peneliti. Ia tetap dipakai sebagai SINYAL di gerbang
+              `isPending` di atas; yang berubah cuma apa yang keluar.
+            */
+            const url = paymentData.latestScheduleId
+              ? payLinkUrl(paymentData.latestScheduleId)
+              : null;
+            import('sonner').then(({ toast }) => {
+              if (url) {
+                navigator.clipboard.writeText(url);
+                toast.success('Link bayar disalin — selalu mengarah ke tagihan yang berlaku.');
+              } else {
+                toast.error('Tagihan ini tidak tertaut jadwal, jadi tidak punya link bayar yang bisa dijaga.');
+              }
+            });
           }}
-          title={paymentData.latestPaymentUrl ? 'Click to copy payment link' : 'No payment link'}
+          title={paymentData.latestScheduleId ? 'Click to copy payment link' : 'No payment link'}
         >
           <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
           <CreditCard className="w-3.5 h-3.5 text-gray-500 shrink-0" />

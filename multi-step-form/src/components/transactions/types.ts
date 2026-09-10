@@ -25,6 +25,16 @@ export interface Transaction {
    */
   status: string;
   payment_url: string;
+  /**
+   * `ad_schedules.id` — kunci resolver `/bayar/<id>`, diisi trigger
+   * `derive_schedule_id()` (sql/51).
+   *
+   * ⚠️ ADA DI TABEL SEJAK LAMA TAPI TIDAK PERNAH DI TIPE INI, dan akibatnya
+   * bukan sekadar tipe yang kurang lengkap: layar detail menyalin
+   * `payment_url` MENTAH karena tidak punya cara lain. Terisi di 722 dari 723
+   * baris produksi, dan 6 dari 6 baris `pending`.
+   */
+  schedule_id?: string | null;
   note?: string;
   created_at: string;
   updated_at: string;

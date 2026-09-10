@@ -559,3 +559,46 @@ describe('buildScheduleCards — tenggat jadwal ke-2 dst.', () => {
         expect(kartu.booking.deadlineCause).toBeNull();
     });
 });
+
+/*
+  ═══════════════════════════════════════════════════════════════════════════
+  JEBAKAN ORDINAL 1 — "Bayar Sekarang" yang tidak bisa dibayar
+  ═══════════════════════════════════════════════════════════════════════════
+
+  Kartu ordinal ≥2 memutuskan sendiri dari `payments[sourceId]`. Kartu ordinal 1
+  TIDAK — ia bergantung sepenuhnya pada `ui.finalPaymentLink`, yang dirakit di
+  `StatusPage` dari `schedule_billing_bulk`. Jadi jebakannya bisa masuk dari
+  DUA sisi, dan dua-duanya harus dikunci:
+
+    sisi hulu  — `payLinkForBill` menjaga nilai itu tetap bisa `null`
+                 (`payLink.spec.ts`)
+    sisi hilir — cabang di bawah ini menjaga `null` benar-benar berarti
+                 "menunggu tagihan", bukan "bayar sekarang"
+
+  Yang terjadi saat sisi hulu jebol: jadwal yang SELURUH tagihannya dibatalkan
+  tetap memajang tombol Bayar Sekarang; peneliti mengklik, resolver `/bayar/`
+  menjawab jujur "tidak ada tagihan", dan pembayarannya berhenti di situ.
+  Terukur di produksi pada jadwal MM36J2EW.
+*/
+describe('buildScheduleCards — ordinal 1 tanpa tagihan hidup', () => {
+    const uiTanpaTagihan = (first: AdScheduleEntry): OrderUiState =>
+        ({ ...uiOf(first), finalPaymentLink: null, callout: 'awaiting_invoice', awaitingInvoice: true });
+
+    it('tanpa link → "menunggu tagihan", BUKAN "menunggu bayar"', () => {
+        const [card] = buildScheduleCards(uiTanpaTagihan(scheduleOf()), {}, null, t, submissionOf());
+        expect(card.booking.state).toBe('awaiting_invoice');
+    });
+
+    it('tanpa link → TIDAK ADA tombol bayar, walau jadwalnya punya id', () => {
+        // `first.id` sengaja diisi: inilah yang dulu membuat `payLinkPath`
+        // selalu menghasilkan tombol.
+        const [card] = buildScheduleCards(uiTanpaTagihan(scheduleOf({ id: 'sched-1' })), {}, null, t, submissionOf());
+        expect(card.booking.payUrl).toBeNull();
+    });
+
+    it('dengan tagihan hidup, tombolnya kembali — lewat perantara', () => {
+        const [card] = buildScheduleCards(uiOf(scheduleOf()), {}, null, t, submissionOf());
+        expect(card.booking.state).toBe('waiting_payment');
+        expect(card.booking.payUrl).toBe('/bayar/sched-1');
+    });
+});

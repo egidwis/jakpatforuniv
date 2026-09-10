@@ -125,7 +125,14 @@ export interface PaymentState {
   hasOpenInvoice: boolean;
   latestStatus: 'pending' | 'paid' | 'completed' | 'expired' | null;
   invoiceCount: number;
+  /**
+   * ⚠️ SINYAL, BUKAN LINK YANG BOLEH DIBAGIKAN. Ia URL DOKU mentah — pakai
+   * untuk menjawab "ada link?", jangan pernah untuk menyalin/mengirim. Yang
+   * dibagikan `payLinkUrl(latestScheduleId)`.
+   */
   latestPaymentUrl: string | null;
+  /** `ad_schedules.id` tagihan terbuka terakhir — kunci resolver `/bayar/<id>`. */
+  latestScheduleId?: string | null;
   latestAmount?: number;
   hasEverPaid?: boolean;
   latestPaymentId?: string | null;

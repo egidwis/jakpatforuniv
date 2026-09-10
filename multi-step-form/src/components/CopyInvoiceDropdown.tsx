@@ -42,12 +42,20 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
       }));
 
       // Normalize transactions to invoice-like shape
+      //
+      // ⚠️ `schedule_id` DULU TIDAK IKUT DISALIN DI SINI, dan itu bukan kasus
+      // tepi: `copyToClipboard` di bawah memilih bentuk link dari kolom ini,
+      // jadi SETIAP baris asal `transactions` menyalin URL DOKU mentah — bukan
+      // "hanya baris warisan" seperti yang dikira. Kolomnya ada dan terisi
+      // (trigger `derive_schedule_id()`, sql/51): 722 dari 723 baris produksi,
+      // dan 6 dari 6 baris `pending`.
       const txAsInvoices = (txData || []).map((tx: any) => ({
         id: tx.id,
         payment_id: tx.payment_id,
         status: overrideStatus && ['paid', 'completed'].includes(overrideStatus) ? 'completed' : tx.status,
         amount: tx.amount,
         invoice_url: tx.payment_url,
+        schedule_id: tx.schedule_id ?? null,
         created_at: tx.created_at,
         form_submission_id: tx.form_submission_id
       }));
@@ -84,27 +92,26 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
    * ia dicetak, selamanya. `/bayar/<ad_schedules.id>` menjawab keadaan HARI INI
    * setiap kali diklik (lihat `payLink.ts`).
    *
-   * Baris warisan tanpa `schedule_id` (pra-sql/51) tetap memakai URL aslinya:
-   * resolver dikunci ke jadwal, jadi ia tidak punya apa pun untuk ditanyakan.
-   * Itu tidak lebih buruk daripada perilaku sebelumnya — cuma tidak lebih baik.
+   * ⚠️ TANPA CADANGAN KE URL MENTAH. Baris warisan tanpa `schedule_id` tidak
+   * bisa disalin sama sekali, dan itu disengaja: yang keluar dari sini masuk ke
+   * WhatsApp peneliti, dan link yang tidak bisa kami jaga lebih berbahaya
+   * daripada tombol yang tidak ada. Admin masih bisa membuka dokumennya lewat
+   * halaman invoice. Terukur: 1 dari 723 baris `transactions` dan 1 dari ~460
+   * baris `invoices` yang terdampak — nol di antara tagihan yang masih hidup.
    */
   const copyToClipboard = async (invoice: any) => {
     const paymentId = String(invoice?.payment_id || '');
-    const link = invoice?.schedule_id
-      ? payLinkUrl(invoice.schedule_id)
-      : invoice?.invoice_url;
+    const link = invoice?.schedule_id ? payLinkUrl(invoice.schedule_id) : null;
 
     if (!link) {
-      toast.error('Tagihan ini tidak punya link yang bisa disalin.');
+      toast.error('Tagihan ini tidak tertaut jadwal, jadi tidak punya link bayar yang bisa dijaga. Terbitkan tagihan baru.');
       return;
     }
 
     try {
       await navigator.clipboard.writeText(link);
       toast.success(
-        invoice?.schedule_id
-          ? `Link bayar ${paymentId.substring(0, 8)}... disalin. Link ini selalu mengarah ke tagihan yang berlaku.`
-          : `Link invoice ${paymentId.substring(0, 8)}... berhasil disalin!`,
+        `Link bayar ${paymentId.substring(0, 8)}... disalin. Link ini selalu mengarah ke tagihan yang berlaku.`,
       );
     } catch (error) {
       console.error('Error copying to clipboard:', error);

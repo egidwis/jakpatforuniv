@@ -266,7 +266,27 @@ export function BulkInvoiceDialog({
           entry: b.entry,
         })),
       );
-      const bundlePayUrl = leadBundle ? payLinkUrl(leadBundle.entry.id) : paymentResponse.invoice_url;
+      /*
+        ⚠️ TANPA CADANGAN `: paymentResponse.invoice_url`. Nilai ini memberi
+        makan email DAN WhatsApp sekaligus — dua saluran yang tidak bisa
+        ditarik kembali. `leadOf` hanya mengembalikan `null` untuk daftar
+        kosong, dan `canSave` sudah menuntut `bundles.length > 0`, jadi cabang
+        itu tak terjangkau; ia diberi kalimat sendiri supaya kalau suatu saat
+        terjangkau, yang terjadi adalah admin diberi tahu — bukan URL DOKU
+        mentah diam-diam terkirim ke peneliti.
+      */
+      const bundlePayUrl = leadBundle ? payLinkUrl(leadBundle.entry.id) : null;
+
+      if (!bundlePayUrl) {
+        closeTab(waTab);
+        toast.error(
+          'Tagihan SUDAH terbit, tapi link bayarnya tidak bisa disusun (jadwal lead tidak ditemukan). '
+          + 'Tidak ada email/WhatsApp yang dikirim — salin linknya dari kartu jadwal.',
+          { duration: 15000 },
+        );
+        onDone();
+        return;
+      }
 
       if (buyer.researcherEmail) {
         fetch('/api/send-invoice-ready-email', {
