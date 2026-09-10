@@ -51,8 +51,7 @@ order uji, bukan order peneliti.
 
 2. **⚠️ PASTIKAN DULU TAGIHANNYA PUNYA `doku_request_id`.** Tanpa nilai itu
    Cancel Order tidak pernah ditembakkan ke DOKU sama sekali, dan link yang
-   tetap hidup **bukan bukti apa-apa** — ujinya batal tanpa Anda sadari. Ini
-   sudah terjadi sekali (8 Sep, tagihan uji Rp 1.110):
+   tetap hidup **bukan bukti apa-apa** — ujinya batal tanpa Anda sadari.
 
    ```sql
    select payment_id, doku_request_id is not null as siap_diuji, expires_at
@@ -62,6 +61,19 @@ order uji, bukan order peneliti.
    `siap_diuji = false` → **jangan diteruskan.** Terbitkan tagihan baru.
    (Sejak 8 Sep dialog penerbit juga memperingatkan langsung di layar kalau
    ini terjadi — tapi peringatan itu baru muncul sesudah deploy berikutnya.)
+
+   **Ini sudah membatalkan uji Anda DUA kali** — 8 Sep (Rp 1.110) dan 10 Sep
+   (Rp 277.500). Penyebabnya sudah ketemu dan sudah diperbaiki: jembatan dev
+   `/api/doku/checkout` di `vite.config.js` adalah salinan tangan yang membuang
+   `request_id` dari respons, jadi **setiap tagihan yang terbit dari localhost
+   lahir tanpa `doku_request_id`**. Terukur di produksi 10 Sep: dari 42 tagihan
+   sejak sql/84, tepat 2 yang kehilangannya — dua-duanya tagihan uji dari
+   lokal; 40 tagihan peneliti dari produksi utuh semua.
+
+   Sejak perbaikan itu jembatan dev mengimpor `checkout.js` yang asli, jadi
+   tagihan dari lokal identik dengan tagihan dari produksi. Dijaga oleh
+   `functions/api/doku/devBridge.spec.js`. **Prechecknya tetap dijalankan** —
+   ia murah, dan ia yang menangkap kegagalan berikutnya, apa pun sebabnya.
 
 3. **Buka link DOKU-nya di browser.** Pastikan halamannya **HIDUP**.
    Ini kondisi awal — tanpa memastikannya, "menolak" sesudahnya tidak
