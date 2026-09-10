@@ -61,9 +61,39 @@ export interface InvoiceData {
  * menerima link, membayarnya gagal, dan tidak ada yang tahu kenapa.
  */
 export const MAX_INVOICE_MINUTES = 60 * 24 * 7;
-/** Sama dengan default `create-payment.js` (`dueDate … : 60`) — konvensi berkas ini. */
+/**
+ * Sama dengan default `create-payment.js` (`dueDate … : 60`) — konvensi berkas ini.
+ *
+ * ⚠️ ANGKA INI TERIKAT PADA JARAK DUA CUTOFF DI `airing-window.ts`.
+ * `PAYMENT_CUTOFF_HOUR_WIB (14) − BOOKING_CUTOFF_HOUR_WIB (13)` = 60 menit =
+ * nilai ini. Kaitan itu yang membuat cabang `null` di bawah tidak pernah
+ * mengenai peneliti. Menaikkannya ke 90 tanpa ikut menggeser cutoff pemesanan
+ * akan mulai menolak pemesanan sah — dan tidak akan terlihat di layar mana pun.
+ * Dijaga `invoiceLifetime.spec.ts` → describe "invarian cutoff".
+ */
 export const MIN_INVOICE_MINUTES = 60;
 
+/**
+ * Umur link, dalam menit — atau `null` kalau tagihannya TIDAK BOLEH TERBIT.
+ *
+ * ⚠️ CABANG `null` ADALAH GERBANG ADMIN, BUKAN GERBANG PENELITI — jangan
+ * "memperbaikinya" untuk peneliti.
+ *
+ * Jalur peneliti tidak bisa mencapainya: `isBookingClosedForDate`
+ * (ditegakkan di `submitOrder.ts`) menutup pemesanan hari-H pada 13.00 WIB,
+ * jadi pemesanan paling akhir yang mungkin (12:59:59) selalu menyisakan lebih
+ * dari `MIN_INVOICE_MINUTES` ke 14.00.
+ *
+ * Yang bisa mencapainya cuma admin, dan itu konsekuensi commit `920b3cb`
+ * (1 Sep 2026): ia sengaja melonggarkan cutoff untuk admin di `ScheduleForm`
+ * sementara `createManualInvoice` tidak ikut dilonggarkan. Jadi penolakan di
+ * sini adalah satu-satunya yang menahan admin menerbitkan tagihan yang mati
+ * sebelum sempat dipakai.
+ *
+ * ⚠️ KALAU PHASE 4 MEMBUKA PENJADWALAN SWALAYAN, ia menambah jalur peneliti
+ * KEDUA yang tidak lewat `submitOrder.ts` — dan cutoff pemesanannya harus ikut
+ * ditegakkan di sana (di RPC-nya), atau invarian ini patah.
+ */
 export function invoiceLifetimeMinutes(
   airingStartYmd: string | undefined,
   now: Date = new Date(),
@@ -271,6 +301,30 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
     const data = await fetchResponse.json();
     if (!data.response || !data.response.payment) {
       throw new Error('Invalid response from DOKU checkout');
+    }
+
+    /*
+      ⚠️ TAGIHAN TANPA `request_id` LAHIR SUDAH TIDAK BISA DICABUT.
+
+      Cancel Order menuntutnya sebagai `original_request_id`; tanpa itu link
+      DOKU-nya tidak bisa dimatikan lewat API SELAMANYA — yang tersisa cuma
+      menunggu `expires_at` lewat.
+
+      Terjadi sungguhan 8 Sep 2026 pada tagihan uji Rp 1.110: satu-satunya
+      baris tanpa `request_id` sejak sql/84 dideploy (3 Sep 09.15), dan
+      ketiadaannya baru ketahuan saat pembatalannya dicoba — berjam-jam
+      kemudian, lewat pesan galat yang tidak menyebut sebabnya.
+
+      Tidak melempar: menolak menerbitkan tagihan gara-gara ini akan menahan
+      penagihan yang sah demi masalah yang jauh lebih ringan. Tapi ia TIDAK
+      boleh sunyi — pemanggil memeriksa `doku_request_id` pada nilai balik dan
+      memperingatkan admin di layar.
+    */
+    if (!data.request_id) {
+      console.error(
+        `[createManualInvoice] DOKU tidak memulangkan request_id untuk ${data.response.order.invoice_number} — ` +
+        'link ini TIDAK akan bisa dimatikan lewat Cancel Order.'
+      );
     }
 
     return {

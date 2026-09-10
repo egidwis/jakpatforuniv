@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId } from '../utils/supabase';
 import { Copy, Link as LinkIcon } from 'lucide-react';
+import { payLinkUrl } from '@/utils/payLink';
 
 interface CopyInvoiceDropdownProps {
   formSubmissionId: string;
@@ -75,10 +76,36 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
     fetchInvoices();
   }, [formSubmissionId, refreshTrigger]);
 
-  const copyToClipboard = async (invoiceUrl: string, paymentId: string) => {
+  /**
+   * ⚠️ YANG DISALIN LINK PERANTARA, BUKAN URL DOKU MENTAH.
+   *
+   * Link yang keluar dari dropdown ini biasanya ditempel ke WhatsApp — dan
+   * sekali terkirim, URL DOKU tidak bisa ditarik: ia menagih untuk keadaan saat
+   * ia dicetak, selamanya. `/bayar/<ad_schedules.id>` menjawab keadaan HARI INI
+   * setiap kali diklik (lihat `payLink.ts`).
+   *
+   * Baris warisan tanpa `schedule_id` (pra-sql/51) tetap memakai URL aslinya:
+   * resolver dikunci ke jadwal, jadi ia tidak punya apa pun untuk ditanyakan.
+   * Itu tidak lebih buruk daripada perilaku sebelumnya — cuma tidak lebih baik.
+   */
+  const copyToClipboard = async (invoice: any) => {
+    const paymentId = String(invoice?.payment_id || '');
+    const link = invoice?.schedule_id
+      ? payLinkUrl(invoice.schedule_id)
+      : invoice?.invoice_url;
+
+    if (!link) {
+      toast.error('Tagihan ini tidak punya link yang bisa disalin.');
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(invoiceUrl);
-      toast.success(`Link invoice ${paymentId.substring(0, 8)}... berhasil disalin!`);
+      await navigator.clipboard.writeText(link);
+      toast.success(
+        invoice?.schedule_id
+          ? `Link bayar ${paymentId.substring(0, 8)}... disalin. Link ini selalu mengarah ke tagihan yang berlaku.`
+          : `Link invoice ${paymentId.substring(0, 8)}... berhasil disalin!`,
+      );
     } catch (error) {
       console.error('Error copying to clipboard:', error);
       toast.error('Gagal menyalin link');
@@ -132,7 +159,7 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
           <div
             key={invoice.id || index}
             className="flex items-center justify-between group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 p-1.5 rounded transition-colors border border-transparent hover:border-gray-100 dark:hover:border-gray-700"
-            onClick={() => copyToClipboard(invoice.invoice_url, invoice.payment_id)}
+            onClick={() => copyToClipboard(invoice)}
             title="Klik untuk menyalin link"
           >
             <div className="flex flex-col gap-0.5 overflow-hidden">
@@ -192,7 +219,7 @@ export function CopyInvoiceDropdown({ formSubmissionId, refreshTrigger, isCompac
               <div key={invoice.id || index}>
                 <DropdownMenuItem
                   className="cursor-pointer flex flex-col items-start py-3 px-3"
-                  onClick={() => copyToClipboard(invoice.invoice_url, invoice.payment_id)}
+                  onClick={() => copyToClipboard(invoice)}
                 >
                   <div className="flex items-center justify-between w-full mb-1">
                     <div className="flex items-center gap-2">

@@ -167,6 +167,19 @@ export interface InvoiceReadyInput {
   researcherName?: string | null;
   bundles: InvoiceBundleSummary[];
   amount: number;
+  /**
+   * ⚠️ HARUS LINK PERANTARA `/bayar/<ad_schedules.id>` (`payLinkUrl`), BUKAN
+   * URL DOKU MENTAH.
+   *
+   * Pesan WhatsApp adalah permukaan yang paling tidak bisa ditarik kembali di
+   * seluruh sistem ini: ia bertahan di riwayat chat penerimanya selamanya. URL
+   * DOKU menagih untuk keadaan saat ia dicetak — order af004b84 dibayar lewat
+   * link seperti itu, 20 menit sesudah jadwalnya dibatalkan.
+   *
+   * Ini juga yang akhirnya membuat `paymentDeadline()` di bawah bisa ditepati:
+   * sebelumnya pesan ini menjanjikan tenggat sementara link-nya tidak tahu
+   * apa-apa soal tenggat itu.
+   */
   invoiceUrl: string;
   /** Default: dihitung dari `bundles` lewat `paymentDeadline`. */
   deadline?: Date;

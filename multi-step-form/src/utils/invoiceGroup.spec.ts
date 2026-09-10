@@ -151,9 +151,16 @@ const happyResponder = (op: Op) => {
 beforeEach(() => {
   ops = [];
   responder = happyResponder;
+  /*
+    ⚠️ `text()`, BUKAN `json()`. `killDokuLink` membaca badan respons sebagai
+    TEKS lebih dulu, baru mencoba mengurainya — supaya badan yang tidak bisa
+    diurai tetap bisa dilaporkan apa adanya, bukan menghilang jadi galat
+    parser. Lihat catatannya di `killDokuLink` (supabase.ts).
+  */
   vi.stubGlobal('fetch', vi.fn(async () => ({
     ok: true,
-    json: async () => ({ cancelled: true }),
+    status: 200,
+    text: async () => JSON.stringify({ cancelled: true }),
   })) as any);
 });
 
@@ -247,7 +254,8 @@ describe('settleGroupAsPaid', () => {
   it('link DOKU gagal dimatikan TIDAK menahan pelunasan — dilaporkan lewat nilai balik', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
-      json: async () => ({ cancelled: false, message: 'order sudah dibayar' }),
+      status: 200,
+      text: async () => JSON.stringify({ cancelled: false, message: 'order sudah dibayar' }),
     })) as any);
 
     const res = await settleGroupAsPaid(PID);
@@ -255,6 +263,60 @@ describe('settleGroupAsPaid', () => {
     expect(res.settled).toHaveLength(3);
     expect(res.dokuCancelled).toBe(false);
     expect(res.dokuReason).toBe('order sudah dibayar');
+  });
+
+  /*
+    ⚠️ REGRESI NYATA, 8 Sep 2026. Uji Langkah 0 pertama memulangkan
+    `Failed to execute 'json' on 'Response': Unexpected end of JSON input` ke
+    layar admin. Itu bukan jawaban DOKU — itu galat parser kita sendiri
+    terhadap badan KOSONG, dan ia MENGHAPUS satu-satunya petunjuk yang ada.
+    Admin diberi kalimat yang tidak bisa ditindaklanjuti siapa pun, dan
+    diagnosisnya butuh satu putaran uji penuh lagi.
+  */
+  it('badan respons KOSONG dilaporkan beserta status HTTP-nya, bukan jadi galat parser', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, text: async () => '',
+    })) as any);
+
+    const res = await settleGroupAsPaid(PID);
+
+    expect(res.dokuCancelled).toBe(false);
+    expect(res.dokuReason).toContain('HTTP 200');
+    expect(res.dokuReason).toContain('kosong');
+    expect(res.dokuReason).not.toMatch(/JSON input/i);
+  });
+
+  it('badan yang BUKAN JSON (mis. halaman HTML) ikut dilaporkan apa adanya', async () => {
+    // Ini yang membedakan "endpoint tidak ada" dari "DOKU menolak". Tanpa
+    // potongan mentahnya, keduanya terbaca sama di layar admin.
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 404,
+      text: async () => '<!DOCTYPE html><html><body>Not found</body></html>',
+    })) as any);
+
+    const res = await settleGroupAsPaid(PID);
+
+    expect(res.dokuCancelled).toBe(false);
+    expect(res.dokuReason).toContain('HTTP 404');
+    expect(res.dokuReason).toContain('DOCTYPE');
+  });
+
+  it('`no_request_id` dijawab dengan kalimat yang menyebut sebab DAN akibatnya', async () => {
+    /*
+      Tagihan tanpa `doku_request_id` tidak akan PERNAH bisa dimatikan lewat
+      API — mencoba lagi tidak menolong. "Mungkin masih bisa dibayar"
+      terdengar seperti kegagalan sementara; ini bukan.
+    */
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify({ cancelled: false, reason: 'no_request_id' }),
+    })) as any);
+
+    const res = await settleGroupAsPaid(PID);
+
+    expect(res.dokuCancelled).toBe(false);
+    expect(res.dokuReason).toContain('request_id');
+    expect(res.dokuReason).toMatch(/TIDAK BISA|tidak bisa/);
   });
 
   it('menolak tagihan yang tidak punya baris anggota sama sekali', async () => {

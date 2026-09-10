@@ -807,15 +807,28 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                         habis adalah waktu kami menyiapkan halaman iklan.
                         BUKAN "dipesan lewat jam 13.00": pemesanan hari-H sudah
                         ditutup 13.00, jadi hold 1 jam selalu tiba lebih dulu.
-            null     -> slot dipesan admin, atau jadwal ke-2 dst. `deadline`
-                        sengaja dikosongkan di `deriveOrderUiState`: pelepasannya
-                        MANUAL lewat dashboard admin, jadi tidak ada jam yang
-                        jujur bisa disebut. Yang benar adalah alasannya —
-                        slotnya terbatas dan bisa habis.
+            'bill'   -> tenggat MEMBAYAR, dari `expires_at` tagihannya. Ini
+                        yang mengisi cabang yang DULU kosong: slot yang dipesan
+                        admin, dan (sebelum Phase 4) seluruh jadwal ke-2 dst.
+                        Pelepasan slotnya memang manual, jadi tidak ada tenggat
+                        LEPAS — tapi tenggat BAYAR selalu ada, dan sisi admin
+                        sudah mencetaknya di tiga tempat. Asimetri "admin tahu
+                        kapan tagihan peneliti mati, penelitinya tidak" berhenti
+                        di sini.
+            null     -> benar-benar tidak ada tenggat yang jujur bisa disebut
+                        (tagihannya belum terbit, atau tenggatnya sudah lewat —
+                        keadaan kedua punya bannernya sendiri). Yang benar
+                        adalah alasannya: slotnya terbatas dan bisa habis.
+
+          ⚠️ KOSAKATANYA: TENGGAT MEMBAYAR, BUKAN "UMUR LINK". Sejak resolver
+          `/bayar/<id>` ada, URL yang dipegang peneliti tidak pernah mati — ia
+          menyesuaikan diri. Yang habis adalah haknya atas tanggal itu.
 
           ⚠️ ATURAN EMAS: `{time}` hanya boleh muncul kalau `deadline` MEMANG
-          ada. Kalau ia null, varian ketiga yang dipakai — dan varian itu
-          sengaja tidak menyebut jam apa pun.
+          ada. Kalau ia null, varian terakhir yang dipakai — dan varian itu
+          sengaja tidak menyebut jam apa pun. Pemilihan tenggatnya sendiri
+          dikerjakan `billDeadline` di `airingPeriods.ts`, supaya aturan ini
+          tidak perlu dijaga dengan tangan di tiap cabang.
         */
         const deadlineTime = b.deadline
             ? b.deadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: WIB }).replace(':', '.') + ' WIB'
@@ -824,7 +837,14 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
             ? t('bannerSubWaitingPaymentSlot', { time: deadlineTime })
             : deadlineTime && b.deadlineCause === 'cutoff'
                 ? t('bannerSubWaitingPaymentCutoff', { time: deadlineTime })
-                : t('bannerSubWaitingPaymentSlotsLimited');
+                : deadlineTime && b.deadlineCause === 'bill'
+                    ? t('bannerSubWaitingPaymentBill', {
+                        time: deadlineTime,
+                        date: b.deadline!.toLocaleDateString('id-ID', {
+                            day: 'numeric', month: 'short', timeZone: WIB,
+                        }),
+                    })
+                    : t('bannerSubWaitingPaymentSlotsLimited');
 
         /*
           Sebagian sudah dibayar (24 jadwal di produksi). State-nya SENGAJA

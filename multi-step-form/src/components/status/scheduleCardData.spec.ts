@@ -141,6 +141,7 @@ describe('buildScheduleCards — sebagian dibayar', () => {
         'sub-1': {
             paymentUrl: 'https://pay.example/abc',
             paymentId: 'pay-1',
+            scheduleId: 'sched-1',
             status: 'pending',
             amount: 233_100,
             paid: 100_000,
@@ -379,7 +380,14 @@ describe('buildScheduleCards — tagihan gabungan (A1)', () => {
             uiOf(scheduleOf()), {}, null, t, submissionOf(), () => groupInfo(),
         );
 
-        expect(card.booking.payUrl).toBe('https://pay.example/abc');
+        /*
+          ⚠️ YANG DIPEGANG KARTU ADALAH LINK PERANTARA, BUKAN URL DOKU.
+          Sejak resolver `/bayar/<ad_schedules.id>` ada, SETIAP permukaan
+          memakai jalur yang sama — email, WhatsApp, salinan admin, dan tombol
+          ini. URL DOKU-nya tetap dipegang database; yang berubah hanya apa yang
+          dilihat (dan bisa disalin) manusia. Lihat `payLink.ts`.
+        */
+        expect(card.booking.payUrl).toBe('/bayar/sched-1');
         expect(card.booking.group?.total).toBe(3_330_000);
         // `amount` tetap porsi jadwal ini — dua angka, keduanya benar untuk
         // pertanyaan masing-masing. Yang dilarang cuma memakai yang satu untuk
@@ -400,7 +408,8 @@ describe('buildScheduleCards — tagihan gabungan (A1)', () => {
         const [card] = buildScheduleCards(uiOf(scheduleOf()), {}, null, t, submissionOf());
 
         expect(card.booking.group).toBeNull();
-        expect(card.booking.payUrl).toBe('https://pay.example/abc');
+        // Perantara juga di luar grup: satu jalur, nol cabang yang menyimpang.
+        expect(card.booking.payUrl).toBe('/bayar/sched-1');
     });
 
     it('jadwal ke-2 dst.: pengikut kehilangan tombol, lead menyimpannya', () => {
@@ -411,6 +420,7 @@ describe('buildScheduleCards — tagihan gabungan (A1)', () => {
         const payments: SchedulePaymentMap = {
             'ext-1': {
                 paymentUrl: 'https://pay.example/grup', paymentId: 'JFU-INV-abc-1',
+                scheduleId: 'sched-2',
                 status: 'pending', amount: 1_110_000, paid: 0, outstanding: 1_110_000,
                 isExpired: false, expiresAt: null, staleBilledFor: null,
             },
@@ -426,7 +436,9 @@ describe('buildScheduleCards — tagihan gabungan (A1)', () => {
             uiOf(scheduleOf(), [later]), payments, null, t, submissionOf(),
             (sourceId) => (sourceId === 'ext-1' ? groupInfo({ isLead: true }) : null),
         );
-        expect(lead.booking.payUrl).toBe('https://pay.example/grup');
+        // Lead grup pun lewat perantara — resolver yang memutuskan siapa yang
+        // diteruskan ke DOKU dan siapa yang dilempar ke halaman invoice.
+        expect(lead.booking.payUrl).toBe('/bayar/sched-2');
     });
 });
 
@@ -445,6 +457,7 @@ describe('buildScheduleCards — link kedaluwarsa (Case 6)', () => {
         const payments: SchedulePaymentMap = {
             'ext-1': {
                 paymentUrl: 'https://pay.example/mati', paymentId: 'JFU-INV-mati',
+                scheduleId: 'sched-2',
                 status: 'pending', amount: 1_110_000, paid: 0, outstanding: 1_110_000,
                 isExpired: true, expiresAt: '2026-09-01T07:00:00.000Z', staleBilledFor: null,
             },
@@ -454,5 +467,95 @@ describe('buildScheduleCards — link kedaluwarsa (Case 6)', () => {
 
         expect(kartu.booking.state).toBe('expired');
         expect(kartu.booking.payUrl).toBeNull();
+    });
+});
+
+
+/*
+  ═══════════════════════════════════════════════════════════════════════════
+  TENGGAT KARTU JADWAL KE-2 dst. — DITENTUKAN DATANYA, BUKAN JENIS KARTUNYA
+  ═══════════════════════════════════════════════════════════════════════════
+
+  `airingPeriods` dulu menulis `deadline: null, deadlineCause: null` sebagai
+  LITERAL untuk setiap kartu extend. Selama seluruh jadwal ke-2 dipesan ADMIN
+  itu benar — pelepasannya manual, tidak ada jam yang jujur bisa disebut.
+
+  Phase 4 membuka penjadwalan swalayan, dan jadwal ke-2 yang dipesan PENELITI
+  punya hold 1 jam yang nyata. Kalau cabangnya tetap ditentukan jenis kartu,
+  kartunya akan menjanjikan tenggat bayar (bisa berhari-hari lagi) untuk slot
+  yang mati 60 menit lagi — persis kebohongan yang aturan emas dibuat untuk
+  mencegah, cuma terbalik arahnya.
+
+  Blok ini yang menahannya, DAN yang membuat Phase 4 aman dieksekusi.
+*/
+describe('buildScheduleCards — tenggat jadwal ke-2 dst.', () => {
+    const extendOf = (over: Partial<AdScheduleEntry> = {}) => scheduleOf({
+        id: 'sched-2', ordinal: 2, isExtension: true, sourceId: 'ext-1',
+        status: 'waiting_payment',
+        slotBookedBy: 'admin', slotReservedAt: null,
+        ...over,
+    });
+    const payOf = (expiresAt: string | null): SchedulePaymentMap => ({
+        'ext-1': {
+            paymentUrl: 'https://pay.example/x', paymentId: 'JFU-INV-x',
+            scheduleId: 'sched-2', status: 'pending',
+            amount: 233_100, paid: 0, outstanding: 233_100,
+            isExpired: false, expiresAt, staleBilledFor: null,
+        },
+    });
+
+    it('dipesan ADMIN + tagihan hidup → tenggat BAYAR, bukan lagi "slot terbatas"', () => {
+        const expiresAt = new Date(Date.now() + 36 * 3_600_000).toISOString();
+        const [, kartu] = buildScheduleCards(
+            uiOf(scheduleOf(), [extendOf()]), payOf(expiresAt), null, t, submissionOf(),
+        );
+        expect(kartu.booking.deadlineCause).toBe('bill');
+        expect(kartu.booking.deadline?.toISOString()).toBe(expiresAt);
+    });
+
+    it('PHASE 4: dipesan PENELITI → hold 1 jam MENANG atas tenggat bayar', () => {
+        /*
+          Inilah kasus yang membuat literal `null` berbahaya. Tagihannya hidup
+          36 jam lagi, tapi SLOTNYA mati 1 jam sejak dipesan. Yang harus
+          disebut kartu adalah yang lebih dulu tiba — dan yang konsekuensinya
+          berbeda: slot yang lepas mengembalikan tanggalnya ke pasar.
+        */
+        const reservedAt = new Date(Date.now() - 10 * 60_000).toISOString();
+        const [, kartu] = buildScheduleCards(
+            uiOf(scheduleOf(), [extendOf({ slotBookedBy: 'user', slotReservedAt: reservedAt })]),
+            payOf(new Date(Date.now() + 36 * 3_600_000).toISOString()),
+            null, t, submissionOf(),
+        );
+        expect(kartu.booking.deadlineCause).toBe('slot');
+        expect(kartu.booking.deadline?.getTime())
+            .toBe(new Date(reservedAt).getTime() + 3_600_000);
+    });
+
+    it('tenggat yang SUDAH LEWAT tidak pernah disebut — itu bukan tenggat', () => {
+        const [, kartu] = buildScheduleCards(
+            uiOf(scheduleOf(), [extendOf()]),
+            payOf(new Date(Date.now() - 3_600_000).toISOString()),
+            null, t, submissionOf(),
+        );
+        expect(kartu.booking.deadlineCause).toBeNull();
+        expect(kartu.booking.deadline).toBeNull();
+    });
+
+    it('tagihan belum terbit → tetap null, dan aturan emas tetap utuh', () => {
+        const [, kartu] = buildScheduleCards(
+            uiOf(scheduleOf(), [extendOf()]), {}, null, t, submissionOf(),
+        );
+        expect(kartu.booking.deadlineCause).toBeNull();
+        expect(kartu.booking.deadline).toBeNull();
+    });
+
+    it('slot admin TANPA slot_reserved_at tidak pernah menghasilkan tenggat slot', () => {
+        // `slotReleaseDeadline` mengembalikan null = "tidak pernah lepas
+        // sendiri", BUKAN "sudah lepas". Kedua arti itu mudah tertukar.
+        const [, kartu] = buildScheduleCards(
+            uiOf(scheduleOf(), [extendOf({ slotBookedBy: 'admin', slotReservedAt: '2026-09-02T01:00:00.000Z' })]),
+            payOf(null), null, t, submissionOf(),
+        );
+        expect(kartu.booking.deadlineCause).toBeNull();
     });
 });

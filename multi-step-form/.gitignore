@@ -31,3 +31,6 @@ hit_doku*.js
 hit_doku*.cjs
 jakpat-homepage-deploy/
 
+
+# State sementara scripts/doku-cancel-order-probe.mjs (memuat invoice sandbox)
+.doku-probe-state.json

@@ -330,14 +330,14 @@ Selain itu:
 - [ ] Order Kilat tampil di gelombangnya (08/11/14/17), bukan 15.00
 - [ ] Order Kilat tanpa gelombang tampil sebagai **"belum dijadwalkan"**, bukan "00.00"
 - [ ] Survei dengan perpanjangan tampil sebagai **beberapa baris berurut**, bukan satu
-- [ ] Order tanpa tanggal sama sekali (83 order berhadiah) tidak hilang diam-diam dari layar
+- [ ] Order tanpa tanggal sama sekali (~~83~~ → **2** order berhadiah, ukur ulang 2026-09-08) tidak hilang diam-diam dari layar
 - [ ] Sesudah Task 9: keempat keadaan yang dulu runtuh (`in_review`/`approved`/
       `slot_reserved`/`waiting_payment`) bisa dibedakan di layar
 
 ## Di luar cakupan
 
 - **`reward_pools` (`sql/46`, Task 8B-2)** — prasyarat **Phase 4**, bukan Phase 3.
-  ⛔ Pertanyaan yang wajib dijawab lebih dulu: di mana pool tinggal untuk **83 order** yang
+  ⛔ Pertanyaan yang wajib dijawab lebih dulu: di mana pool tinggal untuk ~~83~~ **2 order** (ukur ulang 2026-09-08) yang
   sudah mendanai hadiah tapi belum punya tanggal sama sekali (`start_date IS NULL`,
   sehingga `period_batch` tidak bisa dihitung).
 - **Phase 4 & 5** — "jadwalkan iklan lagi" dan Kilat untuk dashboard user.

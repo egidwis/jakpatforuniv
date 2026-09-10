@@ -8,7 +8,12 @@ import { pathToFileURL } from 'url';
 // functions/api/doku/sac/*.js saat `vite dev`, karena runtime Pages tidak ada
 // di dev server. Node 20+ menyediakan Web API yang dipakai functions tersebut
 // (Request, Response, fetch, crypto.subtle), jadi dev dan prod tetap satu
-// jalur kode — tidak ada duplikasi logika seperti dokuProxyPlugin (checkout).
+// jalur kode — tidak ada duplikasi logika.
+//
+// Pola inilah yang benar untuk SEMUA jembatan di berkas ini. Checkout dulu
+// jadi pengecualian (`dokuProxyPlugin` menulis ulang logikanya) dan salinannya
+// menyimpang sampai merusak data produksi — lihat catatan panjang di
+// `dokuCheckoutDevPlugin` di bawah sebelum menulis jembatan baru.
 function dokuSacFunctionsDevPlugin() {
   const HANDLERS = ['balance', 'history', 'payout', 'create', 'transfer'];
   return {
@@ -164,125 +169,92 @@ function authCheckEmailDevPlugin() {
 
 
 
-function dokuProxyPlugin() {
+// Dev-only bridge for the admin manual-invoice Pages Function
+// functions/api/doku/checkout.js. Same rationale as the bridges above: the
+// Pages runtime isn't present under `vite dev`, so we import the real
+// onRequest handler and run it on Node's Web APIs — one code path for dev+prod.
+//
+// ⚠️ INI DULU SALINAN TANGAN (`dokuProxyPlugin`), DAN SALINANNYA MENYIMPANG.
+//
+// Sampai 2026-09-10 berkas ini menyusun sendiri payload, tanda tangan HMAC,
+// dan respons DOKU untuk endpoint checkout. Dua penyimpangan lolos tanpa satu
+// pun error:
+//
+//   1. `request_id` DIBUANG dari respons. Salinan itu membuat `requestId`,
+//      menandatanganinya, mengirimnya sebagai header — lalu memulangkan badan
+//      mentah DOKU. `createManualInvoice` membaca `data.request_id ?? null`,
+//      jadi setiap tagihan yang terbit dari lokal lahir dengan
+//      `invoices.doku_request_id = NULL`. Cancel Order API menuntut nilai itu
+//      sebagai `original_request_id`, jadi tagihan itu TIDAK BISA DIMATIKAN —
+//      selamanya. Terukur di produksi: dari 42 tagihan sejak sql/84, tepat 2
+//      yang kehilangannya, dan dua-duanya diterbitkan dari localhost.
+//
+//   2. Routing Sub Account HILANG. `checkout.js` menyisipkan
+//      `additional_info.account.id` (SAC JFU); salinannya tidak. Karena `.env`
+//      memakai kredensial PRODUKSI, tagihan uji dari lokal menerbitkan link
+//      DOKU sungguhan yang uangnya mendarat di akun yang salah.
+//
+// Keduanya lolos dari `dueDate.spec.js` karena penjaga itu hanya menyapu
+// `functions/api/doku/`, sementara salinannya hidup di sini.
+//
+// Yang dijaga sekarang bukan perilaku dev, melainkan janji bahwa dev dan
+// produksi menjalankan SATU berkas yang sama — sehingga apa pun yang terbukti
+// di lokal tetap benar sesudah deploy. Ditegakkan oleh
+// functions/api/doku/devBridge.spec.js.
+//
+// Catatan: gerbang admin di functions/api/doku/_middleware.js tidak ikut jalan
+// di dev (middleware Pages tidak ada di sini) — sama seperti sebelumnya, jadi
+// bukan pelonggaran baru.
+function dokuCheckoutDevPlugin() {
   return {
-    name: 'doku-proxy',
+    name: 'doku-checkout-dev',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url.includes('/api/doku/checkout')) {
-          console.log('✅ HIT ' + req.url + ' DETECTED! Method: ' + req.method);
+        if (!req.url || !/^\/api\/doku\/checkout(\?|$)/.test(req.url)) return next();
 
-          if (req.method === 'OPTIONS') {
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
-            res.statusCode = 204;
-            res.end();
-            return;
+        (async () => {
+          const modulePath = pathToFileURL(
+            path.resolve(__dirname, 'functions/api/doku/checkout.js')
+          ).href;
+          const { onRequest } = await import(modulePath);
+
+          const env = loadEnv('', process.cwd(), '');
+          const url = `http://${req.headers.host || 'localhost'}${req.url}`;
+
+          let body;
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            body = await new Promise((resolve, reject) => {
+              let data = '';
+              req.on('data', (chunk) => (data += chunk));
+              req.on('end', () => resolve(data));
+              req.on('error', reject);
+            });
           }
 
-          if (req.method !== 'POST') {
-            res.statusCode = 405;
-            res.end('Method Not Allowed');
-            return;
-          }
-
-          let body = '';
-          req.on('data', chunk => body += chunk.toString());
-
-          req.on('end', async () => {
-            try {
-              if (!body) {
-                res.statusCode = 400;
-                res.end(JSON.stringify({ error: 'Empty body' }));
-                return;
-              }
-
-              const requestData = JSON.parse(body);
-
-              // Ambil env variables via vite loadEnv
-              const env = loadEnv('', process.cwd(), '');
-              const clientId = env.VITE_DOKU_CLIENT_ID;
-              const secretKey = env.DOKU_SECRET_KEY;
-
-              if (!clientId || !secretKey) {
-                res.statusCode = 500;
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ error: "DOKU credentials missing in .env.local" }));
-                return;
-              }
-
-              const dokuPayload = {
-                order: {
-                  amount: requestData.amount,
-                  invoice_number: requestData.invoice_number,
-                  currency: "IDR",
-                  callback_url: requestData.callback_url || undefined,
-                  auto_redirect: true
-                },
-                payment: {
-                  payment_due_date: requestData.payment_due_date || 60
-                },
-                customer: {
-                  id: requestData.customer.email.replace(/[^a-zA-Z0-9]/g, '').substring(0, 50),
-                  name: requestData.customer.name.substring(0, 255),
-                  email: requestData.customer.email.substring(0, 128)
-                }
-              };
-
-              if (requestData.customer.phone) {
-                dokuPayload.customer.phone = requestData.customer.phone.replace(/[^0-9]/g, '').substring(0, 16);
-              }
-
-              const bodyString = JSON.stringify(dokuPayload);
-              const requestId = crypto.randomUUID();
-              const requestTimestamp = new Date().toISOString().slice(0, 19) + "Z";
-              const requestTarget = "/checkout/v1/payment";
-
-              const digest = crypto.createHash('sha256').update(bodyString).digest('base64');
-              const componentStringToSign = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
-              
-              const signature = "HMACSHA256=" + crypto.createHmac('sha256', secretKey).update(componentStringToSign).digest('base64');
-
-              let apiUrl = "https://api-sandbox.doku.com/checkout/v1/payment";
-              if (env.VITE_DOKU_ENV === 'production') {
-                apiUrl = "https://api.doku.com/checkout/v1/payment";
-              }
-
-              console.log(`🚀 Forwarding to DOKU: ${apiUrl}`);
-
-              const dokuResponse = await fetch(apiUrl, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Client-Id": clientId,
-                  "Request-Id": requestId,
-                  "Request-Timestamp": requestTimestamp,
-                  "Signature": signature
-                },
-                body: bodyString
-              });
-
-              const resultText = await dokuResponse.text();
-              res.statusCode = dokuResponse.status;
-              res.setHeader('Content-Type', 'application/json');
-              res.setHeader('Access-Control-Allow-Origin', '*');
-              res.end(resultText);
-
-            } catch (error) {
-              console.error('💥 DOKU Proxy Error:', error);
-              res.statusCode = 500;
-              res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ error: error.message }));
-            }
+          const request = new Request(url, {
+            method: req.method,
+            headers: {
+              'content-type': req.headers['content-type'] || 'application/json',
+              // Diteruskan supaya bentuk permintaannya sama dengan produksi.
+              // `checkout.js` sendiri tidak membacanya — yang memeriksanya
+              // adalah `_middleware.js`, yang tidak jalan di dev.
+              ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}),
+            },
+            body: body || undefined,
           });
 
-          return; // Stop chain
-        }
-
-        next();
+          const response = await onRequest({ request, env });
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        })().catch((error) => {
+          console.error('💥 DOKU checkout dev bridge error:', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: error.message }));
+        });
       });
-    }
+    },
   };
 }
 
@@ -406,7 +378,7 @@ function chatDevPlugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), dokuProxyPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin(), chatDevPlugin()],
+  plugins: [react(), dokuCheckoutDevPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin(), chatDevPlugin()],
   base: '/',
   resolve: {
     alias: {

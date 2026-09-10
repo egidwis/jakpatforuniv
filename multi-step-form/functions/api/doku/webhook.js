@@ -151,6 +151,53 @@ export function deadBillOutcome({ billRows, billTable, invoiceNumber, amount }) 
 }
 
 /**
+ * Verdict "tagihan ini masih hidup, tapi sudah TIDAK BERWENANG" — murni.
+ *
+ * Pasangan `deadBillOutcome`, dan pembagian kerjanya tegas:
+ *   deadBillOutcome  → tagihannya DICABUT (status expired/failed/cancelled)
+ *   staleBillOutcome → tagihannya masih `pending`, tapi jadwalnya PINDAH
+ *                      TANGGAL atau tagihannya TERSALIP yang lunas
+ *
+ * Varian kedua inilah yang lolos dari sql/80: admin membatalkan pesanan karena
+ * salah setup jadwal, menjadwalkan tanggal baru, dan peneliti membayar lewat
+ * link invoice jadwal LAMA. Status barisnya tidak pernah berubah, jadi
+ * `deadBillOutcome` melihat tagihan yang sehat.
+ *
+ * ⚠️ VONISNYA DATANG DARI DATABASE, TIDAK DIHITUNG DI SINI. `is_stale` dan
+ * `is_superseded` sudah punya SATU rumah di `schedule_billing()` (sql/60 → 82
+ * → 83). Menghitung ulang "basi" di JavaScript berarti dua definisi yang akan
+ * menyimpang — dan yang menyimpang menentukan apakah uang sungguhan
+ * menggerakkan jadwal. Fungsi ini hanya MEMBACA vonis itu.
+ *
+ * `verdicts`: satu entri per baris tagihan yang cocok dengan `payment_id` ini,
+ * masing-masing membawa `is_stale`, `is_superseded`, `billed_start_date`,
+ * `booking_id`, dan `current_start_date` (tanggal jadwalnya SEKARANG).
+ * Mengembalikan `null` = lanjut ke jalur normal.
+ */
+export function staleBillOutcome({ verdicts, invoiceNumber, amount }) {
+  const rows = Array.isArray(verdicts) ? verdicts : [];
+  const bad = rows.filter((row) => row?.is_stale || row?.is_superseded);
+  if (bad.length === 0) return null;
+
+  // Tanggalnya DISEBUT, dan itu syarat kegunaannya: tanpa "ditagih untuk X,
+  // jadwalnya kini Y" admin harus membuka DOKU dan dashboard bergantian untuk
+  // menjawab pertanyaan pertama yang muncul — pindahkan uangnya ke mana.
+  const ymd = (v) => (v ? String(v).slice(0, 10) : 'tanpa tanggal');
+  const breakdown = bad
+    .map((row) => {
+      const who = row?.booking_id ? `#${row.booking_id}` : 'jadwal tanpa kode';
+      const why = row?.is_superseded ? 'tersalip tagihan lunas' : 'tanggalnya pindah';
+      return `${who}: ditagih untuk ${ymd(row?.billed_start_date)}, jadwalnya kini ${ymd(row?.current_start_date)} (${why})`;
+    })
+    .join('; ');
+
+  return {
+    outcome: 'paid_on_stale_bill',
+    errorMessage: `Uang Rp ${Number(amount)} sudah diterima DOKU untuk ${invoiceNumber}, tapi ${bad.length} dari ${rows.length} baris tagihannya sudah TIDAK BERWENANG — ${breakdown}. Jadwal SENGAJA tidak disentuh dan pembayaran ini BELUM tercatat sebagai pendapatan — pindahkan ke tagihan yang berwenang.`,
+  };
+}
+
+/**
  * Nomor invoice dari badan mentah, tanpa mempercayainya.
  *
  * Dipakai HANYA untuk memberi nama pada baris audit penolakan — request yang
@@ -704,6 +751,76 @@ async function sbPatchExpectingRows(sb, path, body, label) {
   return rows;
 }
 
+/**
+ * Vonis basi/tersalip untuk tiap baris tagihan `invoiceNumber`, DARI DATABASE.
+ *
+ * ⚠️ Kenapa lewat RPC dan bukan dihitung di sini: `is_stale` membandingkan
+ * `billed_start_date` dengan tanggal jadwal SEKARANG, dan `is_superseded`
+ * mensyaratkan adanya baris LUNAS yang lebih baru. Keduanya sudah punya satu
+ * rumah di `schedule_billing()` (sql/60 → 82 → 83), yang juga dicerminkan
+ * `isLiveInvoice()` di billingCompare.ts. Menambah salinan KETIGA di dalam
+ * webhook berarti tiga definisi "masih berwenang" yang akan menyimpang — dan
+ * yang menyimpang menentukan apakah uang sungguhan menggerakkan jadwal.
+ *
+ * ⚠️ KEGAGALANNYA MELEMPAR, DAN ITU DISENGAJA. Kontraknya sama dengan seluruh
+ * pembacaan STEP 0 di atas: belum ada satu tulisan pun, jadi 500 → DOKU retry
+ * adalah jawaban yang benar untuk kegagalan transien. Menelannya (fail-open)
+ * berarti kembali ke perilaku lama justru pada saat kita paling buta.
+ *
+ * Baris pra-sql/51 ber-`schedule_id` NULL DILEWATI: tanpa jadwal, "basi"
+ * tidak punya arti. NULL = tidak diketahui, bukan "sudah basi".
+ */
+async function fetchStaleVerdicts(sb, billRows, invoiceNumber) {
+  const scheduleIds = Array.from(new Set(
+    (Array.isArray(billRows) ? billRows : [])
+      .map((row) => row?.schedule_id)
+      .filter((v) => !!v)
+  ));
+  if (scheduleIds.length === 0) return [];
+
+  // Konteks untuk kalimat admin: kode jadwal + tanggal jadwal SEKARANG.
+  const inList = scheduleIds.map((id) => `"${id}"`).join(',');
+  const schedRes = await sbFetch(
+    `${sb.url}/rest/v1/ad_schedules?id=in.(${inList})&select=id,booking_id,start_date`,
+    { headers: sb.headers },
+    'STEP 0c SELECT ad_schedules'
+  );
+  const schedRows = await schedRes.json();
+  const schedById = new Map(
+    (Array.isArray(schedRows) ? schedRows : []).map((row) => [row.id, row])
+  );
+
+  const verdicts = [];
+  for (const scheduleId of scheduleIds) {
+    const res = await sbFetch(
+      `${sb.url}/rest/v1/rpc/schedule_billing`,
+      {
+        method: 'POST',
+        headers: sb.headers,
+        body: JSON.stringify({ p_schedule_id: scheduleId }),
+      },
+      'STEP 0c RPC schedule_billing'
+    );
+    const rows = await res.json();
+    // `schedule_billing` mengembalikan SEMUA tagihan jadwal itu; yang dinilai
+    // hanya yang nomornya sedang dibayar.
+    const mine = (Array.isArray(rows) ? rows : [])
+      .filter((row) => row?.payment_id === invoiceNumber);
+    const sched = schedById.get(scheduleId);
+    for (const row of mine) {
+      verdicts.push({
+        schedule_id: scheduleId,
+        booking_id: sched?.booking_id ?? null,
+        current_start_date: sched?.start_date ?? null,
+        billed_start_date: row?.billed_start_date ?? null,
+        is_stale: !!row?.is_stale,
+        is_superseded: !!row?.is_superseded,
+      });
+    }
+  }
+  return verdicts;
+}
+
 // ============================================================================
 // Fase tulis DB — STEP 0..5
 //
@@ -736,8 +853,10 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
 
   // `status` ikut diambil di SELECT yang SAMA — penjaga tagihan-mati di bawah
   // butuh pre-state, dan menempelkannya di sini berarti nol round-trip tambahan.
+  // `schedule_id` ikut karena STEP 0c menanyakan vonis basi PER JADWAL; baris
+  // pra-sql/51 ber-NULL dan memang tidak bisa dinilai (lihat STEP 0c).
   const invAmountRes = await sbFetch(
-    `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount,status`,
+    `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount,status,schedule_id`,
     { headers: sb.headers },
     'STEP 0 SELECT invoices.amount'
   );
@@ -749,7 +868,7 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   // Legacy rows may exist only in transactions (pre-invoices flow).
   if (expectedAmount === null) {
     const txnAmountRes = await sbFetch(
-      `${sb.url}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount,status`,
+      `${sb.url}/rest/v1/transactions?payment_id=eq.${encodedInvoice}&select=amount,status,schedule_id`,
       { headers: sb.headers },
       'STEP 0 SELECT transactions.amount'
     );
@@ -799,6 +918,32 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   if (deadBill) {
     console.error(`[Webhook] PAID ON DEAD BILL for ${invoiceNumber}: ${deadBill.errorMessage} No DB writes performed.`);
     return deadBill;
+  }
+
+  // ====================================================================
+  // STEP 0c: TAGIHAN YANG MASIH HIDUP TAPI SUDAH TIDAK BERWENANG
+  // ====================================================================
+  // Yang TIDAK ditutup STEP 0b: admin membatalkan pesanan karena salah setup
+  // jadwal, menjadwalkan tanggal BARU, lalu peneliti membayar lewat link
+  // invoice jadwal LAMA. Status baris tagihannya tidak pernah berubah — ia
+  // tetap `pending` — jadi STEP 0b melihat tagihan yang sehat dan uangnya
+  // menggerakkan jadwal yang sudah bukan haknya.
+  //
+  // `is_superseded` masuk ke sini juga: ia hanya menyala oleh baris LUNAS
+  // (sql/83), jadi dua tagihan `pending` bisa hidup berdampingan dan yang
+  // dibayar bisa saja yang bukan penyalipnya.
+  //
+  // Perlakuannya SAMA PERSIS dengan `paid_on_dead_bill`: nol tulisan, 200,
+  // antrekan ke admin. Yang beda cuma tindakan yang dibutuhkan — di sini
+  // uangnya dipindahkan ke tagihan yang berwenang, bukan direfund.
+  const staleBill = staleBillOutcome({
+    verdicts: await fetchStaleVerdicts(sb, billRows, invoiceNumber),
+    invoiceNumber,
+    amount,
+  });
+  if (staleBill) {
+    console.error(`[Webhook] PAID ON STALE BILL for ${invoiceNumber}: ${staleBill.errorMessage} No DB writes performed.`);
+    return staleBill;
   }
 
   // ====================================================================

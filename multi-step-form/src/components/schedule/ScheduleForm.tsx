@@ -8,11 +8,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils';
 import { MAX_EXTRA_ADS_PER_DAY, MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
 import {
-  fetchSlotAvailability, setScheduleExtraAd, supabase, updateExtendScheduleDates,
-  updateScheduleDates,
-  type AdScheduleEntry,
+  fetchScheduleBilling, fetchSlotAvailability, killDokuLinksForSchedule,
+  setScheduleExtraAd, supabase, updateExtendScheduleDates, updateScheduleDates,
+  type AdScheduleEntry, type DokuKillReport,
 } from '@/utils/supabase';
 import { nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { rescheduleResetPatch } from '@/utils/rescheduleReset';
 import { isAiringNowSchedule, isSchedulePaid } from '@/components/status/scheduleAxes';
 import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
 import { airingDayCount, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
@@ -224,7 +225,9 @@ export function ScheduleForm({
    * berubah jadi tong sampah. Yang ditambahkan adalah harga yang harus dibayar
    * untuk memakainya: menyebut konsekuensinya, lalu mengabari penelitinya.
    */
-  const [pendingMove, setPendingMove] = useState<{ from: string | null; to: string } | null>(null);
+  const [pendingMove, setPendingMove] = useState<
+    { from: string | null; to: string; kind: 'paid' | 'live_bill' } | null
+  >(null);
 
   const [regularCounts, setRegularCounts] = useState<Record<string, number>>({});
   const [extraCounts, setExtraCounts] = useState<Record<string, number>>({});
@@ -320,8 +323,40 @@ export function ScheduleForm({
     // dialog konsekuensi lebih dulu. Hanya sekali — `pendingMove` dikosongkan
     // tepat sebelum `commit()` supaya konfirmasinya tidak berulang.
     if (!isCreate && entry && isSchedulePaid(entry) && startIso !== entry.startDate) {
-      setPendingMove({ from: entry.startDate, to: startIso });
+      setPendingMove({ from: entry.startDate, to: startIso, kind: 'paid' });
       return;
+    }
+
+    /*
+      Gerbang E1b: tanggalnya pindah sementara ada tagihan yang MASIH BISA
+      DIBAYAR. Sampai sekarang jalur ini tidak punya konfirmasi apa pun — dan
+      justru inilah kasus yang melahirkan insiden aslinya: link lama tetap
+      menagih untuk tanggal yang sudah bukan miliknya.
+
+      Bedanya dengan E1 bukan kosmetik. E1 memindahkan uang yang SUDAH masuk
+      (kuitansinya tetap berlaku); di sini uangnya BELUM masuk, dan yang
+      terjadi adalah tagihannya dicabut — peneliti harus ditagih ulang.
+
+      ⚠️ "Masih bisa dibayar" DIBACA DARI `fetchScheduleBilling`, bukan dihitung
+      di sini: ia memakai `isLiveInvoice` yang sendirinya cermin `live` di
+      `schedule_billing_summary()` (sql/83). Menuliskan predikatnya lagi di
+      komponen ini akan jadi definisi keempat.
+
+      Kegagalan membacanya TIDAK memblokir: dialog konfirmasi adalah lapisan
+      kenyamanan, dan pencabutan sesungguhnya tetap jalan di `handleSaveEdit`.
+    */
+    if (!isCreate && entry && !isSchedulePaid(entry) && startIso !== entry.startDate) {
+      let hasLiveBill = false;
+      try {
+        const billing = await fetchScheduleBilling(submissionId);
+        hasLiveBill = !!billing.get(entry.id)?.openInvoice;
+      } catch (e) {
+        console.error('[ScheduleForm] gagal memeriksa tagihan hidup sebelum pindah tanggal:', e);
+      }
+      if (hasLiveBill) {
+        setPendingMove({ from: entry.startDate, to: startIso, kind: 'live_bill' });
+        return;
+      }
     }
 
     await commit();
@@ -349,6 +384,33 @@ export function ScheduleForm({
     if (!entry) throw new Error('Jadwal yang disunting tidak ditemukan.');
     if (!selectedYmd || !startIso || !endIso) throw new Error('Waktu tayang tidak valid.');
 
+    /*
+      ⚠️ LINK BAYAR LAMA DICABUT SEBELUM TANGGALNYA BERGERAK.
+
+      Ini kasus yang melahirkan seluruh rencana ini: admin membatalkan pesanan
+      karena salah setup jadwal, menjadwalkan tanggal BARU, lalu peneliti
+      membayar lewat link invoice jadwal LAMA. Statusnya tidak pernah berubah,
+      jadi tidak ada satu pun lapisan yang mencurigainya.
+
+      Sesudah tanggalnya pindah, `is_stale` (sql/60 → 82) memang menyala dan
+      SETIAP LAYAR berhenti menganggapnya hidup — tapi link DOKU-nya tetap
+      menagih, karena tidak ada yang pernah memberi tahu DOKU. Itu yang
+      diperbaiki di sini.
+
+      ⚠️ URUTANNYA MENGIKAT: DOKU DULU, DATABASE KEMUDIAN. Kalau dibalik, ada
+      jendela ketika baris kita sudah basi sementara link-nya masih menagih —
+      dan justru di jendela itu peneliti yang sedang membuka halaman bayar akan
+      membayarnya. Kontrak yang sama dengan `cancelInvoice`.
+
+      Kegagalannya TIDAK menahan pemindahan: admin tidak boleh terjebak karena
+      satu HTTP ke DOKU gagal. Sisanya ditanggung penjaga webhook
+      `paid_on_stale_bill` (sql/85), yang justru dibuat untuk kasus ini.
+    */
+    let dokuKill: DokuKillReport = { attempted: 0, cancelled: 0, failures: [] };
+    if (startIso !== entry.startDate) {
+      dokuKill = await killDokuLinksForSchedule(entry.id, { markCancelled: true });
+    }
+
     // Kolam kuota disimpan LEBIH DULU, sebelum tanggalnya bergerak. Urutan ini
     // penting: `set_schedule_extra_ad` gagal keras untuk Kilat, dan gagal
     // sesudah tanggalnya pindah akan meninggalkan jadwal di tanggal baru dengan
@@ -362,6 +424,39 @@ export function ScheduleForm({
       // MENYUSUN sendiri instant-nya. Mengoper `endIso` ke slot `durationDays`
       // menulis tanggal sampah ke baris extend.
       await updateExtendScheduleDates(entry.sourceId, selectedYmd, duration, selectedHour, selectedMinute);
+
+      /*
+        ⚠️ VONIS KEDALUWARSA IKUT DIBERSIHKAN — lihat `rescheduleReset.ts`.
+        Tanpa ini kartu jadwal yang baru saja dipindah ke tanggal jauh di depan
+        tetap berbunyi "Slot kedaluwarsa", karena `isEntryHoldLapsed()` menyala
+        oleh `paymentStatus === 'expired'` yang tidak pernah dibersihkan siapa pun.
+
+        Statusnya DIBACA ULANG dari server, bukan diambil dari `entry`: kartu
+        bisa basi beberapa detik, dan webhook DOKU boleh mendarat tepat di sela
+        itu. Yang dipertaruhkan: membalik pembayaran yang baru saja sah.
+      */
+      const { data: freshExt } = await supabase
+        .from('ad_schedules')
+        .select('payment_status, status')
+        .eq('source_table', 'form_submissions_extend')
+        .eq('source_id', entry.sourceId)
+        .maybeSingle();
+
+      const extPatch = rescheduleResetPatch({
+        paymentStatus: freshExt?.payment_status,
+        lifecycleStatus: freshExt?.status,
+      });
+      if (extPatch.payment_status) {
+        await supabase
+          .from('ad_schedules')
+          .update({ ...extPatch, updated_at: new Date().toISOString() })
+          .eq('source_table', 'form_submissions_extend')
+          .eq('source_id', entry.sourceId)
+          // Penjaga diulang DI DALAM query, bukan cuma dari baris yang baru
+          // dibaca: pola yang sama dengan `cancelSchedule` dan
+          // `rebookSlotForSubmission`.
+          .not('payment_status', 'in', '("paid","completed")');
+      }
     } else {
       await updateScheduleDates(submissionId, startIso, endIso, selectedHour, selectedMinute);
 
@@ -386,11 +481,40 @@ export function ScheduleForm({
             submission_status: 'slot_reserved',
             slot_booked_by: 'admin',
             slot_reserved_at: new Date().toISOString(),
+            /*
+              ⚠️ `payment_status` DULU TERLEWAT DI SINI, dan itu cacat #MM36J2EW:
+              tiga kolom di atas direset, yang satu ini tidak — jadi kartu jadwal
+              yang sudah dipindah ke 22 Sep tetap berbunyi "Slot kedaluwarsa" dan
+              penelitinya melihat "Batas bayar terlewat". Lihat `rescheduleReset.ts`.
+
+              Presedennya `rebookSlotForSubmission()`, yang menulis
+              `payment_status: 'pending'` untuk keadaan yang sama persis.
+            */
+            ...rescheduleResetPatch({
+              paymentStatus: fresh?.payment_status,
+              lifecycleStatus: fresh?.submission_status,
+            }),
           })
           .eq('id', submissionId);
       }
     }
-    toast.success('Jadwal tayang berhasil diperbarui.');
+    if (dokuKill.failures.length > 0) {
+      // Pemindahannya SUDAH mendarat — ini peringatan, bukan kegagalan. Tapi
+      // tidak boleh sunyi: hanya orang di depan layar ini yang bisa menutup
+      // sisa risikonya.
+      toast.warning(
+        `Jadwal dipindah, tapi ${dokuKill.failures.length} link DOKU lama gagal dimatikan ` +
+        `(${dokuKill.failures.map((f) => f.reason).join('; ')}). ` +
+        'Link lama itu mungkin masih bisa dibayar — beri tahu penelitinya.',
+        { duration: 12000 },
+      );
+    } else if (dokuKill.cancelled > 0) {
+      toast.success(
+        `Jadwal tayang berhasil diperbarui. ${dokuKill.cancelled} link bayar lama dimatikan di DOKU.`,
+      );
+    } else {
+      toast.success('Jadwal tayang berhasil diperbarui.');
+    }
 
     /*
       Kabari penelitinya — Fase ② akhirnya punya notifikasi seperti Fase ①.
@@ -546,7 +670,9 @@ export function ScheduleForm({
       <DialogContent className="sm:max-w-[26rem] p-6">
         <DialogHeader>
           <DialogTitle className="text-base font-bold text-gray-900">
-            Geser tanggal tayang pesanan yang sudah dibayar?
+            {pendingMove?.kind === 'live_bill'
+              ? 'Geser tanggal — tagihan yang berjalan akan dicabut?'
+              : 'Geser tanggal tayang pesanan yang sudah dibayar?'}
           </DialogTitle>
         </DialogHeader>
 
@@ -566,14 +692,33 @@ export function ScheduleForm({
               sudah berjalan, dan respondennya sudah melihat iklan itu di tanggal lama.
             </p>
           )}
-          <p className="text-xs leading-relaxed text-slate-700 font-medium">
-            Pesanan ini sudah dibayar. Uangnya tidak dikembalikan dan tidak ditagih ulang —
-            yang bergeser hanya jendela tayangnya.
-          </p>
-          <p className="text-xs leading-relaxed text-slate-500">
-            Tagihan lunas TIDAK ikut dianggap basi (sql/60), jadi kuitansinya tetap berlaku
-            untuk pesanan ini.
-          </p>
+          {pendingMove?.kind === 'live_bill' ? (
+            <>
+              <p className="text-xs leading-relaxed text-slate-700 font-medium">
+                Tagihan yang berjalan untuk tanggal lama akan DICABUT — link bayarnya kami
+                matikan di DOKU supaya tidak ada yang membayar tanggal yang sudah bukan
+                miliknya.
+              </p>
+              <p className="text-xs leading-relaxed text-amber-800 font-semibold">
+                Penelitinya harus ditagih ulang untuk tanggal yang baru.
+              </p>
+              <p className="text-xs leading-relaxed text-slate-500">
+                Kalau DOKU menolak mematikan link-nya, Anda akan diberi tahu di layar ini —
+                dan link lamanya mungkin masih bisa dibayar.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs leading-relaxed text-slate-700 font-medium">
+                Pesanan ini sudah dibayar. Uangnya tidak dikembalikan dan tidak ditagih ulang —
+                yang bergeser hanya jendela tayangnya.
+              </p>
+              <p className="text-xs leading-relaxed text-slate-500">
+                Tagihan lunas TIDAK ikut dianggap basi (sql/60), jadi kuitansinya tetap berlaku
+                untuk pesanan ini.
+              </p>
+            </>
+          )}
           <p className="text-xs leading-relaxed text-slate-500">
             Penelitinya akan menerima email berisi tanggal lama dan tanggal barunya.
           </p>
@@ -591,7 +736,7 @@ export function ScheduleForm({
             className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold h-9 px-5"
             onClick={() => { setPendingMove(null); void commit(); }}
           >
-            Ya, Geser Tanggal
+            {pendingMove?.kind === 'live_bill' ? 'Ya, Geser & Cabut Tagihan' : 'Ya, Geser Tanggal'}
           </Button>
         </div>
       </DialogContent>

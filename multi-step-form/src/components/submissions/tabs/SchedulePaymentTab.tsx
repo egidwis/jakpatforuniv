@@ -190,12 +190,20 @@ export function SchedulePaymentTab({
       title: `Batalkan jadwal #${entry.bookingId}?`,
       highlight: when,
       lines: [
-        // ⚠️ Klausa "dan tagihan yang masih menggantung ikut dimatikan" DIBUANG:
-        // itu tidak pernah benar. `cancelSchedule()` tidak memanggil API
-        // pembatalan DOKU, jadi link bayarnya tetap hidup di sisi bank — persis
-        // yang terjadi pada order af004b84. Sesudah gerbang 6a, dialog ini juga
-        // hanya muncul ketika sudah TIDAK ada tagihan hidup, jadi kalimatnya
-        // bukan cuma salah, ia juga tidak relevan lagi.
+        /*
+          Klausa "tagihan yang masih menggantung ikut dimatikan" pernah DIBUANG
+          dari sini karena tidak benar: `cancelSchedule()` tidak memanggil API
+          pembatalan DOKU, jadi link bayarnya tetap hidup di sisi bank — persis
+          yang terjadi pada order af004b84.
+
+          Ia kembali sekarang karena `cancelSchedule()` MEMANGGIL Cancel Order
+          lebih dulu. Kalimatnya sengaja tetap berhati-hati ("kami coba
+          matikan"): DOKU bisa menolak (tagihan sudah dibayar/kedaluwarsa, atau
+          kanal kartu), dan hasil sebenarnya dilaporkan di toast sesudahnya —
+          bukan dijanjikan di muka. Menjanjikan yang tidak pasti adalah
+          kebiasaan yang melahirkan af004b84.
+        */
+        'Link bayar yang masih menggantung kami coba matikan di DOKU lebih dulu.',
         'Kuota hari itu langsung bebas dijual lagi.',
         'Tanggalnya TETAP tercatat sebagai riwayat — jadi nanti masih bisa dijawab "jadwal mana yang dibatalkan, untuk tanggal apa".',
         'Ordernya tidak dihapus dan bisa dijadwalkan ulang kapan saja.',
@@ -205,8 +213,28 @@ export function SchedulePaymentTab({
       tone: 'danger',
       onConfirm: async () => {
         try {
-          await cancelSchedule(entry);
-          toast.success('Jadwal dibatalkan. Kuota tanggalnya sudah bebas.');
+          const kill = await cancelSchedule(entry);
+          if (kill.failures.length > 0) {
+            /*
+              ⚠️ Pembatalannya SUDAH mendarat — ini peringatan, bukan kegagalan.
+              Tapi ia tidak boleh sunyi: satu-satunya orang yang bisa menutup
+              sisa risikonya (menghubungi peneliti, memantau webhook) adalah
+              yang sedang menatap layar ini.
+            */
+            toast.warning(
+              `Jadwal dibatalkan, tapi ${kill.failures.length} link DOKU gagal dimatikan ` +
+              `(${kill.failures.map((f) => f.reason).join('; ')}). ` +
+              'Link itu mungkin masih bisa dibayar — pantau notifikasi pembayaran.',
+              { duration: 12000 },
+            );
+          } else if (kill.cancelled > 0) {
+            toast.success(
+              `Jadwal dibatalkan. ${kill.cancelled} link bayar ikut dimatikan di DOKU, ` +
+              'kuota tanggalnya sudah bebas.',
+            );
+          } else {
+            toast.success('Jadwal dibatalkan. Kuota tanggalnya sudah bebas.');
+          }
 
           /*
             Kabari penelitinya. Sampai sekarang pembatalan jadwal oleh tim tidak

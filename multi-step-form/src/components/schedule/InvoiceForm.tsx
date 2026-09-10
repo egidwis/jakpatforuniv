@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { calculateAdCostPerDay, calculateIncentiveCost, voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
+import { payLinkUrl } from '@/utils/payLink';
 import { toWibYmd } from '@/utils/airing-window';
 import {
   getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, supabase,
@@ -358,6 +359,20 @@ export function InvoiceForm({
         dokuRequestId: paymentResponse.doku_request_id,
       }, grandTotal);
 
+      /*
+        ⚠️ Tagihan yang lahir tanpa `doku_request_id` TIDAK BISA dicabut lewat
+        Cancel Order selamanya — satu-satunya yang mematikannya adalah waktu.
+        Itu keadaan yang harus diketahui admin SEKARANG, bukan berjam-jam
+        kemudian saat pembatalannya dicoba dan gagal tanpa sebab yang jelas.
+      */
+      if (!paymentResponse.doku_request_id) {
+        toast.warning(
+          'Tagihan terbit, tapi DOKU tidak memulangkan request_id — link ini TIDAK bisa dimatikan lewat tombol Batalkan Tagihan. ' +
+          'Ia berhenti sendiri saat masa bayarnya habis.',
+          { duration: 12000 },
+        );
+      }
+
       // Hanya jadwal pertama (bukan perpanjangan) yang berarti "pesanan disetujui,
       // tagihan siap" — perpanjangan tidak pernah melalui review manual.
       if (!entry.isExtension && submission.researcherEmail) {
@@ -368,7 +383,14 @@ export function InvoiceForm({
             name: submission.researcherName || 'Kak',
             email: submission.researcherEmail,
             title: submission.title || undefined,
-            invoiceUrl: paymentResponse.invoice_url,
+            /*
+              ⚠️ LINK PERANTARA, BUKAN URL DOKU MENTAH. URL DOKU menagih untuk
+              keadaan saat ia dicetak, selamanya — dan email tidak bisa ditarik
+              kembali. Order af004b84 dibayar lewat link seperti itu, 20 menit
+              sesudah jadwalnya dibatalkan. `/bayar/<id>` menjawab keadaan HARI
+              INI setiap kali diklik. Lihat `payLink.ts`.
+            */
+            invoiceUrl: payLinkUrl(entry.id),
             amount: grandTotal,
           }),
         }).catch((err) => console.error('Failed to send invoice-ready email:', err));
@@ -396,7 +418,9 @@ export function InvoiceForm({
           researcherName: submission.researcherName,
           bundles: [{ title: submission.title || 'Survei Anda', startDate: entry.startDate }],
           amount: grandTotal,
-          invoiceUrl: paymentResponse.invoice_url,
+          // Link perantara, alasan sama dengan email di atas — dan WhatsApp
+          // lebih sulit ditarik daripada email.
+          invoiceUrl: payLinkUrl(entry.id),
         }));
       }
 

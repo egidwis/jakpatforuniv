@@ -322,7 +322,7 @@ Ketiganya laten **justru karena** top-up cuma bisa lewat admin dan belum pernah 
 Begitu "jadwalkan iklan lagi" dibuka untuk user (Phase 4), frekuensinya naik dari nol jadi
 rutin, dan ketiganya berubah dari laten jadi hidup sekaligus.
 
-> **⛔ Masalah desain yang wajib dijawab sebelum tabelnya dirancang.** **83 order sudah
+> **⛔ Masalah desain yang wajib dijawab sebelum tabelnya dirancang.** ~~83~~ **2 order** (ukur ulang 2026-09-08; 88 dari 91 yang cocok kriteria lama ternyata keranjang telantar) sudah
 > mendanai hadiah tapi belum punya tanggal sama sekali** (25 di antaranya sejak Juli 2026)
 > — `start_date IS NULL`, sehingga `period_batch` tidak bisa dihitung. Kunci
 > `(submission_id, period_batch)` tidak punya tempat untuk mereka. Ini bukan detail
@@ -373,7 +373,7 @@ Agregasi batch tidak lagi ditulis dua kali saat 8B-2 dikerjakan — 8B-1 sudah m
 jadi satu implementasi (`get_batch_rewards_bulk`, `sql/44`). Konsekuensinya 8B-2 cukup
 mengubah **isi** satu fungsi, bukan dua tempat yang harus dijaga tetap sepakat.
 
-- [ ] **Jawab dulu:** di mana pool tinggal untuk 83 order berhadiah tanpa `start_date`
+- [ ] ~~**Jawab dulu:** di mana pool tinggal untuk 83 order berhadiah tanpa `start_date`~~ → **TERJAWAB 2026-09-08: cuma 2 order (Rp 120.000), jadi kuncinya boleh NOT NULL**
 - [ ] Buat tabel `reward_pools` (`sql/46`) + migrasi data dari
       `form_submissions.prize_per_winner` per `(submission_id, period_batch)`
 - [ ] Tulis ulang isi `get_batch_rewards_bulk` untuk membaca dari `reward_pools`
