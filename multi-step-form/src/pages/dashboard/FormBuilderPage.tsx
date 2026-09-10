@@ -5,7 +5,8 @@ import type { QuestionBlock, QuestionType } from '../../utils/customForms';
 import {
   getCustomFormById,
   saveCustomForm,
-  uploadFormImage
+  uploadFormImage,
+  getFormResponses
 } from '../../utils/customForms';
 import { QuestionBlockEditor } from '../../components/form-builder/QuestionBlockEditor';
 import { FormAiAssistantDrawer } from '../../components/form-builder/FormAiAssistantDrawer';
@@ -26,6 +27,7 @@ import {
   Copy,
   CheckCircle2,
   FileText,
+  Users,
   Sparkles,
   Cloud,
   Send,
@@ -50,6 +52,7 @@ export const FormBuilderPage: React.FC = () => {
   const [loading, setLoading] = useState(!!formId);
   const [saving, setSaving] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [responseCount, setResponseCount] = useState<number>(0);
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(true);
 
   const [title, setTitle] = useState('Untitled Form');
@@ -151,6 +154,8 @@ export const FormBuilderPage: React.FC = () => {
         setHeaderImageUrl(form.header_image_url || null);
         setStatus(form.status === 'published' ? 'published' : 'draft');
         setBlocks(form.schema && form.schema.length > 0 ? form.schema : []);
+        // Load response count
+        getFormResponses(id).then(res => setResponseCount(res?.length || 0)).catch(() => {});
       } else {
         toast.error('Form not found');
         navigate('/dashboard/forms');
@@ -431,6 +436,37 @@ export const FormBuilderPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Center Navigation Tabs (Pertanyaan vs Respon) */}
+          {formId && (
+            <div className="hidden md:flex items-center p-1 bg-gray-100 dark:bg-gray-700/60 rounded-xl border border-gray-200/80 dark:border-gray-600/60 shadow-2xs">
+              <button
+                type="button"
+                className="px-3 py-1 text-xs font-bold rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs flex items-center gap-1.5 transition-all"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Pertanyaan</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/dashboard/forms/${formId}/responses`)}
+                className="px-3 py-1 text-xs font-semibold rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-gray-700/60 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Buka hasil respon survei"
+              >
+                <Users className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                <span>Respon</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    responseCount > 0
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                      : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                  }`}
+                >
+                  {responseCount}
+                </span>
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             {/* Ask AI Button */}

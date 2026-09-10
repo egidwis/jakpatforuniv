@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Search,
   BarChart3,
+  Users,
   Megaphone
 } from 'lucide-react';
 import emptyFormIllustration from '../../assets/illustration JFU form.png';
@@ -251,20 +252,37 @@ export const FormListPage: React.FC = () => {
                 {/* Right Metadata & Action Buttons */}
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0 text-xs w-full sm:!w-auto justify-between sm:!justify-end">
                   {/* Status & Submissions info */}
-                  <div className="flex items-center gap-1.5 text-gray-400 font-normal">
+                  <div className="flex items-center gap-2 text-gray-400 font-normal">
                     <span
-                      className={`font-semibold ${
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
                         isPublished
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-gray-500 dark:text-gray-400'
+                          ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400'
+                          : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400'
                       }`}
                     >
                       {isPublished ? 'Published' : 'Draft'}
                     </span>
-                    <span>·</span>
-                    <span>{responseCount} submissions</span>
-                    <span>·</span>
-                    <span>{timeAgo(form.updated_at)}</span>
+
+                    {/* Interactive Response Count Badge */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/dashboard/forms/${form.id}/responses`);
+                      }}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer shadow-2xs ${
+                        responseCount > 0
+                          ? 'bg-blue-50 text-blue-700 border-blue-200/90 hover:bg-blue-100 hover:border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800'
+                          : 'bg-slate-50 text-slate-600 border-slate-200/90 hover:bg-slate-100 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700'
+                      }`}
+                      title="Lihat hasil respon form"
+                    >
+                      <Users className="w-3 h-3 text-current" />
+                      <span>{responseCount} Respon</span>
+                    </button>
+
+                    <span className="text-gray-300 dark:text-gray-600">·</span>
+                    <span className="text-[11px]">{timeAgo(form.updated_at)}</span>
                   </div>
 
                   {/* Inline Quick Action Buttons (Show on Hover / Desktop) */}
@@ -289,10 +307,10 @@ export const FormListPage: React.FC = () => {
                         e.stopPropagation();
                         navigate(`/dashboard/forms/${form.id}/responses`);
                       }}
-                      className="h-7 w-7 p-0 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="h-7 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 flex items-center gap-1 font-semibold rounded-lg"
                       title="Lihat Hasil Respon"
                     >
-                      <BarChart3 className="w-3.5 h-3.5" />
+                      <BarChart3 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Respon</span>
                     </Button>
 
                     <Button
