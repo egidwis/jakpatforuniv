@@ -13,6 +13,7 @@ import {
   type AdScheduleEntry, type DokuKillReport,
 } from '@/utils/supabase';
 import { nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { rescheduleResetPatch } from '@/utils/rescheduleReset';
 import { isAiringNowSchedule, isSchedulePaid } from '@/components/status/scheduleAxes';
 import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
 import { airingDayCount, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
@@ -423,6 +424,39 @@ export function ScheduleForm({
       // MENYUSUN sendiri instant-nya. Mengoper `endIso` ke slot `durationDays`
       // menulis tanggal sampah ke baris extend.
       await updateExtendScheduleDates(entry.sourceId, selectedYmd, duration, selectedHour, selectedMinute);
+
+      /*
+        ⚠️ VONIS KEDALUWARSA IKUT DIBERSIHKAN — lihat `rescheduleReset.ts`.
+        Tanpa ini kartu jadwal yang baru saja dipindah ke tanggal jauh di depan
+        tetap berbunyi "Slot kedaluwarsa", karena `isEntryHoldLapsed()` menyala
+        oleh `paymentStatus === 'expired'` yang tidak pernah dibersihkan siapa pun.
+
+        Statusnya DIBACA ULANG dari server, bukan diambil dari `entry`: kartu
+        bisa basi beberapa detik, dan webhook DOKU boleh mendarat tepat di sela
+        itu. Yang dipertaruhkan: membalik pembayaran yang baru saja sah.
+      */
+      const { data: freshExt } = await supabase
+        .from('ad_schedules')
+        .select('payment_status, status')
+        .eq('source_table', 'form_submissions_extend')
+        .eq('source_id', entry.sourceId)
+        .maybeSingle();
+
+      const extPatch = rescheduleResetPatch({
+        paymentStatus: freshExt?.payment_status,
+        lifecycleStatus: freshExt?.status,
+      });
+      if (extPatch.payment_status) {
+        await supabase
+          .from('ad_schedules')
+          .update({ ...extPatch, updated_at: new Date().toISOString() })
+          .eq('source_table', 'form_submissions_extend')
+          .eq('source_id', entry.sourceId)
+          // Penjaga diulang DI DALAM query, bukan cuma dari baris yang baru
+          // dibaca: pola yang sama dengan `cancelSchedule` dan
+          // `rebookSlotForSubmission`.
+          .not('payment_status', 'in', '("paid","completed")');
+      }
     } else {
       await updateScheduleDates(submissionId, startIso, endIso, selectedHour, selectedMinute);
 
@@ -447,6 +481,19 @@ export function ScheduleForm({
             submission_status: 'slot_reserved',
             slot_booked_by: 'admin',
             slot_reserved_at: new Date().toISOString(),
+            /*
+              ⚠️ `payment_status` DULU TERLEWAT DI SINI, dan itu cacat #MM36J2EW:
+              tiga kolom di atas direset, yang satu ini tidak — jadi kartu jadwal
+              yang sudah dipindah ke 22 Sep tetap berbunyi "Slot kedaluwarsa" dan
+              penelitinya melihat "Batas bayar terlewat". Lihat `rescheduleReset.ts`.
+
+              Presedennya `rebookSlotForSubmission()`, yang menulis
+              `payment_status: 'pending'` untuk keadaan yang sama persis.
+            */
+            ...rescheduleResetPatch({
+              paymentStatus: fresh?.payment_status,
+              lifecycleStatus: fresh?.submission_status,
+            }),
           })
           .eq('id', submissionId);
       }
