@@ -18,6 +18,7 @@ import { ScheduleCardList, ScheduleCardSkeleton } from './ScheduleCardList';
 import { cardStateOf, pickTargetSchedule } from './scheduleCardActions';
 import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
 import { openWhatsApp, slotBookedMessage } from '@/utils/waMessage';
+import { dokuLinkWarning } from '@/utils/dokuLinkWarning';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Jadwal & Bayar.
@@ -332,11 +333,8 @@ export function SchedulePaymentTab({
         // Uangnya sudah diterima di luar sistem, tapi link-nya mungkin masih
         // hidup menagih total penuh — persis jendela bayar-ganda B2, cuma
         // pindah pemicu. Admin satu-satunya yang bisa menindaklanjuti.
-        toast.warning(
-          `${group.memberCount} pesanan ditandai lunas, tapi link DOKU-nya MUNGKIN MASIH BISA DIBAYAR `
-          + `(${res.dokuReason}). Beri tahu penelitinya jangan membayar link yang lama.`,
-          { duration: 12000 },
-        );
+        const w = dokuLinkWarning('settled', `${group.memberCount} pesanan`, res.dokuReason);
+        toast.warning(w.title, { description: w.description, duration: 12000 });
       } else {
         toast.success(`${group.memberCount} pesanan ditandai lunas. Link bayarnya sudah dinonaktifkan di DOKU.`);
       }
@@ -533,10 +531,8 @@ export function SchedulePaymentTab({
               bukan `success` yang menenangkan: menenangkan tanpa dasar persis
               yang membuat insiden af004b84 terjadi.
             */
-            toast.warning(
-              `Tagihan ${paymentId} dibatalkan, tapi link DOKU-nya MUNGKIN MASIH BISA DIBAYAR (${res.dokuReason}). Beri tahu penelitinya jangan membayar link yang lama.`,
-              { duration: 10000 },
-            );
+            const w = dokuLinkWarning('cancelled', paymentId, res.dokuReason);
+            toast.warning(w.title, { description: w.description, duration: 12000 });
           }
           reload();
           onExtendCreated();

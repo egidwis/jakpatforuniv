@@ -19,6 +19,59 @@
 
 const REQUEST_TARGET = '/checkout/v3/cancellations';
 
+/**
+ * Terjemahkan penolakan DOKU jadi SEBAB — bukan pengulangan akibatnya.
+ *
+ * ⚠️ KALIMAT LAMANYA TAUTOLOGI. Ia berbunyi "DOKU tidak bisa menonaktifkan link
+ * ini. Link lamanya mungkin masih bisa dibayar." — persis apa yang SUDAH
+ * dikatakan toast di sekitarnya, jadi admin membaca akibat yang sama dua kali
+ * dan tidak pernah membaca sebabnya sekali pun. Selama itu, "sudah dicoba
+ * berkali-kali tanpa hasil" tidak punya jalan untuk berubah jadi tindakan.
+ *
+ * ⚠️ SEBAB PERTAMA YANG PERNAH TEREKAM (2026-09-10, tagihan
+ * `JFU-INV-5b73a8-1789044625252`, lewat `doku_cancel_last_error` sql/87):
+ *
+ *     HTTP 400 · {"error":{"message":"Merchant not support cancel order,
+ *                 please do activation through DOKU dashboard."}}
+ *
+ * Cancel Order TIDAK PERNAH AKTIF di akun ini. Itu menjelaskan kenapa
+ * `invoices.doku_cancelled_at` masih nol baris seumur hidup — bukan tanda
+ * tangan yang salah, bukan `request_id` yang hilang, melainkan sebuah setelan
+ * akun. Sampai ia dinyalakan, SETIAP pembatalan akan pulang begini.
+ *
+ * Badan mentahnya TETAP dipulangkan di `details` dan disimpan apa adanya;
+ * fungsi ini hanya memilih kalimat yang dibaca manusia.
+ */
+export function explainDokuRejection(httpStatus, body) {
+  const text = String(body || '');
+  const low = text.toLowerCase();
+
+  if (low.includes('not support cancel order') || low.includes('do activation')) {
+    return 'fitur Cancel Order belum aktif di akun DOKU — semua pembatalan akan gagal sampai diaktifkan lewat dashboard DOKU';
+  }
+  if (low.includes('already paid') || low.includes('has been paid') || low.includes('order is paid')) {
+    return 'DOKU menganggap pesanan ini sudah dibayar';
+  }
+  if (low.includes('expired')) {
+    return 'pesanannya sudah kedaluwarsa di DOKU';
+  }
+  if (low.includes('not found') || low.includes('invalid original_request_id')) {
+    return 'DOKU tidak mengenali request_id tagihan ini';
+  }
+
+  // Tak dikenali: pulangkan pesan DOKU apa adanya, bukan kalimat kami yang
+  // mengarang. Yang tidak bisa dijelaskan lebih baik dikutip.
+  try {
+    const parsed = JSON.parse(text);
+    const msg = parsed?.error?.message || parsed?.message;
+    if (msg) return `DOKU menolak (HTTP ${httpStatus}): ${String(msg).slice(0, 160)}`;
+  } catch { /* bukan JSON — jatuh ke bawah */ }
+
+  return text.trim()
+    ? `DOKU menolak (HTTP ${httpStatus}): ${text.trim().slice(0, 160)}`
+    : `DOKU menolak tanpa pesan (HTTP ${httpStatus})`;
+}
+
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -124,7 +177,9 @@ export async function onRequest(context) {
         cancelled: false,
         reason: 'doku_rejected',
         httpStatus: dokuResponse.status,
-        message: 'DOKU tidak bisa menonaktifkan link ini. Link lamanya mungkin masih bisa dibayar.',
+        // SEBAB, bukan akibat — akibatnya sudah dikatakan pemanggil. Lihat
+        // catatan di `explainDokuRejection`.
+        message: explainDokuRejection(dokuResponse.status, resultText),
         details: resultText,
       });
     }

@@ -28,6 +28,7 @@ import { buildTxGroupIndex } from './transactions/types';
 import { TransactionDetailSheet } from './transactions/TransactionDetailSheet';
 import { WalletView } from './transactions/WalletView';
 import { WebhookFailuresBanner } from './transactions/WebhookFailuresBanner';
+import { dokuLinkWarning } from '@/utils/dokuLinkWarning';
 
 type FinanceTab = 'transaksi' | 'wallet';
 
@@ -287,10 +288,8 @@ export function TransactionsPage() {
               bukan `success` yang menenangkan: menenangkan tanpa dasar persis
               yang membuat insiden af004b84 terjadi.
             */
-            toast.warning(
-              `Tagihan ${paymentId} dibatalkan, tapi link DOKU-nya MUNGKIN MASIH BISA DIBAYAR (${res.dokuReason}). Beri tahu penelitinya jangan membayar link yang lama.`,
-              { duration: 10000 },
-            );
+            const w = dokuLinkWarning('cancelled', paymentId, res.dokuReason);
+            toast.warning(w.title, { description: w.description, duration: 12000 });
           }
           // Menyegarkan daftar DAN daftar tagihan hidup sekaligus, jadi tombolnya
           // hilang dari baris yang baru saja dibatalkan.
