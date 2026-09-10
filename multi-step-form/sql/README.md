@@ -8,11 +8,12 @@ Berkas ini adalah satu-satunya catatan urutannya.
 
 1. **Terapkan menaik menurut nomor.** `59` sebelum `59b` sebelum `60` sebelum `60b`.
    Huruf akhiran = "menyusul di nomor yang sama", bukan varian yang boleh dipilih.
-2. **Nomor boleh bolong.** `10`, `17`, dan `50` tidak pernah ada di repo ini.
-   `50` sengaja **dipesan** untuk `reward_pools` yang belum ditulis — bukan berkas
-   hilang. Jangan memakai ulang nomornya. **`86` juga dipesan** — untuk pelebaran
-   `create_ad_schedule()` di Phase 4 (penjadwalan swalayan). Per 2026-09-10
-   `86` masih kosong dan tetap jadi nomor bebas berikutnya.
+2. **Nomor boleh bolong.** `10` dan `17` tidak pernah ada di repo ini.
+   `50` **sudah terisi** sejak 2026-09-11 — `50_reward_pools.sql`, persis objek
+   yang nomornya dipesan sejak 2026-08-10. **`86` masih dipesan** — untuk
+   pelebaran `create_ad_schedule()` di Phase 4 (penjadwalan swalayan). Per
+   2026-09-11 `86` masih kosong; nomor bebas berikutnya tetap `88`
+   (`87` sudah dipakai).
 3. **Nomor baru mengambil angka tertinggi + 1.** Kalau angka itu sudah dipakai
    dan sudah diterapkan ke produksi, pakai akhiran huruf (`60b`) — jangan
    mengganti nama berkas yang sudah dijalankan orang lain.
@@ -146,6 +147,7 @@ sistem dan kolomnya tetap `pending` selamanya. Untuk pertanyaan uang, baca
 | `46` | Dua sumbu terpisah: **review** (`in_review/approved/rejected/spam`) vs **tayang** (`waiting_payment/paid/scheduled/live/completed`) |
 | `48` | Notifikasi "iklan mulai tayang" (pg_cron). ⚠️ Cron-nya menyala sebelum endpoint-nya dideploy — 3 order kehilangan email; verifikasinya di `net._http_response`, bukan `cron.job` |
 | `49` | Jam tayang kustom untuk jadwal ordinal 1 akhirnya sampai ke `ad_schedules` |
+| `50` | `reward_pools` — kolam hadiah jadi **baris**, bukan agregasi yang dihitung ulang di dua fungsi. Menyimpan hadiah **per pemenang** (total kolam = turunan); `period_batch` NOT NULL, jadi 97 order berhadiah **tanpa** `end_date` sengaja di luar tabel. ⚠️ Rilis A Phase 4: menanam tabel + backfill 900 baris **tanpa** mengalihkan `get_batch_rewards*`/`get_schedule_batch_context` — pengalihan itu wajib serentak, jadi dipisah |
 | `51` | `booking_id` + `schedule_id` — identitas yang bisa diucapkan manusia |
 | `52` | `form_submissions_extend` jadi VIEW di atas `ad_schedules` |
 | `62` | Pembatalan slot oleh admin punya nama sendiri di sumbu tayang |
@@ -178,7 +180,7 @@ tidak melakukan apa-apa; sentuh kolom yang terdaftar, mis.
 yang benar-benar tayang. Kolom itu maju saat ditulis dan tidak pernah mundur
 sendiri. Untuk pertanyaan "sedang tayang atau tidak", tanggal menang atas kolom.
 
-## Status terap (51–87)
+## Status terap (50–87)
 
 Diverifikasi langsung ke produksi (`zewuzezbmrmpttysjvpg`) dengan memeriksa objek
 yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-08-19,
@@ -226,6 +228,7 @@ yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-0
 | `84_doku_request_id_and_cancellation` | `invoices.doku_request_id`, `invoices.doku_cancelled_at` | ✅ diverifikasi 2026-09-10 — kedua kolom ada |
 | `85_stale_bill_and_authoritative_url` | `authoritative_payment_url()` + outcome `paid_on_stale_bill` | ✅ diterapkan 2026-09-08 — sepakat 100% dengan `schedule_billing_summary()` di ±1.060 jadwal, nol selisih |
 | `85_add_ai_prescreening_to_submissions` | `form_submissions.ai_prescreening` (JSONB) | ✅ diterapkan 2026-09-10 — lihat tabrakan nomor `85` di atas |
+| `50_reward_pools` | tabel `reward_pools` + backfill 900 baris | ✅ diterapkan 2026-09-11 — **900 baris**, nol order tak bertanggal bocor, 2 policy, 4 constraint, **nol selisih** dengan `get_batch_rewards` di seluruh 900 pool; ACL `postgres \| authenticated \| service_role` — **`anon` tercabut**. ⚠️ Fungsi hadiah **belum** dialihkan ke tabel ini (disengaja, lihat kepala berkas) |
 | `86` | **DIPESAN, belum ditulis** — pelebaran `create_ad_schedule()` untuk penjadwalan swalayan (Phase 4). Jangan dipakai untuk hal lain | ⬜ |
 | `87_bill_cancelled_reason_and_cancel_error` | `reason = 'bill_cancelled'` + `invoices.doku_cancel_last_error` | ✅ diterapkan 2026-09-10 — `bill_cancelled` mendarat tepat 2 jadwal (`ZS4ZNN96`, `MM36J2EW`), `expired` 114 → 112, sisanya nol bergeser; `live` masih sepakat 100% dengan `schedule_billing_summary()` (nol selisih); ACL `postgres \| authenticated \| service_role` — **`anon` tercabut** |
 
