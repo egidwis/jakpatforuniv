@@ -6,6 +6,9 @@ compatibility_flags = ["nodejs_compat"]
 # Cloudflare Browser Rendering binding untuk automated AI pre-screening
 browser = { binding = "MYBROWSER" }
 
+[env.production]
+browser = { binding = "MYBROWSER" }
+
 [env.production.vars]
 VITE_SUPABASE_URL = "https://zewuzezbmrmpttysjvpg.supabase.co"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpld3V6ZXpibXJtcHR0eXNqdnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3NDg0MzMsImV4cCI6MjA2MzMyNDQzM30.IsFpW4TMm1mrLse-dZNvZpB-srOIFb9f2XBgNpaOwpI"
