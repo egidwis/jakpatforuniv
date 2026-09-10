@@ -117,27 +117,29 @@ export const FormResponsesPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Center Navigation Tabs (Pertanyaan vs Respon) */}
-        <div className="hidden lg:flex items-center p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-2xs">
-          <button
-            type="button"
-            onClick={() => navigate(`/dashboard/forms/${form.id}/edit`)}
-            className="px-3 py-1 text-xs font-semibold rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-gray-700/60 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Buka Editor Pertanyaan"
-          >
-            <FileText className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-            <span>Pertanyaan</span>
-          </button>
-          <button
-            type="button"
-            className="px-3 py-1 text-xs font-bold rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-2xs flex items-center gap-1.5 transition-all"
-          >
-            <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <span>Respon</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-              {responses.length}
-            </span>
-          </button>
+        {/* Center Navigation Tabs (Pertanyaan vs Respon) - Desktop Only */}
+        <div className="hidden md:block">
+          <div className="flex items-center p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => navigate(`/dashboard/forms/${form.id}/edit`)}
+              className="px-3 py-1 text-xs font-semibold rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-gray-700/60 flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Buka Editor Pertanyaan"
+            >
+              <FileText className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+              <span>Pertanyaan</span>
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1 text-xs font-bold rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-2xs flex items-center gap-1.5 transition-all"
+            >
+              <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Respon</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                {responses.length}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -179,9 +181,9 @@ export const FormResponsesPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Navigation Tabs (Pertanyaan vs Respon) */}
-      <div className="lg:hidden flex items-center justify-center -mt-2 mb-2">
-        <div className="flex items-center w-full max-w-xs p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-2xs">
+      {/* Mobile Navigation Tabs (Pertanyaan vs Respon) - Mobile Only */}
+      <div className="md:hidden -mt-2 mb-4">
+        <div className="flex items-center w-full max-w-xs mx-auto p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-2xs">
           <button
             type="button"
             onClick={() => navigate(`/dashboard/forms/${form.id}/edit`)}
