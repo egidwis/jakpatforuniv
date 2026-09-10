@@ -10,10 +10,21 @@ Berkas ini adalah satu-satunya catatan urutannya.
    Huruf akhiran = "menyusul di nomor yang sama", bukan varian yang boleh dipilih.
 2. **Nomor boleh bolong.** `10`, `17`, dan `50` tidak pernah ada di repo ini.
    `50` sengaja **dipesan** untuk `reward_pools` yang belum ditulis — bukan berkas
-   hilang. Jangan memakai ulang nomornya.
+   hilang. Jangan memakai ulang nomornya. **`86` juga dipesan** — untuk pelebaran
+   `create_ad_schedule()` di Phase 4 (penjadwalan swalayan). Per 2026-09-10
+   `86` masih kosong dan tetap jadi nomor bebas berikutnya.
 3. **Nomor baru mengambil angka tertinggi + 1.** Kalau angka itu sudah dipakai
    dan sudah diterapkan ke produksi, pakai akhiran huruf (`60b`) — jangan
    mengganti nama berkas yang sudah dijalankan orang lain.
+
+   ⚠️ **"Tertinggi" berarti tertinggi di SELURUH remote, bukan di working tree
+   Anda.** Sebelum mengambil nomor, jalankan `git fetch` lalu
+   `git ls-tree --name-only origin/main multi-step-form/sql/ | tail`. Tabrakan
+   `85` (di bawah) lahir persis karena langkah ini dilewati di **dua** branch
+   sekaligus: masing-masing melihat `84` sebagai tertinggi, dan keduanya benar
+   menurut pandangannya sendiri. Git tidak menolak — nama berkasnya berbeda,
+   jadi merge-nya bersih dan tabrakannya baru terlihat saat ada yang membaca
+   folder ini.
 4. **`sql/` BUKAN sumber kebenaran RLS produksi.** Terbukti 2026-08-19: tiga
    policy `USING (true)` / `WITH CHECK (true)` hidup di `form_submissions`
    tanpa ada satu pun di folder ini — dibuat langsung lewat dashboard. Sebelum
@@ -44,12 +55,32 @@ Berkas ini adalah satu-satunya catatan urutannya.
 | 59 | `59_secure_transactions_update_rls` + `59b_survey_analyses` | **sudah dipisah** — `59b` mengikuti konvensi `60b` |
 | 60 | `60_billing_staleness` + `60b_ad_completed_notifications` | sudah memakai konvensi akhiran sejak awal |
 | 61 | `61_extend_legacy_to_backup_schema` + `61_custom_mission_requests` | objek tak berhubungan (skema `backup` vs tabel baru); **keduanya sudah di produksi**, jadi tidak diganti nama |
+| 85 | `85_stale_bill_and_authoritative_url` + `85_add_ai_prescreening_to_submissions` | objek tak berhubungan (jalur uang vs kolom `form_submissions.ai_prescreening`); **keduanya sudah di produksi** per 2026-09-10, jadi tidak diganti nama |
 
 Tiga tabrakan pertama lahir sebelum konvensi akhiran ada dan **sengaja
 dibiarkan**: tidak ada urutan yang mengikat di antara pasangannya, dan mengganti
 nama berkas yang sudah lama diterapkan hanya memindahkan kebingungan. Tabrakan
 `61` menyusul setelahnya dan dibiarkan atas alasan yang sama — keduanya sudah
 dijalankan, jadi mengganti nama hanya memutus jejak.
+
+**Tabrakan `85` beda kelasnya, dan itu yang perlu diingat.** Empat yang di atas
+lahir dari sejarah — konvensi akhirannya memang belum ada. `85` lahir dari **dua
+branch yang berjalan paralel** dan sama-sama mengambil "84 + 1":
+
+- `85_stale_bill_and_authoritative_url` — branch `fix/link-bayar-berwenang`,
+  diterapkan ke produksi 8 Sep
+- `85_add_ai_prescreening_to_submissions` — `main`, diterapkan 10 Sep
+
+Keduanya sudah dijalankan sebelum branch-nya bertemu, jadi mengganti nama salah
+satunya sekarang justru memutus jejak — persis alasan yang berlaku untuk `61`.
+Yang berubah bukan berkasnya, melainkan **Aturan 3**: nomor diambil sesudah
+`git fetch`, bukan dari isi folder lokal.
+
+⚠️ **Urutan terapnya tidak mengikat di sini** (objeknya tak berhubungan), tapi
+jangan menyimpulkan itu berlaku untuk tabrakan berikutnya. Kalau dua berkas
+bernomor sama menyentuh objek yang sama, salah satunya **wajib** diberi akhiran
+huruf sebelum dijalankan — dan itu hanya mungkin kalau tabrakannya ketahuan
+sebelum diterapkan.
 
 `add_extra_ad_column.sql` tidak bernomor — ia mendahului skema penomoran. Sudah
 diterapkan (kolom `survey_pages.is_extra_ad` ada di produksi).
@@ -82,6 +113,20 @@ catatan kenapa keputusannya berubah.
 | `66` | Menutup tiga policy `true` + menyamakan kepemilikan tagihan |
 | `71` | Rekonsiliasi 5 faktur `paid` tanpa `paid_at` — 3 dibatalkan, 2 di-backfill. Bukan sapuan rata: batch-nya benar, yang hilang jejaknya |
 | `72` | Rekonsiliasi 11 order yang **mencatat** harga lain dari yang **ditagihkan**. Arahnya catatan mengikuti tagihan; 77 selisih lain sengaja ditinggal karena sebagiannya keputusan manusia |
+| `77` | Penolakan webhook ikut dicatat, bukan cuma yang lolos. ⚠️ **`doku_webhook_events_outcome_check` adalah allowlist** — menambah nilai `outcome` di JavaScript tanpa migrasi = INSERT ditolak 400 = penolakannya sendiri gagal dicatat, persis kebutaan yang sink ini dibuat untuk menutup |
+| `80` | Uang yang mendarat di tagihan **mati** dicatat tapi **tidak menggerakkan jadwal** (`paid_on_dead_bill`). Insiden `af004b84`: tagihan terbit 10.25, jadwalnya dibatalkan 10.44, dibayar 20.10 keesokan harinya |
+| `81` | Menutup 182 tagihan `pending` yang link DOKU-nya sudah lama mati. Piutang berjalan **Rp 18.772.750 → Rp 610.500**; nol baris lunas tersentuh. ⚠️ Sekali jalan — **tidak ada cron** yang melakukan ini terus-menerus, jadi `pending` basi akan menumpuk lagi |
+| `82` | `is_stale` akhirnya melihat jadwal yang **mati**, bukan cuma yang **pindah** — `cancelSchedule()` mempertahankan tanggalnya, jadi sebelum ini pembatalan tak terlihat oleh vonis basi |
+| `83` | Umur link jadi bagian vonis: `expires_at` + `is_expired` masuk `schedule_billing*()`. ⚠️ Mencatat juga bahwa **`transactions` tidak punya `expires_at`** — jangan menambahkannya lewat objek `shared` di `buildInvoiceRows`, INSERT-nya akan ditolak 400 dan membatalkan seluruh tagihan |
+| `84` | `invoices.doku_request_id` + `doku_cancelled_at`. `request_id` yang pulang dari DOKU **wajib** disimpan: Cancel Order API menuntutnya sebagai `original_request_id`, jadi tagihan tanpa nilai itu tidak bisa dimatikan selamanya |
+| `85` | `authoritative_payment_url()` — satu tempat yang menjawab "tagihan mana yang berwenang untuk jadwal ini", dipakai resolver `/bayar/<id>`. Plus outcome `paid_on_stale_bill`, sengaja **dipisah** dari `paid_on_dead_bill` karena tindakan adminnya berbeda: pindahkan uangnya vs kembalikan |
+
+⚠️ **Predikat "tagihan hidup" hidup di SQL, dan itu disengaja.** `live` di
+`schedule_billing_summary()` disalin **verbatim** ke `authoritative_payment_url()`
+(`85`) karena Pages Function di-bundle sendiri-sendiri sehingga impor lintas
+berkas gagal. Sisi TypeScript (`isLiveInvoice`) mencerminkannya, tidak
+menurunkannya ulang. Tiga salinan yang menyimpang menentukan apakah uang
+sungguhan menggerakkan jadwal — kalau salah satunya diubah, ubah ketiganya.
 
 ⚠️ **`payment_status` bukan bukti pembayaran.** Sebagian order dibayar di luar
 sistem dan kolomnya tetap `pending` selamanya. Untuk pertanyaan uang, baca
@@ -132,11 +177,12 @@ tidak melakukan apa-apa; sentuh kolom yang terdaftar, mis.
 yang benar-benar tayang. Kolom itu maju saat ditulis dan tidak pernah mundur
 sendiri. Untuk pertanyaan "sedang tayang atau tidak", tanggal menang atas kolom.
 
-## Status terap (51–76)
+## Status terap (51–85)
 
 Diverifikasi langsung ke produksi (`zewuzezbmrmpttysjvpg`) dengan memeriksa objek
 yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-08-19,
-`61_custom_mission_requests` dan `67`–`72` pada 2026-08-26, `73`–`76` pada 2026-08-30.
+`61_custom_mission_requests` dan `67`–`72` pada 2026-08-26, `73`–`76` pada 2026-08-30,
+`77`–`85` pada 2026-09-10.
 
 | berkas | isi | ada di produksi |
 |---|---|---|
@@ -169,6 +215,29 @@ yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-0
 | `74_create_ad_schedule_rpc` | RPC `create_ad_schedule()` — pengganti INSERT lewat view | ✅ diterapkan 2026-08-30 — gerbang non-admin & warisan `is_extra_ad` diuji hidup |
 | `75_extend_rules_move_to_table` | penjaga jendela + sumbu review + resync ordinal jadi trigger `ad_schedules` | ✅ diterapkan 2026-08-30 — tumpang tindih terbukti ditolak lewat tulisan langsung |
 | `76_drop_extend_view` | view `form_submissions_extend` + 3 fungsi trigger yatim dicabut | ✅ diterapkan 2026-08-30 — `to_regclass` NULL, paritas 1006=1006 utuh, 7 trigger `ad_schedules` lengkap |
+| `77_webhook_log_rejections` | outcome penolakan masuk allowlist `doku_webhook_events_outcome_check` | ✅ diverifikasi 2026-09-10 |
+| `78_secure_ad_schedules_update_rls` | policy UPDATE `ad_schedules` (admin saja) | ✅ diverifikasi 2026-09-10 — 1 policy UPDATE terdaftar |
+| `79_reconcile_extend_schedule_cost` | **migrasi data** — biaya jadwal perpanjangan yang tercatat nol | ✅ diterapkan 2026-09-02 (tidak membuat objek; verifikasinya lewat jumlah baris, bukan `information_schema`) |
+| `80_webhook_paid_on_dead_bill` | outcome `paid_on_dead_bill` | ✅ diverifikasi 2026-09-10 |
+| `81_expire_zombie_pending_bills` | **migrasi data** — 182 tagihan `pending` yang sudah lewat umur | ✅ diterapkan 2026-09-03 — piutang Rp 18.772.750 → Rp 610.500, nol baris lunas tersentuh |
+| `82_stale_recognizes_cancelled_schedule` | `schedule_billing()` mengenal jadwal yang dibatalkan | ✅ diverifikasi 2026-09-10 |
+| `83_billing_knows_expiry` | `expires_at` + `is_expired` masuk vonis tagihan | ✅ diverifikasi 2026-09-10 |
+| `84_doku_request_id_and_cancellation` | `invoices.doku_request_id`, `invoices.doku_cancelled_at` | ✅ diverifikasi 2026-09-10 — kedua kolom ada |
+| `85_stale_bill_and_authoritative_url` | `authoritative_payment_url()` + outcome `paid_on_stale_bill` | ✅ diterapkan 2026-09-08 — sepakat 100% dengan `schedule_billing_summary()` di ±1.060 jadwal, nol selisih |
+| `85_add_ai_prescreening_to_submissions` | `form_submissions.ai_prescreening` (JSONB) | ✅ diterapkan 2026-09-10 — lihat tabrakan nomor `85` di atas |
+
+⚠️ **`79` dan `81` tidak membuat objek apa pun.** Keduanya migrasi data, jadi
+"ada di produksi" tidak bisa dijawab lewat `information_schema` seperti baris
+lain di tabel ini — yang tercatat di kolom kanan adalah **hasil ukurnya saat
+dijalankan**. Menjalankan ulang keduanya aman (idempoten lewat penyaringan nilai
+lama yang diharapkan), tapi tidak akan menghasilkan apa-apa.
+
+⚠️ **`doku_cancelled_at` masih 0 baris seumur hidup** (per 2026-09-10). Kolomnya
+ada sejak `84`, tapi Cancel Order API DOKU **belum pernah sekali pun terbukti
+berhasil** — tiga percobaan pertama batal karena sebab di luar API-nya. Jangan
+membaca keberadaan kolomnya sebagai bukti bahwa pencabutan link bekerja; yang
+menutup kasusnya adalah resolver `/bayar/<id>` (`85`), yang tidak bergantung
+padanya sama sekali.
 
 Berkas di bawah 51 tidak dicatat statusnya satu per satu: aplikasi tidak akan
 berjalan tanpanya, jadi keberadaannya sudah terbukti setiap hari. Kalau ragu,

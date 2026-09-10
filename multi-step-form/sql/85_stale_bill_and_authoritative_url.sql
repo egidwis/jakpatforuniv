@@ -6,6 +6,21 @@
 -- dua sisi: BAGIAN A untuk uang yang sudah terlanjur masuk, BAGIAN B untuk
 -- orang yang belum sempat membayar.
 --
+-- ⚠️ NOMOR 85 DIPAKAI DUA KALI. Berkas ini (branch fix/link-bayar-berwenang,
+--    diterapkan ke produksi 8 Sep 2026) bertetangga dengan
+--    `85_add_ai_prescreening_to_submissions.sql` yang datang lewat `main`
+--    (diterapkan 10 Sep 2026). Keduanya lahir di branch paralel yang sama-sama
+--    melihat `84` sebagai nomor tertinggi.
+--
+--    Objeknya TIDAK berhubungan — yang satu jalur uang, yang satu kolom
+--    `form_submissions.ai_prescreening` — jadi urutan terapnya tidak mengikat,
+--    dan karena keduanya sudah dijalankan, tidak ada yang diganti nama
+--    (presedennya `61`; lihat "Tabrakan nomor yang diketahui" di sql/README.md).
+--
+--    Yang berubah karena ini adalah ATURANNYA: nomor migrasi baru diambil
+--    sesudah `git fetch`, bukan dari isi folder lokal. `86` masih kosong dan
+--    tetap dipesan untuk pelebaran `create_ad_schedule()` di Phase 4.
+--
 -- ── Kejadiannya ───────────────────────────────────────────────────────────
 -- Admin membatalkan pesanan karena salah setup jadwal, menjadwalkan tanggal
 -- baru, lalu peneliti membayar lewat link invoice jadwal LAMA. Kelas yang sama
