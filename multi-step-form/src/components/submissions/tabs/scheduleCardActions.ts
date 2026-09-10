@@ -1,7 +1,8 @@
 import type { AdScheduleEntry, ScheduleBilling } from '@/utils/supabase';
 import { isPaymentTooLateForDate, toWibYmd } from '@/utils/airing-window';
 import { isSlotHoldReleased } from '@/utils/slotHold';
-import { holdStateOf, isUnscheduled } from '@/pages/dashboard/schedule/scheduleModel';
+import { isLiveInvoice } from '@/utils/billingCompare';
+import { holdStateOf, isUnscheduled, chipKindOf, CANCELLED_CHIPS } from '@/pages/dashboard/schedule/scheduleModel';
 
 /**
  * Apakah tahanan slot jadwal ini sudah gugur / kedaluwarsa.
@@ -10,9 +11,18 @@ import { holdStateOf, isUnscheduled } from '@/pages/dashboard/schedule/scheduleM
  * 1. Hold 1 jam DOKU untuk pemesanan mandiri peneliti (`slot_booked_by === 'user'`).
  * 2. Batas bayar 14.00 WIB pada hari tayang.
  * 3. Status pembayaran eksplisit 'expired'.
+ *
+ * ⚠️ JADWAL YANG DIBATALKAN TIDAK PERNAH KEDALUWARSA — ia tidak menahan apa
+ * pun yang bisa gugur. Tanpa penjaga ini dua klausa di bawah menyala untuk
+ * SETIAP jadwal batal: klausa 2 membaca tanggal yang sql/62 simpan sebagai
+ * RIWAYAT seolah tenggat, dan klausa 3 membaca `payment_status='expired'` yang
+ * ditulis `cancelSchedule()` sendiri untuk ordinal 1. Terukur 10 Sep 2026: 86
+ * dari 148 jadwal batal berbadge "kedaluwarsa" tepat di atas panel "Jadwal
+ * dibatalkan". Pagarnya `CANCELLED_CHIPS` — yang sama dengan `holdStateOf`.
  */
 export function isEntryHoldLapsed(entry: AdScheduleEntry, now: number = Date.now()): boolean {
   if (entry.paymentStatus === 'paid' || entry.paymentStatus === 'completed') return false;
+  if (CANCELLED_CHIPS.includes(chipKindOf(entry, now))) return false;
   return (
     holdStateOf(entry, now) === 'lapsed' ||
     isSlotHoldReleased({ slotBookedBy: entry.slotBookedBy, slotReservedAt: entry.slotReservedAt }, now) ||
@@ -89,7 +99,9 @@ export interface CardActionPlan {
  * peneliti (`too_late_today`) dan penanda B5 di tabel Submissions.
  */
 export function isLateForSchedule(entry: AdScheduleEntry, state: CardState, now?: Date): boolean {
-  if (state === 'paid') return false;
+  // Lunas maupun dibatalkan: tanggal ini sudah tidak dikejar siapa pun. Tanggal
+  // jadwal batal adalah riwayat (sql/62), bukan tenggat.
+  if (state === 'paid' || state === 'cancelled') return false;
   if (!entry.startDate) return false;
   return isPaymentTooLateForDate(toWibYmd(new Date(entry.startDate)), now);
 }
@@ -366,4 +378,98 @@ export function pickTargetSchedule<T extends AdScheduleEntry>(
     'choose_schedule', 'awaiting_invoice', 'hold_lapsed', 'waiting_payment', 'partially_paid',
   ];
   return entries.find((e) => pending.includes(stateOf(e))) ?? entries[0];
+}
+
+/**
+ * KENAPA jadwal ini gugur — dua sebab yang di layar peneliti memang dua layar.
+ *
+ * - `'released'`    → «Reservasi kedaluwarsa»: tanggalnya dilepas. Hold 1 jam
+ *                     pesanan mandiri peneliti lewat (`isSlotHoldReleased`), atau
+ *                     `payment_status='expired'`.
+ * - `'past_cutoff'` → «Batas bayar terlewat»: tanggalnya tak terkejar (14.00 WIB
+ *                     hari tayang), tapi slotnya TIDAK lepas sendiri — slotHold.ts:
+ *                     hanya pesanan mandiri yang lepas karena waktu.
+ *
+ * ⚠️ URUTANNYA MENIRU `deriveOrderUiState`: `isExpired` dihitung sebelum
+ * `isTooLateToday`, jadi saat keduanya berlaku yang menang `'released'`. Kalau
+ * dibalik, baris "Peneliti melihat" menyebut layar yang TIDAK sedang dibaca
+ * penelitinya.
+ *
+ * ⚠️ Badge «perlu ditagih» yang dulu mewakili `'past_cutoff'` mati sejak b4af05f
+ * (1 Sep): `isEntryHoldLapsed` sudah mencakup kondisinya, dan cabang
+ * «kedaluwarsa» di atasnya selalu menang. Keadaan itu kini bernama «lewat batas
+ * bayar» — di kartu DAN di pil papan Schedule.
+ */
+export type LapseKind = 'released' | 'past_cutoff';
+
+export function lapseKindOf(entry: AdScheduleEntry, now: number = Date.now()): LapseKind | null {
+  if (!isEntryHoldLapsed(entry, now)) return null;
+  const released =
+    entry.paymentStatus === 'expired' ||
+    isSlotHoldReleased({ slotBookedBy: entry.slotBookedBy, slotReservedAt: entry.slotReservedAt }, now);
+  return released ? 'released' : 'past_cutoff';
+}
+
+/**
+ * Uang SATU kartu — "ditagih" dan "lunas" yang dicetak bagian tagihannya.
+ *
+ * ⚠️ SATU DEFINISI, DUA PEMAKAI: bagian tagihan kartu dan header tab. Header dulu
+ * menjumlahkan `total_cost` (harga TERCATAT) berlabel «ditagih» — pada 5b73a872
+ * ia mencetak «Rp 277.500 ditagih» untuk dua jadwal yang sama-sama batal dan nol
+ * tagihan hidup. Sekarang header = jumlah angka kartunya, jadi keduanya tidak
+ * bisa berbeda pendapat.
+ *
+ * - Uang yang SUDAH MASUK selalu dihitung. Ia tidak hilang karena slotnya gugur
+ *   atau jadwalnya dibatalkan — terukur 10 Sep 2026: 4 jadwal batal memegang
+ *   Rp 429.000. Versi inline sebelumnya ikut membuang baris lunas pada kartu
+ *   yang slotnya gugur, jadi bayaran sebagian lenyap dari kartunya sendiri.
+ * - Tagihan yang MASIH MENUNGGU dihitung hanya kalau masih bisa dibayar untuk
+ *   tanggal ini: `isLiveInvoice` (definisi yang sama dengan `openInvoice`,
+ *   sql/53 + sql/83), dan kartunya belum batal, belum gugur, belum terlambat.
+ */
+export function cardMoneyOf(
+  entry: AdScheduleEntry,
+  state: CardState,
+  billing: ScheduleBilling | undefined,
+  now: number = Date.now(),
+): { billed: number; paid: number } {
+  const canStillBeBilled =
+    state !== 'cancelled' &&
+    state !== 'hold_lapsed' &&
+    !isEntryHoldLapsed(entry, now) &&
+    !isLateForSchedule(entry, state, new Date(now));
+  const counted = (billing?.invoices ?? []).filter((i) => i.isPaid || (canStillBeBilled && isLiveInvoice(i)));
+  return {
+    billed: counted.reduce((sum, i) => sum + i.amount, 0),
+    paid: counted.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0),
+  };
+}
+
+/**
+ * Uang SATU ORDER untuk header tab — jumlah `cardMoneyOf` tiap kartunya.
+ *
+ * `hasInvoices` membedakan dua nol yang berbeda arti: «belum ada tagihan di
+ * sistem» (tak pernah terbit — b672d1ae) dan «tidak ada tagihan yang berlaku»
+ * (pernah terbit, semuanya mati — 5b73a872). Checkout yang ditinggal
+ * (`source='transaction'`) bukan tagihan, jadi tidak ikut menentukannya.
+ *
+ * ⚠️ BUKAN `orderTotalOf`. Itu harga tercatat — pertanyaan pembukuan.
+ */
+export function orderMoneyOf(
+  entries: readonly AdScheduleEntry[],
+  billings: ReadonlyMap<string, ScheduleBilling>,
+  now: number = Date.now(),
+): { billed: number; paid: number; hasInvoices: boolean } {
+  let billed = 0;
+  let paid = 0;
+  let hasInvoices = false;
+  for (const e of entries) {
+    const b = billings.get(e.id);
+    const state = cardStateOf(e, b, { holdLapsed: isEntryHoldLapsed(e, now) });
+    const money = cardMoneyOf(e, state, b, now);
+    billed += money.billed;
+    paid += money.paid;
+    hasInvoices ||= (b?.invoices ?? []).some((i) => i.source === 'invoice');
+  }
+  return { billed, paid, hasInvoices };
 }

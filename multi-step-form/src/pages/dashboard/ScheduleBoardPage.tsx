@@ -532,13 +532,13 @@ export function ScheduleBoardPage({
                 <AlertPill
                   icon={Clock}
                   count={alerts.lateForPayment}
-                  label="perlu ditagih"
+                  label="lewat batas bayar"
                   tone="red"
                   active={activeAlert === 'lateForPayment'}
                   onClick={() => toggleAlert('lateForPayment')}
                   title={
                     activeAlert === 'lateForPayment'
-                      ? 'Hapus filter perlu ditagih'
+                      ? 'Hapus filter lewat batas bayar'
                       : 'Filter jadwal yang lewat batas bayar pada periode ini'
                   }
                 />

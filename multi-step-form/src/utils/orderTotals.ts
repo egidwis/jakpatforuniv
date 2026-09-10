@@ -24,10 +24,12 @@ import type { AdScheduleEntry } from './supabase';
  * `create-payment.js`, dan pemeriksaan mismatch-nya sekaligus — pekerjaan
  * terpisah, bukan efek samping.
  *
- * Jadwal yang DIBATALKAN tetap dijumlahkan bila `total_cost`-nya masih berdiri:
- * angka ini menjawab "berapa yang pernah ditagih atas order ini", dan itu
- * pertanyaan pembukuan. Untuk "berapa yang masih harus dibayar", pakai
- * `fetchScheduleBilling()` — ia menyaring lewat `payment_status_rank` (sql/53).
+ * ⚠️ INI HARGA TERCATAT, BUKAN UANG TAGIHAN. Jadwal yang DIBATALKAN tetap
+ * dijumlahkan bila `total_cost`-nya masih berdiri, dan harga yang tak pernah
+ * ditagih pun ikut. Header tab Reservasi Jadwal dulu mencetak angka ini berlabel
+ * «ditagih» — 5b73a872: «Rp 277.500 ditagih» untuk dua jadwal batal tanpa satu
+ * pun tagihan hidup. Untuk uang tagihan pakai `orderMoneyOf`
+ * (submissions/tabs/scheduleCardActions.ts) atau `fetchScheduleBilling()`.
  */
 export function orderTotalOf(entries: readonly AdScheduleEntry[]): number {
   return entries.reduce((sum, e) => sum + (Number(e.totalCost) || 0), 0);

@@ -177,7 +177,7 @@ export function SchedulePaymentTab({
    * (`slot_booked_by = 'user'`) yang lepas karena waktu.
    *
    * Efeknya di layar: tanggalnya kosong → `isUnscheduled()` true → baris keluar
-   * dari antrean "perlu ditagih" dan pindah ke pil "belum dijadwalkan", lalu
+   * dari antrean "lewat batas bayar" dan pindah ke pil "belum dijadwalkan", lalu
    * `occupiesSlot()` false → kuota hari itu bebas. Ordernya sendiri tetap utuh
    * dan bisa dijadwalkan lagi kapan saja.
    */

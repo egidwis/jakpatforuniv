@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import {
-  AlertTriangle, CalendarPlus, Check, ChevronDown, Copy, CreditCard, ExternalLink,
+  AlertTriangle, Ban, CalendarPlus, Check, ChevronDown, Clock, Copy, CreditCard, ExternalLink,
   FileText, MoreHorizontal, Sparkles, Zap,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
@@ -17,15 +17,15 @@ import { copyToClipboard } from '../types';
 import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
 // Derivasi chip diimpor, TIDAK disalin. Papan Schedule dan drawer ini harus
 // menamai keadaan yang sama dengan nama yang sama.
-import { holdStateOf, isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
-import { orderTotalOf } from '@/utils/orderTotals';
+import { isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { deriveScheduleMoney } from '@/utils/scheduleMoney';
 import { payLinkUrl } from '@/utils/payLink';
 import { recordedVsBilled } from '@/utils/billingCompare';
 // Keadaan kartu, aksinya, dan definisi "terlambat" hidup di SATU modul —
 // lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
 import {
-  cardStateOf, planCardActions, isLateForSchedule, isEntryHoldLapsed,
+  cardStateOf, planCardActions, isLateForSchedule, isEntryHoldLapsed, lapseKindOf, cardMoneyOf, orderMoneyOf,
+  type LapseKind,
   type CardState, type CardAction, type CardActionPlan,
 } from './scheduleCardActions';
 
@@ -44,16 +44,12 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Jadwal yang slotnya masih ditahan tapi batas bayarnya sudah lewat — inilah
- * yang admin perlu tagih manual.
- *
- * Sengaja `holdStateOf` dan BUKAN definisi baru: papan Schedule sudah memakai
- * fungsi yang sama untuk pil "perlu ditagih", jadi angka di papan dan badge di
- * drawer tidak bisa menyimpang. Ia sudah memagari keluar `in_review`/`requested`
- * yang memilih tanggal saat checkout tanpa pernah memesan apa pun.
+ * Jadwal ini mati karena ORDER-nya (ditolak/spam/dibatalkan), bukan karena
+ * jadwalnya sendiri dibatalkan admin. Satu definisi untuk panel, chip, dan
+ * baris "Peneliti melihat" — ketiganya harus menyebut sebab yang sama.
  */
-function needsBilling(e: AdScheduleEntry): boolean {
-  return holdStateOf(e, Date.now()) === 'lapsed';
+function isCancelledByOrder(e: AdScheduleEntry): boolean {
+  return ['spam', 'rejected', 'cancelled'].includes(e.reviewStatus);
 }
 
 /** Jadwal yang masih menunggu tindakan admin — inilah yang dibuka duluan. */
@@ -137,7 +133,7 @@ interface CardActions {
 
 /** Satu baris tagihan di dalam daftar. */
 function InvoiceRow({
-  inv, index, total, entry, actions, isHoldLapsed, group,
+  inv, index, total, entry, actions, isHoldLapsed, lapse, group,
 }: {
   inv: ScheduleInvoice;
   index: number;
@@ -145,6 +141,8 @@ function InvoiceRow({
   entry: AdScheduleEntry;
   actions: CardActions;
   isHoldLapsed?: boolean;
+  /** Sebab slot gugur — memilih «Kedaluwarsa» vs «Batas bayar terlewat». */
+  lapse?: LapseKind | null;
   /** Tagihan gabungan yang menaungi baris ini, kalau ada. */
   group?: InvoiceGroup;
 }) {
@@ -200,14 +198,15 @@ function InvoiceRow({
   const label =
     inv.isPaid ? null
     : inv.status.toLowerCase() === 'cancelled' ? 'Tagihan dibatalkan'
-    : inv.isDead || isHoldExpired ? 'Kedaluwarsa'
+    : inv.isDead ? 'Kedaluwarsa'
+    // Slot LEPAS dan tanggal TAK TERKEJAR dua keadaan — `lapseKindOf`.
+    : isHoldExpired ? (lapse === 'released' ? 'Kedaluwarsa' : 'Batas bayar terlewat')
     : inv.isSuperseded ? 'Tersusul tagihan baru'
     : inv.isStale ? `Jadwal berubah — ditagihkan untuk ${
         inv.billedStartDate
           ? new Date(inv.billedStartDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
           : 'tanggal lain'}`
     : isAbandoned ? 'Checkout ditinggalkan'
-    : isLate ? 'Batas bayar terlewat — masih dihitung piutang'
     : null;
 
   return (
@@ -387,7 +386,7 @@ function BillingSection({
      * Yang tersisa di sini hanya fakta yang benar-benar milik jadwal ini.
      * Sebabnya di tingkat order tetap diumumkan sekali, oleh banner tab.
      */
-    const byOrder = ['spam', 'rejected', 'cancelled'].includes(entry.reviewStatus);
+    const byOrder = isCancelledByOrder(entry);
 
     /*
       ⚠️ KARTU INI DULU DIAM SEPENUHNYA SOAL UANG — dan diamnya mahal.
@@ -406,6 +405,8 @@ function BillingSection({
     const payableInvoice = billing?.invoices.find(
       (i) => i.isPending && i.source === 'invoice' && !i.isExpired && i.paymentUrl,
     );
+    // Header tab ikut menghitungnya (`orderMoneyOf`), jadi kartunya wajib menyebutnya.
+    const paidIn = cardMoneyOf(entry, state, billing).paid;
 
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-100/90 px-3 py-2.5 text-xs text-slate-600 space-y-1">
@@ -415,6 +416,11 @@ function BillingSection({
             ? 'Dinonaktifkan mengikuti status order.'
             : 'Kuota tanggal itu sudah dibebaskan. Review kuesioner tidak terpengaruh.'}
         </p>
+        {paidIn > 0 && (
+          <p className="text-[11px] text-slate-600 leading-snug">
+            Sudah masuk <strong className="font-semibold tabular-nums">{formatIDR(paidIn)}</strong> untuk jadwal ini — uangnya tidak ikut batal.
+          </p>
+        )}
         {payableInvoice && (
           <p className="flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 leading-snug !mt-2">
             <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-amber-600" />
@@ -466,6 +472,7 @@ function BillingSection({
   // bisa mencoret tagihannya sambil tombolnya berkata tanggalnya masih hidup.
   const isLate = isLateForSchedule(entry, state);
   const isHoldExpired = state === 'hold_lapsed' || isEntryHoldLapsed(entry);
+  const lapse = lapseKindOf(entry);
 
   // ⚠️ CABANG "BELUM ADA TAGIHAN" DIUKUR DARI DAFTAR YANG KOSONG, BUKAN DARI
   // KEADAAN KARTU. Sebagian order dibayar di luar sistem dan tidak pernah punya
@@ -493,7 +500,9 @@ function BillingSection({
           <SectionHeader count={0} />
           <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
             <p className="text-[11px] leading-snug text-amber-900">
-              Slot kedaluwarsa. Silakan atur tanggal tayang baru.
+              {lapse === 'past_cutoff'
+                ? 'Batas bayar terlewat — tanggal ini tidak terkejar lagi. Pindahkan tanggal, tagih manual, atau batalkan jadwalnya.'
+                : 'Slot kedaluwarsa. Silakan atur tanggal tayang baru.'}
             </p>
           </div>
         </div>
@@ -520,9 +529,8 @@ function BillingSection({
   // Ada riwayat tagihan, tapi semuanya sudah mati dan nol rupiah masuk —
   // yang dibutuhkan tagihan PERTAMA yang sungguhan, bukan susulan.
   const needsFreshInvoice = state === 'awaiting_invoice';
-  const liveInvoices = invoices.filter((i) => !isHoldExpired && (i.isPaid || (i.isPending && i.source === 'invoice' && !i.isSuperseded && !i.isStale && !isLate)));
-  const billedAmount = liveInvoices.reduce((sum, i) => sum + i.amount, 0);
-  const paidAmount = liveInvoices.filter((i) => i.isPaid).reduce((sum, i) => sum + i.amount, 0);
+  // Satu definisi dengan header tab — lihat `cardMoneyOf`.
+  const { billed: billedAmount, paid: paidAmount } = cardMoneyOf(entry, state, billing);
   const outstandingAmount = billedAmount - paidAmount;
 
   // Tagihan gabungan yang menyentuh jadwal ini, tanpa duplikat.
@@ -564,6 +572,7 @@ function BillingSection({
             entry={entry}
             actions={actions}
             isHoldLapsed={isHoldExpired}
+            lapse={lapse}
             group={inv.paymentId ? groups.get(inv.paymentId) : undefined}
           />
         ))}
@@ -610,22 +619,37 @@ function BillingSection({
  * diam-diam dan justru memberi admin keyakinan palsu.
  */
 function ResearcherSeesLine({
-  state, isLate, billing,
+  state, isLate, billing, byOrder, lapse,
 }: {
   state: CardState;
   isLate: boolean;
+  /** Sebab gugur — peneliti melihat DUA layar berbeda untuknya. */
+  lapse: LapseKind | null;
   billing: ScheduleBilling | undefined;
+  /** Mati karena ordernya — sebab itu diumumkan banner tab, bukan baris ini. */
+  byOrder: boolean;
 }) {
   let text: string | null = null;
 
-  if (state === 'awaiting_review') {
+  if (state === 'cancelled') {
+    // ⚠️ SENGAJA DI ATAS SEMUA CABANG. Dulu keadaan ini tidak punya cabang, dan
+    // `isLate` — yang membaca tanggal riwayat jadwal batal sebagai tenggat —
+    // mencetak «Batas bayar terlewat — perlu tanggal tayang baru» tepat di
+    // bawah panel "Jadwal dibatalkan". Peneliti justru melihat banner abu
+    // TANPA tombol apa pun (SchedulePhase: `slot_cancelled` / `cancelled`).
+    text = byOrder ? null : 'Jadwal tayang dibatalkan tim Jakpat — tidak ada langkah untuk peneliti.';
+  } else if (state === 'awaiting_review') {
     text = 'Menunggu hasil review — tanggal tayang ditentukan setelah kuesionernya lolos review.';
   } else if (state === 'choose_schedule') {
     text = 'Menunggu jadwal ditentukan.';
   } else if (state === 'awaiting_invoice') {
     text = 'Tanggal tayang sudah dipesan, menunggu tagihan terbit.';
   } else if (state === 'hold_lapsed' || isLate) {
-    text = 'Batas bayar terlewat — perlu tanggal tayang baru.';
+    // Dua layar peneliti yang berbeda; `lapseKindOf` memilihnya dengan urutan
+    // yang sama dengan `deriveOrderUiState` (expired sebelum too_late_today).
+    text = lapse === 'released'
+      ? 'Reservasi kedaluwarsa — tanggalnya dilepas, perlu tanggal tayang baru.'
+      : 'Batas bayar terlewat — perlu tanggal tayang baru.';
   } else if (state === 'partially_paid' && billing) {
     // Sampai D4 mendarat, kartu penelitinya masih menyebut HARGA PENUH di sini.
     // Itu justru alasan baris ini paling berguna pada keadaan ini: admin dan
@@ -766,6 +790,14 @@ function ScheduleCard({
    */
   const mismatch = recordedVsBilled(money, billing?.invoices ?? []);
   const state = cardStateOf(entry, billing);
+  /*
+    Dibatalkan dan kedaluwarsa: dua keadaan, dua bacaan — dan kartu yang
+    TERTUTUP pun harus bisa membedakannya. Chip "dibatalkan" dan judul yang
+    diredam (cermin `mutedTitle` di SchedulePhase) menggantikan badge merah
+    "kedaluwarsa" yang dulu keliru dipakai jadwal batal.
+  */
+  const isCancelled = state === 'cancelled';
+  const lapse = lapseKindOf(entry);
   const isKilat = entry.distributionType === 'kilat';
   const isLate = isLateForSchedule(entry, state);
 
@@ -837,7 +869,7 @@ function ScheduleCard({
     <div className="min-w-0 flex-1 space-y-1">
       <div className="flex items-center gap-2 flex-wrap">
         {!isOnly && <span className="text-xs font-bold text-slate-400 tabular-nums shrink-0">#{entry.ordinal}</span>}
-        <span className="text-sm font-semibold text-slate-900">
+        <span className={cn('text-sm font-semibold', isCancelled ? 'text-slate-400' : 'text-slate-900')}>
           <ScheduleDateTitle entry={entry} />
           {entry.duration ? <span className="font-normal text-slate-500"> · {entry.duration} hari</span> : null}
         </span>
@@ -882,19 +914,28 @@ function ScheduleCard({
             <Copy className="w-3 h-3" />
           </button>
         </span>
-        {isEntryHoldLapsed(entry) ? (
+        {isCancelled ? (
           <span
-            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1"
-            title="Batas waktu pemesanan slot ini telah kedaluwarsa."
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded px-1"
+            title={isCancelledByOrder(entry)
+              ? 'Nonaktif mengikuti status order — bukan kedaluwarsa.'
+              : 'Dibatalkan admin. Kuota tanggalnya sudah dibebaskan — bukan kedaluwarsa.'}
           >
-            <AlertTriangle className="w-2.5 h-2.5" /> kedaluwarsa
+            <Ban className="w-2.5 h-2.5" /> dibatalkan
           </span>
-        ) : needsBilling(entry) ? (
+        ) : lapse === 'past_cutoff' ? (
           <span
             className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1"
-            title="Batas bayar 14.00 WIB pada hari tayang sudah lewat. Slotnya tidak dilepas — tagih manual, lalu jadwalkan ulang atau hapus dari list."
+            title="Batas bayar 14.00 WIB pada hari tayang sudah lewat. Slotnya TIDAK lepas sendiri — pindahkan tanggal, tagih manual, atau batalkan."
           >
-            <AlertTriangle className="w-2.5 h-2.5" /> perlu ditagih
+            <Clock className="w-2.5 h-2.5" /> lewat batas bayar
+          </span>
+        ) : lapse === 'released' ? (
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1"
+            title="Reservasi kedaluwarsa — perlu tanggal tayang baru."
+          >
+            <AlertTriangle className="w-2.5 h-2.5" /> kedaluwarsa
           </span>
         ) : null}
       </div>
@@ -953,7 +994,7 @@ function ScheduleCard({
       <BillingSection entry={entry} billing={billing} state={state} actions={actions} groups={groups} />
 
       {/* Baris "Peneliti melihat" — lihat `ResearcherSeesLine`. */}
-      <ResearcherSeesLine state={state} isLate={isLate} billing={billing} />
+      <ResearcherSeesLine state={state} isLate={isLate} billing={billing} byOrder={isCancelledByOrder(entry)} lapse={lapse} />
 
       <CardActionBar plan={plan} entry={entry} actions={actions} />
     </div>
@@ -1058,12 +1099,13 @@ export function ScheduleCardList({
   const isOnly = entries.length === 1;
 
   const summary = useMemo(() => {
-    const billed = orderTotalOf(entries);
+    // Uang tagihan = jumlah angka tiap kartu, BUKAN harga tercatat — `orderMoneyOf`.
+    const money = orderMoneyOf(entries, billings);
     const unpaid = entries.filter((e) => {
       const s = cardStateOf(e, billings.get(e.id));
       return s !== 'paid' && s !== 'cancelled' && s !== 'hold_lapsed';
     }).length;
-    return { billed, unpaid };
+    return { ...money, unpaid };
   }, [entries, billings]);
 
   if (entries.length === 0) {
@@ -1104,7 +1146,17 @@ export function ScheduleCardList({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
           <span className="font-semibold">{entries.length} jadwal</span>
           <span className="text-slate-300">·</span>
-          <span>{formatIDR(summary.billed)} ditagih</span>
+          {summary.billed > 0 ? (
+            <>
+              <span>{formatIDR(summary.billed)} ditagih</span>
+              <span className="text-slate-300">·</span>
+              <span>{formatIDR(summary.paid)} lunas</span>
+            </>
+          ) : (
+            <span className="text-slate-500">
+              {summary.hasInvoices ? 'tidak ada tagihan yang berlaku' : 'belum ada tagihan di sistem'}
+            </span>
+          )}
           {summary.unpaid > 0 && (
             <>
               <span className="text-slate-300">·</span>

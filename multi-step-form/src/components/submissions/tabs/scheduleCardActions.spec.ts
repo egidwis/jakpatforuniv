@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { planCardActions, cardStateOf, isLateForSchedule, type CardState } from './scheduleCardActions';
-import type { AdScheduleEntry, ScheduleBilling } from '@/utils/supabase';
+import {
+  planCardActions, cardStateOf, isLateForSchedule, isEntryHoldLapsed, lapseKindOf, cardMoneyOf, orderMoneyOf,
+  type CardState,
+} from './scheduleCardActions';
+import type { AdScheduleEntry, ScheduleBilling, ScheduleInvoice } from '@/utils/supabase';
 
 const entry = (o: Partial<AdScheduleEntry> = {}): AdScheduleEntry => ({
   id: 's1', submissionId: 'o1', ordinal: 1, isExtension: false, bookingId: 'AAAA1111',
@@ -337,5 +340,171 @@ describe('planCardActions — cakupan "Tandai Belum Lunas" pada tagihan gabungan
       paidInvoiceMemberCount: 4,      // inilah cakupan pembalikannya
     });
     expect(label(p)).toBe('Tandai Belum Lunas (4 pesanan)');
+  });
+});
+
+describe('dibatalkan ≠ kedaluwarsa — dua keadaan tidak boleh berbagi satu bacaan', () => {
+  /*
+    ⚠️ KEDUA FIXTURE DIAMBIL DARI SATU ORDER PRODUKSI (5b73a872, 10 Sep 2026).
+    Dua jadwal, keduanya `status='cancelled'`, keduanya memakai badge merah
+    "kedaluwarsa" — lewat DUA klausa berbeda di `isEntryHoldLapsed`:
+
+      #JYTST4EE — tanggal 8 Sep disimpan sql/62 sebagai RIWAYAT, lalu klausa
+                  "batas bayar hari tayang terlewat" membacanya sebagai tenggat.
+      #MM36J2EW — `cancelSchedule()` menulis `payment_status='expired'` untuk
+                  ordinal 1, lalu klausa `paymentStatus === 'expired'` menyala.
+
+    Terukur hari itu: 86 dari 148 jadwal batal di produksi berbadge
+    "kedaluwarsa". Kartu yang sama juga mencetak «Batas bayar terlewat — perlu
+    tanggal tayang baru» tepat di bawah panel "Jadwal dibatalkan".
+  */
+  const nowMs = Date.parse('2026-09-10T14:00:00Z'); // 10 Sep, 21.00 WIB
+  const now = new Date(nowMs);
+
+  const cancelledPastDate = entry({
+    status: 'cancelled', paymentStatus: 'pending', slotBookedBy: null,
+    startDate: '2026-09-08T08:00:00Z', endDate: '2026-09-15T08:00:00Z', duration: 7,
+  });
+  const cancelledPaymentExpired = entry({
+    status: 'cancelled', paymentStatus: 'expired', slotBookedBy: null,
+    startDate: '2026-09-22T08:00:00Z', endDate: '2026-09-23T08:00:00Z',
+  });
+
+  it('jadwal batal bertanggal lampau tidak kedaluwarsa — tanggalnya riwayat, bukan tenggat', () => {
+    expect(isEntryHoldLapsed(cancelledPastDate, nowMs)).toBe(false);
+  });
+
+  it('jadwal batal ber-payment_status expired tidak kedaluwarsa — itu jejak cancelSchedule()', () => {
+    expect(isEntryHoldLapsed(cancelledPaymentExpired, nowMs)).toBe(false);
+  });
+
+  it('jadwal dari order ditolak tidak kedaluwarsa — ia nonaktif, bukan gugur', () => {
+    expect(isEntryHoldLapsed(entry({ reviewStatus: 'rejected', startDate: '2026-09-08T08:00:00Z' }), nowMs)).toBe(false);
+  });
+
+  it('jadwal batal tidak pernah "terlambat bayar"', () => {
+    expect(isLateForSchedule(cancelledPastDate, 'cancelled', now)).toBe(false);
+  });
+
+  // ── Arah sebaliknya: perbaikan tidak boleh membungkam kedaluwarsa yang SAH ──
+
+  it('jadwal AKTIF yang bayarnya kedaluwarsa tetap kedaluwarsa', () => {
+    // #MM36J2EW sebelum dibatalkan: tanggal dikosongkan, bayar expired.
+    const e = entry({ status: 'unscheduled', paymentStatus: 'expired', startDate: null, endDate: null, slotBookedBy: null });
+    expect(isEntryHoldLapsed(e, nowMs)).toBe(true);
+  });
+
+  it('jadwal AKTIF yang lewat batas bayar hari tayang tetap kedaluwarsa', () => {
+    const e = entry({ status: 'waiting_payment', paymentStatus: 'pending', startDate: '2026-09-08T08:00:00Z' });
+    expect(isEntryHoldLapsed(e, nowMs)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Fixture bersama untuk tiga blok di bawah.
+// ─────────────────────────────────────────────────────────────
+const NOW = Date.parse('2026-09-10T14:00:00Z'); // 10 Sep, 21.00 WIB
+const PAST = '2026-09-08T08:00:00Z';            // 8 Sep 15.00 WIB — batas bayarnya sudah lewat
+const FUTURE = '2026-09-14T08:00:00Z';          // 14 Sep 15.00 WIB — masih bisa dikejar
+
+const inv = (o: Partial<ScheduleInvoice> = {}): ScheduleInvoice => ({
+  paymentId: 'P1', amount: 100_000, status: 'pending', paymentUrl: null, createdAt: '2026-09-01T00:00:00Z',
+  source: 'invoice', voucherCode: null, attempts: 1, isSuperseded: false, paymentMethod: null,
+  paymentChannel: null, isPaid: false, isDead: false, isPending: true, billedStartDate: null,
+  expiresAt: null, isExpired: false, isStale: false,
+  ...o,
+} as unknown as ScheduleInvoice);
+const paid = (amount: number, o: Partial<ScheduleInvoice> = {}) =>
+  inv({ amount, status: 'paid', isPaid: true, isPending: false, ...o });
+
+describe('lapseKindOf — slot LEPAS ≠ LEWAT BATAS BAYAR (cermin layar peneliti)', () => {
+  /*
+    Peneliti sudah melihat dua keadaan: «Reservasi kedaluwarsa» (tanggalnya
+    dilepas) dan «Batas bayar terlewat» (tanggalnya tak terkejar, slotnya
+    TIDAK lepas sendiri). Kartu admin dulu menamai keduanya «kedaluwarsa», dan
+    badge «perlu ditagih» yang dirancang untuk yang kedua mati sejak b4af05f.
+  */
+  it('slot admin yang lewat batas bayar 14.00: lewat batas bayar, BUKAN lepas', () => {
+    expect(lapseKindOf(entry({ slotBookedBy: 'admin', startDate: PAST }), NOW)).toBe('past_cutoff');
+  });
+
+  it('pesanan mandiri peneliti yang lewat hold 1 jam: lepas', () => {
+    const e = entry({ slotBookedBy: 'user', slotReservedAt: '2026-09-10T10:00:00Z', startDate: FUTURE });
+    expect(lapseKindOf(e, NOW)).toBe('released');
+  });
+
+  it('keduanya berlaku sekaligus: LEPAS menang — urutan deriveOrderUiState (expired sebelum too_late)', () => {
+    const e = entry({ slotBookedBy: 'user', slotReservedAt: '2026-09-07T10:00:00Z', startDate: PAST });
+    expect(lapseKindOf(e, NOW)).toBe('released');
+  });
+
+  it('bayar kedaluwarsa pada jadwal aktif: lepas', () => {
+    const e = entry({ status: 'unscheduled', paymentStatus: 'expired', startDate: null, endDate: null, slotBookedBy: null });
+    expect(lapseKindOf(e, NOW)).toBe('released');
+  });
+
+  it('jadwal batal tidak gugur sama sekali', () => {
+    expect(lapseKindOf(entry({ status: 'cancelled', slotBookedBy: null, startDate: PAST }), NOW)).toBeNull();
+  });
+
+  it('slot admin yang tanggalnya masih jauh: tidak gugur', () => {
+    expect(lapseKindOf(entry({ slotBookedBy: 'admin', startDate: FUTURE }), NOW)).toBeNull();
+  });
+});
+
+describe('cardMoneyOf — SATU definisi "ditagih" untuk kartu dan header', () => {
+  const active = entry({ slotBookedBy: 'admin', startDate: FUTURE });
+
+  it('menjumlahkan yang lunas dan tagihan yang masih bisa dibayar', () => {
+    const b = billing({ invoices: [paid(100_000), inv({ amount: 50_000 })] });
+    expect(cardMoneyOf(active, 'waiting_payment', b, NOW)).toEqual({ billed: 150_000, paid: 100_000 });
+  });
+
+  it('tagihan tersusul, basi, link kedaluwarsa, dan checkout yang ditinggal TIDAK dihitung', () => {
+    const b = billing({ invoices: [
+      paid(100_000),
+      inv({ amount: 70_000, isSuperseded: true }),
+      inv({ amount: 30_000, isStale: true }),
+      inv({ amount: 40_000, isExpired: true }),
+      inv({ amount: 20_000, source: 'transaction' }),
+    ] });
+    expect(cardMoneyOf(active, 'waiting_payment', b, NOW)).toEqual({ billed: 100_000, paid: 100_000 });
+  });
+
+  it('kartu lewat batas bayar: tagihan menggantungnya tak dihitung, uang yang SUDAH masuk tetap', () => {
+    // Dulu kartu seperti ini membuang SEMUA baris, termasuk yang lunas — bayaran
+    // sebagian lenyap dari kartunya sendiri.
+    const late = entry({ slotBookedBy: 'admin', startDate: PAST });
+    const b = billing({ invoices: [paid(60_000), inv({ amount: 40_000 })], paid: 60_000 });
+    expect(cardMoneyOf(late, 'partially_paid', b, NOW)).toEqual({ billed: 60_000, paid: 60_000 });
+  });
+
+  it('kartu batal: hanya uang yang sudah masuk', () => {
+    const cancelled = entry({ status: 'cancelled', slotBookedBy: null, startDate: PAST });
+    const b = billing({ invoices: [paid(429_000, { source: 'transaction' }), inv({ amount: 50_000, isStale: true })] });
+    expect(cardMoneyOf(cancelled, 'cancelled', b, NOW)).toEqual({ billed: 429_000, paid: 429_000 });
+  });
+});
+
+describe('orderMoneyOf — header tab = jumlah kartunya', () => {
+  it('menjumlahkan uang tiap kartu, bukan harga tercatat', () => {
+    const e1 = entry({ id: 's1', slotBookedBy: 'admin', startDate: FUTURE, totalCost: 999_999 });
+    const e2 = entry({ id: 's2', status: 'cancelled', slotBookedBy: null, startDate: PAST, totalCost: 277_500 });
+    const billings = new Map([['s1', billing({ invoices: [paid(100_000), inv({ amount: 50_000 })], paid: 100_000 })]]);
+    expect(orderMoneyOf([e1, e2], billings, NOW)).toEqual({ billed: 150_000, paid: 100_000, hasInvoices: true });
+  });
+
+  it('order tanpa satu pun tagihan: nol, dan tahu bahwa memang belum pernah ada', () => {
+    // b672d1ae di produksi: 222.000 tercatat dari jadwal batal, nol tagihan.
+    const e = entry({ status: 'cancelled', slotBookedBy: null, startDate: PAST, totalCost: 222_000 });
+    expect(orderMoneyOf([e], new Map(), NOW)).toEqual({ billed: 0, paid: 0, hasInvoices: false });
+  });
+
+  it('order yang tagihannya mati semua: nol, tapi tahu bahwa tagihan PERNAH ada', () => {
+    // 5b73a872 di produksi: 4 baris tagihan, tak satu pun berlaku.
+    const e = entry({ id: 's1', status: 'cancelled', slotBookedBy: null, startDate: PAST });
+    const dead = inv({ status: 'expired', isDead: true, isPending: false, isExpired: true });
+    expect(orderMoneyOf([e], new Map([['s1', billing({ invoices: [dead] })]]), NOW))
+      .toEqual({ billed: 0, paid: 0, hasInvoices: true });
   });
 });
