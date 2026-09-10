@@ -573,6 +573,38 @@ export const FormBuilderPage: React.FC = () => {
         </div>
       </header>
 
+      {/* Mobile Sub-Header Navigation Tabs (Pertanyaan vs Respon) */}
+      {formId && (
+        <div className="md:hidden shrink-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-center shadow-2xs z-10">
+          <div className="flex items-center w-full max-w-xs p-1 bg-gray-100 dark:bg-gray-700/60 rounded-xl border border-gray-200/80 dark:border-gray-600/60 shadow-2xs">
+            <button
+              type="button"
+              className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs flex items-center justify-center gap-1.5 transition-all"
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Pertanyaan</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/dashboard/forms/${formId}/responses`)}
+              className="flex-1 py-1.5 text-xs font-semibold rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Users className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+              <span>Respon</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  responseCount > 0
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                    : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                }`}
+              >
+                {responseCount}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Body Area with Side-by-Side Flex Layout (Independent Scrolling Canvas) */}
       <div className="flex-1 flex overflow-hidden min-h-0 relative">
         {/* Editor Main Canvas (Independent Internal Scroll) */}
