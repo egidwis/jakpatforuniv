@@ -120,6 +120,7 @@ catatan kenapa keputusannya berubah.
 | `83` | Umur link jadi bagian vonis: `expires_at` + `is_expired` masuk `schedule_billing*()`. ⚠️ Mencatat juga bahwa **`transactions` tidak punya `expires_at`** — jangan menambahkannya lewat objek `shared` di `buildInvoiceRows`, INSERT-nya akan ditolak 400 dan membatalkan seluruh tagihan |
 | `84` | `invoices.doku_request_id` + `doku_cancelled_at`. `request_id` yang pulang dari DOKU **wajib** disimpan: Cancel Order API menuntutnya sebagai `original_request_id`, jadi tagihan tanpa nilai itu tidak bisa dimatikan selamanya |
 | `85` | `authoritative_payment_url()` — satu tempat yang menjawab "tagihan mana yang berwenang untuk jadwal ini", dipakai resolver `/bayar/<id>`. Plus outcome `paid_on_stale_bill`, sengaja **dipisah** dari `paid_on_dead_bill` karena tindakan adminnya berbeda: pindahkan uangnya vs kembalikan |
+| `87` | `reason` berhenti berbohong: `bill_cancelled` memisahkan **tagihan** yang dibatalkan dari **jadwal** yang dibatalkan — sebelumnya keadaan itu jatuh ke `ELSE 'expired'` dan peneliti disuruh menjadwalkan ulang slot yang masih dipegangnya (2 jadwal produksi, keduanya hidup). Plus `invoices.doku_cancel_last_error`: jawaban DOKU saat Cancel Order ditolak akhirnya tersimpan, bukan menguap ke `console` sebuah Pages Function. ⚠️ Ia juga **mencabut hibah `anon`** yang datang diam-diam dari `pg_default_acl` — sql/85 tidak pernah memberikannya, dan tidak ada satu pun pemanggil anon |
 
 ⚠️ **Predikat "tagihan hidup" hidup di SQL, dan itu disengaja.** `live` di
 `schedule_billing_summary()` disalin **verbatim** ke `authoritative_payment_url()`
@@ -177,12 +178,12 @@ tidak melakukan apa-apa; sentuh kolom yang terdaftar, mis.
 yang benar-benar tayang. Kolom itu maju saat ditulis dan tidak pernah mundur
 sendiri. Untuk pertanyaan "sedang tayang atau tidak", tanggal menang atas kolom.
 
-## Status terap (51–85)
+## Status terap (51–87)
 
 Diverifikasi langsung ke produksi (`zewuzezbmrmpttysjvpg`) dengan memeriksa objek
 yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-08-19,
 `61_custom_mission_requests` dan `67`–`72` pada 2026-08-26, `73`–`76` pada 2026-08-30,
-`77`–`85` pada 2026-09-10.
+`77`–`85` dan `87` pada 2026-09-10.
 
 | berkas | isi | ada di produksi |
 |---|---|---|
@@ -225,6 +226,8 @@ yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-0
 | `84_doku_request_id_and_cancellation` | `invoices.doku_request_id`, `invoices.doku_cancelled_at` | ✅ diverifikasi 2026-09-10 — kedua kolom ada |
 | `85_stale_bill_and_authoritative_url` | `authoritative_payment_url()` + outcome `paid_on_stale_bill` | ✅ diterapkan 2026-09-08 — sepakat 100% dengan `schedule_billing_summary()` di ±1.060 jadwal, nol selisih |
 | `85_add_ai_prescreening_to_submissions` | `form_submissions.ai_prescreening` (JSONB) | ✅ diterapkan 2026-09-10 — lihat tabrakan nomor `85` di atas |
+| `86` | **DIPESAN, belum ditulis** — pelebaran `create_ad_schedule()` untuk penjadwalan swalayan (Phase 4). Jangan dipakai untuk hal lain | ⬜ |
+| `87_bill_cancelled_reason_and_cancel_error` | `reason = 'bill_cancelled'` + `invoices.doku_cancel_last_error` | ✅ diterapkan 2026-09-10 — `bill_cancelled` mendarat tepat 2 jadwal (`ZS4ZNN96`, `MM36J2EW`), `expired` 114 → 112, sisanya nol bergeser; `live` masih sepakat 100% dengan `schedule_billing_summary()` (nol selisih); ACL `postgres \| authenticated \| service_role` — **`anon` tercabut** |
 
 ⚠️ **`79` dan `81` tidak membuat objek apa pun.** Keduanya migrasi data, jadi
 "ada di produksi" tidak bisa dijawab lewat `information_schema` seperti baris
@@ -238,6 +241,21 @@ berhasil** — tiga percobaan pertama batal karena sebab di luar API-nya. Jangan
 membaca keberadaan kolomnya sebagai bukti bahwa pencabutan link bekerja; yang
 menutup kasusnya adalah resolver `/bayar/<id>` (`85`), yang tidak bergantung
 padanya sama sekali.
+
+⚠️ **Kenapa ia masih 0 baris belum pernah bisa dijawab** — dan `87` yang
+membukanya. Sampai migrasi itu, jawaban DOKU atas setiap penolakan dibuang di
+tempat (`console.error` di sebuah Pages Function, yang tidak punya
+Observability), jadi "DOKU menolak karena pesanannya sudah lunas", "tanda
+tangannya salah", dan "`request_id` tidak dikenal" — tiga sebab dengan tiga
+tindakan berbeda — sampai ke admin sebagai satu kalimat kabur yang sama.
+`87` sudah diterapkan (2026-09-10), jadi mulailah dari:
+
+```sql
+select payment_id, doku_cancel_last_error
+  from invoices
+ where doku_cancel_last_error is not null
+ order by created_at desc limit 10;
+```
 
 Berkas di bawah 51 tidak dicatat statusnya satu per satu: aplikasi tidak akan
 berjalan tanpanya, jadi keberadaannya sudah terbukti setiap hari. Kalau ragu,

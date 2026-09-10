@@ -69,6 +69,24 @@ const COPY = {
     id: ['Jadwal ini sudah dibatalkan.', 'Link pembayarannya ikut berhenti berlaku. Kalau ini di luar dugaan, hubungi tim kami.'],
     en: ['This schedule has been cancelled.', 'Its payment link is no longer valid. If this is unexpected, please contact our team.'],
   },
+  /*
+    ⚠️ TAGIHAN yang dibatalkan, bukan JADWAL — dan kalimatnya BUKAN varian
+    halus dari `expired`.
+
+    Sampai sql/87, keadaan ini jatuh ke `ELSE 'expired'` dan penelitinya
+    dibaca kalimat "Batas waktu pembayaran sudah lewat. Silakan menjadwalkan
+    ulang." Itu salah faktanya (batas bayar MM36J2EW masih 17 Sep saat kalimat
+    itu muncul) dan — jauh lebih mahal — salah ARAH TINDAKANNYA: ia menyuruh
+    orang membuang slot yang masih dipegangnya, padahal tagihan pengganti
+    memang sedang disiapkan.
+
+    Jadi kalimat di sini menyuruh MENUNGGU, dan sengaja tidak menyebut satu pun
+    kata soal menjadwalkan ulang.
+  */
+  bill_cancelled: {
+    id: ['Tagihan untuk jadwal ini dibatalkan.', 'Jadwal tayangmu TIDAK ikut dibatalkan — yang dibatalkan hanya tagihannya. Tagihan pengganti akan dikirimkan; tidak perlu menjadwalkan ulang.'],
+    en: ['The invoice for this schedule was cancelled.', 'Your airing schedule is NOT cancelled — only the invoice was. A replacement invoice will follow; there is no need to reschedule.'],
+  },
   stale: {
     id: ['Tanggal tayang jadwal ini sudah berpindah.', 'Tagihan lama tidak berlaku lagi. Tagihan untuk tanggal yang baru akan dikirimkan — jangan membayar lewat link lama.'],
     en: ['This schedule has moved to a different airing date.', 'The old invoice no longer applies. A new one will follow — please do not pay via the old link.'],

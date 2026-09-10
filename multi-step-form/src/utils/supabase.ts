@@ -1104,7 +1104,7 @@ export interface CancelInvoiceResult {
 async function killDokuLink(
   paymentId: string,
   knownRequestId?: string | null,
-): Promise<{ ok: boolean; reason: string | null }> {
+): Promise<{ ok: boolean; reason: string | null; detail: string | null }> {
   try {
     /*
       ⚠️ `knownRequestId` MENANG ATAS QUERY, DAN ITU BUKAN OPTIMASI.
@@ -1167,10 +1167,14 @@ async function killDokuLink(
     if (out === null) {
       const snippet = raw.trim() ? raw.trim().slice(0, 120) : '(badan respons kosong)';
       console.error(`[killDokuLink] respons tak terbaca dari /api/doku/cancel-order — HTTP ${status}: ${snippet}`);
-      return { ok: false, reason: `Respons tak terbaca dari server (HTTP ${status}: ${snippet})` };
+      return {
+        ok: false,
+        reason: `Respons tak terbaca dari server (HTTP ${status}: ${snippet})`,
+        detail: `HTTP ${status} · badan tak terbaca · ${snippet}`,
+      };
     }
 
-    if (out.cancelled) return { ok: true, reason: null };
+    if (out.cancelled) return { ok: true, reason: null, detail: null };
 
     /*
       `no_request_id` DIBEDAKAN, karena tindakannya berbeda dan sudah pasti.
@@ -1184,14 +1188,66 @@ async function killDokuLink(
       return {
         ok: false,
         reason: 'tagihan ini tidak menyimpan request_id DOKU, jadi link-nya TIDAK BISA dimatikan lewat API — ia berhenti sendiri saat masa bayarnya habis',
+        detail: 'no_request_id · tagihan terbit sebelum sql/84; Cancel Order tidak pernah ditembakkan',
       };
     }
 
-    return { ok: false, reason: out.message || out.reason || `Tidak diketahui (HTTP ${status})` };
+    /*
+      ⚠️ `detail` MENYIMPAN JAWABAN DOKU, `reason` MENJELASKANNYA KE ADMIN.
+      Keduanya dibutuhkan dan tidak bisa saling menggantikan: `reason` sudah
+      diterjemahkan (dan karena itu sudah kehilangan kode galat DOKU), sementara
+      `out.details` adalah badan mentah yang membedakan "pesanannya sudah lunas"
+      dari "tanda tangannya salah" dari "request_id tidak dikenal" — tiga sebab
+      dengan tiga tindakan berbeda. Disimpan ke `invoices.doku_cancel_last_error`
+      (sql/87); tanpa itu ia menguap ke `console` sebuah Pages Function, yang
+      tidak punya Observability sama sekali.
+    */
+    const detail = [
+      `HTTP ${status}`,
+      out.reason ? `reason=${out.reason}` : null,
+      out.httpStatus ? `doku_http=${out.httpStatus}` : null,
+      out.details ? String(out.details) : (out.message ? String(out.message) : null),
+    ].filter(Boolean).join(' · ');
+
+    return {
+      ok: false,
+      reason: out.message || out.reason || `Tidak diketahui (HTTP ${status})`,
+      detail,
+    };
   } catch (e: any) {
     console.error('[cancelInvoice] gagal memanggil Cancel Order DOKU:', e);
-    return { ok: false, reason: e?.message || 'Panggilan ke DOKU gagal' };
+    return {
+      ok: false,
+      reason: e?.message || 'Panggilan ke DOKU gagal',
+      detail: `exception · ${e?.name || 'Error'} · ${e?.message || '(tanpa pesan)'}`,
+    };
   }
+}
+
+/**
+ * Simpan sebab penolakan Cancel Order ke `invoices.doku_cancel_last_error` (sql/87).
+ *
+ * ⚠️ ADA KARENA JAWABAN DOKU SELAMA INI DIBUANG DI TEMPAT. `cancel-order.js`
+ * hanya `console.error`, dan Cloudflare Observability tidak tersedia untuk
+ * Pages Functions — jadi setiap penolakan hilang begitu tab admin ditutup.
+ * `invoices.doku_cancelled_at` masih NOL BARIS seumur hidup, dan selama
+ * sebabnya tidak tersimpan, "sudah dicoba berkali-kali tanpa hasil" tidak bisa
+ * berubah jadi satu kalimat sebab.
+ *
+ * ⚠️ TANPA `.eq('status', ...)`, DAN ITU DISENGAJA. Penolakan yang paling ingin
+ * dibaca justru terjadi pada percobaan ULANG, ketika barisnya sudah tidak
+ * `pending` lagi — menyaring status akan membuat catatan itu menyentuh nol
+ * baris tepat ketika ia paling dibutuhkan.
+ *
+ * Gagal lunak: ini catatan diagnostik, bukan bagian dari pembatalannya.
+ */
+async function recordDokuCancelError(paymentId: string, detail: string | null): Promise<void> {
+  if (!paymentId || !detail) return;
+  const { error } = await supabase
+    .from('invoices')
+    .update({ doku_cancel_last_error: detail.slice(0, 2000) })
+    .eq('payment_id', paymentId);
+  if (error) console.error('[recordDokuCancelError] sebab penolakan DOKU gagal disimpan:', error);
 }
 
 /** Hasil pencabutan link DOKU untuk SATU jadwal. */
@@ -1276,8 +1332,14 @@ export const killDokuLinksForSchedule = async (
     for (const [paymentId, requestId] of seen) {
       report.attempted += 1;
       const out = await killDokuLink(paymentId, requestId);
-      if (out.ok) report.cancelled += 1;
-      else report.failures.push({ paymentId, reason: out.reason || 'Tidak diketahui' });
+      if (out.ok) {
+        report.cancelled += 1;
+      } else {
+        // `report.failures` hanya hidup selama dialog admin terbuka; kolomnya
+        // yang membuat sebabnya masih bisa dibaca besok. Lihat sql/87.
+        await recordDokuCancelError(paymentId, out.detail);
+        report.failures.push({ paymentId, reason: out.reason || 'Tidak diketahui' });
+      }
     }
 
     if (opts.markCancelled && seen.size > 0) {
@@ -1330,6 +1392,10 @@ export const cancelInvoice = async (
   // sementara link-nya masih hidup — dan justru di jendela itu peneliti yang
   // sedang membuka halaman bayar akan membayarnya.
   const doku = await killDokuLink(paymentId, knownRequestId);
+
+  // Sebelum baris di bawah menyentuhnya: penolakan DOKU disimpan apa adanya,
+  // supaya percobaan berikutnya punya sesuatu untuk dibaca. Lihat sql/87.
+  if (!doku.ok) await recordDokuCancelError(paymentId, doku.detail);
 
   const { data: invRows, error: invErr } = await supabase
     .from('invoices')

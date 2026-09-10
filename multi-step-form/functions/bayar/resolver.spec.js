@@ -100,7 +100,7 @@ describe('/bayar/<id> — meneruskan', () => {
 });
 
 describe('/bayar/<id> — tidak ada tagihan berwenang', () => {
-  for (const reason of ['paid', 'cancelled', 'stale', 'expired', 'none', 'no_url']) {
+  for (const reason of ['paid', 'cancelled', 'bill_cancelled', 'stale', 'expired', 'none', 'no_url']) {
     it(`${reason} → halaman kalimat, bukan penerusan`, async () => {
       rpcReturns({ reason, payment_url: null, payment_id: null, is_group: false, is_lead: true });
       const res = await onRequest(ctx(UUID));
@@ -116,6 +116,47 @@ describe('/bayar/<id> — tidak ada tagihan berwenang', () => {
     const html = await (await onRequest(ctx(UUID))).text();
     expect(html).toContain('Jadwal ini sudah dibatalkan.');
     expect(html).toContain('This schedule has been cancelled.');
+  });
+
+  /*
+    ⚠️ `bill_cancelled` BUKAN VARIAN HALUS DARI `expired`, dan tes ini yang
+    menahannya tetap begitu.
+
+    Sebelum sql/87 keadaan ini jatuh ke `ELSE 'expired'`, jadi penelitinya
+    dibaca "Batas waktu pembayaran sudah lewat. Silakan menjadwalkan ulang."
+    Salah faktanya — dan salah ARAH TINDAKANNYA, yang jauh lebih mahal: ia
+    menyuruh orang membuang slot yang masih dipegangnya, tepat ketika tagihan
+    pengganti sedang disiapkan.
+
+    Terukur saat sql/87 ditulis: 2 jadwal produksi berada di keadaan ini, dan
+    keduanya HIDUP (`slot_reserved`) — MM36J2EW (tayang 22 Sep) dan ZS4ZNN96
+    (tayang 14 Sep).
+  */
+  it('bill_cancelled TIDAK menyuruh menjadwalkan ulang — ia menyuruh MENUNGGU', async () => {
+    rpcReturns({ reason: 'bill_cancelled', payment_url: null, payment_id: null, is_group: false, is_lead: true });
+    const html = await (await onRequest(ctx(UUID))).text();
+
+    // Yang WAJIB ada: jadwalnya masih hidup, dan penggantinya menyusul.
+    expect(html).toContain('Tagihan untuk jadwal ini dibatalkan.');
+    expect(html).toContain('tidak perlu menjadwalkan ulang');
+    expect(html).toContain('A replacement invoice will follow');
+
+    // Yang HARAM ada: kalimat milik `expired`.
+    expect(html).not.toContain('Batas waktu pembayaran');
+    expect(html).not.toContain('menjadwalkan ulang atau meminta tagihan baru');
+  });
+
+  it('bill_cancelled dan cancelled tidak boleh tertukar — akibatnya berlawanan', async () => {
+    // `cancelled` = JADWALNYA batal (tidak ada tagihan pengganti yang datang).
+    rpcReturns({ reason: 'cancelled', payment_url: null, payment_id: null, is_group: false, is_lead: true });
+    const jadwalBatal = await (await onRequest(ctx(UUID))).text();
+
+    rpcReturns({ reason: 'bill_cancelled', payment_url: null, payment_id: null, is_group: false, is_lead: true });
+    const tagihanBatal = await (await onRequest(ctx(UUID))).text();
+
+    expect(jadwalBatal).not.toBe(tagihanBatal);
+    expect(jadwalBatal).toContain('Jadwal ini sudah dibatalkan.');
+    expect(tagihanBatal).toContain('TIDAK ikut dibatalkan');
   });
 
   it('tidak diindeks mesin pencari', async () => {

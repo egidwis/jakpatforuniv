@@ -691,6 +691,36 @@ export async function onRequest(context) {
           `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${encodeURIComponent(old.payment_id)}&status=eq.pending`,
           { method: 'PATCH', headers: sbHeaders, body: JSON.stringify({ status: 'cancelled' }) }
         );
+
+        /*
+          ⚠️ CATATAN SEBAB PENOLAKAN, DAN SENGAJA REQUEST TERPISAH (sql/87).
+
+          Menggabungkannya ke PATCH di atas terlihat lebih hemat dan menciptakan
+          bahaya urutan deploy yang nyata: kalau kode ini mendarat SEBELUM
+          sql/87, PostgREST menolak SELURUH badan karena satu kolom tak dikenal
+          (400) — dan tagihan tersalip itu tetap `pending` di buku kita dengan
+          link DOKU yang mungkin masih hidup. Justru kerusakan yang seluruh
+          jalur ini ada untuk mencegah, ditukar dengan satu round-trip.
+
+          Terpisah, kegagalannya berdiri sendiri: penutupan barisnya sudah
+          selesai, dan yang hilang cuma catatan diagnostiknya.
+
+          Kenapa dicatat sama sekali: baris `console.log` di atas satu-satunya
+          jejak hari ini, dan Pages Functions tidak punya Observability. Ini pula
+          SATU-SATUNYA jalur pembatalan yang dipicu PENELITI, bukan admin.
+        */
+        if (!killed.cancelled) {
+          await fetch(
+            `${supabaseUrl}/rest/v1/invoices?payment_id=eq.${encodeURIComponent(old.payment_id)}`,
+            {
+              method: 'PATCH',
+              headers: sbHeaders,
+              body: JSON.stringify({
+                doku_cancel_last_error: String(killed.reason || 'ditolak tanpa sebab').slice(0, 2000),
+              }),
+            }
+          ).catch((e) => console.error(`[create-payment] sebab penolakan Cancel Order gagal disimpan untuk ${old.payment_id}:`, e));
+        }
         await fetch(
           `${supabaseUrl}/rest/v1/transactions?payment_id=eq.${encodeURIComponent(old.payment_id)}&status=eq.pending`,
           { method: 'PATCH', headers: sbHeaders, body: JSON.stringify({ status: 'expired' }) }
