@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -226,7 +226,7 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleRunAudit}
+            onClick={() => handleRunAudit(false)}
             disabled={isAuditing}
             className="h-7 px-2 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-300 flex items-center gap-1"
             title="Jalankan ulang audit kuesioner"
