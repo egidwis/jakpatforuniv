@@ -2,6 +2,7 @@ import { ChevronRight, Copy, Zap } from 'lucide-react';
 import { Chip } from '@/components/ui/chip';
 import { cn } from '@/lib/utils';
 import type { AdScheduleEntry } from '@/utils/supabase';
+import { bookedByLabel } from '@/utils/bookedBy';
 import { copyToClipboard } from '@/components/submissions/types';
 import {
   agendaChipOf, tokenForChip, formatWibTime, formatWibShort,
@@ -142,6 +143,11 @@ function EntryRow({
           <span className="truncate">
             {entry.researcherName}
             {entry.university ? ` · ${entry.university}` : ''}
+            {/* Siapa yang memesan slotnya — sebelum Phase 4 tidak ada sama sekali
+                di papan ini. Ia menjelaskan PERILAKU, bukan hiasan: hanya hold
+                peneliti yang lepas sendiri setelah 1 jam (`slotHold.ts`), jadi
+                inilah yang memberi tahu admin kenapa satu slot punya timer. */}
+            {entry.slotBookedBy && ` · ${bookedByLabel(entry.slotBookedBy).toLowerCase()}`}
             {/* Periode ikut di subtitle hanya saat kolomnya tersembunyi (mobile). */}
             {!unscheduled && entry.startDate && entry.endDate && (
               <span className="md:hidden">

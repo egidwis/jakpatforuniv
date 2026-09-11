@@ -38,6 +38,7 @@ import {
   type ScheduleBilling,
 } from '@/utils/supabase';
 import { isPaymentTooLateForDate, toWibYmd } from '@/utils/airing-window';
+import { bookedByLabel } from '@/utils/bookedBy';
 import {
   agendaChipOf,
   airingDaysOf,
@@ -822,7 +823,9 @@ export function ScheduleEntryDrawer({
                     </p>
                     <p className="text-[11px] text-slate-500 mt-0.5">
                       {!unscheduled && <>Tayang jam {formatWibTime(entry.startDate!)} WIB</>}
-                      {entry.slotBookedBy && <> · dipesan {entry.slotBookedBy}</>}
+                      {/* Dulu memajang nilai kolom MENTAH ("· dipesan user") —
+                          kata yang tidak dipakai siapa pun saat bicara. */}
+                      {entry.slotBookedBy && <> · {bookedByLabel(entry.slotBookedBy).toLowerCase()}</>}
                     </p>
                   </div>
                   <Button

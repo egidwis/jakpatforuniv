@@ -8,6 +8,7 @@ import {
 } from '../ui/tooltip';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { payLinkUrl } from '@/utils/payLink';
+import { bookedByLabel } from '@/utils/bookedBy';
 import type { LifecycleInfo } from './lifecycle';
 
 // ─────────────────────────────────────────────────────────────
@@ -79,9 +80,16 @@ export function ReserveSlotAction({
                   menambah satu baris — order Kilat ber-'[EXTRA_AD]' — yang justru
                   TIDAK boleh disebut iklan tambahan. */}
               <p className="text-sm">Type: <span className="font-medium text-gray-900">{existingPage?.is_extra_ad ? 'Extra Ad' : 'Regular Ad'}</span></p>
-              {submission.slot_booked_by && (
-                <p className="text-sm mt-1 pt-1 border-t border-gray-100">Booked By: <span className="font-medium text-gray-900 capitalize">{submission.slot_booked_by}</span></p>
-              )}
+              {/* ⚠️ Cakupan ORDER: `form_submissions.slot_booked_by` menggambarkan
+                  jadwal PERTAMA saja. Sesudah Phase 4 jadwal ke-2 bisa dipesan
+                  penelitinya sendiri sementara yang pertama dipesan admin — tanpa
+                  kata "pertama", papan ini dan kartu jadwal di sebelahnya memberi
+                  dua jawaban untuk satu pertanyaan. */}
+              <p className="text-sm mt-1 pt-1 border-t border-gray-100">
+                <span className="font-medium text-gray-900">
+                  {bookedByLabel(submission.slot_booked_by, { scope: 'order' })}
+                </span>
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

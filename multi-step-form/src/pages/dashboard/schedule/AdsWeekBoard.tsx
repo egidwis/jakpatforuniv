@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { MAX_EXTRA_ADS_PER_DAY, MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
 import { toWibYmd } from '@/utils/airing-window';
 import type { AdScheduleEntry } from '@/utils/supabase';
+import { bookedByLabel } from '@/utils/bookedBy';
 import { agendaChipOf, airingDaysOf, occupiesSlot, tokenForChip, type ChipKind } from './scheduleModel';
 
 // ─────────────────────────────────────────────────────────────
@@ -252,7 +253,11 @@ export function AdsWeekBoard({
                                   key={`${entry.id}-${ymd}`}
                                   type="button"
                                   onClick={() => onOpen(entry)}
-                                  title={`${entry.title} — ${entry.researcherName} · ${tokenForChip(kind).label}${entry.duration ? ` · ${entry.duration} hari` : ''}`}
+                                  // Tile-nya label 10px yang terpotong — tidak ada
+                                  // ruang untuk baris tambahan, jadi "dipesan siapa"
+                                  // masuk ke tooltip. Tetap terjangkau admin yang
+                                  // menilai kapasitas, tanpa merusak kepadatan papan.
+                                  title={`${entry.title} — ${entry.researcherName} · ${tokenForChip(kind).label}${entry.duration ? ` · ${entry.duration} hari` : ''} · ${bookedByLabel(entry.slotBookedBy).toLowerCase()}`}
                                   className={`flex w-full min-w-0 items-center gap-1 px-1.5 py-1 rounded-md bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
                                     isStart ? 'border-l-2 border-l-blue-500' : ''
                                   }`}

@@ -20,6 +20,7 @@ import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils
 import { isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { deriveScheduleMoney } from '@/utils/scheduleMoney';
 import { payLinkUrl } from '@/utils/payLink';
+import { bookedByActor } from '@/utils/bookedBy';
 import { recordedVsBilled } from '@/utils/billingCompare';
 // Keadaan kartu, aksinya, dan definisi "terlambat" hidup di SATU modul —
 // lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
@@ -858,12 +859,13 @@ function ScheduleCard({
     })(),
   });
 
-  const booker = entry.slotBookedBy?.toLowerCase();
-  const slotLine = !booker
+  // Aturannya diangkat ke `@/utils/bookedBy` (Phase 4 Langkah 6) — ini dulu
+  // SATU-SATUNYA dari empat permukaan yang menulisnya dengan benar, jadi ia
+  // yang jadi sumber helper itu. Jangan menurunkan versi lokal lagi.
+  const bookedActor = bookedByActor(entry.slotBookedBy);
+  const slotLine = bookedActor === 'nobody'
     ? { label: 'Slot belum dipesan', actor: null }
-    : booker === 'user' || booker === 'customer'
-      ? { label: 'Slot dipesan', actor: 'peneliti' }
-      : { label: 'Slot dipesan', actor: 'admin' };
+    : { label: 'Slot dipesan', actor: bookedActor === 'researcher' ? 'peneliti' : 'admin' };
 
   const summary = (
     <div className="min-w-0 flex-1 space-y-1">
