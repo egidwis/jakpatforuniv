@@ -178,6 +178,66 @@ export function scheduleAttribution(schedule) {
 }
 
 /**
+ * Baris harga untuk SATU jadwal — order sebagai dasar, jadwal menimpa
+ * kolom yang memang miliknya.
+ *
+ * ⚠️ BUKAN "ganti `sub` dengan `schedule`". Itu salah di empat tempat, dan
+ * keempatnya gagal senyap (angkanya beda, nol error). Diukur ke produksi
+ * 2026-09-11 atas 18 jadwal ordinal ≥2:
+ *
+ *   `duration`      18/18 terisi   → AMAN diambil dari jadwal
+ *   `voucher_code`  18/18 NULL     → mengambilnya MENCABUT diskon tiap jadwal
+ *   `is_new_period` 7/18 true      → hadiah hanya ditagih saat batch BARU
+ *   `created_at`    milik ORDER    → voucher dinilai saat order LAHIR
+ *
+ * `created_at` yang paling halus: `orderInstant()` membacanya, jadi mengoper
+ * baris jadwal apa adanya memindahkan penilaian voucher ke tanggal JADWAL
+ * dibuat — persis bug yang ditutup `create-payment-select.spec.ts`, lahir
+ * kembali lewat pintu lain.
+ *
+ * Hadiah: batch lama sudah didanai jadwal sebelumnya; menagihnya lagi adalah
+ * penagihan ganda yang diperbaiki sql/37. Karena itu insentif hanya ikut saat
+ * `is_new_period`.
+ *
+ * @param billingVoucher voucher dari TAGIHAN yang sudah ada (menang atas
+ *        voucher order, sesuai presedensi yang sudah berjalan). `null` = tidak
+ *        menyatakan apa-apa.
+ */
+export function pricingRowForSchedule(sub, schedule, billingVoucher) {
+  const base = billingVoucher ? { ...sub, voucher_code: billingVoucher } : { ...sub };
+  if (!schedule) return base;
+
+  /*
+    ⚠️ TOP-UP TIDAK BISA DIHARGAI DARI BARIS INI. Jumlah pemenang pool yang
+    sedang berjalan tidak tersimpan di baris jadwal, jadi mengalikannya dengan
+    `winner_count` baris ini menghasilkan angka KARANGAN. `storedIncentive()`
+    (`scheduleMoney.ts:57`) menolak memecahnya karena alasan yang sama — sisi
+    server ikut menolak, bukan mengarang.
+  */
+  if (Number(schedule.additional_prize_per_winner) > 0) {
+    throw new Error('topup_not_priceable');
+  }
+
+  const isNewBatch = Boolean(schedule.is_new_period);
+  const scheduleVoucher = String(schedule.voucher_code || '').trim();
+
+  return {
+    ...base,
+    // Milik JADWAL.
+    duration: Number(schedule.duration) || 0,
+    // Hanya batch baru yang mendanai pool.
+    winner_count: isNewBatch ? Number(schedule.winner_count) || 0 : 0,
+    prize_per_winner: isNewBatch ? Number(schedule.prize_per_winner) || 0 : 0,
+    // Presedensi: voucher tagihan > voucher jadwal > voucher order. Voucher
+    // jadwal yang KOSONG berarti "tidak menyatakan apa-apa", bukan "tanpa
+    // diskon" — aturan yang sama dipakai `billingVoucher` di atas.
+    voucher_code: billingVoucher || scheduleVoucher || base.voucher_code,
+    // `question_count`, `distribution_type`, dan `created_at` sengaja TIDAK
+    // ditimpa: kuesionernya satu, dan voucher dinilai saat order lahir.
+  };
+}
+
+/**
  * `scheduleId` datang dari BROWSER. Tanpa penjaga ini endpoint menerima id
  * jadwal milik order lain dan menempelkan tagihan order A ke jadwal order B —
  * gagal senyap, uang mendarat di baris yang salah.
@@ -552,7 +612,34 @@ export async function onRequest(context) {
     // the DB originates from the client (StepCheckout INSERT) and is only
     // trusted as a cross-check. `amount` is the PPN-inclusive grand total that
     // gets charged and stored; `subtotal`/`ppn` are persisted alongside it.
-    const pricingSub = billingVoucher ? { ...sub, voucher_code: billingVoucher } : sub;
+    /*
+      ── HARGA PER JADWAL (Phase 4 sub-langkah f) ─────────────────────────
+      Untuk ordinal 1 (`schedule` null) hasilnya identik dengan perilaku lama:
+      baris order, dengan voucher tagihan kalau ada. Untuk jadwal ke-2, hanya
+      kolom yang MEMANG milik jadwal yang ditimpa — `question_count`,
+      `distribution_type`, dan `created_at` sengaja tetap dari order.
+      Lihat catatan panjang di `pricingRowForSchedule()`.
+    */
+    let pricingSub;
+    try {
+      pricingSub = pricingRowForSchedule(sub, schedule, billingVoucher);
+    } catch (e) {
+      /*
+        Top-up hadiah tidak bisa dihargai dari baris jadwal (jumlah pemenang
+        pool berjalan tidak tersimpan di sana). Menolak dengan jelas jauh lebih
+        baik daripada menagih angka karangan — dan jalur admin tetap bisa
+        menerbitkan tagihannya lewat `InvoiceForm`.
+      */
+      if (e?.message === 'topup_not_priceable') {
+        console.warn(`[create-payment] Jadwal ${schedule?.id} membawa top-up hadiah; harga tidak bisa diturunkan otomatis.`);
+        return json({
+          error: 'Jadwal ini menambah hadiah ke batch berjalan, jadi tagihannya harus diterbitkan admin.',
+          needs_admin_invoice: true,
+        }, 409);
+      }
+      throw e;
+    }
+
     const { subtotal, ppn, total: amount } = computeTotalCostFromSubmission(pricingSub);
     if (!amount || amount <= 0) {
       return json({ error: 'Invalid submission amount' }, 400);
