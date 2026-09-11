@@ -19,6 +19,7 @@ import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
 import { airingDayCount, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
 import { KilatScheduleStep } from '@/components/KilatScheduleStep';
 import { DAYS_AHEAD, SlotCalendar, daysCoveredBy, nextDays } from './SlotCalendar';
+import { fetchBatchContext, type BatchContext } from '@/utils/batchContext';
 
 // ─────────────────────────────────────────────────────────────
 // Badan pemilih jadwal — dipakai BERSAMA oleh drawer Submissions dan dialog
@@ -35,44 +36,11 @@ import { DAYS_AHEAD, SlotCalendar, daysCoveredBy, nextDays } from './SlotCalenda
 // DialogFooter sementara drawer memakukannya di footer panel.
 // ─────────────────────────────────────────────────────────────
 
-/** Resolved server-side by get_schedule_batch_context (sql/37). */
-interface BatchContext {
-  periodBatch: string;
-  isNewBatch: boolean;
-  poolPrizePerWinner: number;
-  poolWinnerCount: number;
-}
-
-/**
- * Batch mana yang akan ditempati jadwal baru — dan karenanya, apakah pool hadiah
- * baru wajib didanai.
- *
- * Dijawab di server supaya string batch-nya diturunkan ekspresi yang sama dengan
- * yang menghitung `period_batch` tersimpan (sql/37). Menanyakannya di browser
- * adalah yang dulu membuat jadwal #3 ditagih untuk pool yang sudah didanai
- * jadwal #2.
- */
-async function fetchBatchContext(
-  submissionId: string,
-  endDateIso: string
-): Promise<BatchContext | null> {
-  const { data, error } = await supabase.rpc('get_schedule_batch_context', {
-    p_submission_id: submissionId,
-    p_end_date: endDateIso,
-  });
-  if (error) {
-    console.error('Error resolving batch context:', error);
-    return null;
-  }
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row) return null;
-  return {
-    periodBatch: row.period_batch,
-    isNewBatch: row.is_new_batch,
-    poolPrizePerWinner: row.pool_prize_per_winner || 0,
-    poolWinnerCount: row.pool_winner_count || 0,
-  };
-}
+// ⚠️ `BatchContext` + `fetchBatchContext` DIANGKAT ke `@/utils/batchContext` (Phase 4). Ia dulu
+// helper lokal di berkas ini, jadi dialog peneliti tidak bisa memakainya tanpa
+// menyalin — dan salinan kedua dari "apakah batch ini baru" adalah persis cara
+// jadwal #3 dulu ditagih untuk pool yang sudah didanai jadwal #2.
+// Impornya ada di kepala berkas; jangan menghidupkan kembali versi lokal.
 
 export interface ScheduleFormProps {
   mode: 'edit' | 'create';

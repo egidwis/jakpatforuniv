@@ -870,6 +870,7 @@ export function StatusPage() {
                                                         submission={submission}
                                                         cards={cards}
                                                         onReschedule={() => handleReschedule(submission)}
+                                                        onDataUpdated={fetchSubmissions}
                                                         active={activePhase === 2}
                                                     />
                                                 </Phase>

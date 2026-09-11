@@ -12,6 +12,18 @@ interface PaymentData {
     phoneNumber: string;
   };
   expiredAt?: string;
+  /**
+   * `ad_schedules.id` jadwal yang ditagih — BUKAN `source_id` (Phase 4).
+   *
+   * Absennya berarti "jadwal ordinal 1", persis perilaku sebelum Phase 4.
+   * Dengan nilainya, `create-payment.js` mengalihkan ketiga penjaganya ke baris
+   * jadwal itu, menulis atribusi `entity_type`/`extend_id`/`schedule_id`, dan
+   * menghitung harga dari durasi JADWAL — bukan durasi order.
+   *
+   * ⚠️ Server tetap membuktikan kepemilikannya (403 kalau jadwal ini milik order
+   * lain). Nilai ini tidak dipercaya hanya karena datang dari layar kita sendiri.
+   */
+  scheduleId?: string;
 }
 
 export interface InvoiceData {
@@ -152,7 +164,7 @@ export class GroupBillError extends Error {
 
 export const createPayment = async (paymentData: PaymentData) => {
   try {
-    const { formSubmissionId, expiredAt } = paymentData;
+    const { formSubmissionId, expiredAt, scheduleId } = paymentData;
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";
 
     // Payment + invoice/transaction rows are created SERVER-SIDE via
@@ -168,7 +180,10 @@ export const createPayment = async (paymentData: PaymentData) => {
 
     const response = await axios.post(
       `${origin}/api/doku/create-payment`,
-      { formSubmissionId, origin, paymentDueDate: payment_due_date },
+      // `scheduleId` hanya dikirim kalau ada — mengirim `undefined` eksplisit
+      // membuat JSON-nya memuat kuncinya dengan nilai null di sebagian klien,
+      // dan endpoint membedakan "tidak dikirim" dari "dikirim kosong".
+      { formSubmissionId, origin, paymentDueDate: payment_due_date, ...(scheduleId ? { scheduleId } : {}) },
       { timeout: 15000 }
     );
 

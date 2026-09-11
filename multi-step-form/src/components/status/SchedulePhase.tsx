@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
 import {
     Accordion,
     AccordionContent,
@@ -39,6 +38,7 @@ import {
 } from './airingPeriods';
 import { formatIDR } from '@/utils/currency';
 import { isAutoReviewed } from './deriveOrderUiState';
+import { ScheduleAgainDialog } from './ScheduleAgainDialog';
 
 const WIB = 'Asia/Jakarta';
 
@@ -49,6 +49,16 @@ interface SchedulePhaseProps {
     submission: FormSubmission;
     cards: ScheduleCard[];
     onReschedule: () => void;
+    /**
+     * `fetchSubmissions` milik StatusPage — konvensi yang sama dengan
+     * `ReviewPhase.onDataUpdated`.
+     *
+     * ⚠️ WAJIB dipanggil sesudah jadwal baru lahir. `fetchAdSchedules` hidup DI
+     * DALAM `fetchSubmissions` (StatusPage:455), jadi inilah satu-satunya jalur
+     * yang memunculkan jadwal ke-2 di layar; tanpa itu barisnya ada di database
+     * tapi kartunya tidak pernah muncul.
+     */
+    onDataUpdated: () => void | Promise<void>;
     /** Fase ② sedang berjalan (`getActiveDashboardPhase(ui.currentStep) === 2`)
      * — kartu paling relevan (`pickDefaultExpandedKey`) default terbuka. Kalau
      * tidak, default semua tertutup; user tetap bisa expand manual. */
@@ -1007,11 +1017,33 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
  * Fase ② — Jadwal Iklan: list kartu setara (asli + tiap perpanjangan), tiap
  * kartu membawa dua blok sendiri (Info Booking, Detail Pembayaran).
  */
-export function SchedulePhase({ submission, cards, onReschedule, active }: SchedulePhaseProps) {
+export function SchedulePhase({ submission, cards, onReschedule, onDataUpdated, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
     // Satu perhitungan untuk seluruh kartu order ini — hak menjadwalkan melekat
     // pada ORDER, bukan pada jadwal. Lihat catatan di prop `canSelfReschedule`.
     const selfReschedule = isAutoReviewed(submission);
+
+    const [isScheduleAgainOpen, setIsScheduleAgainOpen] = useState(false);
+
+    /*
+      ⚠️ Kilat ditandai di DUA tempat, dan sebagian baris lama hanya punya yang
+      kedua — aturan yang sama dipakai `isKilatSchedule` (airingPeriods.ts) dan
+      `deriveScheduleMoney`. Di sini pertanyaannya tingkat ORDER ("boleh
+      menjadwalkan lagi?"), jadi kartu mana pun yang Kilat mengunci tombolnya.
+    */
+    const isKilatOrder =
+        submission.distribution_type === 'kilat' || cards.some((c) => !!c.info?.isKilat);
+
+    /*
+      Lama tayang jadwal BERIKUTNYA, ditebak dari jadwal PERTAMA.
+      `info.airingDays` diturunkan dari start→end; kolom `duration` bisa
+      berbohong (18 dari 992 baris meleset di produksi), jadi ia cuma cadangan.
+    */
+    const firstCard = cards.find((c) => c.kind === 'original') ?? cards[0];
+    const defaultAgainDuration = Math.max(
+        1,
+        firstCard?.info?.airingDays || firstCard?.info?.duration || 7,
+    );
 
     return (
         <div>
@@ -1081,37 +1113,39 @@ export function SchedulePhase({ submission, cards, onReschedule, active }: Sched
                             );
                         })}
                     </Accordion>
-                    {/* Phase 4 — sengaja masih mati. Menyalakannya menunggu **Task 13**,
-                        bukan Task 11 (pemilik produk 2026-08-18).
+                    {/* Phase 4 — HIDUP sejak 2026-09-11. Yang dulu mengunci tombol ini
+                        adalah "sistem tidak punya harga untuk jadwal ke-2"; itu selesai
+                        di `create-payment.js` (harga per jadwal) + `sql/86` (RPC yang
+                        memaksa hold 1 jam dan menegakkan kuota harian di DB).
 
-                        Yang mengunci: sistem tidak punya harga untuk jadwal ke-2.
-                        `ScheduleForm.handleSaveCreate` menulis `total_cost: 0` dan admin
-                        mengetik nilainya belakangan di `InvoiceForm` — tanpa rumus, tanpa
-                        validasi; 7 dari 13 baris `form_submissions_extend` di produksi
-                        bernilai 0 atau di bawah Rp 10.000. `cost-calculator` hanya melayani
-                        order pertama. Task 13 yang melahirkan harga per jadwal.
-
-                        Separuh HILIR-nya sudah jadi: begitu sebuah baris jadwal ada tanpa
-                        invoice, `airingPeriods.ts` menjatuhkannya ke `awaiting_invoice`
-                        (chip + copy dua bahasa + SLA), dan tombol bayar per kartu di
-                        `BookingSection` sudah berfungsi. Yang hilang cuma hulunya.
-
-                        Alasan lengkap, termasuk opsi "ajukan, bukan pesan" yang sengaja
-                        tidak diambil: `docs/jadwal-iklan-progress.md` §00G. */}
-                    <div className="mt-3">
-                        <Button
-                            variant="outline"
-                            onClick={() => toast.info(t('scheduleAgainComingSoon'))}
-                            className="w-full text-xs font-semibold text-slate-600 border border-dashed border-slate-300 bg-slate-50/60 hover:bg-slate-100/80 hover:border-slate-400 hover:text-slate-700 rounded-xl min-h-11 px-4 gap-2 transition-all shadow-none justify-center"
-                        >
-                            <Plus className="w-4 h-4 shrink-0 text-slate-400" />
-                            <span>{t('scheduleAdAgain')}</span>
-                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-200/80 border border-slate-300/80 px-2 py-0.5 rounded-full ml-1 shrink-0">
-                                {t('comingSoonBadge')}
-                            </span>
-                        </Button>
-                    </div>
+                        ⚠️ Order KILAT tidak ikut. Gelombangnya (08/11/14/17 WIB)
+                        ditugaskan admin lewat `kilat_slot_hour`, dan nol perpanjangan
+                        Kilat pernah terjadi. `create_ad_schedule` menolaknya juga di
+                        server — tombol ini disembunyikan supaya penolakan itu tidak
+                        pernah perlu dibaca peneliti. */}
+                    {!isKilatOrder && (
+                        <div className="mt-3">
+                            <Button
+                                variant="outline"
+                                onClick={() => setIsScheduleAgainOpen(true)}
+                                className="w-full text-xs font-semibold text-slate-700 border border-dashed border-slate-300 bg-slate-50/60 hover:bg-slate-100/80 hover:border-blue-400 hover:text-blue-700 rounded-xl min-h-11 px-4 gap-2 transition-all shadow-none justify-center"
+                            >
+                                <Plus className="w-4 h-4 shrink-0 text-slate-400" />
+                                <span>{t('scheduleAdAgain')}</span>
+                            </Button>
+                        </div>
+                    )}
                 </>
+            )}
+
+            {!isKilatOrder && (
+                <ScheduleAgainDialog
+                    open={isScheduleAgainOpen}
+                    onOpenChange={setIsScheduleAgainOpen}
+                    submission={submission}
+                    defaultDuration={defaultAgainDuration}
+                    onBooked={onDataUpdated}
+                />
             )}
         </div>
     );
