@@ -139,6 +139,62 @@ export const SUBMISSION_SELECT_COLUMNS = [
   'start_date',
 ];
 
+/**
+ * Pasangan atribusi untuk baris `invoices`/`transactions` sebuah jadwal ke-2 dst.
+ *
+ * ⚠️ TIGA UUID BERBEDA, dan tertukarnya TIDAK PERNAH ERROR:
+ *   `schedule.id`        → `schedule_id`, kunci resolver `/bayar/<id>` &
+ *                          `schedule_billing()`
+ *   `schedule.source_id` → `extend_id`, kunci `webhook.js` STEP 5
+ *                          (`ad_schedules?source_table=eq.…&source_id=eq.<extend_id>`)
+ *   `submission_id`      → order induknya
+ *
+ * Tanpa pasangan ini, dua hal terjadi diam-diam untuk tagihan jadwal ke-2:
+ *   1. `derive_schedule_id()` (sql/51) jatuh ke cabang ELSIF dan menempelkan
+ *      tagihannya ke jadwal ORDINAL 1;
+ *   2. `webhook.js` STEP 5 masuk cabang REGULER dan menandai ORDER INDUK paid
+ *      saat yang lunas sebenarnya jadwal ke-2.
+ *
+ * `schedule_id` dikirim EKSPLISIT meski `derive_schedule_id()` bisa
+ * menurunkannya: triggernya menghormati nilai yang sudah ada
+ * (`IF NEW.schedule_id IS NOT NULL THEN RETURN NEW`), dan berkas sql/51 sendiri
+ * menandai dirinya sementara — *"buang di rilis yang membuat pemanggilnya
+ * mengirim schedule_id sendiri"*. Rilis ini rilis itu.
+ *
+ * Bentuknya sengaja identik dengan jalur admin di
+ * `src/components/schedule/invoiceWrite.ts:107-108`. Dua penulis, satu bentuk.
+ *
+ * ⚠️ Mengembalikan `{}` — BUKAN kolom bernilai null — saat tidak ada jadwal.
+ * Menulis `entity_type: null` menimpa; tidak menulis kolomnya membiarkan
+ * jalur ordinal 1 berjalan persis seperti sebelum Phase 4.
+ */
+export function scheduleAttribution(schedule) {
+  if (!schedule || !schedule.id || !schedule.source_id) return {};
+  return {
+    entity_type: 'extend',
+    extend_id: schedule.source_id,
+    schedule_id: schedule.id,
+  };
+}
+
+/**
+ * `scheduleId` datang dari BROWSER. Tanpa penjaga ini endpoint menerima id
+ * jadwal milik order lain dan menempelkan tagihan order A ke jadwal order B —
+ * gagal senyap, uang mendarat di baris yang salah.
+ *
+ * Gagal-TERTUTUP: jadwal yang tidak ditemukan ikut ditolak, bukan diam-diam
+ * dikembalikan ke perilaku ordinal 1.
+ */
+export function assertScheduleBelongsToOrder(schedule, formSubmissionId) {
+  const norm = (v) => String(v ?? '').trim().toLowerCase();
+  if (!schedule || !schedule.submission_id) {
+    throw new Error('schedule_not_found');
+  }
+  if (norm(schedule.submission_id) !== norm(formSubmissionId)) {
+    throw new Error('schedule_not_owned');
+  }
+}
+
 // Instan yang dipakai untuk menilai kevalidan voucher: tanggal order LAHIR.
 // Baris tanpa created_at (atau dengan nilai tak terbaca) jatuh ke "sekarang" —
 // bukan ke "tidak pernah kedaluwarsa" — supaya data rusak tidak berubah jadi
