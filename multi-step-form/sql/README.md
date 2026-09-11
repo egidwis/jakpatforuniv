@@ -229,7 +229,7 @@ yang dibuat masing-masing berkas, bukan dari catatan — `51`–`66` pada 2026-0
 | `85_stale_bill_and_authoritative_url` | `authoritative_payment_url()` + outcome `paid_on_stale_bill` | ✅ diterapkan 2026-09-08 — sepakat 100% dengan `schedule_billing_summary()` di ±1.060 jadwal, nol selisih |
 | `85_add_ai_prescreening_to_submissions` | `form_submissions.ai_prescreening` (JSONB) | ✅ diterapkan 2026-09-10 — lihat tabrakan nomor `85` di atas |
 | `50_reward_pools` | tabel `reward_pools` + backfill 900 baris | ✅ diterapkan 2026-09-11 — **900 baris**, nol order tak bertanggal bocor, 2 policy, 4 constraint, **nol selisih** dengan `get_batch_rewards` di seluruh 900 pool; ACL `postgres \| authenticated \| service_role` — **`anon` tercabut**. ⚠️ Fungsi hadiah **belum** dialihkan ke tabel ini (disengaja, lihat kepala berkas) |
-| `86` | **DIPESAN, belum ditulis** — pelebaran `create_ad_schedule()` untuk penjadwalan swalayan (Phase 4). Jangan dipakai untuk hal lain | ⬜ |
+| `86_create_ad_schedule_self_serve` | `create_ad_schedule()` melebar ke pemilik order + `assert_daily_ad_quota_free()` | ⬜ **ditulis 2026-09-11, BELUM diterapkan** — plpgsql terbukti parse (blok `DO`); penjaga kuota MENOLAK 12 Sep (4/4), MELOLOSKAN 20 Sep (0/4) |
 | `87_bill_cancelled_reason_and_cancel_error` | `reason = 'bill_cancelled'` + `invoices.doku_cancel_last_error` | ✅ diterapkan 2026-09-10 — `bill_cancelled` mendarat tepat 2 jadwal (`ZS4ZNN96`, `MM36J2EW`), `expired` 114 → 112, sisanya nol bergeser; `live` masih sepakat 100% dengan `schedule_billing_summary()` (nol selisih); ACL `postgres \| authenticated \| service_role` — **`anon` tercabut** |
 
 ⚠️ **`79` dan `81` tidak membuat objek apa pun.** Keduanya migrasi data, jadi
