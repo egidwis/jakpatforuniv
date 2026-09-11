@@ -374,7 +374,16 @@ export async function onRequest(context) {
   }
 
   try {
-    const { formSubmissionId, origin, paymentDueDate } = await request.json();
+    /*
+      `scheduleId` BARU (Phase 4). Opsional, dan absennya berarti "jadwal
+      ordinal 1" — persis perilaku sebelum Phase 4, jadi pemanggil lama
+      (`payment.ts:170`, yang mengirim tiga field ini saja) tidak berubah.
+
+      ⚠️ Nilainya datang dari BROWSER dan karena itu tidak dipercaya sedikit
+      pun: ia cuma dipakai untuk MENCARI baris jadwalnya, lalu kepemilikannya
+      dibuktikan ke `formSubmissionId` sebelum satu rupiah pun dihitung.
+    */
+    const { formSubmissionId, origin, paymentDueDate, scheduleId } = await request.json();
 
     if (!formSubmissionId) {
       return json({ error: 'formSubmissionId is required' }, 400);
@@ -406,16 +415,72 @@ export async function onRequest(context) {
     }
     const sub = subs[0];
 
-    if (sub.payment_status === 'paid') {
+    /*
+      ── BARIS JADWAL: SATU fetch, EMPAT kegunaan ──────────────────────────
+      Dipakai oleh penjaga kepemilikan (di bawah), ketiga penjaga keadaan,
+      atribusi tagihan, dan `billed_start_date`. Hanya saat `scheduleId` ada.
+
+      ⚠️ Kenapa ini perlu sama sekali: ketiga penjaga di bawah membaca `sub` —
+      kolom `form_submissions`, yaitu ORDER. Untuk jadwal ke-2 mereka menjawab
+      pertanyaan tentang baris yang SALAH: `payment_status === 'paid'` pada
+      order yang jadwal pertamanya lunas justru DEFINISI sasaran Phase 4, jadi
+      tanpa pengalihan ini 100% permintaan jadwal ke-2 ditolak 409.
+    */
+    let schedule = null;
+    if (scheduleId) {
+      const schedRes = await fetch(
+        `${supabaseUrl}/rest/v1/ad_schedules?id=eq.${encodeURIComponent(scheduleId)}` +
+          `&select=id,submission_id,source_id,ordinal,status,payment_status,` +
+          `slot_booked_by,slot_reserved_at,start_date,end_date,duration,` +
+          `prize_per_winner,winner_count,additional_prize_per_winner,is_new_period,voucher_code&limit=1`,
+        { headers: sbHeaders }
+      );
+      if (!schedRes.ok) {
+        console.error(`[create-payment] Gagal membaca ad_schedules ${scheduleId} (status ${schedRes.status}).`);
+        return json({ error: 'Could not read schedule' }, 502);
+      }
+      const schedRows = await schedRes.json();
+      schedule = Array.isArray(schedRows) && schedRows.length > 0 ? schedRows[0] : null;
+
+      /*
+        ⚠️ PENJAGA KEPEMILIKAN — gagal-TERTUTUP, dan ini jalur uang.
+        Tanpa ini browser bisa menagih order A untuk jadwal order B. Jadwal
+        yang tidak ditemukan ikut ditolak, bukan diam-diam dikembalikan ke
+        perilaku ordinal 1 (yang akan menagih jadwal yang salah TANPA error).
+      */
+      try {
+        assertScheduleBelongsToOrder(schedule, formSubmissionId);
+      } catch (e) {
+        const notFound = e?.message === 'schedule_not_found';
+        console.warn(`[create-payment] Penolakan jadwal ${scheduleId} untuk order ${formSubmissionId}: ${e?.message}`);
+        return json(
+          { error: notFound ? 'Schedule not found' : 'Schedule does not belong to this order' },
+          notFound ? 404 : 403
+        );
+      }
+    }
+
+    /*
+      ── TIGA PENJAGA: dialihkan ke BARIS JADWAL saat ada ─────────────────
+      ⚠️ JANGAN DIHAPUS untuk ordinal 1. Saat `scheduleId` absen, ketiganya
+      tetap satu-satunya pertahanan jalur order pertama — percabangannya
+      `guardRow`, bukan penggantian.
+    */
+    const guardRow = schedule || sub;
+
+    if (guardRow.payment_status === 'paid') {
       return json({ error: 'Submission is already paid' }, 409);
     }
-    if (sub.payment_status === 'expired') {
+    if (guardRow.payment_status === 'expired') {
       return json({ error: 'Payment slot has expired. Please rebook from the dashboard.' }, 409);
     }
     // Defense-in-depth: block if slot timer passed even if payment_status wasn't updated yet
     // (user went directly from email without opening PaymentCheckoutPage first).
-    if (sub.slot_booked_by === 'user' && sub.slot_reserved_at) {
-      const slotExpiredAt = new Date(sub.slot_reserved_at).getTime() + 3_600_000;
+    //
+    // Aturan hold-nya sama persis dengan `slotHold.ts`: hanya `slot_booked_by
+    // === 'user'` yang bisa lepas karena waktu, ambang 1 jam.
+    if (guardRow.slot_booked_by === 'user' && guardRow.slot_reserved_at) {
+      const slotExpiredAt = new Date(guardRow.slot_reserved_at).getTime() + 3_600_000;
       if (Date.now() > slotExpiredAt) {
         return json({ error: 'Payment slot has expired. Please rebook from the dashboard.' }, 409);
       }
@@ -572,22 +637,31 @@ export async function onRequest(context) {
     // `form_submission_id`, jadi lingkup order akan mematikan tagihan jadwal
     // lain yang tidak sedang diganti.
     let billedScheduleId = null;
-    try {
-      const schedRes = await fetch(
-        `${supabaseUrl}/rest/v1/ad_schedules?submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
-        `&ordinal=eq.1&select=id,start_date&limit=1`,
-        { headers: sbHeaders }
-      );
-      if (schedRes.ok) {
-        const rows = await schedRes.json();
-        if (Array.isArray(rows) && rows[0]?.id) billedScheduleId = rows[0].id;
-        if (Array.isArray(rows) && rows[0]?.start_date) billedStartDate = rows[0].start_date;
-        else console.warn(`[create-payment] ad_schedules ordinal 1 kosong untuk ${formSubmissionId}; billed_start_date dibiarkan NULL.`);
-      } else {
-        console.warn(`[create-payment] Could not read ad_schedules (status ${schedRes.status}); billed_start_date dibiarkan NULL.`);
+    if (schedule) {
+      // Jadwal ke-2 dst.: tanggalnya datang dari JADWAL ITU, bukan dari
+      // ordinal 1. Memakai ordinal 1 di sini akan membuat setiap tagihan
+      // jadwal ke-2 membawa `billed_start_date` jadwal pertama — dan `is_stale`
+      // (sql/60) langsung menilainya basi.
+      billedScheduleId = schedule.id;
+      billedStartDate = schedule.start_date || null;
+    } else {
+      try {
+        const schedRes = await fetch(
+          `${supabaseUrl}/rest/v1/ad_schedules?submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
+          `&ordinal=eq.1&select=id,start_date&limit=1`,
+          { headers: sbHeaders }
+        );
+        if (schedRes.ok) {
+          const rows = await schedRes.json();
+          if (Array.isArray(rows) && rows[0]?.id) billedScheduleId = rows[0].id;
+          if (Array.isArray(rows) && rows[0]?.start_date) billedStartDate = rows[0].start_date;
+          else console.warn(`[create-payment] ad_schedules ordinal 1 kosong untuk ${formSubmissionId}; billed_start_date dibiarkan NULL.`);
+        } else {
+          console.warn(`[create-payment] Could not read ad_schedules (status ${schedRes.status}); billed_start_date dibiarkan NULL.`);
+        }
+      } catch (e) {
+        console.warn('[create-payment] ad_schedules lookup failed; billed_start_date dibiarkan NULL:', e);
       }
-    } catch (e) {
-      console.warn('[create-payment] ad_schedules lookup failed; billed_start_date dibiarkan NULL:', e);
     }
 
     // ── PAKAI ULANG TAGIHAN YANG MASIH HIDUP ─────────────────────────────
@@ -611,6 +685,17 @@ export async function onRequest(context) {
       const liveRes = await fetch(
         `${supabaseUrl}/rest/v1/invoices?form_submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
         `&status=eq.pending&select=payment_id,invoice_url,amount,billed_start_date,expires_at,schedule_id,doku_request_id` +
+        /*
+          ⚠️ SARINGAN PER-JADWAL, bukan per-order (Phase 4).
+
+          Satu order kini bisa punya beberapa tagihan `pending` sekaligus —
+          satu per jadwal. Tanpa saringan ini, pencarian "tagihan yang bisa
+          dipakai ulang" ikut menjaring tagihan jadwal LAIN; kalau salah
+          satunya tagihan gabungan, `groupPaymentState` menjawab `'group'` dan
+          checkout DITOLAK 409 — peneliti tidak punya jalan bayar sama sekali
+          untuk jadwal yang sebenarnya belum pernah ditagih.
+        */
+        (schedule ? `&schedule_id=eq.${encodeURIComponent(schedule.id)}` : '') +
         `&order=created_at.desc&limit=10`,
         { headers: sbHeaders }
       );
@@ -927,8 +1012,17 @@ export async function onRequest(context) {
     // 5. Persist BOTH rows via service_role (bypasses RLS).
     //    `amount` is the PPN-inclusive grand total; subtotal/ppn_rate/ppn_amount
     //    record the tax breakdown for reconciliation and invoice rendering.
+    /*
+      ⚠️ ATRIBUSI — tanpa ini uang jadwal ke-2 mendarat di baris yang SALAH,
+      dan tidak ada satu pun error di sepanjang rantainya. Lihat
+      `scheduleAttribution()` di kepala berkas. `{}` untuk ordinal 1, jadi
+      jalur order pertama tidak berubah sedikit pun.
+    */
+    const attribution = scheduleAttribution(schedule);
+
     const transactionRow = {
       form_submission_id: formSubmissionId,
+      ...attribution,
       payment_id: invoiceNumber,
       payment_method: 'doku',
       amount,
@@ -952,6 +1046,7 @@ export async function onRequest(context) {
     };
     const invoiceRow = {
       form_submission_id: formSubmissionId,
+      ...attribution,
       payment_id: invoiceNumber,
       invoice_url: paymentUrl,
       amount,
