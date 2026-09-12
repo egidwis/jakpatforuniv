@@ -850,11 +850,36 @@ EOF
 
 ⚠️ **Di sinilah ketiga klausa dot ditegakkan.** Task 4 hanya menyediakan salurannya.
 
-- [ ] **Step 1: Periksa dulu apa yang tersedia**
+- [ ] **Step 1: Tanda tangan yang SUDAH diverifikasi — baca ini, jangan menebak**
 
-Run: `cd multi-step-form && grep -n "fetchScheduleBilling\|fetchAdSchedules" src/utils/supabase.ts | head -5`
+Diperiksa ke source 2026-09-12:
 
-Baca tanda tangan keduanya. `fetchScheduleBilling` mengembalikan `openInvoice` yang **sudah sadar-kedaluwarsa sejak sql/83** — jangan menulis ulang predikat kedaluwarsa sendiri (itu jebakan yang dicatat di bagian B spec).
+```ts
+// supabase.ts:4095 — menerima satu id ATAU array id, satu query berpaginasi
+export const fetchAdSchedules = (target?: string | string[]) => Promise<AdScheduleEntry[]>
+
+// supabase.ts:4355 — ⚠️ SATU submissionId saja, dan mengembalikan Map
+export const fetchScheduleBilling = (submissionId: string) => Promise<Map<string, ScheduleBilling>>
+```
+
+🔴 **`fetchScheduleBilling` TIDAK menerima array.** Memanggilnya per order pada
+halaman berisi 50 baris = **50 round-trip RPC setiap render daftar**. Itu tidak
+boleh dilakukan.
+
+**Karena itu sinyal ini TIDAK memakai `fetchScheduleBilling` sama sekali.**
+Yang dibutuhkan cuma satu boolean per jadwal ("ada tagihan hidup?"), dan
+`paymentStates` yang sudah dirakit di fungsi yang sama sudah memuat
+`hasOpenInvoice` per ORDER — dimuat sekali untuk seluruh halaman.
+
+⚠️ **Tapi `hasOpenInvoice` berlingkup ORDER, bukan JADWAL.** Untuk order yang
+punya dua jadwal, ia tidak bisa menjawab "tagihan hidup milik jadwal yang
+MANA". Konsekuensinya disadari: sinyal ini **diam** saat order punya tagihan
+hidup untuk jadwal lain. Itu arah kesalahan yang benar — lebih baik tidak
+menyala daripada menagih admin untuk pekerjaan yang tidak ada, prinsip yang
+sama dengan pencabutan cabang sumbu halaman (`lifecycle.ts:233`).
+
+Ketelitian per-jadwal menunggu rilis B+C, yang memang membawa predikat
+tagihan hidup ke server.
 
 - [ ] **Step 2: Rakit peta sinyal**
 
@@ -878,10 +903,7 @@ Modify `src/components/InternalDashboard.tsx`, sesudah `setScheduledSubmissionId
             keadaannya bisa terjadi, tapi tidak sedang berdiri di produksi.
           */
           const ids = transformed.map((s) => s.id).filter(Boolean) as string[];
-          const [allSchedules, billingMap] = await Promise.all([
-            fetchAdSchedules(ids),
-            fetchScheduleBilling(ids),
-          ]);
+          const allSchedules = await fetchAdSchedules(ids);
 
           const nowMs = Date.now();
           const todayStart = new Date();
@@ -889,15 +911,21 @@ Modify `src/components/InternalDashboard.tsx`, sesudah `setScheduledSubmissionId
 
           const signalMap: Record<string, ScheduleSignals> = {};
           transformed.forEach((sub) => {
+            // Tagihan hidup dibaca dari paymentMap yang SUDAH dirakit di atas —
+            // satu query untuk seluruh halaman. Lihat catatan lingkup di Step 1.
+            const adaTagihanHidup = paymentMap[sub.id]?.hasOpenInvoice === true;
+
             const mine = allSchedules.filter((e) => e.submissionId === sub.id);
-            const perluTindakan = mine.some((e) => {
+            const menahanKuota = mine.some((e) => {
               if (!occupiesSlot(e, nowMs)) return false;
               if (!e.slotBookedBy) return false;
               if (e.paymentStatus === 'paid' || e.paymentStatus === 'completed') return false;
-              if (!e.startDate || new Date(e.startDate).getTime() < todayStart.getTime()) return false;
-              return billingMap[e.id]?.openInvoice == null;
+              return !!e.startDate && new Date(e.startDate).getTime() >= todayStart.getTime();
             });
-            signalMap[sub.id] = { hasQuotaHoldingUnpaidFuture: perluTindakan };
+
+            signalMap[sub.id] = {
+              hasQuotaHoldingUnpaidFuture: menahanKuota && !adaTagihanHidup,
+            };
           });
           setScheduleSignals(signalMap);
 ```
