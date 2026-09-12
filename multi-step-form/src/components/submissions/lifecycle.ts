@@ -12,6 +12,28 @@ import { isSlotHoldReleased } from '../../utils/slotHold';
 
 export type PageStatus = 'none' | 'drafted' | 'scheduled' | 'live' | 'completed' | 'kilat';
 
+/**
+ * Ringkasan `ad_schedules` per order — satu-satunya jalan bagi daftar
+ * Submissions untuk melihat sumbu jadwal.
+ *
+ * ⚠️ Kenapa parameter, bukan query di dalam fungsi ini: `deriveLifecycle`
+ * murni dan dipanggil per baris saat render. Perakitnya (`InternalDashboard`)
+ * sudah memuat jadwal sekali untuk seluruh halaman.
+ */
+export interface ScheduleSignals {
+  /**
+   * Ada jadwal yang MASIH menahan kuota, tanggalnya belum lewat, dipesan
+   * seseorang, dan belum lunas — sementara tagihan hidupnya tidak ada.
+   *
+   * ⚠️ KLAUSA "BELUM LUNAS" BUKAN HIASAN. Diukur 2026-09-12: 24 jadwal
+   * bertanggal depan ber-`slot_booked_by`, SEMUANYA lunas. Tanpa klausa itu
+   * daftar ini menyalakan 24 titik merah tanpa pekerjaan — kesalahan yang
+   * sama persis dengan yang membuat cabang sumbu halaman dicabut (lihat
+   * catatan panjang di `getSubmissionActionDot`).
+   */
+  hasQuotaHoldingUnpaidFuture: boolean;
+}
+
 export interface LifecycleInfo {
   /** Single combined stage for the list chip (highest-precedence axis wins). */
   stage: LifecycleStage;
@@ -29,6 +51,8 @@ export interface LifecycleInfo {
   pageStatus: PageStatus;
   /** Epoch ms when a user-booked unpaid reservation expires, else null. */
   slotExpiresAt: number | null;
+  /** Reservasi menahan kuota tapi tagihannya sudah mati — admin perlu bertindak. */
+  needsScheduleFollowUp: boolean;
 }
 
 const RESERVABLE_STATUSES = ['approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed'];
@@ -46,6 +70,7 @@ export function deriveLifecycle(
   existingPage: ExistingPage | undefined,
   isScheduled: boolean,
   now: number = Date.now(),
+  scheduleSignals?: ScheduleSignals,
 ): LifecycleInfo {
   const isPaid = ['paid', 'completed'].includes(paymentData.latestStatus || submission.payment_status || '');
   const isRejectedEvent = ['rejected', 'spam'].includes(submission.submission_status || '');
@@ -182,6 +207,7 @@ export function deriveLifecycle(
     canBuildPage,
     pageStatus,
     slotExpiresAt,
+    needsScheduleFollowUp: scheduleSignals?.hasQuotaHoldingUnpaidFuture ?? false,
   };
 }
 
@@ -219,6 +245,25 @@ export function getSubmissionActionDot(lifecycle: LifecycleInfo): ActionDot | nu
   // bawah dan berteriak "Menunggu Pembayaran" untuk slot yang sudah dilepas.
   if (displayStatus === 'spam' || lifecycle.stage === 'cancelled') {
     return null;
+  }
+
+  /*
+    Reservasi menahan kuota harian, tapi tidak ada tagihan hidup yang akan
+    membayarnya. Slotnya terkunci untuk peneliti lain tanpa ada yang bergerak,
+    dan hanya admin yang bisa melepaskannya (jadwal admin tidak pernah lepas
+    sendiri — slotHold.ts).
+
+    ⚠️ LETAKNYA MENENTUKAN. Sesudah cabang review & keadaan akhir: order yang
+    masih perlu di-review sudah merah karena alasan yang lebih mendesak, dan
+    order spam/batal tidak perlu ditindak sama sekali. Memindahkannya ke atas
+    akan menukar label yang dibaca admin.
+
+    ⚠️ Ketiga klausanya (menahan kuota, tanggal belum lewat, BELUM LUNAS)
+    ditegakkan perakit sinyal di InternalDashboard, bukan di sini. Fungsi ini
+    hanya menyalakan apa yang sudah diputuskan — lihat `ScheduleSignals`.
+  */
+  if (lifecycle.needsScheduleFollowUp) {
+    return { type: 'red', label: 'Perlu tindakan: Reservasi tanpa tagihan hidup' };
   }
 
   // Dot status untuk tab Jadwal & Bayar:
