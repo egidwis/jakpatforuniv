@@ -20,7 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsMobileCard } from './SubmissionsTableRow';
 import type { SurveySubmission, PaymentState, ReviewHistoryEntry, ExistingPage } from './submissions/types';
-import { deriveLifecycle } from './submissions/lifecycle';
+import { deriveLifecycle, type ScheduleSignals } from './submissions/lifecycle';
+import { fetchAdSchedules } from '../utils/supabase';
+import { occupiesSlot } from '@/pages/dashboard/schedule/scheduleModel';
 import { SubmissionListRow } from './submissions/SubmissionListRow';
 import { SubmissionDetailSheet } from './submissions/SubmissionDetailSheet';
 import { mergeServerRow } from './submissions/mergeServerRow';
@@ -100,6 +102,13 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
 
   // Derived schedule state: Set of submission IDs that have a slot reserved (start_date set)
   const [scheduledSubmissionIds, setScheduledSubmissionIds] = useState<Set<string>>(new Set());
+
+  /**
+   * Sinyal sumbu JADWAL per order — satu-satunya jalan bagi daftar ini untuk
+   * melihat `ad_schedules`. Dirakit sekali per halaman di `loadSubmissions`,
+   * dibaca `deriveLifecycle` lewat parameter opsionalnya.
+   */
+  const [scheduleSignals, setScheduleSignals] = useState<Record<string, ScheduleSignals>>({});
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -496,6 +505,60 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
             if (sub.start_date && !['rejected', 'spam'].includes(sub.submission_status || '')) scheduledIds.add(sub.id);
           });
           setScheduledSubmissionIds(scheduledIds);
+
+          /*
+            Sinyal sumbu JADWAL untuk titik notifikasi (spec 2026-09-12 §E).
+
+            TIGA KLAUSA, dan ketiganya diukur ke produksi:
+              1. masih menahan kuota   → occupiesSlot()
+              2. tanggalnya belum lewat → kalau sudah lewat tidak ada yang bisa
+                 ditindak lagi; 342 dari 368 baris ada di sini
+              3. BELUM LUNAS → tanpa ini 24 jadwal lunas bertanggal depan ikut
+                 menyala merah, dan yang nyata terkubur di dalamnya
+            plus: ada pemesannya (slot_booked_by ≠ NULL). NULL berarti "tak
+            seorang pun pernah memesannya", bukan "dipesan admin" — pembedaan
+            yang sama sudah dipakai scheduleCardActions.ts:281.
+
+            ⚠️ TAGIHAN HIDUP DIBACA DARI `paymentMap`, BUKAN fetchScheduleBilling.
+            Fungsi itu menerima SATU submissionId dan mengembalikan Map; pada
+            halaman berisi 50 baris ia jadi 50 round-trip RPC setiap render.
+            `paymentMap` sudah dirakit di atas dari satu query untuk seluruh
+            halaman.
+
+            ⚠️ KONSEKUENSINYA DISADARI: `hasOpenInvoice` berlingkup ORDER, bukan
+            JADWAL. Untuk order bertagihan hidup atas jadwal LAIN, sinyal ini
+            diam. Itu arah kesalahan yang benar — lebih baik tidak menyala
+            daripada menagih admin untuk pekerjaan yang tidak ada, prinsip yang
+            sama dengan pencabutan cabang sumbu halaman (lifecycle.ts:233).
+            Ketelitian per-jadwal menunggu rilis B+C.
+
+            ⚠️ Menyala untuk NOL order saat ditulis (2026-09-12). Itu jawaban
+            yang jujur: keadaannya bisa terjadi, tapi tidak sedang berdiri.
+          */
+          const scheduleIds = transformed.map((s) => s.id).filter(Boolean) as string[];
+          const allSchedules = scheduleIds.length > 0 ? await fetchAdSchedules(scheduleIds) : [];
+
+          const nowMs = Date.now();
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+
+          const signalMap: Record<string, ScheduleSignals> = {};
+          transformed.forEach((sub) => {
+            const adaTagihanHidup = paymentMap[sub.id]?.hasOpenInvoice === true;
+
+            const menahanKuota = allSchedules.some((e) => {
+              if (e.submissionId !== sub.id) return false;
+              if (!occupiesSlot(e, nowMs)) return false;
+              if (!e.slotBookedBy) return false;
+              if (e.paymentStatus === 'paid' || e.paymentStatus === 'completed') return false;
+              return !!e.startDate && new Date(e.startDate).getTime() >= todayStart.getTime();
+            });
+
+            signalMap[sub.id] = {
+              hasQuotaHoldingUnpaidFuture: menahanKuota && !adaTagihanHidup,
+            };
+          });
+          setScheduleSignals(signalMap);
 
         } else {
           setExistingPages({}); // Clear pages if no submissions
@@ -1539,7 +1602,13 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                       submission,
                       paymentStates[submission.id] || EMPTY_PAYMENT_STATE,
                       existingPages[submission.id],
-                      scheduledSubmissionIds.has(submission.id)
+                      scheduledSubmissionIds.has(submission.id),
+                      // ⚠️ `undefined` WAJIB di posisi `now` — ia mengambil
+                      // default Date.now(). Menghilangkannya menggeser
+                      // scheduleSignals ke posisi `now` dan seluruh
+                      // perhitungan waktu jadi NaN.
+                      undefined,
+                      scheduleSignals[submission.id]
                     )}
                     selected={rowSelection.isSelected(submission.id)}
                     onSelectToggle={rowSelection.toggle}
