@@ -869,6 +869,7 @@ export function StatusPage() {
                                                     <SchedulePhase
                                                         submission={submission}
                                                         cards={cards}
+                                                        entries={[ui.first, ...ui.later]}
                                                         onReschedule={() => handleReschedule(submission)}
                                                         onDataUpdated={fetchSubmissions}
                                                         active={activePhase === 2}

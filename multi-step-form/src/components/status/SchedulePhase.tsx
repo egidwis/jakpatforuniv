@@ -28,7 +28,8 @@ import {
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
-import type { FormSubmission } from '@/utils/supabase';
+import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
+import { scheduleAgainBlock } from '@/utils/canScheduleAgain';
 import {
     airingStartHourWib,
     pickDefaultExpandedKey,
@@ -48,6 +49,14 @@ const formatDateLong = (d: string) =>
 interface SchedulePhaseProps {
     submission: FormSubmission;
     cards: ScheduleCard[];
+    /**
+     * Baris `ad_schedules` MENTAH order ini (ordinal 1 + sisanya).
+     *
+     * ⚠️ `cards` tidak cukup: `ScheduleCard.info` sengaja tidak membawa
+     * `status`/`slotBookedBy`/`slotReservedAt`, sehingga `occupiesSlot()`
+     * — dan karena itu gerbang kuota — tidak bisa dihitung darinya.
+     */
+    entries: AdScheduleEntry[];
     onReschedule: () => void;
     /**
      * `fetchSubmissions` milik StatusPage — konvensi yang sama dengan
@@ -1017,7 +1026,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
  * Fase ② — Jadwal Iklan: list kartu setara (asli + tiap perpanjangan), tiap
  * kartu membawa dua blok sendiri (Info Booking, Detail Pembayaran).
  */
-export function SchedulePhase({ submission, cards, onReschedule, onDataUpdated, active }: SchedulePhaseProps) {
+export function SchedulePhase({ submission, cards, entries, onReschedule, onDataUpdated, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
     // Satu perhitungan untuk seluruh kartu order ini — hak menjadwalkan melekat
     // pada ORDER, bukan pada jadwal. Lihat catatan di prop `canSelfReschedule`.
@@ -1033,6 +1042,23 @@ export function SchedulePhase({ submission, cards, onReschedule, onDataUpdated, 
     */
     const isKilatOrder =
         submission.distribution_type === 'kilat' || cards.some((c) => !!c.info?.isKilat);
+
+    /*
+      Gerbang tombol "Jadwalkan Iklan Lagi" — satu helper murni, diuji
+      terpisah (`utils/canScheduleAgain.spec.ts`).
+
+      ⚠️ Sebelum ini gerbangnya hanya `!isKilatOrder`, sehingga tombol muncul
+      untuk 397 order in_review, 17 rejected, dan 110 spam — semuanya ditolak
+      RPC, SESUDAH penelitinya mengisi panel hadiah. Itu kasus yang melahirkan
+      spec 2026-09-12.
+
+      ⚠️ Kilat dibaca dari DUA tempat (lihat `isKilatOrder` di atas), jadi
+      sebabnya dioper apa adanya — helper hanya melihat kolom order.
+    */
+    const againBlock = isKilatOrder
+        ? 'kilat'
+        : scheduleAgainBlock(submission, entries);
+    const showScheduleAgain = againBlock === null;
 
     /*
       Lama tayang jadwal BERIKUTNYA, ditebak dari jadwal PERTAMA.
@@ -1123,7 +1149,7 @@ export function SchedulePhase({ submission, cards, onReschedule, onDataUpdated, 
                         Kilat pernah terjadi. `create_ad_schedule` menolaknya juga di
                         server — tombol ini disembunyikan supaya penolakan itu tidak
                         pernah perlu dibaca peneliti. */}
-                    {!isKilatOrder && (
+                    {showScheduleAgain ? (
                         <div className="mt-3">
                             <Button
                                 variant="outline"
@@ -1134,7 +1160,16 @@ export function SchedulePhase({ submission, cards, onReschedule, onDataUpdated, 
                                 <span>{t('scheduleAdAgain')}</span>
                             </Button>
                         </div>
-                    )}
+                    ) : againBlock !== 'kilat' ? (
+                        /* Kilat sengaja TANPA kalimat: order Kilat tidak pernah
+                           punya afordansi ini, jadi menjelaskan ketiadaannya
+                           justru memperkenalkan fitur yang tidak berlaku. */
+                        <p className="mt-3 text-xs text-slate-500 leading-relaxed px-1">
+                            {againBlock === 'quota_held'
+                                ? t('scheduleAgainBlockedQuota')
+                                : t('scheduleAgainBlockedInactive')}
+                        </p>
+                    ) : null}
                 </>
             )}
 

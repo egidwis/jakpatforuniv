@@ -667,6 +667,12 @@ export const translations = {
     scheduleAgainFull: "That date is already full. Please pick another.",
     scheduleAgainFailed: "Could not lock the schedule.",
     scheduleAgainNeedsAdmin: "This schedule adds to a running prize pool, so our team needs to issue the invoice. We will contact you shortly.",
+    // Kalimat yang menggantikan tombol saat ia disembunyikan. ⚠️ Tanpa ini
+    // tombolnya sekadar lenyap tanpa sebab — kebisuan yang sama dengan yang
+    // ditutup 65369c1. Kontrak scheduleCardActions.ts: aksi DIHILANGKAN,
+    // bukan disabled, dan alasannya dititipkan ke kartu.
+    scheduleAgainBlockedQuota: "Your current schedule is still holding its date. Once it is paid — or you cancel the reservation — you can schedule the next one.",
+    scheduleAgainBlockedInactive: "This order cannot take a new schedule right now. Chat with Mimin below if you need help.",
     adDuration: "Ad duration",
     totalCost: "Total cost",
     questionsUnit: "questions",
@@ -1642,6 +1648,12 @@ export const translations = {
     scheduleAgainFull: "Tanggal itu sudah penuh. Silakan pilih tanggal lain.",
     scheduleAgainFailed: "Jadwal gagal dikunci.",
     scheduleAgainNeedsAdmin: "Jadwal ini menambah hadiah ke kolam yang sedang berjalan, jadi tagihannya diterbitkan tim kami. Kami akan menghubungi Anda.",
+    // Kalimat yang menggantikan tombol saat ia disembunyikan. ⚠️ Tanpa ini
+    // tombolnya sekadar lenyap tanpa sebab — kebisuan yang sama dengan yang
+    // ditutup 65369c1. Kontrak scheduleCardActions.ts: aksi DIHILANGKAN,
+    // bukan disabled, dan alasannya dititipkan ke kartu.
+    scheduleAgainBlockedQuota: "Jadwal Anda yang sekarang masih menahan tanggalnya. Setelah lunas — atau setelah reservasinya dibatalkan — Anda bisa menjadwalkan yang berikutnya.",
+    scheduleAgainBlockedInactive: "Pesanan ini belum bisa menerima jadwal baru. Chat Mimin di bawah kalau butuh bantuan.",
     adDuration: "Durasi iklan",
     totalCost: "Total biaya",
     questionsUnit: "pertanyaan",
