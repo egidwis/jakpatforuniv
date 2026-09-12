@@ -86,7 +86,21 @@ Penjaga `review_status_of()` yang sudah ada **tetap tinggal** — ia masih tugas
 yang benar untuk menolak `in_review`. Penjaga baru menangani dua nilai yang
 memang bukan urusan sumbu review.
 
-Cakupan: 9 `slot_cancelled` + 11 `cancelled` + 17 `rejected` + 110 `spam`.
+⚠️ **Cakupan sesungguhnya: 9 order, bukan 147.** Versi pertama spec ini
+menjumlahkan keempat status seakan semuanya lolos ke penjaga baru. Diukur ulang
+2026-09-12 — berapa yang lolos penjaga review yang **sudah ada**:
+
+| `submission_status` | Jumlah | Lolos `review_status_of()`? |
+|---|---|---|
+| `in_review` | 397 | 0 |
+| `spam` | 110 | 0 |
+| `rejected` | 17 | 0 |
+| `cancelled` | 11 | 0 |
+| **`slot_cancelled`** | **9** | **9** ← hanya ini yang sampai ke A |
+
+Jadi A menutup **9 order**; 138 sisanya tidak pernah lolos sejak awal. A tetap
+ditulis — penjaga berlapis di jalur uang itu murah dan `slot_cancelled` memang
+lolos — tapi jangan salah menaksir bobotnya 15× lebih besar dari sebenarnya.
 
 ### B. Penjaga "tagihan hidup"
 
@@ -231,37 +245,64 @@ Bug yang dilaporkan: tagihan dibatalkan sementara reservasi masih menahan slot,
 dan daftar admin **tidak memberi tanda apa pun**.
 
 **Sebabnya struktural, bukan cabang yang salah.** `deriveLifecycle(submission,
-paymentData, existingPage, isScheduled)` — keempat pemanggilnya hanya mengoper
+paymentData, existingPage, isScheduled)` — ketiga pemanggilnya hanya mengoper
 kolom `form_submissions`; `isScheduled` cuma `boolean`. Jadi
 `getSubmissionActionDot` **tidak pernah melihat `ad_schedules`**. Tagihan
 perpanjangan yang dibatalkan mustahil sampai ke sana. Bukan cabang hilang —
 **input yang hilang**. Papan Jadwal sudah benar lewat `chipKindOf`; datanya ada,
 hanya tidak pernah sampai ke daftar.
 
-⚠️ **Cakupannya dibatasi, dan angkanya yang memaksa.** Kondisi "reservasi hidup
-tanpa tagihan hidup" berlaku untuk **272** order:
+⚠️ **ANGKA DIKOREKSI 2026-09-12 — dan koreksinya mengubah syarat dot.**
+Versi pertama menulis 272 order dengan **2** bertanggal depan. Pengukuran ulang:
 
 | Pemesan | Tanggal | Jumlah |
 |---|---|---|
-| tak seorang pun | sudah lewat | **251** |
-| admin | sudah lewat | 13 |
-| peneliti | sudah lewat | 3 |
-| tak seorang pun | tanpa tanggal | 3 |
-| **admin** | **masih depan** | **2** |
+| admin | sudah lewat | 238 |
+| peneliti | sudah lewat | 69 |
+| tak seorang pun | sudah lewat | 35 |
+| **admin** | **masih depan** | **18** |
+| **peneliti** | **masih depan** | **6** |
+| tak seorang pun | tanpa tanggal | 2 |
 
-Memasangnya apa adanya = 272 titik merah, dan **2** yang nyata terkubur di
-dalamnya. Itu persis kesalahan yang dulu membuat cabang sumbu halaman **dicabut**
-dari fungsi ini (`lifecycle.ts:233`: *"menagih admin yang salah"*).
+**368 order, dan 24 bertanggal depan — bukan 2.** Tabel lama juga menyebut nol
+baris peneliti bertanggal depan; ada **6**.
 
-**Syarat dot:** `start_date >= hari ini` **DAN** `slot_booked_by` tidak NULL.
-Menyala untuk **2** order hari ini. Gerbang NULL konsisten dengan "Kabari via WA"
-(`scheduleCardActions.ts:281`) yang sudah memakai pembedaan yang sama: NULL
-berarti *"tak seorang pun pernah memesannya"*, bukan "dipesan admin".
+🔴 **Yang menentukan: semua 24 baris itu `payment_status='paid'`.** Disaring ke
+yang belum lunas, hasilnya **kosong**. Jadi syarat yang ditulis versi pertama
+(`start_date >= hari ini` DAN `slot_booked_by` tidak NULL) akan menyalakan
+**24 titik merah yang seluruhnya jadwal LUNAS tanpa pekerjaan apa pun** —
+persis kegagalan yang dikutip spec ini sebagai pelajaran (`lifecycle.ts:233`:
+*"menagih admin yang salah"*), diulang oleh perbaikan yang dimaksudkan
+mencegahnya.
+
+**Syarat dot (dikoreksi), tiga klausa:**
+
+1. `start_date >= hari ini`
+2. `slot_booked_by` tidak NULL — konsisten dengan "Kabari via WA"
+   (`scheduleCardActions.ts:281`): NULL berarti *"tak seorang pun pernah
+   memesannya"*, bukan "dipesan admin"
+3. 🔴 **belum lunas** (`payment_status` bukan `paid`/`completed`) — klausa yang
+   hilang di versi pertama
+
+⚠️ **Menyala untuk NOL order hari ini.** Itu jawaban yang jujur: keadaan yang
+dilaporkan memang bisa terjadi, tapi tidak sedang berdiri di produksi.
+Konsekuensinya **E tidak punya baris produksi untuk diverifikasi** — uji
+browsernya wajib membuat keadaan itu dulu (batalkan tagihan atas reservasi
+bertanggal depan yang belum lunas), bukan mencari order yang sudah ada.
 
 **Caranya:** parameter baru **opsional** pada `deriveLifecycle(..., scheduleSignals?)`
 — ringkasan per-order (ada reservasi menahan kuota? ada tagihan hidup?) yang
-sudah dihitung di tempat lain. Opsional supaya keempat pemanggil lain tidak
-berubah perilakunya.
+sudah dihitung di tempat lain. Opsional supaya pemanggil lain tidak berubah
+perilakunya.
+
+⚠️ **Pemanggilnya TIGA, bukan empat** (dikoreksi 2026-09-12):
+`InternalDashboard.tsx:1538`, `SubmissionsTableRow.tsx:59`,
+`SubmissionDetailSheet.tsx:267`. `SubmissionListRow` **tidak** memanggilnya — ia
+menerima `lifecycle` sebagai prop, lalu memanggil `getSubmissionActionDot`.
+Periksa dulu apakah `SubmissionsTableRow` masih hidup: barisnya sendiri menulis
+*"(Desktop rows now use SubmissionListRow + SubmissionDetailSheet)"*
+(`SubmissionsTableRow.tsx:40`), jadi ia mungkin kode mati. Kalau benar mati,
+pemanggil nyatanya **dua**.
 
 ### F. Riwayat jadwal dibatalkan — tunda, dan ini alasannya
 
@@ -389,9 +430,12 @@ dulu untuk alasan yang benar.
    → **false**. Aturan `slotHold.ts`, dan sumber 13 baris produksi.
 5. Kedaluwarsa tagihan (B): tagihan `pending` yang `expires_at < now()` →
    **tidak memblokir**. Tes ini yang menangkap "predikat dikarang".
-6. **Dot (E):** `start_date` depan + `slot_booked_by='admin'` → merah;
-   `start_date` lampau → null; `slot_booked_by=NULL` → null. Tes ketiga yang
-   menjaga 251 baris "tak seorang pun memesan" tetap diam.
+6. **Dot (E) — EMPAT kasus, bukan tiga.** `start_date` depan + `slot_booked_by
+   ='admin'` + **belum lunas** → merah; `start_date` lampau → null;
+   `slot_booked_by=NULL` → null (menjaga 35 baris "tak seorang pun memesan"
+   tetap diam); 🔴 **`start_date` depan + `slot_booked_by='admin'` + LUNAS →
+   null.** Kasus keempat itu yang mengunci koreksi 2026-09-12: tanpa klausa
+   "belum lunas" ia hijau di versi lama dan 24 jadwal lunas ikut menyala.
 
 **RPC / endpoint (uji relasional)**
 7. Peneliti + order `slot_cancelled` → RPC menolak.
@@ -445,9 +489,13 @@ dulu untuk alasan yang benar.
   baris seumur hidup) dan tidak pernah mencakup kartu kredit (~3%). C menjadikan
   peneliti pemakai pertamanya. Perlindungan sesungguhnya tetap resolver `/bayar/`
   + `paid_on_stale_bill`, yang nol bergantung pada DOKU.
-- **E menambah parameter pada `deriveLifecycle`**, fungsi yang dipakai 4
-  permukaan admin. Opsional supaya keempatnya tidak berubah perilaku — tapi
-  fungsinya tetap tersentuh.
+- **E menambah parameter pada `deriveLifecycle`**, fungsi yang dipakai **3**
+  pemanggil admin (dikoreksi dari "4"; `SubmissionListRow` menerima prop, bukan
+  memanggil — dan `SubmissionsTableRow` mungkin kode mati). Opsional supaya
+  ketiganya tidak berubah perilaku — tapi fungsinya tetap tersentuh.
+- **E tidak punya baris produksi untuk diverifikasi** — sesudah klausa "belum
+  lunas" ditambahkan, dot menyala untuk **0** order hari ini. Keadaannya wajib
+  dibuat manual saat uji browser; tidak ada order yang bisa dipakai apa adanya.
 
 ## Yang sengaja TIDAK dikerjakan
 
