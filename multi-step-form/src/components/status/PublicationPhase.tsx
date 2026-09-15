@@ -9,6 +9,7 @@ import { airingStartHourWib, pickPublicationHighlight, type ScheduleCard } from 
 interface PublicationPhaseProps {
     cards: ScheduleCard[];
     pageInfo?: { views: number; slug: string | null };
+    isCancelled?: boolean;
 }
 
 /** Chip status heading Fase ③ — jadwal paling relevan (tayang > terjadwal
@@ -37,18 +38,18 @@ function PublicationRow({ card }: { card: ScheduleCard }) {
                 {/* Dua baris, bukan satu: chip status memakan sisi kanan, jadi
                     di mobile keterangan jam tidak muat disandingkan. */}
                 <span className="flex flex-col min-w-0">
-                    <span className="text-slate-900 font-semibold truncate text-xs sm:text-sm">{card.dateRange}</span>
+                    <span className="text-slate-900 font-semibold truncate text-sm">{card.dateRange}</span>
                     {/* ⚠️ Dulu di sini ada konstanta "Mulai 15.00 WIB" — dan ia salah
                         untuk SELURUH order Kilat: gelombangnya 08/11/14/17, nol yang
                         tayang jam 15. Jamnya sekarang diturunkan dari instant jadwalnya
                         sendiri, dan Kilat yang gelombangnya belum ditetapkan tidak
                         menampilkan angka apa pun. */}
                     {startHour ? (
-                        <span className="text-[11px] text-slate-500 font-medium">
+                        <span className="text-xs text-slate-500 font-medium">
                             {t('airingStartTimeAt', { time: startHour })}
                         </span>
                     ) : card.info.isKilat ? (
-                        <span className="text-[11px] text-slate-500 font-medium italic">
+                        <span className="text-xs text-slate-500 font-medium italic">
                             {t('scheduleKilatHourPending')}
                         </span>
                     ) : null}
@@ -63,14 +64,13 @@ function PublicationRow({ card }: { card: ScheduleCard }) {
 }
 
 /**
- * Fase ③ — Penayangan: daftar ringkas status tayang tiap jadwal yang sudah
- * lunas (tanggal tayang) di atas — data paling spesifik ke order ini duluan
- * — Halaman Iklan (link + views, order-level, dipakai bersama seluruh
- * jadwal/extend) di bawahnya. Menggantikan sub-section Penayangan yang dulu
- * ada di tiap kartu Fase ② — dipisah supaya Fase ② bisa berhenti murni di
- * status pembayaran ("Lunas") tanpa ikut melompat ke status tayang.
+ * Fase ③ — Penayangan:
+ * 1. Halaman Iklan (link publik + views counter) di paling atas sebagai
+ *    ringkasan kampanye publik yang live/selesai.
+ * 2. Daftar ringkas status tayang tiap jadwal yang lunas (tanggal tayang).
+ * 3. Hint informatif / CTA opsional olah data riset dengan AI.
  */
-export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
+export function PublicationPhase({ cards, pageInfo, isCancelled }: PublicationPhaseProps) {
     const { t } = useLanguage();
     const paidCards = cards.filter((c) => c.booking.state === 'paid');
     const hasCompleted = paidCards.some((c) => c.publication.state === 'completed');
@@ -78,14 +78,39 @@ export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
 
     if (!pageInfo?.slug && paidCards.length === 0) {
         return (
-            <p className="text-sm text-slate-400 rounded-xl border border-dashed border-slate-300 bg-slate-50/40 px-3 py-4 text-center">
-                {t('publicationEmptyState')}
-            </p>
+            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200/70 bg-slate-50/40 text-xs text-slate-400">
+                <span>{isCancelled ? t('publicationCancelledNote') : t('publicationPendingActivation')}</span>
+                <span className="text-[10px] font-semibold bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full border border-slate-200/60">
+                    {isCancelled ? t('reviewChipCancelled') : (cards.length === 0 ? t('publicationNotActive') : t('extStatusWaitingPayment'))}
+                </span>
+            </div>
         );
     }
 
     return (
         <div className="space-y-3">
+            {/* 1. Halaman Iklan & Total Views (Paling Atas di Step 3) */}
+            {pageInfo?.slug && (
+                <div className="flex items-center justify-between gap-2 px-1">
+                    <a
+                        href={publicPagePath(pageInfo.slug)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-sm font-semibold text-jfu-primary hover:text-jfu-dark hover:underline min-w-0"
+                    >
+                        <ExternalLink className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{t('adPageLinkLabel')}</span>
+                    </a>
+                    {typeof pageInfo.views === 'number' && (
+                        <span className="flex items-center gap-1 text-xs font-bold text-jfu-primary shrink-0 bg-blue-50 border border-blue-200/70 px-2.5 py-1 rounded-full">
+                            <Eye className="w-3.5 h-3.5" />
+                            {new Intl.NumberFormat('id-ID').format(pageInfo.views)} {t('viewsUnit')}
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {/* 2. Baris jadwal penayangan yang lunas */}
             {paidCards.length > 0 && (
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/40 divide-y divide-slate-100 overflow-hidden shadow-2xs">
                     {paidCards.map((card) => (
@@ -94,9 +119,9 @@ export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
                 </div>
             )}
 
-            {/* Hint saat survei sedang tayang / terjadwal */}
+            {/* 3. Hint saat survei sedang tayang / terjadwal */}
             {hasLiveOrScheduled && (
-                <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-[11px] text-amber-900 leading-relaxed shadow-2xs">
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-sm text-amber-900 leading-relaxed shadow-2xs">
                     <Lightbulb className="w-4 h-4 text-amber-600 shrink-0" />
                     <p>
                         Respon responden sedang dihimpun. Setelah selesai, Anda bisa langsung mengolah visualisasi &amp; draf laporan riset di{' '}
@@ -107,47 +132,25 @@ export function PublicationPhase({ cards, pageInfo }: PublicationPhaseProps) {
                 </div>
             )}
 
-            {/* CTA Card saat survei selesai ditayangkan */}
+            {/* 4. Area CTA opsional saat survei selesai ditayangkan */}
             {hasCompleted && (
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-indigo-50/90 border border-indigo-100 text-xs shadow-2xs">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                        <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-600 shrink-0 mt-0.5">
+                <div className="flex items-center justify-between gap-3 px-3.5 py-3 sm:px-4 rounded-xl bg-blue-50/40 border border-blue-200/70 shadow-2xs hover:border-blue-300/80 transition-all">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 text-jfu-primary flex items-center justify-center shrink-0">
                             <Sparkles className="w-4 h-4" />
                         </div>
-                        <div>
-                            <p className="font-bold text-indigo-950">Survei telah selesai ditayangkan?</p>
-                            <p className="text-indigo-800/80 text-[11px] leading-relaxed mt-0.5">
-                                Export CSV respon kuesioner Anda dan olah grafik, tabulasi silang, serta draf narasi riset dengan AI.
-                            </p>
-                        </div>
+                        <p className="text-sm leading-snug">
+                            <span className="font-bold text-slate-900">{t('publicationCompletedPrefix')}</span>{' '}
+                            <span className="text-slate-600">{t('publicationCompletedHint')}</span>
+                        </p>
                     </div>
                     <Link
                         to="/dashboard/analyzer/new"
-                        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-all shadow-xs active:scale-95"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white border border-blue-200/90 hover:border-blue-300 hover:bg-blue-50 text-jfu-primary font-bold text-sm shadow-2xs transition-all shrink-0 active:scale-95"
                     >
-                        <span>Olah Data</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <span>{t('publicationCtaBtn')}</span>
+                        <ArrowRight className="w-4 h-4" />
                     </Link>
-                </div>
-            )}
-
-            {pageInfo?.slug && (
-                <div className="flex items-center justify-between gap-2 px-1">
-                    <a
-                        href={publicPagePath(pageInfo.slug)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs font-semibold text-jfu-primary hover:text-jfu-dark hover:underline min-w-0"
-                    >
-                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{t('adPageLinkLabel')}</span>
-                    </a>
-                    {typeof pageInfo.views === 'number' && (
-                        <span className="flex items-center gap-1 text-[11px] font-bold text-jfu-primary shrink-0 bg-blue-50 border border-blue-200/70 px-2 py-0.5 rounded-full">
-                            <Eye className="w-3.5 h-3.5" />
-                            {new Intl.NumberFormat('id-ID').format(pageInfo.views)} {t('viewsUnit')}
-                        </span>
-                    )}
                 </div>
             )}
         </div>

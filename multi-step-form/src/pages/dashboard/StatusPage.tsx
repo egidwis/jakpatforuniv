@@ -877,7 +877,7 @@ export function StatusPage() {
                                                 </Phase>
 
                                                 <Phase number={3} title={t('sectionPublication')} active={reachedPhase >= 3} isLast>
-                                                    <PublicationPhase cards={cards} pageInfo={pageInfo} />
+                                                    <PublicationPhase cards={cards} pageInfo={pageInfo} isCancelled={isCancelled} />
                                                 </Phase>
 
                                                 {/* F. Footer.

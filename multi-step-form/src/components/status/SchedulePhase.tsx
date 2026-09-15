@@ -4,7 +4,6 @@ import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
     AlertCircle,
     Bookmark,
-    CalendarCheck,
     CalendarClock,
     CalendarRange,
     ChevronDown,
@@ -16,6 +15,7 @@ import {
     Layers,
     Plus,
     RotateCcw,
+    Ticket,
     Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -175,18 +175,10 @@ const formatDateRangeTrigger = (start: Date | null, end: Date | null) => {
 
 function getScheduleTriggerTitle(card: ScheduleCard, t: (k: TranslationKey) => string): string {
     const dateRangeText = formatDateRangeTrigger(card.startDate, card.endDate);
-
-    if (card.kind === 'original') {
-        if (dateRangeText) {
-            return dateRangeText;
-        }
-        return t('airingPeriodLabel');
-    } else {
-        if (dateRangeText) {
-            return `${t('scheduleExtensionPrefix')}: ${dateRangeText}`;
-        }
-        return t('scheduleExtensionLabel');
+    if (dateRangeText) {
+        return dateRangeText;
     }
+    return t('airingPeriodLabel');
 }
 
 /**
@@ -267,18 +259,6 @@ function RowGrid({ rows, muted }: { rows: RowDef[]; muted?: boolean }) {
     );
 }
 
-function Section({ label, sublabel, children }: { label: string; sublabel?: ReactNode; children?: ReactNode }) {
-    return (
-        <div>
-            <div className="mb-2.5">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
-                {sublabel && <p className="text-xs text-slate-500 font-normal mt-0.5">{sublabel}</p>}
-            </div>
-            {children}
-        </div>
-    );
-}
-
 function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean }) {
     const { t } = useLanguage();
     if (info.mode === 'plain') {
@@ -315,93 +295,18 @@ const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-800 border 
  * ditutup: uangnya datang jadi dari `card.money`. Menerimanya lagi berarti
  * membuka pintu untuk hitungan kedua yang diam-diam menyimpang dari admin.
  */
+/**
+ * Sub-Accordion Rincian Pemesanan & Tagihan.
+ * Menyimpan Booking ID, Hadiah, Periode, Breakdown Biaya, dan Tautan Tagihan
+ * di dalam toggle ringkas agar fokus visual peneliti tetap pada jadwal dan aksi pembayaran.
+ */
 function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const { t } = useLanguage();
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [showBreakdown, setShowBreakdown] = useState(false);
     const rows: RowDef[] = [];
     const bState = card?.booking?.state;
     const b = card?.booking || {};
-
-    // Panjang tayang diturunkan dari rentang tanggalnya (akhir-eksklusif), BUKAN dari
-    // kolom `duration` — keduanya bisa berbeda, dan yang salah adalah kolomnya. Baris
-    // ini bersebelahan langsung dengan `formattedRange`, jadi memakai kolom mentah
-    // berarti memajang dua angka yang saling menyangkal di satu baris.
-    // Cadangan ke `duration` hanya untuk jadwal yang belum bertanggal sama sekali.
-    const duration = card?.info?.airingDays || card?.info?.duration || 1;
-    const totalHours = duration * 24;
-    const formattedRange = formatDateRangeClean(card?.startDate, card?.endDate, card?.dateRange);
-
-    /*
-      ⚠️ ATURAN EMAS: JANGAN MENAMPILKAN JAM YANG BELUM DITETAPKAN SIAPA PUN.
-
-      Dua kebohongan pernah hidup di tiga baris ini:
-
-        1. Kilat yang gelombangnya belum ditugaskan menyimpan `start_date`
-           pukul 00:00 WIB sebagai penampung. Membacanya sebagai jam tayang
-           membuat kartunya berbunyi "Mulai 00.00 WIB" — jam yang tidak pernah
-           diputuskan siapa pun, untuk iklan yang justru sedang menunggu
-           keputusan itu.
-        2. Cadangan `: '15.00'` menebak jam untuk jadwal yang bahkan belum
-           punya tanggal.
-
-      Sekarang `null` berarti "tidak ada jam yang jujur bisa disebut", dan
-      barisnya DIHILANGKAN, bukan diisi tebakan.
-    */
-    // Satu turunan untuk kedua fase — lihat `airingStartHourWib`. Fase ③ dulu
-    // memakai konstanta 15.00 dan karena itu salah untuk SELURUH order Kilat.
-    const startTimeWib = card ? airingStartHourWib(card) : null;
-    const kilatHourPending = !!card?.info?.isKilat && card.info.kilatSlotHour == null;
-
-    const penayanganBox = (
-        <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-1.5 mb-4">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                <CalendarCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>{t('airingDateLabel')}</span>
-            </div>
-            {bState === 'expired' ? (
-                <p className="text-amber-800/90 font-medium text-xs sm:text-sm pt-0.5">
-                    {t('scheduleSlotReleased')}
-                </p>
-            ) : bState === 'too_late_today' ? (
-                <p className="text-amber-800/90 font-medium text-xs sm:text-sm pt-0.5">
-                    {t('scheduleTooLate')}
-                </p>
-            ) : bState === 'in_review' ? (
-                <p className="text-slate-400 font-normal text-xs sm:text-sm pt-0.5">
-                    {t('schedulePendingReview')}
-                </p>
-            ) : bState === 'choose_schedule' ? (
-                <p className="text-slate-400 font-normal text-xs sm:text-sm pt-0.5">
-                    {t('scheduleNotYetChosen')}
-                </p>
-            ) : bState === 'cancelled' ? (
-                <p className="text-slate-400 font-normal text-xs sm:text-sm pt-0.5">
-                    {t('scheduleCancelled')}
-                </p>
-            ) : (
-                <div className="space-y-1 pt-0.5">
-                    <div className={`font-bold text-sm ${valueTone(muted)}`}>
-                        {formattedRange}
-                    </div>
-                    {card?.startDate && (
-                        <div className="text-xs text-slate-500 font-normal flex items-center gap-1.5 flex-wrap">
-                            {startTimeWib ? (
-                                <span>Mulai <strong className="font-semibold text-slate-700">{startTimeWib} WIB</strong></span>
-                            ) : (
-                                <span className="italic">{t('scheduleKilatHourPending')}</span>
-                            )}
-                            {!kilatHourPending && (
-                                <>
-                                    <span className="text-slate-300">•</span>
-                                    <span>Durasi <strong className="font-semibold text-slate-700">{duration} Hari ({totalHours} Jam)</strong></span>
-                                </>
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
 
     if (card?.info?.bookingId) {
         rows.push({
@@ -425,23 +330,6 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
 
     rows.push({ key: 'batch', icon: <CalendarRange className={iconCls} />, label: t('periodBatchLabel'), value: batchValue });
 
-    /*
-      ⚠️ UANG JADWAL INI DIBACA, BUKAN DIHITUNG ULANG.
-
-      Sampai sekarang blok ini menghitung seluruh harganya dari nol memakai
-      tarif HARI INI (`calculateTotalAdCost` dkk.), sementara drawer admin
-      membaca `ad_schedules.total_cost` yang tersimpan. Untuk order lama kedua
-      layar memberi angka berbeda — dan yang dilihat peneliti adalah angka yang
-      tidak pernah ada di tagihan mana pun. Untuk jadwal ke-2 dst. lebih buruk
-      lagi: rumus ORDER dipakai untuk baris perpanjangan, jadi dua jadwal yang
-      ditagih berbeda tampil dengan harga yang sama.
-
-      `deriveScheduleMoney` (dipanggil di `buildScheduleCards`) adalah fungsi
-      yang SAMA PERSIS dengan yang dipakai kartu admin. Aturannya: kalau sudah
-      pernah ditagih, tampilkan yang ditagih; hitung ulang hanya untuk jadwal
-      yang memang belum punya tagihan — di situ ia penawaran, bukan catatan,
-      dan kartunya menyebutnya begitu (`costIsEstimateNote`).
-    */
     const money = card.money;
 
     const totalPaymentValue = (
@@ -501,16 +389,6 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
         value: totalPaymentValue,
     });
 
-    /*
-      Sebagian sudah dibayar — 24 jadwal di produksi. Sampai sekarang kartu
-      peneliti hanya menyebut harga penuh, jadi orang yang sudah menyetor
-      Rp 100.000 dari Rp 233.100 tetap dibilang berutang Rp 233.100 sementara
-      admin melihat sisanya Rp 133.100. Angkanya sudah lama tersedia dari
-      `fetchScheduleBilling`; yang belum ada cuma jalur ke layar ini.
-
-      Barisnya hanya muncul saat memang ada selisih: jadwal yang lunas atau
-      yang belum dibayar sama sekali tidak butuh dua baris tambahan.
-    */
     if (b.paid > 0 && b.outstanding > 0) {
         rows.push({
             key: 'paidSoFar',
@@ -526,7 +404,6 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
         });
     }
 
-    // Invoice / Receipt Row
     let invoiceValue: ReactNode;
     if (b.isPaidForLabel && b.invoicePaymentId) {
         invoiceValue = (
@@ -576,10 +453,32 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const sublabel = card?.info?.createdAt ? `${t('submittedOn')} ${formatDateLong(card.info.createdAt)}` : undefined;
 
     return (
-        <Section label={t('sectionInfo')} sublabel={sublabel}>
-            {penayanganBox}
-            <RowGrid rows={rows} muted={muted} />
-        </Section>
+        <div className="pt-1">
+            <button
+                type="button"
+                onClick={() => setIsDetailsOpen((prev) => !prev)}
+                className="flex items-center justify-between w-full py-2 px-3 rounded-xl bg-slate-50/80 hover:bg-slate-100/80 text-slate-600 transition-colors text-xs font-semibold cursor-pointer border border-slate-200/60"
+            >
+                <span className="flex items-center gap-1.5 min-w-0">
+                    <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">{isDetailsOpen ? t('hideBookingDetails') : t('viewBookingDetails')}</span>
+                    {!isDetailsOpen && card.info?.bookingId && (
+                        <span className="text-[11px] font-mono text-slate-400 font-normal shrink-0">
+                            (#{card.info.bookingId})
+                        </span>
+                    )}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${isDetailsOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isDetailsOpen && (
+                <div className="mt-2.5 p-3.5 rounded-xl bg-slate-50/50 border border-slate-200/60 space-y-3">
+                    <RowGrid rows={rows} muted={muted} />
+                    {sublabel && (
+                        <p className="text-[11px] text-slate-400 border-t border-slate-200/60 pt-2">{sublabel}</p>
+                    )}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -774,7 +673,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 tone="slate"
                 icon={<Clock className={bannerIcon} />}
                 title={t('bannerTitleAwaitingInvoice')}
-                lines={[card.kind === 'extend' ? t('bannerSubAwaitingInvoiceSchedule') : t('bannerSubAwaitingInvoice')]}
+                lines={[t('bannerSubAwaitingInvoice')]}
             />
         );
     }
@@ -1080,47 +979,119 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, onData
                    `buildScheduleCards`). Kalimatnya sengaja netral: untuk order
                    batal, menyuruh "selesaikan revisi" adalah instruksi yang
                    tidak punya jalan keluar. */
-                <p className="text-sm text-slate-400 rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center">
-                    {t('scheduleEmptyRejected')}
-                </p>
+                <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200/70 bg-slate-50/40 text-xs text-slate-400">
+                    <span>{t('scheduleEmptyRejected')}</span>
+                    <span className="text-[10px] font-semibold bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full border border-slate-200/60">
+                        {submission.review_status === 'cancelled' || submission.status === 'cancelled'
+                            ? t('reviewChipCancelled')
+                            : t('publicationNotActive')}
+                    </span>
+                </div>
             ) : (
                 <>
                     <Accordion
                         type="single"
                         collapsible
                         defaultValue={active ? pickDefaultExpandedKey(cards) : undefined}
-                        className="rounded-xl border border-slate-200/80 bg-slate-50/40 divide-y divide-slate-100 overflow-hidden shadow-2xs"
+                        className="space-y-3"
                     >
-                        {cards.map((card) => {
-                            const triggerTitle = getScheduleTriggerTitle(card, t);
-                            /* Judul diredam untuk kartu yang belum aktif (review) maupun yang sudah dibatalkan */
+                        {cards.map((card, index) => {
+                            const ticketBadge = cards.length > 1
+                                ? t('scheduleTicketNumbered', { index: String(index + 1) })
+                                : t('ticketScheduleLabel');
+                            const dateRangeText = formatDateRangeTrigger(card.startDate, card.endDate);
                             const mutedTitle = card.booking.state === 'in_review' || card.booking.state === 'cancelled';
                             const pendingReview = card.booking.state === 'in_review';
+
+                            const duration = card?.info?.airingDays || card?.info?.duration || 1;
+                            const totalHours = duration * 24;
+                            const startTimeWib = airingStartHourWib(card);
+                            const kilatHourPending = !!card?.info?.isKilat && card.info.kilatSlotHour == null;
+
+                            let timeSubtext = '';
+                            if (card.startDate) {
+                                const timePart = startTimeWib ? t('airingStartTimeAt', { time: startTimeWib }) : kilatHourPending ? t('scheduleKilatHourPending') : '';
+                                const durPart = `${duration} Hari (${totalHours} Jam)`;
+                                timeSubtext = timePart ? `${timePart} • ${durPart}` : durPart;
+                            } else if (card.booking.state === 'choose_schedule') {
+                                timeSubtext = t('scheduleNotYetChosen');
+                            } else if (card.booking.state === 'awaiting_admin_schedule') {
+                                timeSubtext = t('bookingStatusAwaitingAdminSchedule');
+                            } else if (card.booking.state === 'in_review') {
+                                timeSubtext = t('schedulePendingReview');
+                            } else if (card.booking.state === 'cancelled' || card.booking.state === 'slot_cancelled') {
+                                timeSubtext = t('scheduleCancelled');
+                            }
+
                             return (
-                            <AccordionItem key={card.key} value={card.key} className="border-b-0 px-3.5">
-                                <AccordionPrimitive.Header className="flex items-center gap-1 [&[data-state=open]>svg]:rotate-180">
+                            <AccordionItem
+                                key={card.key}
+                                value={card.key}
+                                className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-xs transition-all duration-200 hover:border-slate-400"
+                            >
+                                <AccordionPrimitive.Header className="flex items-center w-full [&[data-state=open]>button>div>div>.ticket-chevron]:rotate-180">
                                     <AccordionPrimitive.Trigger
-                                        aria-label={triggerTitle}
-                                        className="flex flex-1 items-center gap-2 min-h-11 py-2.5 min-w-0 text-left font-medium hover:bg-slate-100/40 transition-colors"
+                                        aria-label={dateRangeText || ticketBadge}
+                                        className="flex flex-1 flex-col text-left font-medium w-full group cursor-pointer"
                                     >
-                                        <span className={`text-xs font-bold truncate ${mutedTitle ? 'text-slate-400' : 'text-slate-900'}`}>
-                                            {triggerTitle}
-                                        </span>
-                                        <span className="flex-1" />
-                                        <ScheduleChip card={card} />
+                                        {/* Top Header Stub: Micro-Badge + Booking ID & Status Chip */}
+                                        <div className="flex items-center justify-between gap-2 w-full px-3.5 sm:px-4 py-2.5 bg-slate-50/90 group-hover:bg-slate-100/80 transition-colors">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="inline-flex items-center gap-1 text-xs font-extrabold uppercase tracking-wider text-slate-700 bg-white border border-slate-300 px-2 py-0.5 rounded-md shadow-2xs">
+                                                    <Ticket className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                                    <span className="truncate">{ticketBadge}</span>
+                                                </span>
+                                                {card.info?.bookingId && (
+                                                    <span className="text-xs font-mono text-slate-500 font-semibold shrink-0">
+                                                        #{card.info.bookingId}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <ScheduleChip card={card} />
+                                                <ChevronDown className="ticket-chevron h-4 w-4 shrink-0 text-slate-400 group-hover:text-slate-600 transition-transform duration-200" />
+                                            </div>
+                                        </div>
+
+                                        {/* Perforated tear line with left & right semicircular ticket bites */}
+                                        <div className="relative flex items-center justify-between w-full h-2.5 bg-white select-none pointer-events-none">
+                                            {/* Left Notch */}
+                                            <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border border-slate-300 shadow-[inset_-1px_0_2px_rgba(0,0,0,0.06)] z-10" />
+                                            {/* Dashed Perforation Line */}
+                                            <div className="w-full border-t-2 border-dashed border-slate-200 mx-2.5" />
+                                            {/* Right Notch */}
+                                            <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border border-slate-300 shadow-[inset_1px_0_2px_rgba(0,0,0,0.06)] z-10" />
+                                        </div>
+
+                                        {/* Bottom Main Ticket Body: Dates + Time/Duration & Total Cost */}
+                                        <div className="flex items-end justify-between gap-3 w-full px-3.5 sm:px-4 pt-1.5 pb-3 bg-white group-hover:bg-slate-50/40 transition-colors">
+                                            <div className="min-w-0 flex-1">
+                                                <p className={`text-sm sm:text-base font-bold truncate leading-snug ${mutedTitle ? 'text-slate-500' : 'text-slate-900'}`}>
+                                                    {dateRangeText || t('airingPeriodLabel')}
+                                                </p>
+                                                {timeSubtext && (
+                                                    <p className="text-xs sm:text-sm text-slate-500 truncate mt-0.5 font-normal">
+                                                        {timeSubtext}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <span className={`text-sm sm:text-base font-extrabold tabular-nums block leading-tight ${mutedTitle ? 'text-slate-400' : 'text-jfu-primary'}`}>
+                                                    {formatIDR(card.money.total)}
+                                                </span>
+                                                {card.money.isEstimate && (
+                                                    <span className="text-[11px] text-slate-400 font-normal italic block leading-none mt-0.5">
+                                                        estimasi
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
                                     </AccordionPrimitive.Trigger>
-                                    <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200" />
                                 </AccordionPrimitive.Header>
-                                <AccordionContent className="pb-4 pt-1.5 space-y-4 bg-white -mx-3.5 px-3.5 border-t border-slate-100">
+
+                                <AccordionContent className="pb-4 pt-2 px-3.5 sm:px-4 space-y-3.5 bg-white border-t border-slate-100">
                                     <ScheduleBanner card={card} onReschedule={onReschedule} canSelfReschedule={selfReschedule} />
-                                    {/*
-                                      ⚠️ CHIP GRUP TETAP ADA SESUDAH LUNAS. Justru di
-                                      situ ia paling berguna: satu transfer Rp 3,33jt
-                                      untuk tiga pesanan hanya bisa dicocokkan dengan
-                                      mutasi bank kalau layarnya mengatakan ketiganya
-                                      memang satu pembayaran. `paid` tidak punya banner
-                                      (sengaja), jadi barisnya hidup di sini.
-                                    */}
+
                                     {card.booking.group && card.booking.state === 'paid' && (
                                         <p className="flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
                                             <Layers className="w-3.5 h-3.5 shrink-0 text-slate-400" />
@@ -1133,43 +1104,26 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, onData
                                             </Link>
                                         </p>
                                     )}
+
                                     <InfoSection card={card} muted={pendingReview} />
                                 </AccordionContent>
                             </AccordionItem>
                             );
                         })}
                     </Accordion>
-                    {/* Phase 4 — HIDUP sejak 2026-09-11. Yang dulu mengunci tombol ini
-                        adalah "sistem tidak punya harga untuk jadwal ke-2"; itu selesai
-                        di `create-payment.js` (harga per jadwal) + `sql/86` (RPC yang
-                        memaksa hold 1 jam dan menegakkan kuota harian di DB).
 
-                        ⚠️ Order KILAT tidak ikut. Gelombangnya (08/11/14/17 WIB)
-                        ditugaskan admin lewat `kilat_slot_hour`, dan nol perpanjangan
-                        Kilat pernah terjadi. `create_ad_schedule` menolaknya juga di
-                        server — tombol ini disembunyikan supaya penolakan itu tidak
-                        pernah perlu dibaca peneliti. */}
-                    {showScheduleAgain ? (
+                    {showScheduleAgain && (
                         <div className="mt-3">
                             <Button
                                 variant="outline"
                                 onClick={() => setIsScheduleAgainOpen(true)}
-                                className="w-full text-xs font-semibold text-slate-700 border border-dashed border-slate-300 bg-slate-50/60 hover:bg-slate-100/80 hover:border-blue-400 hover:text-blue-700 rounded-xl min-h-11 px-4 gap-2 transition-all shadow-none justify-center"
+                                className="w-full text-xs font-semibold text-slate-700 border border-dashed border-slate-300 bg-slate-50/60 hover:bg-slate-100/80 hover:border-blue-400 hover:text-blue-700 rounded-xl min-h-11 px-4 gap-2 transition-all shadow-none justify-center cursor-pointer"
                             >
                                 <Plus className="w-4 h-4 shrink-0 text-slate-400" />
                                 <span>{t('scheduleAdAgain')}</span>
                             </Button>
                         </div>
-                    ) : againBlock !== 'kilat' ? (
-                        /* Kilat sengaja TANPA kalimat: order Kilat tidak pernah
-                           punya afordansi ini, jadi menjelaskan ketiadaannya
-                           justru memperkenalkan fitur yang tidak berlaku. */
-                        <p className="mt-3 text-xs text-slate-500 leading-relaxed px-1">
-                            {againBlock === 'quota_held'
-                                ? t('scheduleAgainBlockedQuota')
-                                : t('scheduleAgainBlockedInactive')}
-                        </p>
-                    ) : null}
+                    )}
                 </>
             )}
 
