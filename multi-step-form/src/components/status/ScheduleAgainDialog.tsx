@@ -14,6 +14,7 @@ import {
     X,
 } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
+import { scheduleLockGate } from '@/utils/scheduleLockGate';
 import { supabase, type FormSubmission } from '@/utils/supabase';
 import { DAYS_AHEAD, SlotCalendar, daysCoveredBy, nextDays } from '@/components/schedule/SlotCalendar';
 import { useSlotAvailability } from '@/hooks/useSlotAvailability';
@@ -57,13 +58,25 @@ export function ScheduleAgainDialog({
     open,
     onOpenChange,
     submission,
-    defaultDuration: _defaultDuration,
+    defaultDuration,
     onBooked,
 }: ScheduleAgainDialogProps) {
     const { t } = useLanguage();
 
     const [selectedYmd, setSelectedYmd] = useState<string | null>(null);
-    const [duration, setDuration] = useState(2);
+    /*
+      ⚠️ DURASI AWAL DARI JADWAL SEBELUMNYA, bukan angka tetap.
+
+      `SchedulePhase` sudah menghitungnya benar — `defaultAgainDuration`
+      diturunkan dari `airingDays` (start→end), karena kolom `duration` bisa
+      berbohong: 18 dari 992 baris meleset di produksi. Nilainya dikirim ke
+      sini lewat prop, lalu dibuang dan diganti `2` yang di-hardcode.
+
+      Akibatnya peneliti yang jadwal pertamanya 7 hari selalu menemukan
+      pilihan "2 hari" — harga yang muncul pun ikut salah sampai ia sadar
+      harus menggantinya sendiri.
+    */
+    const [duration, setDuration] = useState(defaultDuration);
     const [prizePerWinner, setPrizePerWinner] = useState(0);
     const [winnerCount, setWinnerCount] = useState(0);
     const [batch, setBatch] = useState<BatchContext | null>(null);
@@ -73,7 +86,9 @@ export function ScheduleAgainDialog({
     // Reset dan lock body scroll saat modal terbuka
     useEffect(() => {
         if (open) {
-            setDuration(2);
+            // Reset ke durasi jadwal sebelumnya, bukan ke `2`: membuka ulang
+            // modal tidak boleh diam-diam mengubah durasi yang sudah benar.
+            setDuration(defaultDuration);
             setSelectedYmd(null);
             document.body.style.overflow = 'hidden';
         } else {
@@ -82,7 +97,7 @@ export function ScheduleAgainDialog({
         return () => {
             document.body.style.overflow = '';
         };
-    }, [open]);
+    }, [open, defaultDuration]);
 
     // Handle ESC key untuk menutup modal (kecuali sedang proses simpan)
     useEffect(() => {
@@ -152,9 +167,36 @@ export function ScheduleAgainDialog({
     const handleSubmit = async () => {
         if (!selectedYmd || !startIso || !endIso || !submission.id) return;
 
-        const blocked = fullDayIn(selectedYmd);
-        if (blocked) {
-            toast.error(t('scheduleAgainFull'));
+        /*
+          ⚠️ GERBANG YANG SAMA dengan StepSchedule & halaman bayar — satu
+          tempat, tiga pemanggil (`utils/scheduleLockGate.ts`).
+
+          Sebelum ini jalur perpanjangan cuma memeriksa KEPENUHAN dan tidak
+          pernah memeriksa ulang batas pesan 13.00 WIB. Kalendernya memang
+          mengunci tanggal lewat-cutoff saat digambar, tapi gambar itu dibuat
+          SEKALI: peneliti yang membuka modal 12.58 dan menekan simpan 13.01
+          mengirim tanggal yang sudah tidak sah. Gerbang ini dievaluasi saat
+          DITEKAN, bukan saat digambar.
+
+          `isReady` ikut diperiksa di sini meski `canSubmit` juga memuatnya —
+          keduanya dibaca pada saat yang berbeda, dan yang menentukan adalah
+          yang dibaca paling akhir.
+        */
+        const verdict = scheduleLockGate({
+            selected: selectedYmd,
+            duration,
+            availability: {
+                isReady,
+                // Kepenuhan tetap dijawab `fullDayIn`, yang sudah menghitung
+                // seluruh rentang hari yang akan ditempati.
+                isRangeAvailable: (ymd) => fullDayIn(ymd) === null,
+            },
+        });
+        if (!verdict.ok) {
+            toast.error(
+                verdict.reason === 'range_full' ? t('scheduleAgainFull') : t(verdict.messageKey),
+            );
+            if (verdict.clearSelection) setSelectedYmd(null);
             return;
         }
 
