@@ -1,7 +1,7 @@
 import { describe, expect, test, afterEach, vi } from 'vitest';
 // Alasan @ts-ignore & lokasinya sama dengan create-payment-select.spec.ts.
 // @ts-ignore -- Pages Function tanpa deklarasi tipe
-import { pricingRowForSchedule, computeTotalCostFromSubmission } from '../../functions/api/doku/create-payment.js';
+import { pricingRowForSchedule, computeTotalCostFromSubmission, buildNoteItems } from '../../functions/api/doku/create-payment.js';
 
 /*
   KENAPA TES INI ADA.
@@ -171,5 +171,76 @@ describe('angka akhirnya', () => {
     expect(computeTotalCostFromSubmission(row).total).toBe(
       computeTotalCostFromSubmission(ORDER).total,
     );
+  });
+});
+
+/*
+  RINCIAN KWITANSI — `transactions.note`.
+
+  ⚠️ Nominal yang ditagih sudah benar sejak (f); yang BERBOHONG adalah rincian
+  di dalam dokumennya. `noteItems` dulu disusun dari baris ORDER, jadi kwitansi
+  perpanjangan mencetak durasi dan hadiah jadwal ke-1 di sebelah total jadwal
+  ke-2 — kelas kegagalan yang sama dengan yang diperingatkan
+  `invoiceWrite.ts:111-121` ("DOKU tetap menagih angka yang benar — hanya
+  dokumennya yang berbohong").
+*/
+describe('rincian kwitansi memakai angka jadwalnya sendiri', () => {
+  const sumOf = (items: { qty: number; price: number }[]) =>
+    items.reduce((s, it) => s + it.qty * it.price, 0);
+
+  test('durasi iklan = durasi JADWAL, bukan durasi order', () => {
+    vi.setSystemTime(SESUDAH_VOUCHER_MATI);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const items = buildNoteItems(ORDER, row);
+    const iklan = items.find((i: any) => i.category === 'Jakpat for Universities (ads)');
+    expect(iklan.qty).toBe(3);
+    expect(iklan.qty).not.toBe(ORDER.duration);
+  });
+
+  test('batch lama: NOL baris insentif di kwitansi', () => {
+    vi.setSystemTime(SESUDAH_VOUCHER_MATI);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const items = buildNoteItems(ORDER, row);
+    expect(items.find((i: any) => i.category === "Respondent's Incentive")).toBeUndefined();
+  });
+
+  test('batch baru: insentif memakai angka JADWAL', () => {
+    vi.setSystemTime(SESUDAH_VOUCHER_MATI);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null);
+    const items = buildNoteItems(ORDER, row);
+    const hadiah = items.find((i: any) => i.category === "Respondent's Incentive");
+    expect(hadiah.qty).toBe(4);
+    expect(hadiah.price).toBe(25_000);
+  });
+
+  test('JANJI BERKAS: rincian menjumlah ke subtotal yang ditagih (batch lama)', () => {
+    vi.setSystemTime(SESUDAH_VOUCHER_MATI);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const { subtotal } = computeTotalCostFromSubmission(row);
+    expect(sumOf(buildNoteItems(ORDER, row))).toBe(subtotal);
+  });
+
+  test('JANJI BERKAS: rincian menjumlah ke subtotal yang ditagih (batch baru)', () => {
+    vi.setSystemTime(SESUDAH_VOUCHER_MATI);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null);
+    const { subtotal } = computeTotalCostFromSubmission(row);
+    expect(sumOf(buildNoteItems(ORDER, row))).toBe(subtotal);
+  });
+
+  test('ordinal 1 tidak berubah — rincian tetap menjumlah ke subtotalnya', () => {
+    vi.setSystemTime(SESUDAH_VOUCHER_MATI);
+    const row = pricingRowForSchedule(ORDER, null, null);
+    const { subtotal } = computeTotalCostFromSubmission(row);
+    expect(sumOf(buildNoteItems(ORDER, row))).toBe(subtotal);
+  });
+
+  test('question_count & jenis distribusi tetap dari ORDER', () => {
+    // Kuesionernya satu. Harga per hari diturunkan dari sana, bukan dari jadwal.
+    vi.setSystemTime(SESUDAH_VOUCHER_MATI);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const items = buildNoteItems({ ...ORDER, question_count: 20 }, row);
+    const iklan = items.find((i: any) => i.category === 'Jakpat for Universities (ads)');
+    // 20 Qs -> Rp 200.000/hari, diskon JFUSUHUD 10% -> Rp 180.000/hari.
+    expect(iklan.price).toBe(180_000);
   });
 });

@@ -294,6 +294,80 @@ export function computeTotalCostFromSubmission(sub) {
   const ppn = calculatePpn(subtotal);
   return { subtotal, ppn, total: subtotal + ppn };
 }
+
+/**
+ * Rincian baris yang disimpan di `transactions.note` — inilah yang dicetak
+ * halaman invoice/kwitansi.
+ *
+ * ⚠️ DUA SUMBER, DAN BEDANYA PENTING.
+ *   `sub`        — baris ORDER. Hanya untuk yang memang milik order:
+ *                  `question_count` (kuesionernya satu) dan `created_at`
+ *                  (voucher dinilai saat order LAHIR — memindahkannya ke
+ *                  tanggal jadwal adalah bug yang sudah ditutup
+ *                  create-payment-select.spec.ts).
+ *   `pricingSub` — baris harga gabungan dari `pricingRowForSchedule()`. Ia
+ *                  sudah memuat aturan batch, jadi durasi & hadiah diambil
+ *                  dari sini.
+ *
+ * ⚠️ KENAPA INI PERNAH SALAH. Sebelumnya durasi & hadiah dibaca dari `sub`,
+ * sementara `amount` dihitung dari `pricingSub` — jadi kwitansi perpanjangan
+ * mencetak durasi dan hadiah jadwal ke-1 di sebelah total jadwal ke-2.
+ * Nominalnya benar, dokumennya berbohong. Janji di bawah ini yang dilanggar:
+ *
+ *   **Rincian ini WAJIB menjumlah ke `subtotal` yang ditagih.**
+ *
+ * Dikunci create-payment-schedule-price.spec.ts.
+ */
+export function buildNoteItems(sub, pricingSub) {
+  // Milik ORDER.
+  const noteQuestionCount = Number(sub.question_count) || 0;
+  const noteIsKilat = sub.distribution_type === 'kilat';
+
+  // Milik JADWAL (lewat baris harga gabungan).
+  const noteDuration = Number(pricingSub.duration) || 0;
+  const noteWinnerCount = Number(pricingSub.winner_count) || 0;
+  const notePrizePerWinner = Number(pricingSub.prize_per_winner) || 0;
+  // Voucher yang BENAR-BENAR dipakai menghitung `amount` — sama dengan yang
+  // dipakai `computeTotalCostFromSubmission`.
+  const noteVoucherCode = pricingSub.voucher_code || undefined;
+
+  const noteItems = [];
+  if (noteIsKilat) {
+    noteItems.push({
+      name: 'Jakpat for Universities (ads)',
+      qty: 1,
+      price: calculateAdCostPerDay(noteQuestionCount),
+      category: 'Jakpat for Universities (ads)',
+    });
+    noteItems.push({
+      name: 'Add-on JFU Kilat',
+      qty: 1,
+      price: noteVoucherCode && noteVoucherCode.toUpperCase() === 'JFUSUHUD' ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST,
+      category: 'Lainnya',
+    });
+  } else {
+    const adCostBase = calculateAdCostPerDay(noteQuestionCount);
+    const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteWinnerCount * notePrizePerWinner, noteDuration, orderInstant(sub));
+    const discountedPerDay = discount > 0 && noteDuration > 0 ? Math.max(0, adCostBase - Math.ceil(discount / noteDuration)) : adCostBase;
+    if (adCostBase > 0 && noteDuration > 0) {
+      noteItems.push({
+        name: 'Jakpat for Universities (ads)',
+        qty: noteDuration,
+        price: discountedPerDay,
+        category: 'Jakpat for Universities (ads)',
+      });
+    }
+  }
+  if (notePrizePerWinner > 0 && noteWinnerCount > 0) {
+    noteItems.push({
+      name: "Respondent's Incentive",
+      qty: noteWinnerCount,
+      price: notePrizePerWinner,
+      category: "Respondent's Incentive",
+    });
+  }
+  return noteItems;
+}
 // ─── End server-side pricing ────────────────────────────────────────────────
 
 /**
@@ -1045,52 +1119,7 @@ export async function onRequest(context) {
       return json({ error: 'Failed to create DOKU payment', details: dokuData }, 502);
     }
 
-    // Build items breakdown for invoice rendering note JSON
-    const noteQuestionCount = Number(sub.question_count) || 0;
-    const noteDuration = Number(sub.duration) || 0;
-    const noteWinnerCount = Number(sub.winner_count) || 0;
-    const notePrizePerWinner = Number(sub.prize_per_winner) || 0;
-    // Voucher yang BENAR-BENAR dipakai menghitung `amount` — sama dengan yang
-    // dipakai `computeTotalCostFromSubmission` di atas. Rincian di `note` harus
-    // menjumlah ke angka yang ditagih, jadi ia tidak boleh memakai voucher lain.
-    const noteVoucherCode = pricingSub.voucher_code || undefined;
-    const noteIsKilat = sub.distribution_type === 'kilat';
-
-    const noteItems = [];
-    if (noteIsKilat) {
-      noteItems.push({
-        name: 'Jakpat for Universities (ads)',
-        qty: 1,
-        price: calculateAdCostPerDay(noteQuestionCount),
-        category: 'Jakpat for Universities (ads)',
-      });
-      noteItems.push({
-        name: 'Add-on JFU Kilat',
-        qty: 1,
-        price: noteVoucherCode && noteVoucherCode.toUpperCase() === 'JFUSUHUD' ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST,
-        category: 'Lainnya',
-      });
-    } else {
-      const adCostBase = calculateAdCostPerDay(noteQuestionCount);
-      const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteWinnerCount * notePrizePerWinner, noteDuration, orderInstant(sub));
-      const discountedPerDay = discount > 0 && noteDuration > 0 ? Math.max(0, adCostBase - Math.ceil(discount / noteDuration)) : adCostBase;
-      if (adCostBase > 0 && noteDuration > 0) {
-        noteItems.push({
-          name: 'Jakpat for Universities (ads)',
-          qty: noteDuration,
-          price: discountedPerDay,
-          category: 'Jakpat for Universities (ads)',
-        });
-      }
-    }
-    if (notePrizePerWinner > 0 && noteWinnerCount > 0) {
-      noteItems.push({
-        name: "Respondent's Incentive",
-        qty: noteWinnerCount,
-        price: notePrizePerWinner,
-        category: "Respondent's Incentive",
-      });
-    }
+    const noteItems = buildNoteItems(sub, pricingSub);
 
     const voucherApplied = String(pricingSub.voucher_code || '').trim() || null;
 
