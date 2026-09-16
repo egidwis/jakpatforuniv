@@ -33,6 +33,44 @@ kolam yang sama.
 
 ---
 
+## ✅ PEMBARUAN 2026-09-17 — tabel di bawah SUDAH BASI
+
+Diukur ulang langsung ke produksi 2026-09-17. **Empat dari lima penghalang
+sudah lunas**; tabel "🔴" di bawah dipertahankan sebagai catatan sejarah, bukan
+keadaan sekarang.
+
+| Prasyarat | 10 Sep | **17 Sep (terukur)** |
+|---|---|---|
+| Jebakan link bayar | ✅ | ✅ |
+| `reward_pools` (sql/50) | 🔴 tak ada | ✅ **ada di produksi** |
+| `sql/86` `create_ad_schedule` | 🔴 belum ditulis | ✅ **16 param, `p_slot_reserved_at` ada**, 1 overload |
+| Pelepasan hold jadwal ke-2 | 🔴 nol | ⚠️ kodenya ada, **jalurnya belum pernah dipakai** |
+| `create-payment.js` 3 penjaga | 🔴 menolak 100% | ✅ **bercabang**: `guardRow = schedule \|\| sub` |
+
+`create-payment.js` ternyata sudah dikerjakan penuh untuk Phase 4 —
+`scheduleAttribution()`, `pricingRowForSchedule()`, dan tiga penjaga yang
+dialihkan ke baris jadwal saat `scheduleId` ada, dengan komentar *"jalur ordinal
+1 berjalan persis seperti sebelum Phase 4"*.
+
+⚠️ **Yang masih berdiri**, dan ia bukan penghalang melainkan risiko uji:
+
+```
+jadwal ordinal >= 2        : 25
+  punya slot_reserved_at   :  0
+  slot_booked_by = 'user'  :  0
+```
+
+Seluruh perpanjangan yang pernah ada dibuat ADMIN. Jalur `slot_booked_by='user'`
+pada ordinal ≥2 **belum pernah dieksekusi sekali pun di produksi** — jadi
+`slotReleaseDeadline()` memulangkan `null` untuk semuanya, dan memang benar
+tidak ada countdown perpanjangan hari ini.
+
+**Pekerjaan UI terkait** ada di
+`~/.claude/plans/bantu-aku-diskusi-tentang-flickering-karp.md` (Rilis 1 selesai
+& di-commit 2026-09-17; Rilis 2 — halaman terpusat — ditunda sadar).
+
+---
+
 ## 🔴 Kesiapan, diukur 2026-09-10 — BACA INI DULU
 
 Empat dari lima penghalang masih berdiri, dan **tiga di antaranya mengubah kode

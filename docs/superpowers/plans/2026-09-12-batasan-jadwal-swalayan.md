@@ -10,6 +10,32 @@
 
 **Spec:** [`docs/superpowers/specs/2026-09-12-batasan-jadwal-swalayan-design.md`](../specs/2026-09-12-batasan-jadwal-swalayan-design.md)
 
+## ⚠️ STATUS NYATA — diselaraskan 2026-09-17
+
+**Checkbox di bawah SEMUANYA kosong (0/41), dan itu MENYESATKAN.** Sebagian
+pekerjaannya sudah mendarat di kode tanpa dokumen ini diperbarui. Diverifikasi
+langsung ke repo & produksi 2026-09-17:
+
+| Task | Keadaan sebenarnya |
+|---|---|
+| 1 — `sql/88` | ✅ **SELESAI.** Berkas ada, commit `96875c7`, dan penjaganya hidup di produksi. |
+| 2 — `canScheduleAgain.ts` | ✅ **SELESAI.** Berkas ada beserta `scheduleAgainBlock()`. |
+| 3 — tampilkan alasan di `SchedulePhase` | 🔴 **BELUM.** `againBlock` dihitung di `:972` lalu **alasannya dibuang** — `:975` cuma memakainya sebagai boolean (`showScheduleAgain`). Copy `scheduleAgainBlockedQuota`/`scheduleAgainBlockedInactive` SUDAH ADA di dua bahasa (`translations.ts:710-711`, `1735-1736`) dengan **nol pemakai**. Tombolnya lenyap tanpa sebab, persis yang komentarnya sendiri peringatkan. |
+| 4 — `lifecycle.ts` + dot | ❓ belum diperiksa sesi ini |
+| 5 — `InternalDashboard` | ❓ belum diperiksa sesi ini |
+
+⚠️ **Kenapa catatan ini ditulis.** Sesi 2026-09-17 nyaris mengerjakan ulang Task 3
+dari rencana lain, karena dokumen ini berbunyi "belum dikerjakan sama sekali"
+sementara setengah kodenya sudah ada. Rencana yang tidak diperbarui lebih
+berbahaya daripada rencana yang tidak ada — ia terbaca otoritatif.
+
+**Task 3 tetap milik dokumen INI.** Rencana halaman terpusat
+(`~/.claude/plans/bantu-aku-diskusi-tentang-flickering-karp.md`) sengaja
+mencabutnya dari cakupannya sendiri supaya tidak lahir kunci i18n ketiga dan
+keempat untuk kalimat yang sama.
+
+---
+
 ## Global Constraints
 
 - **Bahasa dokumen & komentar kode: Indonesia.** Pesan `RAISE EXCEPTION` yang akan dibaca peneliti wajib kalimat Indonesia yang layak dibaca, bukan jargon kolom — `ScheduleAgainDialog.tsx:196` meneruskan `e?.message` apa adanya ke toast.
