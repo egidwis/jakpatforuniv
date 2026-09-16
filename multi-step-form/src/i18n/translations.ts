@@ -269,6 +269,31 @@ export const translations = {
     continueToSummary: "Continue to Payment Details",
 
     // Step 2 — Summary
+    /*
+      JUDUL TETAP PER SEGMEN — nama TEMPAT, bukan instruksi.
+
+      Judul layar yang sudah ada (`summaryTitle`, `scheduleTitle`,
+      `paymentPhaseTitle`, `rebookPickTitle`) turun pangkat jadi SUBJUDUL.
+      Keduanya tidak bertabrakan karena menjawab pertanyaan yang berbeda:
+      yang satu "aku ada di mana", yang lain "aku harus apa".
+
+      Kosakatanya meneruskan fase yang SUDAH dilihat peneliti di dashboard
+      (`StatusPage`: Review · Periode Tayang · Publikasi), bukan bahasa baru.
+
+      ⚠️ Segmen "bayar" sengaja bernama SAMA untuk jalur peneliti dan jalur
+      admin — tempatnya memang satu, yang beda cuma cara sampai ke sana. Nama
+      berbeda akan menyiratkan ada dua jenis pembayaran.
+
+      ⚠️ Tanpa "Langkah N dari 3" di mana pun: jalur admin tidak pernah
+      menempuh langkah 1–2, dan perpanjangan bukan bagian wizard.
+    */
+    segmentDetail: "Details & Summary",
+    segmentAwaitingSchedule: "Awaiting Schedule",
+    segmentReservation: "Schedule Reservation",
+    segmentPayment: "Payment",
+    segmentReservationReleased: "Reservation Released",
+    /** {n} = ordinal NYATA dari `entry.ordinal`, bukan nomor langkah. */
+    segmentReservationNth: "Schedule Reservation #{n}",
     summaryTitle: "Review your order",
     summarySubtitle: "Nothing is charged at this step — you can still go back and change your survey details.",
     summaryCtaSchedule: "Choose Airing Date",
@@ -695,6 +720,18 @@ export const translations = {
     cancelledStaleInvoiceWarning: "Any invoice already issued no longer applies. Please don't pay a payment link you may have received.",
     cancelledNextStep: "This order will not go live. If you still want to advertise this survey, please create a new order.",
     btnCancelOrder: "Cancel Order",
+    /*
+      ⚠️ BEDA DARI `cancelOrderConfirm*` DI BAWAH, dan bedanya penting.
+      Yang di bawah membatalkan order yang SUDAH TERSIMPAN: jadwalnya dilepas,
+      tagihannya berhenti berlaku, barisnya tetap terlihat di tab "Selesai".
+      Yang ini membuang DRAFT yang belum pernah jadi order — tidak ada jadwal,
+      tidak ada tagihan, tidak ada yang tersisa untuk ditelusuri. Memakai
+      kalimat yang sama akan menjanjikan jejak yang tidak akan pernah ada.
+    */
+    cancelOrderTitle: "Discard this order?",
+    cancelOrderBody: "Everything you have filled in will be lost and cannot be recovered. Discard this order and return to the dashboard?",
+    cancelOrderKeep: "No, keep filling",
+    cancelOrderConfirm: "Yes, discard order",
     cancelOrderConfirmTitle: "Cancel this order?",
     cancelOrderConfirmBody: "The order stops here and will not go live. Any reserved schedule is released, and an invoice already issued stops being valid. It stays visible under \"Done\" so you can still see what happened.",
     cancelOrderConfirmAction: "Yes, cancel order",
@@ -1210,6 +1247,13 @@ export const translations = {
     continueToSummary: "Lanjut ke Detail Pembayaran",
 
     // Langkah 2 — Ringkasan
+    // Lihat catatan lengkap di blok EN.
+    segmentDetail: "Detail & Rincian",
+    segmentAwaitingSchedule: "Menunggu Jadwal",
+    segmentReservation: "Reservasi Jadwal",
+    segmentPayment: "Pembayaran",
+    segmentReservationReleased: "Reservasi Dilepas",
+    segmentReservationNth: "Reservasi Jadwal Ke-{n}",
     summaryTitle: "Periksa pesananmu",
     summarySubtitle: "Belum ada pembayaran di langkah ini — kamu masih bisa kembali dan mengubah detail survei.",
     summaryCtaSchedule: "Lanjut Pilih Jadwal Tayang",
@@ -1700,6 +1744,12 @@ export const translations = {
     cancelledStaleInvoiceWarning: "Tagihan yang sudah terbit tidak berlaku lagi. Jangan bayar link pembayaran yang mungkin sudah kamu terima.",
     cancelledNextStep: "Pesanan ini tidak akan tayang. Kalau masih ingin mengiklankan survei ini, silakan buat pesanan baru.",
     btnCancelOrder: "Batalkan Pesanan",
+    // Lihat catatan di blok EN: ini membuang DRAFT, bukan membatalkan order
+    // yang sudah tersimpan.
+    cancelOrderTitle: "Batalkan Pesanan?",
+    cancelOrderBody: "Semua data yang sudah kamu isi akan hilang dan tidak bisa dikembalikan. Yakin ingin membatalkan pesanan ini dan kembali ke dashboard?",
+    cancelOrderKeep: "Tidak, Lanjutkan Mengisi",
+    cancelOrderConfirm: "Ya, Batalkan Pesanan",
     cancelOrderConfirmTitle: "Batalkan pesanan ini?",
     cancelOrderConfirmBody: "Pesanan berhenti sampai di sini dan tidak akan tayang. Jadwal yang sudah dipesan dilepas, dan tagihan yang sudah terbit berhenti berlaku. Pesanannya tetap terlihat di tab \"Selesai\" supaya kamu masih bisa menelusurinya.",
     cancelOrderConfirmAction: "Ya, batalkan pesanan",
