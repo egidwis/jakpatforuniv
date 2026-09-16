@@ -297,7 +297,17 @@ export const translations = {
     summaryTitle: "Review your order",
     summarySubtitle: "Nothing is charged at this step — you can still go back and change your survey details.",
     summaryCtaSchedule: "Choose Airing Date",
-    summaryCtaPay: "Lock Schedule & Pay",
+    /*
+      ⚠️ SENGAJA BERBEDA DARI `scheduleLockCta`. Dua tombol ini dulu berbunyi
+      SAMA PERSIS ("Lock Schedule & Pay") padahal melakukan hal berbeda: yang
+      ini MENULIS ORDER (cabang Kilat / order yang jadwalnya tidak dipilih di
+      sini), yang itu MENGUNCI SLOT tanggal.
+
+      Peneliti menekan kalimat identik dua kali dalam satu perjalanan dan
+      mengira yang pertama gagal. Aturannya sekarang: kata kerja menyebut yang
+      TERJADI SEKARANG, bukan tujuan akhir.
+    */
+    summaryCtaPay: "Place Order",
     summaryCtaReview: "Send for Review",
     summaryHintSchedule: "Next you pick the airing date, then complete the payment.",
     summaryHintPay: "Your airing date is already picked — next you complete the payment.",
@@ -311,7 +321,8 @@ export const translations = {
     scheduleTitle: "Choose when your ad airs",
     scheduleSubtitle: "Your ad starts airing at 15:00 WIB on your selected date.",
     scheduleCutoffNote: "Bookings for today close at 13:00 WIB.",
-    scheduleLockCta: "Lock Schedule & Pay",
+    /** Mengunci SLOT tanggal — lihat catatan di `summaryCtaPay`. */
+    scheduleLockCta: "Lock This Date",
     scheduleConfirmKilatCta: "Use This Kilat Date",
     scheduleHoldHint: "The slot is held for 1 hour after you lock it, so you have time to complete the payment.",
     scheduleKilatHint: "You'll confirm the order summary once more before paying.",
@@ -1257,7 +1268,8 @@ export const translations = {
     summaryTitle: "Periksa pesananmu",
     summarySubtitle: "Belum ada pembayaran di langkah ini — kamu masih bisa kembali dan mengubah detail survei.",
     summaryCtaSchedule: "Lanjut Pilih Jadwal Tayang",
-    summaryCtaPay: "Kunci Jadwal & Lanjut Bayar",
+    // Lihat catatan di blok EN: dua tombol ini dulu sekata.
+    summaryCtaPay: "Buat Pesanan",
     summaryCtaReview: "Kirim untuk Diperiksa",
     summaryHintSchedule: "Setelah ini kamu pilih tanggal tayang, lalu menyelesaikan pembayaran.",
     summaryHintPay: "Tanggal tayangnya sudah dipilih — setelah ini tinggal menyelesaikan pembayaran.",
@@ -1271,7 +1283,7 @@ export const translations = {
     scheduleTitle: "Pilih kapan iklanmu tayang",
     scheduleSubtitle: "Iklan mulai tayang pukul 15.00 WIB sesuai tanggal yang kamu pilih.",
     scheduleCutoffNote: "Pemesanan untuk hari ini ditutup pukul 13.00 WIB.",
-    scheduleLockCta: "Kunci Jadwal & Lanjut Bayar",
+    scheduleLockCta: "Kunci Tanggal Ini",
     scheduleConfirmKilatCta: "Pakai Tanggal Kilat Ini",
     scheduleHoldHint: "Slot ditahan 1 jam setelah dikunci supaya kamu sempat menyelesaikan pembayaran.",
     scheduleKilatHint: "Kamu akan mengonfirmasi ringkasan pesanan sekali lagi sebelum membayar.",
