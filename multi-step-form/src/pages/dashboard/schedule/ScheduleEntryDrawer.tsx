@@ -234,7 +234,17 @@ export function ScheduleEntryDrawer({
     .filter(Boolean)
     .join(' · ');
 
-  const totalPrize = entry.prizePerWinner && entry.winnerCount
+  /*
+    Hadiah hanya ditampilkan untuk jadwal yang benar-benar MENDANAI pool:
+    ordinal 1 (selalu) atau perpanjangan yang membuka batch baru.
+
+    ⚠️ Aturan yang sama dengan `scheduleMoney.ts` (`fundsPrizePool`) dan sisi
+    server (`create-payment.js:229-230`). Tanpa gerbang ini, perpanjangan batch
+    LAMA yang kolom hadiahnya terisi mengumumkan kolam yang tidak ia danai —
+    padahal tagihannya memang tidak memuat hadiah (sql/37).
+  */
+  const fundsPrizePool = entry.ordinal === 1 || entry.isNewPeriod;
+  const totalPrize = fundsPrizePool && entry.prizePerWinner && entry.winnerCount
     ? entry.prizePerWinner * entry.winnerCount
     : 0;
 
@@ -430,8 +440,16 @@ export function ScheduleEntryDrawer({
                                 (@{formatIDR(entry.prizePerWinner)} · {entry.winnerCount} Pemenang)
                               </span>
                             </>
-                          ) : (
+                          ) : fundsPrizePool ? (
                             <span className="italic text-slate-400">Tidak ada reward</span>
+                          ) : (
+                            /* ⚠️ BUKAN "tidak ada reward" — poolnya ADA, hanya
+                               didanai jadwal sebelumnya di batch yang sama.
+                               Sejalan dengan `none_same_period`
+                               (airingPeriods.ts:222-236) di sisi peneliti. */
+                            <span className="italic text-slate-400">
+                              Ikut kolam hadiah batch berjalan
+                            </span>
                           )}
                         </span>
                       </div>

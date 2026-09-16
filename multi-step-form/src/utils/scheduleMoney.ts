@@ -49,12 +49,48 @@ export interface ScheduleMoney {
   note?: string;
 }
 
+/**
+ * Apakah jadwal ini benar-benar MENDANAI kolam hadiah?
+ *
+ * ⚠️ ATURAN YANG SAMA DENGAN SISI SERVER — `pricingRowForSchedule()` di
+ * `functions/api/doku/create-payment.js:229-230` menulisnya begini:
+ *
+ *     // Hanya batch baru yang mendanai pool.
+ *     winner_count:     isNewBatch ? … : 0,
+ *     prize_per_winner: isNewBatch ? … : 0,
+ *
+ * Asalnya `sql/37`: pool sebuah batch sudah didanai jadwal sebelumnya, jadi
+ * menagihnya lagi adalah penagihan ganda.
+ *
+ * ⚠️ ORDINAL 1 SELALU MENDANAI. `is_new_period` pada jadwal pertama bernilai
+ * false di produksi (kolom itu lahir untuk membedakan PERPANJANGAN), jadi
+ * menggerbangi hanya dengan `isNewPeriod` akan mencabut hadiah dari setiap
+ * order pertama yang pernah ada.
+ *
+ * Kenapa ini perlu ada di sisi BACA, padahal jalur tulis sudah mengirim 0:
+ * sampai sekarang berkas ini menampilkan hadiah tanpa syarat, dan hasilnya
+ * benar hanya karena kolomnya kebetulan nol. Satu baris batch-lama berhadiah —
+ * dibuat admin, atau lewat jalur masa depan — memajang hadiah yang tidak
+ * pernah ditagih.
+ */
+function fundsPrizePool(e: AdScheduleEntry): boolean {
+  return e.ordinal === 1 || e.isNewPeriod;
+}
+
 /** Insentif yang tersimpan untuk jadwal ini, kalau bisa dipercaya. */
 function storedIncentive(e: AdScheduleEntry): number | null {
   // Top-up menempel ke pool berjalan, dan jumlah pemenang pool itu TIDAK
   // tersimpan di baris ini — mengalikannya dengan winner_count baris ini akan
   // menghasilkan angka karangan. Untuk kasus itu kita menolak memecah.
+  //
+  // ⚠️ ALASANNYA BERBEDA DARI GERBANG BATCH di bawah, jadi keduanya sengaja
+  // TIDAK digabung: yang ini "tidak bisa dihitung", yang itu "tidak ditagih".
   if (e.additionalPrizePerWinner > 0) return null;
+
+  // Perpanjangan batch lama tidak mendanai pool — hadiahnya nol, apa pun isi
+  // kolomnya.
+  if (!fundsPrizePool(e)) return 0;
+
   return e.prizePerWinner * e.winnerCount;
 }
 
@@ -187,7 +223,11 @@ export function deriveScheduleMoney(
 
   // ── Belum ditagih: penawaran, bukan catatan ──────────────
   const duration = entry.duration || 0;
-  const incentive = calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner);
+  // Gerbang yang sama dengan `storedIncentive` — perpanjangan batch lama tidak
+  // mendanai pool, jadi estimasinya pun tidak boleh menawarkan hadiah.
+  const incentive = fundsPrizePool(entry)
+    ? calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner)
+    : 0;
 
   // Kilat: base rate 1× (durasi tidak berlaku — selesai ~2 jam), plus add-on,
   // tanpa diskon voucher. Rumus yang sama dipakai invoice admin dan
