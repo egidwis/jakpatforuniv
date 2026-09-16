@@ -287,6 +287,13 @@ export const translations = {
       ⚠️ Tanpa "Langkah N dari 3" di mana pun: jalur admin tidak pernah
       menempuh langkah 1–2, dan perpanjangan bukan bagian wizard.
     */
+    /**
+     * ⚠️ Batas yang DINYATAKAN, bukan kegagalan senyap. Memilih ulang tanggal
+     * untuk perpanjangan butuh primitif berlingkup-jadwal yang belum ada —
+     * `rebookSlotForSubmission` menulis ke `form_submissions` dan tidak
+     * menyentuh baris perpanjangan sama sekali.
+     */
+    rebookExtensionUnsupported: "Changing the date for this schedule is not available yet. Please contact our team via chat.",
     segmentDetail: "Details & Summary",
     segmentAwaitingSchedule: "Awaiting Schedule",
     segmentReservation: "Schedule Reservation",
@@ -1259,6 +1266,7 @@ export const translations = {
 
     // Langkah 2 — Ringkasan
     // Lihat catatan lengkap di blok EN.
+    rebookExtensionUnsupported: "Mengganti tanggal untuk jadwal ini belum tersedia. Silakan hubungi tim kami lewat chat.",
     segmentDetail: "Detail & Rincian",
     segmentAwaitingSchedule: "Menunggu Jadwal",
     segmentReservation: "Reservasi Jadwal",

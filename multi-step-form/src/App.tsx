@@ -26,6 +26,7 @@ import { AnalyzerWorkspacePage } from './pages/dashboard/AnalyzerWorkspacePage';
 import { PublicFormPage } from './pages/public/PublicFormPage';
 import { getSubdomainUsername } from './utils/subdomain';
 import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
+import { JadwalDanBayarPage } from './pages/dashboard/JadwalDanBayarPage';
 import { SurveyListingPage } from './pages/public/SurveyListingPage';
 import { SurveyPage } from './pages/public/SurveyPage';
 import { AuthProvider } from './context/AuthContext';
@@ -141,6 +142,12 @@ function AppContent() {
           <Route path="chat" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="payment/:submissionId" element={<PaymentCheckoutPage />} />
+          {/* ⚠️ Rute lama DI ATAS sengaja TETAP HIDUP. Tiga pintu masuk
+              mengarah ke sana (MultiStepForm auto-bounce, sesudah submit, dan
+              CTA "Lanjutkan Pembayaran" di deriveOrderUiState) dan ketiganya
+              berkunci `submission_id`. Rute baru MELENGKAPI, bukan
+              menggantikan — kuncinya `ad_schedules.id`, kunci yang berbeda. */}
+          <Route path="jadwal/:scheduleId" element={<JadwalDanBayarPage />} />
         </Route>
 
         {/* Public Standalone Form Route (without footer wrapper) */}
