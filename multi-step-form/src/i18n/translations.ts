@@ -733,6 +733,7 @@ export const translations = {
     bookingStatusAwaitingAdminSchedule: "Team is scheduling",
     bookingStatusAwaitingInvoice: "Awaiting Invoice",
     bookingStatusTooLateToday: "Past Today's Cut-off",
+    bookingStatusScheduleMissed: "Schedule Passed",
     /** Jam diturunkan dari instant jadwalnya sendiri — Kilat tidak tayang 15.00. */
     airingStartTimeAt: "Starts at {time} WIB",
     voucherLabel: "Voucher",
@@ -841,6 +842,8 @@ export const translations = {
     // ini". Sebut tanggalnya.
     bannerTitleTooLateToday: "Payment deadline passed",
     bannerSubTooLateToday: "Payment for {date} was not completed before 14:00 WIB.",
+    bannerTitleScheduleMissed: "Airing schedule passed",
+    bannerSubScheduleMissed: "The airing schedule for {date} has passed because payment was not completed.",
     bannerSubPickNextDate: "Pick the next available airing date.",
     bannerTitleCancelledSchedule: "Schedule cancelled",
 
@@ -856,6 +859,7 @@ export const translations = {
     invoiceAwaitingSchedule: "Awaiting schedule selection",
     invoiceCancelled: "Invoice cancelled",
     invoicePaymentClosedToday: "Payment for today is closed",
+    invoicePaymentMissed: "Schedule date has passed",
 
     // Ticket Slip & Compact Card
     ticketScheduleLabel: "Airing Schedule",
@@ -867,6 +871,11 @@ export const translations = {
     publicationNotActive: "Inactive",
     publicationCompletedPrefix: "Survey publication completed.",
     publicationCompletedHint: "Want to analyze charts & research drafts with AI?",
+    publicationScheduledPrefix: "Airing schedule secured.",
+    publicationScheduledHint: "Want to analyze data faster later? Explore our new Data Analyzer AI and create draft research reports.",
+    publicationScheduledCtaBtn: "Explore Feature",
+    publicationLivePrefix: "Ad is currently airing.",
+    publicationLiveHint: "Respondent answers are being collected in real-time. Once completed, you can analyze charts & research drafts in",
     publicationCtaTitle: "Survey publication completed?",
     publicationCtaBadge: "AI Analyzer",
     publicationCtaDesc: "Export your questionnaire response CSV and analyze charts, cross-tabs, and draft research narratives with AI.",
@@ -1727,6 +1736,7 @@ export const translations = {
     bookingStatusAwaitingAdminSchedule: "Tim sedang menjadwalkan",
     bookingStatusAwaitingInvoice: "Menunggu Tagihan",
     bookingStatusTooLateToday: "Lewat Batas Hari Ini",
+    bookingStatusScheduleMissed: "Jadwal Terlewat",
     /** Jam diturunkan dari instant jadwalnya sendiri — Kilat tidak tayang 15.00. */
     airingStartTimeAt: "Mulai {time} WIB",
     voucherLabel: "Voucher",
@@ -1812,6 +1822,8 @@ export const translations = {
     bannerSubPickNewDate: "Pilih tanggal baru yang masih tersedia.",
     bannerTitleTooLateToday: "Batas bayar terlewat",
     bannerSubTooLateToday: "Pembayaran untuk {date} tidak selesai sebelum pukul 14.00 WIB.",
+    bannerTitleScheduleMissed: "Jadwal tayang terlewat",
+    bannerSubScheduleMissed: "Jadwal penayangan untuk {date} telah terlewat karena pembayaran belum diselesaikan.",
     bannerSubPickNextDate: "Pilih tanggal tayang berikutnya.",
     bannerTitleCancelledSchedule: "Jadwal dibatalkan",
 
@@ -1827,6 +1839,7 @@ export const translations = {
     invoiceAwaitingSchedule: "Menunggu jadwal dipilih",
     invoiceCancelled: "Tagihan dibatalkan",
     invoicePaymentClosedToday: "Pembayaran hari ini ditutup",
+    invoicePaymentMissed: "Jadwal telah terlewat",
 
     // Ticket Slip & Compact Card
     ticketScheduleLabel: "Jadwal Tayang",
@@ -1838,6 +1851,11 @@ export const translations = {
     publicationNotActive: "Belum Aktif",
     publicationCompletedPrefix: "Survei selesai ditayangkan.",
     publicationCompletedHint: "Ingin olah grafik & draf riset dengan AI?",
+    publicationScheduledPrefix: "Jadwal penayangan telah diamankan.",
+    publicationScheduledHint: "Ingin olah data lebih cepat nanti? Kenali fitur baru Data Analyzer AI dan buat draf laporan riset Anda.",
+    publicationScheduledCtaBtn: "Eksplorasi Fitur",
+    publicationLivePrefix: "Iklan sedang ditayangkan.",
+    publicationLiveHint: "Respon responden sedang dihimpun secara real-time. Setelah selesai, Anda bisa langsung mengolah visualisasi & draf laporan riset di",
     publicationCtaTitle: "Survei telah selesai ditayangkan?",
     publicationCtaBadge: "AI Analyzer",
     publicationCtaDesc: "Export CSV respon kuesioner Anda dan olah grafik, tabulasi silang, serta draf narasi riset dengan AI.",

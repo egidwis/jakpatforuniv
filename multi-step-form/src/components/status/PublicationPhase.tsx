@@ -74,7 +74,8 @@ export function PublicationPhase({ cards, pageInfo, isCancelled }: PublicationPh
     const { t } = useLanguage();
     const paidCards = cards.filter((c) => c.booking.state === 'paid');
     const hasCompleted = paidCards.some((c) => c.publication.state === 'completed');
-    const hasLiveOrScheduled = !hasCompleted && paidCards.some((c) => c.publication.state === 'live' || c.publication.state === 'scheduled');
+    const hasLive = paidCards.some((c) => c.publication.state === 'live');
+    const hasScheduledOnly = !hasCompleted && !hasLive && paidCards.some((c) => c.publication.state === 'scheduled');
 
     if (!pageInfo?.slug && paidCards.length === 0) {
         return (
@@ -119,20 +120,45 @@ export function PublicationPhase({ cards, pageInfo, isCancelled }: PublicationPh
                 </div>
             )}
 
-            {/* 3. Hint saat survei sedang tayang / terjadwal */}
-            {hasLiveOrScheduled && (
-                <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-sm text-amber-900 leading-relaxed shadow-2xs">
-                    <Lightbulb className="w-4 h-4 text-amber-600 shrink-0" />
+            {/* 3. Banner CTA saat survei terjadwal (menunggu waktu tayang) */}
+            {hasScheduledOnly && (
+                <div className="flex items-center justify-between gap-3 px-3.5 py-3 sm:px-4 rounded-xl bg-blue-50/40 border border-blue-200/70 shadow-2xs hover:border-blue-300/80 transition-all">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 text-jfu-primary flex items-center justify-center shrink-0">
+                            <Sparkles className="w-4 h-4" />
+                        </div>
+                        <p className="text-sm leading-snug">
+                            <span className="font-bold text-slate-900">{t('publicationScheduledPrefix')}</span>{' '}
+                            <span className="text-slate-600">{t('publicationScheduledHint')}</span>
+                        </p>
+                    </div>
+                    <Link
+                        to="/dashboard/analyzer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white border border-blue-200/90 hover:border-blue-300 hover:bg-blue-50 text-jfu-primary font-bold text-sm shadow-2xs transition-all shrink-0 active:scale-95"
+                    >
+                        <span>{t('publicationScheduledCtaBtn')}</span>
+                        <ArrowRight className="w-4 h-4" />
+                    </Link>
+                </div>
+            )}
+
+            {/* 4. Hint saat survei sedang tayang secara real-time */}
+            {hasLive && (
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-blue-50/40 border border-blue-200/70 text-sm text-slate-700 leading-relaxed shadow-2xs">
+                    <Lightbulb className="w-4 h-4 text-jfu-primary shrink-0" />
                     <p>
-                        Respon responden sedang dihimpun. Setelah selesai, Anda bisa langsung mengolah visualisasi &amp; draf laporan riset di{' '}
-                        <Link to="/dashboard/analyzer" className="font-bold underline text-amber-950 hover:text-indigo-600">
-                            Data Analyzer AI
-                        </Link>.
+                        <span className="font-bold text-slate-900">{t('publicationLivePrefix')}</span>{' '}
+                        <span className="text-slate-600">
+                            {t('publicationLiveHint')}{' '}
+                            <Link to="/dashboard/analyzer" className="font-bold underline text-jfu-primary hover:text-jfu-dark">
+                                Data Analyzer AI
+                            </Link>.
+                        </span>
                     </p>
                 </div>
             )}
 
-            {/* 4. Area CTA opsional saat survei selesai ditayangkan */}
+            {/* 5. Area CTA opsional saat survei selesai ditayangkan */}
             {hasCompleted && (
                 <div className="flex items-center justify-between gap-3 px-3.5 py-3 sm:px-4 rounded-xl bg-blue-50/40 border border-blue-200/70 shadow-2xs hover:border-blue-300/80 transition-all">
                     <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">

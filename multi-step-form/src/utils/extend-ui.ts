@@ -7,7 +7,7 @@ export const EXTEND_STATUS_STYLES: Record<string, { bg: string; text: string; do
   in_review: { bg: 'bg-sky-50 border-sky-200/80', text: 'text-sky-700', dot: 'bg-sky-500' },
   waiting_payment: { bg: 'bg-amber-50 border-amber-200/80', text: 'text-amber-800', dot: 'bg-amber-500' },
   paid: { bg: 'bg-emerald-50 border-emerald-200/80', text: 'text-emerald-700', dot: 'bg-emerald-500' },
-  scheduled: { bg: 'bg-indigo-50 border-indigo-200/80', text: 'text-indigo-700', dot: 'bg-indigo-500' },
+  scheduled: { bg: 'bg-blue-50/80 border-jfu-primary/30', text: 'text-jfu-primary', dot: 'bg-jfu-primary' },
   live: { bg: 'bg-emerald-50 border-emerald-200/80', text: 'text-emerald-700', dot: 'bg-emerald-500' },
   completed: { bg: 'bg-slate-100 border-slate-200/80', text: 'text-slate-700', dot: 'bg-slate-400' },
   cancelled: { bg: 'bg-rose-50 border-rose-200/80', text: 'text-rose-700', dot: 'bg-rose-500' },

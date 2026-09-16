@@ -40,8 +40,14 @@ import {
 import { formatIDR } from '@/utils/currency';
 import { isAutoReviewed } from './deriveOrderUiState';
 import { ScheduleAgainDialog } from './ScheduleAgainDialog';
+import { nowWib, toWibYmd } from '@/utils/airing-window';
 
 const WIB = 'Asia/Jakarta';
+
+const isScheduleDateInPast = (startDate: Date | null | undefined): boolean => {
+    if (!startDate) return false;
+    return toWibYmd(startDate) < nowWib().ymd;
+};
 
 const formatDateLong = (d: string) =>
     new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: WIB });
@@ -77,11 +83,15 @@ interface SchedulePhaseProps {
 /** Label dishare dengan chip trigger (extend-ui) untuk state yang sama-sama
  * ada di enum shared — hanya choose_schedule/awaiting_invoice yang punya
  * kunci sendiri karena bukan bagian dari status extend/publikasi. */
-function bookingStatusLabel(state: ScheduleCard['booking']['state'], t: (key: TranslationKey) => string): string {
+function bookingStatusLabel(card: ScheduleCard, t: (key: TranslationKey) => string): string {
+    const state = card.booking.state;
     if (state === 'choose_schedule') return t('bookingStatusChooseSchedule');
     if (state === 'awaiting_admin_schedule') return t('bookingStatusAwaitingAdminSchedule');
     if (state === 'awaiting_invoice') return t('bookingStatusAwaitingInvoice');
-    if (state === 'too_late_today') return t('bookingStatusTooLateToday');
+    if (state === 'too_late_today') {
+        const isPast = isScheduleDateInPast(card.startDate);
+        return isPast ? t('bookingStatusScheduleMissed') : t('bookingStatusTooLateToday');
+    }
     // Di luar enum shared: `extendStatusLabelKey` tidak mengenalnya, dan
     // memetakannya ke 'cancelled' akan berbunyi "Dibatalkan" untuk pesanan
     // yang justru masih hidup — yang batal cuma tanggalnya.
@@ -138,7 +148,7 @@ function ScheduleChip({ card }: { card: ScheduleCard }) {
     return (
         <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 ${style.bg} ${style.text}`}>
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
-            {bookingStatusLabel(card.booking.state, t)}
+            {bookingStatusLabel(card, t)}
         </span>
     );
 }
@@ -434,7 +444,12 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     } else if (b.state === 'expired') {
         invoiceValue = <span className="text-amber-800 italic font-medium text-xs sm:text-sm">{t('invoiceExpired')}</span>;
     } else if (b.state === 'too_late_today') {
-        invoiceValue = <span className="text-amber-800 italic font-medium text-xs sm:text-sm">{t('invoicePaymentClosedToday')}</span>;
+        const isPast = isScheduleDateInPast(card.startDate);
+        invoiceValue = (
+            <span className="text-amber-800 italic font-medium text-xs sm:text-sm">
+                {isPast ? t('invoicePaymentMissed') : t('invoicePaymentClosedToday')}
+            </span>
+        );
     } else if (b.state === 'choose_schedule') {
         invoiceValue = <span className="text-slate-400 italic font-normal text-xs sm:text-sm">{t('invoiceAwaitingSchedule')}</span>;
     } else if (b.state === 'cancelled') {
@@ -886,18 +901,18 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     }
 
     if (b.state === 'too_late_today') {
-        /* ⚠️ "Hari ini" DIBUANG. `isPaymentTooLateForDate` cocok untuk tanggal
-           lampau MANA PUN, jadi order yang tertinggal seminggu pun dulu
-           berbunyi "Waktu Penyiapan Hari Ini Telah Lewat". Sebut tanggalnya —
-           dan kalau tanggalnya entah kenapa tidak ada, hilangkan barisnya
-           sekalian, jangan menebak. */
+        const isPast = isScheduleDateInPast(card.startDate);
         return (
             <Banner
                 tone="amber"
                 icon={<Clock className={bannerIcon} />}
-                title={t('bannerTitleTooLateToday')}
+                title={isPast ? t('bannerTitleScheduleMissed') : t('bannerTitleTooLateToday')}
                 lines={[
-                    card.startDate && t('bannerSubTooLateToday', { date: formatWithWeekday(card.startDate, true) }),
+                    card.startDate && (
+                        isPast
+                            ? t('bannerSubScheduleMissed', { date: formatWithWeekday(card.startDate, true) })
+                            : t('bannerSubTooLateToday', { date: formatWithWeekday(card.startDate, true) })
+                    ),
                     card.kind === 'original' && nextStepLine('bannerSubPickNextDate'),
                 ]}
                 cta={rescheduleCta}

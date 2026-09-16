@@ -56,7 +56,7 @@ const PUBLICATION_LABEL: Record<Exclude<PublicationState, 'none'>, string> = {
 };
 
 const PUBLICATION_TONE: Record<Exclude<PublicationState, 'none'>, string> = {
-  scheduled: 'text-indigo-700 bg-indigo-500',
+  scheduled: 'text-jfu-primary bg-jfu-primary',
   live: 'text-emerald-700 bg-emerald-500',
   completed: 'text-slate-600 bg-slate-400',
 };
