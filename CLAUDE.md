@@ -37,6 +37,8 @@ Substitute the invocation above wherever `graphify` appears below.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no
   LLM and no API cost). Add `--force` if a large deletion/refactor makes the rebuild
   refuse to write a smaller graph.
+- Whenever the user asks to commit a change, run `graphify update .` as part of that
+  commit workflow (before or alongside the commit), not just opportunistically.
 
 ### First-time setup on a new machine
 
@@ -55,3 +57,13 @@ Optional, and machine-specific — do not commit these:
 - Community names (`Community 0`, `Community 12`, …) stay unlabeled unless an LLM API
   key is set. Everything works without one; with a key, `graphify label .` makes the
   report far more readable.
+
+## Deployment / release workflow
+
+`git push` and deployment always run from `main` — never from a feature branch.
+
+- When the user talks about deploying, that implies the next steps are: merge the
+  current branch into `main`, then `git pull` from remote on `main` to catch any
+  remote changes and confirm there's no conflict, before pushing.
+- Do this merge/pull check every time deployment is discussed, even if it seems
+  redundant — it's the guard against pushing a `main` that's diverged from remote.
