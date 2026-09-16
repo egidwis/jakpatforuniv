@@ -4233,6 +4233,71 @@ export const fetchAdSchedules = async (
   });
 };
 
+/**
+ * SATU jadwal, dicari dengan `ad_schedules.id` — kunci yang dibawa RUTE.
+ *
+ * ⚠️ KENAPA FUNGSI INI ADA, dan kenapa ia MEMANGGIL `fetchAdSchedules`
+ * alih-alih meng-query sendiri.
+ *
+ * Ada TIGA kunci bertetangga yang semuanya UUID dan tidak pernah error kalau
+ * tertukar — yang salah cuma tidak menemukan baris, senyap:
+ *
+ *   `ad_schedules.id`  → dibawa rute & `payLinkUrl()` (`/bayar/<id>`)
+ *   `submission_id`    → kunci `fetchAdSchedules`
+ *   `source_id`        → kunci `cancelSchedule()` & `invoices.extend_id`
+ *
+ * Halaman yang dialamati per-jadwal karena itu WAJIB memuat entry UTUH lebih
+ * dulu; memanggil aksi langsung dari `scheduleId` mentah membuat pembatalan
+ * jadi no-op yang diam.
+ *
+ * Pemetaan baris → `AdScheduleEntry` di `fetchAdSchedules` memuat aturan yang
+ * tidak boleh menyimpang (`pageStatus` untuk Kilat, `isExtension` dari
+ * `source_table`, `subtotal` NULL pra-sql/34). Menyalinnya ke sini akan
+ * melahirkan salinan kedua yang bisa berbeda diam-diam — persis cacat yang
+ * sedang ditutup. Jadi: satu query murah untuk menemukan `submission_id`-nya,
+ * lalu pemetaan yang SAMA dipakai ulang.
+ */
+export const fetchAdScheduleById = async (
+  scheduleId: string,
+): Promise<AdScheduleEntry | null> => {
+  const { data, error } = await supabase
+    .from('ad_schedules')
+    .select('submission_id')
+    .eq('id', scheduleId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data?.submission_id) return null;
+
+  const siblings = await fetchAdSchedules(data.submission_id);
+  return siblings.find((s) => s.id === scheduleId) ?? null;
+};
+
+/**
+ * Seluruh jadwal SAUDARA dari satu jadwal — termasuk dirinya sendiri.
+ *
+ * Dipakai layar per-jadwal untuk membuktikan kepada dirinya sendiri bahwa
+ * tindakan kedaluwarsa hanya menyentuh SATU baris. `releaseExpiredSlot()`
+ * menulis ke `form_submissions` dan doc-nya memperingatkan ia ikut mematikan
+ * tagihan jadwal saudaranya pada order berjadwal banyak — jadi layar wajib
+ * tahu ia punya saudara sebelum memilih primitif.
+ */
+export const fetchScheduleSiblings = async (
+  scheduleId: string,
+): Promise<AdScheduleEntry[]> => {
+  const { data, error } = await supabase
+    .from('ad_schedules')
+    .select('submission_id')
+    .eq('id', scheduleId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data?.submission_id) return [];
+
+  return fetchAdSchedules(data.submission_id);
+};
+
+
 /** Satu PERISTIWA TAGIHAN — satu `payment_id`, bukan satu baris tabel. */
 export interface ScheduleInvoice {
   paymentId: string | null;
