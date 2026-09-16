@@ -16,7 +16,6 @@ import {
     Plus,
     RotateCcw,
     Ticket,
-    Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,6 +37,7 @@ import {
     type IncentiveInfo,
 } from './airingPeriods';
 import { formatIDR } from '@/utils/currency';
+import { CostBreakdown } from '@/components/CostBreakdown';
 import { isAutoReviewed } from './deriveOrderUiState';
 import { ScheduleAgainDialog } from './ScheduleAgainDialog';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
@@ -313,7 +313,6 @@ const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-800 border 
 function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const { t } = useLanguage();
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-    const [showBreakdown, setShowBreakdown] = useState(false);
     const rows: RowDef[] = [];
     const bState = card?.booking?.state;
     const b = card?.booking || {};
@@ -342,54 +341,24 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
 
     const money = card.money;
 
+    /*
+      Rincian biaya dipinjam dari `CostBreakdown` — komponen yang SAMA dipakai
+      halaman jadwal & bayar. Sebelumnya blok ini ditulis tangan di sini, dan
+      salinannya di layar lain bisa menyimpang diam-diam.
+
+      `totalLabel={null}`: kartu ini sudah punya labelnya sendiri di kolom kiri
+      `RowGrid` ("Total Pembayaran"), jadi label kedua cuma mengulang.
+    */
     const totalPaymentValue = (
-        <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-                <span className={`font-bold text-sm ${muted ? 'text-slate-400' : 'text-jfu-primary'}`}>
-                    {formatIDR(money.total)}
-                </span>
-                {(money.lines || money.note) && (
-                    <button
-                        type="button"
-                        onClick={() => setShowBreakdown((prev) => !prev)}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-jfu-primary transition-colors py-0.5 px-1.5 rounded-md hover:bg-slate-100/80 cursor-pointer"
-                    >
-                        <span>{showBreakdown ? t('hideCostBreakdown') : t('viewCostBreakdown')}</span>
-                        <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showBreakdown ? 'rotate-180' : ''}`} />
-                    </button>
-                )}
-            </div>
-            {money.isEstimate && (
-                <p className="text-[11px] text-slate-500 font-normal leading-relaxed">{t('costIsEstimateNote')}</p>
-            )}
-            {showBreakdown && (
-                <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 p-3 space-y-2 text-xs font-normal text-slate-600">
-                    {money.lines
-                        ? money.lines.map((line, i) => (
-                            <div key={`${line.label}-${i}`} className="flex justify-between items-center gap-3">
-                                <span className="min-w-0">
-                                    {line.tone === 'addon' ? (
-                                        <span className="inline-flex items-center gap-1">
-                                            <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> {line.label}
-                                        </span>
-                                    ) : line.label}
-                                    {line.hint && (
-                                        <span className="text-[11px] text-slate-400 font-normal"> ({line.hint})</span>
-                                    )}
-                                </span>
-                                <span className={`font-semibold shrink-0 ${
-                                    line.tone === 'discount' ? 'text-emerald-600'
-                                        : line.tone === 'addon' ? 'text-amber-600'
-                                            : 'text-slate-900'
-                                }`}>
-                                    {line.amount < 0 ? `-${formatIDR(Math.abs(line.amount))}` : formatIDR(line.amount)}
-                                </span>
-                            </div>
-                        ))
-                        : <p className="leading-relaxed">{money.note}</p>}
-                </div>
-            )}
-        </div>
+        <CostBreakdown
+            total={money.total}
+            lines={money.lines}
+            note={money.note}
+            isEstimate={money.isEstimate}
+            variant="compact"
+            totalLabel={null}
+            muted={muted}
+        />
     );
 
     rows.push({

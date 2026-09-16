@@ -65,14 +65,29 @@ export interface CostBreakdownProps {
    */
   defaultOpen?: boolean;
   /** Label total. Bawaannya `totalPaymentLabel`. */
-  totalLabel?: string;
+  totalLabel?: string | null;
+  /**
+   * Redam warnanya — untuk jadwal yang sudah tidak aktif (dibatalkan, terlewat).
+   *
+   * ⚠️ Bukan sekadar estetika: total yang tetap biru-aktif pada jadwal batal
+   * membuatnya terbaca seperti tagihan berjalan. `SchedulePhase` sudah
+   * meredam SELURUH isi kartunya lewat `valueTone(muted)`; kalau angka ini
+   * tidak ikut, ia jadi satu-satunya yang menyala di kartu yang mati.
+   */
+  muted?: boolean;
   className?: string;
 }
 
 /** Satu baris rincian — bentuknya identik di kedua varian, sengaja. */
 function BreakdownLine({ line }: { line: MoneyLine }) {
   return (
-    <div className="flex justify-between items-center gap-3">
+    /* Baris rangkuman (Subtotal/DPP) diberi garis pemisah di ATASnya: ia
+       merangkum baris sebelumnya, bukan menambah biaya baru. Tanpa pemisah
+       itu kolomnya terbaca seperti daftar yang bisa dijumlah — dan
+       menjumlahkannya menghitung ganda. */
+    <div className={`flex justify-between items-center gap-3 ${
+      line.isSubtotal ? 'border-t border-slate-200/80 pt-2 mt-1' : ''
+    }`}>
       <span className="min-w-0">
         {line.tone === 'addon' ? (
           <span className="inline-flex items-center gap-1">
@@ -102,6 +117,7 @@ export function CostBreakdown({
   variant = 'compact',
   defaultOpen = false,
   totalLabel,
+  muted = false,
   className = '',
 }: CostBreakdownProps) {
   const { t } = useLanguage();
@@ -122,11 +138,15 @@ export function CostBreakdown({
   return (
     <div className={`space-y-2 ${className}`}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className="text-sm font-semibold text-slate-700">
-          {totalLabel ?? t('totalPaymentLabel')}
-        </span>
+        {/* Label bisa dimatikan (`totalLabel: null`) untuk pemanggil yang sudah
+            punya labelnya sendiri — kartu jadwal memakai kolom kiri `RowGrid`. */}
+        {totalLabel !== null && (
+          <span className="text-sm font-semibold text-slate-700">
+            {totalLabel ?? t('totalPaymentLabel')}
+          </span>
+        )}
         <div className="flex items-center gap-2">
-          <span className="font-bold text-sm text-jfu-primary tabular-nums">
+          <span className={`font-bold text-sm tabular-nums ${muted ? 'text-slate-400' : 'text-jfu-primary'}`}>
             {formatIDR(total)}
           </span>
           {/* Tombol hanya untuk `compact` — di `full` rinciannya memang selalu

@@ -5,6 +5,8 @@ import { calculateTotalCost, getVoucherInfo, isManualVerificationVoucher } from 
 import { formatRupiah } from '../utils/currency';
 import { getOwnProfile } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
+import { CostBreakdown } from './CostBreakdown';
+import { orderMoneyLines } from '../utils/orderMoneyLines';
 import { isAutoApprovalPath } from '../utils/review-path';
 import { checkoutBlocker } from '../utils/orderReadiness';
 import { orderSubmitErrorKeyForCode } from '../utils/submitOrder';
@@ -554,64 +556,34 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
           </div>
 
           <div className="p-6">
-            <div className="space-y-4">
-              {/* Ad Cost */}
-              <div className="flex justify-between items-start pb-3.5 border-b border-dashed border-slate-200">
-                <div>
-                  <div className="text-sm font-medium text-slate-900">{formData.isKilatUpgrade ? 'Base Rate Iklan' : t('adCampaignCost')}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{formData.questionCount} {t('questions').toLowerCase()} {formData.isKilatUpgrade ? '' : `× ${formData.duration} hari`}</div>
-                </div>
-                <div className="text-sm font-semibold text-slate-900">Rp {formatRupiah(costCalculation.adCost)}</div>
-              </div>
+            {/* Rincian dirender `CostBreakdown` — komponen yang SAMA dipakai
+                kartu jadwal & halaman bayar. Sebelumnya blok ini digambar
+                tangan di sini, dan salinannya di layar lain bisa menyimpang
+                diam-diam: urutan baris, tanda diskon, label.
 
-              {/* JFU Kilat Add-on */}
-              {formData.isKilatUpgrade && costCalculation.kilatAddonCost && (
-                <div className="flex justify-between items-start pb-3.5 border-b border-dashed border-slate-200">
-                  <div>
-                    <div className="text-sm font-bold text-amber-600 flex items-center gap-1.5"><Zap size={14} className="fill-amber-600" /> {t('kilatAddonLabel')}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">Prioritas distribusi super cepat</div>
-                  </div>
-                  <div className="text-sm font-bold text-amber-600">Rp {formatRupiah(costCalculation.kilatAddonCost)}</div>
-                </div>
-              )}
+                ⚠️ NOL perubahan hitungan. `costCalculation` tetap datang dari
+                `calculateTotalCost` yang sama; `orderMoneyLines` hanya
+                memetakan bentuknya, tidak menghitung ulang apa pun.
 
-              {/* Incentive Cost */}
-              <div className="flex justify-between items-start pb-3.5 border-b border-dashed border-slate-200">
-                <div>
-                  <div className="text-sm font-medium text-slate-900">{t('respondentIncentive')}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{formData.winnerCount} winners × Rp {formatRupiah(formData.prizePerWinner)}</div>
-                </div>
-                <div className="text-sm font-semibold text-slate-900">Rp {formatRupiah(costCalculation.incentiveCost)}</div>
-              </div>
-
-              {/* Discount (if applicable) */}
-              {costCalculation.discount > 0 && (
-                <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200/80 mb-2">
-                  <div className="text-sm font-medium flex items-center gap-1">
-                    <Ticket size={14} /> {t('discount')}
-                  </div>
-                  <div className="text-sm font-bold">- Rp {formatRupiah(costCalculation.discount)}</div>
-                </div>
-              )}
-
-              {/* Subtotal (DPP) */}
-              <div className="flex justify-between items-center text-sm">
-                <div className="text-slate-500">{t('subtotal')}</div>
-                <div className="text-slate-700 font-medium">Rp {formatRupiah(costCalculation.subtotal)}</div>
-              </div>
-
-              {/* PPN 11% */}
-              <div className="flex justify-between items-center text-sm">
-                <div className="text-slate-500">{t('ppn')}</div>
-                <div className="text-slate-700 font-medium">Rp {formatRupiah(costCalculation.ppn)}</div>
-              </div>
-
-              {/* Total */}
-              <div className="flex justify-between items-end pt-4 border-t border-dashed border-slate-200">
-                <div className="text-base font-bold text-slate-900">{t('totalPayment')}</div>
-                <div className="text-2xl font-bold text-jfu-primary">Rp {formatRupiah(costCalculation.totalCost)}</div>
-              </div>
-            </div>
+                `variant="full"`: di Ringkasan angkanya MASIH BISA DIUBAH
+                (durasi, hadiah, voucher), jadi rincian yang bisa tersembunyi
+                akan menyembunyikan justru yang sedang diputuskan. */}
+            <CostBreakdown
+              total={costCalculation.totalCost}
+              lines={orderMoneyLines(costCalculation, {
+                questionCount: formData.questionCount,
+                duration: formData.duration,
+                isKilat: formData.isKilatUpgrade,
+                /* ⚠️ Voucher yang DIBLOKIR tidak boleh muncul sebagai label
+                   diskon. `costCalculation` di atas sudah dihitung dari
+                   `effectiveForm` yang voucher-nya dikosongkan, jadi
+                   `calc.discount` memang 0 dan barisnya tidak akan dirender —
+                   tapi meneruskan kodenya tetap salah arah. */
+                voucherCode: ilkomunyBlocked ? undefined : formData.voucherCode,
+              })}
+              variant="full"
+              totalLabel={t('totalPayment')}
+            />
           </div>
         </div>
 

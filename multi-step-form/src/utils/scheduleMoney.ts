@@ -37,6 +37,14 @@ export interface MoneyLine {
   hint?: string;
   amount: number;
   tone?: 'discount' | 'addon';
+  /**
+   * Baris ini RANGKUMAN baris di atasnya (mis. Subtotal/DPP), bukan komponen
+   * biaya baru.
+   *
+   * ⚠️ Menjumlahkan seluruh `amount` tanpa memisahkannya akan menghitung
+   * ganda. Dipakai `CostBreakdown` untuk memberi pemisah visual.
+   */
+  isSubtotal?: boolean;
 }
 
 export interface ScheduleMoney {
