@@ -28,7 +28,6 @@ import {
   normalizeScheduleDate,
   paymentCutoffInstant,
   toWibYmd,
-  isBookingClosedForDate,
   toAiringStartIso,
   toAiringLastDayIso,
 } from '../utils/airing-window';
@@ -36,6 +35,7 @@ import { slotReleaseDeadline } from '../utils/slotHold';
 import { airingDayCount } from './dashboard/schedule/scheduleModel';
 import { SchedulePicker } from '../components/SchedulePicker';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
+import { scheduleLockGate } from '../utils/scheduleLockGate';
 
 /**
  * Fase B dari langkah "Jadwal & Bayar": jadwal sudah terkunci, tinggal dibayar.
@@ -60,6 +60,19 @@ export function PaymentCheckoutPage() {
   const [invoicePaymentId, setInvoicePaymentId] = useState<string | null>(null);
   /** Link DOKU tagihan hidup itu. Ada = "Bayar Sekarang" tinggal membukanya. */
   const [livePayUrl, setLivePayUrl] = useState<string | null>(null);
+  /**
+   * Nominal yang BENAR-BENAR ditagihkan oleh tagihan hidup itu.
+   *
+   * ⚠️ BUKAN `submission.total_cost`. Kolom itu catatan saat order lahir dan
+   * bisa menyimpang dari `invoices.amount` — `recordedVsBilled` sudah mengukur
+   * selisihnya di produksi (88 baris, 11 di antaranya bukan kesengajaan).
+   * Yang harus dibaca peneliti di layar bayar adalah angka yang akan ditarik
+   * dari kartunya, bukan angka yang tercatat waktu itu.
+   *
+   * `null` = belum ada tagihan terbit; `total_cost` jadi cadangan, dan ia
+   * memang estimasi pada tahap itu.
+   */
+  const [liveBilledAmount, setLiveBilledAmount] = useState<number | null>(null);
   /** Order yang sudah pernah dicoba diterbitkan tagihannya otomatis di sesi ini. */
   const mintAttemptedFor = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -131,10 +144,12 @@ export function PaymentCheckoutPage() {
         const own = [...billings.values()].find((b) => b.sourceId === submissionId) ?? null;
         setInvoicePaymentId(own?.openInvoice?.paymentId ?? null);
         setLivePayUrl(own?.openInvoice?.paymentUrl ?? null);
+        setLiveBilledAmount(own?.openInvoice?.amount ?? null);
       } catch (e) {
         console.error('Failed to load live billing:', e);
         setInvoicePaymentId(null);
         setLivePayUrl(null);
+        setLiveBilledAmount(null);
       }
 
       if (data.payment_status === 'paid') {
@@ -413,30 +428,28 @@ export function PaymentCheckoutPage() {
 
   /** Kunci ulang tanggal untuk order yang sama, tanpa meninggalkan halaman. */
   const handleRebook = async () => {
-    if (!submission?.id || !repickDate) return;
-    if (isBookingClosedForDate(repickDate)) {
-      toast.error(t('slotErrorPastCutoff'));
-      setRepickDate(null);
-      return;
-    }
-    const days = submission.duration || 1;
-    // Sama seperti di StepSchedule: `counts` kosong menjawab "lowong" untuk
-    // semua tanggal. Jalur ini bahkan tidak punya pemeriksaan ulang di server
-    // (`rebookSlotForSubmission` hanya menolak order yang sudah lunas), jadi
-    // gerbang ini satu-satunya yang berdiri.
-    if (!availability.isReady) {
-      toast.error(t('slotErrorAvailabilityUnknown'));
-      void availability.reload();
-      return;
-    }
-    if (!availability.isRangeAvailable(repickDate, days)) {
-      toast.error(t('slotErrorFull'));
+    if (!submission?.id) return;
+    /*
+      Gerbangnya sama persis dengan StepSchedule — kini lewat `scheduleLockGate`
+      alih-alih disalin. ⚠️ Dan di jalur INI ia satu-satunya yang berdiri:
+      `rebookSlotForSubmission` hanya menolak order yang sudah lunas, tidak
+      memeriksa kuota sama sekali. Tidak ada pemeriksaan ulang di server.
+    */
+    const verdict = scheduleLockGate({
+      selected: repickDate,
+      duration: submission.duration || 1,
+      availability,
+    });
+    if (!verdict.ok) {
+      toast.error(t(verdict.messageKey));
+      if (verdict.clearSelection) setRepickDate(null);
+      if (verdict.shouldReload) void availability.reload();
       return;
     }
 
     setIsRebooking(true);
     try {
-      await rebookSlotForSubmission(submission.id, repickDate, days);
+      await rebookSlotForSubmission(submission.id, verdict.ymd, verdict.duration);
       toast.success(t('rebookSuccess'));
       setRepickDate(null);
       setIsExpired(false);
@@ -647,8 +660,13 @@ export function PaymentCheckoutPage() {
                       {t('checkoutTotalLabel')}
                     </span>
                     <div className="flex flex-wrap items-baseline gap-1.5">
+                      {/* ⚠️ Angka TAGIHAN HIDUP lebih dulu, `total_cost` cuma
+                          cadangan sebelum tagihan terbit. Keduanya bisa
+                          berbeda — lihat catatan di `liveBilledAmount`. */}
                       <span className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight">
-                        Rp {new Intl.NumberFormat('id-ID').format(submission.total_cost || 0)}
+                        Rp {new Intl.NumberFormat('id-ID').format(
+                          liveBilledAmount ?? submission.total_cost ?? 0
+                        )}
                       </span>
                       {submission.ppn_amount != null && (
                         <span className="text-[11px] text-slate-400 font-normal">

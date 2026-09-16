@@ -5,7 +5,7 @@ import { ArrowLeft, Loader2, Info, Lock, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { SchedulePicker } from './SchedulePicker';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
-import { isBookingClosedForDate } from '../utils/airing-window';
+import { scheduleLockGate } from '../utils/scheduleLockGate';
 
 interface StepScheduleProps {
   formData: SurveyFormData;
@@ -61,36 +61,21 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
   };
 
   const handleConfirm = async () => {
-    if (!selected) {
-      toast.error(t('slotErrorNoDate'));
-      return;
-    }
-    if (isBookingClosedForDate(selected)) {
-      toast.error(t('slotErrorPastCutoff'));
-      setSelected(null);
-      return;
-    }
-    /*
-      ⚠️ KOSONG BUKAN LOWONG.
-      `isRangeAvailable` membaca `counts[ymd] || 0`, jadi selama ketersediaan
-      belum terbaca ia menjawab TRUE untuk SETIAP tanggal — termasuk yang
-      sudah penuh. Tanpa gerbang ini, pengambilan data yang gagal atau
-      menggantung berubah dari "kalender belum siap" menjadi "kalender bilang
-      semuanya lowong", dan tanggal penuh pun ikut terkunci.
-    */
-    if (!availability.isReady) {
-      toast.error(t('slotErrorAvailabilityUnknown'));
-      void availability.reload();
-      return;
-    }
-    if (!availability.isRangeAvailable(selected, duration)) {
-      toast.error(t('slotErrorFull'));
+    // Keempat gerbangnya hidup di `scheduleLockGate` — satu tempat, tiga
+    // pemanggil. Termasuk "KOSONG BUKAN LOWONG": `isRangeAvailable` fail-open
+    // selama ketersediaan belum terbaca, jadi urutan `isReady` lebih dulu itu
+    // mengikat. Alasan lengkapnya ada di modulnya.
+    const verdict = scheduleLockGate({ selected, duration, availability });
+    if (!verdict.ok) {
+      toast.error(t(verdict.messageKey));
+      if (verdict.clearSelection) setSelected(null);
+      if (verdict.shouldReload) void availability.reload();
       return;
     }
 
     setIsConfirming(true);
     try {
-      const ok = await onConfirm(selected);
+      const ok = await onConfirm(verdict.ymd);
       if (!ok) setIsConfirming(false);
     } catch (e) {
       console.error('Failed to lock schedule:', e);
