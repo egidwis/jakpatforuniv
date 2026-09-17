@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` ikut ditutup (`rebookSchedule` + `sql/89`), penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — belum diuji browser. Utang tersisa: cron pelepas slot belum ada. Lihat §00AB |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` sempat ditutup `rebookSchedule`, **tapi fungsi itu DIHAPUS 18 Sep** karena menghidupkan jadwal tanpa tagihan — pesan ulang kini lewat `JadwalBaruPage` saja (§00AC), penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — belum diuji browser. Utang tersisa: cron pelepas slot belum ada. Lihat §00AB |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -166,6 +166,105 @@ menolak order tidak aktif lewat jalur swalayan.
 nol untuk non-admin; harga lahir di `create-payment.js`, dan `deriveScheduleMoney`
 memakai nol itu sebagai pemicu cabang estimasi. Jangan "diperbaiki" dengan
 mengisi harga di RPC — itu menghidupkan lagi dua sumber kebenaran harga.
+
+### §00AC — Satu pintu pemesanan: `rebookSchedule()` dihapus (2026-09-18)
+
+**Gejala yang dilaporkan pemilik produk, tiga kali, dengan layar yang sama:**
+peneliti membatalkan pesanan lalu menjadwalkan lagi di tanggal yang sama, dan
+terdampar pada *"Jadwalmu sudah terkunci. Tagihannya sedang disiapkan tim kami"*
+— kalimat tentang admin, di tengah fitur yang justru dibuat supaya admin tidak
+diperlukan.
+
+#### Dua diagnosis pertamaku SALAH, dan keduanya terbantahkan oleh ukuran
+
+| Dugaan | Bantahan |
+|---|---|
+| Countdown salah hitung lalu memicu `handleExpired` | Saat halaman dimuat, sisa hold **3594 detik**. Mustahil. |
+| `slot_reserved_at` kosong saat jadwal baru lahir | `create_ad_schedule` diuji langsung (ROLLBACK): ia mengisi `slot_booked_by='user'` + `slot_reserved_at=NOW()` dengan benar. |
+
+Yang menyelesaikannya bukan pembacaan kode, melainkan **log produksi
+detik-per-detik** (`edge_logs`):
+
+```
+:14.4  POST rpc/create_ad_schedule      jadwal lahir — SATU kali (satu klik)
+:15.0  POST invoices + transactions     tagihan lahir
+:19.1  GET  invoices?schedule_id=…      killDokuLinksForSchedule
+:19.2  GET  /auth/v1/user               middleware cancel-order
+:19.5  PATCH ad_schedules               ← peneliti klik "Batalkan Pesanan"
+:19.8  PATCH transactions → expired
+:19.9  PATCH invoices     → expired     tagihan MATI
+:27.8  PATCH ad_schedules               rebookSchedule — jadwal HIDUP LAGI
+```
+
+#### Sebabnya
+
+> **`rebookSchedule()` menghidupkan jadwal tanpa menerbitkan tagihan.**
+
+Ia menulis `status='waiting_payment'` + `slot_reserved_at=NOW()` ke
+`ad_schedules`, lalu berhenti. Tagihan yang baru dimatikan `cancelSchedule`
+tetap mati. Jadwal hidup, tagihan mati — dan layar **jujur** berkata tidak ada
+tagihan hidup. Bandingkan `JadwalBaruPage`, yang **selalu** menyusulkan
+`createPayment` sesudah `create_ad_schedule`.
+
+#### Kenapa DIHAPUS, bukan diperbaiki
+
+Menambahkan `createPayment` ke dalamnya salah tempat: `rebookSchedule` lahir
+sebagai **penjaga LINGKUP** (menulis `ad_schedules`, bukan `form_submissions`,
+supaya ordinal ≥2 tidak menggeser jadwal pertama lewat
+`trg_ad_schedule_from_submission`) — bukan penerbit tagihan. Menjadikannya
+pemanggil `createPayment` kedua berarti dua jalur pemesanan yang wajib terus
+disamakan; sejarah berkas ini menunjukkan jalur kembar selalu menyimpang.
+
+**Aman dihapus, dan ini terukur — bukan diperkirakan:**
+
+| Bukti | Angka |
+|---|---|
+| Pemanggil produksi `rebookSchedule` | **1** (`JadwalDanBayarPage`) |
+| Jadwal perpanjangan yang pernah di keadaan `pick` (tanpa tanggal) | **0 dari 1110** |
+| Jadwal tanpa tanggal — semuanya ordinal 1 (`form_submissions`) | **105** |
+
+`create_ad_schedule` mewajibkan `p_start_date`, jadi perpanjangan **mustahil**
+lahir tanpa tanggal. Artinya layar `released` memang satu-satunya pintu ke
+fungsi itu, dan menutupnya tidak menghilangkan kemampuan apa pun.
+
+#### Yang berubah
+
+1. `rebookSchedule()` **dihapus**; nota kubur ditinggalkan di tempatnya.
+2. `rebookPlan.ts` + spec-nya **dihapus** — tinggal satu primitif, tak ada lagi
+   yang perlu dipilih.
+3. **Pembatalan mengarah ke `/dashboard`**, tidak memuat ulang di tempat.
+4. Layar `released` **tidak lagi memajang kalender** — banner + satu jalan
+   keluar. Pemesanan berikutnya lewat `JadwalBaruPage`.
+5. Kunci i18n baru `cancelScheduleSuccess` (EN + ID).
+
+#### Temuan sampingan yang BELUM ditutup
+
+`rebookSlotForSubmission()` — pasangan ordinal-1-nya — punya **cacat yang
+sama**: ia juga tidak menerbitkan tagihan. Ia selamat hanya karena
+`PaymentCheckoutPage` memanggil `createPayment` sendiri saat dimuat. Jadi ini
+bukan dua bug melainkan **satu pola**, yang kebetulan tertutup di satu halaman.
+Sengaja tidak disentuh: jalur itu sedang berfungsi, dan mengubahnya tanpa
+kebutuhan adalah risiko tanpa imbalan.
+
+#### Penjaga
+
+`src/utils/scheduleRevivalNeedsBill.spec.ts` — 4 tes, **masing-masing
+dibuktikan merah** dengan menghidupkan kembali bentuk aslinya. Yang terpenting
+tidak mencari NAMA `rebookSchedule` melainkan **BENTUKNYA**: tulisan ke
+`ad_schedules` yang sekaligus menyetel `status:'waiting_payment'` dan
+`slot_reserved_at: new Date()`. Jadi bug yang sama tidak bisa kembali dengan
+nama lain.
+
+⚠️ `sql/89` sengaja **dibiarkan hidup**. Ia policy RLS, tidak berbahaya tanpa
+pemanggil, dan mencabutnya adalah risiko tanpa imbalan.
+
+**Gerbang:** vitest **850** · tsc **78** · build hijau.
+
+#### ⚠️ DICABUT 2026-09-18 — `rebookSchedule()` DIHAPUS, baca §00AC lebih dulu
+
+Bagian di bawah ini **catatan sejarah**. Fungsi yang dirayakannya sudah dihapus
+karena ia melahirkan bug yang lebih buruk daripada lubang yang ditutupnya:
+menghidupkan jadwal **tanpa menerbitkan tagihan**. Lihat §00AC.
 
 #### ✅ DITUTUP hari ini juga — pesan ulang untuk `ordinal ≥ 2`
 

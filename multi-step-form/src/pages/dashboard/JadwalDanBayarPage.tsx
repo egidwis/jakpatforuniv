@@ -8,7 +8,6 @@ import {
   fetchScheduleBilling,
   cancelSchedule,
   releaseExpiredSlot,
-  rebookSchedule,
   rebookSlotForSubmission,
   getFormSubmissionById,
 } from '../../utils/supabase';
@@ -20,7 +19,6 @@ import { ScheduleReservationLayout } from '../../components/schedule/ScheduleRes
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
 import { schedulePageState } from '../../utils/schedulePageState';
-import { rebookPlanFor } from '../../utils/rebookPlan';
 import { expiryPlanFor } from '../../utils/scheduleExpiry';
 import { segmentTitleOf } from '../../utils/segmentTitle';
 import { deriveScheduleMoney } from '../../utils/scheduleMoney';
@@ -183,26 +181,27 @@ export function JadwalDanBayarPage() {
   }, [entry, state?.showCountdown, handleExpired]);
 
   /**
-   * Kunci tanggal untuk jadwal ini.
+   * Kunci tanggal — HANYA untuk ordinal 1 yang belum pernah bertanggal.
    *
-   * ⚠️ DUA PRIMITIF, DIPILIH MENURUT LINGKUP — jangan disatukan.
-   * `rebookSlotForSubmission` menulis `form_submissions` (baris ORDER), benar
-   * untuk ordinal 1 karena di sanalah tanggalnya tinggal. `rebookSchedule`
-   * menulis `ad_schedules` (baris JADWAL), satu-satunya yang benar untuk
-   * perpanjangan. Memakai yang ORDER untuk ordinal ≥2 akan menggeser jadwal
-   * PERTAMA peneliti — bukan yang sedang dilihatnya.
+   * ⚠️ LINGKUPNYA SEKARANG TUNGGAL, dan itu hasil penghapusan sadar.
+   * Dulu di sini ada dua primitif yang dipilih `rebookPlanFor`:
+   * `rebookSlotForSubmission` (lingkup ORDER) dan `rebookSchedule` (lingkup
+   * JADWAL). Yang kedua DIHAPUS 2026-09-18 — ia satu-satunya jalur yang bisa
+   * menghidupkan kembali sebuah jadwal tanpa menerbitkan tagihannya, dan itu
+   * persis bug yang membuat peneliti terdampar pada kalimat tentang admin.
    *
-   * Beda lingkup yang sama sudah dipakai `releaseExpiredSlot` vs
-   * `cancelSchedule`, dan dipilih di `expiryPlanFor`.
+   * Sejak itu layar `released` tidak lagi memajang kalender: pembatalan
+   * mengarahkan peneliti ke dashboard, dan pemesanan berikutnya lahir lewat
+   * `JadwalBaruPage` yang selalu membuat jadwal DAN tagihannya bersama.
    *
-   * ⚠️ INI BUKAN "GANTI JADWAL". Layar ini cuma tampil pada keadaan `pick`
-   * (belum pernah bertanggal) dan `released` (reservasinya sudah lepas atau
-   * dibatalkan). Selama jadwalnya masih hidup, yang tampil adalah countdown +
-   * tombol bayar + tombol batal — tidak ada kalender. Menukar jadwal yang
-   * sedang berjalan tetap wewenang admin.
+   * Yang tersisa di sini cuma keadaan `pick` — jadwal ordinal 1 yang belum
+   * punya tanggal sama sekali. Terukur 17 Sep: 105 baris semacam itu, SEMUANYA
+   * ordinal 1; nol perpanjangan, karena `create_ad_schedule` mewajibkan
+   * tanggal. Jadi `rebookSlotForSubmission` (lingkup ORDER) memang satu-satunya
+   * yang benar di sini, dan tidak ada lagi percabangan yang bisa salah pilih.
    *
    * Gerbangnya tetap `scheduleLockGate` supaya keempat pemeriksaannya tidak
-   * bercabang dari tiga pemanggil lain.
+   * bercabang dari pemanggil lain.
    */
   const handleLock = async () => {
     if (!entry) return;
@@ -218,36 +217,18 @@ export function JadwalDanBayarPage() {
       return;
     }
 
-    /*
-      ⚠️ LINGKUPNYA DIPILIH `rebookPlanFor`, TIDAK DI SINI — dan ia bercabang
-      pada "ordinal 1 DAN nol saudara", bukan pada `ordinal >= 2`. Ordinal 1
-      yang sudah punya jadwal ke-2 juga wajib lewat lingkup JADWAL: menulis
-      `form_submissions` menyalakan trigger sinkron yang lalu menimpa cermin
-      `ad_schedules`-nya. Aturan yang sama dipakai `expiryPlanFor`, dan ada tes
-      yang mengunci keduanya agar tidak pernah berbeda pendapat.
-    */
-    const plan = rebookPlanFor({
-      ordinal: entry.ordinal,
-      siblingCount: siblings.length || 1,
-      paymentStatus: entry.paymentStatus,
-    });
-
-    if (plan.primitive === 'none') {
-      toast.error(t('rebookAlreadyPaid'));
-      return;
-    }
-
     setIsWorking(true);
     try {
-      if (plan.primitive === 'rebookSchedule') {
-        await rebookSchedule(
-          { sourceId: entry.sourceId, paymentStatus: entry.paymentStatus },
-          verdict.ymd,
-          verdict.duration,
-        );
-      } else {
-        await rebookSlotForSubmission(entry.submissionId, verdict.ymd, verdict.duration);
-      }
+      /*
+        ⚠️ TANPA PERCABANGAN LINGKUP LAGI. Layar ini kini hanya tampil pada
+        keadaan `pick`, yang eksklusif milik ordinal 1 — jadi baris ORDER
+        (`form_submissions`) memang tempat tanggalnya tinggal.
+
+        Perpanjangan tidak pernah sampai ke sini: ia selalu lahir bertanggal
+        lewat `create_ad_schedule`, dan kalau reservasinya lepas, peneliti
+        memesan lagi lewat `JadwalBaruPage` — bukan di layar ini.
+      */
+      await rebookSlotForSubmission(entry.submissionId, verdict.ymd, verdict.duration);
       toast.success(t('rebookSuccess'));
       setPicked(null);
       await load();
@@ -270,8 +251,23 @@ export function JadwalDanBayarPage() {
         paymentStatus: entry.paymentStatus,
         id: entry.id,
       });
-      toast.success(t('rebookSuccess'));
-      await load();
+      /*
+        ⚠️ PULANG KE DASHBOARD, BUKAN MEMUAT ULANG DI TEMPAT — ini inti
+        perbaikan 2026-09-18, dan urutannya penting.
+
+        Dulu di sini `await load()`, yang membawa layar ke keadaan `released`
+        dan memajang kalender lagi. Kalender itulah pintu ke `rebookSchedule()`:
+        memilih tanggal di sana menghidupkan kembali jadwalnya TANPA
+        menerbitkan tagihan, dan peneliti terdampar pada "tagihan sedang
+        disiapkan tim kami" — kalimat tentang admin, di tengah fitur yang
+        justru dibuat supaya admin tidak diperlukan.
+
+        Sekarang pembatalan selesai di dashboard. Pesanan berikutnya lahir
+        lewat `JadwalBaruPage`, satu-satunya jalur yang membuat jadwal DAN
+        tagihannya bersama-sama.
+      */
+      toast.success(t('cancelScheduleSuccess'));
+      navigate('/dashboard', { replace: true });
     } catch (e: any) {
       toast.error(e?.message || t('rebookError'));
     } finally {
@@ -340,7 +336,7 @@ export function JadwalDanBayarPage() {
   // Jika jadwal lama statusnya cancelled/released dan user sedang memilih jadwal baru (rebooking ordinal 1),
   // deriveScheduleMoney menghasilkan 0 karena jadwal lama non-aktif.
   // Gunakan data submission aktif agar menampilkan nominal estimasi sebenarnya, bukan Rp 0.
-  if (money.total === 0 && (state.screen === 'pick' || state.screen === 'released') && submission) {
+  if (money.total === 0 && state.screen === 'pick' && submission) {
     const subTotal = Number(submission.total_cost) || 0;
     if (subTotal > 0) {
       const activeEntry: AdScheduleEntry = {
@@ -359,17 +355,54 @@ export function JadwalDanBayarPage() {
     }
   }
 
+  // `released` tidak pernah sampai ke sini — ia pulang ke dashboard di
+  // cabangnya sendiri di bawah, jadi tinggal dua fase yang nyata.
   const phase = state.screen === 'pick'
     ? 'reservation' as const
-    : state.screen === 'released'
-      ? 'released' as const
-      : 'payment' as const;
+    : 'payment' as const;
   const seg = segmentTitleOf({ phase, ordinal: entry.ordinal });
 
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-  if (state.screen === 'pick' || state.screen === 'released') {
+  /*
+    ⚠️ `released` TIDAK LAGI MEMAJANG KALENDER — jangan dikembalikan.
+
+    Reservasi yang sudah lepas atau dibatalkan berhenti di sini: satu banner dan
+    satu jalan keluar ke dashboard. Kalender di layar ini dulu memanggil
+    `rebookSchedule()`, satu-satunya jalur yang menghidupkan kembali sebuah
+    jadwal TANPA menerbitkan tagihannya — jadwal hidup, tagihan mati, dan layar
+    jujur berkata "tidak ada tagihan hidup".
+
+    Memesan lagi sekarang lewat `JadwalBaruPage`, yang selalu memanggil
+    `create_ad_schedule` DAN `createPayment`. Satu pintu, satu urutan.
+
+    Cabang ini WAJIB berdiri sebelum cabang `pick` di bawah, karena keduanya
+    dulu berbagi satu kondisi.
+  */
+  if (state.screen === 'released') {
+    return (
+      <div className="max-w-2xl mx-auto px-6 pt-24 space-y-5">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">{t('rebookPickTitle')}</p>
+            <p className="text-xs text-amber-800 mt-0.5">{t('paymentExpiredHoldBody')}</p>
+          </div>
+        </div>
+        <p className="text-sm text-slate-600">{t('cancelScheduleSuccess')}</p>
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="inline-flex items-center gap-2 rounded-xl bg-jfu-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90"
+        >
+          <ArrowLeft className="w-4 h-4" /> {t('backToOrders')}
+        </button>
+      </div>
+    );
+  }
+
+  if (state.screen === 'pick') {
     return (
       <ScheduleReservationLayout
         onBack={() => navigate('/dashboard')}
@@ -378,17 +411,6 @@ export function JadwalDanBayarPage() {
         orderLabel={`${entry.title} · #${entry.bookingId}`}
         title={t(seg.key, seg.vars)}
         subtitle={t('scheduleSubtitle')}
-        alertBanner={
-          state.screen === 'released' ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">{t('rebookPickTitle')}</p>
-                <p className="text-xs text-amber-800 mt-0.5">{t('paymentExpiredHoldBody')}</p>
-              </div>
-            </div>
-          ) : undefined
-        }
         calendar={
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">
