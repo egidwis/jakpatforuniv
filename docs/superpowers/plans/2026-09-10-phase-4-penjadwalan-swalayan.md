@@ -1,9 +1,15 @@
 # Phase 4 — "Jadwalkan Iklan Lagi" jadi swalayan di dashboard peneliti
 
-> ✅ **SUDAH DIEKSEKUSI — jalur utama selesai & diuji di browser 2026-09-17.**
-> Peneliti memesan perpanjangan sendiri tanpa admin. Status lengkap +
-> pengukuran ulang ada di
+> ✅ **SELESAI & DITUTUP 2026-09-17 — dideploy dan diuji di browser.**
+> Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri
+> tanpa admin**. Sembilan commit (`e2aafab`..`b741223`) sudah di-push;
+> `sql/89` & `sql/90` diterapkan ke produksi. Status lengkap + pengukuran ulang:
 > [§00AB `docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
+>
+> **Utang yang sadar dibawa keluar Phase 4:** Cancel Order DOKU belum aktif di
+> akun ini (1 dari 521 invoice pernah berhasil — link jadwal yang dibatalkan
+> tetap hidup sampai kedaluwarsa sendiri; resolver `/bayar/` sudah memagarinya),
+> dan cron pelepas slot kedaluwarsa belum ada.
 >
 > ⚠️ **SELURUH "Kesiapan" DI BAWAH SUDAH BASI — JANGAN DIPAKAI.** Ia menyebut
 > empat/lima penghalang masih berdiri; diukur ulang ke produksi 17 Sep,

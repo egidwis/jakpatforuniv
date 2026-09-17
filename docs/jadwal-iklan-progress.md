@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88` diterapkan & diverifikasi | ✅ **JALUR UTAMA SELESAI & TERUJI DI PRODUKSI 2026-09-17** — peneliti memesan perpanjangan sendiri tanpa admin, uji browser oleh pemilik produk. **Kelima penghalang 10 Sep sudah tumbang** (diverifikasi ulang ke produksi 17 Sep, bukan ke berkas). ✅ **Lubang pesan-ulang `ordinal ≥ 2` DITUTUP hari itu juga** (`rebookSchedule` + `sql/89` diterapkan). Peneliti tetap TIDAK bisa menukar jadwal yang masih berjalan — itu wewenang admin. Lihat §00AB. ⬜ commit belum di-push |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` ikut ditutup (`rebookSchedule` + `sql/89`), penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Utang tersisa: Cancel Order DOKU belum aktif (1 dari 521), dan cron pelepas slot belum ada. Lihat §00AB |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -123,10 +123,19 @@ branch itu. Lihat §2.
 
 ## Yang menunggu tindakan
 
-### 00AB. 🟢 Phase 4 jalur utama SELESAI — peneliti memesan perpanjangan sendiri (2026-09-17)
+### 00AB. ✅ PHASE 4 DITUTUP — peneliti menjadwalkan, membatalkan & memesan ulang sendiri (2026-09-17)
 
-**Diuji di browser oleh pemilik produk hari ini: reservasi jadwal perpanjangan
-berhasil tanpa campur tangan admin.** Terverifikasi di produksi, bukan dari berkas:
+**DITUTUP 2026-09-17.** Sembilan commit (`e2aafab`..`b741223`) sudah di-push &
+dideploy; `sql/89` dan `sql/90` sudah diterapkan ke produksi. Pemilik produk
+menguji di browser: **reservasi, pembatalan, dan penjadwalan ulang perpanjangan
+semuanya berhasil tanpa campur tangan admin.**
+
+Jejak ujinya terlihat di produksi — dua jadwal lahir lalu dibatalkan sendiri
+oleh peneliti (`YH6D2YEQ` ordinal 5 pukul 21:21, `9WED5VEH` ordinal 6 pukul
+21:24), keduanya `slot_booked_by` kembali NULL. Itu jalur yang sebelum hari ini
+tidak ada.
+
+Terverifikasi di produksi, bukan dari berkas:
 
 ```
 ad_schedules WHERE ordinal >= 2 AND slot_booked_by = 'user'  →  1 baris (GTFBMQ6F, ordinal 4)
@@ -198,9 +207,50 @@ ERROR, nol temuan baru.
 `payment_status` sengaja tidak ditulis — `guard_extend_payment_columns()`
 melempar exception untuk non-admin, jadi menulisnya menggagalkan seluruh UPDATE.
 
+#### ⚠️ Temuan saat menutup: link DOKU jadwal yang dibatalkan TETAP HIDUP
+
+Ditemukan saat memverifikasi jejak uji di atas. Dua jadwal yang baru dibatalkan
+peneliti masih punya link DOKU yang belum kedaluwarsa:
+
+```
+YH6D2YEQ  cancelled  link mati 17 Sep 08:21  → masih hidup
+9WED5VEH  cancelled  link mati 17 Sep 08:24  → masih hidup
+```
+
+**Ini BUKAN regresi Phase 4.** `cancelSchedule()` memang memanggil
+`killDokuLinksForSchedule()` lebih dulu — urutan "DOKU dulu, database kemudian"
+sudah benar. Yang gagal adalah DOKU-nya:
+
+```
+Merchant not support cancel order, please do activation through DOKU dashboard.
+(HTTP 400, tersimpan di invoices.doku_cancel_last_error)
+```
+
+Terukur: **1 dari 521** invoice pernah berhasil dibatalkan di DOKU. Ini
+konfirmasi ulang temuan yang sudah tercatat — Cancel Order tidak pernah aktif di
+akun ini, dan menunggu tindakan manusia di dashboard DOKU.
+
+**Kenapa ini tidak menahan penutupan Phase 4:** resolver `/bayar/<id>` menolak
+ketiga jadwal itu dengan alasan yang tepat — diuji langsung ke
+`authoritative_payment_url()` di produksi:
+
+```
+YH6D2YEQ → (,,f,t,cancelled)     9WED5VEH → (,,f,t,cancelled)
+GTFBMQ6F → (,,f,t,expired)       nol URL dipulangkan
+```
+
+Jadi selama peneliti lewat `/bayar/` — dan sejak commit `9b6821e` itulah
+satu-satunya tujuan tombol bayar — link mati tidak bisa dicapai. Celahnya hanya
+terbuka kalau peneliti menyimpan URL DOKU mentah dari sesi lama, dan untuk kasus
+itu `paid_on_dead_bill` adalah jaring terakhirnya (nol tulisan, 200, email
+alert). Belum pernah menyala.
+
+⚠️ **Tetap dicatat sebagai utang**, bukan diselesaikan: mengaktifkan Cancel Order
+di dashboard DOKU adalah pekerjaan manusia yang belum dilakukan.
+
 #### Yang masih menggantung
 
-- **Commit belum di-push.** `9b6821e` dan empat commit sebelumnya masih lokal di `main`.
+- ~~Commit belum di-push~~ → **SUDAH di-push & dideploy 17 Sep** (`e2aafab`..`b741223`, sembilan commit). `sql/89` & `sql/90` sudah diterapkan; DB dan kode sejalan.
 - **Cron pelepas slot kedaluwarsa belum ada.** Penegakan hold masih murni klien —
   ia hanya berjalan kalau peneliti sedang membuka halamannya. Diukur 17 Sep:
   8 slot ber-hold lewat, **nol** bertanggal masa depan, **nol** punya transaksi
