@@ -27,6 +27,7 @@ import { PublicFormPage } from './pages/public/PublicFormPage';
 import { getSubdomainUsername } from './utils/subdomain';
 import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
 import { JadwalDanBayarPage } from './pages/dashboard/JadwalDanBayarPage';
+import { JadwalBaruPage } from './pages/dashboard/JadwalBaruPage';
 import { SurveyListingPage } from './pages/public/SurveyListingPage';
 import { SurveyPage } from './pages/public/SurveyPage';
 import { AuthProvider } from './context/AuthContext';
@@ -147,6 +148,13 @@ function AppContent() {
               CTA "Lanjutkan Pembayaran" di deriveOrderUiState) dan ketiganya
               berkunci `submission_id`. Rute baru MELENGKAPI, bukan
               menggantikan — kuncinya `ad_schedules.id`, kunci yang berbeda. */}
+          {/* ⚠️ URUTAN MENGIKAT: `jadwal/baru/...` lebih dulu. React Router v6
+              memang memenangkan rute yang lebih spesifik, tapi menuliskannya di
+              bawah membuat pembaca berikutnya mengira "baru" bisa terbaca
+              sebagai `:scheduleId` — dan kalau itu terjadi, halaman jadwal
+              mencari UUID bernama "baru", tidak menemukannya, lalu menampilkan
+              "tidak ditemukan" tanpa satu pun galat. */}
+          <Route path="jadwal/baru/:submissionId" element={<JadwalBaruPage />} />
           <Route path="jadwal/:scheduleId" element={<JadwalDanBayarPage />} />
         </Route>
 

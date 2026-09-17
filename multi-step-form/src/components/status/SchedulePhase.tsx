@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
     AlertCircle,
@@ -39,7 +39,6 @@ import {
 import { formatIDR } from '@/utils/currency';
 import { CostBreakdown } from '@/components/CostBreakdown';
 import { isAutoReviewed } from './deriveOrderUiState';
-import { ScheduleAgainDialog } from './ScheduleAgainDialog';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
 
 const WIB = 'Asia/Jakarta';
@@ -68,12 +67,18 @@ interface SchedulePhaseProps {
      * `fetchSubmissions` milik StatusPage — konvensi yang sama dengan
      * `ReviewPhase.onDataUpdated`.
      *
-     * ⚠️ WAJIB dipanggil sesudah jadwal baru lahir. `fetchAdSchedules` hidup DI
-     * DALAM `fetchSubmissions` (StatusPage:455), jadi inilah satu-satunya jalur
-     * yang memunculkan jadwal ke-2 di layar; tanpa itu barisnya ada di database
-     * tapi kartunya tidak pernah muncul.
+     * ⚠️ TIDAK LAGI DIPAKAI FASE INI, dan itu disengaja. Dulu ia WAJIB dipanggil
+     * sesudah jadwal baru lahir di dalam modal: `fetchAdSchedules` hidup di
+     * dalam `fetchSubmissions` (StatusPage:455), jadi tanpa itu jadwal ke-2 ada
+     * di database tapi kartunya tidak pernah muncul.
+     *
+     * Sejak pembuatan jadwal pindah ke `/dashboard/jadwal/baru/:submissionId`,
+     * peneliti MENINGGALKAN halaman ini untuk membuatnya. Saat ia kembali,
+     * `StatusPage` sudah memuat ulang sendiri — sekali saat mount (`:490`) dan
+     * sekali lagi tiap tab kembali terlihat (`:497`). Propnya dipertahankan
+     * untuk pemanggil yang sudah mengopernya, dan sengaja tidak dibaca.
      */
-    onDataUpdated: () => void | Promise<void>;
+    onDataUpdated?: () => void | Promise<void>;
     /** Fase ② sedang berjalan (`getActiveDashboardPhase(ui.currentStep) === 2`)
      * — kartu paling relevan (`pickDefaultExpandedKey`) default terbuka. Kalau
      * tidak, default semua tertutup; user tetap bisa expand manual. */
@@ -909,13 +914,13 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
  * Fase ② — Jadwal Iklan: list kartu setara (asli + tiap perpanjangan), tiap
  * kartu membawa dua blok sendiri (Info Booking, Detail Pembayaran).
  */
-export function SchedulePhase({ submission, cards, entries, onReschedule, onDataUpdated, active }: SchedulePhaseProps) {
+export function SchedulePhase({ submission, cards, entries, onReschedule, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
     // Satu perhitungan untuk seluruh kartu order ini — hak menjadwalkan melekat
     // pada ORDER, bukan pada jadwal. Lihat catatan di prop `canSelfReschedule`.
     const selfReschedule = isAutoReviewed(submission);
 
-    const [isScheduleAgainOpen, setIsScheduleAgainOpen] = useState(false);
+    const navigate = useNavigate();
 
     /*
       ⚠️ Kilat ditandai di DUA tempat, dan sebagian baris lama hanya punya yang
@@ -942,17 +947,6 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, onData
         ? 'kilat'
         : scheduleAgainBlock(submission, entries);
     const showScheduleAgain = againBlock === null;
-
-    /*
-      Lama tayang jadwal BERIKUTNYA, ditebak dari jadwal PERTAMA.
-      `info.airingDays` diturunkan dari start→end; kolom `duration` bisa
-      berbohong (18 dari 992 baris meleset di produksi), jadi ia cuma cadangan.
-    */
-    const firstCard = cards.find((c) => c.kind === 'original') ?? cards[0];
-    const defaultAgainDuration = Math.max(
-        1,
-        firstCard?.info?.airingDays || firstCard?.info?.duration || 7,
-    );
 
     return (
         <div>
@@ -1100,7 +1094,7 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, onData
                         <div className="mt-3">
                             <Button
                                 variant="outline"
-                                onClick={() => setIsScheduleAgainOpen(true)}
+                                onClick={() => navigate(`/dashboard/jadwal/baru/${submission.id}`)}
                                 className="w-full text-xs font-semibold text-slate-700 border border-dashed border-slate-300 bg-slate-50/60 hover:bg-slate-100/80 hover:border-blue-400 hover:text-blue-700 rounded-xl min-h-11 px-4 gap-2 transition-all shadow-none justify-center cursor-pointer"
                             >
                                 <Plus className="w-4 h-4 shrink-0 text-slate-400" />
@@ -1111,15 +1105,6 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, onData
                 </>
             )}
 
-            {!isKilatOrder && (
-                <ScheduleAgainDialog
-                    open={isScheduleAgainOpen}
-                    onOpenChange={setIsScheduleAgainOpen}
-                    submission={submission}
-                    defaultDuration={defaultAgainDuration}
-                    onBooked={onDataUpdated}
-                />
-            )}
         </div>
     );
 }
