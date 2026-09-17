@@ -133,24 +133,6 @@ export function MultiStepForm() {
   // dari arah mana user tiba di layar yang sama.
   const isHeaderVisible = currentStep === 2 || (currentStep === 1 && isStep1HeaderAllowed);
 
-  /*
-    Step 3 memilih tanggal, jadi ia SEGMEN 2① "Reservasi Jadwal" — bukan segmen
-    1 seperti step 1–2.
-
-    ⚠️ Sebelum ini step 3 tidak punya judul segmen sama sekali: `isHeaderVisible`
-    berhenti di step 2, sehingga `scheduleTitle` ("Pilih kapan iklanmu tayang")
-    naik jadi judul terbesar layar. Akibatnya kalimat yang SAMA berperan judul
-    di jadwal ke-1 dan subjudul di perpanjangan — dua bentuk halaman berbeda
-    untuk tugas yang identik.
-
-    ⚠️ TANPA tombol Batalkan. Rencana menegaskan layar jadwal → bayar tidak
-    punya jalan keluar samping, dan `StepSchedule` sudah merender tombol
-    Kembalinya sendiri.
-
-    Step 4 (Kilat) sengaja TIDAK ikut: judulnya `kilatScheduleTitle`, dan Kilat
-    berada di luar cakupan rencana ini.
-  */
-  const isScheduleSegment = currentStep === 3;
 
   // ILKOMUNY yang sudah dipakai akun ini → diskonnya tidak berlaku lagi.
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
@@ -466,17 +448,6 @@ export function MultiStepForm() {
           />
         )}
 
-        {/* Segmen 2① — judul TEMPAT di atas, instruksi turun jadi subjudul.
-            Bentuknya sengaja sama persis dengan halaman perpanjangan. */}
-        {isScheduleSegment && (
-          <OrderFormHeader
-            eyebrow={formData.title || undefined}
-            title={t(segmentTitleOf({ phase: 'reservation', ordinal: 1 }).key)}
-            subtitle={t('scheduleTitle')}
-            showCancel={false}
-            onCancelConfirmed={cancelOrder}
-          />
-        )}
 
         {/* Lebaran Holiday Banner — auto-hides after 25 Mar 2026 12:00 WIB */}
         {(() => {
@@ -539,8 +510,6 @@ export function MultiStepForm() {
               jadwal lagi dari My Order kapan pun.
             */
             exitMode={formData.isReschedule ? 'orders' : 'step'}
-            /* Judul segmennya sudah dipasang di atas (isScheduleSegment). */
-            hideHeading
             onBack={
               formData.isReschedule
                 ? cancelOrder

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, Clock, Gift, Info, Loader2, Lock, Minus, Plus, RefreshCw,
+  ArrowLeft, Gift, Info, Loader2, Lock, Minus, Plus, RefreshCw,
 } from 'lucide-react';
 import { supabase, getFormSubmissionById, fetchAdSchedules } from '../../utils/supabase';
 import type { FormSubmission } from '../../utils/supabase';
@@ -18,6 +18,7 @@ import { airingDaysOf } from './schedule/scheduleModel';
 import { createPayment } from '../../utils/payment';
 import { formatIDR } from '../../utils/currency';
 import { CostBreakdown } from '../../components/CostBreakdown';
+import { ScheduleReservationLayout } from '../../components/schedule/ScheduleReservationLayout';
 import { draftScheduleMoney } from '../../utils/draftScheduleMoney';
 
 /**
@@ -292,214 +293,209 @@ export function JadwalBaruPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 pt-8 pb-12 space-y-4">
-      <button
-        type="button"
-        onClick={() => navigate('/dashboard')}
-        className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors -ml-1 px-1 py-1"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        {t('backToOrders')}
-      </button>
-
-      {/* Konteks order — yang HILANG saat perpanjangan masih berupa modal. */}
-      <div className="space-y-1">
-        <p className="text-xs text-slate-500 font-medium truncate">
-          {submission.title}{bookingId ? ` · #${bookingId}` : ''}
-        </p>
-        <h1 className="text-xl md:text-2xl font-bold text-slate-900 leading-snug tracking-tight">
-          {t(seg.key, seg.vars)}
-        </h1>
-        <p className="text-xs md:text-sm text-slate-500">{t('scheduleSubtitle')}</p>
-      </div>
-
-      <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 flex items-start gap-2.5">
-        <Clock className="w-4 h-4 text-jfu-primary shrink-0 mt-0.5" />
-        <p
-          className="text-xs leading-relaxed text-blue-900"
-          dangerouslySetInnerHTML={{ __html: t('scheduleAgainHoldNote') }}
-        />
-      </div>
-
-      {/* Lama tayang */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-bold text-slate-900">{t('scheduleAgainDuration')}</span>
-          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-jfu-primary border border-blue-100">
-            {duration} {t('scheduleAgainDays')}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-1.5 flex-1">
-            {DURATION_PRESETS.map((preset) => (
+    <ScheduleReservationLayout
+      onBack={() => navigate('/dashboard')}
+      backLabel={t('backToOrders')}
+      isBusy={isSaving}
+      orderLabel={`${submission.title}${bookingId ? ` · #${bookingId}` : ''}`}
+      title={t(seg.key, seg.vars)}
+      subtitle={t('scheduleSubtitle')}
+      duration={
+        /* Lama tayang */
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-slate-900">{t('scheduleAgainDuration')}</span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-jfu-primary border border-blue-100">
+              {duration} {t('scheduleAgainDays')}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 flex-1">
+              {DURATION_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => setDuration(preset)}
+                  className={`min-h-10 px-4 rounded-xl font-bold text-sm transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:opacity-50 ${
+                    duration === preset
+                      ? 'bg-jfu-primary text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {preset} {t('scheduleAgainDays')}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded-xl p-1 shrink-0">
               <button
-                key={preset}
                 type="button"
-                disabled={isSaving}
-                onClick={() => setDuration(preset)}
-                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer disabled:opacity-50 ${
-                  duration === preset
-                    ? 'bg-jfu-primary text-white shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
+                disabled={isSaving || duration <= 1}
+                onClick={() => setDuration((p) => Math.max(1, p - 1))}
+                aria-label={t('scheduleAgainDurationLess')}
+                className="w-10 h-10 rounded-lg bg-white hover:bg-slate-200 flex items-center justify-center text-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary disabled:opacity-40 cursor-pointer"
               >
-                {preset} {t('scheduleAgainDays')}
+                <Minus className="w-3.5 h-3.5" />
               </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded-xl p-1 shrink-0">
-            <button
-              type="button"
-              disabled={isSaving || duration <= 1}
-              onClick={() => setDuration((p) => Math.max(1, p - 1))}
-              aria-label={t('scheduleAgainDurationLess')}
-              className="w-7 h-7 rounded-lg bg-white hover:bg-slate-200 flex items-center justify-center text-slate-700 disabled:opacity-40 cursor-pointer"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <input
-              type="number"
-              min={1}
-              max={30}
-              value={duration}
-              onChange={(e) => setDuration(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-              disabled={isSaving}
-              aria-label={t('scheduleAgainDuration')}
-              className="w-12 text-center font-bold text-slate-900 bg-transparent text-xs focus:outline-none"
-            />
-            <button
-              type="button"
-              disabled={isSaving || duration >= 30}
-              onClick={() => setDuration((p) => Math.min(30, p + 1))}
-              aria-label={t('scheduleAgainDurationMore')}
-              className="w-7 h-7 rounded-lg bg-white hover:bg-slate-200 flex items-center justify-center text-slate-700 disabled:opacity-40 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={duration}
+                onChange={(e) => setDuration(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+                disabled={isSaving}
+                aria-label={t('scheduleAgainDuration')}
+                className="w-12 h-10 text-center font-bold text-slate-900 bg-transparent text-sm rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary"
+              />
+              <button
+                type="button"
+                disabled={isSaving || duration >= 30}
+                onClick={() => setDuration((p) => Math.min(30, p + 1))}
+                aria-label={t('scheduleAgainDurationMore')}
+                className="w-10 h-10 rounded-lg bg-white hover:bg-slate-200 flex items-center justify-center text-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary disabled:opacity-40 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Tanggal — ⚠️ SchedulePicker, kalender PENELITI. Modal lama memakai
-          SlotCalendar yang `isAdmin`-nya default `true`. */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-bold text-slate-900">{t('scheduleAgainPickDate')}</span>
-          {!availability.isLoading && availability.hasError && (
-            <button
-              type="button"
-              onClick={() => void availability.reload()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              {t('slotAvailabilityRetry')}
-            </button>
+      }
+      calendar={
+        /* Tanggal — ⚠️ SchedulePicker, kalender PENELITI. Modal lama memakai
+            SlotCalendar yang `isAdmin`-nya default `true`. */
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-slate-900">{t('scheduleAgainPickDate')}</span>
+            {!availability.isLoading && availability.hasError && (
+              <button
+                type="button"
+                onClick={() => void availability.reload()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t('slotAvailabilityRetry')}
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span>{t('scheduleCutoffNote')}</span>
+          </div>
+          <SchedulePicker
+            availability={availability}
+            duration={duration}
+            mode="regular"
+            value={picked}
+            onChange={setPicked}
+          />
+        </div>
+
+      }
+      reward={
+        <>
+          {/* Hadiah — HANYA batch baru. Batch lama ikut kolam yang sudah didanai;
+              menanyakan hadiah lagi di sana menagih dua kali. */}
+          {plan.needsReward && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 space-y-3">
+              <p className="text-sm font-bold text-amber-900 flex items-center gap-2">
+                <Gift className="w-4 h-4 text-amber-600 shrink-0" />
+                {t('scheduleAgainRewardTitle')}
+              </p>
+              <p className="text-xs leading-relaxed text-amber-800">{t('scheduleAgainRewardWhy')}</p>
+              {/* ⚠️ TANPA `grid-cols-1`. `styles.css` warisan mendefinisikan
+                  `.grid-cols-1 { grid-template-columns: 1fr }` polos dan dimuat
+                  sesudah Tailwind, jadi ia mengalahkan `sm:grid-cols-2` pada
+                  spesifisitas sama — panel ini tetap satu kolom di SEMUA lebar.
+                  Grid tanpa kelas kolom sudah default satu kolom, jadi membuangnya
+                  memulihkan breakpoint. Pola yang sama sudah dipakai 3x di
+                  AnalyticsDashboard.tsx. Jarak juga inline, sebab yang sama. */}
+              <div className="grid sm:grid-cols-2" style={{ gap: '0.75rem' }}>
+                <div className="space-y-1.5">
+                  <label htmlFor="baru-prize" className="text-[11px] font-bold text-amber-900 block">
+                    {t('scheduleAgainRewardPrize')}
+                  </label>
+                  <input
+                    id="baru-prize"
+                    type="number"
+                    min={0}
+                    value={prizePerWinner || ''}
+                    onChange={(e) => setPrizePerWinner(Math.max(0, Number(e.target.value) || 0))}
+                    disabled={isSaving}
+                    className="h-10 w-full px-3 text-xs border border-amber-300 rounded-xl bg-white text-gray-900 focus:border-jfu-primary focus:outline-none font-semibold font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="baru-winners" className="text-[11px] font-bold text-amber-900 block">
+                    {t('scheduleAgainRewardWinners')}
+                  </label>
+                  <input
+                    id="baru-winners"
+                    type="number"
+                    min={0}
+                    value={winnerCount || ''}
+                    onChange={(e) => setWinnerCount(Math.max(0, Number(e.target.value) || 0))}
+                    disabled={isSaving}
+                    className="h-10 w-full px-3 text-xs border border-amber-300 rounded-xl bg-white text-gray-900 focus:border-jfu-primary focus:outline-none font-semibold font-mono"
+                  />
+                </div>
+              </div>
+              {prizePerWinner > 0 && winnerCount > 0 && (
+                <div className="pt-2 flex items-center justify-between border-t border-amber-200 text-xs">
+                  <span className="text-amber-800 font-medium">{t('scheduleAgainTotalPrize')}</span>
+                  <span className="font-extrabold text-amber-950 font-mono">
+                    {formatIDR(prizePerWinner * winnerCount)}
+                  </span>
+                </div>
+              )}
+            </div>
           )}
-        </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span>{t('scheduleCutoffNote')}</span>
-        </div>
-        <SchedulePicker
-          availability={availability}
-          duration={duration}
-          mode="regular"
-          value={picked}
-          onChange={setPicked}
+
+          {/* Batch lama: katakan kenapa tidak ada panel hadiah. */}
+          {batch && !plan.needsReward && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-start gap-2.5 text-xs text-slate-600">
+              <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">{t('scheduleAgainPoolReused')}</p>
+            </div>
+          )}
+
+        </>
+      }
+      cost={
+        /* RINCIAN — di antara kalender dan tombol, seperti rencana.
+            ⚠️ `defaultOpen` untuk perpanjangan: tidak ada Ringkasan di
+            belakangnya, jadi layar ini SATU-SATUNYA tempat harga pernah muncul.
+            ⚠️ Berlabel "estimasi", bukan tagihan — `recordedVsBilled`
+            membuktikan `total_cost` bisa menyimpang dari `invoices.amount`. */
+        <CostBreakdown
+          total={money.total}
+          lines={money.lines}
+          note={money.note}
+          isEstimate={money.isEstimate}
+          variant="compact"
+          defaultOpen
         />
-      </div>
 
-      {/* Hadiah — HANYA batch baru. Batch lama ikut kolam yang sudah didanai;
-          menanyakan hadiah lagi di sana menagih dua kali. */}
-      {plan.needsReward && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 space-y-3">
-          <p className="text-sm font-bold text-amber-900 flex items-center gap-2">
-            <Gift className="w-4 h-4 text-amber-600 shrink-0" />
-            {t('scheduleAgainRewardTitle')}
-          </p>
-          <p className="text-xs leading-relaxed text-amber-800">{t('scheduleAgainRewardWhy')}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label htmlFor="baru-prize" className="text-[11px] font-bold text-amber-900 block">
-                {t('scheduleAgainRewardPrize')} (Rp)
-              </label>
-              <input
-                id="baru-prize"
-                type="number"
-                min={0}
-                value={prizePerWinner || ''}
-                onChange={(e) => setPrizePerWinner(Math.max(0, Number(e.target.value) || 0))}
-                disabled={isSaving}
-                className="h-10 w-full px-3 text-xs border border-amber-300 rounded-xl bg-white text-gray-900 focus:border-jfu-primary focus:outline-none font-semibold font-mono"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="baru-winners" className="text-[11px] font-bold text-amber-900 block">
-                {t('scheduleAgainRewardWinners')}
-              </label>
-              <input
-                id="baru-winners"
-                type="number"
-                min={0}
-                value={winnerCount || ''}
-                onChange={(e) => setWinnerCount(Math.max(0, Number(e.target.value) || 0))}
-                disabled={isSaving}
-                className="h-10 w-full px-3 text-xs border border-amber-300 rounded-xl bg-white text-gray-900 focus:border-jfu-primary focus:outline-none font-semibold font-mono"
-              />
-            </div>
-          </div>
-          {prizePerWinner > 0 && winnerCount > 0 && (
-            <div className="pt-2 flex items-center justify-between border-t border-amber-200 text-xs">
-              <span className="text-amber-800 font-medium">{t('scheduleAgainTotalPrize')}</span>
-              <span className="font-extrabold text-amber-950 font-mono">
-                {formatIDR(prizePerWinner * winnerCount)}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Batch lama: katakan kenapa tidak ada panel hadiah. */}
-      {batch && !plan.needsReward && (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-start gap-2.5 text-xs text-slate-600">
-          <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-          <p className="leading-relaxed">{t('scheduleAgainPoolReused')}</p>
-        </div>
-      )}
-
-      {/* RINCIAN — di antara kalender dan tombol, seperti rencana.
-          ⚠️ `defaultOpen` untuk perpanjangan: tidak ada Ringkasan di
-          belakangnya, jadi layar ini SATU-SATUNYA tempat harga pernah muncul.
-          ⚠️ Berlabel "estimasi", bukan tagihan — `recordedVsBilled`
-          membuktikan `total_cost` bisa menyimpang dari `invoices.amount`. */}
-      <CostBreakdown
-        total={money.total}
-        lines={money.lines}
-        note={money.note}
-        isEstimate={money.isEstimate}
-        variant="compact"
-        defaultOpen
-      />
-
-      {/* ⚠️ Tombol mati SELALU menyebutkan sebabnya. Modal lama mematikannya
-          lewat boolean telanjang, tanpa sepatah kata. */}
-      <div className="space-y-2">
-        {plan.block && plan.block !== 'saving' && (
-          <p className="flex items-start gap-1.5 text-xs text-slate-500">
-            <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+      }
+      blockedReason={
+        plan.block && plan.block !== 'saving' ? (
+          <p className="flex items-start gap-1.5 text-sm text-slate-500">
+            <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
             <span>{t(NEW_SCHEDULE_BLOCK_KEY[plan.block])}</span>
           </p>
-        )}
+        ) : null
+      }
+      cta={
         <button
           type="button"
           onClick={handleLock}
           disabled={!plan.canSubmit}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock size={15} />}
           {isSaving ? t('scheduleAgainBooking') : t('scheduleLockCta')}
         </button>
-      </div>
-    </div>
+      }
+    />
   );
 }

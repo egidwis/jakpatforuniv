@@ -33,7 +33,21 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 export interface MoneyLine {
+  /**
+   * Teks siap-pakai. Dipakai HANYA bila `labelKey` tidak ada.
+   *
+   * ⚠️ Modul ini murni — ia tidak punya konteks React, jadi ia tidak bisa
+   * memanggil `t()`. Selama ini akibatnya seluruh label biaya ("Iklan",
+   * "Diskon Voucher", "PPN 11%") ikut tercetak Indonesia di mode Inggris.
+   */
   label: string;
+  /** Kunci i18n; `CostBreakdown` mengutamakannya di atas `label`. */
+  labelKey?: string;
+  /** Variabel interpolasi untuk `labelKey`. */
+  labelVars?: Record<string, string | number>;
+  /** Kunci i18n untuk `hint`, dengan alasan yang sama. */
+  hintKey?: string;
+  hintVars?: Record<string, string | number>;
   hint?: string;
   amount: number;
   tone?: 'discount' | 'addon';
@@ -169,13 +183,18 @@ export function deriveScheduleMoney(
       if (grossAdCost != null && grossAdCost >= 0) {
         lines.push({
           label: 'Iklan',
+          labelKey: 'costLineAd',
           hint: entry.duration ? `${entry.duration} hari` : undefined,
+          hintKey: entry.duration ? 'costHintDays' : undefined,
+          hintVars: { d: entry.duration ?? 0 },
           amount: grossAdCost,
         });
 
         if (discountAmount > 0) {
           lines.push({
             label: `Diskon Voucher (${voucher})`,
+            labelKey: 'costLineVoucherNamed',
+            labelVars: { code: voucher ?? '' },
             amount: -discountAmount,
             tone: 'discount',
           });
@@ -184,15 +203,16 @@ export function deriveScheduleMoney(
         if (incentive != null && incentive > 0) {
           lines.push({
             label: 'Reward',
+            labelKey: 'costLineReward',
             hint: `Rp ${entry.prizePerWinner.toLocaleString('id-ID')} × ${entry.winnerCount}`,
             amount: incentive,
           });
         }
       } else {
-        lines.push({ label: 'Subtotal (DPP)', amount: entry.subtotal });
+        lines.push({ label: 'Subtotal (DPP)', labelKey: 'costLineSubtotal', amount: entry.subtotal });
       }
 
-      lines.push({ label: 'PPN 11%', amount: entry.ppnAmount });
+      lines.push({ label: 'PPN 11%', labelKey: 'costLinePpn', amount: entry.ppnAmount });
       return { total, isEstimate: false, lines };
     }
 
@@ -253,20 +273,24 @@ export function deriveScheduleMoney(
   const lines: MoneyLine[] = [
     {
       label: 'Iklan',
+      labelKey: 'costLineAd',
       hint: isKilat ? `${questionCount} Qs · base rate` : `${questionCount} Qs × ${duration} hari`,
+      hintKey: isKilat ? undefined : 'costHintQsDays',
+      hintVars: { q: questionCount, d: duration },
       amount: adCost,
     },
   ];
-  if (addon > 0) lines.push({ label: 'Add-on JFU Kilat', amount: addon, tone: 'addon' });
-  if (discount > 0) lines.push({ label: `Diskon Voucher (${entry.voucherCode})`, amount: -discount, tone: 'discount' });
+  if (addon > 0) lines.push({ label: 'Add-on JFU Kilat', labelKey: 'costLineKilatAddon', amount: addon, tone: 'addon' });
+  if (discount > 0) lines.push({ label: `Diskon Voucher (${entry.voucherCode})`, labelKey: 'costLineVoucherNamed', labelVars: { code: entry.voucherCode ?? '' }, amount: -discount, tone: 'discount' });
   if (incentive > 0) {
     lines.push({
       label: 'Reward',
+      labelKey: 'costLineReward',
       hint: `Rp ${entry.prizePerWinner.toLocaleString('id-ID')} × ${entry.winnerCount}`,
       amount: incentive,
     });
   }
-  lines.push({ label: 'PPN 11%', amount: ppn });
+  lines.push({ label: 'PPN 11%', labelKey: 'costLinePpn', amount: ppn });
 
   return { total: subtotal + ppn, isEstimate: true, lines };
 }

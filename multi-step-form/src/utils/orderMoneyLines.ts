@@ -38,11 +38,14 @@ export function orderMoneyLines(
 
   lines.push({
     label: 'Iklan',
+    labelKey: 'costLineAd',
     // Kilat selesai ~2 jam, jadi durasinya tidak berlaku — menyebut "× 1 hari"
     // mengesankan jendela tayang yang tidak pernah ada.
     hint: ctx.isKilat
       ? `${ctx.questionCount} Qs · base rate`
       : `${ctx.questionCount} Qs × ${ctx.duration} hari`,
+    hintKey: ctx.isKilat ? undefined : 'costHintQsDays',
+    hintVars: { q: ctx.questionCount, d: ctx.duration },
     amount: calc.adCost,
   });
 
@@ -52,18 +55,20 @@ export function orderMoneyLines(
     // terbaca seperti biaya tambahan.
     lines.push({
       label: ctx.voucherCode ? `Diskon Voucher (${ctx.voucherCode})` : 'Diskon Voucher',
+      labelKey: ctx.voucherCode ? 'costLineVoucherNamed' : 'costLineVoucher',
+      labelVars: { code: ctx.voucherCode ?? '' },
       amount: -calc.discount,
       tone: 'discount',
     });
   }
 
   if (calc.kilatAddonCost && calc.kilatAddonCost > 0) {
-    lines.push({ label: 'Add-on JFU Kilat', amount: calc.kilatAddonCost, tone: 'addon' });
+    lines.push({ label: 'Add-on JFU Kilat', labelKey: 'costLineKilatAddon', amount: calc.kilatAddonCost, tone: 'addon' });
   }
 
   // Nol dilewati, bukan ditampilkan "Rp 0" — baris nol cuma bising.
   if (calc.incentiveCost > 0) {
-    lines.push({ label: 'Reward', amount: calc.incentiveCost });
+    lines.push({ label: 'Reward', labelKey: 'costLineReward', amount: calc.incentiveCost });
   }
 
   /*
@@ -77,9 +82,9 @@ export function orderMoneyLines(
     penambah baru. Tanpa pemisahan itu, menjumlahkan seluruh kolom akan
     menghitung ganda.
   */
-  lines.push({ label: 'Subtotal (DPP)', amount: calc.subtotal, isSubtotal: true });
+  lines.push({ label: 'Subtotal (DPP)', labelKey: 'costLineSubtotal', amount: calc.subtotal, isSubtotal: true });
 
-  lines.push({ label: 'PPN 11%', amount: calc.ppn });
+  lines.push({ label: 'PPN 11%', labelKey: 'costLinePpn', amount: calc.ppn });
 
   return lines;
 }

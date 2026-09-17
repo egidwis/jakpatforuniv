@@ -35,8 +35,15 @@ export function SchedulePicker({
   onChange,
   showSummary = true,
 }: SchedulePickerProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { counts, maxPerDay } = availability;
+  /*
+    ⚠️ LOKAL IKUT BAHASA. Sebelumnya ketiga pemformat tanggal di berkas ini
+    dipatok `'id-ID'`, jadi pengguna berbahasa Inggris tetap membaca "Sen",
+    "Kam", "Agu" di setiap tile — kalender adalah satu-satunya bagian layar
+    yang tidak pernah ikut berganti bahasa.
+  */
+  const locale = language === 'en' ? 'en-US' : 'id-ID';
 
   const effectiveDuration = mode === 'kilat' ? 1 : Math.max(duration || 1, 1);
 
@@ -63,7 +70,15 @@ export function SchedulePicker({
   if (availability.isLoading && !availability.isReady) {
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 sm:gap-3 py-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 py-1"
+        /* ⚠️ JARAK LEWAT STYLE INLINE, BUKAN `gap-2.5`.
+           `styles.css` warisan dimuat SESUDAH Tailwind dan mendefinisikan
+           `.grid { gap: 1.5rem }` polos. Pada spesifisitas yang sama, urutan
+           sumber menang — terverifikasi di bundle terkirim: aturan legacy ada
+           di offset 252203, `gap-2.5` di 50410. Akibatnya grid ini merender
+           jarak 24px, bukan 10px, dan tile menyusut ~7px di ponsel.
+           Style inline satu-satunya yang menang tanpa menyentuh berkas warisan. */
+        style={{ gap: '0.625rem' }}>
           {Array.from({ length: HORIZON_DAYS }).map((_, i) => (
             <div
               key={i}
@@ -81,7 +96,15 @@ export function SchedulePicker({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 sm:gap-3 py-1">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 py-1"
+        /* ⚠️ JARAK LEWAT STYLE INLINE, BUKAN `gap-2.5`.
+           `styles.css` warisan dimuat SESUDAH Tailwind dan mendefinisikan
+           `.grid { gap: 1.5rem }` polos. Pada spesifisitas yang sama, urutan
+           sumber menang — terverifikasi di bundle terkirim: aturan legacy ada
+           di offset 252203, `gap-2.5` di 50410. Akibatnya grid ini merender
+           jarak 24px, bukan 10px, dan tile menyusut ~7px di ponsel.
+           Style inline satu-satunya yang menang tanpa menyentuh berkas warisan. */
+        style={{ gap: '0.625rem' }}>
         {dates.map((date, i) => {
           const ymd = toLocalYmd(date);
           const baseCount = counts[ymd] || 0;
@@ -107,18 +130,38 @@ export function SchedulePicker({
               textColor = mode === 'kilat' ? 'text-amber-900' : 'text-blue-900';
             }
           } else if (isClosed) {
-            statusColors = 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed';
-            textColor = 'text-slate-500';
+            /* ⚠️ TANPA `opacity-*`. Opacity pada <button> meredupkan teks DAN
+               latarnya bersamaan, jadi teksnya menggelap MENUJU latar: tile
+               lewat-cutoff terukur 1,87:1 — jauh di bawah ambang teks besar
+               sekalipun. Warna diredam eksplisit supaya tetap terbaca. */
+            statusColors = 'bg-slate-100 border-slate-200 cursor-not-allowed';
+            textColor = 'text-slate-600';
           } else if (isFull) {
-            statusColors = 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed';
+            statusColors = 'bg-slate-50 border-slate-200 cursor-not-allowed';
           }
 
+          /* Warna -600, bukan -500: pada pil `slate-100/50` varian 500 terukur
+             2,05:1 (amber) dan 2,42:1 (emerald) — gagal ambang non-teks 3:1. */
           const dotColor =
             displayCount > maxPerDay || (isFull && !isSelectedInRange)
-              ? 'bg-red-500'
+              ? 'bg-red-600'
               : displayCount > 0
-                ? 'bg-amber-500'
-                : 'bg-emerald-500';
+                ? 'bg-amber-600'
+                : 'bg-emerald-600';
+
+          /*
+            ⚠️ SEBAB KETIDAKTERSEDIAAN DIUCAPKAN, bukan cuma diredupkan.
+            Tile penuh dulu hanya `opacity-60` tanpa label apa pun, sementara
+            tile lewat-cutoff punya pil "Tutup" — jadi tanggal kelabu pertama
+            tidak terjelaskan BY CONSTRUCTION. Peneliti melihat abu dan tidak
+            tahu apakah penuh, terlambat, atau rusak.
+          */
+          const reason = isClosed
+            ? t('slotClosedReason')
+            : isFull
+              ? t('slotFullReason')
+              : null;
+          const dayLabel = date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
 
           return (
             <button
@@ -126,21 +169,32 @@ export function SchedulePicker({
               type="button"
               disabled={isFull || isClosed}
               onClick={() => onChange(ymd)}
-              className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${statusColors}`}
+              /* Nama aksesibel merakit tanggal + sebab; tanpa ini pembaca layar
+                 mengumumkan "Sen 12 Okt 4 garis miring 4, redup" tanpa sebab. */
+              aria-label={reason ? `${dayLabel} — ${reason}` : dayLabel}
+              aria-pressed={isSelectedInRange || undefined}
+              title={reason ?? undefined}
+              className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${statusColors}`}
             >
               <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                {date.toLocaleDateString('id-ID', { weekday: 'short' })}
+                {date.toLocaleDateString(locale, { weekday: 'short' })}
               </span>
               <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
-                {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                {date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
               </span>
               {isClosed ? (
                 <div className="flex items-center gap-1 mt-auto bg-slate-200/60 px-1.5 py-0.5 rounded-full border border-slate-200">
-                  <span className="text-[10px] font-semibold text-slate-500">{t('slotClosedTodayLabel')}</span>
+                  <span className="text-[10px] font-semibold text-slate-700">{t('slotClosedTodayLabel')}</span>
+                </div>
+              ) : isFull && !isSelectedInRange ? (
+                /* Kata, bukan cuma angka merah: "4/4" menuntut pembacanya tahu
+                   bahwa penyebutnya kuota. "Penuh" tidak menuntut apa pun. */
+                <div className="flex items-center gap-1 mt-auto bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
+                  <span className="text-[10px] font-semibold text-red-800">{t('slotFullLabel')}</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
-                  <div className={`w-1 h-1 rounded-full ${dotColor}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} aria-hidden="true" />
                   <span
                     className={`text-[10px] font-semibold ${
                       displayCount > maxPerDay || (isFull && !isSelectedInRange)
@@ -157,6 +211,29 @@ export function SchedulePicker({
         })}
       </div>
 
+      {/*
+        LEGENDA — "4/4" adalah kosakata operator. Tanpa baris ini peneliti tidak
+        punya cara tahu apakah 4/4 berarti empat tersedia atau empat terpakai,
+        dan maknanya bersandar pada titik 4x4px yang amber-vs-emerald-nya
+        berjarak luminansi 1,18:1 — praktis identik bagi mata buta warna.
+        Kata-katanya yang membawa makna; titiknya kini cuma penguat.
+      */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-500">
+        <span>{t('slotLegendTitle')}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
+          {t('slotLegendOpen')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-600" aria-hidden="true" />
+          {t('slotLegendFilling')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-600" aria-hidden="true" />
+          {t('slotLegendFull')}
+        </span>
+      </div>
+
       {showSummary && value && <AiringSummary ymd={value} duration={effectiveDuration} />}
     </div>
   );
@@ -169,9 +246,11 @@ export function SchedulePicker({
  * order tidak bisa berbeda.
  */
 export function AiringSummary({ ymd, duration }: { ymd: string; duration: number }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  // Lokal ikut bahasa — lihat catatan di `SchedulePicker`.
+  const locale = language === 'en' ? 'en-US' : 'id-ID';
   const fmt = (d: Date) =>
-    d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
+    d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
 
   const start = new Date(toAiringStartIso(ymd));
   // Hari tayang terakhir, bukan batas eksklusif — lihat `toAiringLastDayIso`.

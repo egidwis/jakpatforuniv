@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Info, Lock, RefreshCw } from 'lucide-react';
+import { Loader2, Info, Lock, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { ScheduleReservationLayout } from './schedule/ScheduleReservationLayout';
+import { CostBreakdown } from './CostBreakdown';
+import { calculateTotalCost } from '../utils/cost-calculator';
+import { orderMoneyLines } from '../utils/orderMoneyLines';
+import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
+import { segmentTitleOf } from '../utils/segmentTitle';
 import { SchedulePicker } from './SchedulePicker';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../utils/scheduleLockGate';
@@ -32,16 +38,6 @@ interface StepScheduleProps {
    * tertimpa (lihat resolveSubmissionMode).
    */
   exitMode?: 'step' | 'orders';
-  /**
-   * Sembunyikan judul+subjudul internal karena pemanggil sudah memasang judul
-   * segmen di atas layar.
-   *
-   * ⚠️ Tanpa ini `scheduleTitle` muncul DUA KALI: sekali sebagai subjudul
-   * segmen, sekali lagi sebagai `<h2>` di dalam kartu. Kilat (step 4) belum
-   * punya judul segmen — ia di luar cakupan rencana — jadi bawaannya tetap
-   * menampilkan.
-   */
-  hideHeading?: boolean;
 }
 
 /**
@@ -53,7 +49,7 @@ interface StepScheduleProps {
  * satu layar; secara alamat mereka terpisah karena Fase B punya dua pintu masuk
  * "kembali setelah pergi" yang tidak bisa dilayani state wizard.
  */
-export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', exitMode = 'step', hideHeading = false }: StepScheduleProps) {
+export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', exitMode = 'step' }: StepScheduleProps) {
   const { t } = useLanguage();
   const availability = useSlotAvailability(mode);
 
@@ -93,70 +89,61 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
     }
   };
 
+  /*
+    ⚠️ HARGA DI LAYAR YANG MELAHIRKAN TAGIHAN.
+
+    Menekan tombol di bawah menulis order, menerbitkan tagihan, dan menyalakan
+    hold 1 jam — dan sampai sekarang layar ini tidak pernah memajang satu angka
+    pun. Ironisnya kalimat yang menyebut bahaya itu sudah ditulis di halaman
+    perpanjangan; perbaikannya diterapkan ke pengguna BERULANG dan ditahan dari
+    pengguna PERTAMA KALI, yang justru paling butuh.
+
+    ⚠️ Menghitung NOL: `calculateTotalCost` adalah sumber yang SAMA dengan
+    Ringkasan, dan `orderMoneyLines` hanya memetakan bentuknya. Jadi angka di
+    sini tidak bisa berbeda diam-diam dari angka yang baru saja disetujui
+    peneliti satu langkah sebelumnya.
+
+    ⚠️ `useIlkomunyBlocked` ikut, sebab yang sama dengan `StepCheckout`: voucher
+    ILKOMUNY yang sudah dipakai akun ini tidak boleh memunculkan harga diskon
+    yang tidak berhak.
+  */
+  const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
+  const effectiveForm = ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData;
+  const cost = calculateTotalCost(effectiveForm);
+
+  const seg = segmentTitleOf({ phase: 'reservation', ordinal: 1 });
+
   return (
-    <div className="max-w-3xl mx-auto space-y-3.5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Jalan keluar diletakkan DI ATAS kartu, sejajar dengan halaman bayar:
-          ia menjawab "aku ada di mana dan bagaimana keluar", pertanyaan yang
-          muncul SEBELUM isinya dibaca — bukan aksi yang bersaing dengan CTA
-          di bawah. */}
-      {exitMode === 'orders' && (
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={isConfirming}
-          className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed -ml-1 px-1 py-1"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {t('backToOrders')}
-        </button>
-      )}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm overflow-hidden space-y-4">
-        {/* Title + subtitle grouped so gap between them is tight */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            {/* Kilat bukan iklan, jadi judul reguler ("kapan iklanmu tayang")
-                salah alamat di sini. Wording-nya dikembalikan lewat judul yang
-                sudah ada, bukan dengan menambah label baru. */}
-            {/* ⚠️ Disembunyikan, BUKAN dihapus — spinner & tombol muat-ulang
-                di sebelahnya wajib tetap hidup. `<span>` kosong menjaga
-                `justify-between` supaya keduanya tetap rata kanan. */}
-            {hideHeading ? <span /> : (
-              <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
-                {mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleTitle')}
-              </h2>
-            )}
-            {/* Muat PERTAMA diceritakan skeleton kalendernya, bukan spinner ini —
-                dua indikator untuk satu keadaan cuma bising. Spinner tinggal
-                untuk pemuatan ulang, saat kalendernya sudah berisi. */}
+    <ScheduleReservationLayout
+      onBack={onBack}
+      backLabel={exitMode === 'orders' ? t('backToOrders') : t('backButton')}
+      isBusy={isConfirming}
+      orderLabel={formData.title || undefined}
+      title={mode === 'kilat' ? t('kilatScheduleTitle') : t(seg.key, seg.vars)}
+      subtitle={mode === 'kilat' ? undefined : t('scheduleSubtitle')}
+      calendar={
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span>{t('scheduleCutoffNote')}</span>
+            </div>
+            {/* Muat PERTAMA diceritakan skeleton kalendernya, bukan spinner ini. */}
             {availability.isLoading && availability.isReady && (
-              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+              <Loader2 className="w-4 h-4 animate-spin text-jfu-primary shrink-0" />
             )}
-            {/* Gagal memuat harus KELIHATAN. Sebelumnya kegagalan hanya masuk
-                console.error, jadi layar tampak normal padahal angka slotnya
-                nol semua — mustahil dibedakan dari "semua tanggal kosong". */}
+            {/* Gagal memuat harus KELIHATAN: nol slot mustahil dibedakan dari
+                "semua tanggal kosong" kalau kegagalannya cuma masuk console. */}
             {!availability.isLoading && availability.hasError && (
               <button
                 type="button"
                 onClick={() => void availability.reload()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 {t('slotAvailabilityRetry')}
               </button>
             )}
-          </div>
-          {!hideHeading && (
-            <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
-              {t('scheduleSubtitle')}
-            </p>
-          )}
-        </div>
-
-        {/* Calendar picker wrapped in card */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-4 shadow-2xs">
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span>{t('scheduleCutoffNote')}</span>
           </div>
           <SchedulePicker
             availability={availability}
@@ -166,47 +153,39 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
             onChange={handleSelect}
           />
         </div>
-      </div>
-
-      <div className="space-y-2 pb-4">
-        <div className="flex items-center gap-3">
-          {exitMode === 'step' && (
-            <button
-              type="button"
-              onClick={onBack}
-              disabled={isConfirming}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              {t('backButton')}
-            </button>
+      }
+      cost={
+        <CostBreakdown
+          total={cost.totalCost}
+          lines={orderMoneyLines(cost, {
+            questionCount: formData.questionCount,
+            duration: formData.duration,
+            isKilat: formData.isKilatUpgrade,
+            voucherCode: ilkomunyBlocked ? undefined : formData.voucherCode,
+          })}
+          variant="compact"
+          totalLabel={t('totalPayment')}
+        />
+      }
+      cta={
+        <button
+          onClick={handleConfirm}
+          disabled={!selected || availability.isLoading || isConfirming}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
+        >
+          {isConfirming ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {t('lockingSlotLoading')}
+            </>
+          ) : (
+            <>
+              <Lock size={15} />
+              {mode === 'kilat' ? t('scheduleConfirmKilatCta') : t('scheduleLockCta')}
+            </>
           )}
-          <button
-            onClick={handleConfirm}
-            disabled={!selected || availability.isLoading || isConfirming}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
-          >
-            {isConfirming ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {t('lockingSlotLoading')}
-              </>
-            ) : (
-              <>
-                <Lock size={15} />
-                {mode === 'kilat' ? t('scheduleConfirmKilatCta') : t('scheduleLockCta')}
-                <span aria-hidden="true">→</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Countdown dideklarasikan SEBELUM terjadi — layar berikutnya membuka
-            timer, dan itu tidak boleh terasa seperti kejutan. */}
-        <p className="text-xs text-gray-500 text-center leading-relaxed px-4">
-          {mode === 'kilat' ? t('scheduleKilatHint') : t('scheduleHoldHint')}
-        </p>
-      </div>
-    </div>
+        </button>
+      }
+    />
   );
 }
