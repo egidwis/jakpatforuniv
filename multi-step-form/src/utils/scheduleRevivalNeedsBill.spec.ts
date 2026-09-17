@@ -91,6 +91,57 @@ describe('tidak ada jalur yang menghidupkan jadwal tanpa tagihan', () => {
     expect(cancel.slice(0, 900)).toMatch(/navigate\('\/dashboard'/);
   });
 
+  it('setiap layar yang mengunci tanggal menyusulkan halaman bayar', () => {
+    /*
+      ⚠️ KEMBARAN BUG 17 SEP, DITEMUKAN 18 SEP — dan sebabnya BUKAN primitifnya.
+
+      `rebookSlotForSubmission()` sendiri BENAR: ia lingkup ORDER, tugasnya
+      cuma mengunci TANGGAL di `form_submissions`. Menyuruhnya menerbitkan
+      tagihan justru mengulang dosa `rebookSchedule` — satu fungsi, dua lingkup.
+
+      Yang menentukan aman atau tidak adalah APA YANG TERJADI SESUDAHNYA di
+      layar pemanggil:
+
+          PaymentCheckoutPage  → loadSubmission() → efek auto-terbit  ✅
+          JadwalDanBayarPage   → load() saja                          ❌
+
+      Cabang kedua itu mendaratkan peneliti pada jadwal `waiting_payment`
+      tanpa tagihan hidup — layar yang persis sama dengan bug kemarin, hanya
+      lewat pintu lain (`pick`, bukan `released`).
+
+      Penjaganya berbasis BENTUK: setiap handler yang memanggil
+      `rebookSlotForSubmission` wajib, di badan yang sama, menyusulkan sesuatu
+      yang menerbitkan tagihan — `createPayment` langsung, ATAU navigasi ke
+      halaman bayar yang punya efek auto-terbit.
+    */
+    const halaman = [
+      join(SRC, '..', 'pages', 'dashboard', 'JadwalDanBayarPage.tsx'),
+      join(SRC, '..', 'pages', 'PaymentCheckoutPage.tsx'),
+    ];
+
+    for (const f of halaman) {
+      const kode = tanpaKomentar(readFileSync(f, 'utf8'));
+      let i = kode.indexOf('rebookSlotForSubmission(');
+      while (i !== -1) {
+        // Badan handler sesudah panggilan kunci, sampai ujung blok try/catch.
+        const sesudah = kode.slice(i, i + 900);
+        const terbitLangsung = /createPayment\s*\(/.test(sesudah);
+        const keHalamanBayar = /navigate\(\s*[`'"]\/payment\//.test(sesudah);
+        const muatUlangYangMenerbitkan = /loadSubmission\s*\(/.test(sesudah);
+
+        expect(
+          terbitLangsung || keHalamanBayar || muatUlangYangMenerbitkan,
+          `${f.split('/').pop()}: sesudah mengunci tanggal lewat `
+          + 'rebookSlotForSubmission, tidak ada yang menerbitkan tagihannya. '
+          + 'Peneliti akan mendarat pada jadwal hidup dengan tagihan mati — '
+          + 'bug 17 Sep 2026 lewat pintu lain.',
+        ).toBe(true);
+
+        i = kode.indexOf('rebookSlotForSubmission(', i + 1);
+      }
+    }
+  });
+
   it('`rebookPlan` sudah tidak ada — tinggal satu primitif pesan-ulang', () => {
     const berkas = readdirSync(SRC);
     expect(berkas).not.toContain('rebookPlan.ts');

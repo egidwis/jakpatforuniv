@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` sempat ditutup `rebookSchedule`, **tapi fungsi itu DIHAPUS 18 Sep** karena menghidupkan jadwal tanpa tagihan — pesan ulang kini lewat `JadwalBaruPage` saja (§00AC), penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — belum diuji browser. Utang tersisa: cron pelepas slot belum ada. Lihat §00AB |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` sempat ditutup `rebookSchedule`, **tapi fungsi itu DIHAPUS 18 Sep** karena menghidupkan jadwal tanpa tagihan — pesan ulang kini lewat `JadwalBaruPage` saja (§00AC); kembarannya di `handleLock` ikut ditutup 18 Sep — mengunci tanggal sekarang menyusul ke halaman bayar, penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — belum diuji browser. Utang tersisa: cron pelepas slot belum ada. Lihat §00AB |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -237,19 +237,55 @@ fungsi itu, dan menutupnya tidak menghilangkan kemampuan apa pun.
    keluar. Pemesanan berikutnya lewat `JadwalBaruPage`.
 5. Kunci i18n baru `cancelScheduleSuccess` (EN + ID).
 
-#### Temuan sampingan yang BELUM ditutup
+#### ✅ Temuan sampingan — DITUTUP 2026-09-18 sore, dan sebabnya bukan yang kukira
 
-`rebookSlotForSubmission()` — pasangan ordinal-1-nya — punya **cacat yang
-sama**: ia juga tidak menerbitkan tagihan. Ia selamat hanya karena
-`PaymentCheckoutPage` memanggil `createPayment` sendiri saat dimuat. Jadi ini
-bukan dua bug melainkan **satu pola**, yang kebetulan tertutup di satu halaman.
-Sengaja tidak disentuh: jalur itu sedang berfungsi, dan mengubahnya tanpa
-kebutuhan adalah risiko tanpa imbalan.
+Catatan sebelumnya di tempat ini menuduh `rebookSlotForSubmission()` punya
+"cacat yang sama". **Tuduhan itu salah, dan koreksinya penting** — kalau
+diikuti, ia akan mengulang dosa `rebookSchedule`.
+
+`rebookSlotForSubmission()` **benar apa adanya**. Ia lingkup ORDER: tugasnya
+mengunci TANGGAL di `form_submissions`, titik. Menyuruhnya menerbitkan tagihan
+berarti menaruh dua lingkup dalam satu fungsi — persis bentuk yang baru saja
+kita hapus.
+
+Yang menentukan aman atau tidak adalah **apa yang terjadi sesudahnya di layar
+pemanggil**:
+
+| Pemanggil | Sesudah kunci | Tagihan terbit? |
+|---|---|---|
+| `PaymentCheckoutPage:453` | `loadSubmission()` → efek auto-terbit (`:307`) | ✅ |
+| `JadwalDanBayarPage:231` | `load()` saja | ❌ |
+
+Jadi cacatnya ada di **`handleLock`**, bukan di primitifnya. Ia mendaratkan
+peneliti pada jadwal `waiting_payment` tanpa tagihan hidup — **layar yang persis
+sama dengan bug 17 Sep**, hanya lewat pintu `pick` alih-alih `released`.
+Menghapus `rebookSchedule` menutup satu pintu, bukan lubangnya.
+
+**Kenapa ia belum pernah menggigit.** Layar `pick` hanya hidup untuk ordinal 1
+yang belum bertanggal, dan **tidak ada satu pun tombol yang menuju ke sana** —
+satu-satunya navigasi ke `/dashboard/jadwal/:id` datang dari `JadwalBaruPage:375`
+sesudah jadwal baru dibuat, dan jadwal itu selalu sudah bertanggal (mendarat di
+`awaiting_payment`). Jadi `pick` hari ini hanya tercapai lewat URL langsung:
+bookmark, tombol Back, atau tab lama. Jalurnya selamat lewat navigasi, bukan
+lewat kode.
+
+**Perbaikannya (opsi B, dipilih pemilik produk):** sesudah tanggal terkunci,
+`handleLock` menavigasi ke `/payment/:submissionId` (`replace: true`) alih-alih
+`load()`. Halaman itu punya efek auto-terbit yang menerbitkan tagihannya saat
+dimuat, dengan umur link yang sudah dipatok ke sisa hold. **Nol kode uang baru**
+— satu pintu penerbitan tagihan, sama seperti `JadwalBaruPage`.
+
+⚠️ **Yang TIDAK dijanjikan perbaikan ini:** halaman bayar punya dua gerbang yang
+menahan penerbitan — `isExpired` dan `isTooLateToday` (cutoff 13.00). Peneliti
+yang mengunci tanggal jam 13:30 akan mendarat pada halaman yang menjelaskan
+cutoff, bukan tombol bayar. Itu **perilaku yang benar** — jadwalnya memang tidak
+bisa dibayar hari itu — tapi artinya jaminannya "selalu ada halaman yang jujur",
+bukan "selalu ada tombol".
 
 #### Penjaga
 
-`src/utils/scheduleRevivalNeedsBill.spec.ts` — 4 tes, **masing-masing
-dibuktikan merah** dengan menghidupkan kembali bentuk aslinya. Yang terpenting
+`src/utils/scheduleRevivalNeedsBill.spec.ts` — **5 tes**, masing-masing
+**dibuktikan merah** dengan menghidupkan kembali bentuk aslinya. Yang terpenting
 tidak mencari NAMA `rebookSchedule` melainkan **BENTUKNYA**: tulisan ke
 `ad_schedules` yang sekaligus menyetel `status:'waiting_payment'` dan
 `slot_reserved_at: new Date()`. Jadi bug yang sama tidak bisa kembali dengan
@@ -258,7 +294,15 @@ nama lain.
 ⚠️ `sql/89` sengaja **dibiarkan hidup**. Ia policy RLS, tidak berbahaya tanpa
 pemanggil, dan mencabutnya adalah risiko tanpa imbalan.
 
-**Gerbang:** vitest **850** · tsc **78** · build hijau.
+Tes kelima (18 Sep) menjaga temuan sampingan di atas, juga **berbasis bentuk**:
+setiap handler yang memanggil `rebookSlotForSubmission` wajib, di badan yang
+sama, menyusulkan sesuatu yang menerbitkan tagihan — `createPayment` langsung,
+navigasi ke `/payment/`, atau `loadSubmission()`. Dibuktikan merah dengan tepat
+**satu** temuan (`JadwalDanBayarPage`), nol tuduhan palsu.
+
+**Gerbang:** vitest **851** · tsc **79** (baseline diukur ulang dengan `git
+stash` — angka "78" pada catatan sebelumnya keliru; perubahan ini menambah
+**nol** galat) · build hijau.
 
 #### ⚠️ DICABUT 2026-09-18 — `rebookSchedule()` DIHAPUS, baca §00AC lebih dulu
 

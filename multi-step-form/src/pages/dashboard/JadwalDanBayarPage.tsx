@@ -231,7 +231,23 @@ export function JadwalDanBayarPage() {
       await rebookSlotForSubmission(entry.submissionId, verdict.ymd, verdict.duration);
       toast.success(t('rebookSuccess'));
       setPicked(null);
-      await load();
+      /*
+        ⚠️ MENYUSUL KE HALAMAN BAYAR — JANGAN GANTI DENGAN `load()`.
+
+        `rebookSlotForSubmission` hanya mengunci TANGGAL; ia tidak menerbitkan
+        tagihan, dan itu memang benar (lingkup ORDER). Dulu baris ini `load()`,
+        jadi peneliti tertinggal di layar ini dengan jadwal `waiting_payment`
+        yang tagihannya tidak pernah lahir — kembaran persis bug 17 Sep, hanya
+        lewat pintu `pick` alih-alih `released`.
+
+        `/payment/:submissionId` punya efek auto-terbit yang menerbitkan
+        tagihannya begitu halaman dimuat, dengan umur link yang sudah dipatok
+        ke sisa hold. Satu pintu penerbitan tagihan, sama seperti JadwalBaruPage.
+
+        `replace` supaya tombol Back tidak memulangkan peneliti ke kalender
+        untuk tanggal yang baru saja ia kunci.
+      */
+      navigate(`/payment/${entry.submissionId}`, { replace: true });
     } catch (e) {
       console.error('Gagal mengunci tanggal:', e);
       toast.error(t('rebookError'));
