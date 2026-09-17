@@ -64,9 +64,19 @@ export interface SegmentTitle {
  *    di TEMPAT yang sama; yang berbeda cuma cara sampai ke sana. Judul berbeda
  *    akan menyiratkan ada dua jenis pembayaran.
  *
- * 2. **Perpanjangan memakai ordinal NYATA** (`entry.ordinal`) — "Ke-2",
- *    "Ke-3". Perpanjangan bukan kelanjutan wizard; ia perjalanan pendek
- *    tersendiri, jadi nomornya adalah nomor JADWAL, bukan nomor langkah.
+ * 2. **NOL nomor jadwal di judul** (keputusan pemilik produk 2026-09-17).
+ *    Judul reservasi berbunyi sama untuk jadwal pertama maupun kesepuluh.
+ *
+ *    Sebelumnya perpanjangan berjudul "Reservasi Jadwal Ke-2". Ordinal itu
+ *    menjawab pertanyaan yang TIDAK sedang diajukan peneliti: ia datang dari
+ *    kartu ordernya sendiri, jadi ia sudah tahu survei mana — dan Booking ID
+ *    tercetak persis di atas judul. Yang tersisa cuma cara kita menghitung,
+ *    bocor ke layarnya. Pada order yang sudah panjang, "Ke-7" mulai terbaca
+ *    seperti birokrasi, bukan bantuan.
+ *
+ *    ⚠️ `ordinal` SENGAJA TETAP di tipe ini. Ia masih dipakai pemanggil untuk
+ *    keputusan lain (mis. `defaultOpen` rincian biaya), dan menghapusnya dari
+ *    `SegmentState` memaksa mereka membongkar objeknya sebelum memanggil.
  *
  * 3. **Nol penomoran langkah.** Jalur admin tidak pernah menempuh langkah 1–2
  *    dan perpanjangan bukan bagian wizard — "Langkah N dari 3" hanya membuat
@@ -89,12 +99,8 @@ export function segmentTitleOf(state: SegmentState): SegmentTitle {
       // ini adalah tanggalnya hilang, bukan nomor jadwalnya.
       return { key: 'segmentReservationReleased' };
 
-    case 'reservation': {
-      const ordinal = state.ordinal ?? 1;
-      // Aturan 2.
-      return ordinal >= 2
-        ? { key: 'segmentReservationNth', vars: { n: ordinal } }
-        : { key: 'segmentReservation' };
-    }
+    case 'reservation':
+      // Aturan 2: nomor jadwal TIDAK ikut ke judul, berapa pun ordinal-nya.
+      return { key: 'segmentReservation' };
   }
 }

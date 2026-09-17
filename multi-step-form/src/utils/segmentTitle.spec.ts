@@ -67,16 +67,28 @@ describe('segmentTitleOf — dua jalur bayar WAJIB sekata', () => {
   });
 });
 
-describe('segmentTitleOf — perpanjangan memakai ordinal NYATA', () => {
-  it('ordinal 2 → segmentReservationNth dengan n=2', () => {
-    const v = segmentTitleOf(stateOf({ phase: 'reservation', ordinal: 2 }));
-    expect(v.key).toBe('segmentReservationNth');
-    expect(v.vars).toEqual({ n: 2 });
+describe('segmentTitleOf — ⚠️ nomor jadwal TIDAK ikut ke judul', () => {
+  /*
+    Keputusan pemilik produk 2026-09-17: judul reservasi berbunyi SAMA untuk
+    jadwal pertama maupun kesepuluh.
+
+    Ordinal menjawab pertanyaan yang tidak sedang diajukan peneliti — ia datang
+    dari kartu ordernya sendiri dan Booking ID tercetak persis di atas judul.
+    Yang tersisa cuma cara kita menghitung, bocor ke layarnya.
+  */
+  it('perpanjangan memakai judul yang SAMA dengan jadwal pertama', () => {
+    const pertama = segmentTitleOf(stateOf({ phase: 'reservation', ordinal: 1 }));
+    const kedua = segmentTitleOf(stateOf({ phase: 'reservation', ordinal: 2 }));
+    expect(kedua.key).toBe(pertama.key);
+    expect(kedua.vars).toBeUndefined();
   });
 
-  it('ordinal 5 → n=5, bukan nomor langkah', () => {
-    const v = segmentTitleOf(stateOf({ phase: 'reservation', ordinal: 5 }));
-    expect(v.vars).toEqual({ n: 5 });
+  it('ordinal setinggi apa pun tidak memunculkan nomor', () => {
+    for (const n of [2, 5, 10]) {
+      const v = segmentTitleOf(stateOf({ phase: 'reservation', ordinal: n }));
+      expect(v.key).toBe('segmentReservation');
+      expect(v.vars).toBeUndefined();
+    }
   });
 
   it('kedaluwarsa pada perpanjangan TIDAK jadi "Ke-n" — ia tetap "Dilepas"', () => {

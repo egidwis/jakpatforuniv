@@ -300,7 +300,6 @@ export const translations = {
     segmentPayment: "Payment",
     segmentReservationReleased: "Reservation Released",
     /** {n} = ordinal NYATA dari `entry.ordinal`, bukan nomor langkah. */
-    segmentReservationNth: "Schedule Reservation #{n}",
     summaryTitle: "Review your order",
     summarySubtitle: "Nothing is charged at this step — you can still go back and change your survey details.",
     summaryCtaSchedule: "Choose Airing Date",
@@ -1300,7 +1299,6 @@ export const translations = {
     segmentReservation: "Reservasi Jadwal",
     segmentPayment: "Pembayaran",
     segmentReservationReleased: "Reservasi Dilepas",
-    segmentReservationNth: "Reservasi Jadwal Ke-{n}",
     summaryTitle: "Periksa pesananmu",
     summarySubtitle: "Belum ada pembayaran di langkah ini — kamu masih bisa kembali dan mengubah detail survei.",
     summaryCtaSchedule: "Lanjut Pilih Jadwal Tayang",

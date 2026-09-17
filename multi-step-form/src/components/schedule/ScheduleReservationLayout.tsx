@@ -95,7 +95,7 @@ export function ScheduleReservationLayout({
         hidup di dalam satu permukaan; pemisahnya garis, bukan jurang.
       */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <header className="px-5 sm:px-6 pt-5 sm:pt-6 pb-4 space-y-1">
+        <header className="px-5 sm:px-6 pt-5 sm:pt-6 pb-5 space-y-1">
           {orderLabel && (
             <p className="text-sm text-slate-500">
               <span className="text-slate-400">{t('scheduleForOrderLabel')} </span>
@@ -111,24 +111,15 @@ export function ScheduleReservationLayout({
         </header>
 
         {/*
-          ⚠️ KONSEKUENSI DINYATAKAN SEBELUM TERJADI, dengan bobot yang sepadan.
-          Identik di kedua layar — inilah yang dulu paling tajam berbeda.
-        */}
-        <div className="mx-5 sm:mx-6 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
-          <Clock className="w-4 h-4 text-jfu-primary shrink-0 mt-0.5" />
-          <p className="text-sm text-blue-900 leading-relaxed">{t('scheduleHoldHint')}</p>
-        </div>
-
-        {/*
           Tiap bagian dipisah GARIS, bukan jarak — di dalam satu kartu, garis
           membaca sebagai "bagian berikutnya dari hal yang sama", sementara
           jarak membaca sebagai "hal lain".
         */}
         {duration && (
-          <section className="px-5 sm:px-6 py-5 mt-5 border-t border-slate-100">{duration}</section>
+          <section className="px-5 sm:px-6 py-5 border-t border-slate-100">{duration}</section>
         )}
 
-        <section className={`px-5 sm:px-6 py-5 border-t border-slate-100 ${duration ? '' : 'mt-5'}`}>
+        <section className="px-5 sm:px-6 py-5 border-t border-slate-100">
           {calendar}
         </section>
 
@@ -143,6 +134,26 @@ export function ScheduleReservationLayout({
         */}
         <div className="px-5 sm:px-6 py-5 border-t border-slate-200 bg-slate-50/70 space-y-3">
           {cost}
+
+          {/*
+            ⚠️ KONSEKUENSI BERDIRI TEPAT DI ATAS PENYEBABNYA.
+
+            Dulu catatan ini ada di kepala halaman, dibaca sebelum ia berarti
+            apa-apa lalu terlupakan saat peneliti sampai ke tombol. Menekan
+            tombol di bawahnya melahirkan tagihan bersekring 60 menit, jadi di
+            sinilah tempatnya.
+
+            ⚠️ TETAP BERBOBOT. Versi paling awal layar pertama merendernya
+            sebagai teks abu terkecil di halaman — lebih lemah daripada catatan
+            cutoff di atasnya — dan itu justru cacat yang kritik tandai. Ikon +
+            warna merek menahannya tetap terbaca sebagai pemberitahuan, bukan
+            cetakan kecil.
+          */}
+          <p className="flex items-start gap-2 text-sm text-slate-600 leading-relaxed">
+            <Clock className="w-4 h-4 text-jfu-primary shrink-0 mt-0.5" />
+            <span>{t('scheduleHoldHint')}</span>
+          </p>
+
           <div aria-live="polite" className="empty:hidden">{blockedReason}</div>
           {cta}
         </div>
