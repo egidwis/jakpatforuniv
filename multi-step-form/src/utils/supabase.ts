@@ -3743,29 +3743,45 @@ export const cancelSchedule = async (entry: {
       .from('transactions').select('payment_id').in('id', mine.map((t) => t.id));
     const paymentIds = (pids || []).map((r: any) => r.payment_id).filter(Boolean);
     if (paymentIds.length > 0) {
-      const q = supabase
-        .from('invoices')
-        .update({ status: 'expired' })
-        .in('payment_id', paymentIds)
-        .eq('status', 'pending');
-        /*
-          ⚠️ `payment_id` SAJA TIDAK LAGI BERARTI "TAGIHAN JADWAL INI".
-          Sejak tagihan gabungan, satu `payment_id` boleh menaungi N pesanan —
-          jadi filter lama mematikan baris invoice milik pesanan LAIN sementara
-          baris `transactions` mereka (yang disaring `mine` di atas) tetap
-          `pending`. Satu tagihan hidup di dua tabel; mematikan separuhnya
-          meninggalkan grup dalam keadaan yang tidak bisa dijelaskan layar mana
-          pun.
+      /*
+        ⚠️ `payment_id` SAJA TIDAK BERARTI "TAGIHAN JADWAL INI".
+        Sejak tagihan gabungan, satu `payment_id` boleh menaungi N pesanan, jadi
+        menyaring dengan itu saja bisa mematikan baris invoice milik pesanan
+        LAIN sementara baris `transactions` mereka tetap `pending`.
 
-          `schedule_id` NULL sengaja ikut lolos: baris pra-sql/51 tidak pernah
-          punya kolom itu terisi, dan menyaringnya habis akan menghidupkan lagi
-          tagihan hantu yang blok ini justru ada untuk menutup.
-        */
-      const scoped = entry.id
-        ? q.or(`schedule_id.eq.${entry.id},schedule_id.is.null`)
-        : q;
-      const { error } = await scoped;
-      if (error) throw error;
+        ⚠️ CACAT YANG DITUTUP DI SINI (17 Sep 2026, dilaporkan pemilik produk).
+        Bentuk lamanya menambahkan `.or('schedule_id.eq.X,schedule_id.is.null')`.
+        Di PostgREST `.or()` adalah GRUP TERPISAH yang di-AND dengan filter
+        lain — dan cabang `schedule_id.is.null` membuat kondisinya jauh lebih
+        longgar daripada yang dimaksud penulisnya. Akibatnya: peneliti yang
+        MEMBATALKAN lalu MEMESAN ULANG di tanggal yang sama mendapati tagihan
+        BARU-nya ikut ditandai `expired`, sementara `transactions`-nya tetap
+        `pending`. Layar lalu membaca "tidak ada tagihan hidup" dan menampilkan
+        "tagihan sedang disiapkan tim kami" — kalimat tentang admin, di tengah
+        fitur yang justru dibuat supaya admin tidak diperlukan.
+
+        ⚠️ KENAPA BARU MUNCUL SESUDAH sql/92: sebelum itu tulisan ini DITOLAK
+        trigger `guard_invoice_columns_for_owner` (peneliti tidak boleh menyentuh
+        `invoices.status` sama sekali), jadi bug-nya tidak pernah mendarat.
+        sql/92 membuka `pending → expired` untuk pemilik — dan tulisan yang
+        selama ini terblokir akhirnya sampai. Bug filternya lama; sql/92 hanya
+        membuatnya terlihat.
+
+        Sekarang disaring KETAT ke `schedule_id` jadwal ini. Baris warisan
+        ber-`schedule_id` NULL sengaja TIDAK lagi ikut: diukur 17 Sep, hanya ada
+        1 baris semacam itu dari 521 dan ia TIDAK `pending` — jadi cabang lama
+        melindungi kasus yang sudah tidak ada, dengan risiko yang sangat nyata.
+        Kalau baris seperti itu lahir lagi, `expires_at` yang mematikannya.
+      */
+      if (entry.id) {
+        const { error } = await supabase
+          .from('invoices')
+          .update({ status: 'expired' })
+          .in('payment_id', paymentIds)
+          .eq('status', 'pending')
+          .eq('schedule_id', entry.id);
+        if (error) throw error;
+      }
     }
   }
 

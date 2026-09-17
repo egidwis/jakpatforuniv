@@ -90,3 +90,36 @@ describe('tulisan klien ke `invoices`', () => {
     expect(nilai.some((v) => v === 'expired' || v === 'cancelled')).toBe(true);
   });
 });
+
+describe('penyaringan `invoices` saat membatalkan jadwal', () => {
+  /*
+    ⚠️ INSIDEN 17 Sep 2026. `cancelSchedule` menyaring dengan
+    `.or('schedule_id.eq.X,schedule_id.is.null')`. Di PostgREST `.or()` adalah
+    GRUP TERPISAH yang di-AND dengan filter lain, dan cabang `is.null` membuat
+    kondisinya jauh lebih longgar daripada maksud penulisnya.
+
+    Akibat nyata: peneliti membatalkan lalu memesan ulang di tanggal yang sama →
+    tagihan BARU ikut ditandai `expired` sementara `transactions`-nya `pending`,
+    dan layar berbunyi "tagihan sedang disiapkan tim kami" di tengah fitur
+    swalayan.
+
+    Bug filternya LAMA; sql/92 hanya membukanya — sebelum itu tulisannya ditolak
+    trigger, jadi tidak pernah mendarat.
+  */
+
+  it('tidak ada penyaringan `schedule_id.is.null` yang tersisa', () => {
+    const code = body.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+    expect(code).not.toMatch(/schedule_id\.is\.null/);
+  });
+
+  it('setiap update `invoices` berlingkup jadwal memakai `.eq`, bukan `.or`', () => {
+    // `.or()` di sekitar tulisan `invoices` selalu layak dicurigai: ia melonggar
+    // ke arah yang tidak terlihat dari pembacaan sepintas.
+    const code = body.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+    const blok = [...code.matchAll(/\.from\(['"]invoices['"]\)[\s\S]{0,400}?;/g)].map((m) => m[0]);
+    expect(blok.length).toBeGreaterThan(0);
+    for (const b of blok) {
+      if (/\.update\(/.test(b)) expect(b).not.toMatch(/\.or\(/);
+    }
+  });
+});
