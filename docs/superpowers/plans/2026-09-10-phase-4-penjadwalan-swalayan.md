@@ -1,8 +1,23 @@
 # Phase 4 — "Jadwalkan Iklan Lagi" jadi swalayan di dashboard peneliti
 
-> **BELUM DIEKSEKUSI.** Ditulis 2026-09-10 sebagai serah-terima: seluruh
-> pengukuran di bawah dilakukan langsung ke produksi pada tanggal itu, supaya
-> sesi berikutnya tidak perlu menurunkannya ulang.
+> ✅ **SUDAH DIEKSEKUSI — jalur utama selesai & diuji di browser 2026-09-17.**
+> Peneliti memesan perpanjangan sendiri tanpa admin. Status lengkap +
+> pengukuran ulang ada di
+> [§00AB `docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
+>
+> ⚠️ **SELURUH "Kesiapan" DI BAWAH SUDAH BASI — JANGAN DIPAKAI.** Ia menyebut
+> empat/lima penghalang masih berdiri; diukur ulang ke produksi 17 Sep,
+> **kelimanya sudah tumbang** (`reward_pools` 900 baris, `sql/86`+`88`
+> diterapkan, `p_slot_reserved_at` ada, penjaga `create-payment.js` sudah
+> ber-lingkup jadwal). Angka di bawah dipertahankan apa adanya sebagai
+> arkeologi tanggal 10 Sep, bukan sebagai keadaan sekarang.
+>
+> ⚠️ **Satu lubang sadar tersisa:** ganti tanggal untuk `ordinal ≥ 2` masih
+> menolak (`rebookExtensionUnsupported`) — primitif pesan-ulang ber-lingkup
+> JADWAL belum pernah ditulis. Duduk perkaranya di §00AB.
+>
+> Ditulis 2026-09-10 sebagai serah-terima: seluruh pengukuran di bawah
+> dilakukan langsung ke produksi **pada tanggal itu**.
 >
 > Status berjalan Jadwal Iklan tetap di
 > [`docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md) — dokumen ini

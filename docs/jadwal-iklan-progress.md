@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| Phase 4 | Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user | ⬜ | 🔓 **TERBUKA & jadi pekerjaan berikutnya** — rencana lengkap + kesiapan terukur di [`plans/2026-09-10-phase-4-penjadwalan-swalayan.md`](superpowers/plans/2026-09-10-phase-4-penjadwalan-swalayan.md). Prasyarat link bayar sudah lunas 2026-09-10 (§00Z). Permintaan naik jadi **18 perpanjangan seumur hidup, 11 sejak 1 Agustus**. ⚠️ **Empat dari lima penghalang masih berdiri** (diverifikasi ke produksi 10 Sep): `reward_pools`/`sql/50` tabelnya tidak ada & berkasnya belum ditulis; `sql/86` belum ditulis dan `create_ad_schedule` **tidak punya `p_slot_reserved_at`**; pelepasan hold jadwal ke-2 nol implementasi; **tiga penjaga order-scoped di `create-payment.js` menolak 100% sasaran Phase 4**. 🔴 Satu keputusan pemilik produk (kirim sebelum tangga tarif 1 Okt?) memblokir urutan rilis |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88` diterapkan & diverifikasi | ✅ **JALUR UTAMA SELESAI & TERUJI DI PRODUKSI 2026-09-17** — peneliti memesan perpanjangan sendiri tanpa admin, uji browser oleh pemilik produk. **Kelima penghalang 10 Sep sudah tumbang** (diverifikasi ulang ke produksi 17 Sep, bukan ke berkas). ⚠️ **Satu lubang sadar tersisa: ganti tanggal untuk `ordinal ≥ 2`** — lihat §00AB. ⬜ commit belum di-push |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -122,6 +122,80 @@ branch itu. Lihat §2.
 ---
 
 ## Yang menunggu tindakan
+
+### 00AB. 🟢 Phase 4 jalur utama SELESAI — peneliti memesan perpanjangan sendiri (2026-09-17)
+
+**Diuji di browser oleh pemilik produk hari ini: reservasi jadwal perpanjangan
+berhasil tanpa campur tangan admin.** Terverifikasi di produksi, bukan dari berkas:
+
+```
+ad_schedules WHERE ordinal >= 2 AND slot_booked_by = 'user'  →  1 baris (GTFBMQ6F, ordinal 4)
+  status=waiting_payment · hold 17:32 · transaksi pending Rp 1.110 (JFUTGRX) · link mati 04:32
+  selisih link vs tenggat hold = 0 menit
+```
+
+#### Kelima penghalang 10 Sep sudah tumbang
+
+Rencana `plans/2026-09-10-phase-4-penjadwalan-swalayan.md` mencatat "empat dari
+lima penghalang masih berdiri". **Diukur ulang ke produksi 17 Sep — semuanya
+sudah lunas.** Dokumen itu (dan baris tabel di kepala berkas ini) sempat
+menyesatkan selama seminggu; ini persis pola "rencana basi terbaca otoritatif"
+yang sudah dicatat sebelumnya, jadi angka di bawah diturunkan dari DB langsung.
+
+| Penghalang (per 10 Sep) | Keadaan 17 Sep |
+|---|---|
+| `reward_pools`/`sql/50` tabelnya tidak ada, berkas belum ditulis | ✅ tabel ADA, **900 baris**; `sql/50_reward_pools.sql` ada di repo |
+| `sql/86` belum ditulis | ✅ `86_create_ad_schedule_self_serve.sql` ada & diterapkan |
+| `create_ad_schedule` tidak punya `p_slot_reserved_at` | ✅ parameter ADA (dicek via `information_schema.parameters`) |
+| Pelepasan hold jadwal ke-2 nol implementasi | ✅ `slotHold.ts` + `scheduleExpiry.ts` memilih primitif per-lingkup |
+| Tiga penjaga order-scoped `create-payment.js` menolak 100% sasaran | ✅ `scheduleId` mengalihkan ketiganya ke baris jadwal (`create-payment.js:612`) |
+
+Tambahan yang tidak ada di rencana: **`sql/88_guard_inactive_order_self_serve.sql`** —
+menolak order tidak aktif lewat jalur swalayan.
+
+⚠️ **`total_cost = 0` pada baris swalayan itu BUKAN cacat.** `sql/86` memaksanya
+nol untuk non-admin; harga lahir di `create-payment.js`, dan `deriveScheduleMoney`
+memakai nol itu sebagai pemicu cabang estimasi. Jangan "diperbaiki" dengan
+mengisi harga di RPC — itu menghidupkan lagi dua sumber kebenaran harga.
+
+#### ⚠️ Lubang sadar yang TERSISA — ganti tanggal untuk `ordinal ≥ 2`
+
+`JadwalDanBayarPage.tsx:210` masih berbunyi:
+
+```tsx
+if (entry.ordinal >= 2) {
+  toast.error(t('rebookExtensionUnsupported'));   // "hubungi tim kami lewat chat"
+  return;
+}
+```
+
+Sebabnya: `rebookSlotForSubmission()` berlingkup **ORDER** (`form_submissions`),
+sementara jadwal ke-2 dst. hidup di **`ad_schedules`**. Memakainya untuk
+perpanjangan akan menulis ke baris yang salah. Primitif ber-lingkup JADWAL untuk
+pesan-ulang **belum pernah ditulis** — ini beda lingkup yang sama seperti
+`releaseExpiredSlot` vs `cancelSchedule`.
+
+**Kenapa ini penting sekarang, bukan nanti:** layar kalender itu MUNCUL untuk
+`ordinal ≥ 2` pada keadaan `pick` dan `released` (`JadwalDanBayarPage.tsx:339`).
+Jadi peneliti bisa sampai ke kalender, memilih tanggal, lalu ditolak — jalan
+buntu di dalam alurnya sendiri. **Terukur: 9 jadwal perpanjangan sudah berada di
+keadaan yang menampilkan kalender itu.**
+
+Kegagalannya sopan (toast jujur, bukan diam-diam gagal) dan jalan keluarnya ada
+(chat admin), jadi ini **bukan pemblokir Phase 5** — tapi ia satu-satunya tempat
+di jalur swalayan yang masih memerlukan manusia, dan tidak boleh ikut hilang dari
+catatan hanya karena Phase 4 ditutup.
+
+#### Yang masih menggantung
+
+- **Commit belum di-push.** `9b6821e` dan empat commit sebelumnya masih lokal di `main`.
+- **Cron pelepas slot kedaluwarsa belum ada.** Penegakan hold masih murni klien —
+  ia hanya berjalan kalau peneliti sedang membuka halamannya. Diukur 17 Sep:
+  8 slot ber-hold lewat, **nol** bertanggal masa depan, **nol** punya transaksi
+  pending, 7 dari 8 berstatus `spam`/`cancelled`/`in_review`. Jadi tidak ada yang
+  memakan kuota hari ini — ia pencegahan, bukan perbaikan. Rancangannya (termasuk
+  peringatan bahwa penjaga lunas WAJIB di dalam `WHERE`) ada di
+  `~/.claude/plans/bantu-aku-diskusi-tentang-flickering-karp.md`.
 
 ### 00-kartu. 🟢 Kartu Reservasi Jadwal berhenti menyamakan «dibatalkan», «kedaluwarsa», dan «lewat batas bayar» (2026-09-11)
 
