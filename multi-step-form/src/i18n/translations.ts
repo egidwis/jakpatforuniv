@@ -290,13 +290,6 @@ export const translations = {
       ⚠️ Tanpa "Langkah N dari 3" di mana pun: jalur admin tidak pernah
       menempuh langkah 1–2, dan perpanjangan bukan bagian wizard.
     */
-    /**
-     * ⚠️ Batas yang DINYATAKAN, bukan kegagalan senyap. Memilih ulang tanggal
-     * untuk perpanjangan butuh primitif berlingkup-jadwal yang belum ada —
-     * `rebookSlotForSubmission` menulis ke `form_submissions` dan tidak
-     * menyentuh baris perpanjangan sama sekali.
-     */
-    rebookExtensionUnsupported: "Changing the date for this schedule is not available yet. Please contact our team via chat.",
     segmentDetail: "Details & Summary",
     segmentAwaitingSchedule: "Awaiting Schedule",
     segmentReservation: "Schedule Reservation",
@@ -357,6 +350,7 @@ export const translations = {
     paymentExpiredHoldBody: "The schedule has been released to other advertisers. Your survey details are still saved — just pick another date below.",
     paymentExpiredCutoffBody: "The 14:00 WIB payment cut-off for that date has passed, so the ad can no longer go live then. Your survey details are still saved — just pick another date below.",
     rebookPickTitle: "Pick another airing date",
+    rebookAlreadyPaid: "This schedule is already paid, so it can’t be rebooked here. Contact our team via chat if the date needs to change.",
     rebookCta: "Lock New Schedule",
     rebookSuccess: "New schedule locked. Complete the payment before the timer runs out.",
     rebookError: "Failed to lock the new schedule. Please try again.",
@@ -1310,7 +1304,6 @@ export const translations = {
 
     // Langkah 2 — Ringkasan
     // Lihat catatan lengkap di blok EN.
-    rebookExtensionUnsupported: "Mengganti tanggal untuk jadwal ini belum tersedia. Silakan hubungi tim kami lewat chat.",
     segmentDetail: "Detail & Rincian",
     segmentAwaitingSchedule: "Menunggu Jadwal",
     segmentReservation: "Reservasi Jadwal",
@@ -1360,6 +1353,7 @@ export const translations = {
     paymentExpiredHoldBody: "Jadwal sudah dilepas untuk pemesan lain. Detail surveimu masih tersimpan — tinggal pilih tanggal lain di bawah ini.",
     paymentExpiredCutoffBody: "Batas pembayaran 14.00 WIB untuk tanggal itu sudah lewat, jadi iklanmu belum bisa tayang di tanggal tersebut. Detail surveimu masih tersimpan — tinggal pilih tanggal lain di bawah ini.",
     rebookPickTitle: "Pilih tanggal tayang lain",
+    rebookAlreadyPaid: "Jadwal ini sudah lunas, jadi tidak bisa dipesan ulang dari sini. Hubungi tim kami lewat chat kalau tanggalnya perlu diubah.",
     rebookCta: "Kunci Jadwal Baru",
     rebookSuccess: "Jadwal baru terkunci. Selesaikan pembayaran sebelum waktunya habis.",
     rebookError: "Gagal mengunci jadwal baru. Silakan coba lagi.",

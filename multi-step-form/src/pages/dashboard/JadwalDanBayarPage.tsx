@@ -8,6 +8,7 @@ import {
   fetchScheduleBilling,
   cancelSchedule,
   releaseExpiredSlot,
+  rebookSchedule,
   rebookSlotForSubmission,
   getFormSubmissionById,
 } from '../../utils/supabase';
@@ -19,6 +20,7 @@ import { ScheduleReservationLayout } from '../../components/schedule/ScheduleRes
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
 import { schedulePageState } from '../../utils/schedulePageState';
+import { rebookPlanFor } from '../../utils/rebookPlan';
 import { expiryPlanFor } from '../../utils/scheduleExpiry';
 import { segmentTitleOf } from '../../utils/segmentTitle';
 import { deriveScheduleMoney } from '../../utils/scheduleMoney';
@@ -183,11 +185,21 @@ export function JadwalDanBayarPage() {
   /**
    * Kunci tanggal untuk jadwal ini.
    *
-   * ⚠️ HANYA ORDINAL 1. `rebookSlotForSubmission` menulis ke `form_submissions`,
-   * jadi ia tidak punya arti untuk perpanjangan — barisnya hidup di
-   * `form_submissions_extend`. Padanan berlingkup-jadwal BELUM ADA, dan
-   * menulisnya berarti menyentuh jalur uang; sampai itu lahir, perpanjangan
-   * yang perlu pilih-ulang tanggal diarahkan ke jalur yang memang bekerja.
+   * ⚠️ DUA PRIMITIF, DIPILIH MENURUT LINGKUP — jangan disatukan.
+   * `rebookSlotForSubmission` menulis `form_submissions` (baris ORDER), benar
+   * untuk ordinal 1 karena di sanalah tanggalnya tinggal. `rebookSchedule`
+   * menulis `ad_schedules` (baris JADWAL), satu-satunya yang benar untuk
+   * perpanjangan. Memakai yang ORDER untuk ordinal ≥2 akan menggeser jadwal
+   * PERTAMA peneliti — bukan yang sedang dilihatnya.
+   *
+   * Beda lingkup yang sama sudah dipakai `releaseExpiredSlot` vs
+   * `cancelSchedule`, dan dipilih di `expiryPlanFor`.
+   *
+   * ⚠️ INI BUKAN "GANTI JADWAL". Layar ini cuma tampil pada keadaan `pick`
+   * (belum pernah bertanggal) dan `released` (reservasinya sudah lepas atau
+   * dibatalkan). Selama jadwalnya masih hidup, yang tampil adalah countdown +
+   * tombol bayar + tombol batal — tidak ada kalender. Menukar jadwal yang
+   * sedang berjalan tetap wewenang admin.
    *
    * Gerbangnya tetap `scheduleLockGate` supaya keempat pemeriksaannya tidak
    * bercabang dari tiga pemanggil lain.
@@ -206,15 +218,36 @@ export function JadwalDanBayarPage() {
       return;
     }
 
-    if (entry.ordinal >= 2) {
-      // Berkata jujur, bukan diam-diam gagal.
-      toast.error(t('rebookExtensionUnsupported'));
+    /*
+      ⚠️ LINGKUPNYA DIPILIH `rebookPlanFor`, TIDAK DI SINI — dan ia bercabang
+      pada "ordinal 1 DAN nol saudara", bukan pada `ordinal >= 2`. Ordinal 1
+      yang sudah punya jadwal ke-2 juga wajib lewat lingkup JADWAL: menulis
+      `form_submissions` menyalakan trigger sinkron yang lalu menimpa cermin
+      `ad_schedules`-nya. Aturan yang sama dipakai `expiryPlanFor`, dan ada tes
+      yang mengunci keduanya agar tidak pernah berbeda pendapat.
+    */
+    const plan = rebookPlanFor({
+      ordinal: entry.ordinal,
+      siblingCount: siblings.length || 1,
+      paymentStatus: entry.paymentStatus,
+    });
+
+    if (plan.primitive === 'none') {
+      toast.error(t('rebookAlreadyPaid'));
       return;
     }
 
     setIsWorking(true);
     try {
-      await rebookSlotForSubmission(entry.submissionId, verdict.ymd, verdict.duration);
+      if (plan.primitive === 'rebookSchedule') {
+        await rebookSchedule(
+          { sourceId: entry.sourceId, paymentStatus: entry.paymentStatus },
+          verdict.ymd,
+          verdict.duration,
+        );
+      } else {
+        await rebookSlotForSubmission(entry.submissionId, verdict.ymd, verdict.duration);
+      }
       toast.success(t('rebookSuccess'));
       setPicked(null);
       await load();

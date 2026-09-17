@@ -3758,6 +3758,99 @@ export const cancelSchedule = async (entry: {
  * Filter `payment_status` di bawah menutup lomba dengan webhook DOKU: order
  * yang ternyata sudah lunas tidak boleh dijadwalkan ulang diam-diam.
  */
+/**
+ * Pesan ulang jadwal PERPANJANGAN (`ordinal >= 2`) yang reservasinya sudah lepas.
+ *
+ * ⚠️ INI PASANGAN BER-LINGKUP JADWAL dari `rebookSlotForSubmission`, dan
+ * keduanya TIDAK boleh saling menggantikan. `rebookSlotForSubmission` menulis
+ * `form_submissions` — baris ORDER — yang benar untuk jadwal pertama karena di
+ * sanalah tanggalnya tinggal. Jadwal ke-2 dst. hidup di `ad_schedules`, jadi
+ * memakai yang ORDER untuk memindahkannya akan menulis ke baris yang salah dan
+ * menggeser jadwal PERTAMA peneliti. Beda lingkup yang sama persis seperti
+ * `releaseExpiredSlot` (ORDER) vs `cancelSchedule` (SCHEDULE).
+ *
+ * ⚠️ BUKAN "GANTI JADWAL". Peneliti tidak pernah bisa menukar jadwal yang masih
+ * hidup — selama jadwalnya `awaiting_payment` yang tampil cuma countdown,
+ * tombol bayar, dan tombol batal. Fungsi ini hanya terpanggil dari layar
+ * `released`: hold 1 jamnya lewat, atau peneliti sendiri yang membatalkannya.
+ * Penggantian jadwal yang masih berjalan tetap wewenang admin.
+ *
+ * ── APA YANG SENGAJA TIDAK DITULIS ──────────────────────────────────────────
+ * `payment_status` TIDAK disentuh, dan itu bukan kelalaian:
+ * `guard_extend_payment_columns()` melempar exception untuk pemanggil non-admin
+ * yang mengubahnya (juga `total_cost`, `subtotal`, `ppn_amount`). Menulisnya
+ * akan membuat seluruh UPDATE gagal, bukan sebagian. Tagihan baru lahir di
+ * `create-payment.js` seperti biasa, dan harga tetap lahir di sana.
+ *
+ * ── APA YANG SUDAH DIJAGA DI DB, JADI TIDAK DIULANG DI SINI ────────────────
+ * `trg_ad_schedules_extend_rules` memanggil `assert_schedule_window_free()`
+ * SETIAP KALI `start_date`/`end_date` berubah, jadi tumpang tindih dengan
+ * jadwal saudara ditolak oleh database — bukan oleh kepercayaan pada klien.
+ *
+ * ⚠️ KUOTA HARIAN TIDAK ikut dijaga trigger itu (`create_ad_schedule`
+ * memanggil `assert_daily_ad_quota_free` sendiri saat INSERT). Di sini
+ * penjaganya adalah `useSlotAvailability` + `scheduleLockGate` di layar, sama
+ * seperti jalur `rebookSlotForSubmission`. Kalau suatu saat kuota harus
+ * ditegakkan di server untuk pemindahan juga, tempatnya di trigger itu — bukan
+ * disalin ke sini, karena salinan kedua akan berbeda diam-diam.
+ */
+export const rebookSchedule = async (
+  entry: { sourceId: string; paymentStatus: string | null },
+  startYmd: string,
+  durationDays: number,
+) => {
+  // Penjaga lunas, sama seperti `cancelSchedule`: yang sudah dibayar tidak
+  // pernah dipindah dari layar peneliti.
+  if (['paid', 'completed'].includes(entry.paymentStatus || '')) {
+    throw new Error('Jadwal yang sudah lunas tidak bisa dipesan ulang dari sini.');
+  }
+
+  const { data, error } = await supabase
+    .from('ad_schedules')
+    .update({
+      start_date: toAiringStartIso(startYmd),
+      end_date: toAiringEndIso(startYmd, Math.max(durationDays, 1)),
+      duration: Math.max(durationDays, 1),
+      /*
+        Hold 1 jam mulai berdetak lagi — nilai inilah yang dibaca
+        `slotReleaseDeadline()`, dan yang sekarang juga menentukan umur link
+        DOKU-nya (`dokuLifetimeMinutes`). Tanpa keduanya, jadwal yang dipesan
+        ulang akan lahir tanpa tenggat sama sekali.
+      */
+      slot_booked_by: 'user',
+      slot_reserved_at: new Date().toISOString(),
+      // Sumbu TAYANG kembali hidup. `cancelSchedule` menulis 'cancelled' ke
+      // kolom yang sama; ini kebalikannya, dan `enforce_extend_schedule_rules`
+      // memang mengizinkan transisi cancelled → hidup selama jendelanya bebas.
+      status: 'waiting_payment',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('source_table', 'form_submissions_extend')
+    .eq('source_id', entry.sourceId)
+    /*
+      ⚠️ Penjaga lunas DIULANG di dalam query, bukan cuma dari `entry` yang bisa
+      basi. Pembayaran bisa mendarat lewat webhook DOKU tepat saat peneliti
+      menekan tombol; nol baris terpengaruh = ada yang lebih dulu, dan kita
+      berhenti. Pola yang sama dipakai `cancelSchedule` dan
+      `rebookSlotForSubmission`.
+    */
+    .not('payment_status', 'in', '("paid","completed")')
+    .select('id');
+
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    /*
+      Nol baris di PostgREST TIDAK memunculkan error — inilah cara "berhasil
+      palsu" lahir, dan sudah dua kali menggigit di berkas ini.
+    */
+    throw new Error(
+      `Jadwal ${entry.sourceId} tidak bisa dipesan ulang — kemungkinan sudah lunas, ` +
+      'tanggalnya bentrok dengan jadwal lain, atau ditolak RLS.',
+    );
+  }
+  return true;
+};
+
 export const rebookSlotForSubmission = async (
   submissionId: string,
   startYmd: string,
