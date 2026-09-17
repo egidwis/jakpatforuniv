@@ -1242,12 +1242,41 @@ async function killDokuLink(
  * Gagal lunak: ini catatan diagnostik, bukan bagian dari pembatalannya.
  */
 async function recordDokuCancelError(paymentId: string, detail: string | null): Promise<void> {
-  if (!paymentId || !detail) return;
-  const { error } = await supabase
+  if (!paymentId) return;
+  /*
+    ⚠️ KEGAGALAN TANPA DETAIL TETAP DICATAT, bukan dilewatkan diam-diam.
+
+    Bentuk lamanya `return` begitu `detail` kosong. Akibatnya kolom ini NULL
+    untuk dua hal yang sangat berbeda — "tidak pernah gagal" dan "gagal tapi
+    tidak ada pesannya" — dan justru yang kedua yang terjadi 17 Sep 2026: tiga
+    tagihan uji gagal dibatalkan dan tidak meninggalkan satu jejak pun.
+  */
+  const text = (detail && detail.trim())
+    ? detail.slice(0, 2000)
+    : `(gagal tanpa detail) ${new Date().toISOString()}`;
+
+  const { data, error } = await supabase
     .from('invoices')
-    .update({ doku_cancel_last_error: detail.slice(0, 2000) })
-    .eq('payment_id', paymentId);
-  if (error) console.error('[recordDokuCancelError] sebab penolakan DOKU gagal disimpan:', error);
+    .update({ doku_cancel_last_error: text })
+    .eq('payment_id', paymentId)
+    .select('payment_id');
+
+  if (error) {
+    console.error('[recordDokuCancelError] sebab penolakan DOKU gagal disimpan:', error);
+    return;
+  }
+  /*
+    ⚠️ NOL BARIS TANPA `error` = DITOLAK RLS, dan itu tepat yang terjadi sampai
+    sql/91: `invoices` cuma punya policy UPDATE admin, jadi pencatatan dari
+    jalur PENELITI hilang tanpa bekas. Kalau ini muncul lagi di konsol, policy
+    itu hilang atau menyempit — bukan "tidak ada yang perlu dicatat".
+  */
+  if (!data || data.length === 0) {
+    console.error(
+      `[recordDokuCancelError] nol baris untuk ${paymentId} — kemungkinan ditolak RLS. `
+      + 'Sebab kegagalan Cancel Order TIDAK tersimpan.',
+    );
+  }
 }
 
 /** Hasil pencabutan link DOKU untuk SATU jadwal. */

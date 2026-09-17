@@ -12,6 +12,29 @@
 
 const PUBLIC_ENDPOINTS = new Set(['webhook', 'create-payment']);
 
+/**
+ * Endpoint yang boleh dipanggil PEMILIK TAGIHAN, bukan hanya admin.
+ *
+ * ⚠️ INI BUKAN `PUBLIC_ENDPOINTS`, DAN PERBEDAANNYA ADALAH INTINYA. Sesi tetap
+ * WAJIB dan tetap divalidasi di bawah; yang dilonggarkan hanya syarat "email
+ * harus admin". Endpoint-nya sendiri WAJIB membuktikan kepemilikan sebelum
+ * berbuat apa pun — middleware ini hanya menyatakan SIAPA pemanggilnya, tidak
+ * pernah menyatakan dia berhak atas tagihan tertentu.
+ *
+ * ⚠️ KENAPA `cancel-order` ADA DI SINI (2026-09-17). Phase 4 melahirkan
+ * pembatalan jadwal oleh PENELITI. `cancelSchedule()` memanggil Cancel Order
+ * lebih dulu supaya link DOKU mati sebelum barisnya ditutup — tapi gerbang ini
+ * menolaknya dengan 401, jadi setiap pembatalan peneliti meninggalkan link
+ * hidup. Kegagalannya SUNYI berlapis dua: 401 di sini, lalu pencatatan sebabnya
+ * juga ditolak RLS (`invoices` hanya punya policy UPDATE admin — lihat sql/91).
+ * Sebelum Phase 4 hanya admin yang pernah memanggilnya, jadi tak pernah terlihat.
+ *
+ * ⚠️ Menambah nama ke set ini berarti berjanji endpoint-nya punya penjaga
+ * kepemilikannya sendiri. Jangan menambah apa pun tanpa membuka berkasnya dan
+ * memastikan penjaga itu ada.
+ */
+const OWNER_ENDPOINTS = new Set(['cancel-order']);
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -80,10 +103,26 @@ export async function onRequest(context) {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 
-  if (!email || !adminEmails.includes(email)) {
+  const isAdmin = !!email && adminEmails.includes(email);
+
+  /*
+    Endpoint pemilik: sesi sah sudah cukup untuk MASUK, tapi tidak untuk
+    BERBUAT. Identitas diteruskan lewat `context.data` supaya endpoint-nya
+    tidak perlu memvalidasi token untuk kedua kalinya — dua tempat memvalidasi
+    berarti dua tempat untuk menyimpang, dan yang satu akan lebih longgar
+    (peringatan yang sudah tertulis di kepala `cancel-order.js`).
+  */
+  if (!isAdmin && OWNER_ENDPOINTS.has(firstSegment)) {
+    if (!email) return deny(401, 'Unauthorized');
+    context.data = { ...(context.data || {}), authEmail: email, authUserId: user?.id || null, isAdmin: false };
+    return next();
+  }
+
+  if (!isAdmin) {
     console.warn(`[doku middleware] Non-admin access attempt to ${url.pathname} by ${email || '(no email)'}`);
     return deny(401, 'Unauthorized');
   }
 
+  context.data = { ...(context.data || {}), authEmail: email, authUserId: user?.id || null, isAdmin: true };
   return next();
 }
