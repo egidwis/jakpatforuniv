@@ -6,10 +6,14 @@
 > `sql/89` & `sql/90` diterapkan ke produksi. Status lengkap + pengukuran ulang:
 > [§00AB `docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
 >
-> **Utang yang sadar dibawa keluar Phase 4:** Cancel Order DOKU belum aktif di
-> akun ini (1 dari 521 invoice pernah berhasil — link jadwal yang dibatalkan
-> tetap hidup sampai kedaluwarsa sendiri; resolver `/bayar/` sudah memagarinya),
-> dan cron pelepas slot kedaluwarsa belum ada.
+> **Utang yang sadar dibawa keluar Phase 4:**
+> 1. **Pembatalan oleh PENELITI belum mematikan link DOKU.** ⚠️ Bukan salah
+>    DOKU — Cancel Order SUDAH aktif (terbukti berhasil 11 Sep). Penyebabnya
+>    berlapis dua di sisi kita: `cancel-order` tidak ada di `PUBLIC_ENDPOINTS`
+>    (`_middleware.js` → 403 untuk non-admin), dan galatnya tidak tercatat
+>    karena `invoices` hanya punya policy UPDATE admin. Jalur ADMIN tetap
+>    bekerja. Duduk perkaranya di §00AB.
+> 2. Cron pelepas slot kedaluwarsa belum ada.
 >
 > ⚠️ **SELURUH "Kesiapan" DI BAWAH SUDAH BASI — JANGAN DIPAKAI.** Ia menyebut
 > empat/lima penghalang masih berdiri; diukur ulang ke produksi 17 Sep,

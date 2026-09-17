@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` ikut ditutup (`rebookSchedule` + `sql/89`), penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Utang tersisa: Cancel Order DOKU belum aktif (1 dari 521), dan cron pelepas slot belum ada. Lihat §00AB |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` ikut ditutup (`rebookSchedule` + `sql/89`), penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Utang tersisa: pembatalan oleh PENELITI belum mematikan link DOKU — `cancel-order` tidak ada di `PUBLIC_ENDPOINTS` (403) DAN galatnya tak tercatat karena RLS `invoices` admin-only; plus cron pelepas slot belum ada. Lihat §00AB |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -207,46 +207,61 @@ ERROR, nol temuan baru.
 `payment_status` sengaja tidak ditulis — `guard_extend_payment_columns()`
 melempar exception untuk non-admin, jadi menulisnya menggagalkan seluruh UPDATE.
 
-#### ⚠️ Temuan saat menutup: link DOKU jadwal yang dibatalkan TETAP HIDUP
+#### ⚠️ KOREKSI 2026-09-17 malam — sebabnya BUKAN DOKU, melainkan gerbang kita sendiri
 
-Ditemukan saat memverifikasi jejak uji di atas. Dua jadwal yang baru dibatalkan
-peneliti masih punya link DOKU yang belum kedaluwarsa:
+⚠️ **Bagian ini sebelumnya menyalahkan DOKU. Itu KELIRU, dan pemilik produk yang
+menangkapnya** ("aku sudah mengaktifkan pembatalan pesanan di Doku kok").
 
-```
-YH6D2YEQ  cancelled  link mati 17 Sep 08:21  → masih hidup
-9WED5VEH  cancelled  link mati 17 Sep 08:24  → masih hidup
-```
+**Cancel Order DOKU SUDAH AKTIF.** Buktinya ada di produksi sejak awal dan
+terlewat olehku: `JFU-INV-6a18c9` **berhasil** dibatalkan 11 Sep
+(`doku_cancelled_at` terisi). Galat *"Merchant not support cancel order"* yang
+kukutip berasal dari `JFU-INV-5b73a8` tanggal **10 Sep** — sebelum toggle
+diaktifkan. Aku membaca satu baris galat lama sebagai keadaan sekarang, padahal
+baris di sebelahnya sudah menunjukkan keberhasilan.
 
-**Ini BUKAN regresi Phase 4.** `cancelSchedule()` memang memanggil
-`killDokuLinksForSchedule()` lebih dulu — urutan "DOKU dulu, database kemudian"
-sudah benar. Yang gagal adalah DOKU-nya:
+**Sebab sesungguhnya, dan ia berlapis dua — keduanya gagal SENYAP:**
 
-```
-Merchant not support cancel order, please do activation through DOKU dashboard.
-(HTTP 400, tersimpan di invoices.doku_cancel_last_error)
-```
+**① Gerbang admin menolak peneliti (403).**
+`functions/api/doku/_middleware.js` default-deny untuk seluruh `/api/doku/*`,
+dengan pengecualian hanya `webhook` dan `create-payment`:
 
-Terukur: **1 dari 521** invoice pernah berhasil dibatalkan di DOKU. Ini
-konfirmasi ulang temuan yang sudah tercatat — Cancel Order tidak pernah aktif di
-akun ini, dan menunggu tindakan manusia di dashboard DOKU.
-
-**Kenapa ini tidak menahan penutupan Phase 4:** resolver `/bayar/<id>` menolak
-ketiga jadwal itu dengan alasan yang tepat — diuji langsung ke
-`authoritative_payment_url()` di produksi:
-
-```
-YH6D2YEQ → (,,f,t,cancelled)     9WED5VEH → (,,f,t,cancelled)
-GTFBMQ6F → (,,f,t,expired)       nol URL dipulangkan
+```js
+const PUBLIC_ENDPOINTS = new Set(['webhook', 'create-payment']);
 ```
 
-Jadi selama peneliti lewat `/bayar/` — dan sejak commit `9b6821e` itulah
-satu-satunya tujuan tombol bayar — link mati tidak bisa dicapai. Celahnya hanya
-terbuka kalau peneliti menyimpan URL DOKU mentah dari sesi lama, dan untuk kasus
-itu `paid_on_dead_bill` adalah jaring terakhirnya (nol tulisan, 200, email
-alert). Belum pernah menyala.
+`cancel-order` tidak ada di sana. Jadi ketika PENELITI membatalkan jadwalnya
+sendiri — jalur yang baru lahir di Phase 4 — `killDokuLink()` kena **403 dari
+middleware kita**, bukan dari DOKU. Sebelum Phase 4, satu-satunya yang pernah
+memanggil Cancel Order adalah admin, jadi gerbang ini tidak pernah menghalangi
+siapa pun.
 
-⚠️ **Tetap dicatat sebagai utang**, bukan diselesaikan: mengaktifkan Cancel Order
-di dashboard DOKU adalah pekerjaan manusia yang belum dilakukan.
+**② Sebab kegagalannya tidak tercatat, karena RLS.**
+`recordDokuCancelError()` menulis `invoices.doku_cancel_last_error`, tetapi
+`invoices` hanya punya SATU policy UPDATE:
+
+```
+Admin Update Invoices → auth.jwt() ->> 'email' = 'product@jakpat.net'
+```
+
+Peneliti bisa MEMBACA `invoices` (`Users Select Invoices`) tapi tidak bisa
+menulisnya. Jadi pencatatan galatnya ditolak — nol baris, tanpa exception.
+Itulah kenapa `doku_cancel_last_error` NULL untuk ketiga tagihan uji semalam,
+padahal Cancel Order jelas tidak berhasil. Kambuh KELIMA dari pola
+"RLS UPDATE hilang = 0 baris senyap".
+
+**Akibatnya:** setiap pembatalan oleh PENELITI meninggalkan link DOKU hidup, dan
+tidak meninggalkan jejak apa pun tentang kenapa. Pembatalan oleh ADMIN tidak
+terpengaruh — jalur itu tetap bekerja.
+
+⚠️ **Uji semalam dilakukan di LOKAL**, dan `vite dev` hanya menjembatani
+`create-payment` + `checkout` (diverifikasi di `vite.config.js`) — `cancel-order`
+404 di sana. Jadi uji lokal TIDAK akan pernah bisa membuktikan jalur ini; ia
+wajib diuji di produksi atau lewat `wrangler pages dev`.
+
+**Belum diperbaiki.** Perbaikannya menyentuh gerbang uang (`_middleware.js`) dan
+RLS `invoices`, jadi ia pekerjaan tersendiri, bukan tempelan pada penutupan
+Phase 4. Yang menahan kerusakan sementara ini tetap resolver `/bayar/`, yang
+diuji menolak jadwal cancelled/expired dengan nol URL.
 
 #### Yang masih menggantung
 
