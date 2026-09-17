@@ -57,7 +57,14 @@ export function JadwalDanBayarPage() {
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
   const [billedAmount, setBilledAmount] = useState<number | null>(null);
   const [billedVoucher, setBilledVoucher] = useState<string | null>(null);
-  const [payUrl, setPayUrl] = useState<string | null>(null);
+  /*
+    ⚠️ KEBERADAANNYA, BUKAN ALAMATNYA. Kita menyimpan "tagihan ini sudah
+    terbit?" sebagai boolean dan sengaja MEMBUANG URL DOKU-nya, supaya tidak
+    ada nilai di komponen ini yang bisa menyelinap jadi `href` — itu cacat yang
+    hidup di sini sampai 2026-09-17. Alamat bayar cuma satu:
+    `payLinkPath(entry.id)`.
+  */
+  const [hasOpenBill, setHasOpenBill] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -96,7 +103,7 @@ export function JadwalDanBayarPage() {
       const own = billings?.get(found.id) ?? null;
       setBilledAmount(own?.openInvoice?.amount ?? null);
       setBilledVoucher(own?.openInvoice?.voucherCode ?? null);
-      setPayUrl(own?.openInvoice?.paymentUrl ?? null);
+      setHasOpenBill(!!own?.openInvoice);
     } catch (e) {
       console.error('Gagal memuat jadwal:', e);
       toast.error(t('paymentLoadError'));
@@ -478,12 +485,41 @@ export function JadwalDanBayarPage() {
         }
         cta={
           <div className="space-y-2.5 pt-1">
-            <a
-              href={payUrl || payLinkPath(entry.id)}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2"
-            >
-              <CreditCard size={16} /> {t('payNow')}
-            </a>
+            {/*
+              ⚠️ `payUrl` HANYA PENANDA KEBERADAAN, JANGAN PERNAH JADI `href`.
+
+              Sebelumnya baris ini berbunyi `href={payUrl || payLinkPath(...)}`,
+              dan URL DOKU mentah yang MENANG. Itu melewati resolver
+              `/bayar/<id>` — satu-satunya tempat yang menjawab "tagihan mana
+              yang berwenang" SAAT DIKLIK, bukan saat link dicetak
+              (`functions/bayar/[id].js` → RPC `authoritative_payment_url`,
+              sql/85). Aturan itu lahir dari insiden order `af004b84`, ketika
+              peneliti membayar lewat link tagihan jadwal yang sudah lama.
+
+              Halaman ini justru yang paling rawan: countdown-nya berjalan, jadi
+              jarak antara link dirender dan link diklik bisa satu jam penuh.
+            */}
+            {hasOpenBill ? (
+              <a
+                href={payLinkPath(entry.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2"
+              >
+                <CreditCard size={16} /> {t('payNow')}
+              </a>
+            ) : (
+              /*
+                Jadwalnya menunggu pembayaran, tapi tagihannya BELUM terbit —
+                jalur `needs_admin_invoice`. Sebelumnya tombolnya tetap tampil
+                dan mengirim peneliti ke resolver yang tidak punya tagihan untuk
+                ditunjuk; yang dia lihat hanyalah galat. Lebih jujur mengatakan
+                apa yang sedang ditunggu.
+              */
+              <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
+                {t('billNotIssuedYet')}
+              </p>
+            )}
             {state.canCancel && (
               <button
                 type="button"

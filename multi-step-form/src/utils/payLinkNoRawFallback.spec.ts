@@ -68,6 +68,37 @@ const FORBIDDEN: Array<[string, RegExp]> = [
   ['ternari, URL mentah lebih dulu', new RegExp(`\\b${RAW}\\b[^;\\n]{0,80}\\s:\\s*[^;\\n]{0,40}${CALL}`)],
   // payLink(...) ?? urlMentah  /  payLink(...) || urlMentah
   ['cadangan ?? / ||', new RegExp(`${CALL}[^;\\n]{0,80}\\)?\\s*(?:\\?\\?|\\|\\|)\\s*[^;\\n]{0,80}\\b${RAW}\\b`)],
+
+  /*
+    ⚠️ POLA KEEMPAT, DAN ALASANNYA BERBEDA DARI TIGA DI ATAS.
+
+    Tiga pola pertama mengenali **nama kolom** di sisi seberang percabangan.
+    Itu bekerja selama nilai mentahnya ditulis di pernyataan yang sama.
+
+    Yang lolos 2026-09-17 di `JadwalDanBayarPage` tidak begitu:
+
+        const [payUrl, setPayUrl] = useState<string | null>(null);   // baris 60
+        setPayUrl(own?.openInvoice?.paymentUrl ?? null);             // baris 99
+        ...
+        href={payUrl || payLinkPath(entry.id)}                       // baris 482
+
+    Nama kolomnya ada **empat ratus baris** dari tempat pemakaiannya, jadi tidak
+    ada satu pun pernyataan yang memuat `payLink(` dan `paymentUrl` sekaligus.
+    Pemindai per-pernyataan tidak akan pernah melihatnya, seberapa pun `RAW`
+    dilebarkan — dan melebarkan `RAW` ke nama variabel justru membuat pemindai
+    menuduh deklarasi yang benar (`const payHref = payLinkPath(x)`), karena sisi
+    KIRI-nya ikut cocok.
+
+    Jadi yang dijaga di sini bukan nama, melainkan **posisi**: nilai yang masuk
+    ke `href`/`to` tidak boleh punya cabang di sebelah `payLink…`. Kalau ada
+    cabang, salah satu ujungnya bukan link berwenang — dan itu berlaku apa pun
+    nama variabelnya.
+
+    Tombol yang tidak dirender selalu lebih murah daripada tombol yang
+    menagih keadaan lama; itu sebabnya `x && <a href={payLink(x)}>` tetap sah.
+  */
+  ['href bercabang di sekitar payLink',
+   new RegExp(`\\b(?:href|to)=\\{(?:${CALL}[^}\\n]{0,80}\\)?\\s*(?:\\?\\?|\\|\\|)|[^}\\n]{0,60}(?:\\?\\?|\\|\\|)\\s*${CALL})`)],
 ];
 
 /** Buang komentar SEBELUM memindai — berkas-berkas ini penuh catatan yang MENYEBUT nama kolomnya. */
@@ -108,6 +139,14 @@ const CADANGAN_ASLI: Array<[string, string]> = [
    'const bundlePayUrl = leadBundle ? payLinkUrl(leadBundle.entry.id) : paymentResponse.invoice_url;'],
   ['airingPeriods — kartu jadwal ke-2 dst.',
    'payUrl: bookingState === "waiting_payment" ? (s.id ? payLinkPath(s.id) : pay?.paymentUrl || null) : null,'],
+  /*
+    Yang KELIMA, dan yang paling sunyi: nama kolomnya tidak muncul di sini sama
+    sekali. `payUrl` diisi dari `openInvoice.paymentUrl` ratusan baris di atas,
+    lalu MENANG atas resolver karena berdiri di kiri `||`. Halaman countdown
+    memakainya sampai 2026-09-17.
+  */
+  ['JadwalDanBayarPage — tombol Bayar Sekarang di halaman countdown',
+   'href={payUrl || payLinkPath(entry.id)}'],
 ];
 
 describe('link bayar — nol cadangan ke URL DOKU mentah', () => {
@@ -124,6 +163,12 @@ describe('link bayar — nol cadangan ke URL DOKU mentah', () => {
     // Tanpa cadangan; `paymentUrl` hanya jadi SINYAL di gerbang, bukan nilai balik.
     expect(offendersIn('payUrl: state === "waiting_payment" && s.id ? payLinkPath(s.id) : null,')).toEqual([]);
     expect(offendersIn('{inv.paymentUrl && !inv.isPaid && entry.id && (\n  <button onClick={() => copy(payLinkUrl(entry.id))} />\n)}')).toEqual([]);
+    // `href` tanpa cabang — bentuk yang kita tuju.
+    expect(offendersIn('<a href={payLinkPath(entry.id)} target="_blank" rel="noopener noreferrer">')).toEqual([]);
+    // Gerbang `&&` di LUAR atribut: tombolnya tidak dirender, bukan dialihkan.
+    expect(offendersIn('{entry.id && <a href={payLinkPath(entry.id)}>Bayar</a>}')).toEqual([]);
+    // Deklarasi yang benar tidak boleh dituduh hanya karena namanya `payHref`.
+    expect(offendersIn('const payHref = payLinkPath(entry.id);')).toEqual([]);
   });
 
   it('tidak ada berkas yang menyandingkan payLink dengan URL mentah', () => {

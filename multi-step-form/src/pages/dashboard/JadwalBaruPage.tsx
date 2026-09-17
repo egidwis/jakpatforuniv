@@ -53,6 +53,7 @@ import { segmentTitleOf } from '../../utils/segmentTitle';
 import { fetchBatchContext, scheduleIdFromSourceId, type BatchContext } from '../../utils/batchContext';
 import { toAiringEndIso, toAiringStartIso } from '../../utils/airing-window';
 import { createPayment } from '../../utils/payment';
+import { slotReleaseDeadline } from '../../utils/slotHold';
 import { formatIDR } from '../../utils/currency';
 import { CostBreakdown } from '../../components/CostBreakdown';
 import { ScheduleReservationLayout } from '../../components/schedule/ScheduleReservationLayout';
@@ -323,11 +324,40 @@ export function JadwalBaruPage() {
       const scheduleId = await scheduleIdFromSourceId(String(sourceId));
       if (!scheduleId) throw new Error('Jadwal tersimpan, tetapi id-nya tidak terbaca.');
 
-      // 3. Tagihan lahir SEKARANG. `amount: 0` — server yang menghitung.
+      /*
+        3. Tagihan lahir SEKARANG. `amount: 0` — server yang menghitung.
+
+        ⚠️ `expiredAt` WAJIB DIKIRIM, dan ini bukan kosmetik.
+        `payment_due_date` DOKU adalah DURASI MENIT SEJAK LINK DIBUAT, bukan
+        sebuah instant (`create-payment.js`, satuannya dinyatakan di
+        `checkout.js`). Tanpa `expiredAt`, `createPayment` memakai 60 menit
+        tetap — jadi link yang lahir di detik terakhir hold akan hidup satu jam
+        PENUH melewati tenggat slotnya.
+
+        Akibatnya bukan sekadar angka yang tidak cocok: peneliti bisa membayar
+        lewat link yang masih hidup untuk slot yang sudah dilepas. Uangnya tidak
+        hilang — webhook menolaknya sebagai `paid_on_dead_bill` dan mengirim
+        alert — tapi hasilnya tiket manual, dan peneliti melihat "pembayaran
+        berhasil" sementara jadwalnya tidak menyala.
+
+        Jadwal ini BARU SAJA lahir lewat `create_ad_schedule`, yang menulis
+        `slot_reserved_at = now()` dan `slot_booked_by = 'user'`. Jadi
+        tenggatnya `now + SLOT_HOLD_MS`, dan kita menghitungnya lewat
+        `slotReleaseDeadline()` — sumber tunggal aturan hold — bukan dengan
+        menjumlah 3_600_000 dengan tangan untuk keenam kalinya.
+      */
+      const holdDeadline = slotReleaseDeadline({
+        slotBookedBy: 'user',
+        slotReservedAt: new Date().toISOString(),
+      });
+
       await createPayment({
         formSubmissionId: submissionId,
         scheduleId,
         amount: 0,
+        ...(holdDeadline !== null
+          ? { expiredAt: new Date(holdDeadline).toISOString() }
+          : {}),
         customerInfo: {
           title: submission?.title || 'Survey',
           fullName: submission?.full_name || 'Pengguna',

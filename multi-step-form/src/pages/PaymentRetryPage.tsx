@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { getFormSubmissionById, releaseExpiredSlot } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
 import { createPayment, GroupBillError } from '../utils/payment';
+import { slotReleaseDeadline } from '../utils/slotHold';
 import { ErrorPage } from '../components/ErrorPage';
 
 export default function PaymentRetryPage() {
@@ -50,11 +51,21 @@ export default function PaymentRetryPage() {
         return;
       }
 
-      // Block if slot expired (either marked expired, or timer passed without PaymentCheckoutPage releasing it)
-      const isSlotExpired =
-        data.slot_booked_by === 'user' &&
-        data.slot_reserved_at &&
-        Date.now() > new Date(data.slot_reserved_at).getTime() + 3_600_000;
+      /*
+        Block if slot expired (either marked expired, or timer passed without
+        PaymentCheckoutPage releasing it).
+
+        ⚠️ Aturan hold datang dari `slotHold.ts`, tidak disalin ulang di sini.
+        Bentuk lamanya menjumlah `3_600_000` dengan tangan — duplikat keenam
+        dari angka yang sama — dan mengulang syarat `slot_booked_by === 'user'`
+        yang sudah dijaga di sana. Dua salinan aturan hold di SATU berkas adalah
+        persis cara keduanya berbeda diam-diam nanti.
+      */
+      const holdDeadline = slotReleaseDeadline({
+        slotBookedBy: data.slot_booked_by,
+        slotReservedAt: data.slot_reserved_at,
+      });
+      const isSlotExpired = holdDeadline !== null && Date.now() > holdDeadline;
 
       if (data.payment_status === 'expired' || isSlotExpired) {
         // Release the slot if it hasn't been released yet (user came directly from email)
@@ -96,9 +107,34 @@ export default function PaymentRetryPage() {
     try {
       console.log('Memulai proses pembayaran ulang untuk form ID:', formId);
 
+      /*
+        ⚠️ `expiredAt` DIHITUNG ULANG DI SINI, bukan dipakai dari pemeriksaan di
+        `fetchFormData`. Jarak antara halaman dimuat dan tombol ditekan bisa
+        berapa pun — nilai lama akan memberi link umur yang sudah kedaluwarsa
+        saat dipakai.
+
+        Kenapa dikirim sama sekali: `payment_due_date` DOKU adalah DURASI MENIT
+        SEJAK LINK DIBUAT, bukan sebuah instant. Tanpa `expiredAt`,
+        `createPayment` memakai 60 menit tetap, jadi link yang dicetak di menit
+        ke-59 hold akan hidup 59 menit MELEWATI tenggat slotnya — cukup lama
+        untuk membayar slot yang sudah dilepas ke peneliti lain.
+
+        ⚠️ `null` berarti "tidak pernah lepas sendiri" (jadwal admin), BUKAN
+        "sudah lewat". Untuk baris itu kita sengaja TIDAK mengirim `expiredAt`
+        dan membiarkan perilaku 60 menit yang berlaku hari ini — memberi mereka
+        tenggat mendadak akan mematikan link yang memang tidak punya tenggat.
+      */
+      const holdDeadlineNow = slotReleaseDeadline({
+        slotBookedBy: formData.slot_booked_by,
+        slotReservedAt: formData.slot_reserved_at,
+      });
+
       const paymentUrl = await createPayment({
         formSubmissionId: formId,
         amount: formData.total_cost,
+        ...(holdDeadlineNow !== null
+          ? { expiredAt: new Date(holdDeadlineNow).toISOString() }
+          : {}),
         customerInfo: {
           title: formData.title,
           fullName: formData.full_name || 'Pengguna',

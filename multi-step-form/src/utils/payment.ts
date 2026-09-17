@@ -162,6 +162,40 @@ export class GroupBillError extends Error {
   }
 }
 
+/**
+ * Berapa menit link DOKU ini boleh hidup?
+ *
+ * ⚠️ SATUANNYA MENIT SEJAK LINK DIBUAT, bukan sebuah instant. Itu yang membuat
+ * fungsi ini ada: DOKU tidak menerima "mati pada jam sekian", ia hanya menerima
+ * "hidup sekian menit". Jadi tenggat yang kita punya (`expiredAt`) harus
+ * diterjemahkan jadi SISA waktu, dan terjemahan itu bergantung pada kapan
+ * fungsi ini dipanggil — itulah sebabnya `now` bisa disuntik dan tidak dibaca
+ * dari jam device di tengah perhitungan.
+ *
+ * ⚠️ TANPA `expiredAt` JAWABANNYA 60 MENIT TETAP — dan itu hanya benar kalau
+ * link lahir bersamaan dengan hold-nya. Pemanggil yang menagih reservasi yang
+ * SUDAH berjalan wajib mengirim `expiredAt`; kalau tidak, link-nya hidup
+ * sampai 59 menit melewati tenggat slot, dan peneliti bisa membayar tanggal
+ * yang sudah dilepas ke orang lain. Itu cacat yang hidup di `JadwalBaruPage`
+ * dan `PaymentRetryPage` sampai 2026-09-17.
+ *
+ * ⚠️ LANTAI 1 MENIT, BUKAN 0. `payment_due_date: 0` TIDAK berarti "mati
+ * seketika" di DOKU — ia berarti "pakai setelan dashboard", dan dashboard kami
+ * sengaja dikosongkan selamanya (`docs/langkah-0-dan-9-doku.md`). Jadi nol akan
+ * menghasilkan justru kebalikan dari maksudnya: link yang tidak pernah mati.
+ */
+export function dokuLifetimeMinutes(
+  expiredAt: string | undefined,
+  now: number = Date.now(),
+): number {
+  if (!expiredAt) return 60;
+  const deadline = new Date(expiredAt).getTime();
+  // Tanggal yang tidak terbaca jatuh ke perilaku default, bukan ke NaN yang
+  // diam-diam dikirim ke DOKU sebagai `payment_due_date`.
+  if (Number.isNaN(deadline)) return 60;
+  return Math.max(1, Math.round((deadline - now) / 60000));
+}
+
 export const createPayment = async (paymentData: PaymentData) => {
   try {
     const { formSubmissionId, expiredAt, scheduleId } = paymentData;
@@ -172,11 +206,7 @@ export const createPayment = async (paymentData: PaymentData) => {
     // from the DB, so the browser no longer inserts into invoices/transactions
     // and no longer needs write access to those tables. This is what makes RLS
     // on `invoices` safe to enable (see sql/24_secure_invoices_rls.sql).
-    let payment_due_date = 60; // default 60 minutes
-    if (expiredAt) {
-      const diffMs = new Date(expiredAt).getTime() - Date.now();
-      payment_due_date = Math.max(1, Math.round(diffMs / 60000));
-    }
+    const payment_due_date = dokuLifetimeMinutes(expiredAt);
 
     const response = await axios.post(
       `${origin}/api/doku/create-payment`,
