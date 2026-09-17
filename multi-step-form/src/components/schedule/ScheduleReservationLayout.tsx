@@ -69,58 +69,83 @@ export function ScheduleReservationLayout({
   const { t } = useLanguage();
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-12 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 pt-6 pb-16">
       {/*
-        Jalan keluar SELALU di sini — menjawab "aku di mana, bagaimana keluar",
-        pertanyaan yang muncul sebelum isinya dibaca.
+        Jalan keluar berdiri DI LUAR kartu: ia menjawab "aku di mana, bagaimana
+        keluar" — pertanyaan yang muncul sebelum isinya dibaca, dan bukan bagian
+        dari tugasnya.
       */}
       <button
         type="button"
         onClick={onBack}
         disabled={isBusy}
-        className="inline-flex items-center gap-2 -ml-1 px-2 py-2 rounded-lg text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="inline-flex items-center gap-2 -ml-2 mb-4 px-2 py-2 rounded-lg text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:bg-slate-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <ArrowLeft className="w-4 h-4" />
         {backLabel}
       </button>
 
-      <header className="space-y-1">
-        {orderLabel && (
-          <p className="text-sm text-slate-500">
-            <span className="text-slate-400">{t('scheduleForOrderLabel')} </span>
-            <span className="font-medium text-slate-600">{orderLabel}</span>
-          </p>
-        )}
-        <h1 className="text-xl md:text-2xl font-bold text-slate-900 leading-snug tracking-tight">
-          {title}
-        </h1>
-        {subtitle && (
-          <p className="text-sm text-slate-500 leading-relaxed">{subtitle}</p>
-        )}
-      </header>
-
       {/*
-        ⚠️ KONSEKUENSI DINYATAKAN SEBELUM TERJADI, dengan bobot yang sepadan.
-        Identik di kedua layar — inilah yang dulu berbeda paling tajam.
-      */}
-      <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
-        <Clock className="w-4 h-4 text-jfu-primary shrink-0 mt-0.5" />
-        <p className="text-sm text-blue-900 leading-relaxed">{t('scheduleHoldHint')}</p>
-      </div>
+        ⚠️ SATU KARTU, BUKAN TUMPUKAN SIBLING.
 
-      {duration}
-      {calendar}
-      {reward}
-      {cost}
-
-      {/*
-        CTA dan alasannya menempel: sebuah tombol mati yang tidak menyebutkan
-        sebabnya adalah jalan buntu. `aria-live` supaya pembaca layar ikut
-        mendengar saat sebabnya berubah.
+        Versi sebelumnya menumpuk judul, panel hold, kalender, dan total sebagai
+        saudara `space-y-4` langsung di atas latar halaman. Hanya kalender yang
+        punya kartu, jadi layar terbaca sebagai judul nyasar + satu panel + baris
+        harga yatim — bukan satu tugas yang utuh. Semua yang MILIK tugas ini
+        hidup di dalam satu permukaan; pemisahnya garis, bukan jurang.
       */}
-      <div className="space-y-2">
-        <div aria-live="polite">{blockedReason}</div>
-        {cta}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <header className="px-5 sm:px-6 pt-5 sm:pt-6 pb-4 space-y-1">
+          {orderLabel && (
+            <p className="text-sm text-slate-500">
+              <span className="text-slate-400">{t('scheduleForOrderLabel')} </span>
+              <span className="font-medium text-slate-600">{orderLabel}</span>
+            </p>
+          )}
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 leading-snug tracking-tight">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="text-sm text-slate-500 leading-relaxed">{subtitle}</p>
+          )}
+        </header>
+
+        {/*
+          ⚠️ KONSEKUENSI DINYATAKAN SEBELUM TERJADI, dengan bobot yang sepadan.
+          Identik di kedua layar — inilah yang dulu paling tajam berbeda.
+        */}
+        <div className="mx-5 sm:mx-6 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+          <Clock className="w-4 h-4 text-jfu-primary shrink-0 mt-0.5" />
+          <p className="text-sm text-blue-900 leading-relaxed">{t('scheduleHoldHint')}</p>
+        </div>
+
+        {/*
+          Tiap bagian dipisah GARIS, bukan jarak — di dalam satu kartu, garis
+          membaca sebagai "bagian berikutnya dari hal yang sama", sementara
+          jarak membaca sebagai "hal lain".
+        */}
+        {duration && (
+          <section className="px-5 sm:px-6 py-5 mt-5 border-t border-slate-100">{duration}</section>
+        )}
+
+        <section className={`px-5 sm:px-6 py-5 border-t border-slate-100 ${duration ? '' : 'mt-5'}`}>
+          {calendar}
+        </section>
+
+        {reward && (
+          <section className="px-5 sm:px-6 py-5 border-t border-slate-100">{reward}</section>
+        )}
+
+        {/*
+          Harga dan tombolnya BERBAGI satu blok berlatar, dan blok itu menutup
+          kartu. Peneliti tidak boleh harus memindai ke tempat lain untuk melihat
+          angka yang sedang ia setujui.
+        */}
+        <div className="px-5 sm:px-6 py-5 border-t border-slate-200 bg-slate-50/70 space-y-3">
+          {cost}
+          <div aria-live="polite" className="empty:hidden">{blockedReason}</div>
+          {cta}
+        </div>
       </div>
     </div>
   );

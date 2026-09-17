@@ -302,7 +302,7 @@ export function JadwalBaruPage() {
       subtitle={t('scheduleSubtitle')}
       duration={
         /* Lama tayang */
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-3">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold text-slate-900">{t('scheduleAgainDuration')}</span>
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-jfu-primary border border-blue-100">
@@ -364,7 +364,7 @@ export function JadwalBaruPage() {
       calendar={
         /* Tanggal — ⚠️ SchedulePicker, kalender PENELITI. Modal lama memakai
             SlotCalendar yang `isAdmin`-nya default `true`. */
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
+        <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-bold text-slate-900">{t('scheduleAgainPickDate')}</span>
             {!availability.isLoading && availability.hasError && (
@@ -397,12 +397,12 @@ export function JadwalBaruPage() {
           {/* Hadiah — HANYA batch baru. Batch lama ikut kolam yang sudah didanai;
               menanyakan hadiah lagi di sana menagih dua kali. */}
           {plan.needsReward && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 space-y-3">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-3">
               <p className="text-sm font-bold text-amber-900 flex items-center gap-2">
                 <Gift className="w-4 h-4 text-amber-600 shrink-0" />
                 {t('scheduleAgainRewardTitle')}
               </p>
-              <p className="text-xs leading-relaxed text-amber-800">{t('scheduleAgainRewardWhy')}</p>
+              <p className="text-sm leading-relaxed text-amber-800">{t('scheduleAgainRewardWhy')}</p>
               {/* ⚠️ TANPA `grid-cols-1`. `styles.css` warisan mendefinisikan
                   `.grid-cols-1 { grid-template-columns: 1fr }` polos dan dimuat
                   sesudah Tailwind, jadi ia mengalahkan `sm:grid-cols-2` pada
@@ -412,7 +412,7 @@ export function JadwalBaruPage() {
                   AnalyticsDashboard.tsx. Jarak juga inline, sebab yang sama. */}
               <div className="grid sm:grid-cols-2" style={{ gap: '0.75rem' }}>
                 <div className="space-y-1.5">
-                  <label htmlFor="baru-prize" className="text-[11px] font-bold text-amber-900 block">
+                  <label htmlFor="baru-prize" className="text-xs font-bold text-amber-900 block">
                     {t('scheduleAgainRewardPrize')}
                   </label>
                   <input
@@ -422,11 +422,11 @@ export function JadwalBaruPage() {
                     value={prizePerWinner || ''}
                     onChange={(e) => setPrizePerWinner(Math.max(0, Number(e.target.value) || 0))}
                     disabled={isSaving}
-                    className="h-10 w-full px-3 text-xs border border-amber-300 rounded-xl bg-white text-gray-900 focus:border-jfu-primary focus:outline-none font-semibold font-mono"
+                    className="h-10 w-full px-3 text-sm border border-amber-300 rounded-xl bg-white text-gray-900 focus-visible:border-jfu-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary/30 font-semibold tabular-nums"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label htmlFor="baru-winners" className="text-[11px] font-bold text-amber-900 block">
+                  <label htmlFor="baru-winners" className="text-xs font-bold text-amber-900 block">
                     {t('scheduleAgainRewardWinners')}
                   </label>
                   <input
@@ -436,7 +436,7 @@ export function JadwalBaruPage() {
                     value={winnerCount || ''}
                     onChange={(e) => setWinnerCount(Math.max(0, Number(e.target.value) || 0))}
                     disabled={isSaving}
-                    className="h-10 w-full px-3 text-xs border border-amber-300 rounded-xl bg-white text-gray-900 focus:border-jfu-primary focus:outline-none font-semibold font-mono"
+                    className="h-10 w-full px-3 text-sm border border-amber-300 rounded-xl bg-white text-gray-900 focus-visible:border-jfu-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary/30 font-semibold tabular-nums"
                   />
                 </div>
               </div>
@@ -453,7 +453,7 @@ export function JadwalBaruPage() {
 
           {/* Batch lama: katakan kenapa tidak ada panel hadiah. */}
           {batch && !plan.needsReward && (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-start gap-2.5 text-xs text-slate-600">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex items-start gap-2.5 text-sm text-slate-600">
               <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
               <p className="leading-relaxed">{t('scheduleAgainPoolReused')}</p>
             </div>

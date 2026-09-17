@@ -122,7 +122,7 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
       title={mode === 'kilat' ? t('kilatScheduleTitle') : t(seg.key, seg.vars)}
       subtitle={mode === 'kilat' ? undefined : t('scheduleSubtitle')}
       calendar={
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4 shadow-sm">
+        <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
