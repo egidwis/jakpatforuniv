@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88` diterapkan & diverifikasi | ✅ **JALUR UTAMA SELESAI & TERUJI DI PRODUKSI 2026-09-17** — peneliti memesan perpanjangan sendiri tanpa admin, uji browser oleh pemilik produk. **Kelima penghalang 10 Sep sudah tumbang** (diverifikasi ulang ke produksi 17 Sep, bukan ke berkas). ⚠️ **Satu lubang sadar tersisa: ganti tanggal untuk `ordinal ≥ 2`** — lihat §00AB. ⬜ commit belum di-push |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88` diterapkan & diverifikasi | ✅ **JALUR UTAMA SELESAI & TERUJI DI PRODUKSI 2026-09-17** — peneliti memesan perpanjangan sendiri tanpa admin, uji browser oleh pemilik produk. **Kelima penghalang 10 Sep sudah tumbang** (diverifikasi ulang ke produksi 17 Sep, bukan ke berkas). ✅ **Lubang pesan-ulang `ordinal ≥ 2` DITUTUP hari itu juga** (`rebookSchedule` + `sql/89` diterapkan). Peneliti tetap TIDAK bisa menukar jadwal yang masih berjalan — itu wewenang admin. Lihat §00AB. ⬜ commit belum di-push |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -158,33 +158,45 @@ nol untuk non-admin; harga lahir di `create-payment.js`, dan `deriveScheduleMone
 memakai nol itu sebagai pemicu cabang estimasi. Jangan "diperbaiki" dengan
 mengisi harga di RPC — itu menghidupkan lagi dua sumber kebenaran harga.
 
-#### ⚠️ Lubang sadar yang TERSISA — ganti tanggal untuk `ordinal ≥ 2`
+#### ✅ DITUTUP hari ini juga — pesan ulang untuk `ordinal ≥ 2`
 
-`JadwalDanBayarPage.tsx:210` masih berbunyi:
+⚠️ **Koreksi istilah.** Bagian ini sebelumnya kutulis sebagai "ganti tanggal",
+dan itu menyesatkan — pemilik produk benar bahwa peneliti tidak punya fitur
+ganti jadwal. Layar kalender hanya muncul pada keadaan `pick` (belum pernah
+bertanggal) dan `released` (hold lewat / dibatalkan). Selama jadwalnya hidup,
+yang tampil cuma countdown + tombol bayar + tombol batal. **Menukar jadwal yang
+sedang berjalan tetap wewenang admin dan tidak disentuh.**
 
-```tsx
-if (entry.ordinal >= 2) {
-  toast.error(t('rebookExtensionUnsupported'));   // "hubungi tim kami lewat chat"
-  return;
-}
+Yang sebelumnya buntu: peneliti yang perpanjangannya hangus melihat kalender,
+memilih tanggal, lalu ditolak `rebookExtensionUnsupported`.
+
+Sekarang ada `rebookSchedule()` — pasangan ber-lingkup JADWAL dari
+`rebookSlotForSubmission` (lingkup ORDER). Keputusan lingkupnya diangkat jadi
+`rebookPlanFor()`.
+
+⚠️ **Ia bercabang pada "ordinal 1 DAN nol saudara", BUKAN `ordinal >= 2`.**
+Bentuk pertama yang ditulis memakai ordinal saja dan itu salah: ordinal 1 yang
+sudah punya jadwal ke-2 juga wajib lewat lingkup jadwal, karena menulis
+`form_submissions` menyalakan `trg_ad_schedule_from_submission` yang lalu
+menimpa cermin `ad_schedules`-nya. Aturannya disalin dari `expiryPlanFor`, dan
+ada tes yang mengunci keduanya agar tidak pernah berbeda pendapat.
+
+**`sql/89` — diterapkan & diverifikasi.** Tanpanya fungsi ini gagal **senyap di
+100% sasaran**: policy `"Peneliti melepas reservasinya sendiri"` mensyaratkan
+`slot_booked_by='user'` di `USING`, sedangkan baris yang sudah dilepas punya
+`slot_booked_by = NULL`.
+
+```
+sebelum : 0 dari 9 baris lolos policy lama  (8 NULL, 1 admin)
+sesudah : 5 policy (yang lama utuh) · 8 dari 9 sasaran terjangkau
+          yang ke-9 slot_booked_by='admin' — memang di luar lingkup
 ```
 
-Sebabnya: `rebookSlotForSubmission()` berlingkup **ORDER** (`form_submissions`),
-sementara jadwal ke-2 dst. hidup di **`ad_schedules`**. Memakainya untuk
-perpanjangan akan menulis ke baris yang salah. Primitif ber-lingkup JADWAL untuk
-pesan-ulang **belum pernah ditulis** — ini beda lingkup yang sama seperti
-`releaseExpiredSlot` vs `cancelSchedule`.
+Kambuh **keempat** dari pola "RLS UPDATE hilang = 0 baris senyap". Advisor nol
+ERROR, nol temuan baru.
 
-**Kenapa ini penting sekarang, bukan nanti:** layar kalender itu MUNCUL untuk
-`ordinal ≥ 2` pada keadaan `pick` dan `released` (`JadwalDanBayarPage.tsx:339`).
-Jadi peneliti bisa sampai ke kalender, memilih tanggal, lalu ditolak — jalan
-buntu di dalam alurnya sendiri. **Terukur: 9 jadwal perpanjangan sudah berada di
-keadaan yang menampilkan kalender itu.**
-
-Kegagalannya sopan (toast jujur, bukan diam-diam gagal) dan jalan keluarnya ada
-(chat admin), jadi ini **bukan pemblokir Phase 5** — tapi ia satu-satunya tempat
-di jalur swalayan yang masih memerlukan manusia, dan tidak boleh ikut hilang dari
-catatan hanya karena Phase 4 ditutup.
+`payment_status` sengaja tidak ditulis — `guard_extend_payment_columns()`
+melempar exception untuk non-admin, jadi menulisnya menggagalkan seluruh UPDATE.
 
 #### Yang masih menggantung
 

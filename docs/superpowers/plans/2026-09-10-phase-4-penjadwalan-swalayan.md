@@ -12,9 +12,10 @@
 > ber-lingkup jadwal). Angka di bawah dipertahankan apa adanya sebagai
 > arkeologi tanggal 10 Sep, bukan sebagai keadaan sekarang.
 >
-> ⚠️ **Satu lubang sadar tersisa:** ganti tanggal untuk `ordinal ≥ 2` masih
-> menolak (`rebookExtensionUnsupported`) — primitif pesan-ulang ber-lingkup
-> JADWAL belum pernah ditulis. Duduk perkaranya di §00AB.
+> ✅ **Lubang pesan-ulang `ordinal ≥ 2` ditutup 17 Sep** — `rebookSchedule()`
+> ber-lingkup jadwal + `rebookPlanFor()` + `sql/89` (RLS). ⚠️ Ini PESAN ULANG
+> sesudah reservasi hangus, BUKAN ganti jadwal: menukar jadwal yang masih
+> berjalan tetap wewenang admin. Duduk perkaranya di §00AB.
 >
 > Ditulis 2026-09-10 sebagai serah-terima: seluruh pengukuran di bawah
 > dilakukan langsung ke produksi **pada tanggal itu**.
