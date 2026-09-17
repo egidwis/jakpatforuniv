@@ -55,6 +55,7 @@ export function JadwalDanBayarPage() {
   const [siblings, setSiblings] = useState<AdScheduleEntry[]>([]);
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
   const [billedAmount, setBilledAmount] = useState<number | null>(null);
+  const [billedVoucher, setBilledVoucher] = useState<string | null>(null);
   const [payUrl, setPayUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -93,6 +94,7 @@ export function JadwalDanBayarPage() {
 
       const own = billings?.get(found.id) ?? null;
       setBilledAmount(own?.openInvoice?.amount ?? null);
+      setBilledVoucher(own?.openInvoice?.voucherCode ?? null);
       setPayUrl(own?.openInvoice?.paymentUrl ?? null);
     } catch (e) {
       console.error('Gagal memuat jadwal:', e);
@@ -260,10 +262,32 @@ export function JadwalDanBayarPage() {
     );
   }
 
-  const money = deriveScheduleMoney(entry, {
-    question_count: submission?.question_count ?? null,
-    distribution_type: entry.distributionType,
-  });
+  /*
+    ⚠️ VOUCHER DIWARISKAN SAAT MENAGIH, BUKAN SAAT MENJADWALKAN.
+
+    `ad_schedules.voucher_code` untuk perpanjangan bernilai NULL — servernya
+    yang jatuh ke voucher ORDER lewat presedensi `billingVoucher ||
+    scheduleVoucher || base.voucher_code` (`create-payment.js`). Jadi
+    `deriveScheduleMoney` menghitung ulang TANPA voucher dan memulangkan baris
+    yang tidak mungkin menjumlah ke tagihannya.
+
+    Terukur pada #2KT24KKK: barisnya berbunyi Rp 300.000 + Rp 33.000, sementara
+    tagihan sungguhannya Rp 1.110 — peneliti melihat total yang membantah
+    rinciannya sendiri, tepat di layar tempat ia diminta membayar.
+
+    `invoices.voucher_code` menyimpan voucher yang BENAR-BENAR dipakai menagih,
+    jadi ia yang dioper. Sesudah ini baris-barisnya menjumlah persis ke
+    `billedAmount` (Rp 300.000 − Rp 299.000 + Rp 110).
+  */
+  const money = deriveScheduleMoney(
+    billedVoucher && !entry.voucherCode
+      ? { ...entry, voucherCode: billedVoucher }
+      : entry,
+    {
+      question_count: submission?.question_count ?? null,
+      distribution_type: entry.distributionType,
+    },
+  );
 
   const phase = state.screen === 'pick'
     ? 'reservation' as const
