@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` ikut ditutup (`rebookSchedule` + `sql/89`), penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Utang tersisa: pembatalan oleh PENELITI belum mematikan link DOKU — `cancel-order` tidak ada di `PUBLIC_ENDPOINTS` (403) DAN galatnya tak tercatat karena RLS `invoices` admin-only; plus cron pelepas slot belum ada. Lihat §00AB |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` ikut ditutup (`rebookSchedule` + `sql/89`), penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — belum diuji browser. Utang tersisa: cron pelepas slot belum ada. Lihat §00AB |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -258,10 +258,42 @@ terpengaruh — jalur itu tetap bekerja.
 404 di sana. Jadi uji lokal TIDAK akan pernah bisa membuktikan jalur ini; ia
 wajib diuji di produksi atau lewat `wrangler pages dev`.
 
-**Belum diperbaiki.** Perbaikannya menyentuh gerbang uang (`_middleware.js`) dan
-RLS `invoices`, jadi ia pekerjaan tersendiri, bukan tempelan pada penutupan
-Phase 4. Yang menahan kerusakan sementara ini tetap resolver `/bayar/`, yang
-diuji menolak jadwal cancelled/expired dengan nol URL.
+#### ✅ DIPERBAIKI 2026-09-17 (`f04ac21` + `sql/91`)
+
+**① Gerbang.** `cancel-order` pindah ke `OWNER_ENDPOINTS` — set baru yang
+artinya "sesi tetap wajib, tapi tidak harus admin". Middleware kini meneruskan
+identitas lewat `context.data` (`authEmail`/`authUserId`/`isAdmin`).
+
+**② Kepemilikan.** `assertCallerMayCancel()` berjalan SEBELUM satu byte dikirim
+ke DOKU. `invoice_number` datang dari browser, jadi tanpa penjaga ini peneliti
+mana pun bisa mematikan link bayar orang lain dengan menebak nomor tagihan.
+
+⚠️ **Kepemilikannya PENUH, bukan sebagian** — satu `payment_id` bisa menaungi
+beberapa order (terukur 3, terbesar 7 order). `some()` akan membiarkan satu
+anggota bundel mematikan tagihan yang juga menagih survei orang lain.
+
+**③ `sql/91`.** Policy UPDATE sempit untuk pemilik + trigger
+`guard_invoice_columns_for_owner()` yang mengunci kolom uang/keadaan. Postgres
+tidak punya policy per-kolom untuk UPDATE; membandingkan NEW vs OLD di trigger
+satu-satunya cara. Diuji di produksi, empat arah (semua di transaksi yang
+dibatalkan):
+
+```
+peneliti  status='paid'               → DITOLAK (benar)
+peneliti  doku_cancel_last_error      → BOLEH (benar)
+admin     status='cancelled'          → BOLEH (nol regresi)
+service   status='paid' + paid_at     → BOLEH (webhook aman)
+```
+
+**④** `recordDokuCancelError` berhenti diam saat detail kosong, dan kini
+melaporkan nol-baris-tanpa-error sebagai kemungkinan penolakan RLS.
+
+Gerbang mesin: **vitest 843** (dari 824, +19 tes baru untuk kepemilikan &
+gerbang) · tsc 79 · build hijau · Advisor nol ERROR.
+
+⚠️ **BELUM DIUJI DI BROWSER**, dan uji LOKAL tidak akan bisa membuktikannya —
+`vite dev` hanya menjembatani `create-payment` + `checkout`. Wajib diuji di
+produksi atau `wrangler pages dev`.
 
 #### Yang masih menggantung
 

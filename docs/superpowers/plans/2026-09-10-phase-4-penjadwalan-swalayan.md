@@ -7,12 +7,11 @@
 > [§00AB `docs/jadwal-iklan-progress.md`](../../jadwal-iklan-progress.md).
 >
 > **Utang yang sadar dibawa keluar Phase 4:**
-> 1. **Pembatalan oleh PENELITI belum mematikan link DOKU.** ⚠️ Bukan salah
->    DOKU — Cancel Order SUDAH aktif (terbukti berhasil 11 Sep). Penyebabnya
->    berlapis dua di sisi kita: `cancel-order` tidak ada di `PUBLIC_ENDPOINTS`
->    (`_middleware.js` → 403 untuk non-admin), dan galatnya tidak tercatat
->    karena `invoices` hanya punya policy UPDATE admin. Jalur ADMIN tetap
->    bekerja. Duduk perkaranya di §00AB.
+> 1. ✅ **Pembatalan oleh peneliti kini mematikan link DOKU-nya** — diperbaiki
+>    `f04ac21` + `sql/91` (`OWNER_ENDPOINTS`, `assertCallerMayCancel()` dengan
+>    kepemilikan PENUH, policy + trigger kolom). ⚠️ Belum diuji browser, dan uji
+>    LOKAL tidak bisa membuktikannya (`cancel-order` tidak dijembatani
+>    `vite dev`). Duduk perkaranya di §00AB.
 > 2. Cron pelepas slot kedaluwarsa belum ada.
 >
 > ⚠️ **SELURUH "Kesiapan" DI BAWAH SUDAH BASI — JANGAN DIPAKAI.** Ia menyebut
