@@ -287,6 +287,13 @@ export function JadwalDanBayarPage() {
     {
       question_count: submission?.question_count ?? null,
       distribution_type: entry.distributionType,
+      /*
+        Cadangan terakhir dari presedensi server: tagihan > jadwal > ORDER.
+        Dua tingkat pertama sudah ditangani di atas; yang ini dipegang
+        `effectiveVoucher()` di dalam `deriveScheduleMoney`, sehingga layar
+        ini tidak lagi jadi satu-satunya tempat aturannya ditegakkan.
+      */
+      voucher_code: submission?.voucher_code ?? null,
     },
   );
 
@@ -300,13 +307,14 @@ export function JadwalDanBayarPage() {
         ...entry,
         status: 'waiting_payment',
         totalCost: subTotal,
-        subtotal: submission.subtotal_cost ?? subTotal,
+        subtotal: submission.subtotal ?? subTotal,
         ppnAmount: submission.ppn_amount ?? 0,
-        voucherCode: billedVoucher || entry.voucherCode || submission.voucher_code,
+        voucherCode: billedVoucher || entry.voucherCode || submission.voucher_code || null,
       };
       money = deriveScheduleMoney(activeEntry, {
         question_count: submission.question_count,
         distribution_type: submission.distribution_type,
+        voucher_code: submission.voucher_code ?? null,
       });
     }
   }

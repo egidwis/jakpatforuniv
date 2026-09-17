@@ -176,3 +176,118 @@ describe('deriveScheduleMoney — cabang ESTIMASI', () => {
     expect(money.lines).toBeNull();
   });
 });
+
+/*
+  ── VOUCHER ORDER HARUS DIWARISI OLEH ESTIMASI JADWAL ──────────────────────
+
+  Terukur di produksi 17 Sep 2026, jadwal #4 `GTFBMQ6F` (order 08ef25ac…):
+
+      layar   : Rp 666.000  ("estimasi")
+      tagihan : Rp 1.110    (invoices.amount, JFU-08ef25ac-1789641135104)
+
+  Selisih 600×, dan yang BENAR adalah tagihannya. Ordernya memakai voucher
+  `jfutgrx`, tapi `ad_schedules.voucher_code` untuk jadwal itu NULL — semua 18
+  baris jadwal di produksi begitu, karena jalur tulis tidak pernah menyalin
+  voucher ke baris jadwal.
+
+  Sisi server sudah menangani ini dengan benar dan menuliskan aturannya di
+  `pricingRowForSchedule()` (create-payment.js:231):
+
+      // Presedensi: voucher tagihan > voucher jadwal > voucher order. Voucher
+      // jadwal yang KOSONG berarti "tidak menyatakan apa-apa", bukan "tanpa
+      // diskon"
+
+  Sisi baca memakai aturan yang berbeda — `entry.voucherCode ?? undefined` —
+  jadi ia membaca NULL sebagai "tanpa diskon" dan menawarkan harga penuh atas
+  order yang akan ditagih jauh lebih murah. Dua salinan aturan, satu menyimpang.
+*/
+describe('voucher order diwarisi saat baris jadwal tidak menyatakan voucher', () => {
+  const ORDER_WITH_VOUCHER = {
+    question_count: 34,
+    distribution_type: 'regular',
+    voucher_code: 'jfutgrx',
+  };
+
+  it('memakai voucher ORDER saat voucher jadwal kosong (regresi GTFBMQ6F)', () => {
+    const money = deriveScheduleMoney(
+      entryOf({ ordinal: 4, duration: 2, totalCost: 0, voucherCode: null, status: 'waiting_payment' }),
+      ORDER_WITH_VOUCHER,
+    );
+
+    // JFUTGRX memangkas total biaya jadi Rp 1.000; PPN 11% → Rp 1.110.
+    expect(money.total).toBe(1110);
+    const discount = money.lines?.find((l) => l.tone === 'discount');
+    expect(discount).toBeTruthy();
+  });
+
+  it('voucher JADWAL menang atas voucher order — presedensi sisi server', () => {
+    const money = deriveScheduleMoney(
+      entryOf({ ordinal: 4, duration: 2, totalCost: 0, voucherCode: 'JFUTGRX', status: 'waiting_payment' }),
+      { question_count: 34, distribution_type: 'regular', voucher_code: 'KODELAIN' },
+    );
+    expect(money.total).toBe(1110);
+  });
+
+  it('tanpa voucher di mana pun, harganya tetap penuh', () => {
+    const money = deriveScheduleMoney(
+      entryOf({ ordinal: 4, duration: 2, totalCost: 0, voucherCode: null, status: 'waiting_payment' }),
+      { question_count: 34, distribution_type: 'regular' },
+    );
+    // 34 Qs × 2 hari = Rp 600.000 + PPN 11% = Rp 666.000 — angka yang muncul
+    // di layar produksi, dan yang benar HANYA kalau ordernya memang tanpa voucher.
+    expect(money.total).toBe(666000);
+    expect(money.lines?.find((l) => l.tone === 'discount')).toBeFalsy();
+  });
+
+  it('jadwal yang SUDAH ditagih tidak ikut berubah — yang tercatat tetap menang', () => {
+    /*
+      Penjaga arah sebaliknya: pewarisan voucher hanya boleh menyentuh cabang
+      ESTIMASI. Jadwal ber-`total_cost` adalah catatan sejarah, dan menghitung
+      ulang dengan voucher hari ini persis cacat yang sudah ditutup berkas ini.
+    */
+    const money = deriveScheduleMoney(
+      entryOf({ ordinal: 4, duration: 2, totalCost: 999000, subtotal: 900000, ppnAmount: 99000, voucherCode: null }),
+      ORDER_WITH_VOUCHER,
+    );
+    expect(money.total).toBe(999000);
+    expect(money.isEstimate).toBe(false);
+  });
+});
+
+/*
+  Cabang SUDAH-DITAGIH memakai voucher untuk satu hal saja: memecah `subtotal`
+  tersimpan menjadi "harga kotor" + "diskon". Totalnya tidak pernah dihitung
+  ulang — `total = entry.totalCost`, apa pun hasil pemecahannya.
+
+  Tapi pemecahan itu juga membaca `entry.voucherCode` langsung, jadi baris
+  ber-voucher NULL (yaitu SEMUA baris jadwal di produksi) gagal memecah: baris
+  "Diskon Voucher" hilang dan harga kotornya tercetak sama dengan nilai bersih.
+  Peneliti melihat tagihan yang benar tanpa pernah melihat hematnya — dan
+  "Kamu hemat" di `CostBreakdown` ikut menghilang, padahal ia yang dulu
+  ditambahkan supaya total kecil tidak terbaca seperti BUG.
+*/
+describe('pemecahan rincian jadwal yang sudah ditagih ikut mewarisi voucher order', () => {
+  it('menampilkan baris diskon untuk jadwal tertagih ber-voucher NULL', () => {
+    /*
+      Bentuk yang benar-benar tersimpan: 20 Qs × 1 hari = Rp 350.000 kotor,
+      voucher ambassador 10% → Rp 315.000 bersih, PPN 11% → Rp 34.650.
+    */
+    const money = deriveScheduleMoney(
+      entryOf({
+        ordinal: 2,
+        duration: 1,
+        totalCost: 349650,
+        subtotal: 315000,
+        ppnAmount: 34650,
+        voucherCode: null,
+      }),
+      { question_count: 20, distribution_type: 'regular', voucher_code: 'JFUTYR' },
+    );
+
+    expect(money.total).toBe(349650);
+    expect(money.isEstimate).toBe(false);
+    const discount = money.lines?.find((l) => l.tone === 'discount');
+    expect(discount).toBeTruthy();
+    expect(discount?.amount).toBe(-35000);
+  });
+});

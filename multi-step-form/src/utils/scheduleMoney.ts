@@ -116,6 +116,39 @@ function storedIncentive(e: AdScheduleEntry): number | null {
   return e.prizePerWinner * e.winnerCount;
 }
 
+/**
+ * Voucher mana yang berlaku untuk jadwal ini?
+ *
+ * ⚠️ VOUCHER JADWAL YANG KOSONG BERARTI "TIDAK MENYATAKAN APA-APA", BUKAN
+ * "TANPA DISKON". Aturan yang sama persis sudah berdiri di sisi server,
+ * `pricingRowForSchedule()` (create-payment.js:231):
+ *
+ *     // Presedensi: voucher tagihan > voucher jadwal > voucher order.
+ *
+ * Sisi baca memakai `entry.voucherCode ?? undefined` dan karena itu menyimpang
+ * dari sisi tagih. Terukur di produksi 17 Sep 2026 pada jadwal #4 `GTFBMQ6F`:
+ * layar menawarkan Rp 666.000 sementara tagihan yang sudah terbit berbunyi
+ * Rp 1.110 — selisih 600×, dan yang benar adalah tagihannya.
+ *
+ * Sebabnya struktural, bukan kebetulan: SELURUH 18 baris `ad_schedules` di
+ * produksi ber-`voucher_code` NULL, karena jalur tulis tidak pernah menyalin
+ * voucher ke baris jadwal. Jadi cabang "kosong = tanpa diskon" selalu salah
+ * untuk setiap order ber-voucher.
+ *
+ * ⚠️ HANYA UNTUK ESTIMASI. Jadwal yang sudah punya `total_cost` adalah catatan
+ * sejarah; menghitung ulangnya dengan voucher hari ini justru cacat yang sudah
+ * ditutup berkas ini. Pemanggilnya menjaga batas itu.
+ */
+function effectiveVoucher(
+  entryVoucher: string | null | undefined,
+  orderVoucher: string | null | undefined,
+): string | undefined {
+  const fromSchedule = String(entryVoucher ?? '').trim();
+  if (fromSchedule) return fromSchedule;
+  const fromOrder = String(orderVoucher ?? '').trim();
+  return fromOrder || undefined;
+}
+
 export function deriveScheduleMoney(
   entry: AdScheduleEntry,
   submission: {
@@ -123,10 +156,17 @@ export function deriveScheduleMoney(
     question_count?: number | null;
     distribution_type?: string | null;
     distributionType?: string | null;
+    /**
+     * Voucher milik ORDER — cadangan saat baris jadwal tidak menyatakan apa-apa.
+     * Lihat `effectiveVoucher()` untuk alasannya.
+     */
+    voucher_code?: string | null;
+    voucherCode?: string | null;
   },
 ): ScheduleMoney {
   const isKilat = entry.distributionType === 'kilat' || submission.distribution_type === 'kilat' || submission.distributionType === 'kilat';
   const questionCount = submission.question_count ?? submission.questionCount ?? 0;
+  const orderVoucher = submission.voucher_code ?? submission.voucherCode ?? null;
 
   // ── Sudah ditagih ────────────────────────────────────────
   if (entry.totalCost > 0) {
@@ -136,7 +176,18 @@ export function deriveScheduleMoney(
       const incentive = storedIncentive(entry);
       const netAdCost = incentive != null ? entry.subtotal - incentive : null;
       const duration = entry.duration || 1;
-      const voucher = entry.voucherCode ?? undefined;
+      /*
+        Voucher order ikut jadi cadangan DI SINI JUGA — tapi perannya sempit:
+        ia hanya dipakai MEMECAH `subtotal` tersimpan jadi kotor + diskon.
+        Totalnya tetap `entry.totalCost` apa pun hasilnya, jadi tidak ada
+        nominal yang dihitung ulang dengan tarif hari ini.
+
+        Tanpa ini, baris ber-`voucher_code` NULL (yaitu semua baris jadwal di
+        produksi) gagal memecah: baris "Diskon Voucher" hilang dan harga kotor
+        tercetak sama dengan nilai bersih, sehingga peneliti melihat tagihan
+        yang benar tanpa pernah melihat hematnya.
+      */
+      const voucher = effectiveVoucher(entry.voucherCode, orderVoucher);
 
       let grossAdCost = netAdCost;
       let discountAmount = 0;
@@ -263,7 +314,7 @@ export function deriveScheduleMoney(
   const adCost = isKilat
     ? calculateAdCostPerDay(questionCount)
     : calculateTotalAdCost(questionCount, duration);
-  const voucher = entry.voucherCode ?? undefined;
+  const voucher = effectiveVoucher(entry.voucherCode, orderVoucher);
   const addon = isKilat ? getKilatAddonCost(voucher) : 0;
   const discount = isKilat ? 0 : calculateDiscount(voucher, adCost, incentive, duration);
 
@@ -281,7 +332,7 @@ export function deriveScheduleMoney(
     },
   ];
   if (addon > 0) lines.push({ label: 'Add-on JFU Kilat', labelKey: 'costLineKilatAddon', amount: addon, tone: 'addon' });
-  if (discount > 0) lines.push({ label: `Diskon Voucher (${entry.voucherCode})`, labelKey: 'costLineVoucherNamed', labelVars: { code: entry.voucherCode ?? '' }, amount: -discount, tone: 'discount' });
+  if (discount > 0) lines.push({ label: `Diskon Voucher (${voucher})`, labelKey: 'costLineVoucherNamed', labelVars: { code: voucher ?? '' }, amount: -discount, tone: 'discount' });
   if (incentive > 0) {
     lines.push({
       label: 'Reward',

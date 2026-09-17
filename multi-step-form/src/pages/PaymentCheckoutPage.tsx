@@ -14,16 +14,13 @@ import {
   Clock,
   ArrowRight,
   CheckCircle,
-  ArrowLeft,
   CalendarCheck,
   Lock,
   Loader2,
   Info,
-  FileText,
-  ExternalLink,
   RefreshCw,
 } from 'lucide-react';
-import type { FormSubmission } from '../utils/supabase';
+import type { FormSubmission, AdScheduleEntry } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
   normalizeScheduleDate,
@@ -500,32 +497,48 @@ export function PaymentCheckoutPage() {
     ? fmtSlipDate(new Date(toAiringLastDayIso(startYmd, airingDays)))
     : null;
 
-  const money = deriveScheduleMoney(
-    {
-      id: submission.id ?? '',
-      submissionId: submission.id ?? '',
-      sourceId: submission.id ?? '',
+  /*
+    ⚠️ ENTRY SEMENTARA, bukan baris jadwal sungguhan — layar ini milik ORDER
+    (ordinal 1), yang barisnya hidup di `form_submissions`.
+
+    Pola `Pick` + cast terjaga diambil dari `draftScheduleMoney.ts`: hanya kolom
+    yang BENAR-BENAR dibaca `deriveScheduleMoney` yang diisi. Mengarang 15 kolom
+    lain supaya lolos tipe justru membuat objek ini terlihat seperti data, dan
+    salah satunya (`additionalPrizePerWinner`) adalah gerbang yang memutuskan
+    apakah insentif boleh dipecah sama sekali — ia harus dinyatakan, bukan
+    kebetulan `undefined`.
+  */
+  const pricingEntry: Pick<
+    AdScheduleEntry,
+    | 'ordinal' | 'duration' | 'status' | 'distributionType' | 'totalCost'
+    | 'subtotal' | 'ppnAmount' | 'voucherCode' | 'prizePerWinner'
+    | 'winnerCount' | 'additionalPrizePerWinner' | 'isNewPeriod'
+  > = {
       ordinal: 1,
-      bookingId: submission.booking_id ?? '',
-      title: submission.title ?? '',
       duration: submission.duration ?? 1,
       distributionType: submission.distribution_type ?? 'regular',
-      startDate: startYmd,
-      endDate: null,
+      additionalPrizePerWinner: 0,
+      isNewPeriod: false,
       totalCost: liveBilledAmount ?? submission.total_cost ?? 0,
-      subtotal: submission.subtotal_cost ?? null,
+      subtotal: submission.subtotal ?? null,
       ppnAmount: submission.ppn_amount ?? null,
-      voucherCode: billingVoucher || submission.voucher_code || null,
+      /*
+        ⚠️ Voucher ORDER saja. Voucher TAGIHAN tidak dibaca di layar ini —
+        `liveBilledAmount` sudah membawa nominal tagihan hidup apa adanya, jadi
+        totalnya benar tanpa perlu menilai ulang vouchernya. Presedensi
+        selengkapnya dipegang `effectiveVoucher()` di `scheduleMoney.ts`.
+      */
+      voucherCode: submission.voucher_code || null,
       prizePerWinner: submission.prize_per_winner ?? 0,
       winnerCount: submission.winner_count ?? 0,
       status: isExpired ? 'waiting_payment' : (submission.status || 'waiting_payment'),
-      paymentStatus: submission.payment_status,
-    },
-    {
-      question_count: submission.question_count,
-      distribution_type: submission.distribution_type,
-    }
-  );
+  };
+
+  const money = deriveScheduleMoney(pricingEntry as AdScheduleEntry, {
+    question_count: submission.question_count,
+    distribution_type: submission.distribution_type,
+    voucher_code: submission.voucher_code || null,
+  });
 
   if (isExpired) {
     return (
@@ -533,8 +546,8 @@ export function PaymentCheckoutPage() {
         onBack={() => navigate('/dashboard')}
         backLabel={t('backToOrders')}
         isBusy={isRebooking}
-        orderLabel={`${submission.title || 'Untitled Form'}${submission.booking_id ? ` · #${submission.booking_id}` : ''}`}
-        title={t('scheduleReservationTitle')}
+        orderLabel={submission.title || 'Untitled Form'}
+        title={t('segmentReservation')}
         subtitle={t('scheduleSubtitle')}
         alertBanner={
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
@@ -613,7 +626,7 @@ export function PaymentCheckoutPage() {
     <ScheduleReservationLayout
       onBack={() => navigate('/dashboard')}
       backLabel={t('backToOrders')}
-      orderLabel={`${submission.title || 'Untitled Form'}${submission.booking_id ? ` · #${submission.booking_id}` : ''}`}
+      orderLabel={submission.title || 'Untitled Form'}
       title={t('paymentPhaseTitle')}
       subtitle={t('paymentPhaseSubtitle')}
       alertBanner={
