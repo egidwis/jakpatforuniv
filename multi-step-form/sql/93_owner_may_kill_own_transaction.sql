@@ -51,12 +51,21 @@
 --   BOLEH   : pending → expired / cancelled   (akibat sah membatalkan jadwal)
 --   DITOLAK : menghidupkan kembali tagihan mati
 --   DITOLAK : menyatakan lunas (paid/completed/settled) — kuasa uang
---   DITOLAK : menggeser amount / payment_id / schedule_id / form_submission_id
---             / extend_id / entity_type / paid_at
+--   DITOLAK : menggeser amount / subtotal / ppn_amount / ppn_rate /
+--             voucher_code / payment_id / payment_method / billed_start_date /
+--             form_submission_id / extend_id / entity_type, dan MENGGESER
+--             `schedule_id` yang sudah terisi
 --
 -- ⚠️ `payment_status` BUKAN bukti pembayaran (memori proyek): sebagian order
 -- dibayar di luar sistem. Karena itu jalur peneliti TIDAK PERNAH boleh menulis
 -- status lunas, bahkan untuk barisnya sendiri.
+--
+-- ⚠️ KOLOM DIBACA DARI information_schema, BUKAN DISALIN DARI sql/92.
+-- `transactions` TIDAK punya `paid_at` (yang dipunyai `invoices`), dan punya
+-- kolom uang yang `invoices` tidak punya: subtotal, ppn_amount, ppn_rate,
+-- voucher_code, payment_method, billed_start_date. plpgsql tidak memeriksa nama
+-- kolom saat fungsi DIBUAT — hanya saat trigger BERJALAN. Jadi salah nama =
+-- lolos penerapan, lalu mematahkan SETIAP pembatalan di produksi.
 --
 -- Idempoten: DROP POLICY IF EXISTS + CREATE, CREATE OR REPLACE FUNCTION.
 -- ============================================================================
@@ -141,13 +150,30 @@ BEGIN
       'Kolom transaksi ini hanya bisa diubah admin; peneliti hanya boleh mematikan transaksinya sendiri.';
   END IF;
 
-  -- Kolom uang & identitas: TIDAK PERNAH bergeser dari klien peneliti.
+  /*
+    Kolom uang & identitas: TIDAK PERNAH bergeser dari klien peneliti.
+
+    ⚠️ DAFTAR INI DIBACA DARI information_schema, BUKAN DITEBAK dari kemiripan
+    dengan `invoices`. Percobaan pertama menyalin `paid_at` dari sql/92 —
+    padahal `transactions` TIDAK PUNYA kolom itu, dan plpgsql baru meledak saat
+    trigger-nya BERJALAN ("record NEW has no field paid_at"), bukan saat
+    dipasang. Akibatnya SETIAP pembatalan oleh peneliti gagal total; tertangkap
+    uji pertama sesudah penerapan.
+
+    Lunas di tabel ini dinyatakan lewat `status`, yang sudah dijaga per-arah
+    di bawah — jadi tidak ada padanan `paid_at` yang perlu dikunci.
+  */
   IF NEW.amount              IS DISTINCT FROM OLD.amount
-     OR NEW.payment_id         IS DISTINCT FROM OLD.payment_id
+     OR NEW.subtotal          IS DISTINCT FROM OLD.subtotal
+     OR NEW.ppn_amount        IS DISTINCT FROM OLD.ppn_amount
+     OR NEW.ppn_rate          IS DISTINCT FROM OLD.ppn_rate
+     OR NEW.voucher_code      IS DISTINCT FROM OLD.voucher_code
+     OR NEW.payment_id        IS DISTINCT FROM OLD.payment_id
+     OR NEW.payment_method    IS DISTINCT FROM OLD.payment_method
+     OR NEW.billed_start_date IS DISTINCT FROM OLD.billed_start_date
      OR NEW.form_submission_id IS DISTINCT FROM OLD.form_submission_id
      OR NEW.extend_id          IS DISTINCT FROM OLD.extend_id
      OR NEW.entity_type        IS DISTINCT FROM OLD.entity_type
-     OR NEW.paid_at            IS DISTINCT FROM OLD.paid_at
   THEN
     RAISE EXCEPTION
       'Kolom transaksi ini hanya bisa diubah admin; peneliti hanya boleh mematikan transaksinya sendiri.';

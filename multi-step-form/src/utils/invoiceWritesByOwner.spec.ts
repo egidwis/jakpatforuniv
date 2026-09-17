@@ -197,3 +197,65 @@ describe('nol baris tanpa error = kegagalan, bukan keberhasilan', () => {
     expect(blok).toMatch(/masihPending/);
   });
 });
+
+describe('penjaga SQL hanya menyebut kolom yang benar-benar ada', () => {
+  /*
+    ⚠️ LAHIR DARI CACAT NYATA (17 Sep 2026, tertangkap uji pertama sesudah
+    sql/93 diterapkan ke produksi).
+
+    `guard_transaction_columns_for_owner()` menyalin daftar kolomnya dari
+    pasangannya di `invoices` (sql/92), termasuk `paid_at` — kolom yang
+    `transactions` TIDAK PUNYA.
+
+    plpgsql TIDAK memeriksa nama kolom saat fungsi DIBUAT, hanya saat trigger
+    BERJALAN. Jadi migrasinya "sukses", lalu SETIAP pembatalan oleh peneliti
+    meledak dengan `record "new" has no field "paid_at"` — gagal total, di
+    produksi, karena satu nama yang disalin tanpa dibaca ulang.
+
+    Tes ini mahal-murahnya jelas: ia membaca berkas SQL dan menuntut setiap
+    `NEW.<kolom>` yang disebut penjaga `transactions` ada di daftar kolom
+    tabelnya. Daftar itu ditulis tangan DARI information_schema produksi.
+  */
+
+  const SQL_DIR = join(SRC, '..', '..', 'sql');
+
+  /** Kolom `public.transactions`, dibaca dari information_schema 17 Sep 2026. */
+  const KOLOM_TRANSACTIONS = new Set([
+    'id', 'form_submission_id', 'payment_id', 'payment_method', 'amount',
+    'status', 'payment_url', 'created_at', 'updated_at', 'note', 'entity_type',
+    'extend_id', 'payment_channel', 'subtotal', 'ppn_rate', 'ppn_amount',
+    'schedule_id', 'voucher_code', 'billed_start_date', 'doku_request_id',
+  ]);
+
+  it('sql/93 tidak menyebut satu pun kolom yang tidak ada di `transactions`', () => {
+    const sql = readFileSync(
+      join(SQL_DIR, '93_owner_may_kill_own_transaction.sql'), 'utf8',
+    );
+    // Buang komentar: `paid_at` memang SENGAJA disebut di sana sebagai riwayat.
+    const kode = sql
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/^\s*--[^\n]*$/gm, ' ');
+
+    const disebut = [...kode.matchAll(/\b(?:NEW|OLD)\.([a-z_][a-z0-9_]*)/gi)]
+      .map((m) => m[1].toLowerCase());
+
+    expect(disebut.length).toBeGreaterThan(0);
+    const asing = [...new Set(disebut)].filter((k) => !KOLOM_TRANSACTIONS.has(k));
+    expect(asing).toEqual([]);
+  });
+
+  it('kolom uang `transactions` yang nyata memang ikut dikunci', () => {
+    const sql = readFileSync(
+      join(SQL_DIR, '93_owner_may_kill_own_transaction.sql'), 'utf8',
+    );
+    // Yang menggerakkan uang & identitas tagihan; kalau ada yang lolos, peneliti
+    // bisa menggeser nilai tagihannya sendiri tanpa menyentuh `status`.
+    for (const kolom of [
+      'amount', 'subtotal', 'ppn_amount', 'ppn_rate', 'voucher_code',
+      'payment_id', 'payment_method', 'billed_start_date',
+      'form_submission_id', 'extend_id', 'entity_type',
+    ]) {
+      expect(sql).toMatch(new RegExp(`NEW\\.${kolom}\\s+IS DISTINCT FROM`));
+    }
+  });
+});
