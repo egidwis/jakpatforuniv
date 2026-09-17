@@ -794,7 +794,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         {!isStandalone && (
                             <div className="flex items-center p-1 bg-white border rounded-md shadow-sm overflow-hidden flex-shrink min-w-0 w-auto ml-2">
                                 <div className="px-2 py-1 bg-gray-50 rounded border border-gray-100 mr-2 flex-shrink-0 hidden sm:block">
-                                    <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">{formData.is_published ? 'Scheduled At' : 'Slot Reserved At'}</span>
+                                    <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">{formData.is_published ? 'Scheduled At' : 'Schedule Reserved At'}</span>
                                 </div>
                                 <div className="flex items-center gap-2 px-1 text-[11px] font-medium text-gray-600 truncate min-w-0">
                                     <span className="truncate">

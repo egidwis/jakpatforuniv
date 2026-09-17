@@ -69,7 +69,7 @@ export function SubmissionsMobileCard({
               <div className="flex-1 flex items-center justify-start gap-1.5 px-2.5 h-8 bg-gray-50/80 border border-gray-200/70 rounded-md cursor-help">
                 <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
                 <CalendarCheck className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !isScheduled ? 'Scheduled' : 'Slot Reserved'}</span>
+                <span className="text-xs font-medium text-gray-700 tracking-wide truncate">{isLegacyActive && !isScheduled ? 'Scheduled' : 'Schedule Reserved'}</span>
               </div>
             </TooltipTrigger>
             <TooltipContent className="bg-white p-3 shadow-xl text-slate-700 space-y-1">
@@ -104,7 +104,7 @@ export function SubmissionsMobileCard({
           onClick={() => onOpenSchedule(submission)}
         >
           <Calendar className="w-3.5 h-3.5 mr-2 shrink-0 text-blue-500" />
-          Reserve Slot
+          Reserve Schedule
         </Button>
         {isActuallyExpired && (
           <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">

@@ -123,7 +123,7 @@ export function ReserveSlotAction({
                 onClick={() => onOpenSchedule(submission)}
               >
                 <Calendar className={`w-3.5 h-3.5 mr-2 shrink-0 ${canReserveSlot ? 'text-blue-500' : 'text-gray-400'}`} />
-                Reserve Slot
+                Reservasi Jadwal
               </Button>
               {isActuallyExpired && (
                 <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-red-600 bg-red-50 border border-red-100 px-1 py-0.5 rounded font-bold shadow-sm pointer-events-none leading-none">
@@ -201,8 +201,8 @@ export function DistributionAction({
             {isBlocked
               ? 'Halaman iklan sudah published — tarik atau sembunyikan halamannya dulu.'
               : isKilat
-                ? 'Kembali ke iklan regular. Slot Kilat dilepas dan harga dihitung ulang dengan rumus regular.'
-                : 'Pindahkan ke distribusi Kilat. Slot regular dilepas dan harga dihitung ulang jadi harga Kilat.'}
+                ? 'Kembali ke iklan regular. Kuota Kilat dilepas dan harga dihitung ulang dengan rumus regular.'
+                : 'Pindahkan ke distribusi Kilat. Kuota regular dilepas dan harga dihitung ulang jadi harga Kilat.'}
           </p>
         </TooltipContent>
       </Tooltip>

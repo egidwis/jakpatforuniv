@@ -99,8 +99,8 @@ function getStatusBannerConfig(
     case 'reserved':
     case 'reserved_expiring':
       return {
-        title: 'Slot Jadwal Dipesan · Siap Terbitkan Tagihan',
-        description: 'Slot tayang sudah dipesan dan belum ada tagihan yang bisa dibayar. Terbitkan tagihan supaya peneliti dapat melanjutkan.',
+        title: 'Jadwal Dipesan · Siap Terbitkan Tagihan',
+        description: 'Jadwal tayang sudah dipesan dan belum ada tagihan yang bisa dibayar. Terbitkan tagihan supaya peneliti dapat melanjutkan.',
         action: {
           label: 'Terbitkan Tagihan',
           icon: CreditCard,
@@ -123,8 +123,8 @@ function getStatusBannerConfig(
 
     case 'reserved_expired':
       return {
-        title: 'Slot Kedaluwarsa · Batas Bayar Terlewat',
-        description: 'Batas pembayaran untuk slot ini telah lewat. Atur jadwal baru agar kuesioner dapat disiarkan.',
+        title: 'Jadwal Kedaluwarsa · Batas Bayar Terlewat',
+        description: 'Batas pembayaran untuk jadwal ini telah lewat. Atur jadwal baru agar kuesioner dapat disiarkan.',
         action: {
           label: 'Buat Jadwal Baru',
           icon: CalendarClock,

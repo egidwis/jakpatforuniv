@@ -415,7 +415,7 @@ export function InvoicePage() {
         const endStr = endDate ? formatDate(endDate) : '';
 
         if (isKilat) {
-            const wave = kilatHour ? ` · Slot ${kilatHour}:00 WIB` : '';
+            const wave = kilatHour ? ` · Pukul ${kilatHour}:00 WIB` : '';
             return `${startStr || endStr} (Kilat${wave})`;
         }
 

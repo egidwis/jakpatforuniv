@@ -45,7 +45,7 @@ export function ReviewStatusChip({ status, size = 'md' }: ReviewStatusChipProps)
       // Sumbu review-nya sebenarnya tetap 'approved' (sql/62 §2). Chip ini
       // hanya dipakai kalau ada pemanggil yang mengoper nilai mentahnya.
       variant = 'slate';
-      label = 'Slot Dibatalkan';
+      label = 'Jadwal Dibatalkan';
       break;
     case 'in_review':
     case 'pending':

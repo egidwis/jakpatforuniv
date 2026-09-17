@@ -884,7 +884,7 @@ export function ScheduleEntryDrawer({
                           Lunas sebagian · sisa {formatIDR(billing.outstanding)}
                         </span>
                       ) : isLate ? (
-                        <span className="text-red-700">Slot Expired (Terlewat)</span>
+                        <span className="text-red-700">Jadwal Expired (Terlewat)</span>
                       ) : (
                         <span className="text-amber-700">Menunggu Pembayaran</span>
                       )}

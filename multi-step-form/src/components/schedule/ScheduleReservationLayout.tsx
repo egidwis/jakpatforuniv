@@ -38,17 +38,22 @@ export interface ScheduleReservationLayoutProps {
   title: string;
   subtitle?: string;
 
+  /** Banner peringatan/status kontekstual (misal: reservasi sebelumnya dilepas/dibatalkan). */
+  alertBanner?: ReactNode;
+
   /** Panel durasi. Hanya perpanjangan memilikinya (jadwal ke-1 sudah memilih di Ringkasan). */
   duration?: ReactNode;
-  /** Kalender + catatan cutoff. */
+  /** Kalender + catatan cutoff atau konten countdown. */
   calendar: ReactNode;
   /** Panel hadiah batch baru, bila ada. */
   reward?: ReactNode;
   /** Rincian biaya. WAJIB diisi keduanya — lihat catatan di bawah. */
   cost: ReactNode;
+  /** Pesan penjelas sebelum tombol aksi. Bila tidak diisi, default ke teks hold 1 jam. Bila null, disembunyikan. */
+  bottomNotice?: ReactNode | null;
   /** Kalimat kenapa tombol mati, bila mati. */
   blockedReason?: ReactNode;
-  /** Tombol kunci. */
+  /** Tombol kunci / bayar. */
   cta: ReactNode;
 }
 
@@ -59,10 +64,12 @@ export function ScheduleReservationLayout({
   orderLabel,
   title,
   subtitle,
+  alertBanner,
   duration,
   calendar,
   reward,
   cost,
+  bottomNotice,
   blockedReason,
   cta,
 }: ScheduleReservationLayoutProps) {
@@ -95,18 +102,23 @@ export function ScheduleReservationLayout({
         hidup di dalam satu permukaan; pemisahnya garis, bukan jurang.
       */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <header className="px-5 sm:px-6 pt-5 sm:pt-6 pb-5 space-y-1">
+        <header className="px-5 sm:px-6 pt-5 sm:pt-6 pb-5 space-y-1.5">
           {orderLabel && (
-            <p className="text-sm text-slate-500">
-              <span className="text-slate-400">{t('scheduleForOrderLabel')} </span>
-              <span className="font-medium text-slate-600">{orderLabel}</span>
-            </p>
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <span className="text-slate-400">{t('scheduleForOrderLabel')}</span>
+              <span className="font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">{orderLabel}</span>
+            </div>
           )}
           <h1 className="text-xl md:text-2xl font-bold text-slate-900 leading-snug tracking-tight">
             {title}
           </h1>
           {subtitle && (
             <p className="text-sm text-slate-500 leading-relaxed">{subtitle}</p>
+          )}
+          {alertBanner && (
+            <div className="pt-2">
+              {alertBanner}
+            </div>
           )}
         </header>
 
@@ -143,16 +155,20 @@ export function ScheduleReservationLayout({
             tombol di bawahnya melahirkan tagihan bersekring 60 menit, jadi di
             sinilah tempatnya.
 
-            ⚠️ TETAP BERBOBOT. Versi paling awal layar pertama merendernya
-            sebagai teks abu terkecil di halaman — lebih lemah daripada catatan
-            cutoff di atasnya — dan itu justru cacat yang kritik tandai. Ikon +
-            warna merek menahannya tetap terbaca sebagai pemberitahuan, bukan
-            cetakan kecil.
+            ⚠️ DIBINGKAI KOTAK WARNA (BLUE CALLOUT).
+            Alih-alih memperbesar ukuran font yang merusak hierarki, catatan hold
+            ini dibingkai dengan box warna biru lembut (bg-blue-50/70) pada skala
+            text-xs yang proporsional. Ikon + warna merek menahannya tetap terbaca
+            jelas sebagai jaminan proteksi slot.
           */}
-          <p className="flex items-start gap-2 text-sm text-slate-600 leading-relaxed">
-            <Clock className="w-4 h-4 text-jfu-primary shrink-0 mt-0.5" />
-            <span>{t('scheduleHoldHint')}</span>
-          </p>
+          {bottomNotice !== null && (
+            bottomNotice ?? (
+              <div className="flex items-center gap-2.5 rounded-xl bg-blue-50/70 border border-blue-100/80 px-3.5 py-2.5 text-xs text-blue-900">
+                <Clock className="w-4 h-4 text-jfu-primary shrink-0" />
+                <span className="leading-relaxed font-medium">{t('scheduleHoldHint')}</span>
+              </div>
+            )
+          )}
 
           <div aria-live="polite" className="empty:hidden">{blockedReason}</div>
           {cta}

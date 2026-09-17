@@ -503,7 +503,7 @@ function BillingSection({
             <p className="text-[11px] leading-snug text-amber-900">
               {lapse === 'past_cutoff'
                 ? 'Batas bayar terlewat — tanggal ini tidak terkejar lagi. Pindahkan tanggal, tagih manual, atau batalkan jadwalnya.'
-                : 'Slot kedaluwarsa. Silakan atur tanggal tayang baru.'}
+                : 'Reservasi kedaluwarsa. Silakan atur tanggal tayang baru.'}
             </p>
           </div>
         </div>
@@ -519,8 +519,8 @@ function BillingSection({
         )}>
           <p className={cn('text-[11px] leading-snug', isLate ? 'text-red-900' : 'text-amber-900')}>
             {isLate
-              ? 'Batas waktu pembayaran untuk slot ini sudah terlewat. Silakan buat jadwal baru.'
-              : 'Slot tayang sudah dipesan. Terbitkan tagihan supaya peneliti bisa membayar.'}
+              ? 'Batas waktu pembayaran untuk jadwal ini sudah terlewat. Silakan buat jadwal baru.'
+              : 'Jadwal tayang sudah dipesan. Terbitkan tagihan supaya peneliti bisa membayar.'}
           </p>
         </div>
       </div>
@@ -864,8 +864,8 @@ function ScheduleCard({
   // yang jadi sumber helper itu. Jangan menurunkan versi lokal lagi.
   const bookedActor = bookedByActor(entry.slotBookedBy);
   const slotLine = bookedActor === 'nobody'
-    ? { label: 'Slot belum dipesan', actor: null }
-    : { label: 'Slot dipesan', actor: bookedActor === 'researcher' ? 'peneliti' : 'admin' };
+    ? { label: 'Jadwal belum dipesan', actor: null }
+    : { label: 'Jadwal dipesan', actor: bookedActor === 'researcher' ? 'peneliti' : 'admin' };
 
   const summary = (
     <div className="min-w-0 flex-1 space-y-1">
@@ -928,7 +928,7 @@ function ScheduleCard({
         ) : lapse === 'past_cutoff' ? (
           <span
             className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1"
-            title="Batas bayar 14.00 WIB pada hari tayang sudah lewat. Slotnya TIDAK lepas sendiri — pindahkan tanggal, tagih manual, atau batalkan."
+            title="Batas bayar 14.00 WIB pada hari tayang sudah lewat. Jadwal TIDAK lepas sendiri — pindahkan tanggal, tagih manual, atau batalkan."
           >
             <Clock className="w-2.5 h-2.5" /> lewat batas bayar
           </span>

@@ -174,6 +174,7 @@ interface FieldBlockProps {
   counter?: string;
   tooltip?: ReactNode;
   readOnly?: boolean;
+  contentClassName?: string;
   children: ReactNode;
 }
 
@@ -191,6 +192,7 @@ export function FieldBlock({
   counter,
   tooltip,
   readOnly,
+  contentClassName,
   children,
 }: FieldBlockProps) {
   return (
@@ -201,7 +203,7 @@ export function FieldBlock({
         </label>
 
         {/* pl-6 = ikon w-4 + gap-2, jadi isi lurus di bawah teks label */}
-        <div className="mt-2.5 pl-6">{children}</div>
+        <div className={`mt-2.5 ${contentClassName ?? 'pl-6'}`}>{children}</div>
 
         {counter && (
           <div className="mt-1.5 pl-6 text-right text-[11px] font-semibold tabular-nums text-slate-400">{counter}</div>

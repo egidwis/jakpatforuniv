@@ -124,8 +124,8 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
       calendar={
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <Info className="w-4 h-4 text-slate-400 shrink-0" />
               <span>{t('scheduleCutoffNote')}</span>
             </div>
             {/* Muat PERTAMA diceritakan skeleton kalendernya, bukan spinner ini. */}

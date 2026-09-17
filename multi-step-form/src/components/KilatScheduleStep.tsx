@@ -132,12 +132,12 @@ export function KilatScheduleStep({
         setIsSaving(true);
         try {
             await updateKilatSchedule(submissionId, selectedYmd, selectedHour);
-            toast.success(`Slot Kilat ${formatHour(selectedHour)} WIB berhasil dibooking!`);
+            toast.success(`Jadwal Kilat pukul ${formatHour(selectedHour)} WIB berhasil dibooking!`);
             if (selectedYmd !== initialYmd) onRescheduled?.(selectedYmd);
             onScheduled();
         } catch (error: any) {
-            console.error('Gagal booking slot Kilat:', error);
-            toast.error(error?.message || 'Gagal booking slot Kilat');
+            console.error('Gagal booking jadwal Kilat:', error);
+            toast.error(error?.message || 'Gagal booking jadwal Kilat');
         } finally {
             setIsSaving(false);
         }
@@ -330,7 +330,7 @@ export function KilatScheduleStep({
                         ) : (
                             <>
                                 <Calendar className="mr-2 h-4 w-4" />
-                                {isRescheduling ? 'Update Slot Kilat' : 'Book Slot Kilat'}
+                                {isRescheduling ? 'Update Jadwal Kilat' : 'Kunci Jadwal Kilat'}
                             </>
                         )}
                     </Button>

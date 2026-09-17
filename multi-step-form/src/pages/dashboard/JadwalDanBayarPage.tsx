@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Info, Lock, Clock, Pin, CreditCard, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Loader2, Info, Lock, Clock, Pin, CreditCard, RefreshCw, AlertTriangle, Calendar, CheckCircle } from 'lucide-react';
 import {
   fetchAdScheduleById,
   fetchScheduleSiblings,
@@ -15,6 +15,7 @@ import type { AdScheduleEntry, FormSubmission } from '../../utils/supabase';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { SchedulePicker } from '../../components/SchedulePicker';
 import { CostBreakdown } from '../../components/CostBreakdown';
+import { ScheduleReservationLayout } from '../../components/schedule/ScheduleReservationLayout';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
 import { schedulePageState } from '../../utils/schedulePageState';
@@ -279,7 +280,7 @@ export function JadwalDanBayarPage() {
     jadi ia yang dioper. Sesudah ini baris-barisnya menjumlah persis ke
     `billedAmount` (Rp 300.000 − Rp 299.000 + Rp 110).
   */
-  const money = deriveScheduleMoney(
+  let money = deriveScheduleMoney(
     billedVoucher && !entry.voucherCode
       ? { ...entry, voucherCode: billedVoucher }
       : entry,
@@ -288,6 +289,27 @@ export function JadwalDanBayarPage() {
       distribution_type: entry.distributionType,
     },
   );
+
+  // Jika jadwal lama statusnya cancelled/released dan user sedang memilih jadwal baru (rebooking ordinal 1),
+  // deriveScheduleMoney menghasilkan 0 karena jadwal lama non-aktif.
+  // Gunakan data submission aktif agar menampilkan nominal estimasi sebenarnya, bukan Rp 0.
+  if (money.total === 0 && (state.screen === 'pick' || state.screen === 'released') && submission) {
+    const subTotal = Number(submission.total_cost) || 0;
+    if (subTotal > 0) {
+      const activeEntry: AdScheduleEntry = {
+        ...entry,
+        status: 'waiting_payment',
+        totalCost: subTotal,
+        subtotal: submission.subtotal_cost ?? subTotal,
+        ppnAmount: submission.ppn_amount ?? 0,
+        voucherCode: billedVoucher || entry.voucherCode || submission.voucher_code,
+      };
+      money = deriveScheduleMoney(activeEntry, {
+        question_count: submission.question_count,
+        distribution_type: submission.distribution_type,
+      });
+    }
+  }
 
   const phase = state.screen === 'pick'
     ? 'reservation' as const
@@ -299,52 +321,43 @@ export function JadwalDanBayarPage() {
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-  return (
-    <div className="max-w-3xl mx-auto px-6 pt-8 pb-12 space-y-4">
-      <button
-        type="button"
-        onClick={() => navigate('/dashboard')}
-        className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors -ml-1 px-1 py-1"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        {t('backToOrders')}
-      </button>
-
-      {/* Konteks order — yang HILANG saat perpanjangan masih berupa modal. */}
-      <div className="space-y-1">
-        <p className="text-xs text-slate-500 font-medium truncate">
-          {entry.title} · #{entry.bookingId}
-        </p>
-        <h1 className="text-xl md:text-2xl font-bold text-slate-900 leading-snug tracking-tight">
-          {t(seg.key, seg.vars)}
-        </h1>
-      </div>
-
-      {state.screen === 'released' && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {t('rebookPickTitle')}
-        </div>
-      )}
-
-      {(state.screen === 'pick' || state.screen === 'released') && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs md:text-sm text-slate-500">{t('scheduleSubtitle')}</p>
-            {!availability.isLoading && availability.hasError && (
-              <button
-                type="button"
-                onClick={() => void availability.reload()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                {t('slotAvailabilityRetry')}
-              </button>
-            )}
-          </div>
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-4 shadow-2xs">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span>{t('scheduleCutoffNote')}</span>
+  if (state.screen === 'pick' || state.screen === 'released') {
+    return (
+      <ScheduleReservationLayout
+        onBack={() => navigate('/dashboard')}
+        backLabel={t('backToOrders')}
+        isBusy={isWorking}
+        orderLabel={`${entry.title} · #${entry.bookingId}`}
+        title={t(seg.key, seg.vars)}
+        subtitle={t('scheduleSubtitle')}
+        alertBanner={
+          state.screen === 'released' ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">{t('rebookPickTitle')}</p>
+                <p className="text-xs text-amber-800 mt-0.5">{t('paymentExpiredHoldBody')}</p>
+              </div>
+            </div>
+          ) : undefined
+        }
+        calendar={
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Info className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>{t('scheduleCutoffNote')}</span>
+              </div>
+              {!availability.isLoading && availability.hasError && (
+                <button
+                  type="button"
+                  onClick={() => void availability.reload()}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  {t('slotAvailabilityRetry')}
+                </button>
+              )}
             </div>
             <SchedulePicker
               availability={availability}
@@ -354,104 +367,147 @@ export function JadwalDanBayarPage() {
               onChange={setPicked}
             />
           </div>
-
-          {/* RINCIAN — di antara kalender dan tombol, seperti rencana.
-              ⚠️ Keadaan ① dulu TIDAK punya harga sama sekali: peneliti
-              mengunci tanggal — tindakan yang melahirkan tagihan — tanpa
-              pernah melihat satu angka pun. Sumbernya `deriveScheduleMoney`
-              yang sama dengan keadaan ②, jadi angkanya tidak bisa berubah
-              hanya karena layarnya berpindah keadaan. */}
+        }
+        cost={
           <CostBreakdown
             total={money.total}
             lines={money.lines}
             note={money.note}
             isEstimate={money.isEstimate}
             variant="compact"
-            defaultOpen={entry.ordinal >= 2}
+            defaultOpen={false}
           />
-
+        }
+        cta={
           <button
             type="button"
             onClick={handleLock}
             disabled={!picked || availability.isLoading || isWorking}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Lock size={15} />
-            {t('scheduleLockCta')}
+            {isWorking ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t('lockingSlotLoading')}
+              </>
+            ) : (
+              <>
+                <Lock size={15} />
+                {t('scheduleLockCta')}
+              </>
+            )}
           </button>
-        </div>
-      )}
+        }
+      />
+    );
+  }
 
-      {state.screen === 'awaiting_payment' && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
-          {/* ⚠️ Timer HANYA kalau state-nya mengizinkan. Jadwal admin tidak
-              pernah lepas sendiri — 31 order produksi menunggu di sana, dan
-              hitung mundur untuk mereka berbohong. */}
-          {state.showCountdown && timeLeft !== null ? (
-            <div className="text-center space-y-1">
-              <div className="inline-flex items-center gap-2 text-2xl font-bold text-jfu-primary tabular-nums">
-                <Clock className="w-5 h-5" /> {mmss(timeLeft)}
+  if (state.screen === 'awaiting_payment') {
+    return (
+      <ScheduleReservationLayout
+        onBack={() => navigate('/dashboard')}
+        backLabel={t('backToOrders')}
+        orderLabel={`${entry.title} · #${entry.bookingId}`}
+        title={t('paymentPhaseTitle')}
+        subtitle={t('paymentPhaseSubtitle')}
+        calendar={
+          <div className="space-y-4">
+            {state.showCountdown && timeLeft !== null ? (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 text-center space-y-1.5 shadow-2xs">
+                <div className="inline-flex items-center gap-2 text-2xl md:text-3xl font-bold text-jfu-primary tabular-nums">
+                  <Clock className="w-6 h-6 text-jfu-primary" /> {mmss(timeLeft)}
+                </div>
+                <p className="text-xs font-medium text-slate-600">
+                  {t('scheduleHoldHint')}
+                </p>
               </div>
-              <p className="text-xs text-slate-500">{t('scheduleHoldHint')}</p>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <Pin className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-              <p className="text-sm text-slate-700">
-                {t('bookingStatusAwaitingAdminSchedule')}
-              </p>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <Pin className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-slate-700">
+                  {t('bookingStatusAwaitingAdminSchedule')}
+                </p>
+              </div>
+            )}
 
+            {entry.startDate && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                    Jadwal Tayang Terkunci
+                  </span>
+                  <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-100 text-jfu-primary">
+                    {entry.duration || 1} {t('days')}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
+                  <Calendar className="w-4 h-4 text-jfu-primary shrink-0" />
+                  <span>
+                    {entry.startDate.slice(0, 10)}
+                    {entry.endDate ? ` – ${entry.endDate.slice(0, 10)}` : ''}
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-xs font-normal text-slate-500">{t('airingStartsAt')}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        }
+        cost={
           <CostBreakdown
             total={billedAmount ?? money.total}
             lines={money.lines}
             note={money.note}
             isEstimate={billedAmount === null && money.isEstimate}
             variant="compact"
-            // ⚠️ Perpanjangan: TERBUKA sejak awal. Tidak ada Ringkasan di
-            // belakangnya, jadi layar ini satu-satunya tempat harga muncul.
-            defaultOpen={entry.ordinal >= 2}
+            defaultOpen={false}
           />
-
-          <div className="space-y-2">
-            {payUrl && (
-              <a
-                href={payUrl}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white hover:bg-jfu-dark"
-              >
-                <CreditCard size={15} /> {t('payNow')}
-              </a>
-            )}
-            {!payUrl && (
-              <a
-                href={payLinkPath(entry.id)}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-2.5 text-sm font-semibold text-white hover:bg-jfu-dark"
-              >
-                <CreditCard size={15} /> {t('payNow')}
-              </a>
-            )}
-            {/* Jadwal admin: TANPA tombol batalkan — itu keputusan tim. */}
+        }
+        bottomNotice={
+          <p className="text-xs text-slate-500 text-center leading-relaxed">
+            {state.showCountdown ? t('timerConsequenceNote') : t('slotHeldByAdminNote')}
+          </p>
+        }
+        cta={
+          <div className="space-y-2.5 pt-1">
+            <a
+              href={payUrl || payLinkPath(entry.id)}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2"
+            >
+              <CreditCard size={16} /> {t('payNow')}
+            </a>
             {state.canCancel && (
               <button
                 type="button"
                 onClick={handleCancel}
                 disabled={isWorking}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
               >
                 {isWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {t('cancelOrderTitle')}
               </button>
             )}
           </div>
-        </div>
-      )}
+        }
+      />
+    );
+  }
 
-      {state.screen === 'settled' && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
-          {t('checkoutPaidSuccess')}
-        </div>
-      )}
+  return (
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 pt-6 pb-16">
+      <button
+        type="button"
+        onClick={() => navigate('/dashboard')}
+        className="inline-flex items-center gap-2 -ml-2 mb-4 px-2 py-2 rounded-lg text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:bg-slate-200/60"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        {t('backToOrders')}
+      </button>
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center space-y-2">
+        <CheckCircle className="w-8 h-8 text-emerald-600 mx-auto" />
+        <h2 className="text-base font-bold text-emerald-950">{t('checkoutPaidSuccess')}</h2>
+        <p className="text-sm text-emerald-800">{entry.title} · #{entry.bookingId}</p>
+      </div>
     </div>
   );
 }

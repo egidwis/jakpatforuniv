@@ -161,7 +161,13 @@ export function SchedulePicker({
             : isFull
               ? t('slotFullReason')
               : null;
-          const dayLabel = date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
+          const isToday = i === 0;
+          const isTomorrow = i === 1;
+          const dayLabel = isToday
+            ? `${t('calendarToday')}, ${date.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}`
+            : isTomorrow
+              ? `${t('calendarTomorrow')}, ${date.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}`
+              : date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
 
           return (
             <button
@@ -176,27 +182,45 @@ export function SchedulePicker({
               title={reason ?? undefined}
               className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${statusColors}`}
             >
-              <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                {date.toLocaleDateString(locale, { weekday: 'short' })}
-              </span>
-              <span className={`font-extrabold text-[15px] leading-tight mb-1 ${textColor}`}>
-                {date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-              </span>
+              {isToday || isTomorrow ? (
+                <div className="flex-1 flex items-center justify-center min-h-[38px] mb-1">
+                  <span
+                    className={`font-semibold text-sm leading-tight text-center ${
+                      isSelectedInRange
+                        ? textColor
+                        : isToday
+                          ? 'text-jfu-primary font-bold'
+                          : 'text-slate-800'
+                    }`}
+                  >
+                    {isToday ? t('calendarToday') : t('calendarTomorrow')}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
+                    {date.toLocaleDateString(locale, { weekday: 'short' })}
+                  </span>
+                  <span className={`font-semibold text-[15px] leading-tight mb-1 ${textColor}`}>
+                    {date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                  </span>
+                </>
+              )}
               {isClosed ? (
                 <div className="flex items-center gap-1 mt-auto bg-slate-200/60 px-1.5 py-0.5 rounded-full border border-slate-200">
-                  <span className="text-[10px] font-semibold text-slate-700">{t('slotClosedTodayLabel')}</span>
+                  <span className="text-[10px] font-medium text-slate-700">{t('slotClosedTodayLabel')}</span>
                 </div>
               ) : isFull && !isSelectedInRange ? (
                 /* Kata, bukan cuma angka merah: "4/4" menuntut pembacanya tahu
                    bahwa penyebutnya kuota. "Penuh" tidak menuntut apa pun. */
                 <div className="flex items-center gap-1 mt-auto bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
-                  <span className="text-[10px] font-semibold text-red-800">{t('slotFullLabel')}</span>
+                  <span className="text-[10px] font-medium text-red-800">{t('slotFullLabel')}</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
                   <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} aria-hidden="true" />
                   <span
-                    className={`text-[10px] font-semibold ${
+                    className={`text-[10px] font-medium ${
                       displayCount > maxPerDay || (isFull && !isSelectedInRange)
                         ? 'text-red-700'
                         : 'text-slate-600'
@@ -218,8 +242,7 @@ export function SchedulePicker({
         berjarak luminansi 1,18:1 — praktis identik bagi mata buta warna.
         Kata-katanya yang membawa makna; titiknya kini cuma penguat.
       */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-500">
-        <span>{t('slotLegendTitle')}</span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
         <span className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
           {t('slotLegendOpen')}
@@ -266,10 +289,10 @@ export function AiringSummary({ ymd, duration }: { ymd: string; duration: number
             <CalendarCheck className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               {t('scheduleEstimatedTitle')}
             </span>
-            <div className="text-sm md:text-base font-bold text-slate-900 leading-snug">
+            <div className="text-sm md:text-base font-semibold text-slate-900 leading-snug">
               {isSingleDay ? fmt(start) : `${fmt(start)} – ${fmt(end)}`}
             </div>
           </div>

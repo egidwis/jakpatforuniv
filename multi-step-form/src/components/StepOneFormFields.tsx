@@ -27,6 +27,7 @@ import {
   fieldInputClass,
   fieldRowListClass,
 } from './SurveyFieldRow';
+import { DurationPicker } from './DurationPicker';
 
 // Helper function to get recommended prize based on question count
 const getRecommendedPrize = (questionCount: number): number => {
@@ -476,13 +477,13 @@ export function StepOneFormFields({
         <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
 
         <div className={fieldRowListClass}>
-          <FieldRow
+          <FieldBlock
             icon={CalendarDays}
             label={t('surveyDurationLabel')}
             htmlFor="duration"
             required
-            compact
             tooltip={durationTooltip}
+            contentClassName="pl-0 sm:pl-6"
             error={
               durationHasError
                 ? formData.duration > 30
@@ -505,24 +506,16 @@ export function StepOneFormFields({
               ) : undefined
             }
           >
-            <input
-              id="duration"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className={fieldInputClass}
-              placeholder={t('surveyDurationPlaceholder')}
-              value={formData.duration === 0 || Number.isNaN(formData.duration) ? '' : formData.duration}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
-                updateFormData({ duration: parseInt(val) || 0 });
+            <DurationPicker
+              value={formData.duration || 2}
+              onChange={(val) => {
+                updateFormData({ duration: val });
                 if (attemptedSubmit && errors.duration) {
                   setErrors({ ...errors, duration: undefined });
                 }
               }}
             />
-            <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">{t('days')}</span>
-          </FieldRow>
+          </FieldBlock>
 
           <FieldBlock
             icon={Users}

@@ -61,7 +61,7 @@ export default function PaymentRetryPage() {
         if (isSlotExpired && data.payment_status !== 'expired') {
           try { await releaseExpiredSlot(id); } catch (_) { /* non-fatal */ }
         }
-        setError('Slot waktu tayang sudah tidak tersedia karena melewati batas 1 jam pembayaran. Silakan lakukan booking ulang dari dashboard.');
+        setError('Jadwal tayang sudah tidak tersedia karena melewati batas 1 jam pembayaran. Silakan lakukan booking ulang dari dashboard.');
         setLoading(false);
         return;
       }

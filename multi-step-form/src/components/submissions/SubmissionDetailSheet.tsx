@@ -996,7 +996,7 @@ export function SubmissionDetailSheet({
           <DialogDescription asChild>
             <div className="space-y-1.5 text-sm text-slate-500">
               <p>Untuk order yang <strong>sah</strong> tapi tidak dilanjutkan — peneliti mundur, salah jalur, atau duplikat.</p>
-              <p>Slot yang sudah dipesan dilepas, dan tagihan yang sempat terbit berhenti berlaku.</p>
+              <p>Jadwal yang sudah dipesan dilepas, dan tagihan yang sempat terbit berhenti berlaku.</p>
               <p>Peneliti <strong>tetap melihatnya</strong> di tab &quot;Selesai&quot; bertanda Dibatalkan, beserta catatan Anda.</p>
             </div>
           </DialogDescription>
