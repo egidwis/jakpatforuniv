@@ -3710,7 +3710,7 @@ export const cancelSchedule = async (entry: {
   });
 
   if (mine.length > 0) {
-    const { error } = await supabase
+    const { data: killedTx, error } = await supabase
       .from('transactions')
       .update({ status: 'expired', updated_at: new Date().toISOString() })
       .in('id', mine.map((t) => t.id))
@@ -3725,8 +3725,48 @@ export const cancelSchedule = async (entry: {
         Blok `invoices` di bawah sudah memakai penjaga yang sama sejak awal;
         asimetri dalam satu fungsi yang sama adalah kelalaian, bukan desain.
       */
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .select('id');
     if (error) throw error;
+
+    /*
+      ⚠️ NOL BARIS TANPA ERROR ADALAH KEGAGALAN, BUKAN KEBERHASILAN.
+
+      Ini kambuhan KEENAM dari pola yang sama di proyek ini (memori:
+      `rls-update-policy-silent-zero-rows.md`). Terukur di produksi 17 Sep
+      2026, sebagai peneliti sungguhan: SELECT melihat 1 baris, UPDATE
+      mengenai 0 baris, PostgREST TIDAK mengembalikan error — karena
+      `transactions` punya policy UPDATE admin saja dan NOL policy pemilik.
+
+      Akibatnya jadwal tampak batal sementara transaksinya `pending`
+      selamanya, layar membaca "masih ada tagihan hidup", dan peneliti
+      terdampar pada kalimat tentang admin. Persis keluhan yang berulang.
+
+      Kita SUDAH memeriksa hal ini untuk `ad_schedules`/`form_submissions`
+      lewat `explainNoRowsCancelling`; tidak memeriksanya untuk tabel UANG
+      adalah kelalaian yang sama, di tempat yang lebih mahal.
+
+      `mine` baru saja dibaca dari tabel yang sama dalam permintaan ini, jadi
+      satu-satunya yang wajar menjelaskan nol di sini adalah balapan dengan
+      webhook DOKU (baris jadi lunas — sah, dan justru harus dihormati) atau
+      izin tulis. Keduanya dibedakan di bawah supaya pesannya tidak menuduh.
+    */
+    if (!killedTx || killedTx.length === 0) {
+      const { data: kini } = await supabase
+        .from('transactions')
+        .select('id, status')
+        .in('id', mine.map((t) => t.id));
+      const masihPending = (kini || []).filter((t: any) => t.status === 'pending');
+      if (masihPending.length > 0) {
+        throw new Error(
+          'Tagihan jadwal ini gagal dimatikan: perubahannya DITOLAK database '
+          + '(kemungkinan policy RLS pada `transactions`). Jadwalnya sudah dilepas, '
+          + 'tapi tagihannya masih hidup — laporkan, ini bug dan bukan keadaan ordermu.',
+        );
+      }
+      // Nol karena sudah tidak `pending` lagi — webhook DOKU menang duluan.
+      // Itu sah dan memang harus dibiarkan; lihat penjaga lunas di atas.
+    }
   }
 
   // ⚠️ `invoices` IKUT DIMATIKAN — sebelumnya TIDAK, dan itu meninggalkan
@@ -3774,13 +3814,37 @@ export const cancelSchedule = async (entry: {
         Kalau baris seperti itu lahir lagi, `expires_at` yang mematikannya.
       */
       if (entry.id) {
-        const { error } = await supabase
+        const { data: killedInv, error } = await supabase
           .from('invoices')
           .update({ status: 'expired' })
           .in('payment_id', paymentIds)
           .eq('status', 'pending')
-          .eq('schedule_id', entry.id);
+          .eq('schedule_id', entry.id)
+          .select('id');
         if (error) throw error;
+
+        /*
+          Penjaga nol-baris yang SAMA dengan blok `transactions` di atas, dan
+          sengaja tidak disingkat jadi "kan sudah dicek di sana". Dua tabel ini
+          dilindungi aturan yang BERBEDA (`invoices` oleh sql/92, `transactions`
+          oleh sql/93); salah satunya bisa tertutup sementara yang lain terbuka,
+          dan justru asimetri itulah yang melahirkan bug ini.
+        */
+        if (!killedInv || killedInv.length === 0) {
+          const { data: kini } = await supabase
+            .from('invoices')
+            .select('id, status')
+            .eq('schedule_id', entry.id)
+            .in('payment_id', paymentIds);
+          const masihPending = (kini || []).filter((i: any) => i.status === 'pending');
+          if (masihPending.length > 0) {
+            throw new Error(
+              'Tagihan jadwal ini gagal dimatikan: perubahannya DITOLAK database '
+              + '(kemungkinan policy RLS atau trigger pada `invoices`). Jadwalnya sudah '
+              + 'dilepas, tapi tagihannya masih hidup — laporkan, ini bug.',
+            );
+          }
+        }
       }
     }
   }

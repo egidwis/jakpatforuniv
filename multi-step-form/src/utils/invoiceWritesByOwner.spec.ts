@@ -123,3 +123,77 @@ describe('penyaringan `invoices` saat membatalkan jadwal', () => {
     }
   });
 });
+
+describe('nol baris tanpa error = kegagalan, bukan keberhasilan', () => {
+  /*
+    ═════════════════════════════════════════════════════════════════════════
+    KAMBUHAN KEENAM — dan tes inilah yang seharusnya sudah ada sejak kambuhan
+    pertama. Memori proyek: `rls-update-policy-silent-zero-rows.md`.
+    ═════════════════════════════════════════════════════════════════════════
+
+    Terukur di produksi 17 Sep 2026, sebagai peneliti sungguhan (SET LOCAL ROLE
+    + klaim JWT asli, dibungkus ROLLBACK):
+
+        SELECT transactions  → 1 baris terlihat
+        UPDATE transactions  → 0 baris, TANPA ERROR   ← cacatnya
+        UPDATE invoices      → 1 baris (sql/92 sudah membukanya)
+
+    `transactions` hanya punya policy UPDATE admin; NOL policy pemilik. Maka
+    `cancelSchedule()` dari klien peneliti mengenai nol baris dan PostgREST
+    memulangkannya tanpa error. Kode berjalan terus seolah berhasil, jadwal
+    tampak batal, tapi transaksinya `pending` selamanya — lalu layar membaca
+    "masih ada tagihan hidup" dan peneliti terdampar pada kalimat tentang admin.
+
+    Diperbaiki server-side oleh sql/93. Tes ini memagari sisi KLIEN: selama
+    tulisan uang tidak memeriksa jumlah barisnya, kegagalan izin akan selalu
+    bisa menyamar jadi sukses lagi — di tabel mana pun, oleh policy mana pun.
+
+    ⚠️ Kalau tes ini merah, jangan hapus `.select()`-nya. Tambahkan penjaganya.
+  */
+
+  const bersih = body.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+
+  /** Blok `cancelSchedule` saja — di sanalah pembatalan peneliti hidup. */
+  function blokCancelSchedule(): string {
+    const mulai = bersih.indexOf('export const cancelSchedule');
+    expect(mulai).toBeGreaterThan(-1);
+    const sesudah = bersih.indexOf('export const', mulai + 20);
+    return bersih.slice(mulai, sesudah === -1 ? undefined : sesudah);
+  }
+
+  it.each(['transactions', 'invoices'])(
+    'tulisan `%s` di cancelSchedule memanggil `.select()` supaya barisnya terhitung',
+    (tabel) => {
+      const blok = blokCancelSchedule();
+      const tulisan = [...blok.matchAll(
+        new RegExp(`\\.from\\(['"]${tabel}['"]\\)[\\s\\S]{0,900}?;`, 'g'),
+      )].map((m) => m[0]).filter((b) => /\.update\(/.test(b));
+
+      expect(tulisan.length).toBeGreaterThan(0);
+      for (const t of tulisan) {
+        expect(t).toMatch(/\.select\(/);
+      }
+    },
+  );
+
+  it('cancelSchedule benar-benar memeriksa hasil nol, bukan sekadar memintanya', () => {
+    const blok = blokCancelSchedule();
+    // Dua penjaga: satu untuk transactions, satu untuk invoices.
+    const penjaga = [...blok.matchAll(/length === 0/g)];
+    expect(penjaga.length).toBeGreaterThanOrEqual(2);
+    // Dan keduanya harus bisa melempar, bukan cuma console.error.
+    expect(blok).toMatch(/DITOLAK database/);
+  });
+
+  it('membedakan "ditolak izin" dari "kalah cepat oleh webhook DOKU"', () => {
+    /*
+      Nol baris punya DUA sebab yang sah-sah berbeda. Kalau webhook DOKU lebih
+      dulu membalik barisnya jadi lunas, nol adalah hasil yang BENAR dan tidak
+      boleh dilaporkan sebagai bug — `payment_status` bukan bukti pembayaran,
+      dan uang yang sungguh diterima tidak boleh kalah oleh status di layar.
+      Karena itu penjaganya membaca ulang status sebelum menuduh.
+    */
+    const blok = blokCancelSchedule();
+    expect(blok).toMatch(/masihPending/);
+  });
+});
