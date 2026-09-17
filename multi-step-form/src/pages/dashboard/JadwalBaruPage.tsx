@@ -17,6 +17,8 @@ import { toAiringEndIso, toAiringStartIso } from '../../utils/airing-window';
 import { airingDaysOf } from './schedule/scheduleModel';
 import { createPayment } from '../../utils/payment';
 import { formatIDR } from '../../utils/currency';
+import { CostBreakdown } from '../../components/CostBreakdown';
+import { draftScheduleMoney } from '../../utils/draftScheduleMoney';
 
 /**
  * Halaman "Jadwal Baru" — tempat jadwal perpanjangan LAHIR.
@@ -140,6 +142,31 @@ export function JadwalBaruPage() {
     prizePerWinner,
     winnerCount,
     isSaving,
+  });
+
+  /*
+    Estimasi biaya — blok RINCIAN yang rencana taruh di antara kalender dan
+    tombol.
+
+    ⚠️ MODAL YANG DIGANTI HALAMAN INI TIDAK PUNYA HARGA SAMA SEKALI. Peneliti
+    mengunci tanggal — tindakan yang melahirkan tagihan — tanpa pernah melihat
+    satu angka pun.
+
+    ⚠️ Menghitung NOL di sini: `draftScheduleMoney` menyerahkannya ke
+    `deriveScheduleMoney`, sumber yang sama dengan kartu jadwal & halaman bayar.
+    Gerbang hadiah (`fundsPrizePool`, sql/37) ikut terbawa, jadi perpanjangan
+    batch lama TIDAK menawarkan hadiah yang tidak akan ditagih.
+  */
+  const money = draftScheduleMoney({
+    ordinal,
+    duration,
+    isNewBatch: plan.needsReward,
+    prizePerWinner,
+    winnerCount,
+    questionCount: submission?.question_count ?? null,
+    distributionType: submission?.distribution_type ?? null,
+    // Voucher melekat ke ORDER dan diwariskan; layar ini tidak punya input.
+    voucherCode: submission?.voucher_code ?? null,
   });
 
   // Prefill hadiah dari jadwal sebelumnya, hanya bila batch-nya memang baru.
@@ -439,6 +466,20 @@ export function JadwalBaruPage() {
           <p className="leading-relaxed">{t('scheduleAgainPoolReused')}</p>
         </div>
       )}
+
+      {/* RINCIAN — di antara kalender dan tombol, seperti rencana.
+          ⚠️ `defaultOpen` untuk perpanjangan: tidak ada Ringkasan di
+          belakangnya, jadi layar ini SATU-SATUNYA tempat harga pernah muncul.
+          ⚠️ Berlabel "estimasi", bukan tagihan — `recordedVsBilled`
+          membuktikan `total_cost` bisa menyimpang dari `invoices.amount`. */}
+      <CostBreakdown
+        total={money.total}
+        lines={money.lines}
+        note={money.note}
+        isEstimate={money.isEstimate}
+        variant="compact"
+        defaultOpen
+      />
 
       {/* ⚠️ Tombol mati SELALU menyebutkan sebabnya. Modal lama mematikannya
           lewat boolean telanjang, tanpa sepatah kata. */}

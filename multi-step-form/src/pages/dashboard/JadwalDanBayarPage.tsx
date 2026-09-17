@@ -330,6 +330,22 @@ export function JadwalDanBayarPage() {
               onChange={setPicked}
             />
           </div>
+
+          {/* RINCIAN — di antara kalender dan tombol, seperti rencana.
+              ⚠️ Keadaan ① dulu TIDAK punya harga sama sekali: peneliti
+              mengunci tanggal — tindakan yang melahirkan tagihan — tanpa
+              pernah melihat satu angka pun. Sumbernya `deriveScheduleMoney`
+              yang sama dengan keadaan ②, jadi angkanya tidak bisa berubah
+              hanya karena layarnya berpindah keadaan. */}
+          <CostBreakdown
+            total={money.total}
+            lines={money.lines}
+            note={money.note}
+            isEstimate={money.isEstimate}
+            variant="compact"
+            defaultOpen={entry.ordinal >= 2}
+          />
+
           <button
             type="button"
             onClick={handleLock}

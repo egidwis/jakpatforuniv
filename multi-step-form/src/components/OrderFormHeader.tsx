@@ -32,6 +32,21 @@ export interface OrderFormHeaderProps {
   title: string;
   /** Kalimat instruksi di bawahnya. */
   subtitle?: string;
+  /** Baris kecil di ATAS judul — konteks order (judul survei, Booking ID). */
+  eyebrow?: string;
+  /**
+   * Tampilkan tombol Batalkan Pesanan?
+   *
+   * ⚠️ Bawaannya `true`, dan itu disengaja: step Detail & Ringkasan TIDAK punya
+   * jalan keluar lain, dan `cancelOrder` adalah satu-satunya yang membuang
+   * draft (akar insiden Tri/NISMA). Menghilangkannya di sana = draft basi
+   * tertinggal.
+   *
+   * Dimatikan HANYA di layar jadwal, karena rencana menegaskan *"layar jadwal →
+   * bayar tidak punya jalan keluar samping"* — dan di sana jalan keluarnya
+   * memang sudah ada, dirender `StepSchedule` sendiri sebagai tombol Kembali.
+   */
+  showCancel?: boolean;
   /**
    * Membuang draft lalu keluar. Wajib `cancelOrder`, bukan `navigate` biasa:
    * lihat catatan no. 2 di atas.
@@ -39,7 +54,13 @@ export interface OrderFormHeaderProps {
   onCancelConfirmed: () => void;
 }
 
-export function OrderFormHeader({ title, subtitle, onCancelConfirmed }: OrderFormHeaderProps) {
+export function OrderFormHeader({
+  title,
+  subtitle,
+  eyebrow,
+  showCancel = true,
+  onCancelConfirmed,
+}: OrderFormHeaderProps) {
   const { t } = useLanguage();
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
 
@@ -47,6 +68,9 @@ export function OrderFormHeader({ title, subtitle, onCancelConfirmed }: OrderFor
     <>
       <div className="flex items-start justify-between gap-4 mb-6">
         <div className="min-w-0 space-y-1">
+          {eyebrow && (
+            <p className="text-xs text-slate-500 font-medium truncate">{eyebrow}</p>
+          )}
           <h1 className="text-xl md:text-2xl font-bold text-slate-900 leading-snug tracking-tight">
             {title}
           </h1>
@@ -57,6 +81,7 @@ export function OrderFormHeader({ title, subtitle, onCancelConfirmed }: OrderFor
           )}
         </div>
 
+        {showCancel && (
         <button
           type="button"
           onClick={() => setIsCancelDialogOpen(true)}
@@ -70,6 +95,7 @@ export function OrderFormHeader({ title, subtitle, onCancelConfirmed }: OrderFor
         >
           <X className="w-4 h-4" />
         </button>
+        )}
       </div>
 
       {/* Dialog sengaja DI LUAR pembungkus di atas — pola yang sama dengan

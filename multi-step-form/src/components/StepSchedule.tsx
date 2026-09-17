@@ -32,6 +32,16 @@ interface StepScheduleProps {
    * tertimpa (lihat resolveSubmissionMode).
    */
   exitMode?: 'step' | 'orders';
+  /**
+   * Sembunyikan judul+subjudul internal karena pemanggil sudah memasang judul
+   * segmen di atas layar.
+   *
+   * ⚠️ Tanpa ini `scheduleTitle` muncul DUA KALI: sekali sebagai subjudul
+   * segmen, sekali lagi sebagai `<h2>` di dalam kartu. Kilat (step 4) belum
+   * punya judul segmen — ia di luar cakupan rencana — jadi bawaannya tetap
+   * menampilkan.
+   */
+  hideHeading?: boolean;
 }
 
 /**
@@ -43,7 +53,7 @@ interface StepScheduleProps {
  * satu layar; secara alamat mereka terpisah karena Fase B punya dua pintu masuk
  * "kembali setelah pergi" yang tidak bisa dilayani state wizard.
  */
-export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', exitMode = 'step' }: StepScheduleProps) {
+export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', exitMode = 'step', hideHeading = false }: StepScheduleProps) {
   const { t } = useLanguage();
   const availability = useSlotAvailability(mode);
 
@@ -107,9 +117,14 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
             {/* Kilat bukan iklan, jadi judul reguler ("kapan iklanmu tayang")
                 salah alamat di sini. Wording-nya dikembalikan lewat judul yang
                 sudah ada, bukan dengan menambah label baru. */}
-            <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
-              {mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleTitle')}
-            </h2>
+            {/* ⚠️ Disembunyikan, BUKAN dihapus — spinner & tombol muat-ulang
+                di sebelahnya wajib tetap hidup. `<span>` kosong menjaga
+                `justify-between` supaya keduanya tetap rata kanan. */}
+            {hideHeading ? <span /> : (
+              <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug">
+                {mode === 'kilat' ? t('kilatScheduleTitle') : t('scheduleTitle')}
+              </h2>
+            )}
             {/* Muat PERTAMA diceritakan skeleton kalendernya, bukan spinner ini —
                 dua indikator untuk satu keadaan cuma bising. Spinner tinggal
                 untuk pemuatan ulang, saat kalendernya sudah berisi. */}
@@ -130,9 +145,11 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
               </button>
             )}
           </div>
-          <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
-            {t('scheduleSubtitle')}
-          </p>
+          {!hideHeading && (
+            <p className="text-xs md:text-sm text-slate-500 leading-relaxed">
+              {t('scheduleSubtitle')}
+            </p>
+          )}
         </div>
 
         {/* Calendar picker wrapped in card */}
