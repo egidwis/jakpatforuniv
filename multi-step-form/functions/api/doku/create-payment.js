@@ -523,12 +523,43 @@ export async function onRequest(context) {
       return json({ error: 'formSubmissionId is required' }, 400);
     }
 
-    const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
-    const supabaseKey =
-      env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY;
+    /*
+      ⚠️ GAGAL-TERTUTUP. Dulu di sini ada rantai
+      `SERVICE_ROLE || VITE_ANON || ANON` — kembaran persis dari yang sudah
+      dicabut dari `webhook.js` sesudah insiden 2026-08-10, yang entah bagaimana
+      tidak pernah ikut diperbaiki di sini.
 
-    if (!supabaseUrl || !supabaseKey) {
-      return json({ error: 'Supabase credentials not configured' }, 500);
+      Akibatnya bukan "kehilangan hak tulis" melainkan sesuatu yang jauh lebih
+      menyesatkan: dengan anon key, RLS BARIS `form_submissions` tetap
+      MELOLOSKAN barisnya, tapi GRANT KOLOM menolak `total_cost`/`email`, jadi
+      PostgREST memulangkan objek galat yang lalu dibaca sebagai "submission
+      tidak ditemukan". Peneliti melihat ordernya di layar dan diberi tahu
+      ordernya tidak ada.
+
+      Satu variabel environment yang lupa dipasang tidak boleh berubah jadi
+      role yang salah. Ia harus berhenti di sini, dengan menyebut namanya.
+    */
+    const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
+    const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl) {
+      console.error('[create-payment] VITE_SUPABASE_URL/SUPABASE_URL tidak ada di environment.');
+      return json(
+        { error: 'Supabase not configured: VITE_SUPABASE_URL/SUPABASE_URL tidak ada di environment' },
+        500
+      );
+    }
+    if (!supabaseKey) {
+      console.error('[create-payment] SUPABASE_SERVICE_ROLE_KEY tidak ada di environment.');
+      return json(
+        {
+          error:
+            'Supabase not configured: SUPABASE_SERVICE_ROLE_KEY tidak ada di environment — ' +
+            'endpoint menolak turun ke anon key (pembacaan order akan ditolak GRANT kolom ' +
+            'dan terbaca palsu sebagai "submission not found")',
+        },
+        500
+      );
     }
 
     const sbHeaders = {
@@ -543,6 +574,23 @@ export async function onRequest(context) {
         `&select=${SUBMISSION_SELECT_COLUMNS.join(',')}&limit=1`,
       { headers: sbHeaders }
     );
+    /*
+      ⚠️ DUA SEBAB, DUA KODE. `!Array.isArray(subs)` dulu menyamakan "PostgREST
+      MENOLAK permintaanmu" dengan "barisnya TIDAK ADA" — dan menerbitkan
+      kalimat yang menunjuk arah yang salah, sehingga yang dicari orang adalah
+      order yang hilang, bukan kredensial yang hilang.
+
+      Penjaga ini kembaran dari yang sudah benar pada pembacaan `ad_schedules`
+      ~20 baris di bawah; asimetri itulah yang jadi bugnya.
+    */
+    if (!subRes.ok) {
+      const detail = await subRes.text().catch(() => '?');
+      console.error(
+        `[create-payment] Gagal membaca form_submissions ${formSubmissionId} ` +
+        `(status ${subRes.status}): ${detail}`
+      );
+      return json({ error: 'Could not read submission' }, 502);
+    }
     const subs = await subRes.json();
     if (!Array.isArray(subs) || subs.length === 0) {
       return json({ error: 'Form submission not found' }, 404);
