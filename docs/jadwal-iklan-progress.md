@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` sempat ditutup `rebookSchedule`, **tapi fungsi itu DIHAPUS 18 Sep** karena menghidupkan jadwal tanpa tagihan — pesan ulang kini lewat `JadwalBaruPage` saja (§00AC); kembarannya di `handleLock` ikut ditutup 18 Sep — mengunci tanggal sekarang menyusul ke halaman bayar, penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — belum diuji browser. Utang tersisa: cron pelepas slot belum ada. Lihat §00AB |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` sempat ditutup `rebookSchedule`, **tapi fungsi itu DIHAPUS 18 Sep** karena menghidupkan jadwal tanpa tagihan — pesan ulang kini lewat `JadwalBaruPage` saja (§00AC); kembarannya di `handleLock` ikut ditutup 18 Sep — mengunci tanggal sekarang menyusul ke halaman bayar, penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — belum diuji browser. ✅ **Utang terakhir LUNAS 18 Sep**: cron pelepas slot hidup (`sql/94`, jobid 6, jalan pertama `succeeded` — 8 slot basi dilepas, nol baris lunas tersentuh; §00AD). Lihat §00AB |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -166,6 +166,112 @@ menolak order tidak aktif lewat jalur swalayan.
 nol untuk non-admin; harga lahir di `create-payment.js`, dan `deriveScheduleMoney`
 memakai nol itu sebagai pemicu cabang estimasi. Jangan "diperbaiki" dengan
 mengisi harga di RPC — itu menghidupkan lagi dua sumber kebenaran harga.
+
+### §00AD — Cron pelepas slot: hold 1 jam akhirnya ditegakkan server (2026-09-18)
+
+**Utang terakhir Phase 4, dan satu-satunya kode di fase ini yang menulis tabel
+uang tanpa penonton.**
+
+Sampai hari ini hold 1 jam adalah aturan yang **hanya ditegakkan browser**.
+`releaseExpiredSlot()` cuma jalan kalau peneliti KEBETULAN sedang membuka
+halaman jadwal/bayar/retry. Tutup tab = slot ditahan selamanya. Nol cron, nol
+Edge Function — empat `cron.schedule` yang ada semuanya notifikasi.
+
+#### Dua lingkup, sengaja dua fungsi
+
+⚠️ **Jangan disatukan.** Jebakan ini sudah tertulis di `supabase.ts:3485`:
+
+| Lingkup | Tabel | Perlakuan |
+|---|---|---|
+| ORDER (ordinal 1) | `form_submissions` | kosongkan tanggal, `payment_status='expired'` |
+| SCHEDULE (ordinal ≥2) | `ad_schedules` | tandai `cancelled`, lepas hold |
+
+Perbedaan perlakuannya disengaja: jadwal perpanjangan **tanpa tanggal tidak
+punya arti** (`create_ad_schedule` mewajibkannya), jadi ia dibatalkan — persis
+yang dilakukan `cancelSchedule()`. Memakai lingkup ORDER untuk order berjadwal
+banyak akan mematikan tagihan jadwal **saudaranya**.
+
+#### Temuan yang mengubah rancangan
+
+Nol ordinal ≥2 punya `slot_reserved_at` hari ini, dan aku hampir menyimpulkan
+lingkup SCHEDULE tidak perlu. **Itu keliru.** `create_ad_schedule` dibaca dari
+`pg_get_functiondef`: untuk peneliti ia **memaksa** `slot_booked_by := 'user'`
+dan `slot_reserved_at := NOW()`. Jadi nolnya cuma karena fitur swalayan baru
+hidup 17 Sep dan order ujinya sudah dihapus. Ordinal ≥2 ber-hold **akan** lahir.
+
+#### Tiga cacat tertangkap sebelum dijadwalkan
+
+Ketiganya wujud dari jebakan yang sama dengan `sql/93` kemarin — plpgsql tidak
+memeriksa nama kolom saat CREATE, hanya saat BERJALAN.
+
+| # | Cacat | Ditemukan oleh |
+|---|---|---|
+| 1 | `survey_pages.form_submission_id` tidak ada (namanya `submission_id`) | `information_schema` |
+| 2 | `invoices.updated_at` tidak ada sama sekali | `information_schema` |
+| 3 | `submission_id` **ambigu** antara kolom tabel & parameter OUT (42702) — fungsi gagal TOTAL | **dry-run** |
+
+⚠️ **Nomor 3 adalah alasan langkah dry-run tidak boleh dilewati.** Dua yang
+pertama bisa dicegah dengan membaca katalog; yang ketiga **hanya** dengan
+benar-benar memanggil fungsinya. Versi pertama berhasil `CREATE` lalu meledak
+saat dipanggil.
+
+#### Lubang izin yang tidak ada di rencana
+
+Sesudah penerapan pertama, `proacl` berbunyi:
+
+    authenticated=X/postgres   ← setiap peneliti yang login
+
+`REVOKE` di berkas hanya menyebut `anon`, mengikuti §00Z. Tapi `pg_default_acl`
+untuk objtype `'f'` memberi hibah ke **anon DAN authenticated**. Tiga fungsi
+`SECURITY DEFINER` yang menulis tabel uang bisa dipanggil siapa pun yang punya
+akun — dan fungsi ini **tidak memfilter per pemilik**, ia memang dirancang untuk
+cron. Satu panggilan bisa melepas slot & mematikan tagihan milik **orang lain**.
+
+**Aturan yang menggantikan §00Z:** cabut dari **setiap peran** yang muncul di
+`pg_default_acl`, lalu **verifikasi lewat `proacl`** — berkas sql BUKAN ACL
+produksi.
+
+#### Hasil, terverifikasi
+
+Tiga langkah terpisah, masing-masing disetujui pemilik produk: buat fungsi →
+dry-run (ROLLBACK) → `cron.schedule`.
+
+    dry-run cocok prediksi ... 8/8 PERSIS, nol tak terduga
+    cron jobid 6 ............. succeeded, 176 ms
+    dilepas .................. 8   (start_date NULL, hold kosong)
+    kandidat tersisa ......... 0
+    baris lunas rusak ........ 0
+
+Sidik jari global sesudahnya, semuanya **utuh**: 606 order lunas · 178 jadwal
+live · 11 jadwal bertanggal depan · 375 halaman terbit · 5 transaksi pending ·
+6 invoice pending.
+
+⚠️ Kedelapan transaksinya **sudah `expired` sebelum cron lahir** (Rp 1.571.000,
+mati sejak lama) dan `invoices` nol baris — jadi jalan pertama ini **tidak
+memicu `paid_on_dead_bill` untuk siapa pun**. Ia hanya merapikan 8 baris basi
+(4 `spam`, 2 `in_review`, 1 `cancelled`, 1 nyata tapi 109 hari lewat).
+Jalan-jalan berikutnya yang akan menyentuh reservasi hidup.
+
+#### Konsekuensi yang disengaja
+
+Cron ini **menambah** peluang `paid_on_dead_bill`. Hari ini slot kedaluwarsa
+sering tak pernah ditandai `expired`, jadi pembayaran telat diam-diam diterima
+sebagai normal. Sesudahnya ia ditolak dan dialarmkan — dan itu **perbaikan**:
+uang yang mendarat untuk slot yang sudah lepas memang harus berhenti di meja
+manusia, bukan menggerakkan jadwal yang tanggalnya sudah diberikan ke orang lain.
+
+Jaringnya sudah terpasang dan beralarm (`webhook.js:620`), jadi tidak ada yang
+perlu ditambah — tapi ia bisa menyala suatu hari, dan itu bukan regresi.
+
+#### Sisa yang jujur
+
+- **Nol uji browser** untuk cron ini. Semua di atas gerbang mesin & kueri
+  produksi. Ujinya baru mungkin kalau ada reservasi hidup yang dibiarkan lewat
+  1 jam — belum ada sejak cron dipasang.
+- Cron **tidak** menutup celah "peneliti membuka DOKU di detik ke-3500 lalu
+  transfer 10 menit kemudian". Itu tetap wilayah `paid_on_dead_bill`.
+
+---
 
 ### §00AC — Satu pintu pemesanan: `rebookSchedule()` dihapus (2026-09-18)
 
@@ -4326,4 +4432,5 @@ git log --oneline feat/dashboard-soft-dna-navbar..main   # harus kosong
 | `multi-step-form/sql/80`–`84` | **Di luar alur Jadwal Iklan.** Insiden tagihan mati 2026-09-03 ([rencananya](superpowers/plans/2026-09-03-tagihan-mati-benar-benar-mati.md)). `80` = outcome `paid_on_dead_bill`; `81` = bersih-bersih tagihan zombie (✅ **diterapkan 2026-09-03** — piutang berjalan Rp 18.772.750 → Rp 610.500, nol baris lunas tersentuh; gerbang 6a lepas); `82` = `is_stale` kenal jadwal `cancelled`; `83` = billing sadar kedaluwarsa (**tidak ada di rencana** — lihat jebakan no. 25); `84` = `doku_request_id` + `doku_cancelled_at`. Rekaman perbaikan datanya di `sql/ops_fix_order_af004b84_dead_bill_payment.sql` |
 | `multi-step-form/sql/85` (**DUA berkas**) | **Di luar alur Jadwal Iklan.** ⚠️ **Nomor `85` dipakai dua kali** — `85_stale_bill_and_authoritative_url` (jalur uang, diterapkan 2026-09-08) dan `85_add_ai_prescreening_to_submissions` (kolom `form_submissions.ai_prescreening`, diterapkan 2026-09-10). Keduanya lahir di branch paralel yang sama-sama melihat `84` sebagai tertinggi; objeknya tak berhubungan, keduanya sudah di produksi, jadi **sengaja tidak diganti nama**. Yang jalur uang: `authoritative_payment_url()` — satu tempat yang menjawab "tagihan mana yang berwenang untuk jadwal ini", dipakai resolver `/bayar/<ad_schedules.id>` — plus outcome `paid_on_stale_bill`, sengaja **dipisah** dari `paid_on_dead_bill` karena tindakan adminnya berbeda: pindahkan uangnya vs kembalikan. Duduk perkara penomorannya di [`multi-step-form/sql/README.md`](../multi-step-form/sql/README.md). ⚠️ `86` masih kosong dan tetap dipesan untuk pelebaran `create_ad_schedule()` di Phase 4 |
 | `multi-step-form/sql/87` | **Di luar alur Jadwal Iklan**, tapi prasyarat Phase 4. `reason = 'bill_cancelled'` (memisahkan TAGIHAN yang dibatalkan dari JADWAL yang dibatalkan — sebelumnya jatuh ke `ELSE 'expired'` dan menyuruh peneliti membuang slot yang masih dipegangnya) + `invoices.doku_cancel_last_error` (jawaban DOKU akhirnya tersimpan; penolakan pertamanya langsung menjawab kenapa Cancel Order tidak pernah berhasil). ⚠️ Ia juga **mencabut hibah `anon`** yang datang dari `pg_default_acl` — lihat §00Z. ✅ diterapkan & diverifikasi 2026-09-10. `86` **tetap dipesan** untuk pelebaran `create_ad_schedule()` di Phase 4 |
+| `multi-step-form/sql/94` | **Cron pelepas slot kedaluwarsa** — utang terakhir Phase 4. Dua fungsi terpisah (`release_expired_order_slots` untuk `form_submissions`, `release_expired_schedule_slots` untuk `ad_schedules` ordinal ≥2) plus pembungkus `cron_release_expired_slots`. ✅ **diterapkan & dijadwalkan 2026-09-18** (`*/10 * * * *`, jobid 6, jalan pertama `succeeded`). Penjaga lunas ada di dalam `WHERE` supaya tidak ada jendela race dengan webhook DOKU. ⚠️ Tiga cacat nama-kolom tertangkap sebelum dijadwalkan — yang ketiga (ambiguitas 42702) **hanya** ketahuan dari dry-run. ⚠️ `REVOKE` wajib menyebut `authenticated` JUGA, bukan hanya `anon`. Lihat §00AD |
 | `multi-step-form/sql/54` | **Di luar alur Jadwal Iklan.** `doku_webhook_events` — jejak permanen notifikasi DOKU, dari insiden webhook 2026-08-10 ([rencananya](superpowers/plans/2026-08-10-doku-webhook-silent-failure.md)). Sengaja mengambil `54` dan bukan `50`, supaya tiga rencana yang sudah mengklaim `50`–`53` (`reward_pools`, Task 11, Task 13) tidak perlu bergeser untuk keempat kalinya — migrasi-migrasi itu saling independen, jadi urutan penerapan tidak jadi soal. **Nomor bebas berikutnya untuk pekerjaan Jadwal Iklan tetap `50`.** |
