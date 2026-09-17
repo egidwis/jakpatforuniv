@@ -8,6 +8,7 @@ import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
 import { restoreDraft } from '../utils/draftRestore';
 import { isAutoApprovalPath as computeIsAutoApprovalPath } from '../utils/review-path';
 import { isBookingClosedForDate } from '../utils/airing-window';
+import { restoredDraftDuration } from '../utils/draftDuration';
 import { calculateTotalCost } from '../utils/cost-calculator';
 import { submitOrder, orderSubmitErrorKey } from '../utils/submitOrder';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
@@ -51,7 +52,7 @@ const defaultFormData: SurveyFormData = {
   description: '',
   questionCount: 0,
   criteriaResponden: '',
-  duration: 1, // Default 1 hari
+  duration: 2, // Default 2 hari (seragam dengan perpanjangan jadwal)
   startDate: '',
   endDate: '',
 
@@ -93,6 +94,16 @@ export function MultiStepForm() {
     if (!draft.formData) return defaultFormData;
 
     const merged = { ...defaultFormData, ...draft.formData };
+
+    /*
+      ⚠️ DURASI TERSIMPAN YANG SAH SELALU MENANG. Versi sebelumnya menimpa
+      `duration === 1` menjadi 2 untuk "menyeragamkan draft lama dengan default
+      baru" — tapi 1 hari ada di `DURATION_PRESETS`, jadi kondisi itu juga
+      menelan pilihan sadar peneliti. Dan durasi adalah pengali HARGA: draft
+      yang disimpan sebagai 1 hari terbuka kembali sebagai 2 hari dengan angka
+      yang ikut naik, tanpa satu pun pemberitahuan.
+    */
+    merged.duration = restoredDraftDuration(draft.formData.duration, defaultFormData.duration);
 
     // Tanggal dari draft DIPERTAHANKAN selama masih sah. Versi sebelumnya
     // mengosongkannya tanpa syarat setiap mount — padahal `currentStep` ikut
