@@ -89,7 +89,7 @@ membaca baris yang sama.
 | Phase 1B | Pemberitahuan weekend/hari libur di jalur review manual | — | ⬜ backlog, tidak memblokir |
 | **Phase 2** | **Satukan model jadwal ke `ad_schedules`** | 🟡 Task 8 ✅ · 8B-1 ✅ · 8C ✅ · 8D ✅ · **9A ✅ `sql/46`** | 🟡 **9B ✅ · 12 ✅ (copy)** — sisa Task 10 & 11 |
 | **Phase 3** | **Papan "Schedule" di dashboard admin** | ✅ `sql/46` | 🟡 **papan sudah jalan**; sisa: adu visual dengan Page Calendar lalu pensiunkan yang lama |
-| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-17 — dideploy & diuji browser.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` sempat ditutup `rebookSchedule`, **tapi fungsi itu DIHAPUS 18 Sep** karena menghidupkan jadwal tanpa tagihan — pesan ulang kini lewat `JadwalBaruPage` saja (§00AC); kembarannya di `handleLock` ikut ditutup 18 Sep — mengunci tanggal sekarang menyusul ke halaman bayar, penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — belum diuji browser. ✅ **Utang terakhir LUNAS 18 Sep**: cron pelepas slot hidup (`sql/94`, jobid 6, jalan pertama `succeeded` — 8 slot basi dilepas, nol baris lunas tersentuh; §00AD). Lihat §00AB |
+| **Phase 4** | **Tombol "Jadwalkan Iklan Lagi" aktif di dashboard user** | ✅ `sql/50`·`86`·`88`·`89`·`90`·`91`·`92`·`93`·`94` diterapkan & diverifikasi | ✅ **DITUTUP 2026-09-18 — dideploy & diuji browser, nol utang.** Peneliti menjadwalkan, membatalkan, dan memesan ulang perpanjangan **sendiri tanpa admin**. Kelima penghalang 10 Sep tumbang; lubang pesan-ulang `ordinal ≥ 2` sempat ditutup `rebookSchedule`, **tapi fungsi itu DIHAPUS 18 Sep** karena menghidupkan jadwal tanpa tagihan — pesan ulang kini lewat `JadwalBaruPage` saja (§00AC); kembarannya di `handleLock` ikut ditutup 18 Sep — mengunci tanggal sekarang menyusul ke halaman bayar, penghalang jadwal mati ikut dibereskan (`sql/90`). ⚠️ Peneliti TETAP tidak bisa menukar jadwal yang masih berjalan — itu wewenang admin. Pembatalan oleh peneliti kini mematikan link DOKU-nya (`f04ac21` + `sql/91`) — ✅ **diuji browser 18 Sep, berhasil**. ✅ **Utang terakhir LUNAS 18 Sep**: cron pelepas slot hidup (`sql/94`, jobid 6, jalan pertama `succeeded` — 8 slot basi dilepas, nol baris lunas tersentuh; §00AD). Lihat §00AB |
 | **Task 13** | **Tagihan fleksibel per jadwal** (multi-invoice, batal per jadwal, Extra Ad jadi sifat jadwal) | ✅ `sql/53`·`60`·`62`·`63`·`64` diterapkan & diverifikasi | ✅ selesai di branch 2026-08-19 · ⬜ **belum dideploy**, dashboard peneliti **belum diuji manual** |
 
 🔴 **DB SEDANG MENDAHULUI KODE — dan salah satunya membakar email tiap 15 menit.**
@@ -547,13 +547,14 @@ produksi atau `wrangler pages dev`.
 #### Yang masih menggantung
 
 - ~~Commit belum di-push~~ → **SUDAH di-push & dideploy 17 Sep** (`e2aafab`..`b741223`, sembilan commit). `sql/89` & `sql/90` sudah diterapkan; DB dan kode sejalan.
-- **Cron pelepas slot kedaluwarsa belum ada.** Penegakan hold masih murni klien —
-  ia hanya berjalan kalau peneliti sedang membuka halamannya. Diukur 17 Sep:
-  8 slot ber-hold lewat, **nol** bertanggal masa depan, **nol** punya transaksi
-  pending, 7 dari 8 berstatus `spam`/`cancelled`/`in_review`. Jadi tidak ada yang
-  memakan kuota hari ini — ia pencegahan, bukan perbaikan. Rancangannya (termasuk
-  peringatan bahwa penjaga lunas WAJIB di dalam `WHERE`) ada di
-  `~/.claude/plans/bantu-aku-diskusi-tentang-flickering-karp.md`.
+- ~~**Cron pelepas slot kedaluwarsa belum ada.**~~ → ✅ **HIDUP 18 Sep 2026**
+  (`sql/94`, jobid 6, `*/10 * * * *`). Penegakan hold tidak lagi murni klien.
+  Jalan pertama `succeeded`: kedelapan slot ber-hold lewat yang diukur 17 Sep
+  dilepas, **nol baris lunas tersentuh**, sidik jari global utuh. Penjaga lunas
+  memang diletakkan di dalam `WHERE` seperti yang diperingatkan rancangannya.
+  Duduk perkaranya — termasuk tiga cacat nama-kolom yang tertangkap sebelum
+  dijadwalkan, dan lubang izin `authenticated` yang tidak ada di rancangan —
+  ada di **§00AD**.
 
 ### 00-kartu. 🟢 Kartu Reservasi Jadwal berhenti menyamakan «dibatalkan», «kedaluwarsa», dan «lewat batas bayar» (2026-09-11)
 
