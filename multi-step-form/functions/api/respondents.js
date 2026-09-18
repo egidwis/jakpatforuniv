@@ -9,28 +9,70 @@ import { createClient } from '@supabase/supabase-js';
  * Two modes:
  *   1. No page_id/slug → returns list of published surveys with respondent counts
  *   2. With page_id or slug → returns all respondents for that specific survey
+ *
+ * ⚠️ ENDPOINT INI MENGIRIM PII: `jakpat_id` + `e_wallet_number` responden.
+ * Ia memakai service-role (lihat `keyToUse` di bawah), jadi RLS TIDAK menjadi
+ * lapis kedua — gerbang API key adalah satu-satunya penjaga. Perlakukan setiap
+ * perubahan di sini seperti perubahan pada pintu brankas.
  */
 
+/**
+ * Header CORS.
+ *
+ * Bawaannya: TIDAK ADA header CORS sama sekali. Endpoint ini mengirim nomor
+ * e-wallet, dan data seperti itu tidak punya urusan diambil dari dalam browser.
+ * Panggilan server-to-server tidak pernah memeriksa CORS, jadi ketiadaan header
+ * ini tidak memutus klien backend mana pun — ia hanya menutup pintu browser.
+ *
+ * Kalau suatu saat ada dashboard web yang memang perlu memanggilnya langsung,
+ * isi env var `RESPONDENT_API_ALLOWED_ORIGIN` dengan origin-nya
+ * (mis. `https://undian.example.com`). Sengaja env var, bukan hardcode: origin
+ * bisa berubah tanpa deploy, dan tidak ada daftar origin yang tercecer di kode.
+ *
+ * ⚠️ Jangan kembalikan `'*'`. Dengan `*`, halaman web mana pun yang dibuka
+ * korban bisa membaca respons ini begitu ia memegang API key.
+ */
+function buildCorsHeaders(env) {
+    const headers = { 'Content-Type': 'application/json' };
+    const allowedOrigin = env.RESPONDENT_API_ALLOWED_ORIGIN;
+    if (allowedOrigin && allowedOrigin !== '*') {
+        headers['Access-Control-Allow-Origin'] = allowedOrigin;
+        headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS';
+        headers['Access-Control-Allow-Headers'] = 'X-API-Key, Content-Type';
+        headers['Vary'] = 'Origin';
+    }
+    return headers;
+}
+
 export async function onRequestGet(context) {
-    const corsHeaders = {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'X-API-Key, Content-Type',
-    };
+    const corsHeaders = buildCorsHeaders(context.env);
 
     // 0. Authenticate — Require JFU_RESPONDENT_API_KEY
+    //
+    // ⚠️ HEADER SAJA. `?api_key=` DICABUT 2026-09-18 — jangan dihidupkan lagi.
+    //
+    // Key yang lewat query string ikut tertulis ke access log Cloudflare, log
+    // server pemanggil, dan header `Referer` bila URL-nya pernah tersentuh
+    // browser. Sekali bocor, seluruh basis data e-wallet responden terbuka,
+    // karena endpoint ini memakai service-role tanpa RLS sebagai lapis kedua.
+    //
+    // Header tidak pernah masuk ke log-log itu. Biayanya bagi klien: satu baris
+    // berubah, dari `?api_key=…` menjadi header `X-API-Key: …`.
     const apiKey = context.env.JFU_RESPONDENT_API_KEY;
-    const url = new URL(context.request.url);
 
-    const providedKey =
-        context.request.headers.get('X-API-Key') ||
-        url.searchParams.get('api_key');
+    const providedKey = context.request.headers.get('X-API-Key');
 
-    if (!apiKey || providedKey !== apiKey) {
+    if (!apiKey || !providedKey || providedKey !== apiKey) {
+        // Pesan dibedakan HANYA untuk kasus "key dikirim lewat query string",
+        // supaya klien lama tidak menghabiskan waktu menebak kenapa key yang
+        // mereka yakini benar tiba-tiba ditolak. Ini tidak membocorkan apa pun:
+        // ia cuma memberi tahu CARA mengirim, bukan nilainya.
+        const usedQueryParam = new URL(context.request.url).searchParams.has('api_key');
         return new Response(JSON.stringify({
             status: 'error',
-            message: 'Unauthorized. Valid API key required.',
+            message: usedQueryParam && !providedKey
+                ? 'Unauthorized. API key via ?api_key= is no longer accepted — send it as the X-API-Key request header instead.'
+                : 'Unauthorized. Valid API key required in the X-API-Key request header.',
         }), {
             status: 401,
             headers: corsHeaders,
@@ -97,6 +139,17 @@ export async function onRequestGet(context) {
                 .from('survey_pages')
                 .select('id, slug, title, created_at, submission_id, form_submissions!submission_id(criteria_responden), page_respondents(count)')
                 .eq('is_published', true)
+                // ⚠️ `is_hidden` DIHORMATI sejak 2026-09-18 — dulu tidak, dan itu bug.
+                //
+                // Admin yang menyembunyikan sebuah halaman mengira ia sudah menariknya
+                // dari peredaran. Sampai hari ini endpoint ini mengabaikannya sepenuhnya,
+                // jadi e-wallet respondennya tetap terunduh penuh oleh platform undian.
+                // sql/42:244-246 bahkan MENYARANKAN `is_hidden` sebagai remediasi PII —
+                // saran yang tidak pernah bekerja di sini.
+                //
+                // Bentuk `.or()` ini menyamai /api/surveys: `is_hidden` NULL (baris lama,
+                // sebelum kolomnya ada) diperlakukan sebagai "tidak disembunyikan".
+                .or('is_hidden.eq.false,is_hidden.is.null')
                 .order('created_at', { ascending: false });
 
             if (pagesError) throw pagesError;
@@ -177,7 +230,12 @@ export async function onRequestGet(context) {
         let pageQuery = supabase
             .from('survey_pages')
             .select('id, slug, title, publish_start_date, publish_end_date, submission_id, form_submissions!submission_id(prize_per_winner, winner_count, criteria_responden)')
-            .eq('is_published', true);
+            .eq('is_published', true)
+            // ⚠️ `is_hidden` dihormati di sini JUGA — lihat alasan lengkap di Mode 1.
+            // Menyaringnya hanya di Mode 1 tidak menutup apa pun: Mode 2 adalah yang
+            // benar-benar mengirim `e_wallet_number`, dan ia bisa dipanggil langsung
+            // dengan page_id/slug tanpa pernah menyentuh daftar Mode 1.
+            .or('is_hidden.eq.false,is_hidden.is.null');
 
         if (pageId) {
             pageQuery = pageQuery.eq('id', pageId);
@@ -265,14 +323,22 @@ export async function onRequestGet(context) {
     }
 }
 
-// Handle CORS preflight for X-API-Key header
-export async function onRequestOptions() {
-    return new Response(null, {
-        headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, OPTIONS',
-            'Access-Control-Allow-Headers': 'X-API-Key, Content-Type',
-            'Access-Control-Max-Age': '86400',
-        },
-    });
+/**
+ * Preflight CORS.
+ *
+ * ⚠️ Harus memakai sumber kebijakan yang SAMA dengan onRequestGet. Preflight yang
+ * murah hati di depan gerbang yang ketat adalah cara klasik menghidupkan kembali
+ * lubang yang baru saja ditutup: browser diberi izin di sini, lalu ditolak di sana.
+ *
+ * Tanpa `RESPONDENT_API_ALLOWED_ORIGIN`, respons ini tidak memuat header CORS sama
+ * sekali dan browser membatalkan permintaannya — persis yang diinginkan untuk
+ * endpoint yang mengirim nomor e-wallet.
+ */
+export async function onRequestOptions(context) {
+    const headers = buildCorsHeaders(context.env);
+    delete headers['Content-Type'];   // preflight tidak punya badan
+    if (headers['Access-Control-Allow-Origin']) {
+        headers['Access-Control-Max-Age'] = '86400';
+    }
+    return new Response(null, { headers });
 }
