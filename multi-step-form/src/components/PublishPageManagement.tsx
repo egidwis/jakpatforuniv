@@ -8,7 +8,7 @@ import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { LiveFeedTab } from './publish-pages/LiveFeedTab';
 import { PageCatalogTab } from './publish-pages/PageCatalogTab';
 import { PageDetailDrawer } from './publish-pages/PageDetailDrawer';
-import type { PageData } from './publish-pages/types';
+import { isKilatPage, type PageData } from './publish-pages/types';
 import { toast } from 'sonner';
 import { fetchProfileNames } from '../utils/profileNames';
 
@@ -49,7 +49,8 @@ const PAGE_SELECT = `
         university,
         prize_per_winner,
         winner_count,
-        criteria_responden
+        criteria_responden,
+        distribution_type
     ),
     page_respondents (
         count
@@ -119,7 +120,26 @@ export function PublishPageManagement() {
             if (error) throw error;
             const decorated = await decorateOwners(data || []);
             const now = Date.now();
-            setLivePages(decorated.filter(p => isLive(p, now)).sort(compareDisplayOrder));
+            // ── Kilat dibuang dari feed live (Phase 5) ──
+            //
+            // Tab ini adalah SUMBU FEED: urutan kartu di aplikasi Jakpat, mana
+            // yang disembunyikan, mana yang masih banner default. Halaman Kilat
+            // tidak pernah menjadi kartu feed — ia tujuan pendaratan push
+            // notification — jadi kehadirannya di sini membuat SETIAP angka di
+            // layar ini berbohong. Terukur 18 Sep: 32 baris untuk 4 iklan
+            // reguler, dan badge "17 banner default" seluruhnya Kilat padahal
+            // NOL iklan reguler butuh banner.
+            //
+            // Badge ikut benar dengan sendirinya: ia menghitung dari daftar ini.
+            //
+            // ⚠️ Halaman Kilat TIDAK hilang dari admin — ia tetap ada di tab
+            // "Semua Page" (inventaris), dan tautannya disalin dari tab Page
+            // pada order-nya. Ini penyaringan sumbu, bukan penyembunyian.
+            //
+            // ⚠️ KEMBAR KETIGA. SurveyListingPage.tsx dan functions/api/surveys.js
+            // punya filter yang sama. Ubah satu, tinjau ketiganya.
+            const feedOnly = decorated.filter(p => !isKilatPage(p));
+            setLivePages(feedOnly.filter(p => isLive(p, now)).sort(compareDisplayOrder));
         } catch (error) {
             console.error('Error fetching live pages:', error);
             toast.error('Gagal memuat feed live');

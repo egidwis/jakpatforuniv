@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Users, Trophy, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { publicPagePath } from '@/utils/page-url';
+import { isKilatPage } from '@/components/publish-pages/types';
 
 /**
  * Normalize a schedule date string for accurate time comparison.
@@ -44,10 +45,9 @@ function normalizeScheduleDate(dateStr: string | null | undefined): Date {
  * BUKAN Kilat, bukan "tidak diketahui jadi buang". Salah di sini = 11 halaman
  * hidup lenyap dari /pages.
  */
-export function isKilatPage(page: any): boolean {
-    const sub = Array.isArray(page?.form_submissions) ? page.form_submissions[0] : page?.form_submissions;
-    return sub?.distribution_type === 'kilat';
-}
+// Implementasi tunggalnya ada di publish-pages/types.ts — diekspor ulang di
+// sini supaya pemakai lama (dan tesnya) tetap mengimpor dari berkas ini.
+export { isKilatPage };
 
 export function SurveyListingPage() {
     const [pages, setPages] = useState<any[]>([]);

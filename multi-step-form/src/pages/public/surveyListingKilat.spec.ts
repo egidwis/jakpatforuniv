@@ -117,3 +117,86 @@ describe('kontrak: peneliti tidak menerima tautan halaman Kilat', () => {
         expect(body).toContain('GERBANG PRIVASI');
     });
 });
+
+/**
+ * ⚠️ HIBAH KOLOM `anon` — KONTRAK YANG TIDAK TERLIHAT DARI KODE.
+ *
+ * `form_submissions` TIDAK memberi `anon` hibah SELECT tingkat tabel. Yang ada
+ * adalah hibah per-KOLOM yang sempit dan disengaja (tanpa email, telepon, nama,
+ * universitas, angka uang). Kalau kueri publik meminta SATU kolom di luar daftar
+ * itu, PostgREST menolak SELURUH kueri — bukan hanya kolomnya — dengan
+ * "permission denied for table form_submissions".
+ *
+ * Ini bukan hipotesis. Phase 5 menambahkan `distribution_type` ke join di
+ * /api/surveys dan /pages tanpa hibahnya; keduanya MATI TOTAL di produksi
+ * (nol iklan termuat) sampai sql/96 dijalankan. Tidak ada satu pun tes yang
+ * menangkapnya, karena hibah hidup di database, bukan di kode.
+ *
+ * Berkas ini tidak bisa menghubungi database. Yang bisa ia lakukan — dan yang
+ * benar-benar berguna — adalah mengunci DAFTARNYA di sini, supaya penambahan
+ * kolom berikutnya pada join publik gagal di CI dan memaksa penulisnya
+ * memutuskan secara sadar: hibahkan kolomnya, atau jangan memintanya.
+ *
+ * Menambah kolom baru ke join publik? Tambahkan hibahnya lewat berkas sql
+ * (lihat sql/96), LALU tambahkan namanya ke daftar ini.
+ */
+describe('kontrak hibah kolom anon pada form_submissions', () => {
+    /**
+     * Sesuai produksi setelah sql/96 (8 kolom). Diverifikasi lewat
+     * information_schema.column_privileges 2026-09-18.
+     */
+    const ANON_BOLEH_BACA = new Set([
+        'criteria_responden',
+        'distribution_type',
+        'end_date',
+        'id',
+        'prize_per_winner',
+        'start_date',
+        'survey_url',
+        'winner_count',
+    ]);
+
+    const LISTING_SRC = readFileSync(
+        path.resolve(__dirname, './SurveyListingPage.tsx'), 'utf8');
+    const SURVEYS_SRC = readFileSync(
+        path.resolve(__dirname, '../../../functions/api/surveys.js'), 'utf8');
+
+    /** Ambil kolom yang diminta dari `form_submissions!submission_id(...)`. */
+    const kolomJoinPublik = (src: string): string[] => {
+        const out: string[] = [];
+        const re = /form_submissions!submission_id\s*\(([^)]*)\)/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(src)) !== null) {
+            out.push(...m[1].split(',').map(s => s.trim()).filter(Boolean));
+        }
+        return out;
+    };
+
+    it('/pages hanya meminta kolom yang dihibahkan ke anon', () => {
+        const kolom = kolomJoinPublik(LISTING_SRC);
+        expect(kolom.length).toBeGreaterThan(0);
+        for (const k of kolom) {
+            expect(ANON_BOLEH_BACA.has(k), `kolom '${k}' TIDAK dihibahkan ke anon — kueri /pages akan ditolak seluruhnya`).toBe(true);
+        }
+    });
+
+    it('/api/surveys hanya meminta kolom yang dihibahkan ke anon', () => {
+        const kolom = kolomJoinPublik(SURVEYS_SRC);
+        expect(kolom.length).toBeGreaterThan(0);
+        for (const k of kolom) {
+            expect(ANON_BOLEH_BACA.has(k), `kolom '${k}' TIDAK dihibahkan ke anon — kueri /api/surveys akan ditolak seluruhnya`).toBe(true);
+        }
+    });
+
+    /**
+     * Pagar PII: daftar di atas tidak boleh diam-diam tumbuh ke kolom sensitif
+     * hanya supaya tes di atas hijau. Kalau suatu saat salah satu ini memang
+     * perlu dibaca publik, itu keputusan produk — bukan perbaikan tes.
+     */
+    it('daftar hibah tidak mengandung kolom PII atau uang', () => {
+        for (const terlarang of ['email', 'phone_number', 'full_name', 'university',
+                                 'total_cost', 'subtotal', 'ppn_amount', 'auth_user_id']) {
+            expect(ANON_BOLEH_BACA.has(terlarang), `'${terlarang}' tidak boleh ada di daftar hibah anon`).toBe(false);
+        }
+    });
+});

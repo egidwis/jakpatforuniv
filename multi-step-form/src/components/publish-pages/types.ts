@@ -87,6 +87,26 @@ export function usesPlaceholderBanner(p: PageData): boolean {
 }
 
 /**
+ * Apakah halaman ini milik order Kilat?
+ *
+ * Ini SATU-SATUNYA implementasi di sisi React; `SurveyListingPage.tsx`
+ * mengekspor ulang dari sini, dan `functions/api/surveys.js` memegang kembaran
+ * yang harus tetap sama (Pages Function tidak bisa mengimpor modul src/).
+ *
+ * ⚠️ HALAMAN YATIM WAJIB DIPERLAKUKAN SEBAGAI BUKAN-KILAT. Halaman tanpa
+ * `submission_id` (pengumuman, iklan manual) punya `form_submissions` null.
+ * Null berarti "bukan Kilat", BUKAN "tidak diketahui jadi buang" — 11 halaman
+ * hidup di produksi bergantung pada perbedaan itu.
+ *
+ * Bentuk `form_submissions` bisa objek ATAU array tergantung bagaimana
+ * PostgREST menyimpulkan relasinya, jadi keduanya ditangani.
+ */
+export function isKilatPage(p: { form_submissions?: any } | null | undefined): boolean {
+    const sub = Array.isArray(p?.form_submissions) ? p.form_submissions[0] : p?.form_submissions;
+    return sub?.distribution_type === 'kilat';
+}
+
+/**
  * Keadaan halaman → token chip bersama, supaya Pages berhenti menulis pil
  * Tailwind sendiri sementara Schedule dan Submissions memakai STATUS_TOKENS.
  *
