@@ -12,8 +12,28 @@ Berkas ini adalah satu-satunya catatan urutannya.
    `50` **sudah terisi** sejak 2026-09-11 — `50_reward_pools.sql`, persis objek
    yang nomornya dipesan sejak 2026-08-10. **`86` masih dipesan** — untuk
    pelebaran `create_ad_schedule()` di Phase 4 (penjadwalan swalayan). Per
-   2026-09-11 `86` masih kosong; nomor bebas berikutnya tetap `88`
-   (`87` sudah dipakai).
+   2026-09-11 `86` masih kosong.
+
+   Per **2026-09-18** nomor bebas berikutnya **`96`**. ⚠️ Jangan percaya angka ini
+   begitu saja — ia basi segera setelah ada yang menambah berkas; jalankan
+   `git fetch` dan perintah `git ls-tree` di aturan 3 sebelum mengambil nomor.
+
+   ⚠️ **`95` BERTABRAKAN — dua berkas, keduanya sudah di produksi 2026-09-18:**
+
+   | Berkas | Isi |
+   |---|---|
+   | `95_ad_schedules_notifications.sql` | Notifikasi tayang & selesai per-jadwal (`ad_schedules.live_notified_at`, `notify_primary_ads_live/completed`) |
+   | `95_kilat_punya_halaman.sql` | Phase 5 — `ensure_survey_page()` mencakup Kilat |
+
+   Tidak diganti nama (aturan 3: keduanya sudah dijalankan). Terapkan **notifikasi
+   dulu, baru Kilat** bila membangun ulang dari nol — keduanya tidak saling
+   menyentuh objek, jadi urutannya hanya soal konsistensi dengan produksi.
+
+   **Persis tabrakan `85` terulang**, dan sebabnya sama: langkah `git ls-tree`
+   dilewati. `95_ad_schedules_notifications.sql` sudah mendarat di `main` lewat
+   commit `e41b053` beberapa jam lebih dulu, tapi penulis `95_kilat_punya_halaman.sql`
+   hanya melihat `94` sebagai tertinggi di working tree-nya. Kalau aturan 3 terasa
+   bertele-tele: ini kali kedua dalam sebulan.
 3. **Nomor baru mengambil angka tertinggi + 1.** Kalau angka itu sudah dipakai
    dan sudah diterapkan ke produksi, pakai akhiran huruf (`60b`) — jangan
    mengganti nama berkas yang sudah dijalankan orang lain.

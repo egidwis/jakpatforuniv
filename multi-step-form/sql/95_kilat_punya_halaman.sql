@@ -2,6 +2,17 @@
 -- sql/95 — KILAT PUNYA HALAMAN (Phase 5)
 -- ============================================================================
 --
+-- ⚠️ NOMOR 95 BERTABRAKAN. Ada DUA berkas `95` di repo ini, keduanya sudah
+-- diterapkan ke produksi 2026-09-18:
+--
+--   95_ad_schedules_notifications.sql  — notifikasi tayang/selesai per-jadwal
+--   95_kilat_punya_halaman.sql         — berkas ini
+--
+-- Keduanya tidak menyentuh objek yang sama, jadi urutannya tidak penting secara
+-- teknis. Tidak diganti nama karena keduanya sudah dijalankan (aturan 3 di
+-- sql/README.md). Sebabnya: `git ls-tree origin/main` dilewati saat mengambil
+-- nomor — persis pengulangan tabrakan `85`.
+--
 -- ⚠️ INI MEMBALIK INVARIAN, BUKAN MENAMBAH FITUR.
 --
 -- Sejak sql/42, "order Kilat tidak boleh punya halaman" ditegakkan di ENAM

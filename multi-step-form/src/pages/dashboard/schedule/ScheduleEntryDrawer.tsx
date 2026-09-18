@@ -285,11 +285,15 @@ export function ScheduleEntryDrawer({
                 Draft
               </Chip>
             ) : isPaid ? (
-              // ⚠️ "belum ada halaman" dan "memang tidak punya halaman" HARUS
-              // berbeda: Kilat sudah pergi ke cabang chip-nya sendiri di atas
-              // (guard ensure_survey_page, sql/42), jadi sampai di sini artinya
-              // iklan reguler lunas yang halamannya belum dibuat — pekerjaan
-              // tertunda, bukan keadaan normal.
+              // Kilat sudah pergi ke cabang chip-nya sendiri di atas, jadi chip
+              // ini hanya dilihat iklan reguler lunas yang halamannya belum
+              // dibuat — pekerjaan tertunda, bukan keadaan normal.
+              //
+              // ⚠️ Pembedaan lama "belum ada halaman" vs "memang tidak punya
+              // halaman" SUDAH TIDAK BERLAKU sejak Phase 5 (sql/95): Kilat kini
+              // punya halaman juga, dan Kilat lunas TANPA halaman adalah anomali
+              // — diperingatkan di panel Kilat di bawah, bukan lewat chip ini,
+              // karena chip Kilat menandai jalur distribusinya.
               <Chip variant="red" size="sm" title="Iklan sudah lunas tapi halamannya belum dibuat">
                 ⚠ Belum ada halaman
               </Chip>
@@ -331,9 +335,25 @@ export function ScheduleEntryDrawer({
                       Jalur Distribusi Langsung
                     </h4>
                   </div>
+                  {/* Sejak Phase 5 (sql/95) Kilat PUNYA halaman — kalimat lama
+                      ("tanpa menggunakan halaman web landing page") berbohong ke
+                      admin. Tautannya dikelola di tab Page order, bukan di sini;
+                      drawer ini per-JADWAL dan tetap monitoring. */}
                   <p className="text-xs text-amber-800 leading-relaxed">
-                    Survei JFU Kilat disiarkan langsung melalui platform panel di luar JFU tanpa menggunakan halaman web landing page.
+                    Survei JFU Kilat disiarkan lewat push notification di aplikasi Jakpat, tidak
+                    tampil di daftar iklan publik. Tautan pendaratannya ada di tab Page order ini.
                   </p>
+
+                  {/* Anomali: order lunas WAJIB punya halaman, kalau tidak ada
+                      tautan untuk dipasang ke survei Jakpat dan iklannya tidak
+                      bisa disiarkan. Sebelum Phase 5 kondisi ini normal, jadi
+                      tidak ada yang memperingatkannya. */}
+                  {isPaid && !page && (
+                    <p className="text-xs font-semibold text-rose-700 leading-relaxed">
+                      ⚠ Halaman belum terbentuk meski jadwal ini lunas — iklan belum bisa
+                      disiarkan. Periksa tab Page order.
+                    </p>
+                  )}
                   <div className="pt-2 border-t border-amber-200/70 grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <span className="text-amber-700/80 block text-[11px]">Waktu Siaran</span>
