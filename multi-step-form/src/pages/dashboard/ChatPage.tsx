@@ -5,7 +5,18 @@ import { HelpCircle, Send, Bot, Sparkles, ArrowRight, ExternalLink, Calendar, Pl
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
-import { supabase, getOrCreateChatSession, getChatMessages, saveChatMessage, getFormSubmissionsByUser, fetchAdSchedules, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
+import { 
+    supabase, 
+    getOrCreateChatSession, 
+    getChatMessages, 
+    saveChatMessage, 
+    getFormSubmissionsByUser, 
+    fetchAdSchedules, 
+    fetchActiveAISkills,
+    type AdScheduleEntry, 
+    type FormSubmission,
+    type AISkill 
+} from '@/utils/supabase';
 import { deriveOrderUiState, describeOrderForChat } from '@/components/status/deriveOrderUiState';
 import {
     Accordion,
@@ -103,8 +114,9 @@ export function ChatPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const autoSentRef = useRef(false);
 
-    // AI Knowledge Base State
+    // AI Knowledge Base & Skills State
     const [systemPrompt, setSystemPrompt] = useState<string>('');
+    const [skills, setSkills] = useState<AISkill[]>([]);
     const [faqs, setFaqs] = useState<Array<{q: string, a: string}>>([]);
 
     // Order milik user, untuk disuntikkan sebagai ORDER CONTEXT ke system
@@ -113,14 +125,19 @@ export function ChatPage() {
     // Initial load for persistence
     useEffect(() => {
         const initData = async () => {
-            // 1. Fetch AI Knowledge Base
+            // 1. Fetch AI Knowledge Base & Active Skills
             try {
-                const [{ data: promptData }, { data: faqsData }] = await Promise.all([
+                const [{ data: promptData }, { data: faqsData }, activeSkills] = await Promise.all([
                     supabase.from('ai_settings').select('value').eq('key', 'system_prompt').single(),
-                    supabase.from('ai_knowledge_base').select('question, answer').eq('is_active', true).order('sort_order', { ascending: true })
+                    supabase.from('ai_knowledge_base').select('question, answer').eq('is_active', true).order('sort_order', { ascending: true }),
+                    fetchActiveAISkills()
                 ]);
 
                 if (promptData) setSystemPrompt(promptData.value);
+
+                if (activeSkills && activeSkills.length > 0) {
+                    setSkills(activeSkills);
+                }
 
                 if (faqsData && faqsData.length > 0) {
                     setFaqs(faqsData.map(f => ({ q: f.question, a: f.answer })));
@@ -245,17 +262,31 @@ Format responmu WAJIB menggunakan JSON dengan struktur:
 
         const currentFaqs = faqs.length > 0 ? faqs : defaultFaqs;
 
+        const skillsContext = skills.length > 0
+            ? `\n\n=== ACTIVE AGENTIC SKILLS & PROCEDURAL SOPS ===\nMimin AI dibekali kemampuan dan SOP prosedural berikut. Jika situasi atau pertanyaan user cocok dengan "Trigger Context" suatu skill, WAJIB IKUTI instruksi langkah SOP tersebut dan sertakan Action Buttons (CTAs) yang disarankan:\n\n` +
+              skills.map(s => 
+                `[Skill: ${s.name}] (Tag: ${s.tag_label || s.tag})\n` +
+                `- Trigger Context: ${s.trigger_context}\n` +
+                `- Langkah SOP:\n${s.sop_instructions}\n` +
+                `- Rekomendasi Tombol Aksi (CTAs):\n` +
+                (s.suggested_actions && s.suggested_actions.length > 0
+                    ? s.suggested_actions.map(a => `  * Label: "${a.label}" -> Action: ${a.action} (${a.url || a.prompt})`).join('\n')
+                    : '  * (Sertakan CTA relevan)')
+              ).join('\n\n')
+            : '';
+
         const orderContext = orderStates.length > 0
             ? `\n\n=== ORDER CONTEXT (DATA ORDER MILIK USER SAAT INI) ===\nBerikut order survei milik user yang sedang chat denganmu:\n\n${orderStates.map(({ submission, ui }) => describeOrderForChat(submission, ui)).join('\n\n')}\n\nGunakan data di atas untuk menjawab status survei user secara akurat dan sertakan CTA yang relevan!`
             : '';
 
         return `${basePrompt}
+${skillsContext}
 
 === KNOWLEDGE BASE (FAQ) ===
 ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
 ${orderContext}
 `;
-    }, [systemPrompt, faqs, orderStates]);
+    }, [systemPrompt, skills, faqs, orderStates]);
 
 function parseMiminResponse(
     rawText: string,
@@ -516,33 +547,98 @@ function parseMiminResponse(
         <div className="h-[calc(100dvh-3.5rem)] md:h-auto">
             <div className="max-w-4xl mx-auto h-full px-0 md:px-6 md:py-4">
                 <div className="h-full md:h-[calc(100vh-7.5rem)] md:grid md:grid-cols-2 md:gap-6 md:items-stretch">
-                    {/* FAQ — desktop saja */}
+                    {/* Asisten & Kemampuan AI — desktop */}
                     <div className="hidden md:block h-full min-h-0">
                         <Card className="h-full flex flex-col overflow-hidden border border-jfu-primary/[0.06] shadow-card bg-white transition-colors duration-300" style={{ borderRadius: '20px' }}>
-                            <CardHeader className="pb-4">
+                            <CardHeader className="pb-3 border-b border-gray-100">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-jfu-primary/[0.08] rounded-xl flex items-center justify-center">
-                                        <HelpCircle className="w-5 h-5 text-jfu-primary" />
+                                        <Sparkles className="w-5 h-5 text-jfu-primary" />
                                     </div>
                                     <div>
-                                        <CardTitle className="text-xl font-bold text-[#1a1a1a]">FAQ & Knowledge</CardTitle>
-                                        <CardDescription className="text-[#666]">Pertanyaan umum seputar Jakpat for Univ.</CardDescription>
+                                        <CardTitle className="text-lg font-bold text-[#1a1a1a]">Layanan & Skill AI</CardTitle>
+                                        <CardDescription className="text-xs text-[#666]">Mimin AI siap membantu konsultasi & kendala risetmu.</CardDescription>
                                     </div>
                                 </div>
                             </CardHeader>
-                            <CardContent className="overflow-y-auto pr-4 custom-scrollbar">
-                                <Accordion type="single" collapsible className="w-full">
-                                    {faqs.map((faq, i) => (
-                                        <AccordionItem key={i} value={`item-${i}`} className="border-b border-gray-100 px-2">
-                                            <AccordionTrigger className="text-left py-4 text-[15px] font-medium text-[#1a1a1a] hover:text-jfu-primary transition-colors">
-                                                {faq.q}
-                                            </AccordionTrigger>
-                                            <AccordionContent className="text-gray-600 text-sm pb-4 leading-relaxed">
-                                                {faq.a}
-                                            </AccordionContent>
-                                        </AccordionItem>
-                                    ))}
-                                </Accordion>
+                            <CardContent className="overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                                {/* Order Status Card if User has an active order */}
+                                {orderStates.length > 0 && (
+                                    <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/40 rounded-xl p-3.5 border border-indigo-100 shadow-2xs">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1">
+                                                <Calendar className="w-3.5 h-3.5 text-indigo-600" /> Kuesioner Terbaru Kamu
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white text-indigo-700 border border-indigo-100">
+                                                {orderStates[0].ui.badgeText}
+                                            </span>
+                                        </div>
+                                        <p className="font-semibold text-xs text-slate-800 line-clamp-1 mb-1">
+                                            {orderStates[0].submission.research_title || 'Kuesioner Tanpa Judul'}
+                                        </p>
+                                        <p className="text-[11px] text-slate-500 leading-relaxed mb-2">
+                                            {orderStates[0].ui.explanation}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => sendMessageDirect(`Min, tolong cek status dan progres kuesioner saya "${orderStates[0].submission.research_title}".`)}
+                                            className="w-full py-1.5 px-3 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                                        >
+                                            <span>Tanyakan Progres ke Mimin</span>
+                                            <ArrowRight className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Skills Cards */}
+                                <div>
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
+                                        <Bot className="w-3.5 h-3.5 text-indigo-600" /> Kemampuan Utama Mimin AI
+                                    </h4>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {(skills.length > 0 ? skills.slice(0, 4) : [
+                                            { name: 'Diagnosa Responden Sepi', desc: 'Analisis penyebab penyerapan responden lambat & opsi perpanjangan', prompt: 'Min, kuesioner saya kok respondennya sepi ya? Apa penyebabnya?' },
+                                            { name: 'Konsultasi Layanan & Paket', desc: 'Panduan memilih Survey Ads vs JFU Kilat vs Panel Responden', prompt: 'Min, apa perbedaan Survey Ads, JFU Kilat, dan Respondent Access?' },
+                                            { name: 'Status Order & Pembayaran', desc: 'Bantuan verifikasi review kuesioner dan link bayar DOKU', prompt: 'Min, berapa lama proses verifikasi kuesioner dan bagaimana cara pembayarannya?' },
+                                            { name: 'Eskalasi Kendala Mendesak', desc: 'Bantuan langsung dan menghubungkan dengan admin manusia', prompt: 'Min, saya mengalami kendala mendesak dan butuh bantuan admin sekarang.' }
+                                        ]).map((sk: any, idx: number) => (
+                                            <div
+                                                key={idx}
+                                                onClick={() => sendMessageDirect(sk.prompt || `Min, saya mau konsultasi tentang ${sk.name}.`)}
+                                                className="p-2.5 rounded-xl border border-slate-100 hover:border-indigo-200 bg-slate-50/50 hover:bg-indigo-50/30 transition-all cursor-pointer group text-left"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-semibold text-xs text-slate-800 group-hover:text-indigo-700 transition-colors">
+                                                        {sk.name}
+                                                    </span>
+                                                    <ArrowRight className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 transition-transform group-hover:translate-x-0.5" />
+                                                </div>
+                                                <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                                                    {sk.description || sk.desc || sk.trigger_context}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Accordion FAQ Singkat */}
+                                <div className="pt-2 border-t border-gray-100">
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1">
+                                        <HelpCircle className="w-3.5 h-3.5 text-slate-400" /> FAQ Singkat
+                                    </h4>
+                                    <Accordion type="single" collapsible className="w-full">
+                                        {faqs.slice(0, 3).map((faq, i) => (
+                                            <AccordionItem key={i} value={`item-${i}`} className="border-b border-gray-100 px-1">
+                                                <AccordionTrigger className="text-left py-2.5 text-xs font-medium text-slate-700 hover:text-jfu-primary transition-colors">
+                                                    {faq.q}
+                                                </AccordionTrigger>
+                                                <AccordionContent className="text-slate-500 text-xs pb-3 leading-relaxed">
+                                                    {faq.a}
+                                                </AccordionContent>
+                                            </AccordionItem>
+                                        ))}
+                                    </Accordion>
+                                </div>
                             </CardContent>
                         </Card>
                     </div>
