@@ -2568,6 +2568,12 @@ export interface ChatSession {
   user_email: string;
   last_message_at: string;
   created_at: string;
+  tag?: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq' | null;
+  tag_label?: string | null;
+  needs_attention?: boolean;
+  last_message_snippet?: string | null;
+  is_resolved?: boolean;
+  resolved_at?: string | null;
 }
 
 export interface ChatMessage {
@@ -2576,6 +2582,13 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  ctas?: Array<{
+    id: string;
+    label: string;
+    action: 'navigate' | 'chat_prompt' | 'open_modal';
+    target?: string;
+    variant?: 'primary' | 'secondary' | 'warning' | 'outline';
+  }>;
 }
 
 // Get or create session for user
@@ -2623,7 +2636,16 @@ export const getChatMessages = async (sessionId: string) => {
 };
 
 // Save a new message
-export const saveChatMessage = async (sessionId: string, role: 'user' | 'assistant', content: string) => {
+export const saveChatMessage = async (
+  sessionId: string,
+  role: 'user' | 'assistant',
+  content: string,
+  metadata?: {
+    tag?: string;
+    tag_label?: string;
+    needs_attention?: boolean;
+  }
+) => {
   try {
     const { data, error } = await supabase
       .from('chat_messages')
@@ -2633,10 +2655,30 @@ export const saveChatMessage = async (sessionId: string, role: 'user' | 'assista
 
     if (error) throw error;
 
-    // Update last_message_at in session (fire and forget update)
+    // Update last_message_at and snippet in session
+    const updatePayload: Record<string, any> = {
+      last_message_at: new Date().toISOString(),
+      last_message_snippet: content.slice(0, 150)
+    };
+
+    if (metadata?.tag) {
+      updatePayload.tag = metadata.tag;
+    }
+    if (metadata?.tag_label) {
+      updatePayload.tag_label = metadata.tag_label;
+    }
+    if (typeof metadata?.needs_attention === 'boolean') {
+      updatePayload.needs_attention = metadata.needs_attention;
+      // If marked as needing attention, reopen it
+      if (metadata.needs_attention) {
+        updatePayload.is_resolved = false;
+        updatePayload.resolved_at = null;
+      }
+    }
+
     supabase
       .from('chat_sessions')
-      .update({ last_message_at: new Date().toISOString() })
+      .update(updatePayload)
       .eq('id', sessionId)
       .then();
 
@@ -2645,6 +2687,43 @@ export const saveChatMessage = async (sessionId: string, role: 'user' | 'assista
     console.error('Error saving chat message:', error);
     return null;
   }
+};
+
+// Update session metadata (tag, status, snippet)
+export const updateChatSessionMetadata = async (
+  sessionId: string,
+  metadata: {
+    tag?: string;
+    tag_label?: string;
+    needs_attention?: boolean;
+    last_message_snippet?: string;
+    is_resolved?: boolean;
+    resolved_at?: string | null;
+  }
+) => {
+  try {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .update(metadata)
+      .eq('id', sessionId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error updating chat session metadata:', error);
+    return null;
+  }
+};
+
+// Resolve or reopen chat session by admin
+export const resolveChatSession = async (sessionId: string, isResolved: boolean) => {
+  return updateChatSessionMetadata(sessionId, {
+    is_resolved: isResolved,
+    resolved_at: isResolved ? new Date().toISOString() : null,
+    needs_attention: isResolved ? false : true
+  });
 };
 
 // Admin: Get all chat sessions (for internal dashboard)
