@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -110,5 +110,93 @@ describe('yang sengaja TIDAK dilakukan', () => {
     it('tidak menyaring distribution_type, dan alasannya tertulis', () => {
         expect(SRC).not.toContain("distribution_type', 'kilat'");
         expect(SRC).toContain('TIDAK ADA FILTER `distribution_type` DI SINI');
+    });
+});
+
+/**
+ * ⚠️ TES EKSEKUSI — pelengkap wajib bagi semua tes teks di atas.
+ *
+ * Semua tes sebelumnya membaca `respondents.js` sebagai STRING. Itu mengunci
+ * kebijakan, tapi tidak pernah MENJALANKAN apa pun — sehingga berkas yang
+ * melempar ReferenceError pada setiap permintaan tetap lolos 100%.
+ *
+ * Itu bukan hipotesis: 2026-09-18 commit 77d1e56 menghapus `const url = ...`
+ * sementara bagian 2 masih memakainya. Seluruh endpoint mati (Cloudflare 1101,
+ * "Worker threw exception") dan 883 tes tetap hijau. Blok ini ada supaya
+ * kegagalan sekelas itu tidak bisa terulang diam-diam.
+ */
+describe('eksekusi nyata: handler tidak melempar', () => {
+    // ⚠️ WAJIB. Tanpa ini Vitest memakai modul yang sudah di-cache dari proses
+    // uji sebelumnya, sehingga tes ini lolos bahkan terhadap berkas yang rusak —
+    // persis yang terjadi saat tes ini pertama kali ditulis.
+    beforeEach(() => {
+        vi.resetModules();
+    });
+
+    const importHandler = async () => (await import('./respondents.js')).onRequestGet;
+
+    /**
+     * ⚠️ Konfigurasi Supabase WAJIB diisi (walau palsu).
+     *
+     * Tanpa `VITE_SUPABASE_URL`/`ANON_KEY`, handler pulang lebih awal dengan 500
+     * "Server configuration error" di bagian 1 — dan TIDAK PERNAH sampai ke
+     * bagian 2 tempat query string dibaca. Tes yang membiarkannya kosong akan
+     * hijau terhadap berkas yang rusak sekalipun. Itu terjadi sungguhan saat
+     * blok ini ditulis; jangan sederhanakan kembali.
+     *
+     * URL-nya menunjuk ke host yang tidak ada, jadi panggilan jaringan gagal —
+     * gagal di DALAM `try`, yang berakhir sebagai 500 terkendali, bukan lemparan.
+     */
+    const ctx = (urlStr: string, headers: Record<string, string> = {}, env: Record<string, string> = {}) => ({
+        request: new Request(urlStr, { headers }),
+        env: {
+            JFU_RESPONDENT_API_KEY: 'kunci-uji',
+            VITE_SUPABASE_URL: 'https://tidak-ada.invalid',
+            VITE_SUPABASE_ANON_KEY: 'anon-palsu',
+            ...env,
+        },
+    });
+
+    it('menolak tanpa key TANPA melempar, dan tetap 401', async () => {
+        const onRequestGet = await importHandler();
+        const res = await onRequestGet(ctx('https://x.test/api/respondents', {}, {
+            VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '',
+        }));
+        expect(res.status).toBe(401);
+    });
+
+    /**
+     * Inilah yang menangkap bug `url` itu: query string hanya dibaca SETELAH
+     * gerbang key terlewati, jadi hanya permintaan dengan key benar yang
+     * menyentuh baris tersebut.
+     */
+    it('permintaan ber-key yang benar melewati gerbang tanpa ReferenceError', async () => {
+        const onRequestGet = await importHandler();
+        const res = await onRequestGet(
+            ctx('https://x.test/api/respondents?slug=apa-saja', { 'X-API-Key': 'kunci-uji' })
+        );
+        expect(res).toBeInstanceOf(Response);
+        expect(res.status).not.toBe(401);
+        // Bukti bahwa bagian 2 (pembacaan query string) BENAR-BENAR tercapai:
+        // 500 "Server configuration error" berarti handler pulang SEBELUM itu,
+        // dan tes ini kehilangan seluruh dayanya.
+        expect(await res.clone().text()).not.toContain('Server configuration error');
+    });
+
+    it('membaca page_id dan slug tanpa melempar', async () => {
+        const onRequestGet = await importHandler();
+        for (const q of ['', '?page_id=abc', '?slug=abc', '?page_id=abc&slug=def']) {
+            const res = await onRequestGet(
+                ctx(`https://x.test/api/respondents${q}`, { 'X-API-Key': 'kunci-uji' })
+            );
+            expect(res).toBeInstanceOf(Response);
+            expect(await res.clone().text()).not.toContain('Server configuration error');
+        }
+    });
+
+    it('preflight OPTIONS tidak melempar', async () => {
+        const mod = await import('./respondents.js');
+        const res = await mod.onRequestOptions(ctx('https://x.test/api/respondents'));
+        expect(res).toBeInstanceOf(Response);
     });
 });

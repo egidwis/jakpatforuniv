@@ -47,6 +47,12 @@ function buildCorsHeaders(env) {
 export async function onRequestGet(context) {
     const corsHeaders = buildCorsHeaders(context.env);
 
+    // Dideklarasikan DI SINI, sebelum gerbang API key, karena dua tempat
+    // memakainya: pesan 401 di bawah dan parsing `page_id`/`slug` di bagian 2.
+    // ⚠️ Jangan pindahkan ke dalam blok mana pun — persis itu yang membuat
+    // seluruh endpoint melempar ReferenceError pada 2026-09-18 (Cloudflare 1101).
+    const url = new URL(context.request.url);
+
     // 0. Authenticate — Require JFU_RESPONDENT_API_KEY
     //
     // ⚠️ HEADER SAJA. `?api_key=` DICABUT 2026-09-18 — jangan dihidupkan lagi.
@@ -67,7 +73,7 @@ export async function onRequestGet(context) {
         // supaya klien lama tidak menghabiskan waktu menebak kenapa key yang
         // mereka yakini benar tiba-tiba ditolak. Ini tidak membocorkan apa pun:
         // ia cuma memberi tahu CARA mengirim, bukan nilainya.
-        const usedQueryParam = new URL(context.request.url).searchParams.has('api_key');
+        const usedQueryParam = url.searchParams.has('api_key');
         return new Response(JSON.stringify({
             status: 'error',
             message: usedQueryParam && !providedKey
