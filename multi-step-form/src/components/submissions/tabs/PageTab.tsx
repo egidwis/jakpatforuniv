@@ -179,7 +179,18 @@ export function PageTab({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ── 1. Kilat: didistribusikan lewat panel, tanpa halaman web ──
+  // ── 1. Kilat: tautan pendaratan push notification ──
+  //
+  // Sejak Phase 5 (sql/95) order Kilat PUNYA halaman. Inilah permukaan kerja
+  // utama admin: tautan di bawah disalin dari sini lalu dipasang ke dalam survei
+  // Jakpat sebagai tujuan pendaratan push notification. Peneliti tidak pernah
+  // melihatnya (disaring di getSurveyPagesBySubmissionIds).
+  //
+  // Tiga keadaan, karena halaman hanya lahir saat pembayaran lunas:
+  //   A. lunas + ada halaman  → tautan siap disalin
+  //   B. belum lunas          → belum ada slug; jangan tampilkan kotak kosong
+  //   C. lunas TANPA halaman  → anomali, harus berteriak (kanari
+  //                             countKilatOrdersWithoutPage dalam bentuk per-order)
   if (isKilatOrder) {
     return (
       <div className="space-y-4">
@@ -192,9 +203,65 @@ export function PageTab({
               </h4>
             </div>
             <p className="text-xs text-amber-800 leading-relaxed">
-              Survei JFU Kilat disiarkan langsung melalui platform panel di luar
-              JFU tanpa menggunakan halaman web landing page.
+              Survei JFU Kilat disiarkan lewat push notification di aplikasi Jakpat.
+              {existingPage
+                ? ' Pasang tautan di bawah ini ke dalam survei Jakpat sebagai tujuan pendaratan responden.'
+                : ''}
             </p>
+
+            {/* Keadaan A — tautan siap disalin */}
+            {existingPage && (
+              <div className="rounded-lg border border-amber-300/70 bg-white/80 p-3 space-y-2.5">
+                <span className="block text-[11px] font-bold uppercase tracking-wider text-amber-700/90">
+                  Tautan untuk Survei Jakpat
+                </span>
+                <p className="text-xs font-mono text-amber-950 break-all leading-relaxed">
+                  {fullPublicUrl}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCopyLink}
+                    className="h-8 text-xs border-amber-300 bg-white text-amber-900 hover:bg-amber-50"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 mr-1.5" /> : <Copy className="w-3.5 h-3.5 mr-1.5" />}
+                    {copied ? 'Tersalin' : 'Salin Tautan'}
+                  </Button>
+                  <Button
+                    asChild
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs text-amber-900 hover:bg-amber-100/70"
+                  >
+                    <a href={publicPagePath(existingPage.slug)} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                      Buka
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Keadaan B — belum lunas, halaman belum lahir */}
+            {!existingPage && !lifecycle.isPaid && (
+              <div className="rounded-lg border border-amber-200 bg-white/60 px-3 py-2.5 text-xs text-amber-800">
+                Tautan terbit otomatis setelah pembayaran lunas.
+              </div>
+            )}
+
+            {/* Keadaan C — lunas tapi halaman tidak ada: anomali */}
+            {!existingPage && lifecycle.isPaid && (
+              <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs text-rose-800">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-rose-600" />
+                <span>
+                  <strong>Halaman belum terbentuk meski order sudah lunas.</strong> Iklan ini
+                  belum bisa disiarkan karena tidak ada tautan untuk dipasang. Penyebab
+                  tersering: tanggal tayang order ini masih kosong. Laporkan ke tim teknis.
+                </span>
+              </div>
+            )}
+
             <div className="pt-2 border-t border-amber-200/70 grid grid-cols-2 gap-2 text-xs">
               <div>
                 <span className="text-amber-700/80 block text-[11px]">Waktu Siaran</span>
@@ -211,6 +278,16 @@ export function PageTab({
                 </span>
               </div>
             </div>
+
+            {/* Menjelaskan publish_end_date = NULL di tempat admin bekerja, supaya
+                tidak ada yang mengira itu kelalaian lalu "memperbaikinya". Tautan
+                yang sudah tertanam di survei Jakpat tidak bisa ditarik dari sisi
+                kita, jadi ia tidak boleh punya tanggal mati. */}
+            {existingPage && (
+              <p className="text-[11px] text-amber-700/90 leading-relaxed">
+                Tautan tidak memiliki tanggal kedaluwarsa.
+              </p>
+            )}
           </div>
         </DetailSheetSection>
       </div>

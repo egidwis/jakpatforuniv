@@ -78,6 +78,24 @@ function pickDisplayBatch(batches) {
     return [...batches].sort((a, b) => String(b.period_batch || '').localeCompare(String(a.period_batch || '')))[0];
 }
 
+/**
+ * Apakah baris survey_pages ini milik order Kilat?
+ *
+ * MUST stay in sync with isKilatPage() in src/pages/public/SurveyListingPage.tsx.
+ *
+ * Bentuk join PostgREST tidak konsisten: kadang objek, kadang array — transform
+ * `reward` di bawah sudah lama menanganinya dengan cara yang sama.
+ *
+ * ⚠️ HALAMAN YATIM WAJIB LOLOS. 23 halaman produksi punya `submission_id` NULL
+ * (11 terbit) — pengumuman dan iklan manual tanpa order. Bagi mereka
+ * `form_submissions` null, dan itu berarti BUKAN Kilat, bukan "tidak diketahui
+ * jadi buang". Salah di sini = 11 halaman hidup lenyap dari feed aplikasi.
+ */
+function isKilatPage(p) {
+    const sub = Array.isArray(p?.form_submissions) ? p.form_submissions[0] : p?.form_submissions;
+    return sub?.distribution_type === 'kilat';
+}
+
 function orderBand(p) {
     const placed = p.display_order !== null && p.display_order !== undefined;
     if (placed) return 1;
@@ -150,7 +168,9 @@ export async function onRequestGet(context) {
         // - Within valid date range (start <= now <= end) OR dates are null
         const { data: surveys, error } = await supabase
             .from('survey_pages')
-            .select('*, form_submissions!submission_id(prize_per_winner, winner_count)')
+            // `distribution_type` ikut ditarik SEMATA untuk menyaring Kilat di
+            // bawah — lihat komentar di filter. Jangan dibuang saat merapikan.
+            .select('*, form_submissions!submission_id(prize_per_winner, winner_count, distribution_type)')
             .eq('is_published', true)
             .or('is_hidden.eq.false,is_hidden.is.null')
             // Base order; final ordering is applied in JS via compareDisplayOrder
@@ -162,6 +182,21 @@ export async function onRequestGet(context) {
         // Filter by date manually if RLS/Query is complex, or rely on query
         // Optimally, we filter in code to handle nulls easier
         const validSurveys = surveys.filter(s => {
+            // ── Kilat tidak pernah tampil di feed aplikasi (Phase 5, sql/95) ──
+            // Kilat punya halaman, tapi halamannya adalah tujuan pendaratan push
+            // notification — bukan kartu iklan yang bersaing di feed. Inilah
+            // sebab "menerbitkan halaman Kilat memberi kapasitas tayang yang
+            // tidak dibayar" (sql/42) tidak lagi berlaku: kapasitasnya tidak
+            // pernah diberikan.
+            //
+            // ⚠️ INI SATU-SATUNYA PENAHAN. Halaman Kilat terbit, tidak
+            // tersembunyi, dan publish_end_date-nya NULL sehingga LOLOS filter
+            // tanggal di bawah. Tidak ada sabuk pengaman kedua.
+            //
+            // ⚠️ KEMBAR: src/pages/public/SurveyListingPage.tsx punya filter
+            // yang sama. Ubah satu, ubah keduanya — seperti compareDisplayOrder.
+            if (isKilatPage(s)) return false;
+
             const start = s.publish_start_date ? normalizeScheduleDate(s.publish_start_date) : null;
             const end = s.publish_end_date ? normalizeScheduleDate(s.publish_end_date) : null;
             const nowTime = new Date();

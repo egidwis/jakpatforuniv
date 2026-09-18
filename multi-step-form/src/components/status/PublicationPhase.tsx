@@ -88,8 +88,28 @@ export function PublicationPhase({ cards, pageInfo, isCancelled }: PublicationPh
         );
     }
 
+    // Order Kilat tidak memakai halaman iklan publik, jadi blok tautan di bawah
+    // tidak pernah punya isi untuknya — `pageInfo` sengaja dikosongkan di sumber
+    // data (getSurveyPagesBySubmissionIds, "gerbang privasi"). Tanpa baris ini
+    // Fase ③ Kilat menampilkan tanggal tayang tanpa keterangan apa pun, dan
+    // peneliti wajar mengira halaman iklannya gagal terbit.
+    //
+    // ⚠️ Hanya tampil pada order Kilat LUNAS. Yang belum lunas punya
+    // `paidCards.length === 0` dan `pageInfo` undefined, jadi ia sudah tertangkap
+    // early-return di atas dengan teks `publicationPendingActivation` — yang
+    // memang benar untuknya. Itu disengaja: menambahkan cabang Kilat ke sana
+    // memaksa komponen ini tahu soal Kilat di dua tempat, dan peneliti yang
+    // belum membayar belum perlu penjelasan jalur distribusi.
+    const isKilatOrder = cards.some((c) => c.info.isKilat);
+
     return (
         <div className="space-y-3">
+            {isKilatOrder && (
+                <p className="px-1 text-xs leading-relaxed text-slate-500">
+                    {t('publicationKilatNote')}
+                </p>
+            )}
+
             {/* 1. Halaman Iklan & Total Views (Paling Atas di Step 3) */}
             {pageInfo?.slug && (
                 <div className="flex items-center justify-between gap-2 px-1">

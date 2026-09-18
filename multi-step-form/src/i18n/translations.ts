@@ -959,6 +959,9 @@ export const translations = {
     viewBookingDetails: "View Order & Billing Details",
     hideBookingDetails: "Hide Details",
     publicationPendingActivation: "Active after payment is completed",
+    // Fase ③, order Kilat lunas saja. Menjelaskan ketiadaan tautan halaman
+    // iklan — Kilat memang tidak memakainya (lihat PublicationPhase.tsx).
+    publicationKilatNote: "JFU Kilat is distributed via push notification to Jakpat respondents, so it does not use a public ad page.",
     publicationCancelledNote: "Publication inactive",
     publicationNotActive: "Inactive",
     publicationCompletedPrefix: "Survey publication completed.",
@@ -1997,6 +2000,7 @@ export const translations = {
     viewBookingDetails: "Lihat Rincian Pemesanan & Tagihan",
     hideBookingDetails: "Tutup Rincian",
     publicationPendingActivation: "Aktif setelah pembayaran lunas",
+    publicationKilatNote: "JFU Kilat didistribusikan lewat push notification ke responden Jakpat, sehingga tidak memakai halaman iklan publik.",
     publicationCancelledNote: "Penayangan tidak aktif",
     publicationNotActive: "Belum Aktif",
     publicationCompletedPrefix: "Survei selesai ditayangkan.",

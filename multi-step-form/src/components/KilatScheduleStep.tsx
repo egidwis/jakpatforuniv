@@ -155,7 +155,7 @@ export function KilatScheduleStep({
                 <span>
                     <strong>Distribusi JFU Kilat.</strong> Push notifikasi langsung ke responden dalam
                     gelombang {KILAT_SLOT_HOURS.map(formatHour).join(' / ')} WIB, {KILAT_QUOTA_PER_SLOT} order
-                    per gelombang, hanya hari kerja. Tidak menggunakan halaman iklan.
+                    per gelombang, hanya hari kerja. Tidak tampil di daftar iklan publik.
                 </span>
             </div>
 

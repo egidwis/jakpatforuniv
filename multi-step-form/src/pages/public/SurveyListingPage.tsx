@@ -31,6 +31,24 @@ function normalizeScheduleDate(dateStr: string | null | undefined): Date {
     return d;
 }
 
+/**
+ * Apakah baris survey_pages ini milik order Kilat?
+ *
+ * Bentuk join PostgREST tidak konsisten: kadang objek (one-to-one), kadang
+ * array (one-to-many) — `getSubmissionData` di bawah sudah lama menanganinya
+ * dengan cara yang sama.
+ *
+ * ⚠️ HALAMAN YATIM WAJIB LOLOS. 23 halaman produksi punya `submission_id` NULL
+ * (11 di antaranya terbit) — pengumuman dan iklan manual yang tidak berasal
+ * dari order mana pun. Bagi mereka `form_submissions` null, dan itu berarti
+ * BUKAN Kilat, bukan "tidak diketahui jadi buang". Salah di sini = 11 halaman
+ * hidup lenyap dari /pages.
+ */
+export function isKilatPage(page: any): boolean {
+    const sub = Array.isArray(page?.form_submissions) ? page.form_submissions[0] : page?.form_submissions;
+    return sub?.distribution_type === 'kilat';
+}
+
 export function SurveyListingPage() {
     const [pages, setPages] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -43,7 +61,10 @@ export function SurveyListingPage() {
         try {
             const { data, error } = await supabase
                 .from('survey_pages')
-                .select('*, form_submissions!submission_id(prize_per_winner, winner_count)')
+                // `distribution_type` ikut ditarik SEMATA untuk menyaring Kilat di
+                // bawah — lihat komentar di filter. Jangan dibuang saat merapikan
+                // select ini.
+                .select('*, form_submissions!submission_id(prize_per_winner, winner_count, distribution_type)')
                 .eq('is_published', true)
                 // Base order; final ordering applied in JS via compareDisplayOrder.
                 .order('created_at', { ascending: false });
@@ -54,6 +75,22 @@ export function SurveyListingPage() {
             // Client-side filtering for schedule
             const now = new Date();
             const activePages = (data || []).filter(page => {
+                // ── Kilat tidak pernah tampil di sini (Phase 5, sql/95) ───────
+                // Kilat punya halaman, tapi halamannya adalah tujuan pendaratan
+                // push notification di aplikasi Jakpat — bukan kartu iklan di
+                // feed. Admin menyalin tautannya dari dashboard; ia tidak pernah
+                // ditawarkan ke pengunjung /pages.
+                //
+                // ⚠️ INI SATU-SATUNYA PENAHAN. Halaman Kilat terbit
+                // (is_published=true, WAJIB — undian membacanya), tidak
+                // tersembunyi (is_hidden=false), dan publish_end_date-nya NULL
+                // sehingga LOLOS filter tanggal di bawah. Tidak ada sabuk
+                // pengaman kedua. Dikunci oleh surveyListingKilat.spec.ts.
+                //
+                // ⚠️ KEMBAR: functions/api/surveys.js punya filter yang sama.
+                // Ubah satu, ubah keduanya.
+                if (isKilatPage(page)) return false;
+
                 const startDate = page.publish_start_date ? normalizeScheduleDate(page.publish_start_date) : null;
                 const endDate = page.publish_end_date ? normalizeScheduleDate(page.publish_end_date) : null;
 

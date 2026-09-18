@@ -714,6 +714,21 @@ export const getTransactionsByFormSubmissionId = async (formSubmissionId: string
 // Halaman iklan (survey_pages) per submission — link publik (slug) + jumlah
 // views, ditampilkan sebagai satu blok order-level (satu halaman dipakai
 // semua jadwal iklan, views akumulatif seluruh jadwal, bukan milik satu jadwal).
+//
+// ⚠️ GERBANG PRIVASI, BUKAN OPTIMASI. Baris Kilat dibuang di sini, di sumber
+// data — bukan di komponen yang menampilkannya.
+//
+// Sejak Phase 5 (sql/95) order Kilat PUNYA halaman, dan tautannya adalah alat
+// kerja admin: ia disalin dari dashboard JFU lalu dipasang ke dalam survei
+// Jakpat. Peneliti tidak pernah melihatnya. Menyaringnya di sini membuat
+// `pageInfo` undefined untuk Kilat, sehingga blok tautan di
+// PublicationPhase.tsx tidak pernah dirender — TANPA komponen itu perlu tahu
+// apa pun soal Kilat, dan setiap permukaan peneliti di masa depan ikut aman
+// secara bawaan.
+//
+// Kalau suatu saat peneliti memang boleh melihat tautan ini, cabutnya DI SINI
+// dengan sadar — jangan menambahkan pembacaan survey_pages sendiri di tempat
+// lain untuk menyiasatinya.
 export const getSurveyPagesBySubmissionIds = async (
   submissionIds: string[]
 ): Promise<Record<string, { views: number; slug: string | null }>> => {
@@ -721,12 +736,20 @@ export const getSurveyPagesBySubmissionIds = async (
   try {
     const { data, error } = await supabase
       .from('survey_pages')
-      .select('submission_id, views_count, slug')
+      // `distribution_type` ditarik SEMATA untuk gerbang privasi di bawah.
+      .select('submission_id, views_count, slug, form_submissions!submission_id(distribution_type)')
       .in('submission_id', submissionIds);
 
     if (error) throw error;
     const result: Record<string, { views: number; slug: string | null }> = {};
-    (data || []).forEach((row: { submission_id: string; views_count: number | null; slug: string | null }) => {
+    (data || []).forEach((row: {
+      submission_id: string;
+      views_count: number | null;
+      slug: string | null;
+      form_submissions?: { distribution_type?: string | null } | { distribution_type?: string | null }[] | null;
+    }) => {
+      const sub = Array.isArray(row.form_submissions) ? row.form_submissions[0] : row.form_submissions;
+      if (sub?.distribution_type === 'kilat') return;   // gerbang privasi — lihat di atas
       result[row.submission_id] = { views: row.views_count || 0, slug: row.slug || null };
     });
     return result;
@@ -3280,24 +3303,35 @@ export const convertDistributionType = async (
     .eq('submission_id', submissionId)
     .maybeSingle();
 
+  // ⚠️ CAKUPANNYA BERUBAH DI PHASE 5 — penjaganya sendiri TIDAK, dan itu
+  // disengaja (keputusan pemilik produk).
+  //
+  // Sebelum sql/95 hanya order reguler yang punya halaman, dan halaman itu
+  // sering masih draft, jadi penjaga ini jarang kena. Sesudahnya SETIAP order
+  // lunas — reguler maupun Kilat — punya halaman `is_published = TRUE` sejak
+  // detik pembayaran. Akibatnya penjaga ini kini praktis berarti:
+  //
+  //     konversi jalur distribusi menjadi mustahil sesudah pembayaran lunas.
+  //
+  // Itu diterima, bukan regresi yang perlu "diperbaiki": konversi menghitung
+  // ulang subtotal (lihat di bawah) atas uang yang SUDAH dibayar, dan order
+  // Kilat lunas pun sudah tidak bisa dibatalkan lewat enam lapis penjaga lain.
+  // Operasi seperti itu memang tidak pantas mudah. Konversi sebelum lunas —
+  // satu-satunya saat ia benar-benar aman — tetap berjalan seperti biasa.
   if (page?.is_published) {
     throw new Error(
       'Halaman iklan order ini sudah published — tarik atau sembunyikan halamannya dulu sebelum memindahkan jalur distribusi.'
     );
   }
 
-  // Kilat tidak pernah punya halaman iklan. Kalau ada baris survey_pages di
-  // sini, ia pasti draft (published sudah diblokir barusan) — sisa dari saat
-  // order ini masih regular. Hapus sebelum menulis distribution_type, supaya
-  // tidak ada jendela di mana order ini sudah 'kilat' tapi masih tercatat
-  // punya halaman.
-  if (target === 'kilat' && page) {
-    const { error: deletePageError } = await supabase
-      .from('survey_pages')
-      .delete()
-      .eq('submission_id', submissionId);
-    if (deletePageError) throw deletePageError;
-  }
+  // Penghapusan halaman saat pindah ke Kilat DICABUT di Phase 5 (sql/95).
+  //
+  // Dulu di sini berdiri DELETE atas survey_pages, dengan alasan "Kilat tidak
+  // pernah punya halaman iklan". Sejak sql/95 kebalikannya yang benar: Kilat
+  // BUTUH halaman — itu tujuan pendaratan push notification-nya, dan tanpa
+  // halaman iklan Kilat tidak bisa disiarkan sama sekali. Halaman draft yang
+  // tertinggal dari masa reguler order ini justru dipakai ulang apa adanya;
+  // slug dan isinya tetap sah.
 
   const questionCount = Number(sub.question_count) || 0;
   const duration = Number(sub.duration) || 0;
@@ -3422,21 +3456,48 @@ export const fetchKilatSchedule = async (
 };
 
 /**
- * Kanari untuk regresi sql/40: order Kilat seharusnya TIDAK PERNAH punya baris
- * survey_pages (lihat sql/42_kilat_slots.sql). Kalau ini > 0, sql/40 kemungkinan
- * besar dijalankan ulang sesudah sql/42 dan mengembalikan definisi lama
- * ensure_survey_page() yang tidak memeriksa distribution_type.
+ * Kanari Kilat — ARAHNYA DIBALIK di Phase 5 (sql/95).
+ *
+ * Dulu bernama `countKilatPagesLeak` dan memperingatkan bila order Kilat PUNYA
+ * halaman. Sejak sql/95 halaman itu justru wajib: ia tujuan pendaratan push
+ * notification, dan tautannya satu-satunya yang bisa dipasang admin ke dalam
+ * survei Jakpat. Yang berbahaya kini kebalikannya — **order Kilat lunas tanpa
+ * halaman**, karena admin tidak punya apa pun untuk ditempel dan iklannya tidak
+ * bisa disiarkan, tanpa error apa pun yang muncul.
+ *
+ * ⚠️ DUA KUERI, BUKAN SATU — dan itu bukan kemalasan. Pertanyaannya adalah
+ * *anti-join* ("order Kilat lunas yang TIDAK punya baris survey_pages"), dan
+ * PostgREST tidak bisa mengekspresikannya: tidak ada bentuk `LEFT JOIN … IS
+ * NULL` di `.select()`. Alternatifnya RPC baru, yang menyeret urusan
+ * `pg_default_acl` (anon/authenticated dihibahkan otomatis) demi satu angka.
+ * Keduanya `head: true`, jadi tidak ada baris yang ditarik.
+ *
+ * Penyebab tersering bila ini > 0: order lunas yang `start_date`/`end_date`-nya
+ * NULL. `ensure_survey_page` menolaknya SENYAP (lihat prasyarat di sql/95) —
+ * per 2026-09-18 ada 2 order semacam itu, menggantung sejak awal Agustus.
  */
-export const countKilatPagesLeak = async (): Promise<number> => {
-  const { count, error } = await supabase
+export const countKilatOrdersWithoutPage = async (): Promise<number> => {
+  const paid = supabase
+    .from('form_submissions')
+    .select('id', { count: 'exact', head: true })
+    .eq('distribution_type', 'kilat')
+    .eq('payment_status', 'paid');
+
+  const withPage = supabase
     .from('survey_pages')
-    .select('id, form_submissions!inner(distribution_type)', { count: 'exact', head: true })
-    .eq('form_submissions.distribution_type', 'kilat');
-  if (error) {
-    console.error('Gagal cek kebocoran halaman Kilat:', error);
+    .select('id, form_submissions!inner(distribution_type, payment_status)', { count: 'exact', head: true })
+    .eq('form_submissions.distribution_type', 'kilat')
+    .eq('form_submissions.payment_status', 'paid');
+
+  const [paidRes, withPageRes] = await Promise.all([paid, withPage]);
+
+  if (paidRes.error || withPageRes.error) {
+    console.error('Gagal cek order Kilat tanpa halaman:', paidRes.error || withPageRes.error);
     return 0;
   }
-  return count || 0;
+  // Selisih, tidak pernah negatif: setiap halaman di `withPage` pasti milik
+  // salah satu order di `paid` (join-nya inner atas kedua syarat yang sama).
+  return Math.max(0, (paidRes.count || 0) - (withPageRes.count || 0));
 };
 
 

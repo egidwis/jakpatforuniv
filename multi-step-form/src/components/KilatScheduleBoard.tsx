@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import {
     fetchKilatSchedule,
-    countKilatPagesLeak,
+    countKilatOrdersWithoutPage,
     type KilatScheduleEntry,
 } from '../utils/supabase';
 import { KILAT_SLOT_HOURS, KILAT_QUOTA_PER_SLOT } from '../utils/constants';
@@ -91,7 +91,7 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
     const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
     const [entries, setEntries] = useState<KilatScheduleEntry[]>([]);
     const [isFetching, setIsFetching] = useState(true);
-    const [pagesLeakCount, setPagesLeakCount] = useState(0);
+    const [ordersWithoutPage, setOrdersWithoutPage] = useState(0);
 
     const weekdays = weekdaysFrom(weekStart);
 
@@ -103,13 +103,13 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
                 const days = weekdaysFrom(weekStart);
                 const fromYmd = toLocalYmd(days[0]);
                 const toYmd = toLocalYmd(days[days.length - 1]);
-                const [schedule, leakCount] = await Promise.all([
+                const [schedule, missingPageCount] = await Promise.all([
                     fetchKilatSchedule(fromYmd, toYmd),
-                    countKilatPagesLeak(),
+                    countKilatOrdersWithoutPage(),
                 ]);
                 if (!cancelled) {
                     setEntries(schedule);
-                    setPagesLeakCount(leakCount);
+                    setOrdersWithoutPage(missingPageCount);
                 }
             } catch (e) {
                 console.error('Gagal memuat papan jadwal Kilat:', e);
@@ -169,13 +169,18 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
                 </span>
             </div>
 
-            {pagesLeakCount > 0 && (
+            {/* Kanari Phase 5 — arahnya DIBALIK dari versi lama: dulu berbunyi
+                bila order Kilat PUNYA halaman, kini bila ia TIDAK punya. Sejak
+                sql/95 halaman adalah syarat kelayakan tayang Kilat; tanpa halaman,
+                tidak ada tautan untuk dipasang ke survei Jakpat. */}
+            {ordersWithoutPage > 0 && (
                 <div className="flex items-start gap-2 p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs">
                     <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-rose-600" />
                     <span>
-                        <strong>{pagesLeakCount}</strong> halaman iklan menempel ke order Kilat — kemungkinan
-                        sql/40 dijalankan ulang tanpa sql/42. Jalankan ulang bagian 2 dari
-                        sql/42_kilat_slots.sql.
+                        <strong>{ordersWithoutPage}</strong> order Kilat lunas belum punya halaman, jadi
+                        tautannya belum bisa dipasang ke survei Jakpat dan iklannya tidak tayang.
+                        Penyebab tersering: tanggal tayang order itu kosong. Periksa tab Page
+                        masing-masing order.
                     </span>
                 </div>
             )}

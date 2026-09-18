@@ -80,6 +80,19 @@ export async function onRequestGet(context) {
         // MODE 1: List all surveys (no page_id or slug)
         // ─────────────────────────────────────────────
         if (!pageId && !slug) {
+            // ⚠️ TIDAK ADA FILTER `distribution_type` DI SINI — DISENGAJA.
+            //
+            // /pages dan /api/surveys MEMBUANG halaman Kilat (Phase 5, sql/95).
+            // Endpoint ini justru harus MENYERTAKANNYA. Ketiganya membaca tabel
+            // yang sama dengan tujuan yang berlawanan, jadi jangan "diseragamkan":
+            //
+            //   /pages, /api/surveys  → etalase iklan. Kilat bukan kartu feed.
+            //   /api/respondents      → undian hadiah. Kilat punya pemenang.
+            //
+            // Menambahkan `distribution_type <> 'kilat'` di sini akan memutus
+            // rantai survey_pages.id → page_respondents.page_id → jakpat_id,
+            // dan pemenang Kilat tidak akan pernah bisa diundi. Kegagalannya
+            // SENYAP: tidak ada error, surveinya cuma tidak pernah muncul.
             const { data: pages, error: pagesError } = await supabase
                 .from('survey_pages')
                 .select('id, slug, title, created_at, submission_id, form_submissions!submission_id(criteria_responden), page_respondents(count)')
