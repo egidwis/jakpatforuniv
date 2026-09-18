@@ -15,30 +15,44 @@ export async function onRequestPost(context) {
     }
 
     try {
-        const { email, full_name, title } = await request.json();
+        const { email, full_name, title, ordinal, booking_id } = await request.json();
 
         if (!email) {
             return new Response(JSON.stringify({ error: 'Missing email' }), { status: 400 });
         }
 
+        const isExtension = Number(ordinal) > 1;
         const name = full_name || 'Kak';
         const surveyLine = title ? ` <strong>${title}</strong>` : '';
+        const bookingTag = booking_id ? ` (Kode: <code>${booking_id}</code>)` : '';
+
+        const subject = isExtension
+            ? '[Jakpat for Univ] Periode Perpanjangan Selesai! Waktunya Olah Data di JFU AI Analyzer 📊'
+            : '[Jakpat for Univ] Survei Selesai! Waktunya Olah Data di JFU AI Analyzer 📊';
+
+        const headline = isExtension
+            ? 'Periode Perpanjangan Selesai Ditayangkan! 🎉'
+            : 'Survei Anda Telah Selesai Ditayangkan! 🎉';
+
+        const leadText = isExtension
+            ? `Periode penayangan iklan perpanjangan survei${surveyLine}${bookingTag} telah <strong>resmi selesai</strong> dan responden tambahan Jakpat telah terkumpul.`
+            : `Periode penayangan iklan survei${surveyLine} telah <strong>resmi selesai</strong> dan responden Jakpat telah terkumpul.`;
 
         const result = await sendMail(env, {
             to: email,
-            subject: '[Jakpat for Univ] Survei Selesai! Waktunya Olah Data di JFU AI Analyzer 📊',
+            subject,
             html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; color: #1e293b; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
             <div style="margin-bottom: 24px;">
               <span style="font-size: 13px; font-weight: 700; color: #4f46e5; letter-spacing: 0.5px; text-transform: uppercase;">Jakpat for Universities</span>
-              <h2 style="margin: 6px 0 0; font-size: 20px; font-weight: 800; color: #0f172a;">Survei Anda Telah Selesai Ditayangkan! 🎉</h2>
+              <h2 style="margin: 6px 0 0; font-size: 20px; font-weight: 800; color: #0f172a;">${headline}</h2>
             </div>
             
             <p style="font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 16px;">
               Halo Kak <strong>${name}</strong>,
             </p>
             <p style="font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 16px;">
-              Periode penayangan iklan survei${surveyLine} telah <strong>resmi selesai</strong> dan responden Jakpat telah terkumpul.
+              ${leadText}
             </p>
 
             <!-- Guide 3 Langkah -->

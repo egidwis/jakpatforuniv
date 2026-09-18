@@ -399,6 +399,8 @@ export function InvoiceForm({
             title: submission.title || undefined,
             variant: entry.isExtension ? 'extension' : 'order',
             airingStart: entry.startDate || undefined,
+            airingEnd: entry.endDate || undefined,
+            bookingId: entry.bookingId || undefined,
             /*
               ⚠️ LINK PERANTARA, BUKAN URL DOKU MENTAH. URL DOKU menagih untuk
               keadaan saat ia dicetak, selamanya — dan email tidak bisa ditarik

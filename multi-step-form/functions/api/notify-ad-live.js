@@ -26,15 +26,16 @@ export async function onRequestPost(context) {
     }
 
     try {
-        const { email, full_name, title, start_date, end_date } = await request.json();
-
+        const { email, full_name, title, start_date, end_date, ordinal, booking_id } = await request.json();
 
         if (!email) {
             return new Response(JSON.stringify({ error: 'Missing email' }), { status: 400 });
         }
 
+        const isExtension = Number(ordinal) > 1;
         const name = full_name || 'Kak';
         const surveyLine = title ? ` <strong>${title}</strong>` : ' kamu';
+        const bookingTag = booking_id ? ` (Kode: <code>${booking_id}</code>)` : '';
         const startInstant = start_date ? new Date(start_date) : null;
         const endInstant = end_date ? new Date(end_date) : null;
         const startText = startInstant ? WIB_DATE_FORMATTER.format(startInstant) : null;
@@ -44,21 +45,33 @@ export async function onRequestPost(context) {
             ? `<p>Iklan tayang mulai <strong>${startText}</strong> pukul ${startTimeText} WIB sampai <strong>${endText}</strong>.</p>`
             : '';
 
+        const subject = isExtension
+            ? '[Jakpat for Univ] Iklan perpanjangan surveimu mulai tayang hari ini 🚀'
+            : '[Jakpat for Univ] Iklan surveimu mulai tayang hari ini 🚀';
+
+        const headline = isExtension
+            ? 'Iklan Perpanjangan Survei Mulai Ditayangkan! 🚀'
+            : 'Iklan Survei Mulai Ditayangkan! 🚀';
+
+        const leadText = isExtension
+            ? `Jadwal perpanjangan survei${surveyLine}${bookingTag} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.`
+            : `Kuesioner survei${surveyLine} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.`;
+
         const result = await sendMail(env, {
             to: email,
-            subject: '[Jakpat for Univ] Iklan surveimu mulai tayang hari ini 🚀',
+            subject,
             html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; color: #1e293b; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
             <div style="margin-bottom: 24px;">
               <span style="font-size: 13px; font-weight: 700; color: #4f46e5; letter-spacing: 0.5px; text-transform: uppercase;">Jakpat for Universities</span>
-              <h2 style="margin: 6px 0 0; font-size: 20px; font-weight: 800; color: #0f172a;">Iklan Survei Mulai Ditayangkan! 🚀</h2>
+              <h2 style="margin: 6px 0 0; font-size: 20px; font-weight: 800; color: #0f172a;">${headline}</h2>
             </div>
             
             <p style="font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 16px;">
               Halo Kak <strong>${name}</strong>,
             </p>
             <p style="font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 16px;">
-              Kuesioner survei${surveyLine} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.
+              ${leadText}
             </p>
             
             ${windowLine ? `<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; border-radius: 8px; padding: 14px 16px; margin: 18px 0; font-size: 13px; color: #334155;">${windowLine}</div>` : ''}

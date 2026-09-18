@@ -58,6 +58,17 @@ Optional, and machine-specific — do not commit these:
   key is set. Everything works without one; with a key, `graphify label .` makes the
   report far more readable.
 
+## SQL migrasi / perubahan tabel — tanpa MCP
+
+SQL apa pun yang menyangkut migrasi atau perubahan tabel (DDL, fungsi, trigger,
+RLS, cron, backfill) TIDAK dijalankan lewat MCP Supabase
+(`apply_migration` / `execute_sql`). Tulis berkasnya di `multi-step-form/sql/`
+lalu serahkan ke user untuk dijalankan sendiri di SQL Editor Supabase.
+
+- Sertakan blok dry-run dan blok rollback di dalam berkas, seperti sql/94.
+- MCP Supabase boleh dipakai untuk BACA saja (list_tables, get_advisors,
+  query_logs, dan `execute_sql` yang murni SELECT).
+
 ## Deployment / release workflow
 
 `git push` and deployment always run from `main` — never from a feature branch.

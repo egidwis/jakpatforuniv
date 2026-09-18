@@ -296,8 +296,16 @@ export function BulkInvoiceDialog({
             name: buyer.researcherName || 'Kak',
             email: buyer.researcherEmail,
             title: bundles.map((b) => b.title).join(', '),
+            variant: 'bulk',
             invoiceUrl: bundlePayUrl,
             amount,
+            items: bundles.map((b) => ({
+              title: b.title,
+              startDate: b.entry.startDate,
+              endDate: b.entry.endDate,
+              bookingId: b.entry.bookingId,
+              amount: bundleTotals(b.items).amount,
+            })),
           }),
         }).catch((err) => console.error('Failed to send invoice-ready email:', err));
       }

@@ -27,6 +27,7 @@
 // ============================================================================
 
 import { sendWebhookAlert } from './_webhook-alert.js';
+import { sendPaymentReceipt } from './_payment-receipt.js';
 
 // Setelah sekian kali percobaan gagal untuk satu invoice, berhenti meminta DOKU
 // retry (balas 200) — kegagalannya jelas bukan transien lagi. Baris audit dan
@@ -636,6 +637,23 @@ export async function onRequest(context) {
         context.waitUntil(alertPromise);
       } else {
         await alertPromise;
+      }
+    }
+
+    // Kirim email kuitansi (receipt) ke peneliti saat pembayaran lunas berhasil dicatat.
+    if (outcome === 'ok' && appStatus === 'completed') {
+      const receiptPromise = sendPaymentReceipt(context.env, {
+        invoiceNumber,
+        amount,
+        paymentChannel,
+      }).catch((err) => {
+        console.error(`[Webhook] Gagal mengirim kwitansi pembayaran ${invoiceNumber}:`, err);
+      });
+
+      if (typeof context.waitUntil === 'function') {
+        context.waitUntil(receiptPromise);
+      } else {
+        await receiptPromise;
       }
     }
 

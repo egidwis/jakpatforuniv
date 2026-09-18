@@ -77,6 +77,12 @@ async function sendViaResend(env, msg, from) {
       html: msg.html,
       ...(msg.text ? { text: msg.text } : {}),
       ...(msg.replyTo ? { reply_to: msg.replyTo } : {}),
+      ...(Array.isArray(msg.attachments) && msg.attachments.length > 0 ? {
+        attachments: msg.attachments.map((att) => ({
+          filename: att.filename,
+          content: att.content,
+        })),
+      } : {}),
     }),
   });
 
@@ -100,6 +106,12 @@ async function sendViaBrevo(env, msg, from) {
       htmlContent: msg.html,
       ...(msg.text ? { textContent: msg.text } : {}),
       ...(msg.replyTo ? { replyTo: { email: msg.replyTo } } : {}),
+      ...(Array.isArray(msg.attachments) && msg.attachments.length > 0 ? {
+        attachment: msg.attachments.map((att) => ({
+          name: att.filename,
+          content: att.content,
+        })),
+      } : {}),
     }),
   });
 

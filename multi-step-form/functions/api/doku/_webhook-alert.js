@@ -16,6 +16,7 @@ const OUTCOME_LABELS = {
   write_failed: 'Gagal menulis ke database',
   amount_mismatch: 'Jumlah pembayaran tidak cocok',
   no_submission_found: 'Invoice tidak dikenali',
+  paid_on_dead_bill: 'Pembayaran masuk pada tagihan yang sudah tidak berlaku (batal/expired)',
 };
 
 const OUTCOME_ADVICE = {
@@ -34,6 +35,16 @@ const OUTCOME_ADVICE = {
         <code>transactions</code> maupun <code>invoices</code>. Kirim ulang notifikasi tidak akan menolong.</li>
     <li>Cari nomor invoice ini di dashboard DOKU untuk melihat siapa yang membayar, lalu telusuri
         order mana yang seharusnya dicocokkan.</li>`,
+  paid_on_dead_bill: `
+    <li>DOKU telah menerima dana untuk tagihan yang statusnya di database kita sudah <strong>dibatalkan atau kedaluwarsa</strong>.</li>
+    <li>Uang fisik sudah masuk ke DOKU, namun jadwal/pesanan sengaja <strong>tidak diaktifkan otomatis</strong> demi mencegah bentrok kuota slot.</li>
+    <li><strong>Langkah Mitigasi:</strong>
+      <ul>
+        <li>Cek ketersediaan kuota kalender pada tanggal yang sebelumnya dipesan.</li>
+        <li>Jika kuota slot masih tersedia: hidupkan kembali jadwal tersebut di tab Jadwal admin dan tandai lunas.</li>
+        <li>Jika kuota slot sudah terisi penuh: hubungi peneliti untuk menawarkan tanggal tayang alternatif atau proses pengembalian dana (refund).</li>
+      </ul>
+    </li>`,
 };
 
 function escapeHtml(value) {

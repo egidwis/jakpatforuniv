@@ -81,7 +81,7 @@ export async function onRequestPost(context) {
 
         const name = row.full_name || 'Peneliti';
         const surveyLine = row.title ? ` untuk survei <strong>${row.title}</strong>` : '';
-        const dashboardUrl = 'https://jakpatforuniversities.com/dashboard/status';
+        const dashboardUrl = 'https://submit.jakpatforuniv.com/dashboard';
         const notesBlock = row.admin_notes
             ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin:16px 0;">
                  <strong style="display:block;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#92400e;margin-bottom:4px;">Catatan dari Tim Reviewer</strong>

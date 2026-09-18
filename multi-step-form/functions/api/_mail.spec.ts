@@ -82,6 +82,24 @@ describe('bentuk payload per provider', () => {
     );
     expect(bodyOf(0).sender).toEqual({ email: 'noreply@mail.jakpatforuniv.com', name: 'JFU' });
   });
+
+  it('Resend memetakan attachments sebagai { filename, content }', async () => {
+    await sendMail(
+      { MAIL_PROVIDER: 'resend', RESEND_API_KEY: 'r' },
+      { ...MSG, attachments: [{ filename: 'receipt.pdf', content: 'JVBERi0xLjQK' }] }
+    );
+    const body = bodyOf(0);
+    expect(body.attachments).toEqual([{ filename: 'receipt.pdf', content: 'JVBERi0xLjQK' }]);
+  });
+
+  it('Brevo memetakan attachment sebagai { name, content }', async () => {
+    await sendMail(
+      { MAIL_PROVIDER: 'brevo', BREVO_API_KEY: 'k' },
+      { ...MSG, attachments: [{ filename: 'receipt.pdf', content: 'JVBERi0xLjQK' }] }
+    );
+    const body = bodyOf(0);
+    expect(body.attachment).toEqual([{ name: 'receipt.pdf', content: 'JVBERi0xLjQK' }]);
+  });
 });
 
 describe('kegagalan', () => {

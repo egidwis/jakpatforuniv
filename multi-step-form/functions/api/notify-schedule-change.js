@@ -32,7 +32,7 @@ import { sendMail } from './_mail.js';
  */
 
 const WIB = 'Asia/Jakarta';
-const DASHBOARD_URL = 'https://jakpatforuniversities.com/dashboard/status';
+const DASHBOARD_URL = 'https://submit.jakpatforuniv.com/dashboard';
 
 const fmtDate = (iso) =>
     iso
