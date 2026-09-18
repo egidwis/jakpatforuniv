@@ -39,27 +39,47 @@ export interface PageData {
          * menembak query terpisah hanya untuk kolom ini setiap kali layar dibuka.
          */
         criteria_responden?: string | null;
+        /** Menentukan chip tipe & tab Kilat — lihat `pageTypeOf`/`isKilatPage`. */
+        distribution_type?: string | null;
     };
     owner_name?: string;
     page_respondents?: { count: number }[];
     requires_banner_update?: boolean;
 }
 
-export type PageType = 'ad' | 'extra' | 'announcement';
+export type PageType = 'ad' | 'extra' | 'kilat' | 'announcement';
 
 export const PAGE_TYPE_LABEL: Record<PageType, string> = {
     ad: 'Survey Ad',
     extra: 'Extra Ad',
+    kilat: 'Kilat',
     announcement: 'Announcement',
 };
 
 /**
- * Rantai `is_extra_ad → tanpa submission_id → sisanya`, dipusatkan. Dulu disalin
- * dua kali di PublishPageManagement dan sekali lagi di tab Live, jadi tiga tempat
- * yang harus diingat bersamaan setiap kali tipe halaman bertambah.
+ * Rantai `is_extra_ad → Kilat → tanpa submission_id → sisanya`, dipusatkan. Dulu
+ * disalin dua kali di PublishPageManagement dan sekali lagi di tab Live, jadi tiga
+ * tempat yang harus diingat bersamaan setiap kali tipe halaman bertambah.
+ *
+ * ⚠️ URUTAN PEMERIKSAAN PENTING.
+ *
+ * `kilat` diperiksa SESUDAH `is_extra_ad` tapi SEBELUM pagar `submission_id`:
+ *
+ *  - sesudah `is_extra_ad` — CHECK `ad_schedules_kilat_never_extra` (sql/63)
+ *    membuat kombinasi Kilat+extra mustahil, jadi urutan keduanya sebenarnya
+ *    tidak bisa bentrok. Tetap ditaruh sesudahnya supaya "extra" tidak pernah
+ *    tertutup diam-diam kalau CHECK itu suatu saat dicabut.
+ *  - sebelum `!submission_id` — halaman Kilat SELALU punya submission_id, jadi
+ *    menaruhnya sesudah pagar itu tidak salah, tapi menaruhnya sebelum membuat
+ *    maksudnya terbaca: Kilat adalah jalur distribusi, bukan sisa.
+ *
+ * Sebelum ini halaman Kilat tampil sebagai "Survey Ad" di seluruh dashboard —
+ * chip katalog, filter tipe, dan drawer — karena tidak ada yang pernah menanyai
+ * `distribution_type`. 17 halaman di produksi salah label.
  */
 export function pageTypeOf(p: PageData): PageType {
     if (p.is_extra_ad) return 'extra';
+    if (isKilatPage(p)) return 'kilat';
     if (!p.submission_id) return 'announcement';
     return 'ad';
 }

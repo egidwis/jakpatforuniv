@@ -3,10 +3,11 @@ import { supabase } from '@/utils/supabase';
 import { isLive, compareDisplayOrder } from '@/utils/adOrdering';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
-import { Files, ListOrdered, Plus, RefreshCw } from 'lucide-react';
+import { Files, ListOrdered, Plus, RefreshCw, Zap } from 'lucide-react';
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { LiveFeedTab } from './publish-pages/LiveFeedTab';
 import { PageCatalogTab } from './publish-pages/PageCatalogTab';
+import { KilatPagesTab } from './publish-pages/KilatPagesTab';
 import { PageDetailDrawer } from './publish-pages/PageDetailDrawer';
 import { isKilatPage, type PageData } from './publish-pages/types';
 import { toast } from 'sonner';
@@ -36,9 +37,32 @@ import { fetchProfileNames } from '../utils/profileNames';
 // ia menyaring bulan lewat `toISOString().slice(0,7)` — UTC, bukan WIB.
 // ─────────────────────────────────────────────────────────────
 
-type Tab = 'live' | 'catalog';
+type Tab = 'live' | 'kilat' | 'catalog';
 
 const CATALOG_LIMIT = 100;
+
+/**
+ * Sama dengan PAGE_SELECT, tapi join-nya `!inner` supaya `.eq()` pada
+ * `form_submissions.distribution_type` benar-benar menyaring baris induk.
+ * Dipisah, bukan dijadikan satu dengan PAGE_SELECT, karena `!inner` akan
+ * MEMBUANG halaman yatim — benar untuk tab Kilat, salah untuk dua tab lain.
+ */
+const PAGE_SELECT_KILAT = `
+    *,
+    form_submissions!inner (
+        title,
+        full_name,
+        auth_user_id,
+        university,
+        prize_per_winner,
+        winner_count,
+        criteria_responden,
+        distribution_type
+    ),
+    page_respondents (
+        count
+    )
+`;
 
 const PAGE_SELECT = `
     *,
@@ -82,6 +106,9 @@ export function PublishPageManagement() {
 
     const [livePages, setLivePages] = useState<PageData[]>([]);
     const [liveLoading, setLiveLoading] = useState(true);
+
+    const [kilatPages, setKilatPages] = useState<PageData[]>([]);
+    const [kilatLoading, setKilatLoading] = useState(true);
 
     const [catalogPages, setCatalogPages] = useState<PageData[]>([]);
     const [catalogLoading, setCatalogLoading] = useState(true);
@@ -132,9 +159,9 @@ export function PublishPageManagement() {
             //
             // Badge ikut benar dengan sendirinya: ia menghitung dari daftar ini.
             //
-            // ⚠️ Halaman Kilat TIDAK hilang dari admin — ia tetap ada di tab
-            // "Semua Page" (inventaris), dan tautannya disalin dari tab Page
-            // pada order-nya. Ini penyaringan sumbu, bukan penyembunyian.
+            // ⚠️ Halaman Kilat TIDAK hilang dari admin — ia punya tab sendiri
+            // ("Kilat") dan tetap ada di "Semua Page". Ini penyaringan sumbu,
+            // bukan penyembunyian.
             //
             // ⚠️ KEMBAR KETIGA. SurveyListingPage.tsx dan functions/api/surveys.js
             // punya filter yang sama. Ubah satu, tinjau ketiganya.
@@ -145,6 +172,50 @@ export function PublishPageManagement() {
             toast.error('Gagal memuat feed live');
         } finally {
             setLiveLoading(false);
+        }
+    }, []);
+
+    /**
+     * Kilat — SEMUA halaman Kilat, gelombang terbaru di atas.
+     *
+     * Sengaja TIDAK dibatasi jendela tayang seperti feed. Dua sebabnya:
+     *
+     *  1. `publish_end_date` Kilat selalu NULL (sql/95) — tautan push tidak
+     *     boleh mati — jadi "masih dalam jendela" tidak membedakan apa pun.
+     *  2. Menyaring "yang aktif hari ini" akan membuat tab ini KOSONG: per
+     *     18 Sep seluruh 17 halaman Kilat gelombangnya sudah lewat (terbaru
+     *     14 Sep). Tab kosong terbaca seperti fitur rusak, padahal justru di
+     *     sinilah admin mencari tautan yang pernah disiarkan.
+     *
+     * Urutannya `publish_start_date` menurun = gelombang terbaru di atas, yang
+     * juga berarti yang paling mungkin dicari ada di paling atas.
+     */
+    const fetchKilat = useCallback(async () => {
+        setKilatLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('survey_pages')
+                // ⚠️ `!inner` WAJIB — tanpa itu `.eq()` pada kolom tertaut hanya
+                // menyaring ISI join-nya, bukan baris induknya. Terukur di
+                // produksi 18 Sep: tanpa `!inner` kueri ini memulangkan 388
+                // baris (seluruh tabel) dan bukan 17. Halaman yatim ikut gugur,
+                // dan itu memang yang diinginkan di sini: Kilat selalu punya
+                // submission_id, jadi `!inner` sekaligus menggantikan
+                // `.not('submission_id','is',null)`.
+                .select(PAGE_SELECT_KILAT)
+                .eq('form_submissions.distribution_type', 'kilat')
+                .order('publish_start_date', { ascending: false, nullsFirst: false });
+
+            if (error) throw error;
+            // Sabuk pengaman kedua: kalau `!inner` di atas pernah hilang saat
+            // seseorang merapikan select, filter ini yang menahan kebocoran.
+            const decorated = await decorateOwners(data || []);
+            setKilatPages(decorated.filter(isKilatPage));
+        } catch (error) {
+            console.error('Error fetching kilat pages:', error);
+            toast.error('Gagal memuat halaman Kilat');
+        } finally {
+            setKilatLoading(false);
         }
     }, []);
 
@@ -183,6 +254,7 @@ export function PublishPageManagement() {
         return () => clearTimeout(t);
     }, [catalogQuery]);
 
+    useEffect(() => { void fetchKilat(); }, [fetchKilat]);
     useEffect(() => { void fetchCatalog(debouncedQuery); }, [fetchCatalog, debouncedQuery]);
 
     /**
@@ -198,8 +270,8 @@ export function PublishPageManagement() {
     }, [livePages, catalogPages]);
 
     const refreshAll = useCallback(async () => {
-        await Promise.all([fetchLive(), fetchCatalog(debouncedQuery)]);
-    }, [fetchLive, fetchCatalog, debouncedQuery]);
+        await Promise.all([fetchLive(), fetchKilat(), fetchCatalog(debouncedQuery)]);
+    }, [fetchLive, fetchKilat, fetchCatalog, debouncedQuery]);
 
     const handleToggleHide = async (page: PageData) => {
         const action = page.is_hidden ? 'menampilkan kembali' : 'menyembunyikan';
@@ -239,7 +311,9 @@ export function PublishPageManagement() {
         void refreshAll();
     };
 
-    const loading = activeTab === 'live' ? liveLoading : catalogLoading;
+    const loading = activeTab === 'live' ? liveLoading
+        : activeTab === 'kilat' ? kilatLoading
+        : catalogLoading;
 
     /**
      * Muat ulang menyegarkan apa yang sedang dilihat, jadi ia tinggal di toolbar
@@ -265,7 +339,12 @@ export function PublishPageManagement() {
             {/* ── Tab DI LUAR kartu, seperti Schedule dan Finance ── */}
             <div className="shrink-0 flex items-center border-b border-gray-200 mb-4">
                 {([
-                    ['live', 'Feed Live', ListOrdered],
+                    // "Iklan Live", bukan "Feed Live": nama lama menyebut
+                    // MEKANISME, nama baru menyebut ISI — dan berdampingan
+                    // dengan "Kilat" ia jadi mengajar, karena dua tab itu
+                    // persis dua jalur distribusi JFU.
+                    ['live', 'Iklan Live', ListOrdered],
+                    ['kilat', 'Kilat', Zap],
                     ['catalog', 'Semua Page', Files],
                 ] as const).map(([id, label, Icon]) => (
                     <button
@@ -297,7 +376,14 @@ export function PublishPageManagement() {
 
             {/* ── Satu kartu terpadu: toolbar · satu wilayah gulung · footer ── */}
             <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden mb-4">
-                {activeTab === 'live' ? (
+                {activeTab === 'kilat' ? (
+                    <KilatPagesTab
+                        kilatPages={kilatPages}
+                        loading={kilatLoading}
+                        actions={actions}
+                        onSelectPage={setSelectedPage}
+                    />
+                ) : activeTab === 'live' ? (
                     <LiveFeedTab
                         livePages={livePages}
                         loading={liveLoading}

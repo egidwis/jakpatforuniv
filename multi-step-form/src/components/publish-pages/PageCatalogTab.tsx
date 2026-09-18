@@ -39,6 +39,7 @@ const TYPE_FILTERS: { value: 'all' | PageType; label: string }[] = [
     { value: 'all', label: 'Semua tipe' },
     { value: 'ad', label: PAGE_TYPE_LABEL.ad },
     { value: 'extra', label: PAGE_TYPE_LABEL.extra },
+    { value: 'kilat', label: PAGE_TYPE_LABEL.kilat },
     { value: 'announcement', label: PAGE_TYPE_LABEL.announcement },
 ];
 

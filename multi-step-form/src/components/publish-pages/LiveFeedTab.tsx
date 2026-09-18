@@ -13,11 +13,16 @@ import {
 import { publicPagePath, publicPageUrl } from '@/utils/page-url';
 
 // ─────────────────────────────────────────────────────────────
-// Feed Live — kurasi urutan kartu yang sedang tayang.
+// Iklan Live — kurasi urutan kartu yang sedang tayang.
 //
 // Ini satu-satunya pekerjaan yang tidak bisa dilakukan layar lain: papan Schedule
 // memegang sumbu tanggal dan sengaja nol aksi, sementara urutan feed adalah aksi
 // murni yang tidak punya tanggal.
+//
+// Isinya HANYA iklan yang bersaing di feed aplikasi Jakpat — Kilat disaring
+// keluar di `PublishPageManagement.fetchLive` dan punya tabnya sendiri. Itu juga
+// sebab nama tabnya "Iklan Live", bukan "Feed Live": yang membedakannya dari tab
+// sebelah adalah ISI, bukan mekanisme.
 // ─────────────────────────────────────────────────────────────
 
 type Highlight = 'all' | 'placeholder-banner' | 'hidden';
@@ -36,6 +41,12 @@ const COL = {
 const TYPE_CLASS: Record<ReturnType<typeof pageTypeOf>, string> = {
     ad: 'text-blue-700 bg-blue-50 border-blue-100',
     extra: 'text-amber-700 bg-amber-50 border-amber-100',
+    // Tidak pernah benar-benar dirender di tab ini: Kilat disaring keluar dari
+    // feed live (lihat PublishPageManagement.fetchLive). Entri ini ada karena
+    // Record wajib lengkap — dan supaya tab ini tidak meledak seandainya
+    // penyaringnya suatu saat dilonggarkan. Rose, bukan amber, agar tidak
+    // tertukar dengan `extra` bila keduanya pernah tampil berdampingan.
+    kilat: 'text-rose-700 bg-rose-50 border-rose-100',
     announcement: 'text-purple-700 bg-purple-50 border-purple-100',
 };
 

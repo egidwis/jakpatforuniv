@@ -200,3 +200,55 @@ describe('kontrak hibah kolom anon pada form_submissions', () => {
         }
     });
 });
+
+/**
+ * Dashboard admin: tab Kilat & label tipe.
+ *
+ * Dua jebakan senyap dikunci di sini — keduanya gagal TANPA error, hanya
+ * dengan angka yang salah di layar.
+ */
+describe('dashboard admin: Kilat punya tab & label sendiri', () => {
+    const MANAGE_SRC = readFileSync(
+        path.resolve(__dirname, '../../components/PublishPageManagement.tsx'), 'utf8');
+    const TYPES_SRC = readFileSync(
+        path.resolve(__dirname, '../../components/publish-pages/types.ts'), 'utf8');
+
+    /**
+     * ⚠️ PostgREST: `.eq()` pada kolom TERTAUT tidak menyaring baris induk
+     * kecuali join-nya `!inner`. Terukur di produksi 18 Sep — tanpa `!inner`
+     * kueri tab Kilat memulangkan 388 baris, bukan 17.
+     *
+     * Kegagalannya senyap: penyaring klien tetap membuat layarnya benar, jadi
+     * satu-satunya gejala adalah 388 baris ditarik untuk menampilkan 17.
+     */
+    it('kueri tab Kilat memakai join !inner', () => {
+        expect(MANAGE_SRC).toContain('form_submissions!inner');
+        // Dan `.eq()`-nya memang menyasar kolom tertaut itu.
+        expect(MANAGE_SRC).toContain("eq('form_submissions.distribution_type', 'kilat')");
+    });
+
+    /** Feed live tetap TIDAK boleh memakai !inner — halaman yatim wajib lolos. */
+    it('PAGE_SELECT biasa tetap tanpa !inner, supaya yatim tidak gugur', () => {
+        const biasa = MANAGE_SRC.slice(MANAGE_SRC.indexOf('const PAGE_SELECT = `'));
+        const akhir = biasa.indexOf('`;');
+        expect(biasa.slice(0, akhir)).not.toContain('!inner');
+    });
+
+    /**
+     * Sebelum ini `pageTypeOf` tidak pernah menanyai `distribution_type`,
+     * sehingga 17 halaman Kilat berlabel "Survey Ad" di seluruh dashboard.
+     */
+    it('pageTypeOf mengenali Kilat, dan labelnya ada', () => {
+        expect(TYPES_SRC).toContain("if (isKilatPage(p)) return 'kilat';");
+        expect(TYPES_SRC).toContain("kilat: 'Kilat'");
+    });
+
+    /** Urutan rantai: Kilat harus diperiksa SEBELUM pagar submission_id. */
+    it('Kilat diperiksa sebelum cabang announcement', () => {
+        const iKilat = TYPES_SRC.indexOf("return 'kilat'");
+        const iAnn = TYPES_SRC.indexOf("return 'announcement'");
+        expect(iKilat).toBeGreaterThan(-1);
+        expect(iAnn).toBeGreaterThan(-1);
+        expect(iKilat).toBeLessThan(iAnn);
+    });
+});
