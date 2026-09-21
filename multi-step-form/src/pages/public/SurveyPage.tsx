@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase, getCdnUrl } from '@/utils/supabase';
 import { normalizeJakpatId, jakpatIdWarning } from '@/utils/jakpat-id';
+import { getSurveyEmbedInfo } from '@/utils/surveyEmbed';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -968,51 +969,10 @@ export function SurveyPage() {
     }
 
     // Prepare Survey URL for embedding
-    let surveyUrl = pageData.form_submissions?.survey_url || '';
-
-    // Google Forms: ensure embedded=true parameter is present
-    if (surveyUrl.includes('docs.google.com/forms') && !surveyUrl.includes('embedded=true')) {
-        surveyUrl += surveyUrl.includes('?') ? '&embedded=true' : '?embedded=true';
-    }
-
-    // Resolve forms.gle short URLs to embeddable Google Forms URL
-    if (surveyUrl.includes('forms.gle')) {
-        // forms.gle redirects to docs.google.com/forms — iframe can handle the redirect,
-        // but we still add embedded=true awareness for when it lands on the final URL.
-    }
-
-    // Blocklist approach: default to embedding all URLs.
-    // Only block domains that are KNOWN to refuse iframe embedding (X-Frame-Options: DENY).
-    const checkEmbeddable = (url: string) => {
-        if (!url) return false;
-        try {
-            const domain = new URL(url).hostname.toLowerCase();
-            const embeddableDomains = [
-                'typeform.com',
-                'surveymonkey.com',
-                'forms.office.com',
-                'qualtrics.com',
-                'tally.so',
-                'fillout.com'
-            ];
-            
-            // Check Google Forms separately to ensure only /e/ (published) URLs are embedded
-            if (domain.includes('docs.google.com') || domain.includes('forms.gle')) {
-                // Shortlinks (forms.gle) hide the path, and /d/ URLs require permissions if embedded.
-                // Only embed if we are certain it's a published /e/ URL.
-                if (url.includes('/d/e/')) {
-                    return true;
-                }
-                return false;
-            }
-
-            return embeddableDomains.some(d => domain.includes(d));
-        } catch (e) {
-            return false;
-        }
-    };
-
-    const isEmbeddable = checkEmbeddable(surveyUrl);
+    const rawSurveyUrl = pageData.form_submissions?.survey_url || '';
+    const embedInfo = getSurveyEmbedInfo(rawSurveyUrl);
+    const surveyUrl = embedInfo.embedUrl || rawSurveyUrl;
+    const isEmbeddable = embedInfo.isEmbeddable;
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
@@ -1323,7 +1283,7 @@ export function SurveyPage() {
                                             <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
                                             <p className="text-blue-900/90 leading-relaxed">
                                                 Jika form di bawah ini tampak kosong atau error, silakan{' '}
-                                                <a href={surveyUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 hover:text-blue-800 hover:underline flex items-center inline-flex gap-1" style={{ display: 'inline-flex' }}>
+                                                <a href={embedInfo.originalUrl || surveyUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 hover:text-blue-800 hover:underline flex items-center inline-flex gap-1" style={{ display: 'inline-flex' }}>
                                                     Buka Survei di Layar Penuh <ExternalLink className="w-3 h-3" />
                                                 </a>{' '}
                                                 untuk mengisinya secara aman.
@@ -1332,7 +1292,7 @@ export function SurveyPage() {
 
                                         <div className="-mx-4 sm:mx-0 w-auto sm:w-full h-[75vh] min-h-[500px] sm:h-[600px] border-y sm:border rounded-none sm:rounded-lg overflow-hidden relative bg-gray-100">
                                             <iframe
-                                                src={surveyUrl}
+                                                src={embedInfo.embedUrl}
                                                 className="w-full h-full"
                                                 title="Survey Form"
                                                 allowFullScreen
@@ -1349,10 +1309,10 @@ export function SurveyPage() {
                                         </div>
                                         <h3 className="text-xl font-bold text-gray-900 mb-2">Buka Survei di Tab Baru</h3>
                                         <p className="text-gray-500 max-w-sm mx-auto mb-6 text-sm leading-relaxed">
-                                            Sistem keamanan dari penyedia survei ini mengharuskan pengisian dilakukan di halaman utamanya. Silakan klik tombol di bawah untuk memulai.
+                                            {embedInfo.reason || 'Sistem keamanan dari penyedia survei ini mengharuskan pengisian dilakukan di halaman utamanya. Silakan klik tombol di bawah untuk memulai.'}
                                         </p>
                                         <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto px-8 shadow-md font-semibold">
-                                            <a href={surveyUrl} target="_blank" rel="noopener noreferrer">
+                                            <a href={embedInfo.originalUrl || surveyUrl} target="_blank" rel="noopener noreferrer">
                                                 Lanjutkan ke Survei <ExternalLink className="w-4 h-4 ml-2" />
                                             </a>
                                         </Button>

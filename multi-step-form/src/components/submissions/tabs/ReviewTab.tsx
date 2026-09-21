@@ -10,6 +10,7 @@ import { DetailSheetSection } from '../../data-list/DetailSheet';
 import type { SurveySubmission, FormAuditResult } from '../types';
 import { copyToClipboard } from '../types';
 import { AuditScorecard } from '../AuditScorecard';
+import { getSurveyEmbedInfo } from '../../../utils/surveyEmbed';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Review (default) — survey preview & review decision inputs
@@ -24,6 +25,8 @@ export function ReviewTab({
   onEditFormDetails: (submission: SurveySubmission) => void;
   onAuditComplete?: (newResult: FormAuditResult) => void;
 }) {
+  const embedInfo = getSurveyEmbedInfo(submission.formUrl);
+
   const actionButtons = (
     <div className="flex items-center gap-0.5 shrink-0 ml-auto">
       <TooltipProvider>
@@ -116,27 +119,27 @@ export function ReviewTab({
               {actionButtons}
             </div>
             
-            {submission.formUrl.includes('docs.google.com') && !submission.formUrl.includes('/d/e/') ? (
+            {!embedInfo.isEmbeddable ? (
               <div className="flex-1 bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
                 <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-4 border shadow-sm">
                   <ExternalLink className="w-5 h-5 text-gray-400" />
                 </div>
                 <h4 className="text-sm font-medium text-gray-900 mb-1.5">Preview Tidak Tersedia</h4>
-                <p className="text-xs text-gray-500 max-w-[280px] mb-5 leading-relaxed">
-                  Sistem keamanan Google membatasi preview untuk tautan editor. Silakan buka form di tab baru untuk mengecek tampilannya.
+                <p className="text-xs text-gray-500 max-w-[320px] mb-5 leading-relaxed">
+                  {embedInfo.reason || 'Sistem keamanan membatasi preview untuk tautan ini. Silakan buka form di tab baru untuk mengecek tampilannya.'}
                 </p>
                 <Button 
                   variant="outline" 
                   size="sm" 
                   className="bg-white border-gray-300 hover:bg-gray-50"
-                  onClick={() => window.open(submission.formUrl, '_blank', 'noopener,noreferrer')}
+                  onClick={() => window.open(embedInfo.originalUrl || submission.formUrl, '_blank', 'noopener,noreferrer')}
                 >
                   Buka Preview di Tab Baru <ExternalLink className="w-3.5 h-3.5 ml-2" />
                 </Button>
               </div>
             ) : (
               <iframe
-                src={submission.formUrl}
+                src={embedInfo.embedUrl}
                 title={`Preview: ${submission.formTitle}`}
                 className="w-full flex-1 bg-white"
                 sandbox="allow-scripts allow-same-origin allow-forms"
