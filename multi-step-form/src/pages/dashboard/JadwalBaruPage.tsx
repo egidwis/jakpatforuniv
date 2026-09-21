@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, CheckCircle2, ChevronDown, Clock, Gift, Info, Loader2, Lock, PlusCircle, RefreshCw,
+  ArrowLeft, CheckCircle2, ChevronDown, Gift, Info, Loader2, Lock, PlusCircle, RefreshCw,
 } from 'lucide-react';
 import { supabase, getFormSubmissionById, fetchAdSchedules, cancelSchedule } from '../../utils/supabase';
 import type { FormSubmission, AdScheduleEntry } from '../../utils/supabase';
@@ -257,9 +257,9 @@ export function JadwalBaruPage() {
   // Prefill hadiah dari jadwal sebelumnya, hanya bila batch-nya memang baru.
   useEffect(() => {
     if (!plan.needsReward || !submission) return;
-    setPrizePerWinner((v) => (v > 0 ? v : Number(submission.prize_per_winner) || 0));
-    setWinnerCount((v) => (v > 0 ? v : Number(submission.winner_count) || 0));
-  }, [plan.needsReward, submission]);
+    setPrizePerWinner((v) => (v > 0 ? v : (prevPrizePerWinner > 0 ? prevPrizePerWinner : Number(submission.prize_per_winner) || 0)));
+    setWinnerCount((v) => (v > 0 ? v : (prevWinnerCount > 0 ? prevWinnerCount : Number(submission.winner_count) || 0)));
+  }, [plan.needsReward, submission, prevPrizePerWinner, prevWinnerCount]);
 
   const seg = useMemo(
     () => segmentTitleOf({ phase: 'reservation', ordinal }),
@@ -512,133 +512,111 @@ export function JadwalBaruPage() {
       }
       reward={
         <>
-          {/* Kondisi 2: Berbeda Periode (New Period) -> 2 Kartu Terpisah */}
+          {/* Kondisi 2: Berbeda Periode (New Period) -> 1 Kartu Terpadu */}
           {plan.needsReward && (
-            <div className="space-y-3.5">
-              {/* Kartu 1: Hadiah Periode Sebelumnya (Akan Masuk Distribusi) */}
-              <div className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-4 sm:p-5 shadow-2xs space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-slate-200/70 text-slate-600 flex items-center justify-center shrink-0">
-                      <Gift className="w-4 h-4" />
-                    </div>
-                    <h4 className="text-sm font-bold text-slate-900">
-                      {t('scheduleAgainPeriodRewardTitle', { period: prevPeriodLabel })}
-                    </h4>
+            <div className="rounded-2xl border border-indigo-100 bg-white p-4 sm:p-5 shadow-xs space-y-4">
+              {/* Header Kartu */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-jfu-primary flex items-center justify-center shrink-0 shadow-2xs">
+                    <Gift className="w-4 h-4" />
                   </div>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200/80 shrink-0">
-                    <Clock className="w-3.5 h-3.5 text-amber-600" />
-                    {t('scheduleAgainDistributingBadge')}
-                  </span>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    {t('scheduleAgainPeriodRewardTitle', { period: currentPeriodLabel })}
+                  </h4>
                 </div>
-
-                {/* Rincian Hadiah Periode Sebelumnya */}
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 py-2 px-3 rounded-xl bg-white/90 border border-slate-200/70 text-xs sm:text-sm text-slate-700">
-                  <span className="font-semibold text-slate-900">
-                    {prevPrizePerWinner > 0 ? formatIDR(prevPrizePerWinner) : '-'}
-                    <span className="font-normal text-slate-500"> / {t('winnerCountUnit') || 'pemenang'}</span>
-                  </span>
-                  <span className="text-slate-300">•</span>
-                  <span className="font-semibold text-slate-900">
-                    {prevWinnerCount > 0 ? `${prevWinnerCount} ${t('winnerCountUnit') || 'pemenang'}` : '-'}
-                  </span>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-slate-500 font-medium">
-                    Total{' '}
-                    <span className="font-bold font-mono text-slate-900">
-                      {prevTotalPrize > 0 ? formatIDR(prevTotalPrize) : '-'}
-                    </span>
-                  </span>
-                </div>
-
-                {/* Konsekuensi Jadwal Terhadap Distribusi Hadiah */}
-                <div className="flex items-start gap-2 pt-0.5 text-xs sm:text-sm leading-relaxed text-slate-600">
-                  <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                  <span>{renderHighlightedText(t('scheduleAgainPrevDistributingDesc'))}</span>
-                </div>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80 shrink-0">
+                  {t('scheduleAgainNewPeriodBadge')}
+                </span>
               </div>
 
-              {/* Kartu 2: Hadiah Periode Baru (Wajib Diisi) */}
-              <div className="rounded-2xl border-2 border-indigo-100 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-jfu-primary flex items-center justify-center shrink-0 shadow-2xs">
-                      <Gift className="w-4 h-4" />
-                    </div>
-                    <h4 className="text-sm font-bold text-slate-900">
-                      {t('scheduleAgainPeriodRewardTitle', { period: currentPeriodLabel })}
-                    </h4>
-                  </div>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80 shrink-0">
-                    {t('scheduleAgainNewPeriodBadge')}
-                  </span>
+              {/* Notice Box: Mengapa butuh hadiah baru? */}
+              <div className="rounded-xl border border-indigo-100/90 bg-indigo-50/50 p-3.5 space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-indigo-900">
+                  <Info className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  <span>{t('scheduleAgainNewPeriodNoticeTitle')}</span>
                 </div>
-
-                <p className="text-xs sm:text-sm leading-relaxed text-slate-600">
-                  {t('scheduleAgainNewPeriodDesc')}
+                <p className="text-xs leading-relaxed text-indigo-950/80 pl-5.5">
+                  {renderHighlightedText(
+                    t('scheduleAgainNewPeriodNoticeDesc', {
+                      currentPeriod: currentPeriodLabel,
+                      prevPeriod: prevPeriodLabel,
+                      prevAmount: prevTotalPrize > 0 ? formatIDR(prevTotalPrize) : '-',
+                    }),
+                  )}
                 </p>
+              </div>
 
-                {/* Form Input Hadiah Baru */}
-                <div className="grid sm:grid-cols-2" style={{ gap: '0.75rem' }}>
-                  <div className="space-y-1.5">
-                    <label htmlFor="baru-prize" className="text-xs font-semibold text-slate-700 block">
-                      {t('scheduleAgainRewardPrize')}
-                    </label>
-                    <div className="relative flex items-center">
-                      <span className="absolute left-3 text-xs font-semibold text-slate-400 select-none">Rp</span>
-                      <input
-                        id="baru-prize"
-                        type="text"
-                        inputMode="numeric"
-                        value={prizePerWinner ? prizePerWinner.toLocaleString('id-ID') : ''}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/[^0-9]/g, '');
-                          setPrizePerWinner(Number(raw) || 0);
-                        }}
-                        disabled={isSaving}
-                        placeholder="25.000"
-                        className="h-10 w-full pl-9 pr-3 text-xs sm:text-sm border border-slate-300 rounded-xl bg-white text-slate-900 focus-visible:border-jfu-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary/20 font-semibold tabular-nums shadow-2xs"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label htmlFor="baru-winners" className="text-xs font-semibold text-slate-700 block">
-                      {t('scheduleAgainRewardWinners')}
-                    </label>
-                    <div className="relative flex items-center">
-                      <input
-                        id="baru-winners"
-                        type="number"
-                        min={2}
-                        max={5}
-                        value={winnerCount || ''}
-                        onChange={(e) => setWinnerCount(Math.max(0, Number(e.target.value) || 0))}
-                        disabled={isSaving}
-                        placeholder="2"
-                        className="h-10 w-full pl-3 pr-20 text-xs sm:text-sm border border-slate-300 rounded-xl bg-white text-slate-900 focus-visible:border-jfu-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary/20 font-semibold tabular-nums shadow-2xs"
-                      />
-                      <span className="absolute right-3 text-xs font-medium text-slate-400 pointer-events-none select-none">
-                        {t('winnerCountUnit') || 'pemenang'}
-                      </span>
-                    </div>
+              {/* Form Prompt */}
+              <div className="space-y-0.5">
+                <p className="text-xs sm:text-sm font-semibold text-slate-800">
+                  {t('scheduleAgainNewPeriodFormPrompt', { period: currentPeriodLabel })}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {t('scheduleAgainNewPeriodPrefilledHint')}
+                </p>
+              </div>
+
+              {/* Form Input Hadiah Baru */}
+              <div className="grid sm:grid-cols-2" style={{ gap: '0.75rem' }}>
+                <div className="space-y-1.5">
+                  <label htmlFor="baru-prize" className="text-xs font-semibold text-slate-700 block">
+                    {t('scheduleAgainRewardPrize')}
+                  </label>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3 text-xs font-semibold text-slate-400 select-none">Rp</span>
+                    <input
+                      id="baru-prize"
+                      type="text"
+                      inputMode="numeric"
+                      value={prizePerWinner ? prizePerWinner.toLocaleString('id-ID') : ''}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '');
+                        setPrizePerWinner(Number(raw) || 0);
+                      }}
+                      disabled={isSaving}
+                      placeholder="25.000"
+                      className="h-10 w-full pl-9 pr-3 text-xs sm:text-sm border border-slate-300 rounded-xl bg-white text-slate-900 focus-visible:border-jfu-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary/20 font-semibold tabular-nums shadow-2xs"
+                    />
                   </div>
                 </div>
-
-                {prizePerWinner > 0 && winnerCount > 0 && (
-                  <div className="pt-2 flex items-center justify-between border-t border-slate-100 text-xs sm:text-sm">
-                    <span className="text-slate-600 font-medium">{t('scheduleAgainTotalPrizeNewPeriod')}</span>
-                    <span className="font-bold text-slate-900 font-mono text-sm">
-                      {formatIDR(prizePerWinner * winnerCount)}
+                <div className="space-y-1.5">
+                  <label htmlFor="baru-winners" className="text-xs font-semibold text-slate-700 block">
+                    {t('scheduleAgainRewardWinners')}
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      id="baru-winners"
+                      type="number"
+                      min={2}
+                      max={5}
+                      value={winnerCount || ''}
+                      onChange={(e) => setWinnerCount(Math.max(0, Number(e.target.value) || 0))}
+                      disabled={isSaving}
+                      placeholder="2"
+                      className="h-10 w-full pl-3 pr-20 text-xs sm:text-sm border border-slate-300 rounded-xl bg-white text-slate-900 focus-visible:border-jfu-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary/20 font-semibold tabular-nums shadow-2xs"
+                    />
+                    <span className="absolute right-3 text-xs font-medium text-slate-400 pointer-events-none select-none">
+                      {t('winnerCountUnit') || 'pemenang'}
                     </span>
                   </div>
-                )}
+                </div>
               </div>
+
+              {prizePerWinner > 0 && winnerCount > 0 && (
+                <div className="pt-2 flex items-center justify-between border-t border-slate-100 text-xs sm:text-sm">
+                  <span className="text-slate-600 font-medium">{t('scheduleAgainTotalPrizeNewPeriod')}</span>
+                  <span className="font-bold text-slate-900 font-mono text-sm">
+                    {formatIDR(prizePerWinner * winnerCount)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
           {/* Kondisi 1: Periode Sama (Same Period) -> 1 Kartu + Top-up Nominal Opsional */}
           {batch && !plan.needsReward && (
-            <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
+            <div className="rounded-2xl border border-emerald-100/90 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
@@ -650,13 +628,9 @@ export function JadwalBaruPage() {
                 </div>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80 shrink-0">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  {t('scheduleAgainActiveBadge')}
+                  {t('scheduleAgainSamePeriodFreeBadge')}
                 </span>
               </div>
-
-              <p className="text-xs sm:text-sm leading-relaxed text-slate-600">
-                {t('scheduleAgainSamePeriodDesc')}
-              </p>
 
               {/* Rincian Hadiah Aktif Periode Ini */}
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 py-2 px-3 rounded-xl bg-slate-50 border border-slate-100 text-xs sm:text-sm text-slate-700">
@@ -670,7 +644,7 @@ export function JadwalBaruPage() {
                 </span>
                 <span className="text-slate-300">•</span>
                 <span className="text-slate-500 font-medium">
-                  Total{' '}
+                  {t('scheduleAgainSamePeriodPoolTotal')}{' '}
                   <span className="font-bold font-mono text-slate-900">
                     {prevTotalPrize > 0 ? formatIDR(prevTotalPrize) : '-'}
                   </span>
@@ -678,17 +652,27 @@ export function JadwalBaruPage() {
               </div>
 
               {/* Tombol Accordion Tambah Hadiah (Opsional) */}
-              <div className="pt-2 border-t border-slate-100">
+              <div className="pt-1">
                 <button
                   type="button"
                   onClick={() => setShowOptionalReward((prev) => !prev)}
-                  className="w-full flex items-center justify-between text-xs sm:text-sm font-semibold text-jfu-primary hover:text-jfu-primary-dark transition-colors py-1 cursor-pointer select-none text-left"
+                  className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all duration-200 cursor-pointer select-none text-left ${
+                    showOptionalReward
+                      ? 'bg-slate-100/90 border-slate-300 text-slate-900'
+                      : 'bg-indigo-50/70 border-indigo-200/90 hover:bg-indigo-100/70 text-indigo-900 shadow-2xs hover:shadow-xs'
+                  }`}
                 >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <PlusCircle className={`w-4 h-4 shrink-0 transition-transform duration-200 ${showOptionalReward ? 'rotate-45 text-rose-500' : 'text-jfu-primary'}`} />
-                    <span className="truncate sm:whitespace-normal">{showOptionalReward ? t('scheduleAgainCloseRewardToggle') : t('scheduleAgainAddRewardToggle')}</span>
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                      showOptionalReward ? 'bg-slate-200 text-slate-700' : 'bg-indigo-200/70 text-jfu-primary'
+                    }`}>
+                      <PlusCircle className={`w-4 h-4 transition-transform duration-200 ${showOptionalReward ? 'rotate-45 text-rose-500' : 'text-jfu-primary'}`} />
+                    </span>
+                    <span className="truncate sm:whitespace-normal font-semibold text-xs sm:text-sm">
+                      {showOptionalReward ? t('scheduleAgainCloseRewardToggle') : t('scheduleAgainAddRewardToggle')}
+                    </span>
                   </span>
-                  <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform duration-200 ml-2 ${showOptionalReward ? 'rotate-180 text-jfu-primary' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ml-2 ${showOptionalReward ? 'rotate-180 text-slate-600' : 'text-indigo-600'}`} />
                 </button>
 
                 {showOptionalReward && (
@@ -724,7 +708,6 @@ export function JadwalBaruPage() {
                         <span className="text-slate-600">
                           {t('scheduleAgainTotalBecomes', {
                             amount: formatIDR(prevPrizePerWinner + additionalPrize),
-                            count: prevWinnerCount,
                           })}
                         </span>
                         <span className="font-bold text-emerald-700 font-mono text-sm">

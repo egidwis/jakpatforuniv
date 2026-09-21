@@ -163,14 +163,21 @@ export function StepOneFormFields({
     if (!hasInitializedRef.current) {
       const updates: Partial<SurveyFormData> = {};
 
+      // Set default duration if not set or <= 0
+      if (!formData.duration || formData.duration <= 0) {
+        updates.duration = 2;
+      }
+
       // Set default winner count if 0
       if (currentWinnerCount === 0) {
         updates.winnerCount = 2;
       }
 
-      // Set recommended prize if questionCount is valid and prize is 0 or recommended value
+      // Set recommended prize if questionCount is valid, or default to 25000 if 0
       if (currentQuestionCount > 0 && (currentPrize === 0 || RECOMMENDED_VALUES.includes(currentPrize))) {
         updates.prizePerWinner = getRecommendedPrize(currentQuestionCount);
+      } else if (!currentPrize || currentPrize === 0) {
+        updates.prizePerWinner = 25000;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -593,6 +600,7 @@ export function StepOneFormFields({
                 }
               }}
             />
+            <span className="ml-1.5 shrink-0 text-sm font-medium text-slate-500">{t('perWinner')}</span>
           </FieldRow>
 
           <FieldRow
@@ -630,7 +638,7 @@ export function StepOneFormFields({
                 }
               }}
             />
-            <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">{t('winnerCountUnit')}</span>
+            <span className="ml-1.5 shrink-0 text-sm font-medium text-slate-500">{t('respondentUnit')}</span>
           </FieldRow>
         </div>
       </div>

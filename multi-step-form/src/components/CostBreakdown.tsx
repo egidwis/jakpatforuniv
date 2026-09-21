@@ -195,14 +195,6 @@ export function CostBreakdown({
         </div>
       </div>
 
-      {/* ⚠️ "Estimasi", bukan "tagihan". `recordedVsBilled` membuktikan
-          `total_cost` dan `invoices.amount` bisa menyimpang — menyebutnya
-          tagihan adalah janji yang tidak selalu bisa ditepati. */}
-      {isEstimate && (
-        <p className="text-xs text-slate-500 font-normal leading-relaxed">
-          {t('costIsEstimateNote')}
-        </p>
-      )}
 
       {saving > 0 && (
         <p className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-800">

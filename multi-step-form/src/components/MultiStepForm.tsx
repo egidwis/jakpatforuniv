@@ -65,8 +65,8 @@ const defaultFormData: SurveyFormData = {
   status: '',
   referralSource: '',
   referralSourceOther: '',
-  winnerCount: 0,
-  prizePerWinner: 0,
+  winnerCount: 2,
+  prizePerWinner: 25000,
 
   // Checkout
   voucherCode: '',
