@@ -30,14 +30,57 @@ export interface DailyPoint {
 }
 
 /**
- * `DailyPoint` + porsinya terhadap TOTAL periode, 0–100.
+ * Lebar satu bucket di sumbu X.
+ *
+ * Grafik ini SELALU menggambar batang, jadi lebar bucket adalah satu-satunya hal
+ * yang membuat rentang panjang tetap terbaca: 365 batang harian terukur 1,0px di
+ * 1440 dan 0,32px di 375 — noda abu, bukan data. Pilihannya ditentukan panjang
+ * rentang (`granularityFor`), bukan kontrol di header, persis seperti dulu bentuk
+ * grafiknya ditentukan data.
+ */
+export type Granularity = 'day' | 'week' | 'month';
+
+/**
+ * Satu bucket di sumbu X — sehari, sepekan, atau sebulan.
+ *
+ * Menggantikan `DailyPoint` sebagai satuan yang dibaca grafik. Bentuknya sengaja
+ * dibuat superset: `dayKey` tetap ada dan tetap `YYYY-MM-DD` (tanggal PERTAMA di
+ * bucket), jadi ia tetap kunci yang membawa tahun dan sumbu X tidak perlu tahu
+ * granularitas apa yang sedang digambar.
+ */
+export interface BucketPoint {
+    /** Tanggal pertama di bucket, `YYYY-MM-DD` WIB. Kunci — selalu unik, selalu bertahun. */
+    dayKey: string;
+    /** Label sumbu siap pakai: "15 Agu", "15–21 Agu", atau "Sep 2026". */
+    label: string;
+    /** Label panjang untuk tooltip & tabel, mis. "15 – 21 Agustus 2026". */
+    longLabel: string;
+    revenue: number;
+    paidOrders: number;
+    /**
+     * Bucket ini TIDAK memuat seluruh hari kalendernya.
+     *
+     * Di granularitas harian ini berarti "hari ini, belum selesai". Di mingguan &
+     * bulanan ia menanggung satu makna lagi yang tak punya padanan di versi harian:
+     * bucket di UJUNG rentang yang terpotong oleh pilihan tanggal user. Tanpa
+     * penanda, September yang cuma berisi 11 hari terbaca sebagai bulan terburuk
+     * tahun ini, dan Maret yang dimulai tanggal 15 terbaca sebagai bulan lesu.
+     */
+    isPartial: boolean;
+    /** Hari kalender yang benar-benar tercakup bucket ini — penjelas `isPartial`. */
+    days: number;
+    granularity: Granularity;
+}
+
+/**
+ * `BucketPoint` + porsinya terhadap TOTAL periode, 0–100.
  *
  * Grafik utama menggambar kedua seri di SATU bidang, jadi keduanya harus jadi besaran
  * tanpa satuan lebih dulu. Nilai mentah `revenue`/`paidOrders` SENGAJA dipertahankan —
  * tooltip, label langsung, dan tampilan Tabel membaca dari sana, jadi Rupiah tidak
  * pernah hilang meski sumbunya persen.
  */
-export interface IndexedDailyPoint extends DailyPoint {
+export interface IndexedDailyPoint extends BucketPoint {
     /** Porsi revenue hari ini terhadap total periode, 0–100. */
     revenueShare: number;
     /** Porsi order lunas hari ini terhadap total periode, 0–100. */

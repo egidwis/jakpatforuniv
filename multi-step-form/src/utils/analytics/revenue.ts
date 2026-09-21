@@ -20,10 +20,12 @@
 
 import { toWibYmd } from '../airing-window';
 import type {
+    BucketPoint,
     CustomerSegment,
     DailyPoint,
     DateRange,
     Delta,
+    Granularity,
     IndexedDailyPoint,
     PpnBreakdown,
     RankedRow,
@@ -375,7 +377,7 @@ export function buildDailySeries(
  * Total nol menghasilkan share nol — BUKAN `NaN`. Rentang tanpa penjualan itu wajar
  * (akhir pekan panjang, kanal baru), dan `NaN` akan merambat jadi sumbu kosong.
  */
-export function toShareSeries(points: DailyPoint[]): IndexedDailyPoint[] {
+export function toShareSeries(points: BucketPoint[]): IndexedDailyPoint[] {
     let revenueTotal = 0;
     let ordersTotal = 0;
     for (const p of points) {
@@ -388,6 +390,217 @@ export function toShareSeries(points: DailyPoint[]): IndexedDailyPoint[] {
         revenueShare: share(p.revenue, revenueTotal),
         ordersShare: share(p.paidOrders, ordersTotal),
     }));
+}
+
+// ---------------------------------------------------------------------------
+// Cakupan pencatatan
+// ---------------------------------------------------------------------------
+
+/**
+ * Hari pertama yang benar-benar punya transaksi lunas tercatat, atau `null`.
+ *
+ * ## Kenapa ini perlu ada
+ *
+ * `transactions` baru mulai memuat pembayaran sejak Januari 2026; 86 baris 2025
+ * seluruhnya `expired`. Sementara itu `form_submissions` 2025 punya 147 baris
+ * bertanda `payment_status='paid'` senilai Rp 53,2 juta — order yang memang
+ * dibayar, tapi di luar sistem (transfer manual), jadi tak pernah melahirkan
+ * transaksi lunas.
+ *
+ * Akibatnya rentang "Semua waktu" menggambar delapan bulan datar di nol sepanjang
+ * 2025 lalu melonjak di Januari 2026. Grafiknya JUJUR tentang `transactions`, tapi
+ * pembacanya akan menyimpulkan bisnis ini lahir Januari 2026 — dan itu salah.
+ * Fungsi ini memberi kartunya jangkar untuk mengatakan sejak kapan angkanya layak
+ * dibandingkan, alih-alih membiarkan kekosongan itu bicara sendiri.
+ *
+ * `paidOrders` ikut diperiksa, bukan `revenue` saja: order lunas bernilai nol tetap
+ * transaksi yang TERCATAT, dan yang dicari di sini adalah awal pencatatan.
+ *
+ * Mengembalikan `null` untuk deret yang seluruhnya kosong — itu rentang sunyi
+ * biasa (akhir pekan panjang, kanal baru), bukan lubang cakupan.
+ */
+export function firstPaidDayKey(points: DailyPoint[]): string | null {
+    for (const p of points) {
+        if (p.revenue > 0 || p.paidOrders > 0) return p.dayKey;
+    }
+    return null;
+}
+
+/**
+ * Berapa hari sumbu berdiri kosong sebelum pencatatan dimulai.
+ *
+ * Nol berarti tak ada yang perlu dijelaskan: entah hari pertama sudah berisi, atau
+ * deretnya memang sunyi seluruhnya. Pemanggil memakai angka ini sebagai AMBANG —
+ * catatan cakupan hanya layak muncul kalau kekosongannya cukup panjang untuk
+ * disalahbaca, bukan pada satu-dua hari sepi di awal rentang.
+ */
+export function coverageGapDays(points: DailyPoint[]): number {
+    const first = firstPaidDayKey(points);
+    if (!first) return 0;
+    const index = points.findIndex((p) => p.dayKey === first);
+    return index < 0 ? 0 : index;
+}
+
+// ---------------------------------------------------------------------------
+// Bucketing: lebar bucket mengikuti panjang rentang
+// ---------------------------------------------------------------------------
+
+/**
+ * Di atas ambang ini batang harian jadi sub-pixel, jadi buckets-nya yang melebar.
+ *
+ * Ambangnya dipilih supaya rentang yang dipakai sehari-hari (7/30 hari, "Bulan ini",
+ * "Bulan lalu") SELALU harian: 31 hari masih 31 batang yang terbaca nyaman. Di atas
+ * itu, 90 hari jadi ~13 batang mingguan, dan setahun jadi 12 batang bulanan.
+ */
+const DAILY_MAX_DAYS = 31;
+const WEEKLY_MAX_DAYS = 120;
+
+const wibMonthLabelFmt = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    month: 'short',
+    year: 'numeric',
+});
+
+const wibMonthLongFmt = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    month: 'long',
+    year: 'numeric',
+});
+
+const wibDayLongFmt = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+});
+
+/** Tengah hari WIB pada `ymd` — jangkar aman untuk formatter apa pun. */
+function wibNoon(ymd: string): Date {
+    return new Date(wibDayStartMs(ymd) + DAY_MS / 2);
+}
+
+/**
+ * Lebar bucket untuk rentang sepanjang `days` hari.
+ *
+ * Ditentukan DATA, bukan kontrol di header — satu kontrol lebih sedikit di bawah
+ * angka terbesar halaman, dan pembaca tidak pernah bisa memilih resolusi yang
+ * menggambar 365 batang sub-pixel.
+ */
+export function granularityFor(days: number): Granularity {
+    if (days <= DAILY_MAX_DAYS) return 'day';
+    if (days <= WEEKLY_MAX_DAYS) return 'week';
+    return 'month';
+}
+
+/** Senin pada pekan yang memuat `ymd`, menurut WIB. */
+function weekStartYmd(ymd: string): string {
+    // `getUTCDay` pada instant 00:00 WIB yang sudah digeser: pakai tengah hari WIB
+    // supaya hasilnya tidak tergelincir ke hari sebelumnya.
+    const dow = wibNoon(ymd).getUTCDay(); // 0 = Minggu
+    const backToMonday = (dow + 6) % 7; // Senin = 0, Minggu = 6
+    return new Date(Date.parse(`${ymd}T00:00:00.000Z`) - backToMonday * DAY_MS)
+        .toISOString()
+        .slice(0, 10);
+}
+
+/** Tanggal 1 pada bulan yang memuat `ymd`. */
+function monthStartYmd(ymd: string): string {
+    return `${ymd.slice(0, 7)}-01`;
+}
+
+/** Hari kalender dalam bucket PENUH yang berjangkar di `startYmd`. */
+function fullBucketDays(startYmd: string, granularity: Granularity): number {
+    if (granularity === 'day') return 1;
+    if (granularity === 'week') return 7;
+    const [y, m] = startYmd.split('-').map(Number);
+    return new Date(Date.UTC(y, m, 0)).getUTCDate(); // hari ke-0 bulan berikutnya
+}
+
+function bucketLabels(startYmd: string, endYmd: string, granularity: Granularity) {
+    if (granularity === 'day') {
+        return { label: wibDayLabel(startYmd), longLabel: wibDayLongFmt.format(wibNoon(startYmd)) };
+    }
+    if (granularity === 'month') {
+        return {
+            label: wibMonthLabelFmt.format(wibNoon(startYmd)),
+            longLabel: wibMonthLongFmt.format(wibNoon(startYmd)),
+        };
+    }
+    return {
+        label: `${wibDayLabel(startYmd)} – ${wibDayLabel(endYmd)}`,
+        longLabel: `${wibDayLongFmt.format(wibNoon(startYmd))} – ${wibDayLongFmt.format(wibNoon(endYmd))}`,
+    };
+}
+
+/**
+ * Ringkas deret harian jadi bucket sepekan atau sebulan.
+ *
+ * ## Kenapa berdiri DI ATAS `buildDailySeries`, bukan menggantikannya
+ *
+ * `buildDailySeries` sudah menanggung seluruh kerumitan yang mahal: batas hari WIB,
+ * rentang yang ditutup persis, kunci bertahun, hari berjalan. Menulis ulang semua itu
+ * per-granularitas berarti tiga tempat yang bisa salah alih-alih satu. Di sini
+ * harinya cuma DIKELOMPOKKAN — tidak ada tanggal yang dihitung ulang dari transaksi,
+ * jadi total bucket tidak mungkin berselisih dengan total harian (V4).
+ *
+ * ## `isPartial` menanggung satu makna lagi
+ *
+ * Di deret harian ia hanya berarti "hari ini, belum selesai". Begitu bucketnya
+ * melebar, bucket di UJUNG rentang bisa tak penuh semata karena tanggal yang dipilih
+ * user — dan itu tak punya padanan di versi harian. September yang berisi 11 hari
+ * akan tampak sebagai bulan terburuk setahun, dan Maret yang dimulai tanggal 15 akan
+ * tampak lesu, padahal keduanya cuma terpotong. Bucket tak penuh di KEDUA ujung
+ * karena itu ditandai parsial, bukan hanya yang memuat hari ini.
+ */
+export function bucketSeries(points: DailyPoint[], granularity: Granularity): BucketPoint[] {
+    if (points.length === 0) return [];
+    if (granularity === 'day') {
+        return points.map((p) => ({
+            dayKey: p.dayKey,
+            label: p.label,
+            longLabel: wibDayLongFmt.format(wibNoon(p.dayKey)),
+            revenue: p.revenue,
+            paidOrders: p.paidOrders,
+            isPartial: p.isPartial,
+            days: 1,
+            granularity,
+        }));
+    }
+
+    const startOf = granularity === 'week' ? weekStartYmd : monthStartYmd;
+
+    const order: string[] = [];
+    const byKey = new Map<string, { revenue: number; paidOrders: number; days: number; lastYmd: string; touchesToday: boolean }>();
+
+    for (const p of points) {
+        const key = startOf(p.dayKey);
+        let acc = byKey.get(key);
+        if (!acc) {
+            acc = { revenue: 0, paidOrders: 0, days: 0, lastYmd: p.dayKey, touchesToday: false };
+            byKey.set(key, acc);
+            order.push(key);
+        }
+        acc.revenue += p.revenue;
+        acc.paidOrders += p.paidOrders;
+        acc.days += 1;
+        acc.lastYmd = p.dayKey;
+        // Hari berjalan mencemari bucketnya: sebulan yang memuat hari ini belum selesai.
+        if (p.isPartial) acc.touchesToday = true;
+    }
+
+    return order.map((key) => {
+        const acc = byKey.get(key)!;
+        return {
+            dayKey: key,
+            ...bucketLabels(key, acc.lastYmd, granularity),
+            revenue: acc.revenue,
+            paidOrders: acc.paidOrders,
+            // Tak penuh di ujung mana pun, ATAU memuat hari yang belum selesai.
+            isPartial: acc.touchesToday || acc.days < fullBucketDays(key, granularity),
+            days: acc.days,
+            granularity,
+        };
+    });
 }
 
 // ---------------------------------------------------------------------------

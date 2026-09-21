@@ -16,17 +16,18 @@ import { BarChart3, Table2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useMediaQuery } from '@/lib/utils';
 import { formatIDR } from '@/utils/currency';
-import { toShareSeries } from '@/utils/analytics/revenue';
-import type { DailyPoint } from '@/utils/analytics/types';
+import {
+    bucketSeries,
+    coverageGapDays,
+    firstPaidDayKey,
+    granularityFor,
+    toShareSeries,
+} from '@/utils/analytics/revenue';
+import type { BucketPoint, DailyPoint } from '@/utils/analytics/types';
 import { CHART, GRADIENT, INK, MOTION, PARTIAL_DAY_OPACITY } from './palette';
 import { HatchDefs, LegendKey } from './ChartParts';
 import { TogglePicker } from './TogglePicker';
-import {
-    formatCount,
-    formatDayLabel,
-    formatDayLabelLong,
-    formatIDRCompact,
-} from './format';
+import { formatCount, formatIDRCompact } from './format';
 
 /**
  * Grafik utama tab Revenue: revenue masuk vs jumlah order lunas, per hari.
@@ -64,22 +65,36 @@ import {
  *
  * ─── Aturan lain yang di-encode di berkas ini ──────────────────────────────
  *
- * • BATANG untuk revenue, bukan spline. Metrik harian itu diskret — tidak ada nilai
- *   di antara dua hari. `type="monotone"` yang lama menggambar kurva menanjak mulus
- *   melintasi dua hari yang nilainya benar-benar Rp 0. Mode area tersedia lewat
- *   toggle, dan itu pun `type="linear"`.
- * • HARI BERJALAN diberi pola garis + opacity turun + keterangan. Tanpa ini chart
- *   SELALU berakhir terjun bebas ke nol, karena hari ini memang baru berjalan
- *   sebagian dan bukan karena penjualan berhenti.
+ * • BATANG untuk revenue, selalu, tanpa pengecualian. Metrik ini diskret — tidak ada
+ *   nilai di antara dua bucket. `type="monotone"` yang lama menggambar kurva menanjak
+ *   mulus melintasi dua hari yang nilainya benar-benar Rp 0.
+ * • LEBAR BUCKET yang mengikuti rentang, BUKAN bentuk grafik yang berubah. Versi
+ *   sebelumnya menjawab "365 batang jadi sub-pixel" dengan diam-diam berpindah ke
+ *   mode area di atas 60 hari. Itu menambal gejalanya: 254 titik harian tetap 254
+ *   titik, cuma digambar sebagai rumput gerigi alih-alih noda abu, dan tak satu pun
+ *   bisa dibaca. Yang melebar seharusnya bucketnya (`granularityFor`), bukan
+ *   marknya — setahun jadi 12 batang bulanan yang terbaca, dan bentuk grafiknya
+ *   tidak pernah berubah di bawah kaki pembaca.
+ * • BUCKET TAK PENUH diberi pola garis + opacity turun + keterangan. Di harian ini
+ *   berarti "hari ini"; di bulanan ia juga menangkap bucket yang terpotong pilihan
+ *   tanggal user. September berisi 11 hari akan terbaca sebagai bulan TERBURUK
+ *   setahun kalau tidak ditandai — dan tidak seperti hari berjalan, ia bisa muncul
+ *   di ujung KIRI sumbu juga.
  * • GRIDLINE solid, horizontal saja. Garis putus-putus terbaca sebagai ambang.
  * • LEGEND selalu ada, dan ada toggle TABEL. Tooltip tidak boleh jadi satu-satunya
  *   jalan membaca angka.
  * • Sumbu X memakai `dayKey` (YYYY-MM-DD), bukan `label`. Label "15 Agu" berulang
  *   tiap tahun; memakainya sebagai kategori akan menumpuk Agustus 2025 ke Agustus 2026.
+ *   Di bucket mingguan/bulanan `dayKey` adalah tanggal PERTAMA bucket, jadi sifat itu
+ *   bertahan apa pun granularitasnya.
  */
 
-/** Di atas ambang ini batang jadi terlalu rapat, jadi mode area jadi BAWAAN. */
-const LINE_MODE_MIN_DAYS = 60;
+/**
+ * Kekosongan sependek ini tidak perlu dijelaskan — lihat `showCoverageNote`.
+ * 45 hari: cukup panjang untuk bukan sekadar kanal sepi, cukup pendek untuk
+ * menangkap rentang "Semua waktu" yang kosongnya berbulan-bulan.
+ */
+const COVERAGE_NOTE_MIN_GAP_DAYS = 45;
 
 const Y_AXIS_WIDTH = 52;
 
@@ -93,7 +108,6 @@ const CHART_MARGIN = { top: 22, right: 10, left: 0, bottom: 6 };
 /** Batang non-hover diredupkan, bukan diganti warna: emphasis lewat opacity. */
 const DIMMED_OPACITY = 0.32;
 
-type ChartShape = 'bar' | 'line';
 type ViewMode = 'chart' | 'table';
 
 export interface DailyRevenueChartProps {
@@ -135,52 +149,93 @@ export function DailyRevenueChart({
     const ordersGradId = `${uid}-grad-ord`;
 
     /**
-     * BATANG adalah bentuk grafik ini — tidak ada kontrol untuk menggantinya.
+     * BATANG adalah bentuk grafik ini — selalu, tanpa pengecualian dan tanpa kontrol.
      *
-     * Satu-satunya pengecualian ditentukan data, bukan user: di atas
-     * `LINE_MODE_MIN_DAYS` hari batangnya jadi sub-pixel (pada rentang 365 hari
-     * terukur 1,0px di 1440 dan 0,32px di 375 — noda abu, bukan data), jadi di sana
-     * ia otomatis jatuh ke area. Rentang yang dipakai sehari-hari (7/30/90 hari)
-     * SELALU batang.
+     * Yang menyesuaikan diri dengan rentang adalah LEBAR BUCKET, bukan bentuk mark:
+     * setahun digambar sebagai 12 batang bulanan, bukan 365 batang sub-pixel dan
+     * bukan pula kurva area. Keputusannya milik data (`granularityFor`), bukan user.
      */
-    const effectiveShape: ChartShape = data.length > LINE_MODE_MIN_DAYS ? 'line' : 'bar';
+    const buckets = useMemo(() => bucketSeries(data, granularityFor(data.length)), [data]);
+    const granularity = buckets[0]?.granularity ?? 'day';
 
-    const indexed = useMemo(() => toShareSeries(data), [data]);
+    const indexed = useMemo(() => toShareSeries(buckets), [buckets]);
 
     const labelByKey = useMemo(() => {
         const map = new Map<string, string>();
-        data.forEach((point) => map.set(point.dayKey, point.label || formatDayLabel(point.dayKey)));
+        buckets.forEach((bucket) => map.set(bucket.dayKey, bucket.label));
         return map;
-    }, [data]);
+    }, [buckets]);
 
-    const partialPoint = data.find((point) => point.isPartial) ?? null;
+    /**
+     * Bucket tak penuh — bisa DUA sekarang, di kedua ujung sumbu.
+     *
+     * Versi harian hanya pernah punya satu ("hari ini"), selalu di kanan. Begitu
+     * bucketnya melebar, bucket pertama juga bisa terpotong oleh tanggal awal yang
+     * dipilih user, dan penanda yang cuma melihat ujung kanan akan melewatkannya.
+     */
+    const partialPoints = useMemo(() => buckets.filter((bucket) => bucket.isPartial), [buckets]);
     const totals = useMemo(
         () =>
-            data.reduce(
-                (acc, point) => ({
-                    revenue: acc.revenue + point.revenue,
-                    paidOrders: acc.paidOrders + point.paidOrders,
+            buckets.reduce(
+                (acc, bucket) => ({
+                    revenue: acc.revenue + bucket.revenue,
+                    paidOrders: acc.paidOrders + bucket.paidOrders,
                 }),
                 { revenue: 0, paidOrders: 0 },
             ),
-        [data],
+        [buckets],
     );
 
     /** Hanya batang TERTINGGI yang diberi label langsung — bukan angka di tiap titik. */
     const peakIndex = useMemo(() => {
         let best = -1;
         let bestValue = 0;
-        data.forEach((point, index) => {
-            if (point.revenue > bestValue) {
-                bestValue = point.revenue;
+        buckets.forEach((bucket, index) => {
+            if (bucket.revenue > bestValue) {
+                bestValue = bucket.revenue;
                 best = index;
             }
         });
         return best;
-    }, [data]);
+    }, [buckets]);
 
     const chartHeight = isWide ? 272 : 216;
     const hasRevenue = totals.revenue > 0;
+
+    /** Kata untuk satu bucket — dipakai di keterangan parsial & judul kolom tabel. */
+    const bucketNoun = granularity === 'month' ? 'Bulan' : granularity === 'week' ? 'Pekan' : 'Hari';
+
+    /**
+     * Catatan cakupan — muncul HANYA kalau sumbu berdiri kosong cukup lama di kiri.
+     *
+     * `transactions` baru memuat pembayaran sejak Januari 2026, sementara order 2025
+     * dibayar di luar sistem. Tanpa catatan ini, "Semua waktu" menggambar delapan
+     * bulan datar di nol lalu melonjak — dan terbaca sebagai "bisnis ini lahir
+     * Januari 2026", bukan sebagai "pencatatan transaksi baru dimulai di sana".
+     *
+     * Ambangnya sengaja tidak nol. Satu-dua hari sepi di awal rentang itu wajar dan
+     * tidak perlu dijelaskan; catatan yang muncul di setiap rentang akan jadi bising
+     * lalu berhenti dibaca — dan kehilangan dayanya justru di rentang yang butuh.
+     */
+    const gapDays = useMemo(() => coverageGapDays(data), [data]);
+    const coverageStart = useMemo(() => firstPaidDayKey(data), [data]);
+    const showCoverageNote = gapDays >= COVERAGE_NOTE_MIN_GAP_DAYS && coverageStart !== null;
+    /**
+     * Label bucket yang MEMUAT hari pertama tercatat.
+     *
+     * Bukan `coverageStart` mentah: di sumbu bulanan, "pencatatan dimulai 2026-01-02"
+     * menyebut tanggal yang tidak ada di sumbu mana pun. Bucket terakhir yang mulai
+     * pada atau sebelum hari itu adalah bucket yang memuatnya.
+     */
+    const coverageStartLabel = useMemo(() => {
+        if (!coverageStart) return '';
+        let found = '';
+        for (const bucket of buckets) {
+            if (bucket.dayKey <= coverageStart) found = bucket.label;
+            else break;
+        }
+        return found || coverageStart;
+    }, [buckets, coverageStart]);
 
     const handleMove = (state: any) => {
         const raw = state?.activeTooltipIndex ?? state?.activeIndex;
@@ -189,19 +244,19 @@ export function DailyRevenueChart({
     };
     const handleLeave = () => setActiveIndex(null);
 
-    const cellOpacity = (point: DailyPoint, index: number): number => {
+    const cellOpacity = (point: BucketPoint, index: number): number => {
         if (point.isPartial) return PARTIAL_DAY_OPACITY;
         if (activeIndex === null) return 1;
         return index === activeIndex ? 1 : DIMMED_OPACITY;
     };
 
     const renderTooltip = (props: any) => {
-        const point: DailyPoint | undefined = props?.payload?.[0]?.payload;
+        const point: BucketPoint | undefined = props?.payload?.[0]?.payload;
         if (!props?.active || !point) return null;
         return (
             <div className="rounded-md border bg-white px-3 py-2 shadow-md" style={{ borderColor: CHART.grid }}>
                 <p className="text-[12px] font-semibold" style={{ color: INK.primary }}>
-                    {formatDayLabelLong(point.dayKey)}
+                    {point.longLabel}
                 </p>
                 {/* Nominal ASLI, bukan porsinya — sumbu boleh persen, angka tidak. */}
                 <p className="mt-1.5 flex items-center gap-1.5 text-[12px]" style={{ color: INK.secondary }}>
@@ -219,8 +274,11 @@ export function DailyRevenueChart({
                     </strong>
                 </p>
                 {point.isPartial && (
+                    // Angka hari yang benar-benar tercakup disebutkan, bukan cuma
+                    // "belum lengkap": tanpa itu pembaca tidak bisa menilai SEBERAPA
+                    // jauh batangnya kurang tinggi dari bucket penuh di sebelahnya.
                     <p className="mt-1.5 text-[11px]" style={{ color: INK.muted }}>
-                        Hari berjalan — belum selesai
+                        {bucketNoun} tak penuh — {formatCount(point.days)} hari
                     </p>
                 )}
             </div>
@@ -237,22 +295,27 @@ export function DailyRevenueChart({
      *     dinilai.
      *  2. Kalau revenue hari ini masih Rp 0, tidak ada batang untuk diarsir. Itu
      *     keadaan SETIAP PAGI. Penanda harus berdiri sendiri, tidak menumpang mark.
+     *  3. Sejak sumbu bisa bermodus bulanan, bucket tak penuh bisa ada DUA — satu di
+     *     tiap ujung. Penanda karena itu di-map dari `partialPoints`, bukan dari satu
+     *     titik; versi lama yang mencari satu `find()` akan diam-diam melewatkan
+     *     bucket pertama yang terpotong tanggal awal pilihan user.
      *
      * PUTUS-PUTUS, bukan solid: solid 2px di tepi kanan panel terbaca sebagai bingkai
      * area plot, bukan anotasi. Gridline di sini solid & horizontal saja, jadi rule
      * vertikal putus-putus tidak mungkin tertukar dengannya; dan "hari berjalan" memang
      * sebuah ambang — makna yang justru dilambangkan garis putus-putus.
      */
-    const renderPartialMarker = () =>
-        partialPoint ? (
+    const renderPartialMarkers = () =>
+        partialPoints.map((point) => (
             <ReferenceLine
-                x={partialPoint.dayKey}
+                key={point.dayKey}
+                x={point.dayKey}
                 stroke={CHART.axis}
                 strokeWidth={1.5}
                 strokeDasharray="3 3"
                 ifOverflow="extendDomain"
             />
-        ) : null;
+        ));
 
     /** Label langsung di batang puncak. `content` dipakai supaya hanya SATU yang tergambar. */
     const renderPeakLabel = (props: any) => {
@@ -268,7 +331,7 @@ export function DailyRevenueChart({
                 fontWeight={600}
                 fill={INK.primary}
             >
-                {formatIDRCompact(data[peakIndex]?.revenue ?? 0, { decimals: 2 })}
+                {formatIDRCompact(buckets[peakIndex]?.revenue ?? 0, { decimals: 2 })}
             </text>
         );
     };
@@ -290,10 +353,12 @@ export function DailyRevenueChart({
                         <CardDescription className="mt-1 text-[13px]">{rangeLabel}</CardDescription>
                     </div>
                     <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-                        {/* Tidak ada toggle bentuk grafik. Batang adalah bentuknya;
-                            pergantian ke area di rentang sangat panjang ditentukan data
-                            (lihat `effectiveShape`), bukan kontrol di header. Satu
-                            kontrol lebih sedikit di bawah angka terbesar halaman. */}
+                        {/* Tidak ada toggle bentuk grafik, dan tidak ada toggle
+                            granularitas. Batang adalah bentuknya; lebar bucket
+                            ditentukan data (lihat `granularityFor`), bukan kontrol di
+                            header. Dua kontrol lebih sedikit di bawah angka terbesar
+                            halaman — dan tak ada cara bagi pembaca memilih resolusi
+                            yang menggambar 365 batang sub-pixel. */}
                         <TogglePicker<ViewMode>
                             ariaLabel="Tampilan data"
                             value={view}
@@ -312,11 +377,15 @@ export function DailyRevenueChart({
                 <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1.5">
                     <LegendKey color={CHART.accent} label="Revenue" />
                     <LegendKey color={CHART.accentAlt} label="Order lunas" />
-                    {partialPoint && (
+                    {partialPoints.length > 0 && (
                         <LegendKey
                             glyph="rule"
                             color={CHART.accent}
-                            label={`${labelByKey.get(partialPoint.dayKey) ?? ''} — hari berjalan`}
+                            label={
+                                partialPoints.length === 1
+                                    ? `${partialPoints[0].label} — ${bucketNoun.toLowerCase()} tak penuh`
+                                    : `${bucketNoun} tak penuh di kedua ujung`
+                            }
                         />
                     )}
                 </div>
@@ -326,13 +395,13 @@ export function DailyRevenueChart({
                   mengubah tinggi mana pun kembali jadi rupiah tanpa hover. Penyebutnya
                   sengaja PERSIS angka hero di atas, supaya grafik dan KPI terkunci.
                 */}
-                {view === 'chart' && data.length > 0 && (
+                {view === 'chart' && buckets.length > 0 && (
                     <p className="mb-3 text-[12px] tabular-nums" style={{ color: INK.muted }}>
                         100% = {formatIDR(totals.revenue)} · {formatCount(totals.paidOrders)} order lunas
                     </p>
                 )}
 
-                {data.length === 0 ? (
+                {buckets.length === 0 ? (
                     <p
                         className="flex h-[220px] items-center justify-center rounded-md border border-dashed text-sm"
                         style={{ borderColor: CHART.grid, color: INK.muted }}
@@ -347,7 +416,7 @@ export function DailyRevenueChart({
                         aria-busy={isRefetching}
                     >
                         {view === 'table' ? (
-                            <TableView data={data} totals={totals} />
+                            <TableView data={buckets} totals={totals} bucketNoun={bucketNoun} />
                         ) : (
                             <>
                                 <p
@@ -387,10 +456,6 @@ export function DailyRevenueChart({
                                                 <stop offset="0%" stopColor={GRADIENT.accentAltBright} stopOpacity={0.3} />
                                                 <stop offset="100%" stopColor={GRADIENT.accentAltBright} stopOpacity={0.02} />
                                             </linearGradient>
-                                            <linearGradient id={`${revenueGradId}-area`} x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor={GRADIENT.accentBright} stopOpacity={0.34} />
-                                                <stop offset="100%" stopColor={CHART.accent} stopOpacity={0.02} />
-                                            </linearGradient>
                                         </defs>
                                         <HatchDefs id={revenueHatchId} color={CHART.accent} />
 
@@ -398,8 +463,8 @@ export function DailyRevenueChart({
                                         <CartesianGrid vertical={false} stroke={CHART.grid} strokeDasharray="0" />
                                         <XAxis
                                             dataKey="dayKey"
-                                            padding={effectiveShape === 'line' ? { left: 4, right: 10 } : { left: 0, right: 0 }}
-                                            tickFormatter={(key: string) => labelByKey.get(key) ?? formatDayLabel(key)}
+                                            padding={{ left: 0, right: 0 }}
+                                            tickFormatter={(key: string) => labelByKey.get(key) ?? key}
                                             interval="preserveStartEnd"
                                             minTickGap={20}
                                             tickLine={false}
@@ -421,7 +486,7 @@ export function DailyRevenueChart({
                                             content={renderTooltip}
                                             wrapperStyle={{ outline: 'none' }}
                                         />
-                                        {renderPartialMarker()}
+                                        {renderPartialMarkers()}
 
                                         {/*
                                           Order lunas digambar LEBIH DULU: urutan cat SVG
@@ -444,57 +509,58 @@ export function DailyRevenueChart({
                                             animationEasing={MOTION.easing}
                                         />
 
-                                        {effectiveShape === 'line' ? (
-                                            <Area
-                                                type="linear"
-                                                dataKey="revenueShare"
-                                                stroke={CHART.accent}
-                                                strokeWidth={2}
-                                                strokeLinejoin="round"
-                                                strokeLinecap="round"
-                                                fill={`url(#${revenueGradId}-area)`}
-                                                dot={false}
-                                                activeDot={{ r: 3.5, fill: CHART.accent, stroke: '#ffffff', strokeWidth: 1.5 }}
-                                                isAnimationActive={!reduceMotion}
-                                                animationBegin={MOTION.barBegin}
-                                                animationDuration={MOTION.barDuration}
-                                                animationEasing={MOTION.easing}
-                                            />
-                                        ) : (
-                                            <Bar
-                                                dataKey="revenueShare"
-                                                /* 26px terukur terlalu kurus di rentang
-                                                   7 hari: tujuh batang di ~875px membuat
-                                                   grafiknya terbaca renggang, dan
-                                                   gradiennya nyaris tak terlihat karena
-                                                   tak punya lebar untuk dibaca. Di
-                                                   rentang panjang angka ini tidak
-                                                   berpengaruh — lebar per kategori sudah
-                                                   jauh di bawahnya. */
-                                                maxBarSize={44}
-                                                radius={[4, 4, 0, 0]}
-                                                isAnimationActive={!reduceMotion}
-                                                animationBegin={MOTION.barBegin}
-                                                animationDuration={MOTION.barDuration}
-                                                animationEasing={MOTION.easing}
-                                            >
-                                                {indexed.map((point, index) => (
-                                                    <Cell
-                                                        key={point.dayKey}
-                                                        fill={
-                                                            point.isPartial
-                                                                ? `url(#${revenueHatchId})`
-                                                                : `url(#${revenueGradId})`
-                                                        }
-                                                        fillOpacity={cellOpacity(point, index)}
-                                                    />
-                                                ))}
-                                                <LabelList dataKey="revenueShare" content={renderPeakLabel} />
-                                            </Bar>
-                                        )}
+                                        <Bar
+                                            dataKey="revenueShare"
+                                            /* 26px terukur terlalu kurus di rentang
+                                               7 hari: tujuh batang di ~875px membuat
+                                               grafiknya terbaca renggang, dan
+                                               gradiennya nyaris tak terlihat karena
+                                               tak punya lebar untuk dibaca. Di
+                                               rentang panjang angka ini tidak
+                                               berpengaruh — lebar per kategori sudah
+                                               jauh di bawahnya. */
+                                            maxBarSize={44}
+                                            radius={[4, 4, 0, 0]}
+                                            isAnimationActive={!reduceMotion}
+                                            animationBegin={MOTION.barBegin}
+                                            animationDuration={MOTION.barDuration}
+                                            animationEasing={MOTION.easing}
+                                        >
+                                            {indexed.map((point, index) => (
+                                                <Cell
+                                                    key={point.dayKey}
+                                                    fill={
+                                                        point.isPartial
+                                                            ? `url(#${revenueHatchId})`
+                                                            : `url(#${revenueGradId})`
+                                                    }
+                                                    fillOpacity={cellOpacity(point, index)}
+                                                />
+                                            ))}
+                                            <LabelList dataKey="revenueShare" content={renderPeakLabel} />
+                                        </Bar>
                                     </ComposedChart>
                                 </ResponsiveContainer>
                             </>
+                        )}
+
+                        {/*
+                          Catatan cakupan. Ditempatkan DI BAWAH grafik & tabel — ia
+                          menjelaskan sesuatu yang baru jadi pertanyaan SETELAH
+                          kekosongan di kiri terlihat, jadi menaruhnya di atas berarti
+                          menjawab sebelum ditanya dan menambah beban baca di tempat
+                          angka utama seharusnya mendarat lebih dulu.
+                        */}
+                        {showCoverageNote && (
+                            <p
+                                className="mt-3 border-t pt-2.5 text-[11px] leading-relaxed"
+                                style={{ borderColor: CHART.grid, color: INK.muted }}
+                            >
+                                Transaksi lunas baru tercatat sejak <strong>{coverageStartLabel}</strong>.
+                                Order sebelum itu umumnya dibayar di luar sistem, jadi tidak muncul
+                                di grafik ini — kekosongan di kiri adalah batas pencatatan, bukan
+                                penjualan yang nol.
+                            </p>
                         )}
                     </div>
                 )}
@@ -506,9 +572,12 @@ export function DailyRevenueChart({
 function TableView({
     data,
     totals,
+    bucketNoun,
 }: {
-    data: DailyPoint[];
+    data: BucketPoint[];
     totals: { revenue: number; paidOrders: number };
+    /** "Hari" / "Pekan" / "Bulan" — judul kolom ikut granularitas yang digambar. */
+    bucketNoun: string;
 }) {
     return (
         // Konten lebar dapat scroll-nya SENDIRI; body halaman tidak pernah ikut
@@ -516,11 +585,11 @@ function TableView({
         <div className="overflow-x-auto">
             <table className="w-full min-w-[340px] border-collapse text-[13px]">
                 <caption className="sr-only">
-                    Revenue dan jumlah order lunas per hari — angka yang sama dengan grafik
+                    Revenue dan jumlah order lunas per {bucketNoun.toLowerCase()} — angka yang sama dengan grafik
                 </caption>
                 <thead>
                     <tr style={{ color: INK.muted }}>
-                        <th scope="col" className="py-2 text-left font-medium">Tanggal</th>
+                        <th scope="col" className="py-2 text-left font-medium">Periode</th>
                         <th scope="col" className="py-2 text-right font-medium">Revenue</th>
                         <th scope="col" className="py-2 text-right font-medium">Order lunas</th>
                     </tr>
@@ -529,10 +598,10 @@ function TableView({
                     {data.map((point) => (
                         <tr key={point.dayKey} style={{ borderTop: `1px solid ${CHART.grid}` }}>
                             <th scope="row" className="py-1.5 text-left font-normal" style={{ color: INK.secondary }}>
-                                {point.label || formatDayLabel(point.dayKey)}
+                                {point.label}
                                 {point.isPartial && (
                                     <span className="ml-1.5 text-[11px]" style={{ color: INK.muted }}>
-                                        (hari berjalan)
+                                        ({formatCount(point.days)} hari)
                                     </span>
                                 )}
                             </th>

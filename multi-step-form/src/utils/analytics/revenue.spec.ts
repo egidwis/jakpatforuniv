@@ -1,10 +1,14 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
+    bucketSeries,
     buildDailySeries,
     buildRevenueAnalytics,
     canonicalUniversity,
     collectMissingSubmissionIds,
     computeDelta,
+    coverageGapDays,
+    firstPaidDayKey,
+    granularityFor,
     isInternalTestTx,
     PAID_TX_STATUSES,
     paymentChannelLabel,
@@ -16,7 +20,7 @@ import {
     type RevenueSubmission,
     type RevenueTransaction,
 } from './revenue';
-import type { DailyPoint } from './types';
+import type { BucketPoint } from './types';
 
 /**
  * Angka di berkas ini bukan karangan — semuanya disalin dari produksi
@@ -641,12 +645,15 @@ describe('channel pembayaran', () => {
 });
 
 describe('toShareSeries', () => {
-    const point = (overrides: Partial<DailyPoint> = {}): DailyPoint => ({
+    const point = (overrides: Partial<BucketPoint> = {}): BucketPoint => ({
         dayKey: '2026-08-15',
         label: '15 Agu',
+        longLabel: '15 Agustus 2026',
         revenue: 0,
         paidOrders: 0,
         isPartial: false,
+        days: 1,
+        granularity: 'day',
         ...overrides,
     });
 
@@ -679,5 +686,224 @@ describe('toShareSeries', () => {
         const out = toShareSeries([point({ dayKey: 'a', revenue: 500_000, paidOrders: 0 })]);
         expect(out[0].revenueShare).toBeCloseTo(100);
         expect(out[0].ordersShare).toBe(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Bucketing: granularitas mengikuti panjang rentang
+// ---------------------------------------------------------------------------
+
+describe('granularityFor', () => {
+    test('rentang pendek tetap harian — 7/30 hari adalah pemakaian sehari-hari', () => {
+        expect(granularityFor(7)).toBe('day');
+        expect(granularityFor(30)).toBe('day');
+        expect(granularityFor(31)).toBe('day');
+    });
+
+    test('di atas sebulan jadi mingguan', () => {
+        expect(granularityFor(32)).toBe('week');
+        expect(granularityFor(90)).toBe('week');
+        expect(granularityFor(120)).toBe('week');
+    });
+
+    test('di atas 120 hari jadi bulanan — setahun jadi 12 batang, bukan 365 duri', () => {
+        expect(granularityFor(121)).toBe('month');
+        expect(granularityFor(365)).toBe('month');
+    });
+});
+
+describe('bucketSeries — bulanan', () => {
+    /** Setahun penuh 1 Jan – 31 Des 2026, `to` eksklusif. */
+    const TAHUN_2026 = { from: wibMidnight('2026-01-01'), to: wibMidnight('2027-01-01') };
+
+    test('setahun jadi 12 bucket, satu per bulan', () => {
+        const daily = buildDailySeries([], TAHUN_2026, NOW);
+        const out = bucketSeries(daily, 'month');
+
+        expect(out).toHaveLength(12);
+        expect(out[0].dayKey).toBe('2026-01-01');
+        expect(out[11].dayKey).toBe('2026-12-01');
+        expect(out.every((b) => b.granularity === 'month')).toBe(true);
+    });
+
+    test('revenue & order dijumlahkan ke bulannya, total tetap sama dengan harian', () => {
+        const daily = buildDailySeries(
+            [
+                tx({ amount: 1_000_000, created_at: '2026-01-05T06:00:00.000Z' }),
+                tx({ amount: 2_000_000, created_at: '2026-01-20T06:00:00.000Z' }),
+                tx({ amount: 3_000_000, created_at: '2026-03-02T06:00:00.000Z' }),
+            ],
+            TAHUN_2026,
+            NOW,
+        );
+        const out = bucketSeries(daily, 'month');
+
+        expect(out[0]).toMatchObject({ dayKey: '2026-01-01', revenue: 3_000_000, paidOrders: 2 });
+        expect(out[2]).toMatchObject({ dayKey: '2026-03-01', revenue: 3_000_000, paidOrders: 1 });
+
+        // Breakdown WAJIB berjumlah sama dengan totalnya (V4) — bucketing tidak boleh
+        // menguapkan atau menggandakan rupiah.
+        const sum = (rows: { revenue: number; paidOrders: number }[]) => ({
+            revenue: rows.reduce((s, r) => s + r.revenue, 0),
+            paidOrders: rows.reduce((s, r) => s + r.paidOrders, 0),
+        });
+        expect(sum(out)).toEqual(sum(daily));
+    });
+
+    test('bulan berjalan ditandai parsial — 11 hari bukan bulan terburuk setahun', () => {
+        // 1 Jan – 11 Sep 2026, persis rentang di screenshot yang memicu perubahan ini.
+        const range = { from: wibMidnight('2026-01-01'), to: wibMidnight('2026-09-12') };
+        const now = new Date('2026-09-11T10:00:00.000Z'); // 17.00 WIB, 11 Sep
+        const out = bucketSeries(buildDailySeries([], range, now), 'month');
+
+        const sep = out[out.length - 1];
+        expect(sep).toMatchObject({ dayKey: '2026-09-01', isPartial: true, days: 11 });
+        expect(out.slice(0, -1).every((b) => b.isPartial)).toBe(false);
+    });
+
+    test('bulan terpotong di AWAL rentang juga parsial — Maret dari tanggal 15 bukan bulan lesu', () => {
+        // Lubang yang tidak ada di versi harian: bucket pertama bisa tak penuh
+        // walau ia jauh di masa lalu dan sama sekali tidak menyangkut "hari ini".
+        const range = { from: wibMidnight('2026-03-15'), to: wibMidnight('2026-08-01') };
+        const now = new Date('2026-08-21T10:00:00.000Z');
+        const out = bucketSeries(buildDailySeries([], range, now), 'month');
+
+        expect(out[0]).toMatchObject({ dayKey: '2026-03-01', isPartial: true, days: 17 });
+        // April–Juli penuh, dan tak satu pun menyentuh hari ini.
+        expect(out.slice(1).every((b) => b.isPartial)).toBe(false);
+        expect(out[1]).toMatchObject({ dayKey: '2026-04-01', days: 30 });
+    });
+
+    test('bulan penuh di tengah rentang tidak pernah parsial', () => {
+        const out = bucketSeries(buildDailySeries([], TAHUN_2026, NOW), 'month');
+        expect(out[1]).toMatchObject({ dayKey: '2026-02-01', days: 28, isPartial: false });
+    });
+
+    test('label bulanan membawa tahun — Jan 2025 tidak menumpuk ke Jan 2026', () => {
+        const range = { from: wibMidnight('2025-12-01'), to: wibMidnight('2026-02-01') };
+        const out = bucketSeries(buildDailySeries([], range, NOW), 'month');
+
+        expect(out).toHaveLength(2);
+        expect(new Set(out.map((b) => b.dayKey)).size).toBe(2);
+        expect(out[0].label).not.toBe(out[1].label);
+    });
+});
+
+describe('bucketSeries — mingguan', () => {
+    test('pekan dimulai Senin WIB', () => {
+        // 2026-08-15 adalah Sabtu; pekannya berjangkar ke Senin 10 Agu.
+        const range = { from: wibMidnight('2026-08-15'), to: wibMidnight('2026-09-15') };
+        const out = bucketSeries(buildDailySeries([], range, NOW), 'week');
+
+        expect(out[0].dayKey).toBe('2026-08-10');
+        expect(out[0]).toMatchObject({ days: 2, isPartial: true }); // cuma Sab–Min yang tercakup
+    });
+
+    test('pekan penuh berisi 7 hari dan tidak parsial', () => {
+        const range = { from: wibMidnight('2026-08-10'), to: wibMidnight('2026-09-07') };
+        const now = new Date('2026-09-20T10:00:00.000Z');
+        const out = bucketSeries(buildDailySeries([], range, now), 'week');
+
+        expect(out).toHaveLength(4);
+        expect(out.every((b) => b.days === 7 && !b.isPartial)).toBe(true);
+    });
+
+    test('revenue dijumlahkan ke pekannya, total tetap utuh', () => {
+        const range = { from: wibMidnight('2026-08-10'), to: wibMidnight('2026-08-24') };
+        const daily = buildDailySeries(
+            [
+                tx({ amount: 500_000, created_at: '2026-08-11T06:00:00.000Z' }),
+                tx({ amount: 700_000, created_at: '2026-08-16T06:00:00.000Z' }), // Minggu, masih pekan 10 Agu
+                tx({ amount: 900_000, created_at: '2026-08-17T06:00:00.000Z' }), // Senin, pekan baru
+            ],
+            range,
+            new Date('2026-09-20T10:00:00.000Z'),
+        );
+        const out = bucketSeries(daily, 'week');
+
+        expect(out[0]).toMatchObject({ dayKey: '2026-08-10', revenue: 1_200_000, paidOrders: 2 });
+        expect(out[1]).toMatchObject({ dayKey: '2026-08-17', revenue: 900_000, paidOrders: 1 });
+    });
+});
+
+describe('bucketSeries — harian & tepi', () => {
+    test("granularitas 'day' mengembalikan hari apa adanya", () => {
+        const daily = buildDailySeries([], AGU_15_21, NOW);
+        const out = bucketSeries(daily, 'day');
+
+        expect(out).toHaveLength(7);
+        expect(out.map((b) => b.dayKey)).toEqual(daily.map((d) => d.dayKey));
+        expect(out.every((b) => b.granularity === 'day' && b.days === 1)).toBe(true);
+        // Hari berjalan tetap parsial — makna lama tidak hilang.
+        expect(out[6]).toMatchObject({ dayKey: '2026-08-21', isPartial: true });
+    });
+
+    test('deret kosong menghasilkan deret kosong, bukan bucket hantu', () => {
+        expect(bucketSeries([], 'month')).toEqual([]);
+        expect(bucketSeries([], 'week')).toEqual([]);
+    });
+
+    test('kunci bucket selalu unik — sumbu X tidak pernah menumpuk dua bucket', () => {
+        const range = { from: wibMidnight('2025-01-01'), to: wibMidnight('2027-01-01') };
+        const out = bucketSeries(buildDailySeries([], range, NOW), 'month');
+        expect(new Set(out.map((b) => b.dayKey)).size).toBe(out.length);
+        expect(out).toHaveLength(24);
+    });
+});
+
+describe('firstPaidDayKey — jangkar catatan cakupan', () => {
+    test('mengembalikan hari pertama yang benar-benar ada revenue-nya', () => {
+        const out = firstPaidDayKey([
+            { dayKey: '2025-05-01', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+            { dayKey: '2025-06-01', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+            { dayKey: '2026-01-02', label: '', revenue: 400_000, paidOrders: 1, isPartial: false },
+            { dayKey: '2026-01-03', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+        ]);
+        expect(out).toBe('2026-01-02');
+    });
+
+    test('hari ber-order tapi nol rupiah tetap dihitung sebagai awal pencatatan', () => {
+        // Order lunas bernilai nol itu tetap transaksi yang tercatat — yang kita cari
+        // adalah kapan PENCATATAN mulai, bukan kapan rupiah pertama masuk.
+        const out = firstPaidDayKey([
+            { dayKey: '2026-01-01', label: '', revenue: 0, paidOrders: 1, isPartial: false },
+        ]);
+        expect(out).toBe('2026-01-01');
+    });
+
+    test('deret yang seluruhnya kosong mengembalikan null, bukan hari pertama', () => {
+        // null = "tidak ada apa pun untuk dijangkarkan". Mengembalikan dayKey[0] akan
+        // memunculkan catatan cakupan di rentang yang memang sunyi & wajar.
+        expect(firstPaidDayKey([
+            { dayKey: '2026-02-01', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+        ])).toBeNull();
+        expect(firstPaidDayKey([])).toBeNull();
+    });
+});
+
+describe('coverageGapDays — berapa lama sumbu kosong di kiri', () => {
+    test('menghitung hari kosong sebelum pencatatan dimulai', () => {
+        const daily = [
+            { dayKey: '2025-12-30', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+            { dayKey: '2025-12-31', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+            { dayKey: '2026-01-01', label: '', revenue: 500_000, paidOrders: 1, isPartial: false },
+        ];
+        expect(coverageGapDays(daily)).toBe(2);
+    });
+
+    test('nol kalau hari pertama sudah ada isinya — tidak ada yang perlu dijelaskan', () => {
+        expect(coverageGapDays([
+            { dayKey: '2026-01-01', label: '', revenue: 500_000, paidOrders: 1, isPartial: false },
+            { dayKey: '2026-01-02', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+        ])).toBe(0);
+    });
+
+    test('deret sunyi total menghasilkan nol, bukan panjang deretnya', () => {
+        // Rentang tanpa penjualan sama sekali (akhir pekan panjang, kanal baru) TIDAK
+        // boleh memunculkan catatan "pencatatan dimulai …" — tak ada yang dimulai.
+        expect(coverageGapDays([
+            { dayKey: '2026-02-01', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+            { dayKey: '2026-02-02', label: '', revenue: 0, paidOrders: 0, isPartial: false },
+        ])).toBe(0);
     });
 });

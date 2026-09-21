@@ -414,6 +414,7 @@ export function AnalyticsDashboard() {
                   <DailyRevenueChart
                     data={revenue.daily}
                     rangeLabel={formatRangeLabel(range)}
+                    isRefetching={revenueLoading}
                   />
                   {/* Rail KPI: SATU kartu ber-divider, bukan tiga div telanjang di atas
                       latar halaman. `auto-rows-min` menahan tile agar tidak melar dan
@@ -1078,6 +1079,27 @@ export function AnalyticsDashboard() {
                 Preset lama ("7 Hari"/"30 Hari"/…) ikut mati bersama tab Platform:
                 ia satu-satunya kontrol periode yang tersisa yang bukan rentang bebas. */}
             <DateRangePicker value={range} onChange={setRange} disabled={activeTabBusy} />
+            {/*
+              Indikator termuat DI SAMPING pemicunya.
+              Tombol refresh di ujung kanan toolbar juga berputar saat sibuk, tapi ia
+              berjarak sepanjang layar dari picker — mengganti periode lalu melihat
+              ikon berkedip di seberang tidak terbaca sebagai sebab-akibat. Yang
+              diredupkan di bawah sana adalah KONTEN, dan konten redup gampang dikira
+              gagal render; status kerjanya harus punya kata, bukan cuma opacity.
+
+              `aria-live="polite"`: pembaca layar tidak melihat opacity turun, jadi
+              tanpa ini pergantian periode sama sekali tidak terumumkan.
+            */}
+            {activeTabBusy && (
+              <span
+                className="flex items-center gap-1.5 text-xs text-gray-500"
+                role="status"
+                aria-live="polite"
+              >
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                Memuat…
+              </span>
+            )}
           </div>
 
           <Button
