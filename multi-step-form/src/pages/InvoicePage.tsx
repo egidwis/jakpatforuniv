@@ -6,7 +6,7 @@ import { Loader2, Download, CheckCircle2, Clock, ExternalLink, ShieldCheck } fro
 import { Button } from '@/components/ui/button';
 import { terbilangCapitalized } from '../utils/terbilang';
 import { formatPaymentChannel } from '../utils/paymentChannel';
-import { MATERAI_THRESHOLD, buildInvoiceDocument, groupMeta, sourceIdOf } from '../utils/groupedInvoice';
+import { MATERAI_THRESHOLD, buildInvoiceDocument, groupMeta, scheduleBadgeOf, sourceIdOf } from '../utils/groupedInvoice';
 import jakpatLogo from '../assets/Jakpat Navbar Logo.webp';
 
 // Bentuk item & jadwal tinggal di `utils/groupedInvoice` bersama agregasinya —
@@ -221,7 +221,7 @@ export function InvoicePage() {
                 try {
                     const { data: scheduleRows } = await supabase
                         .from('ad_schedules')
-                        .select('source_id, start_date, end_date, duration, distribution_type, kilat_slot_hour')
+                        .select('source_id, start_date, end_date, duration, distribution_type, kilat_slot_hour, ordinal')
                         .in('source_id', sourceIds);
 
                     for (const r of scheduleRows || []) {
@@ -231,6 +231,9 @@ export function InvoicePage() {
                             duration: r.duration,
                             distributionType: r.distribution_type,
                             kilatSlotHour: r.kilat_slot_hour,
+                            // Satu-satunya pembeda antara kuitansi jadwal ke-2, ke-3, dst.
+                            // dari pesanan yang sama — judul & itemnya identik.
+                            ordinal: r.ordinal,
                         });
                     }
                 } catch (schedErr) {
@@ -327,6 +330,14 @@ export function InvoicePage() {
     const doc = buildInvoiceDocument(rows.length > 0 ? rows : [data], schedules);
     const isPaid = doc.isPaid;
     const isGroup = doc.bundles.length > 1;
+    /**
+     * Penanda jadwal untuk dokumen SATU bundel (`isGroup === false`).
+     *
+     * Grup memakainya per kepala bundel; dokumen tunggal tidak punya kepala
+     * bundel sama sekali, jadi tanpa ini ia tetap tercetak identik antar
+     * ordinal. Mayoritas tagihan perpanjangan di produksi berbentuk ini.
+     */
+    const soloBadge = doc.bundles.length === 1 ? scheduleBadgeOf(doc.bundles[0]) : null;
     /*
       ⚠️ KEADAAN KETIGA: SEBAGIAN LUNAS. Sebelum ini dokumen hanya mengenal
       "semua lunas" dan "tidak", jadi grup yang 2 dari 3 pesanannya sudah
@@ -561,7 +572,22 @@ export function InvoicePage() {
 
                     {/* Parties + Payment / Billing Details (Clean Balanced 2-Column Flex) */}
                     <div className="flex justify-between items-start gap-6 mb-8">
-                        {/* Customer block */}
+                        {/*
+                            Customer block.
+
+                            ⚠️ IDENTITAS DIAMBIL DARI BARIS PERTAMA, dan itu sah HANYA selama
+                            invarian "satu `payment_id` = satu `auth_user_id`" berdiri. Invarian
+                            itu nyata (4 grup produksi, semuanya satu peneliti) tapi TIDAK
+                            ditegakkan skema — tidak ada FK maupun constraint yang mencegah
+                            `buildInvoiceRows` menulis dua pemilik ke satu grup. Kalau itu
+                            terjadi, kuitansi akan mencantumkan nama pembeli yang salah tanpa
+                            satu pun galat. Pemantauannya:
+                              select payment_id, count(distinct fs.auth_user_id)
+                              from invoices i join form_submissions fs on fs.id = i.form_submission_id
+                              group by payment_id having count(distinct fs.auth_user_id) > 1;
+                            Ambangnya nol. Kalau suatu saat tidak nol lagi, blok ini yang pertama
+                            harus berubah — bukan kuerinya.
+                        */}
                         <div className="min-w-0 flex-1">
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
                                 {isPaid ? 'Diterima Dari' : 'Ditagihkan Kepada'}
@@ -611,6 +637,35 @@ export function InvoicePage() {
                                         <td className="text-gray-400 text-xs px-2 text-center">:</td>
                                         <td className="font-mono text-xs text-gray-600 text-left">{data.payment_id}</td>
                                     </tr>
+                                    {/*
+                                        Jumlah pesanan tidak pernah tertulis di kop dokumen, padahal
+                                        "benar 10 pesanan?" adalah hal pertama yang diverifikasi
+                                        peneliti saat menerima kuitansi gabungan.
+                                    */}
+                                    {isGroup && (
+                                        <tr>
+                                            <td className="text-gray-400 text-xs text-left">Mencakup</td>
+                                            <td className="text-gray-400 text-xs px-2 text-center">:</td>
+                                            <td className="font-medium text-gray-800 tabular text-left">{doc.bundles.length} pesanan</td>
+                                        </tr>
+                                    )}
+                                    {/*
+                                        Dokumen NON-grup ordinal >=2 tidak punya kepala bundel, jadi
+                                        tanpa baris ini ia satu-satunya bentuk yang masih tercetak
+                                        identik dengan jadwal pertamanya — persis kasus `6a18c955…`
+                                        yang punya tiga kuitansi tak terbedakan.
+                                    */}
+                                    {!isGroup && soloBadge && (
+                                        <tr>
+                                            <td className="text-gray-400 text-xs text-left">Jadwal</td>
+                                            <td className="text-gray-400 text-xs px-2 text-center">:</td>
+                                            <td className="text-left">
+                                                <span className="print-exact inline-flex items-center rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[11px] font-bold">
+                                                    {soloBadge}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -636,6 +691,7 @@ export function InvoicePage() {
                                         bundle.schedule.distributionType,
                                         bundle.schedule.kilatSlotHour,
                                     );
+                                    const scheduleBadge = scheduleBadgeOf(bundle);
 
                                     return (
                                         <Fragment key={bundle.sourceId || bIdx}>
@@ -647,10 +703,29 @@ export function InvoicePage() {
                                                 seperti sebelumnya.
                                             */}
                                             {isGroup && (
-                                                <tr className="print-exact bg-slate-50/70 border-t border-gray-200">
-                                                    <td colSpan={3} className="py-2 px-4">
+                                                /*
+                                                    ⚠️ BATAS ANTAR BUNDEL HARUS SELAMAT SAAT DICETAK.
+
+                                                    Pembedanya tidak boleh bergantung pada `bg-slate-50/70` saja:
+                                                    abu-abu setipis itu bersandar penuh pada `print-exact`, dan pada
+                                                    cetakan hitam-putih 10 bundel beruntun ia melebur jadi satu
+                                                    daftar datar.
+
+                                                    Penjaganya sekarang `border-t-2` gelap — garis pemisah horizontal
+                                                    adalah kosakata dokumen/kuitansi, dan ia tetap tercetak karena
+                                                    border, bukan latar. (Versi sebelumnya memakai garis biru tebal
+                                                    di sisi KIRI; itu terbaca sebagai callout antarmuka, bukan
+                                                    kuitansi — ditolak pemilik produk 2026-09-21.)
+                                                */
+                                                <tr className="print-exact bg-slate-50/70 border-t-2 border-gray-300">
+                                                    <td colSpan={3} className="py-2.5 px-4">
                                                         <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2 flex-wrap">
                                                             <span>Pesanan {bIdx + 1} dari {doc.bundles.length}</span>
+                                                            {scheduleBadge && (
+                                                                <span className="print-exact inline-flex items-center rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal">
+                                                                    {scheduleBadge}
+                                                                </span>
+                                                            )}
                                                             {/*
                                                                 Ditampilkan HANYA saat grupnya belum lunas seluruhnya.
                                                                 Pada RECEIPT semua bundel lunas, jadi chip di tiap baris
@@ -662,14 +737,22 @@ export function InvoicePage() {
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <div className="font-semibold text-gray-900 text-sm mt-0.5">{bundle.title}</div>
-                                                        {scheduleText && scheduleText !== 'Belum dijadwalkan' && (
-                                                            <div className="text-xs text-gray-600 mt-0.5">
-                                                                <strong className="font-medium text-gray-700">Jadwal:</strong> {scheduleText}
-                                                            </div>
-                                                        )}
+                                                        <div className="font-semibold text-gray-900 text-[15px] leading-snug mt-1">{bundle.title}</div>
+                                                        {/*
+                                                            ⚠️ JADWALNYA TIDAK DI SINI — ia menempel di bawah item
+                                                            iklan, yang memang jasa yang ditayangkan pada tanggal itu.
+                                                            Di kepala bundel ia menggantung di antara judul dan total,
+                                                            dan membuat tiga baris teks bersaing di satu blok.
+                                                        */}
                                                     </td>
-                                                    <td className="py-2 px-4 text-right text-gray-900 font-semibold tabular align-bottom">
+                                                    {/*
+                                                        ⚠️ TOTAL BUNDEL HARUS MENANG MELAWAN BARIS ITEMNYA.
+                                                        Sebelumnya `font-semibold` — sama persis dengan sub-total tiap
+                                                        item, jadi Rp 527.250 dan Rp 300.000 terbaca setara dan tidak
+                                                        ada cara melihat mana yang jumlahnya. Ini satu-satunya angka
+                                                        di tabel yang ditagihkan per pesanan.
+                                                    */}
+                                                    <td className="py-2.5 px-4 text-right text-gray-900 font-bold text-[15px] tabular align-bottom">
                                                         {formatCurrency(bundle.amount)}
                                                     </td>
                                                 </tr>
@@ -685,16 +768,29 @@ export function InvoicePage() {
                                                 return (
                                                     <tr key={`${bIdx}-${idx}`} className="border-t border-gray-100 hover:bg-slate-50/40 transition-colors">
                                                         <td className={`py-3.5 px-4 text-gray-800 ${isGroup ? 'pl-8' : ''}`}>
-                                                            <div className="font-semibold text-gray-900">{itemName}</div>
+                                                            {/*
+                                                                Di dalam grup nama item selalu sama ("Jakpat for
+                                                                Universities (ads)" + "Respondent's Reward"), jadi ia
+                                                                tidak boleh menang melawan judul survei di kepala
+                                                                bundel. Untuk N=1 tidak ada kepala bundel dan nama
+                                                                item memang subjek utamanya — bentuk lama bertahan.
+                                                            */}
+                                                            <div className={isGroup ? 'font-medium text-gray-700' : 'font-semibold text-gray-900'}>{itemName}</div>
 
                                                             {/* Sub-keterangan untuk item Iklan / Platform.
                                                                 Judul & jadwal diambil dari BUNDEL-nya sendiri —
                                                                 di grup, `data.form_submissions` hanya milik
                                                                 pesanan pertama. Pada grup keduanya sudah tertulis
                                                                 di kepala bundel, jadi tidak diulang di sini. */}
-                                                            {isAdItem && !isGroup && (
+                                                            {/*
+                                                                Judul survei hanya diulang di luar grup — di dalam
+                                                                grup ia sudah jadi kepala bundelnya sendiri.
+                                                                Jadwalnya ikut item iklan di KEDUA bentuk: tanggal
+                                                                tayang adalah properti jasa yang ditagih baris ini.
+                                                            */}
+                                                            {isAdItem && (
                                                                 <div className="mt-1.5 space-y-0.5 text-xs text-gray-600">
-                                                                    {bundle.title && (
+                                                                    {bundle.title && !isGroup && (
                                                                         <div className="flex items-start gap-1.5 leading-relaxed">
                                                                             <span className="text-gray-400 select-none">•</span>
                                                                             <span><strong className="font-medium text-gray-700">Survei:</strong> {bundle.title}</span>
@@ -703,7 +799,7 @@ export function InvoicePage() {
                                                                     {scheduleText && scheduleText !== 'Belum dijadwalkan' && (
                                                                         <div className="flex items-start gap-1.5 leading-relaxed">
                                                                             <span className="text-gray-400 select-none">•</span>
-                                                                            <span><strong className="font-medium text-gray-700">Jadwal:</strong> {scheduleText}</span>
+                                                                            <span className="tabular"><strong className="font-medium text-gray-700">Jadwal:</strong> {scheduleText}</span>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -722,9 +818,15 @@ export function InvoicePage() {
                                                                 <div className="text-xs text-gray-400 mt-0.5">{category}</div>
                                                             )}
                                                         </td>
-                                                        <td className="py-3.5 px-4 text-center text-gray-600 tabular align-top">{qty}</td>
-                                                        <td className="py-3.5 px-4 text-right text-gray-600 tabular align-top">{formatCurrency(item.price)}</td>
-                                                        <td className="py-3.5 px-4 text-right text-gray-900 font-semibold tabular align-top">
+                                                        <td className="py-3.5 px-4 text-center text-gray-400 tabular align-top">{qty}</td>
+                                                        {/*
+                                                            Harga satuan & qty adalah BAHAN hitungan, bukan hasilnya.
+                                                            Keduanya diredupkan supaya kolom paling kanan yang
+                                                            terbaca duluan; sebelumnya harga satuan segelap qty dan
+                                                            sub-total, jadi satu baris memajang tiga angka setara.
+                                                        */}
+                                                        <td className="py-3.5 px-4 text-right text-gray-400 tabular align-top">{formatCurrency(item.price)}</td>
+                                                        <td className={`py-3.5 px-4 text-right tabular align-top ${isGroup ? 'text-gray-700 font-medium' : 'text-gray-900 font-semibold'}`}>
                                                             {formatCurrency(item.price * qty)}
                                                         </td>
                                                     </tr>

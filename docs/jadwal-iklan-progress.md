@@ -123,6 +123,109 @@ branch itu. Lihat §2.
 
 ## Yang menunggu tindakan
 
+### 00AC. 🟡 Kuitansi & halaman sukses menyebut jadwal yang BENAR (2026-09-21)
+
+**Nol migrasi SQL. Seluruhnya frontend + satu Pages Function.**
+⬜ **BELUM di-commit, BELUM di-push, BELUM diuji di browser.**
+
+**Lahir dari laporan peneliti** yang membayar tagihan gabungan lalu mendarat di
+`/payment-success` berisi detail survei yang salah. Audit menemukan laporannya
+nyata tapi **sebabnya bukan tagihan gabungan**.
+
+#### Dua dugaan yang DIBANTAH bukti — jangan diulang
+
+1. **"Tagihan gabungan penyebabnya."** Kedua order dalam insiden 14 Sep
+   ber-`anggota_grup = 1` — tagihan **solo**. Keempat grup produksi
+   semuanya `pemilik = 1` **dan `ordinals = {1}` saja**; nol grup pernah memuat
+   jadwal ke-2. Jalur bulk-nya utuh: `bundleCount` → `/invoices/`, follower
+   `/bayar/` → `/invoices/`, 409 untuk order yang sudah masuk grup.
+
+2. **"`/payment-success` membocorkan order peneliti lain."** ⚠️ Ini kesimpulan
+   dari membaca KODE saja, dan salah. Halaman memang di luar `PrivateRoute` dan
+   tanpa cek kepemilikan, tapi **RLS menutupnya di DB** — dibuktikan dengan
+   MENJALANKANNYA, bukan membacanya:
+
+   ```
+   set local role authenticated;  jwt.sub = <peneliti lain>
+   select … where id = '474508e8…'      →  0 baris
+   set local role anon;  select id …    →  1 baris  (survei terbit)
+   set local role anon;  select title … →  permission denied
+   ```
+
+   `anon` hanya punya hibah **8 kolom tanpa `title`**, sementara
+   `getFormSubmissionById` memakai `select('*')` (42 kolom) → PostgREST menolak
+   seluruh kueri. Tidak ada jalur yang bisa merender judul order orang lain.
+   Penjaga kepemilikan di klien **sengaja TIDAK dibuat**: ia menduplikasi
+   gerbang yang sudah benar tempatnya. ⚠️ Kalau `select('*')` suatu saat
+   dipersempit agar anon bisa baca, keputusan ini **wajib ditinjau ulang**.
+
+#### Yang benar-benar rusak, dan diperbaiki
+
+**Halaman/kuitansi berlingkup ORDER, tagihan berlingkup JADWAL.**
+`form_submissions.title/start_date/end_date` SELALU jendela ordinal 1. Selama
+satu order punya satu jadwal keduanya sama — lalu jadwal ke-2 dirilis.
+**17 tagihan lunas ordinal ≥2** sudah melewatinya:
+
+| order | ordinal | dibayar | DITAMPILKAN | meleset |
+|---|---|---|---|---|
+| `6a18c955…` | 5 | 17 Sep | **24 Mei** | ~4 bulan |
+| `6a18c955…` | 3 | 8 Sep | **24 Mei** | ~3,5 bulan |
+| `de7574e3…` | 2 | 8 Sep | 20 Jul | ~7 minggu |
+
+Dan pada kuitansi ia lebih tajam: order `6a18c955…` punya **tiga kuitansi lunas
+terpisah** (ordinal 2, 3, 5) yang tercetak **identik sampai ke judulnya** —
+`DocBundle` tidak pernah membawa ordinal, padahal `sourceIdOf()` sudah
+membedakan `entity_type='extend'`. Informasinya ada di baris, dibuang sebelum
+sampai ke dokumen. Peneliti yang mengarsipkan ketiganya untuk LPJ tidak punya
+cara membedakannya.
+
+**Perbaikannya:**
+
+- `create-payment.js`: `callback_url` lewat **`buildSuccessCallbackUrl()`** —
+  satu tempat perakitan, membawa `&schedule=` kalau ada. Tanpa `scheduleId`
+  bentuknya **identik karakter-per-karakter** dengan sebelumnya (uji
+  karakterisasi), supaya ratusan link ordinal 1 yang beredar tidak berubah.
+- `payment.ts` + `InvoiceForm.tsx`: jalur tagihan manual mengoper
+  `scheduleId: entry.id`. Cabang `bundleCount > 1` **tidak disentuh**.
+- `PaymentSuccess`: `?schedule=` → jendela tayang dari `fetchAdSchedules(orderId)`
+  (disaring `submission_id`, jadi jadwal milik order lain **otomatis diabaikan** —
+  penjaga gratis), plus chip "Jadwal ke-N". Tanpa `?schedule=` → perilaku lama.
+- **`isPaid` dari TAGIHAN, bukan bendera order.** Dua bug ikut tertutup di sini:
+  polling dulu berhenti pada bendera ORDER (yang sudah `paid` sejak jadwal ke-1),
+  jadi pembayaran jadwal ke-2 **membeku di "menunggu"** sampai peneliti memuat
+  ulang; dan `fetchFormData` menimpa status tagihan jadwal ke-2 dengan status
+  jadwal ke-1.
+- `groupedInvoice.ts`: `DocBundle` menerima `ordinal` + `isExtend`, dan
+  `scheduleBadgeOf()` memutuskan penandanya. **Ordinal 1 → `null`** (bentuk lama
+  tak tersentuh); baris `extend` yang ordinalnya tak terbaca → "Perpanjangan",
+  karena diam tidak bisa dibedakan dari jadwal pertama.
+- `InvoicePage` — hierarki visual: tanggal jadwal naik ke `text-sm font-medium`
+  (dulu `text-xs` gray-600, **lebih pucat daripada nama item yang identik di
+  semua bundel**), judul bundel ke `text-[15px]`, nama item dalam grup turun ke
+  `text-gray-700`, kepala bundel dapat **`border-l-[3px]`** — ⚠️ garis, bukan
+  latar, karena `bg-slate-50/70` bergantung penuh pada `print-exact` dan melebur
+  di cetakan hitam-putih 10 bundel. Plus baris "Mencakup: N pesanan".
+- Invarian **"satu `payment_id` = satu `auth_user_id`"** ditulis sebagai komentar
+  di blok identitas + kueri pemantauannya (ambang nol). Ia nyata tapi **tidak
+  ditegakkan skema**.
+
+**Gerbang:** `tsc -p tsconfig.app.json` **78** (baseline 78, nol error baru —
+`tsc --noEmit` polos menipu, melaporkan 0), vitest **926 lolos / 75 berkas**
+(dari 910/74, +16 uji), `npm run build` hijau.
+
+> ⚠️ **Baseline di rencana lama (77 / 481-35) SUDAH BASI** — terukur ulang
+> 2026-09-21. Jangan pakai angka rencana untuk menilai regresi.
+
+⬜ **Uji browser yang wajib**, urut:
+1. Bayar **N=1 ordinal 1** → halaman & URL identik dengan sebelumnya (regresi).
+2. Bayar **jadwal ke-2** → halaman menyebut jendela jadwal ke-2 + chip
+   "Jadwal ke-2", dan polling **tidak** berhenti sebelum webhooknya masuk.
+3. Bayar **tagihan gabungan** → tetap mendarat di `/invoices/<payment_id>`.
+4. Buka `/invoices/` dua kuitansi `6a18c955…` (ordinal 3 & 5) berdampingan →
+   wajib terbedakan tanpa membandingkan nomor dokumen.
+5. **Cetak PDF grup 10 pesanan** (`JFU-INV-321edc-…`) → batas antar bundel masih
+   terbaca hitam-putih.
+
 ### 00AB. ✅ PHASE 4 DITUTUP — peneliti menjadwalkan, membatalkan & memesan ulang sendiri (2026-09-17)
 
 **DITUTUP 2026-09-17.** Sembilan commit (`e2aafab`..`b741223`) sudah di-push &
@@ -1869,6 +1972,13 @@ kini dioper dari kedua permukaan.
 Callback DOKU untuk grup diarahkan ke `/invoices/<payment_id>` — halaman `/payment-success`
 menarik satu submission, jadi peneliti yang membayar 4 survei akan melihat halaman sukses
 satu survei. N=1 tidak berubah.
+
+> ⚠️ **"N=1 TIDAK BERUBAH" SUDAH TIDAK CUKUP SEJAK JADWAL KE-2 DIRILIS.** Kalimat
+> di atas ditulis ketika N=1 selalu berarti ordinal 1, jadi "satu tagihan = satu
+> order" masih benar. Sekarang N=1 bisa berarti jadwal ke-5, dan halaman sukses
+> yang membaca `form_submissions` mengumumkan jendela ordinal 1. Diperbaiki di
+> [§00AC](#00ac--kuitansi--halaman-sukses-menyebut-jadwal-yang-benar-2026-09-21);
+> asumsinya yang kedaluwarsa, bukan keputusan grupnya.
 
 **Gerbang:** `tsc -p tsconfig.app.json` **79** (baseline, nol error baru), vitest **411**
 lolos / 31 berkas (+78 uji baru: `waMessage`, `invoiceWrite`, `groupedInvoice`,

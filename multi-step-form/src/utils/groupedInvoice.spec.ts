@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  MATERAI_THRESHOLD, buildInvoiceDocument, groupMeta, sourceIdOf, type DocRow,
+  MATERAI_THRESHOLD, buildInvoiceDocument, groupMeta, scheduleBadgeOf, sourceIdOf, type DocRow,
 } from './groupedInvoice';
 
 const row = (o: Partial<DocRow> = {}): DocRow => ({
@@ -234,5 +234,60 @@ describe('buildInvoiceDocument — grup SEPARUH lunas (keadaan ketiga)', () => {
   it('N=1 tidak pernah "sebagian lunas"', () => {
     expect(buildInvoiceDocument([row({ status: 'pending' })]).isPartiallyPaid).toBe(false);
     expect(buildInvoiceDocument([row({ status: 'paid' })]).isPartiallyPaid).toBe(false);
+  });
+});
+
+describe('penanda jadwal — membedakan perpanjangan dari jadwal pertama', () => {
+  /*
+    Regresi atas kasus produksi `6a18c955…`: SATU pesanan dengan TIGA kuitansi
+    lunas (ordinal 2, 3, 5) yang tercetak identik sampai ke judulnya. Peneliti
+    yang mengarsipkan ketiganya untuk LPJ tidak punya cara membedakannya.
+  */
+  const sched = (ordinal: number | null) =>
+    new Map([['ext-9', { startDate: '2026-09-17T08:00:00Z', ordinal }]]);
+
+  const extendRow = () => row({ entity_type: 'extend', extend_id: 'ext-9' });
+
+  it('ordinal >=2 membawa ordinal + isExtend ke bundelnya', () => {
+    const [b] = buildInvoiceDocument([extendRow()], sched(5)).bundles;
+    expect(b.ordinal).toBe(5);
+    expect(b.isExtend).toBe(true);
+    expect(scheduleBadgeOf(b)).toBe('Jadwal ke-5');
+  });
+
+  it('dua ordinal berbeda dari SATU pesanan menghasilkan penanda berbeda', () => {
+    const [b3] = buildInvoiceDocument([extendRow()], sched(3)).bundles;
+    const [b5] = buildInvoiceDocument([extendRow()], sched(5)).bundles;
+    expect(scheduleBadgeOf(b3)).not.toBe(scheduleBadgeOf(b5));
+  });
+
+  it('ordinal 1 TIDAK menumbuhkan penanda — bentuk lama tidak berubah', () => {
+    const [b] = buildInvoiceDocument([row()], new Map([['o1', { ordinal: 1 }]])).bundles;
+    expect(b.ordinal).toBe(1);
+    expect(b.isExtend).toBe(false);
+    expect(scheduleBadgeOf(b)).toBeNull();
+  });
+
+  it('tanpa data ad_schedules: ordinal null, dan N=1 biasa tetap polos', () => {
+    const [b] = buildInvoiceDocument([row()]).bundles;
+    expect(b.ordinal).toBeNull();
+    expect(b.isExtend).toBe(false);
+    expect(scheduleBadgeOf(b)).toBeNull();
+  });
+
+  it('baris extend yang ordinalnya tak terbaca tetap ditandai', () => {
+    // Diam lebih buruk daripada penanda tanpa angka: diamnya tidak bisa
+    // dibedakan dari jadwal pertama.
+    const [b] = buildInvoiceDocument([extendRow()]).bundles;
+    expect(b.ordinal).toBeNull();
+    expect(scheduleBadgeOf(b)).toBe('Perpanjangan');
+  });
+
+  it('ordinal tidak mengubah satu pun angka uang', () => {
+    const polos = buildInvoiceDocument([extendRow()]);
+    const bertanda = buildInvoiceDocument([extendRow()], sched(5));
+    expect(bertanda.total).toBe(polos.total);
+    expect(bertanda.subtotal).toBe(polos.subtotal);
+    expect(bertanda.ppn).toBe(polos.ppn);
   });
 });

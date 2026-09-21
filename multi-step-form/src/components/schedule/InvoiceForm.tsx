@@ -348,6 +348,10 @@ export function InvoiceForm({
         // `toWibYmd` karena `start_date` TIMESTAMPTZ (08:00Z = 15.00 WIB) dan
         // mesin admin tidak selalu di WIB.
         airingStartYmd: entry.startDate ? toWibYmd(new Date(entry.startDate)) : undefined,
+        // Jadwal yang benar-benar ditagih. Formulir ini menagih SATU `entry`
+        // yang boleh ordinal >=2; tanpa ini halaman sukses menyebut jendela
+        // jadwal ke-1 milik ordernya.
+        scheduleId: entry.id,
       });
 
       // Menulis DAN membuktikan jumlahnya. Kalau ini melempar, barisnya sudah

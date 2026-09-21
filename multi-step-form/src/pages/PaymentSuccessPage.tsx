@@ -11,6 +11,16 @@ export default function PaymentSuccessPage() {
     const params = new URLSearchParams(window.location.search);
     return params.get('form_id') || params.get('id');
   });
+  /**
+   * `?schedule=` — jadwal yang benar-benar dibayar.
+   *
+   * Dibaca sekali bersama `formId`, dengan alasan yang sama. Kosong untuk
+   * SEMUA link yang terbit sebelum ini; halaman jatuh ke perilaku lama.
+   */
+  const [scheduleId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('schedule');
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -29,7 +39,7 @@ export default function PaymentSuccessPage() {
 
   return (
     <div className="container mx-auto px-4">
-      <PaymentSuccess formId={formId || undefined} />
+      <PaymentSuccess formId={formId || undefined} scheduleId={scheduleId || undefined} />
     </div>
   );
 }

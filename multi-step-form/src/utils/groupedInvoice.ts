@@ -51,6 +51,14 @@ export interface ScheduleInfo {
   duration?: number | null;
   distributionType?: string | null;
   kilatSlotHour?: number | null;
+  /**
+   * Jadwal ke-berapa dalam pesanannya (`ad_schedules.ordinal`), 1-based.
+   *
+   * ⚠️ IKUT `stripEmpty()` — lihat catatan di sana. Nilai `null`/`undefined`
+   * berarti "tidak diketahui", BUKAN "ordinal 1": dokumen hanya boleh mencetak
+   * penanda jadwal saat angkanya benar-benar datang dari `ad_schedules`.
+   */
+  ordinal?: number | null;
 }
 
 /** Satu pesanan di dalam dokumen: judulnya, jadwalnya, item-itemnya. */
@@ -64,6 +72,23 @@ export interface DocBundle {
   ppn: number;
   amount: number;
   isPaid: boolean;
+  /**
+   * Jadwal ke-berapa yang dibiayai bundel ini. `null` = tidak diketahui.
+   *
+   * ⚠️ KENAPA INI ADA: sampai ini lahir, dokumen membuang satu-satunya hal
+   * yang membedakan perpanjangan dari jadwal pertama. Terukur di produksi —
+   * order `6a18c955…` punya TIGA kuitansi lunas (ordinal 2, 3, 5) yang
+   * tercetak identik sampai ke judulnya. Peneliti yang mengarsipkan ketiganya
+   * untuk LPJ tidak punya cara membedakannya.
+   *
+   * `isExtend` sengaja TIDAK diturunkan dari `ordinal > 1`: ia menjawab
+   * "barisnya memang baris perpanjangan?" (`entity_type`), sementara `ordinal`
+   * menjawab "yang keberapa?" dan bisa kosong saat `ad_schedules` tak terbaca.
+   * Dua pertanyaan berbeda; menggabungkannya membuat bundel tanpa jadwal
+   * diam-diam dianggap ordinal 1.
+   */
+  ordinal: number | null;
+  isExtend: boolean;
 }
 
 export interface InvoiceDocument {
@@ -189,16 +214,19 @@ export function buildInvoiceDocument(
       kilatSlotHour: null,
     };
     const resolved = sourceId ? schedules.get(sourceId) : undefined;
+    const schedule = resolved ? { ...fallback, ...stripEmpty(resolved) } : fallback;
 
     return {
       sourceId,
       title: row.form_submissions?.title || 'Survei',
       items,
-      schedule: resolved ? { ...fallback, ...stripEmpty(resolved) } : fallback,
+      schedule,
       subtotal,
       ppn,
       amount,
       isPaid: isRowPaid(row.status),
+      ordinal: schedule.ordinal ?? null,
+      isExtend: row.entity_type === 'extend',
     };
   });
 
@@ -234,6 +262,24 @@ export function buildInvoiceDocument(
   };
 }
 
+/**
+ * Penanda "jadwal ke-berapa" untuk satu bundel — atau `null` kalau tidak perlu.
+ *
+ * ⚠️ `null` UNTUK ORDINAL 1 ADALAH KONTRAKNYA, bukan kelalaian. Dokumen N=1
+ * ordinal 1 adalah bentuk yang sudah dipakai ratusan kali; menumbuhkan chip di
+ * sana mengubah setiap kuitansi lama tanpa alasan. Penanda ini hanya muncul
+ * ketika ada sesuatu yang benar-benar perlu dibedakan.
+ *
+ * Ordinal tak terbaca (`null`) pada baris yang `entity_type = 'extend'` tetap
+ * dapat penanda — "Perpanjangan" tanpa angka lebih jujur daripada diam, karena
+ * diamnya tidak bisa dibedakan dari jadwal pertama.
+ */
+export function scheduleBadgeOf(bundle: Pick<DocBundle, 'ordinal' | 'isExtend'>): string | null {
+  if (bundle.ordinal != null && bundle.ordinal > 1) return `Jadwal ke-${bundle.ordinal}`;
+  if (bundle.ordinal != null) return null; // ordinal 1 — bentuk lama, jangan disentuh
+  return bundle.isExtend ? 'Perpanjangan' : null;
+}
+
 /** Buang field kosong supaya `{...fallback, ...resolved}` tidak menimpa dengan null. */
 function stripEmpty(s: ScheduleInfo): ScheduleInfo {
   const out: ScheduleInfo = {};
@@ -242,6 +288,7 @@ function stripEmpty(s: ScheduleInfo): ScheduleInfo {
   if (s.duration != null) out.duration = s.duration;
   if (s.distributionType) out.distributionType = s.distributionType;
   if (s.kilatSlotHour != null) out.kilatSlotHour = s.kilatSlotHour;
+  if (s.ordinal != null) out.ordinal = s.ordinal;
   return out;
 }
 

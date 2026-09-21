@@ -43,6 +43,16 @@ export interface InvoiceData {
    */
   bundleCount?: number;
   /**
+   * `ad_schedules.id` jadwal yang ditagih — HANYA untuk N=1.
+   *
+   * Dibawa ke `callback_url` supaya halaman sukses menyebut jendela tayang
+   * yang benar-benar dibayar. Tanpa ini ia membaca `form_submissions`, yang
+   * selalu jendela ordinal 1: tagihan jadwal ke-2 mengumumkan tanggal jadwal
+   * ke-1. Untuk bundel (`bundleCount > 1`) parameter ini tidak relevan —
+   * tujuannya `/invoices/` yang memang memuat seluruh jadwalnya.
+   */
+  scheduleId?: string;
+  /**
    * Tanggal tayang (YYYY-MM-DD) jadwal yang ditagih — untuk bundel, yang
    * PALING AWAL. Link harus mati saat jadwal pertama yang dibiayainya
    * kehilangan haknya, bukan saat yang terakhir.
@@ -272,7 +282,7 @@ export const createPayment = async (paymentData: PaymentData) => {
 // ==============================================================================
 export const createManualInvoice = async (invoiceData: InvoiceData) => {
   try {
-    const { formSubmissionId, amount, description, customerInfo, bundleCount = 1, airingStartYmd } = invoiceData;
+    const { formSubmissionId, amount, description, customerInfo, bundleCount = 1, airingStartYmd, scheduleId } = invoiceData;
 
     // Umur link mengikuti batas bayar jadwal yang dibiayainya. `null` = cutoff
     // sudah kurang dari 60 menit lagi → TOLAK, jangan terbitkan link sekarat.
@@ -306,9 +316,18 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
      * kalau tidak, PrivateRoute menyimpan URL-nya dan memulangkannya ke sini
      * sesudah login.
      */
+    /*
+     * ⚠️ `schedule` hanya ikut di cabang N=1, dan hanya kalau diketahui.
+     * Halaman sukses berlingkup ORDER sementara tagihan berlingkup JADWAL;
+     * tanpa parameter ini tagihan jadwal ke-2 mengumumkan jendela jadwal
+     * ke-1. Cabang bundel tidak memerlukannya — `/invoices/` sudah memuat
+     * tiap jadwal per bundelnya.
+     */
     const callbackUrl = bundleCount > 1
       ? `${origin}/invoices/${invoiceNumber}`
-      : `${origin}/payment-success?id=${formSubmissionId}&source=gateway`;
+      : `${origin}/payment-success?id=${formSubmissionId}`
+        + (scheduleId ? `&schedule=${encodeURIComponent(scheduleId)}` : '')
+        + `&source=gateway`;
     
     const requestData = {
       amount: amount,

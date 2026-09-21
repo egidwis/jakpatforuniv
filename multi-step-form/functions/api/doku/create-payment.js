@@ -245,6 +245,26 @@ export function pricingRowForSchedule(sub, schedule, billingVoucher) {
  * Gagal-TERTUTUP: jadwal yang tidak ditemukan ikut ditolak, bukan diam-diam
  * dikembalikan ke perilaku ordinal 1.
  */
+/**
+ * Ke mana DOKU memantulkan peneliti sesudah membayar.
+ *
+ * ⚠️ `scheduleId` IKUT KALAU ADA, dan itu bukan kosmetik. Halaman sukses
+ * berlingkup ORDER (`form_submissions.title/start_date/end_date`), sementara
+ * yang dibayar adalah satu JADWAL. Untuk ordinal >=2 keduanya berbeda dan
+ * halaman mengumumkan jendela jadwal PERTAMA — terukur di produksi pada 17
+ * tagihan lunas, terburuk order `6a18c955…` yang membayar tayang 17 Sep dan
+ * diberi tahu "24 Mei" (~4 bulan meleset).
+ *
+ * ⚠️ TANPA `scheduleId`, BENTUKNYA WAJIB IDENTIK DENGAN SEBELUMNYA — bukan
+ * `&schedule=` kosong. Ratusan link ordinal 1 sudah beredar; mengubah
+ * bentuknya berarti mengubah sesuatu yang sudah terbukti bekerja.
+ */
+export function buildSuccessCallbackUrl(origin, formSubmissionId, scheduleId) {
+  const base = `${origin}/payment-success?id=${formSubmissionId}`;
+  const sched = scheduleId ? `&schedule=${encodeURIComponent(scheduleId)}` : '';
+  return `${base}${sched}&source=gateway`;
+}
+
 export function assertScheduleBelongsToOrder(schedule, formSubmissionId) {
   const norm = (v) => String(v ?? '').trim().toLowerCase();
   if (!schedule || !schedule.submission_id) {
@@ -1095,7 +1115,8 @@ export async function onRequest(context) {
         amount,
         invoice_number: invoiceNumber,
         currency: 'IDR',
-        callback_url: `${resolvedOrigin}/payment-success?id=${formSubmissionId}&source=gateway`,
+        // Bentuknya + alasannya ada di `buildSuccessCallbackUrl`.
+        callback_url: buildSuccessCallbackUrl(resolvedOrigin, formSubmissionId, schedule?.id),
         auto_redirect: true,
       },
       payment: { payment_due_date: dueDate },

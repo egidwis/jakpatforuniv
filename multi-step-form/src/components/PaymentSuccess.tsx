@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, RefreshCcw, Loader2, MessageCircle, LayoutDashboard, ExternalLink } from 'lucide-react';
-import { fetchScheduleBilling, getFormSubmissionById, supabase } from '../utils/supabase';
+import { fetchAdSchedules, fetchScheduleBilling, getFormSubmissionById, supabase } from '../utils/supabase';
 import type { FormSubmission } from '../utils/supabase';
 import { payLinkPath } from '../utils/payLink';
 import { pickSuccessBill, type SuccessBillEvent } from '../utils/paymentSuccessBill';
@@ -10,6 +10,19 @@ import { useLanguage } from '../i18n/LanguageContext';
 
 interface PaymentSuccessProps {
   formId?: string;
+  /**
+   * `ad_schedules.id` yang benar-benar dibayar, dari `?schedule=` di URL.
+   *
+   * ⚠️ TANPA INI HALAMAN MENYEBUT JADWAL YANG SALAH. `form_submissions.
+   * start_date/end_date` selalu jendela ordinal 1, jadi pembayaran jadwal
+   * ke-2 dst. diumumkan dengan tanggal jadwal ke-1 — terukur di produksi
+   * pada 17 tagihan lunas, terburuk meleset ~4 bulan (`6a18c955…`: bayar
+   * tayang 17 Sep, halaman menyebut 24 Mei).
+   *
+   * Opsional dengan sengaja: link lama yang sudah beredar tidak membawanya,
+   * dan untuk mereka perilaku lama HARUS bertahan persis.
+   */
+  scheduleId?: string;
 }
 
 const fmtDate = (value: string | null | undefined) =>
@@ -32,7 +45,7 @@ const fmtDate = (value: string | null | undefined) =>
  * tepat setelah user membayar hanya karena webhook belum masuk. Ketiganya
  * diperbaiki di sini; layarnya kini juga memperbarui dirinya sendiri.
  */
-export function PaymentSuccess({ formId }: PaymentSuccessProps) {
+export function PaymentSuccess({ formId, scheduleId }: PaymentSuccessProps) {
   const { t } = useLanguage();
   const [formData, setFormData] = useState<FormSubmission | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,6 +78,20 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
   >(null);
   /** Jadwal yang ditunjuk tombol "Lanjutkan Pembayaran" — lihat `pickSuccessBill`. */
   const [payScheduleId, setPayScheduleId] = useState<string | null>(null);
+  /**
+   * Jendela tayang + nomor jadwal YANG DIBAYAR, saat `?schedule=` ada.
+   *
+   * `null` berarti "pakai kolom order seperti dulu" — bukan kegagalan. Link
+   * lama tidak membawa `?schedule=`, dan bentuk lamanya wajib bertahan.
+   */
+  const [paidSchedule, setPaidSchedule] = useState<
+    { startDate: string | null; endDate: string | null; ordinal: number | null } | null
+  >(null);
+  /**
+   * Status lunas TAGIHAN yang dibayar. `null` = tidak diketahui → pakai
+   * bendera order seperti dulu (link lama tanpa `?schedule=`).
+   */
+  const [billIsPaid, setBillIsPaid] = useState<boolean | null>(null);
 
   // Dibaca oleh polling supaya interval-nya tidak perlu dibuat ulang tiap kali
   // datanya berubah (dan tidak menutup nilai `formData` yang basi).
@@ -91,7 +118,12 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
       }
 
       setFormData(data);
-      isPaidRef.current = data.payment_status === 'paid' || data.payment_status === 'completed';
+      // ⚠️ Bendera ORDER hanya boleh menulis `isPaidRef` kalau jadwalnya TIDAK
+      // diketahui. Untuk `?schedule=`, `loadBill` yang berwenang — kalau tidak,
+      // ia menimpa status tagihan jadwal ke-2 dengan status jadwal ke-1.
+      if (!scheduleId) {
+        isPaidRef.current = data.payment_status === 'paid' || data.payment_status === 'completed';
+      }
     } catch (err: any) {
       console.error('Error fetching form data:', err);
       if (err.message && (err.message.includes('network') || err.message.includes('timeout'))) {
@@ -139,8 +171,33 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
       let ordinalOne: string | null = null;
       billing.forEach((b, scheduleId) => { if (b.sourceId === id) ordinalOne = scheduleId; });
 
-      const picked = pickSuccessBill(events, ordinalOne);
+      /*
+        ⚠️ SAAT `?schedule=` DIKETAHUI, HANYA PERISTIWA JADWAL ITU YANG DIHITUNG.
+
+        Tanpa penyaringan ini `pickSuccessBill` memilih peristiwa TERBARU dari
+        SELURUH jadwal order — jadi membayar jadwal ke-2 bisa menampilkan
+        nominal jadwal ke-3 yang tagihannya terbit belakangan. Untuk link lama
+        (tanpa `?schedule=`) perilakunya tidak berubah sedikit pun.
+      */
+      const scoped = scheduleId ? events.filter((e) => e.scheduleId === scheduleId) : events;
+      const picked = pickSuccessBill(scoped.length > 0 ? scoped : events, ordinalOne);
       setPayScheduleId(picked.scheduleId);
+      /*
+        ⚠️ LUNAS DITURUNKAN DARI TAGIHAN, BUKAN DARI BENDERA ORDER.
+
+        `form_submissions.payment_status` berlingkup ORDER: ia sudah `paid`
+        begitu jadwal ke-1 lunas, jadi pembayaran jadwal ke-2 yang webhooknya
+        belum masuk langsung tampil "Lunas". Sebaliknya order yang dibayar di
+        luar sistem macet "menunggu" selamanya (memo
+        `payment-status-not-proof-of-payment`).
+
+        Hanya dipakai saat jadwalnya diketahui — untuk link lama benderanya
+        tetap satu-satunya sumber, persis seperti sebelumnya.
+      */
+      if (scheduleId && picked.bill) {
+        setBillIsPaid(picked.bill.isPaid);
+        isPaidRef.current = picked.bill.isPaid;
+      }
 
       if (!picked.bill?.paymentId) { setBill(null); return; }
 
@@ -169,16 +226,49 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
     }
   };
 
+  /**
+   * Jendela tayang jadwal yang dibayar — hanya dipanggil saat `?schedule=` ada.
+   *
+   * ⚠️ GAGAL LUNAK. Kalau jadwalnya tak terbaca (RLS, jadwal terhapus, id
+   * ngawur di URL), `paidSchedule` tetap `null` dan halaman jatuh ke kolom
+   * order seperti sebelumnya. Itu bisa berarti tanggal ordinal 1 yang salah —
+   * tapi halaman yang menyebut tanggal lama tetap lebih baik daripada halaman
+   * yang gagal total sesudah uangnya masuk.
+   *
+   * Lewat `fetchAdSchedules(orderId)`, bukan kueri baru: fungsi itu disaring
+   * `submission_id` dan sudah dipakai dashboard peneliti, jadi jalur RLS-nya
+   * sudah terbukti. Efek sampingnya jadi penjaga: jadwal milik order LAIN
+   * tidak akan ada di hasilnya, jadi `?schedule=` yang ngawur diabaikan.
+   */
+  const loadPaidSchedule = async (orderId: string, schedId: string) => {
+    try {
+      const list = await fetchAdSchedules(orderId);
+      const match = list.find((s) => s.id === schedId);
+      if (!match) {
+        console.warn(`[payment-success] Jadwal ${schedId} bukan milik order ${orderId}; memakai jendela order.`);
+        return;
+      }
+      setPaidSchedule({
+        startDate: match.startDate ?? null,
+        endDate: match.endDate ?? null,
+        ordinal: match.ordinal ?? null,
+      });
+    } catch (e) {
+      console.warn('Jendela jadwal yang dibayar tidak terbaca; memakai jendela order:', e);
+    }
+  };
+
   useEffect(() => {
     if (formId) {
       fetchFormData(formId);
       void loadBill(formId);
+      if (scheduleId) void loadPaidSchedule(formId, scheduleId);
     } else {
       setLoading(false);
       setError(t('successNotFound'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formId]);
+  }, [formId, scheduleId]);
 
   /**
    * Webhook DOKU kerap menyusul beberapa menit setelah user kembali ke sini.
@@ -198,7 +288,19 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
         const data = await getFormSubmissionById(formId);
         if (data) {
           setFormData(data);
-          if (data.payment_status === 'paid' || data.payment_status === 'completed') {
+          /*
+            ⚠️ SAAT `?schedule=` ADA, BENDERA ORDER TIDAK BOLEH MENGHENTIKAN POLL.
+
+            Ia sudah `paid` sejak jadwal ke-1 lunas, jadi pembayaran jadwal
+            ke-2 akan berhenti memeriksa SEBELUM webhooknya masuk — layarnya
+            membeku di "menunggu" sampai peneliti memuat ulang sendiri.
+            `loadBill` yang memutuskan: ia membaca baris jadwal ini, dan
+            menulis `isPaidRef` saat benar-benar lunas.
+          */
+          if (scheduleId) {
+            await loadBill(formId);
+            if (isPaidRef.current) clearInterval(poll);
+          } else if (data.payment_status === 'paid' || data.payment_status === 'completed') {
             isPaidRef.current = true;
             clearInterval(poll);
             // Sekali saja, saat statusnya berbalik: tagihannya berpindah dari
@@ -243,12 +345,33 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
     );
   }
 
-  const isPaid = formData.payment_status === 'paid' || formData.payment_status === 'completed';
+  // `billIsPaid` menang saat diketahui — lihat catatannya di `loadBill`.
+  const isPaid = billIsPaid ?? (formData.payment_status === 'paid' || formData.payment_status === 'completed');
+  /*
+    ⚠️ JENDELA TAYANG DARI JADWAL YANG DIBAYAR, BUKAN DARI ORDER.
+
+    `form_submissions.start_date/end_date` SELALU jendela ordinal 1. Selama
+    hanya ada satu jadwal per order keduanya sama, dan itulah yang membuatnya
+    berbahaya: ia benar cukup lama untuk dipercaya, lalu berbohong begitu
+    jadwal ke-2 dirilis. Terukur di produksi pada 17 tagihan lunas ordinal >=2.
+
+    `paidSchedule` hanya terisi saat `?schedule=` ada DAN jadwalnya milik order
+    ini. Selain itu → kolom order, persis perilaku lama untuk link lama.
+  */
+  const airingStart = paidSchedule?.startDate ?? formData.start_date;
+  const airingEnd = paidSchedule?.endDate ?? formData.end_date;
   // Panjang tayang diturunkan dari jendela tanggalnya; kolom `duration` hanya
   // cadangan, karena ia terbukti bisa meleset dari rentang sebenarnya.
-  const airingDays = airingDayCount(formData.start_date, formData.end_date) ?? formData.duration ?? null;
-  const startText = fmtDate(formData.start_date);
-  const endText = fmtDate(formData.end_date);
+  // ⚠️ `duration` cadangannya HANYA sah untuk jendela order — untuk jadwal
+  // ke-2 ia kolom milik ordinal 1 dan tidak boleh ikut.
+  const airingDays = airingDayCount(airingStart, airingEnd)
+    ?? (paidSchedule ? null : formData.duration ?? null);
+  const startText = fmtDate(airingStart);
+  const endText = fmtDate(airingEnd);
+  /** Penanda "Jadwal ke-N" — hanya untuk ordinal >=2, sama seperti kuitansi. */
+  const scheduleLabel = paidSchedule?.ordinal != null && paidSchedule.ordinal > 1
+    ? `Jadwal ke-${paidSchedule.ordinal}`
+    : null;
 
   return (
     <div className="py-8 px-4 max-w-2xl mx-auto">
@@ -303,7 +426,16 @@ export function PaymentSuccess({ formId }: PaymentSuccessProps) {
             {/* Jadwal tayang paling atas — inilah yang benar-benar ingin
                 dipastikan user setelah membayar, dan dulu tidak disebut sama sekali. */}
             <div className="flex justify-between gap-4">
-              <dt className="text-gray-500">{t('successAiringLabel')}</dt>
+              <dt className="text-gray-500 flex items-center gap-2 flex-wrap">
+                {t('successAiringLabel')}
+                {/* Jadwal ke-2 dst.: tanpa penanda ini, dua pembayaran pada
+                    order yang sama menghasilkan halaman yang tak terbedakan. */}
+                {scheduleLabel && (
+                  <span className="inline-flex items-center rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">
+                    {scheduleLabel}
+                  </span>
+                )}
+              </dt>
               <dd className="font-semibold text-gray-900 text-right">
                 {startText && airingDays
                   ? `${startText}, 15.00 WIB · ${airingDays} ${t('days')}`
