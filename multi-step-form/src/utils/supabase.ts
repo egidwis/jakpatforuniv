@@ -2568,6 +2568,12 @@ export interface ChatSession {
   user_email: string;
   last_message_at: string;
   created_at: string;
+  tag?: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq' | null;
+  tag_label?: string | null;
+  needs_attention?: boolean;
+  last_message_snippet?: string | null;
+  is_resolved?: boolean;
+  resolved_at?: string | null;
 }
 
 export interface ChatMessage {
@@ -2576,7 +2582,36 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  ctas?: Array<{
+    id: string;
+    label: string;
+    action: 'navigate' | 'chat_prompt' | 'open_modal';
+    target?: string;
+    variant?: 'primary' | 'secondary' | 'warning' | 'outline';
+  }>;
 }
+
+export interface AISkill {
+  id: string;
+  name: string;
+  description?: string;
+  trigger_context: string;
+  sop_instructions: string;
+  suggested_actions: Array<{
+    label: string;
+    action: 'navigate' | 'open_url' | 'chat_prompt';
+    url?: string;
+    prompt?: string;
+  }>;
+  tag?: string;
+  tag_label?: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+
 
 // Get or create session for user
 export const getOrCreateChatSession = async (userEmail: string) => {
@@ -2623,7 +2658,16 @@ export const getChatMessages = async (sessionId: string) => {
 };
 
 // Save a new message
-export const saveChatMessage = async (sessionId: string, role: 'user' | 'assistant', content: string) => {
+export const saveChatMessage = async (
+  sessionId: string,
+  role: 'user' | 'assistant',
+  content: string,
+  metadata?: {
+    tag?: string;
+    tag_label?: string;
+    needs_attention?: boolean;
+  }
+) => {
   try {
     const { data, error } = await supabase
       .from('chat_messages')
@@ -2633,10 +2677,30 @@ export const saveChatMessage = async (sessionId: string, role: 'user' | 'assista
 
     if (error) throw error;
 
-    // Update last_message_at in session (fire and forget update)
+    // Update last_message_at and snippet in session
+    const updatePayload: Record<string, any> = {
+      last_message_at: new Date().toISOString(),
+      last_message_snippet: content.slice(0, 150)
+    };
+
+    if (metadata?.tag) {
+      updatePayload.tag = metadata.tag;
+    }
+    if (metadata?.tag_label) {
+      updatePayload.tag_label = metadata.tag_label;
+    }
+    if (typeof metadata?.needs_attention === 'boolean') {
+      updatePayload.needs_attention = metadata.needs_attention;
+      // If marked as needing attention, reopen it
+      if (metadata.needs_attention) {
+        updatePayload.is_resolved = false;
+        updatePayload.resolved_at = null;
+      }
+    }
+
     supabase
       .from('chat_sessions')
-      .update({ last_message_at: new Date().toISOString() })
+      .update(updatePayload)
       .eq('id', sessionId)
       .then();
 
@@ -2645,6 +2709,43 @@ export const saveChatMessage = async (sessionId: string, role: 'user' | 'assista
     console.error('Error saving chat message:', error);
     return null;
   }
+};
+
+// Update session metadata (tag, status, snippet)
+export const updateChatSessionMetadata = async (
+  sessionId: string,
+  metadata: {
+    tag?: string;
+    tag_label?: string;
+    needs_attention?: boolean;
+    last_message_snippet?: string;
+    is_resolved?: boolean;
+    resolved_at?: string | null;
+  }
+) => {
+  try {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .update(metadata)
+      .eq('id', sessionId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error updating chat session metadata:', error);
+    return null;
+  }
+};
+
+// Resolve or reopen chat session by admin
+export const resolveChatSession = async (sessionId: string, isResolved: boolean) => {
+  return updateChatSessionMetadata(sessionId, {
+    is_resolved: isResolved,
+    resolved_at: isResolved ? new Date().toISOString() : null,
+    needs_attention: isResolved ? false : true
+  });
 };
 
 // Admin: Get all chat sessions (for internal dashboard)
@@ -2661,7 +2762,105 @@ export const getAllChatSessions = async () => {
     console.error('Error fetching all chat sessions:', error);
     return [];
   }
-}
+};
+
+// ============= AI SKILLS FUNCTIONS =============
+
+// Fetch active AI skills for client chat
+export const fetchActiveAISkills = async (): Promise<AISkill[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('ai_skills')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching active AI skills:', error);
+    return [];
+  }
+};
+
+// Admin: Fetch all AI skills (including inactive)
+export const fetchAllAISkills = async (): Promise<AISkill[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('ai_skills')
+      .select('*')
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching all AI skills:', error);
+    return [];
+  }
+};
+
+// Admin: Insert or update an AI skill
+export const saveAISkill = async (skill: Partial<AISkill>): Promise<AISkill | null> => {
+  try {
+    const payload = {
+      ...skill,
+      updated_at: new Date().toISOString()
+    };
+
+    if (skill.id) {
+      const { data, error } = await supabase
+        .from('ai_skills')
+        .update(payload)
+        .eq('id', skill.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await supabase
+        .from('ai_skills')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  } catch (error) {
+    console.error('Error saving AI skill:', error);
+    throw error;
+  }
+};
+
+// Admin: Delete an AI skill
+export const deleteAISkill = async (id: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('ai_skills')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error deleting AI skill:', error);
+    return false;
+  }
+};
+
+// Admin: Toggle active status of an AI skill
+export const toggleAISkillActive = async (id: string, currentStatus: boolean): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('ai_skills')
+      .update({ is_active: !currentStatus, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error toggling AI skill status:', error);
+    return false;
+  }
+};
+
 // ============= SCHEDULING FUNCTIONS =============
 // NOTE: scheduled_ads table is ARCHIVED. All scheduling now uses
 // survey_pages (source of truth) + form_submissions (slot reservation & sync).

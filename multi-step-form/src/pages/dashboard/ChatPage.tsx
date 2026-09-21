@@ -1,11 +1,22 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { HelpCircle, Send, Bot } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { HelpCircle, Send, Bot, Sparkles, ArrowRight, ExternalLink, Calendar, Plus, RefreshCw, AlertCircle } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
-import { supabase, getOrCreateChatSession, getChatMessages, saveChatMessage, getFormSubmissionsByUser, fetchAdSchedules, type AdScheduleEntry, type FormSubmission } from '@/utils/supabase';
+import { 
+    supabase, 
+    getOrCreateChatSession, 
+    getChatMessages, 
+    saveChatMessage, 
+    getFormSubmissionsByUser, 
+    fetchAdSchedules, 
+    fetchActiveAISkills,
+    type AdScheduleEntry, 
+    type FormSubmission,
+    type AISkill 
+} from '@/utils/supabase';
 import { deriveOrderUiState, describeOrderForChat } from '@/components/status/deriveOrderUiState';
 import {
     Accordion,
@@ -16,9 +27,23 @@ import {
 import ReactMarkdown from 'react-markdown';
 
 
+interface ChatCta {
+    id: string;
+    label: string;
+    action: 'navigate' | 'chat_prompt' | 'open_modal';
+    target?: string;
+    variant?: 'primary' | 'secondary' | 'warning' | 'outline';
+}
+
+interface ChatMessageItem {
+    role: 'user' | 'assistant';
+    content: string;
+    ctas?: ChatCta[];
+}
+
 export function ChatPage() {
     const { user } = useAuth();
-
+    const navigate = useNavigate();
 
     const defaultFaqs = [
         {
@@ -76,8 +101,11 @@ export function ChatPage() {
     ];
 
     // --- Chat AI Logic ---
-    const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([
-        { role: 'assistant', content: 'Halo! Saya Mimin AI. Ada yang bisa saya bantu terkait survei akademikmu?' }
+    const [messages, setMessages] = useState<ChatMessageItem[]>([
+        { 
+            role: 'assistant', 
+            content: 'Halo! Saya Mimin AI, asisten admin Jakpat for Universities. Ada yang bisa saya bantu terkait survei akademik, pilihan jadwal, atau estimasi biayamu?' 
+        }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -86,26 +114,30 @@ export function ChatPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const autoSentRef = useRef(false);
 
-    // AI Knowledge Base State
+    // AI Knowledge Base & Skills State
     const [systemPrompt, setSystemPrompt] = useState<string>('');
+    const [skills, setSkills] = useState<AISkill[]>([]);
     const [faqs, setFaqs] = useState<Array<{q: string, a: string}>>([]);
 
     // Order milik user, untuk disuntikkan sebagai ORDER CONTEXT ke system
-    // prompt — tanpa ini Mimin buta terhadap order dan tidak bisa menjawab
-    // "kapan survei saya tayang?".
     const [userOrders, setUserOrders] = useState<Array<{ submission: FormSubmission; schedules: AdScheduleEntry[] }>>([]);
 
     // Initial load for persistence
     useEffect(() => {
         const initData = async () => {
-            // 1. Fetch AI Knowledge Base
+            // 1. Fetch AI Knowledge Base & Active Skills
             try {
-                const [{ data: promptData }, { data: faqsData }] = await Promise.all([
+                const [{ data: promptData }, { data: faqsData }, activeSkills] = await Promise.all([
                     supabase.from('ai_settings').select('value').eq('key', 'system_prompt').single(),
-                    supabase.from('ai_knowledge_base').select('question, answer').eq('is_active', true).order('sort_order', { ascending: true })
+                    supabase.from('ai_knowledge_base').select('question, answer').eq('is_active', true).order('sort_order', { ascending: true }),
+                    fetchActiveAISkills()
                 ]);
 
                 if (promptData) setSystemPrompt(promptData.value);
+
+                if (activeSkills && activeSkills.length > 0) {
+                    setSkills(activeSkills);
+                }
 
                 if (faqsData && faqsData.length > 0) {
                     setFaqs(faqsData.map(f => ({ q: f.question, a: f.answer })));
@@ -124,13 +156,16 @@ export function ChatPage() {
                     setSessionId(session.id);
                     const savedMessages = await getChatMessages(session.id);
                     if (savedMessages && savedMessages.length > 0) {
-                        setMessages(savedMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })));
+                        setMessages(savedMessages.map(m => ({ 
+                            role: m.role as 'user' | 'assistant', 
+                            content: m.content,
+                            ctas: (m as any).ctas || []
+                        })));
                     }
                 }
             }
 
-            // 3. Fetch order user untuk ORDER CONTEXT (maks. 3 terbaru, data
-            // milik sendiri di bawah RLS — dibangun client-side seperti prompt)
+            // 3. Fetch order user untuk ORDER CONTEXT (maks. 3 terbaru)
             if (user?.id) {
                 try {
                     const subs = await getFormSubmissionsByUser(user.id, user.email);
@@ -164,119 +199,253 @@ export function ChatPage() {
         [userOrders]
     );
 
-    // Build system prompt (shared by handleSendMessage and sendMessageDirect)
+    // Build system prompt with Comprehensive Product Knowledge & Action Capabilities
     const buildSystemPrompt = useCallback(() => {
-        const basePrompt = systemPrompt || `You are Mimin AI, a helpful virtual assistant EXCLUSIVELY for Jakpat for Universities (JFU).
-You are politely professional and helpful.
+        const basePrompt = systemPrompt || `You are Mimin AI, the Agentic AI Assistant & Virtual Admin for Jakpat for Universities (JFU).
+You are politely professional, proactive, and solution-oriented.
 
-=== IDENTITY & SCOPE ===
-- You are Mimin AI, the AI assistant for Jakpat for Univ — a service from Jakpat specifically designed for students and lecturers to distribute academic surveys.
-- Jakpat for Univ is NOT the same as Jakpat's main platform. Jakpat for Univ is a simpler, more affordable survey distribution service tailored for academic needs (skripsi, thesis, tugas kuliah, riset).
-- You ONLY know about Jakpat for Univ. You do NOT know about Jakpat's main platform features, products, or services beyond what is explicitly stated below.
+=== IDENTITY & PURPOSE ===
+- You are Mimin AI, representing the official Jakpat for Universities (JFU) admin team.
+- JFU is a specialized service from Jakpat tailored for students, thesis researchers, and lecturers to distribute academic surveys affordably and fast.
+- You do NOT merely provide passive answers; you guide the researcher toward the right action (submitting, scheduling, extending, or resolving issues).
 
-=== CRITICAL ANTI-HALLUCINATION RULES ===
-1. **ONLY answer based on the Knowledge Base provided below.** If the information is NOT in the Knowledge Base, you MUST say you don't know.
-2. **NEVER make up, invent, or assume information** that is not explicitly stated in the Knowledge Base. This includes features, integrations, data formats, dashboards, tools, or any capabilities.
-3. **NEVER confuse Jakpat for Univ with Jakpat's main platform.** Jakpat for Univ does NOT have:
-   - Its own respondent dashboard for clients
-   - Automatic demographic data attached to survey results
-   - Integration with Google Forms, SurveyMonkey, or other platforms to auto-sync results
-   - Data export in Excel/CSV from Jakpat for Univ's side
-   - Real-time response tracking dashboard for clients
-4. **What Jakpat for Univ actually does**: Jakpat for Univ distributes/advertises your survey link (Google Form, Qualtrics, etc.) to Jakpat's respondent panel. The survey results go directly into YOUR survey platform (e.g., your Google Form responses), NOT through Jakpat for Univ.
-5. If a user asks something outside your knowledge, respond with EXACTLY this pattern:
-   "Mohon maaf, saya belum memiliki informasi mengenai hal tersebut. Untuk pertanyaan lebih lanjut, tim Jakpat akan menghubungi kamu melalui email atau WhatsApp yang terdaftar. Kamu juga bisa menghubungi kami di product@jakpat.net 😊"
-6. **NEVER fabricate sample data, tables, or examples** that are not in the Knowledge Base.`;
+=== 3 PILARS OF PRODUCT KNOWLEDGE ===
+1. **Pilar 1: Survey Ads (Iklan Survei Reguler)**
+   - Iklan kuesioner akademik yang tayang di aplikasi mobile Jakpat.
+   - Menggunakan sistem slot kalender harian (bisa pilih slot jam tayang).
+   - Peneliti wajib menyediakan reward pool (insentif undian berupa saldo e-wallet untuk 1-5 pemenang undian acak).
+   - Hasil jawaban kuesioner 100% langsung masuk ke form peneliti sendiri (Google Forms, Microsoft Forms, Qualtrics, Typeform, dll).
+
+2. **Pilar 2: JFU Kilat (Distribusi Cepat Prioritas)**
+   - Layanan distribusi cepat berbasis landing page publik di website Jakpat for Univ (/pages).
+   - Sangat cocok untuk mahasiswa dengan deadline mendesak (butuh responden dalam hitungan jam / hari ini juga).
+   - Responden tervalidasi langsung mengakses kuesioner tanpa antre jadwal slot harian.
+
+3. **Pilar 3: Respondent Access (Panel Terverifikasi)**
+   - Akses langsung ke panel 1,7+ Juta responden asli Indonesia di aplikasi Jakpat.
+   - Tersebar di 38 provinsi (mayoritas Jawa Barat, Sumatera, Jawa Timur, Jawa Tengah, DKI Jakarta).
+   - Terlindungi dari double-submit dan responden bot berkat validasi identitas unik via sistem Jakpat ID.
+
+=== BOOKING SYSTEM & FLOW STATUS ===
+- **Tahap 1: Pengajuan Order (Submissions)** -> Peneliti input judul, link kuesioner, kuota pertanyaan, dan reward pool.
+- **Tahap 2: Review Manual Tim Admin** -> Kuesioner diperiksa manual & AI pre-screening (cek PII / nomor HP dilarang & kecocokan kuota). Jam kerja: Senin-Jumat 08:00-17:00 WIB (proses 1-2 jam).
+- **Tahap 3: Pemilihan Jadwal & Pembayaran** -> Setelah kuesioner disetujui, peneliti memilih tanggal di kalender dan membayar via DOKU (QRIS, Bank Transfer / Virtual Account, E-Wallet).
+- **Tahap 4: Penayangan Iklan Live** -> Survei tayang di aplikasi Jakpat pada tanggal yang dipilih.
+
+=== PRICING FORMULA (BIAYA IKLAN HARIAN) ===
+- 1-15 pertanyaan: Rp 150.000 / hari
+- 16-30 pertanyaan: Rp 200.000 / hari
+- 31-50 pertanyaan: Rp 300.000 / hari
+- 51-70 pertanyaan: Rp 400.000 / hari
+- >70 pertanyaan: Rp 500.000 / hari
+- **Aturan Grid/Likert/Matrix**: Setiap baris pernyataan dihitung sebagai 1 pertanyaan (bukan 1 blok).
+- **Insentif Responden**: Ditentukan sendiri oleh peneliti, rekomendasi minimal Rp 25.000 untuk 2 pemenang undian.
+- **Add-on Randomizer**: Rp 20.000 per link.
+
+=== CRITICAL BEHAVIOR & OUTPUT FORMAT ===
+Balaslah dalam Bahasa Indonesia yang ramah, sopan, bersahabat, dan jelas.
+PENTING:
+- Teks obrolanmu ('reply') harus 100% percakapan alami manusiawi yang hangat, solutif, dan mengalir.
+- JANGAN PERNAH menampilkan format teknis seperti "Label: ... -> Action: ...", "Action Buttons", atau mencantumkan kode teknis di dalam teks 'reply'.
+- Tombol aksi (CTA) HANYA dimasukkan ke dalam array JSON "ctas", TIDAK boleh dituliskan sebagai bullet points di teks 'reply'.
+
+Format responmu WAJIB menggunakan JSON dengan struktur:
+{
+  "reply": "Teks markdown jawaban ramah dan informatif tanpa format teknis...",
+  "intent": "issue" | "feedback" | "request_extend" | "request_upsell" | "faq",
+  "tag_label": "Label ringkas maks 3 kata (cth: Kendala Bayar / Saran Fitur / Tanya Jadwal / Request Extend)",
+  "needs_attention": true | false (isi true jika user mengalami kendala teknis, pembayaran gagal, atau butuh bantuan manual admin),
+  "ctas": [
+    {
+      "id": "track_ads" | "extend_ads" | "calendar" | "kilat" | "audit_form" | "report_issue",
+      "label": "Teks tombol (cth: 🚀 Perpanjang Durasi Tayang / ➕ Perpanjang Iklan / 📅 Buka Kalender / ⚡ Info JFU Kilat)",
+      "action": "navigate" | "chat_prompt",
+      "target": "/dashboard" (untuk navigate) ATAU teks pertanyaan cepat (untuk chat_prompt)
+    }
+  ]
+}`;
 
         const currentFaqs = faqs.length > 0 ? faqs : defaultFaqs;
 
-        // Blok ORDER CONTEXT: data order asli user (maks. 3 terbaru). Bot hanya
-        // boleh menjawab pertanyaan status dari blok ini — tidak boleh mengarang.
+        const skillsContext = skills.length > 0
+            ? `\n\n=== PANDUAN SOP INTERNAL TIM (HANYA REFERENSI INTERNAL AI, JANGAN TULIS FORMAT TEKNIS KE USER) ===\n` +
+              `Jika konteks obrolan user berkaitan dengan situasi berikut, ikuti SOP ini dalam menjawab secara natural:\n\n` +
+              skills.map(s => 
+                `[SOP: ${s.name}]\n` +
+                `- Situasi: ${s.trigger_context}\n` +
+                `- Langkah Panduan Jawaban:\n${s.sop_instructions}\n`
+              ).join('\n\n')
+            : '';
+
         const orderContext = orderStates.length > 0
-            ? `
-
-=== ORDER CONTEXT (DATA ORDER ASLI MILIK USER INI) ===
-Berikut order survei terbaru milik user yang sedang chat denganmu (maksimal 3 terbaru ditampilkan):
-
-${orderStates.map(({ submission, ui }) => describeOrderForChat(submission, ui)).join('\n\n')}
-
-ATURAN ORDER CONTEXT:
-1. Jawab pertanyaan tentang status/jadwal/pembayaran order user HANYA berdasarkan blok ORDER CONTEXT di atas. JANGAN mengarang status, tanggal, atau jumlah di luar blok ini.
-2. Jika user menanyakan order yang TIDAK ada di blok ini, gunakan jawaban fallback resmi (arahkan ke product@jakpat.net atau halaman Order Saya di dashboard).
-3. Jumlah responden TIDAK PERNAH dijamin — JFU hanya mengiklankan survei. Jangan menjanjikan angka responden.
-4. Untuk aksi (bayar, pilih jadwal, ajukan ulang), arahkan user ke halaman "Order Saya" di dashboard.`
+            ? `\n\n=== ORDER CONTEXT (DATA ORDER MILIK USER SAAT INI) ===\nBerikut order survei milik user yang sedang chat denganmu:\n\n${orderStates.map(({ submission, ui }) => describeOrderForChat(submission, ui)).join('\n\n')}\n\nGunakan data di atas untuk menjawab status survei user secara akurat dan sertakan CTA yang relevan!`
             : '';
 
         return `${basePrompt}
+${skillsContext}
 
 === KNOWLEDGE BASE (FAQ) ===
 ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
-
-=== ADDITIONAL VERIFIED INFORMATION ===
-
-1. **Review Process**:
-   - Reviews are done during Working Days (Mon-Fri, 08:00 - 17:00 WIB).
-   - Submissions outside these hours will be queued for review on the next business day.
-
-2. **Invoicing**:
-   - Once the survey is reviewed and approved, the Admin will send the invoice via WhatsApp.
-
-3. **How Jakpat for Univ Works (Step by Step)**:
-   - Step 1: Klik menu "Submissions" lalu isi order form. Lengkapi detail surveymu di form pemesanan.
-   - Step 2: Track status surveimu. Admin akan cek & beri feedback. Tim Jakpat akan memverifikasi dan memberikan masukan jika perlu.
-   - Step 3: Surveimu diiklankan. Kami publikasikan surveymu di website Jakpat agar responden bisa mengisinya.
-   - Step 4: Tunggu hasilnya. Responden mengisi survei langsung di platform survei kamu (Google Form, dll). Hasil masuk langsung ke Google Form / platform survei kamu.
-
-4. **Pricing (Per Day — Biaya Iklan)**:
-   - 1-15 pertanyaan: Rp 150.000
-   - 16-30 pertanyaan: Rp 200.000
-   - 31-50 pertanyaan: Rp 300.000
-   - 51-70 pertanyaan: Rp 400.000
-   - >70 pertanyaan: Rp 500.000
-   - *Catatan: Harga belum termasuk insentif responden.*
-   - **PENTING - Penghitungan Grid/Matrix/Likert**: Pertanyaan dalam format grid, matrix, atau skala Likert dihitung PER BARIS/OPTION, bukan dihitung sebagai 1 pertanyaan. Contoh: jika ada 1 pertanyaan grid dengan 5 pernyataan/baris, maka itu dihitung sebagai 5 pertanyaan, BUKAN 1 pertanyaan.
-
-5. **Fitur Tambahan**:
-   - **Randomization**: Rp 20.000 per link. Digunakan untuk mendistribusikan beberapa skenario survei secara acak.
-
-6. **Link Iklan Survei**:
-   - Link iklan akan diinfokan oleh admin setelah iklan berhasil dipublish.
-
-7. **Data Demografi Responden Jakpat** (Total: 1.7 juta responden, data diupdate secara berkala):
-   - Ini adalah data demografi PANEL RESPONDEN JAKPAT secara umum, BUKAN data yang otomatis terlampir di hasil survei kamu.
-   - **Sebaran Wilayah**: Jawa Barat 23.5%, Sumatera 16.3%, Jawa Timur 14.9%, Jawa Tengah 12.4%, DKI Jakarta 11.9%, Banten 6.1%, Kalimantan 5.5%, Sulawesi 4.0%, Bali Nusa 3.3%, DI Yogyakarta 2.5%, Maluku Papua 0.6%
-   - **Gender**: Laki-laki 60.9%, Perempuan 39.1%
-   - **Usia**: <17 tahun 7.7%, 18-24 tahun 42.7% (terbesar), 25-30 tahun 23.1%, 31-35 tahun 12.5%, 36-40 tahun 6.9%, 40+ tahun 7.1%
-   - **Profesi**: Worker 32.7%, JobSeeker 22.5%, College 16.0%, Student 12.4%, Housewife 9.7%, Entrepreneur 6.8%
-   - **Status Pernikahan**: Menikah 65.49%, Belum Menikah 34.6%
-
-8. **Tentang Hasil Survei (PENTING)**:
-   - Hasil survei LANGSUNG masuk ke platform survei yang kamu gunakan (Google Form, Qualtrics, SurveyMonkey, dll).
-   - Jakpat for Univ TIDAK menyediakan dashboard khusus untuk melihat hasil survei.
-   - Jakpat for Univ TIDAK menyediakan export data dalam format Excel/CSV.
-   - Jakpat for Univ TIDAK menambahkan data demografi otomatis ke hasil surveimu.
-   - Jika kamu ingin data demografi, kamu perlu menambahkan pertanyaan demografi sendiri di dalam kuesionermu.
 ${orderContext}
-
-=== BEHAVIORAL RULES ===
-1. ONLY answer based on the Knowledge Base, Additional Verified Information, and (for this user's own orders) the ORDER CONTEXT above. NO EXCEPTIONS.
-2. **DO NOT** provide the Admin's or Jakpat Team's WhatsApp number if asked. Instead, inform:
-   - Kamu tidak bisa membagikan nomor kontak pribadi.
-   - Jika mereka sudah submit survei, Tim Jakpat akan otomatis mereview-nya.
-   - Setelah review selesai, Tim Jakpat yang akan menghubungi MEREKA langsung via WhatsApp untuk langkah selanjutnya.
-3. If the user asks about payment errors, technical bugs, or complex issues, ask them to wait for the official team or email product@jakpat.net.
-4. Be concise, friendly, and use Indonesian language (Bahasa Indonesia).
-5. **Winner Count Request Flow**: If a user asks about having more than 5 winners:
-   - Default max is 5 pemenang for standard distribution.
-   - Alasan: "agar distribusi hadiah bisa lebih merata dengan postingan iklan lainnya".
-   - Jika butuh lebih dari 5, bisa dilakukan dengan metode distribusi custom (ada biaya tambahan).
-   - Minta mereka submit order form dulu dengan 5 pemenang agar data tersimpan.
-   - Jaminkan bahwa saat pembayaran/penjadwalan, admin akan menghubungi untuk diskusi detail custom distribution.
-6. REPEAT: If the question is outside your knowledge, ALWAYS use the fallback response. NEVER guess or improvise.
 `;
-    }, [systemPrompt, faqs, orderStates]);
+    }, [systemPrompt, skills, faqs, orderStates]);
 
-    // Auto-send message from query param
+function cleanRawReply(text: string): string {
+    if (!text) return '';
+    return text
+        .split('\n')
+        .filter(line => {
+            const trimmed = line.trim();
+            if (/^(?:[-*•]\s*)?label:\s*["'].*["']\s*->\s*action:/i.test(trimmed)) return false;
+            if (/^(?:[-*•]\s*)?label:\s*["'].*["']/i.test(trimmed) && /action:/i.test(trimmed)) return false;
+            if (/^(?:[-*•]\s*)?action:\s*(?:navigate|open_url|chat_prompt)/i.test(trimmed)) return false;
+            if (/^silakan pilih salah satu opsi di bawah ini/i.test(trimmed)) return false;
+            if (/^(?:[-*•]\s*)?pilih opsi berikut/i.test(trimmed)) return false;
+            if (/^(?:[-*•]\s*)?action buttons?:/i.test(trimmed)) return false;
+            return true;
+        })
+        .join('\n')
+        .trim();
+}
+
+function parseMiminResponse(
+    rawText: string,
+    userPrompt: string,
+    userOrderStates: Array<{ submission: FormSubmission; ui: any }>
+): {
+    reply: string;
+    intent: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq';
+    tag_label: string;
+    needs_attention: boolean;
+    ctas: ChatCta[];
+} {
+    let reply = cleanRawReply(rawText);
+    let intent: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq' = 'faq';
+    let tag_label = 'FAQ Umum';
+    let needs_attention = false;
+    let ctas: ChatCta[] = [];
+
+    // 1. Try parsing JSON block from AI output
+    try {
+        const jsonMatch = rawText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) || rawText.match(/(\{[\s\S]*"reply"[\s\S]*\})/);
+        if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[1]);
+            if (parsed.reply || parsed.message) reply = cleanRawReply(parsed.reply || parsed.message);
+            if (parsed.intent) intent = parsed.intent;
+            if (parsed.tag_label) tag_label = parsed.tag_label;
+            if (typeof parsed.needs_attention === 'boolean') needs_attention = parsed.needs_attention;
+            if (Array.isArray(parsed.ctas)) ctas = parsed.ctas;
+        }
+    } catch (_) {}
+
+    // 2. Fallback Heuristic intent & Dynamic CTAs
+    const lowerPrompt = userPrompt.toLowerCase();
+    const lowerReply = reply.toLowerCase();
+
+    // Issue / Bug detection
+    if (
+        lowerPrompt.includes('kendala') ||
+        lowerPrompt.includes('gagal') ||
+        lowerPrompt.includes('error') ||
+        lowerPrompt.includes('masalah') ||
+        lowerPrompt.includes('saldo terpotong') ||
+        lowerPrompt.includes('belum masuk') ||
+        lowerPrompt.includes('kenapa belum')
+    ) {
+        intent = 'issue';
+        tag_label = lowerPrompt.includes('bayar') || lowerPrompt.includes('saldo') ? 'Kendala Pembayaran' : 'Kendala Sistem';
+        needs_attention = true;
+        if (ctas.length === 0) {
+            ctas.push({
+                id: 'report_admin',
+                label: '🚨 Lapor Kendala ke Admin',
+                action: 'chat_prompt',
+                target: 'Min, saya ada kendala pada pesanan saya dan butuh bantuan admin.',
+                variant: 'warning'
+            });
+        }
+    }
+    // Feedback / Saran
+    else if (
+        lowerPrompt.includes('saran') ||
+        lowerPrompt.includes('masukan') ||
+        lowerPrompt.includes('usul') ||
+        lowerPrompt.includes('rekomendasi fitur')
+    ) {
+        intent = 'feedback';
+        tag_label = 'Saran / Masukan';
+        needs_attention = false;
+    }
+    // Request Extend / Tambah Hari
+    else if (
+        lowerPrompt.includes('perpanjang') ||
+        lowerPrompt.includes('extend') ||
+        lowerPrompt.includes('tambah hari') ||
+        lowerPrompt.includes('tambah durasi')
+    ) {
+        intent = 'request_extend';
+        tag_label = 'Request Extend';
+        needs_attention = true;
+        if (ctas.length === 0) {
+            ctas.push({
+                id: 'extend_action',
+                label: '➕ Ajukan Perpanjangan Iklan',
+                action: 'chat_prompt',
+                target: 'Min, saya mau ajukan perpanjangan durasi penayangan survei saya.'
+            });
+        }
+    }
+    // Request JFU Kilat
+    else if (
+        lowerPrompt.includes('kilat') ||
+        lowerPrompt.includes('cepat') ||
+        lowerPrompt.includes('mendesak') ||
+        lowerPrompt.includes('deadline') ||
+        lowerPrompt.includes('hari ini juga')
+    ) {
+        intent = 'request_upsell';
+        tag_label = 'Tanya JFU Kilat';
+        if (ctas.length === 0) {
+            ctas.push({
+                id: 'kilat_info',
+                label: '⚡ Buka Layanan JFU Kilat',
+                action: 'chat_prompt',
+                target: 'Min, tolong jelaskan detail dan biaya JFU Kilat untuk survei saya.'
+            });
+        }
+    }
+
+    // Contextual order CTAs if relevant order exists and no CTAs yet
+    if (ctas.length === 0) {
+        const liveOrder = userOrderStates.find(o => o.ui.callout === 'live');
+        const paymentOrder = userOrderStates.find(o => o.ui.callout === 'payment' || o.ui.callout === 'ready_to_launch');
+        if (liveOrder && (lowerReply.includes('tayang') || lowerReply.includes('live') || lowerPrompt.includes('status'))) {
+            ctas.push({
+                id: 'track_ads',
+                label: '📊 Pantau Iklan Survei',
+                action: 'navigate',
+                target: '/dashboard'
+            });
+            ctas.push({
+                id: 'extend_ads',
+                label: '➕ Perpanjang Iklan',
+                action: 'chat_prompt',
+                target: 'Min, survei saya yang sedang live ini bisa diperpanjang 1 hari lagi?'
+            });
+        } else if (paymentOrder && (lowerReply.includes('jadwal') || lowerReply.includes('bayar') || lowerPrompt.includes('kapan'))) {
+            ctas.push({
+                id: 'calendar_pay',
+                label: '📅 Buka Kalender & Bayar',
+                action: 'navigate',
+                target: '/dashboard'
+            });
+        }
+    }
+
+    return { reply, intent, tag_label, needs_attention, ctas };
+}
+
+    // Auto-send message from query param or user input
     const sendMessageDirect = useCallback(async (messageText: string) => {
         if (!messageText.trim() || isLoading) return;
 
@@ -299,6 +468,7 @@ ${orderContext}
                 },
                 body: JSON.stringify({
                     "model": "google/gemini-2.5-flash-lite",
+                    "sessionId": sessionId,
                     "messages": [
                         { "role": "system", "content": systemPrompt },
                         ...newMessages.map(m => ({ role: m.role, content: m.content }))
@@ -312,19 +482,28 @@ ${orderContext}
                 console.error('[Mimin AI] OpenRouter error:', { status: response.status, error: data.error, data });
             }
 
-            const aiContent = data.choices?.[0]?.message?.content || "Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.";
+            const rawAiContent = data.choices?.[0]?.message?.content || "Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.";
+            const parsed = parseMiminResponse(rawAiContent, userMessage, orderStates);
 
-            setMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
+            setMessages(prev => [...prev, { 
+                role: 'assistant', 
+                content: parsed.reply,
+                ctas: parsed.ctas
+            }]);
 
             if (sessionId) {
-                saveChatMessage(sessionId, 'assistant', aiContent);
+                saveChatMessage(sessionId, 'assistant', parsed.reply, {
+                    tag: parsed.intent,
+                    tag_label: parsed.tag_label,
+                    needs_attention: parsed.needs_attention
+                });
             }
         } catch {
-            setMessages(prev => [...prev, { role: 'assistant', content: 'Maaf, terjadi kesalahan. Silakan coba lagi.' }]);
+            setMessages(prev => [...prev, { role: 'assistant', content: 'Maaf, terjadi kesalahan koneksi. Silakan coba lagi.' }]);
         } finally {
             setIsLoading(false);
         }
-    }, [messages, isLoading, sessionId, buildSystemPrompt]);
+    }, [messages, isLoading, sessionId, buildSystemPrompt, orderStates]);
 
     useEffect(() => {
         const messageParam = searchParams.get('message');
@@ -348,38 +527,22 @@ ${orderContext}
         await sendMessageDirect(userMessage);
     };
 
-    // Quick-reply chips (mobile): pertanyaan teratas disesuaikan state order
-    // user, sisanya dari knowledge base + eskalasi admin.
-    const quickReplies = useMemo(() => {
-        const chips: string[] = [];
-        const calloutSet = new Set(orderStates.map((o) => o.ui.callout));
-
-        if (calloutSet.has('payment') || calloutSet.has('extend_payment')) chips.push('Bagaimana cara membayar order saya?');
-        if (calloutSet.has('review_manual')) chips.push('Berapa lama proses review survei?');
-        if (calloutSet.has('ready_to_launch') || calloutSet.has('payment') || calloutSet.has('awaiting_invoice')) chips.push('Kapan survei saya tayang?');
-        if (calloutSet.has('live')) {
-            chips.push('Survei saya sedang tayang, berapa responden yang bisa didapat dalam sehari?');
-            chips.push('Mana link iklan survei saya?');
+    const handleCtaClick = (cta: ChatCta) => {
+        if (cta.action === 'navigate' && cta.target) {
+            navigate(cta.target);
+        } else if (cta.action === 'chat_prompt' && cta.target) {
+            sendMessageDirect(cta.target);
+        } else {
+            sendMessageDirect(cta.label);
         }
-        if (calloutSet.has('revision')) chips.push('Kenapa survei saya perlu revisi?');
-        if (calloutSet.has('expired')) chips.push('Pembayaran saya kedaluwarsa, apa yang harus saya lakukan?');
+    };
 
-        // Isi sisa slot dari FAQ knowledge base
-        const currentFaqs = faqs.length > 0 ? faqs : defaultFaqs;
-        for (const faq of currentFaqs) {
-            if (chips.length >= 5) break;
-            if (!chips.includes(faq.q)) chips.push(faq.q);
-        }
-
-        chips.push('Saya ingin menghubungi admin');
-        return chips;
-    }, [orderStates, faqs]);
 
     return (
         <div className="h-[calc(100dvh-3.5rem)] md:h-auto">
             <div className="max-w-4xl mx-auto h-full px-0 md:px-6 md:py-4">
                 <div className="h-full md:h-[calc(100vh-7.5rem)] md:grid md:grid-cols-2 md:gap-6 md:items-stretch">
-                    {/* FAQ — desktop saja; di mobile FAQ hadir sebagai quick-reply chips */}
+                    {/* FAQ — desktop saja */}
                     <div className="hidden md:block h-full min-h-0">
                         <Card className="h-full flex flex-col overflow-hidden border border-jfu-primary/[0.06] shadow-card bg-white transition-colors duration-300" style={{ borderRadius: '20px' }}>
                             <CardHeader className="pb-4">
@@ -388,7 +551,7 @@ ${orderContext}
                                         <HelpCircle className="w-5 h-5 text-jfu-primary" />
                                     </div>
                                     <div>
-                                        <CardTitle className="text-xl font-bold text-[#1a1a1a]">FAQ</CardTitle>
+                                        <CardTitle className="text-xl font-bold text-[#1a1a1a]">FAQ & Knowledge</CardTitle>
                                         <CardDescription className="text-[#666]">Pertanyaan umum seputar Jakpat for Univ.</CardDescription>
                                     </div>
                                 </div>
@@ -425,7 +588,7 @@ ${orderContext}
                                         <CardTitle className="text-lg md:text-xl font-bold text-[#1a1a1a]">Mimin AI</CardTitle>
                                         <CardDescription className="flex items-center gap-1.5 text-xs font-medium text-[#666] mt-0.5">
                                             <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                                            Sedang online - Siap membantu
+                                            Asisten Admin Cerdas - Siap Membantu
                                         </CardDescription>
                                     </div>
                                 </div>
@@ -436,7 +599,7 @@ ${orderContext}
                                 {messages.map((msg, idx) => (
                                     <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
                                         <div className={`
-                                            max-w-[85%] px-4 py-3 md:px-5 md:py-3.5 text-[15px] shadow-sm
+                                            max-w-[88%] px-4 py-3 md:px-5 md:py-3.5 text-[15px] shadow-sm
                                             ${msg.role === 'user'
                                                 ? 'bg-gradient-to-br from-jfu-primary to-jfu-light text-white rounded-2xl rounded-tr-sm'
                                                 : 'bg-white text-[#1a1a1a] border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm'
@@ -454,6 +617,27 @@ ${orderContext}
                                             >
                                                 {msg.content}
                                             </ReactMarkdown>
+
+                                            {/* Dynamic Action Buttons / CTAs in Assistant Message */}
+                                            {msg.ctas && msg.ctas.length > 0 && (
+                                                <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap gap-1.5">
+                                                    {msg.ctas.map((cta, ctaIdx) => (
+                                                        <button
+                                                            key={ctaIdx}
+                                                            type="button"
+                                                            onClick={() => handleCtaClick(cta)}
+                                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 ${
+                                                                cta.variant === 'warning'
+                                                                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                                                                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                                            }`}
+                                                        >
+                                                            <span>{cta.label}</span>
+                                                            <ArrowRight className="w-3 h-3" />
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -471,30 +655,11 @@ ${orderContext}
                                 )}
                             </CardContent>
 
-                            {/* Quick-reply chips (mobile) — FAQ versi tap-to-ask, pill DNA */}
-                            <div className="md:hidden border-t border-gray-100 bg-white">
-                                <div className="overflow-x-auto">
-                                    <div className="flex gap-2 w-max px-4 py-2.5">
-                                        {quickReplies.map((q) => (
-                                            <button
-                                                key={q}
-                                                type="button"
-                                                disabled={isLoading}
-                                                onClick={() => sendMessageDirect(q)}
-                                                className="whitespace-nowrap rounded-full border border-jfu-primary/20 bg-jfu-primary/[0.06] px-3 py-1.5 text-xs font-semibold text-jfu-primary active:bg-jfu-primary/[0.15] disabled:opacity-50 max-w-[260px] truncate"
-                                            >
-                                                {q}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
                             {/* Chat Input Area */}
                             <div className="p-3 md:p-4 bg-white border-t border-gray-100">
                                 <form onSubmit={handleSendMessage} className="flex gap-3 relative">
                                     <Input
-                                        placeholder="Ketik pertanyaanmu di sini..."
+                                        placeholder="Ketik pertanyaan atau minta bantuan Mimin..."
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
                                         disabled={isLoading}
@@ -504,13 +669,13 @@ ${orderContext}
                                         type="submit"
                                         size="icon"
                                         disabled={isLoading || !input.trim()}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 bg-gradient-to-br from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary text-white rounded-full shadow-sm transition-all disabled:opacity-50"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 bg-gradient-to-br from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary text-white rounded-full shadow-sm transition-all disabled:opacity-50 cursor-pointer"
                                     >
                                         <Send className="w-4 h-4 ml-0.5" />
                                     </Button>
                                 </form>
-                                <div className="hidden md:block text-[11px] font-medium text-center text-gray-400 mt-3 tracking-wide">
-                                    ⚡ Powered by Jakpat AI
+                                <div className="hidden md:block text-[11px] font-medium text-center text-gray-400 mt-2.5 tracking-wide">
+                                    ⚡ Powered by Jakpat Agentic AI
                                 </div>
                             </div>
                         </Card>
