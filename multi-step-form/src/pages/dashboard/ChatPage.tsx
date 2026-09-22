@@ -540,30 +540,34 @@ function parseMiminResponse(
 
     return (
         <div className="h-[calc(100dvh-3.5rem)] md:h-auto">
-            <div className="max-w-4xl mx-auto h-full px-0 md:px-6 md:py-4">
-                <div className="h-full md:h-[calc(100vh-7.5rem)] md:grid md:grid-cols-2 md:gap-6 md:items-stretch">
+            <div className="max-w-6xl xl:max-w-7xl mx-auto h-full px-0 md:px-6 md:py-4">
+                <div className="h-full md:h-[calc(100vh-7.5rem)] md:grid md:grid-cols-[380px_1fr] lg:grid-cols-[430px_1fr] xl:grid-cols-[460px_1fr] md:gap-6 md:items-stretch">
                     {/* FAQ — desktop saja */}
                     <div className="hidden md:block h-full min-h-0">
-                        <Card className="h-full flex flex-col overflow-hidden border border-jfu-primary/[0.06] shadow-card bg-white transition-colors duration-300" style={{ borderRadius: '20px' }}>
-                            <CardHeader className="pb-4">
+                        <Card className="h-full flex flex-col overflow-hidden border border-jfu-primary/[0.08] shadow-card bg-white transition-all duration-300" style={{ borderRadius: '24px' }}>
+                            <CardHeader className="pb-3.5 pt-5 px-5 border-b border-gray-100 bg-slate-50/40">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-jfu-primary/[0.08] rounded-xl flex items-center justify-center">
+                                    <div className="w-10 h-10 bg-jfu-primary/[0.08] text-jfu-primary rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
                                         <HelpCircle className="w-5 h-5 text-jfu-primary" />
                                     </div>
-                                    <div>
-                                        <CardTitle className="text-xl font-bold text-[#1a1a1a]">FAQ & Knowledge</CardTitle>
-                                        <CardDescription className="text-[#666]">Pertanyaan umum seputar Jakpat for Univ.</CardDescription>
+                                    <div className="min-w-0 flex-1">
+                                        <CardTitle className="text-lg font-bold text-slate-900 tracking-tight">FAQ & Knowledge</CardTitle>
+                                        <CardDescription className="text-xs text-slate-500 mt-0.5">Pertanyaan umum seputar Jakpat for Universities.</CardDescription>
                                     </div>
                                 </div>
                             </CardHeader>
-                            <CardContent className="overflow-y-auto pr-4 custom-scrollbar">
-                                <Accordion type="single" collapsible className="w-full">
+                            <CardContent className="flex-1 overflow-y-auto p-4 md:p-5 custom-scrollbar">
+                                <Accordion type="single" collapsible className="w-full space-y-2.5">
                                     {faqs.map((faq, i) => (
-                                        <AccordionItem key={i} value={`item-${i}`} className="border-b border-gray-100 px-2">
-                                            <AccordionTrigger className="text-left py-4 text-[15px] font-medium text-[#1a1a1a] hover:text-jfu-primary transition-colors">
+                                        <AccordionItem 
+                                            key={i} 
+                                            value={`item-${i}`} 
+                                            className="border border-slate-200/70 rounded-2xl px-4 py-0 bg-slate-50/40 hover:bg-slate-50/90 transition-all data-[state=open]:bg-white data-[state=open]:border-jfu-primary/30 data-[state=open]:shadow-2xs"
+                                        >
+                                            <AccordionTrigger className="text-left py-3.5 text-sm font-semibold text-slate-800 hover:text-jfu-primary hover:no-underline transition-colors leading-snug">
                                                 {faq.q}
                                             </AccordionTrigger>
-                                            <AccordionContent className="text-gray-600 text-sm pb-4 leading-relaxed">
+                                            <AccordionContent className="text-slate-600 text-xs sm:text-sm pb-4 leading-relaxed border-t border-slate-100 pt-2.5">
                                                 {faq.a}
                                             </AccordionContent>
                                         </AccordionItem>
@@ -575,7 +579,7 @@ function parseMiminResponse(
 
                     {/* Chat Mimin AI — tampilan utama tab Bantuan */}
                     <div className="h-full min-h-0">
-                        <Card className="border-0 md:border md:border-jfu-primary/[0.06] bg-white h-full flex flex-col rounded-none md:rounded-[20px] shadow-none md:shadow-card overflow-hidden">
+                        <Card className="border-0 md:border md:border-jfu-primary/[0.08] bg-white h-full flex flex-col rounded-none md:rounded-[24px] shadow-none md:shadow-card overflow-hidden">
                             <CardHeader className="relative bg-white border-b border-gray-100 py-3 md:pb-4">
                                 <div className="flex items-center gap-3 md:gap-4">
                                     <div className="relative">
