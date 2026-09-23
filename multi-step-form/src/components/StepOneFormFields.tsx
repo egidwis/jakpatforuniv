@@ -28,18 +28,12 @@ import {
   fieldRowListClass,
 } from './SurveyFieldRow';
 import { DurationPicker } from './DurationPicker';
-
-// Helper function to get recommended prize based on question count
-const getRecommendedPrize = (questionCount: number): number => {
-  if (questionCount <= 15) return 25000;
-  if (questionCount <= 30) return 30000;
-  if (questionCount <= 50) return 35000;
-  if (questionCount <= 70) return 50000;
-  return 80000;
-};
-
-// All possible recommended values
-const RECOMMENDED_VALUES = [25000, 30000, 35000, 50000, 80000];
+import { RewardRecommendationHint } from './RewardRecommendationHint';
+import {
+  getRecommendedPrize,
+  RECOMMENDED_PRIZE_VALUES as RECOMMENDED_VALUES,
+} from '../utils/prizeRecommendation';
+import { formatIDR } from '../utils/currency';
 
 interface StepOneFormFieldsProps {
   formData: SurveyFormData;
@@ -557,53 +551,6 @@ export function StepOneFormFields({
 
         <div className={fieldRowListClass}>
           <FieldRow
-            icon={Gift}
-            label={t('prizePerWinnerLabel')}
-            htmlFor="prizePerWinner"
-            required
-            compact
-            tooltip={prizeTooltip}
-            error={
-              attemptedSubmit && errors.prizePerWinner
-                ? errors.prizePerWinner
-                : formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
-                ? t('errorMinPrize')
-                : undefined
-            }
-            hint={
-              formData.prizePerWinner >= 25000 && formData.questionCount > 0 ? (
-                <span className="font-medium text-gray-500">
-                  {t('recommendation')}: Rp{' '}
-                  {getRecommendedPrize(formData.questionCount).toLocaleString('id-ID')}
-                  {t('perWinner')}
-                </span>
-              ) : undefined
-            }
-          >
-            <span className="mr-1.5 shrink-0 text-sm font-semibold text-slate-500">Rp</span>
-            <input
-              id="prizePerWinner"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className={fieldInputClass}
-              placeholder={t('prizePerWinnerPlaceholder')}
-              value={formData.prizePerWinner ? formData.prizePerWinner.toLocaleString('id-ID') : ''}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
-                const num = parseInt(val, 10) || 0;
-                updateFormData({ prizePerWinner: num });
-                if (attemptedSubmit && errors.prizePerWinner) {
-                  if (num >= 25000) {
-                    setErrors({ ...errors, prizePerWinner: undefined });
-                  }
-                }
-              }}
-            />
-            <span className="ml-1.5 shrink-0 text-sm font-medium text-slate-500">{t('perWinner')}</span>
-          </FieldRow>
-
-          <FieldRow
             icon={Trophy}
             label={t('winnerCountLabel')}
             htmlFor="winnerCount"
@@ -640,6 +587,80 @@ export function StepOneFormFields({
             />
             <span className="ml-1.5 shrink-0 text-sm font-medium text-slate-500">{t('respondentUnit')}</span>
           </FieldRow>
+
+          <FieldRow
+            icon={Gift}
+            label={t('prizePerWinnerLabel')}
+            htmlFor="prizePerWinner"
+            required
+            compact
+            tooltip={prizeTooltip}
+            error={
+              attemptedSubmit && errors.prizePerWinner
+                ? errors.prizePerWinner
+                : formData.prizePerWinner > 0 && formData.prizePerWinner < 25000
+                ? t('errorMinPrize')
+                : undefined
+            }
+            hint={
+              <RewardRecommendationHint
+                value={formData.prizePerWinner}
+                onChange={(val) => {
+                  updateFormData({ prizePerWinner: val });
+                  if (attemptedSubmit && errors.prizePerWinner && val >= 25000) {
+                    setErrors({ ...errors, prizePerWinner: undefined });
+                  }
+                }}
+                questionCount={formData.questionCount}
+              />
+            }
+          >
+            <span className="mr-1.5 shrink-0 text-sm font-semibold text-slate-500">Rp</span>
+            <input
+              id="prizePerWinner"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={fieldInputClass}
+              placeholder={t('prizePerWinnerPlaceholder')}
+              value={formData.prizePerWinner ? formData.prizePerWinner.toLocaleString('id-ID') : ''}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                const num = parseInt(val, 10) || 0;
+                updateFormData({ prizePerWinner: num });
+                if (attemptedSubmit && errors.prizePerWinner) {
+                  if (num >= 25000) {
+                    setErrors({ ...errors, prizePerWinner: undefined });
+                  }
+                }
+              }}
+            />
+            <span className="ml-1.5 shrink-0 text-sm font-medium text-slate-500">{t('perWinner')}</span>
+          </FieldRow>
+
+          {formData.prizePerWinner > 0 && formData.winnerCount > 0 && (
+            <div className="mt-1 px-4 py-3 rounded-xl bg-slate-50/80 border border-slate-200/80 shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-slate-800 font-semibold text-xs sm:text-sm">
+                    {t('totalRewardTitle')}
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-blue-50 text-jfu-primary border border-blue-200/80">
+                    {t('billedInInvoiceBadge')}
+                  </span>
+                </div>
+                <span className="font-bold text-slate-900 font-mono text-sm sm:text-base shrink-0">
+                  {formatIDR(formData.prizePerWinner * formData.winnerCount)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                {t('totalRewardDetailNote', {
+                  winners: formData.winnerCount,
+                  prize: formatIDR(formData.prizePerWinner),
+                })}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
