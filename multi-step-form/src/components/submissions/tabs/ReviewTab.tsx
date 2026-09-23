@@ -23,7 +23,7 @@ export function ReviewTab({
 }: {
   submission: SurveySubmission;
   onEditFormDetails: (submission: SurveySubmission) => void;
-  onAuditComplete?: (newResult: FormAuditResult) => void;
+  onAuditComplete?: (submissionId: string, newResult: FormAuditResult) => void;
 }) {
   const embedInfo = getSurveyEmbedInfo(submission.formUrl);
 
@@ -88,7 +88,10 @@ export function ReviewTab({
       {/* AI Pre-Screening Audit Card */}
       {submission.formUrl && (
         <DetailSheetSection className="pb-0">
+          {/* key WAJIB: tanpa remount, audit order A yang selesai sesudah admin
+              pindah ke B mendarat di kartu B (state lokal menang atas prop). */}
           <AuditScorecard
+            key={submission.id}
             submission={submission}
             onAuditComplete={onAuditComplete}
           />

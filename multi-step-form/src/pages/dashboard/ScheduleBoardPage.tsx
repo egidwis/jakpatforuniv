@@ -73,6 +73,7 @@ const serviceLabel = (s: string) => SERVICE_LABEL[s] ?? s;
 export function ScheduleBoardPage({
   onOpenSubmission,
   focusEntry,
+  onFocusConsumed,
 }: {
   onOpenSubmission: (params: { id: string; createdAt: string; distributionType?: string | null }) => void;
   /**
@@ -81,6 +82,9 @@ export function ScheduleBoardPage({
    * jadi ia perlu satu jalan ke tempat pekerjaan halaman sebenarnya dikerjakan.
    */
   focusEntry?: { bookingId: string } | null;
+  /** Focus sudah diterapkan — induk WAJIB mengosongkannya. Tanpa ini pencarian
+   *  basi ikut diterapkan ulang setiap papan dibuka lagi (focusDeepLink.ts). */
+  onFocusConsumed?: () => void;
 }) {
   const [entries, setEntries] = useState<AdScheduleEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -392,7 +396,8 @@ export function ScheduleBoardPage({
     setChips(new Set());
     setShowCancelled(true);
     didAutoJump.current = true;
-  }, [focusEntry]);
+    onFocusConsumed?.();
+  }, [focusEntry, onFocusConsumed]);
 
   const openEntry = (e: AdScheduleEntry) => setOpenEntryId(e.id);
 

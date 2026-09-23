@@ -16,6 +16,8 @@ const PAGE_STATUS_LABELS: Record<LifecycleInfo['pageStatus'], string> = {
   scheduled: 'Scheduled',
   live: 'Live',
   completed: 'Completed',
+  hidden: 'Hidden',
+  auto_closed: 'Auto-closed',
   kilat: 'KILAT (no page)',
 };
 

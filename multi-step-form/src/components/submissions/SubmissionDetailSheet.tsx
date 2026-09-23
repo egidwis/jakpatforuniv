@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   RotateCcw,
   ShieldAlert,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
@@ -40,8 +41,9 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import type { SurveySubmission, PaymentState, ExistingPage } from './types';
-import { deriveLifecycle, getSubmissionActionDot } from './lifecycle';
+import type { SurveySubmission, PaymentState, ExistingPage, FormAuditResult } from './types';
+import { deriveLifecycle, getSubmissionActionDot, isReviewDecisionLocked } from './lifecycle';
+import { resetPageWarningOf, RESET_PAGE_STATE_LABEL, RESET_PAGE_STATE_NOTE } from './resetPageWarning';
 import { ReviewStatusChip } from './ReviewStatusChip';
 import { ReviewTimeline, ReviewTimelineToggle } from './ReviewTimeline';
 import { InfoTab } from './tabs/InfoTab';
@@ -113,6 +115,13 @@ interface SubmissionDetailSheetProps {
   onStatusChange: (submissionId: string, newStatus: string, notes?: string) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onEditCriteria: (submission: SurveySubmission) => void;
+  /**
+   * Hasil pra-cek AI untuk order `submissionId` — BUKAN "order yang sedang
+   * dibuka". Audit bisa selesai sesudah admin pindah baris; id-nya ditangkap
+   * sebelum `await`, jadi hasilnya selalu mendarat di baris yang benar.
+   * Dulu prop `submission` dimutasi langsung di sini.
+   */
+  onAuditComplete?: (submissionId: string, result: FormAuditResult) => void;
   /** Pekerjaan halaman (buat/terbit/ganti banner) hidup di papan Jadwal, bukan
    *  di tab Page — lihat kepala `PageTab.tsx`. Ini satu-satunya jalan ke sana,
    *  dan menggantikan `onOpenPageBuilder` yang dulu dioper ke tab Page. */
@@ -148,6 +157,7 @@ export function SubmissionDetailSheet({
   onStatusChange,
   onEditFormDetails,
   onEditCriteria,
+  onAuditComplete,
   onOpenScheduleBoard,
   initialSubView = null,
   onInitialSubViewConsumed,
@@ -186,6 +196,7 @@ export function SubmissionDetailSheet({
   const [isRejectMode, setIsRejectMode] = useState(false);
   const [isSpamConfirmOpen, setIsSpamConfirmOpen] = useState(false);
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isSavingApprove, setIsSavingApprove] = useState(false);
 
   // Reset to the Info tab whenever a different submission is opened
@@ -232,6 +243,7 @@ export function SubmissionDetailSheet({
     setIsRejectMode(false);
     setIsSpamConfirmOpen(false);
     setIsCancelConfirmOpen(false);
+    setIsResetConfirmOpen(false);
     setIsSavingApprove(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submissionId]);
@@ -282,15 +294,18 @@ export function SubmissionDetailSheet({
    * (`slot_cancelled`, sql/62) di tab Jadwal & Bayar — sumbu tayang saja,
    * riwayat review-nya utuh.
    */
-  const reviewDecisionLocked = [
-    'reserved',
-    'reserved_expiring',
-    'awaiting_payment',
-    'paid',
-    'page_scheduled',
-    'live',
-    'completed',
-  ].includes(lifecycle.stage);
+  //
+  // Daftar stage-nya + invarian "menunggu review & belum lunas = tidak pernah
+  // terkunci" tinggal di `isReviewDecisionLocked` (lifecycle.ts).
+  const reviewDecisionLocked = isReviewDecisionLocked(lifecycle);
+
+  // Reset pada order yang punya halaman iklan → konfirmasi dulu, dengan fakta
+  // halamannya (resetPageWarning.ts). Tanpa halaman, Reset langsung jalan.
+  const resetPageWarning = resetPageWarningOf(existingPage);
+  const requestReset = () => {
+    if (resetPageWarning) setIsResetConfirmOpen(true);
+    else onStatusChange(submission.id, 'in_review');
+  };
 
   const isNeedReview = !reviewDecisionLocked
     && (!displayStatus || displayStatus === 'in_review' || displayStatus === 'pending');
@@ -424,9 +439,7 @@ export function SubmissionDetailSheet({
         <ReviewTab
           submission={submission}
           onEditFormDetails={onEditFormDetails}
-          onAuditComplete={(result) => {
-            if (submission) submission.ai_prescreening = result;
-          }}
+          onAuditComplete={onAuditComplete}
         />
       )}
       {activeTab === 'schedule-payment' && (
@@ -935,7 +948,7 @@ export function SubmissionDetailSheet({
             size="sm"
             variant="outline"
             className="h-8 px-2.5 text-xs font-semibold text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900"
-            onClick={() => onStatusChange(submission.id, 'in_review')}
+            onClick={requestReset}
           >
             <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset
           </Button>
@@ -963,7 +976,7 @@ export function SubmissionDetailSheet({
             size="sm"
             variant="outline"
             className="h-8 px-2.5 text-xs font-semibold text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900 shrink-0"
-            onClick={() => onStatusChange(submission.id, 'in_review')}
+            onClick={requestReset}
           >
             <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset ke Need Review
           </Button>
@@ -1060,10 +1073,54 @@ export function SubmissionDetailSheet({
     </Dialog>
   );
 
+  const resetDialog = resetPageWarning && (
+    <Dialog open={isResetConfirmOpen} onOpenChange={setIsResetConfirmOpen}>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Reset ke Need Review?</DialogTitle>
+          <DialogDescription asChild>
+            <div className="space-y-1.5 text-sm text-slate-500">
+              <p>
+                Order ini punya halaman iklan <strong className="text-slate-700">/{resetPageWarning.slug}</strong>
+                {' '}— <em>{RESET_PAGE_STATE_LABEL[resetPageWarning.state]}</em> — dengan{' '}
+                <strong className="text-slate-700">{resetPageWarning.respondents} responden</strong>.
+              </p>
+              <p>Reset mengembalikan order ke antrean review.</p>
+              {resetPageWarning.state === 'open' ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
+                  <AlertTriangle className="mr-1 inline h-3.5 w-3.5 -translate-y-px" />
+                  {RESET_PAGE_STATE_NOTE.open}
+                </p>
+              ) : (
+                <p>{RESET_PAGE_STATE_NOTE[resetPageWarning.state]}</p>
+              )}
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex gap-2 justify-end pt-2">
+          <Button variant="outline" size="sm" onClick={() => setIsResetConfirmOpen(false)}>
+            Batal
+          </Button>
+          <Button
+            size="sm"
+            className="bg-slate-700 hover:bg-slate-800 text-white font-semibold"
+            onClick={() => {
+              onStatusChange(submission.id, 'in_review');
+              setIsResetConfirmOpen(false);
+            }}
+          >
+            Tetap Reset
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   const reviewDialogs = (
     <>
       {cancelDialog}
       {spamDialog}
+      {resetDialog}
     </>
   );
 

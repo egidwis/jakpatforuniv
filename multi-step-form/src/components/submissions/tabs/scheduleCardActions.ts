@@ -411,6 +411,30 @@ export function lapseKindOf(entry: AdScheduleEntry, now: number = Date.now()): L
 }
 
 /**
+ * Chip lapse yang BOLEH tampil di kartu. Order yang masih menunggu review
+ * belum sampai ke urusan bayar, jadi tenggat bayar belum pernah berlaku
+ * baginya — «kedaluwarsa» di situ menyalahkan hal yang salah (order 08ef25ac
+ * sesudah Reset ke Need Review).
+ */
+export function visibleLapseOf(entry: AdScheduleEntry, state: CardState, now: number = Date.now()): LapseKind | null {
+  return state === 'awaiting_review' ? null : lapseKindOf(entry, now);
+}
+
+/**
+ * Jumlah kartu «belum dibayar» di header tab. `awaiting_review` tidak
+ * dihitung: belum ada yang bisa ditagih selama keputusan review belum ada.
+ */
+export function unpaidCardCount(
+  entries: readonly AdScheduleEntry[],
+  billings: ReadonlyMap<string, ScheduleBilling | undefined>,
+): number {
+  return entries.filter((e) => {
+    const s = cardStateOf(e, billings.get(e.id));
+    return s !== 'paid' && s !== 'cancelled' && s !== 'hold_lapsed' && s !== 'awaiting_review';
+  }).length;
+}
+
+/**
  * Uang SATU kartu — "ditagih" dan "lunas" yang dicetak bagian tagihannya.
  *
  * ⚠️ SATU DEFINISI, DUA PEMAKAI: bagian tagihan kartu dan header tab. Header dulu

@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsMobileCard } from './SubmissionsTableRow';
-import type { SurveySubmission, PaymentState, ReviewHistoryEntry, ExistingPage } from './submissions/types';
+import type { SurveySubmission, PaymentState, ReviewHistoryEntry, ExistingPage, FormAuditResult } from './submissions/types';
 import { deriveLifecycle, type ScheduleSignals } from './submissions/lifecycle';
 import { fetchAdSchedules } from '../utils/supabase';
 import { occupiesSlot } from '@/pages/dashboard/schedule/scheduleModel';
@@ -30,6 +30,7 @@ import { useRowSelection } from './data-list/useRowSelection';
 import { BulkInvoiceDialog, findBillableOrdersForAccount } from './schedule/BulkInvoiceDialog';
 import { distinctAccounts } from './schedule/bulkInvoiceCandidates';
 import { missedPaymentWindow } from '../utils/missedPaymentWindow';
+import { resolveFocusOpen } from './submissions/focusDeepLink';
 
 /**
  * Adapter tipis ke `missedPaymentWindow`. Baris tabel admin memakai `status`
@@ -85,12 +86,16 @@ interface InternalDashboardProps {
   hideAuth?: boolean;
   onLogout?: () => void;
   focusSubmission?: { id: string; createdAt: string; distributionType?: string | null } | null;
+  /** Deep-link sudah dibuka — induk WAJIB mengosongkan `focusSubmission`.
+   *  Lihat `focusDeepLink.ts`: tanpa ini drawer melompat ke order lama setiap
+   *  kali `submissions` berubah. */
+  onFocusConsumed?: () => void;
   /** Drawer → papan Jadwal. Tab Page monitoring saja sejak pekerjaan halaman
    *  pindah ke papan; ini jalannya ke sana. */
   onOpenScheduleBoard?: (bookingId: string) => void;
 }
 
-export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission, onOpenScheduleBoard }: InternalDashboardProps = {}) {
+export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission, onFocusConsumed, onOpenScheduleBoard }: InternalDashboardProps = {}) {
   const { user, loading: authLoading, signOut } = useAuth();
   const [submissions, setSubmissions] = useState<SurveySubmission[]>([]);
   const [filteredSubmissions, setFilteredSubmissions] = useState<SurveySubmission[]>([]);
@@ -332,7 +337,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
           // 1. Fetch Pages
           const { data: pages, error: pagesError } = await supabase
             .from('survey_pages')
-            .select('id, submission_id, slug, is_published, publish_start_date, publish_end_date, title, is_extra_ad, banner_url, views_count, requires_banner_update, redirect_url, page_respondents(count)')
+            .select('id, submission_id, slug, is_published, publish_start_date, publish_end_date, title, is_extra_ad, banner_url, views_count, requires_banner_update, redirect_url, is_hidden, auto_closed_at, page_respondents(count)')
             .in('submission_id', submissionIds);
 
           if (pagesError) console.error('Error fetching survey pages:', pagesError);
@@ -357,6 +362,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                 respondents_count: respondentsCount,
                 requires_banner_update: p.requires_banner_update,
                 redirect_url: p.redirect_url,
+                is_hidden: p.is_hidden,
+                auto_closed_at: p.auto_closed_at,
               };
             });
             setExistingPages(pageMap);
@@ -635,12 +642,15 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   // `submissions`. Kalau digabung dengan effect di atas dalam satu tick, guard
   // "tutup drawer kalau baris tidak ditemukan" (persis di atas effect ini) bisa
   // menutupnya lagi sebelum fetch sempat selesai.
+  //
+  // ⚠️ SEKALI SAJA. Begitu terbuka, focus dikonsumsi di induk — kalau tidak,
+  // setiap perubahan `submissions` (Reset, Approve, audit AI) membuka lagi
+  // order deep-link lama di atas order yang sedang dikerjakan admin.
   useEffect(() => {
-    if (!focusSubmission) return;
-    if (submissions.some((s) => s.id === focusSubmission.id)) {
-      setOpenSubmissionId(focusSubmission.id);
-    }
-  }, [focusSubmission, submissions]);
+    const d = resolveFocusOpen(focusSubmission, submissions.map((s) => s.id));
+    if (d.openId) setOpenSubmissionId(d.openId);
+    if (d.consume) onFocusConsumed?.();
+  }, [focusSubmission, submissions, onFocusConsumed]);
 
   // Map of submission ID -> CustomerTier for list rows
   const clientTierMap = useMemo(() => {
@@ -1176,6 +1186,10 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
     onStatusChange: handleStatusChange,
     onEditFormDetails: handleOpenEditFormDetailsModal,
     onEditCriteria: handleOpenEditCriteriaModal,
+    // Tulis ke baris MILIK id itu, lewat state — bukan mutasi prop. Aman dari
+    // lompatan drawer karena deep-link sudah dikonsumsi sekali (focusDeepLink.ts).
+    onAuditComplete: (id: string, result: FormAuditResult) =>
+      setSubmissions((prev) => prev.map((s) => (s.id === id ? { ...s, ai_prescreening: result } : s))),
     onOpenScheduleBoard,
     initialSubView: pendingSubView,
     onInitialSubViewConsumed: () => setPendingSubView(null),

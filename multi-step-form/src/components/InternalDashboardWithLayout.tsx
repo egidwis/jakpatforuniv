@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen, Target } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
@@ -201,6 +201,11 @@ export function InternalDashboardWithLayout() {
     setFocusSchedule({ bookingId });
     setCurrentPage('ad-schedules');
   };
+
+  // Deep-link dikonsumsi SEKALI oleh penerimanya (focusDeepLink.ts). Stabil
+  // lewat useCallback karena keduanya jadi dependensi efek di anak.
+  const consumeFocusSubmission = useCallback(() => setFocusSubmission(null), []);
+  const consumeFocusSchedule = useCallback(() => setFocusSchedule(null), []);
 
   const toggleCollapsed = () => {
     const next = !isCollapsed;
@@ -588,7 +593,7 @@ export function InternalDashboardWithLayout() {
         {/* Main Content */}
         <main className="flex-1 overflow-auto flex flex-col">
           {currentPage === 'submissions' ? (
-            <InternalDashboard onLogout={handleLogout} hideAuth={true} focusSubmission={focusSubmission} onOpenScheduleBoard={handleOpenScheduleBoard} />
+            <InternalDashboard onLogout={handleLogout} hideAuth={true} focusSubmission={focusSubmission} onFocusConsumed={consumeFocusSubmission} onOpenScheduleBoard={handleOpenScheduleBoard} />
           ) : currentPage === 'custom-missions' ? (
             <CustomMissionRequestsPage />
           ) : currentPage === 'transactions' ? (
@@ -613,7 +618,7 @@ export function InternalDashboardWithLayout() {
             // Tanpa pembungkus `container`: papan ini mengurus paddingnya sendiri,
             // sama seperti Submissions dan Transaksi. Pembungkus dengan padding
             // memotong tinggi yang dibutuhkan kartunya untuk menggulung di dalam.
-            <ScheduleBoardPage onOpenSubmission={handleOpenSubmissionFromSchedule} focusEntry={focusSchedule} />
+            <ScheduleBoardPage onOpenSubmission={handleOpenSubmissionFromSchedule} focusEntry={focusSchedule} onFocusConsumed={consumeFocusSchedule} />
           ) : null}
         </main>
       </div>

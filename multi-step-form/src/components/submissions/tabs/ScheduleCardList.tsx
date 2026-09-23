@@ -26,6 +26,7 @@ import { recordedVsBilled } from '@/utils/billingCompare';
 // lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
 import {
   cardStateOf, planCardActions, isLateForSchedule, isEntryHoldLapsed, lapseKindOf, cardMoneyOf, orderMoneyOf,
+  visibleLapseOf, unpaidCardCount,
   type LapseKind,
   type CardState, type CardAction, type CardActionPlan,
 } from './scheduleCardActions';
@@ -798,7 +799,7 @@ function ScheduleCard({
     "kedaluwarsa" yang dulu keliru dipakai jadwal batal.
   */
   const isCancelled = state === 'cancelled';
-  const lapse = lapseKindOf(entry);
+  const lapse = visibleLapseOf(entry, state);
   const isKilat = entry.distributionType === 'kilat';
   const isLate = isLateForSchedule(entry, state);
 
@@ -1103,10 +1104,7 @@ export function ScheduleCardList({
   const summary = useMemo(() => {
     // Uang tagihan = jumlah angka tiap kartu, BUKAN harga tercatat — `orderMoneyOf`.
     const money = orderMoneyOf(entries, billings);
-    const unpaid = entries.filter((e) => {
-      const s = cardStateOf(e, billings.get(e.id));
-      return s !== 'paid' && s !== 'cancelled' && s !== 'hold_lapsed';
-    }).length;
+    const unpaid = unpaidCardCount(entries, billings);
     return { ...money, unpaid };
   }, [entries, billings]);
 

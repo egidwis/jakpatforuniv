@@ -10,7 +10,16 @@ import { isSlotHoldReleased } from '../../utils/slotHold';
 // rule for user-booked unpaid reservations).
 // ─────────────────────────────────────────────────────────────
 
-export type PageStatus = 'none' | 'drafted' | 'scheduled' | 'live' | 'completed' | 'kilat';
+/**
+ * `hidden` & `auto_closed`: halamannya ADA tapi TIDAK sedang tayang, dan
+ * keduanya SENGAJA tidak menentukan stage order.
+ *
+ * ⛔ Tanpa keduanya order "asda" (08ef25ac) terkunci permanen: halaman terbit +
+ * disembunyikan + tanpa tanggal terbaca `live`, Review terkunci, dan tab Jadwal
+ * menyuruh kembali ke Review. Halaman yang jendelanya ditutup sql/99 akan
+ * terbaca `completed` dan mengunci order batal dengan cara yang sama.
+ */
+export type PageStatus = 'none' | 'drafted' | 'hidden' | 'auto_closed' | 'scheduled' | 'live' | 'completed' | 'kilat';
 
 /**
  * Ringkasan `ad_schedules` per order — satu-satunya jalan bagi daftar
@@ -158,6 +167,12 @@ export function deriveLifecycle(
     const startDate = existingPage.publish_start_date ? new Date(existingPage.publish_start_date).getTime() : null;
     const endDate = existingPage.publish_end_date ? new Date(existingPage.publish_end_date).getTime() : null;
     if (!existingPage.is_published) pageStatus = 'drafted';
+    // Feed aplikasi membuang halaman tersembunyi (surveys.js), jadi halaman
+    // ini tidak sedang tayang — apa pun jendelanya.
+    else if (existingPage.is_hidden) pageStatus = 'hidden';
+    // Ditutup sistem (sql/99): jendelanya "berakhir" karena uangnya dibalik,
+    // bukan karena kampanyenya selesai. Membacanya `completed` = mengunci order.
+    else if (existingPage.auto_closed_at) pageStatus = 'auto_closed';
     else if (endDate !== null && endDate < now) pageStatus = 'completed';
     else if (startDate !== null && startDate > now) pageStatus = 'scheduled';
     else pageStatus = 'live';
@@ -209,6 +224,36 @@ export function deriveLifecycle(
     slotExpiresAt,
     needsScheduleFollowUp: scheduleSignals?.hasQuotaHoldingUnpaidFuture ?? false,
   };
+}
+
+const REVIEW_LOCKING_STAGES: readonly LifecycleStage[] = [
+  'reserved',
+  'reserved_expiring',
+  'awaiting_payment',
+  'paid',
+  'page_scheduled',
+  'live',
+  'completed',
+];
+
+/**
+ * Keputusan review (Approve/Reject/Reset) terkunci karena sumbu uang/tayang
+ * sudah bergerak. Lihat catatan panjang di `SubmissionDetailSheet`.
+ *
+ * ⛔ INVARIAN: order yang MASIH menunggu review dan BELUM lunas tidak pernah
+ * terkunci. Tab Jadwal & Bayar menampilkan `awaiting_review` untuk order
+ * seperti ini dengan satu-satunya aksi "Buka tab Review" — kalau Review juga
+ * terkunci, admin berputar tanpa jalan keluar (order 08ef25ac, 23 Sep 2026).
+ * Pagar ini berdiri sendiri, terpisah dari perbaikan `pageStatus` di atas,
+ * supaya sebab ketiga yang belum kita kenal pun tidak bisa menjebak lagi.
+ *
+ * Aman terhadap jadwal: `airing_status_of()` memetakan `in_review` DAN
+ * `approved` bertanggal ke `requested` yang sama (diverifikasi ke produksi
+ * 23 Sep), jadi Approve dari sini tidak memundurkan apa pun.
+ */
+export function isReviewDecisionLocked(lifecycle: Pick<LifecycleInfo, 'stage' | 'displayStatus' | 'isPaid'>): boolean {
+  if (lifecycle.displayStatus === 'in_review' && !lifecycle.isPaid) return false;
+  return REVIEW_LOCKING_STAGES.includes(lifecycle.stage);
 }
 
 export interface ActionDot {

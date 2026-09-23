@@ -153,6 +153,12 @@ export interface ExistingPage {
   /** Terisi = SurveyPage langsung `window.location.href` ke sini; isi halaman
    *  tidak pernah dilihat responden. 5 baris di produksi. */
   redirect_url?: string | null;
+  /** Disembunyikan admin dari feed aplikasi (`functions/api/surveys.js`). Link
+   *  langsung tetap bisa dibuka — tapi halaman ini tidak sedang "tayang". */
+  is_hidden?: boolean;
+  /** Jendelanya ditutup SISTEM karena order keluar dari status tayang (sql/99).
+   *  Dibuka lagi otomatis oleh `ensure_survey_page` saat order lunas. */
+  auto_closed_at?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────

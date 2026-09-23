@@ -19,7 +19,9 @@ import { auditSubmissionForm } from '../../utils/auditService';
 
 interface AuditScorecardProps {
   submission: SurveySubmission;
-  onAuditComplete?: (newResult: FormAuditResult) => void;
+  /** Dipanggil dengan id order yang DIAUDIT — tetap benar walau kartu ini
+   *  sudah dilepas karena admin pindah baris. */
+  onAuditComplete?: (submissionId: string, newResult: FormAuditResult) => void;
 }
 
 export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardProps) {
@@ -31,7 +33,15 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
   );
 
   const autoTriggeredMap = useRef<Record<string, boolean>>({});
-  const audit = localAudit || submission.ai_prescreening;
+  const audit = localAudit ?? submission.ai_prescreening;
+
+  // Penjaga identitas: hasil `await` hanya boleh menyentuh state kartu ini bila
+  // kartunya masih hidup DAN masih milik order yang sama. Pemanggil memasang
+  // `key={submission.id}`, jadi pindah baris = kartu dilepas.
+  const aliveRef = useRef(true);
+  const currentIdRef = useRef(submission.id);
+  currentIdRef.current = submission.id;
+  useEffect(() => () => { aliveRef.current = false; }, []);
 
   // Sync state when active submission changes
   useEffect(() => {
@@ -44,24 +54,28 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
       return;
     }
 
+    // Ditangkap SEBELUM await — endpoint juga menulis ke id ini.
+    const requestedId = submission.id;
+    const isCurrent = () => aliveRef.current && currentIdRef.current === requestedId;
+
     setIsAuditing(true);
     try {
       if (!isAuto) toast.info('Memulai AI Pre-Screening kuesioner...');
       const result = await auditSubmissionForm(
-        submission.id,
+        requestedId,
         submission.formUrl,
         submission.questionCount || 0
       );
+      // Baris induk selalu diperbarui — hasilnya memang milik requestedId.
+      onAuditComplete?.(requestedId, result);
+      if (!isCurrent()) return;
       setLocalAudit(result);
-      if (onAuditComplete) {
-        onAuditComplete(result);
-      }
       if (!isAuto) toast.success('Audit selesai diproses!');
     } catch (err: any) {
       console.error('Audit failed:', err);
-      if (!isAuto) toast.error(`Audit gagal: ${err.message || 'Terjadi kesalahan sistem'}`);
+      if (!isAuto && isCurrent()) toast.error(`Audit gagal: ${err.message || 'Terjadi kesalahan sistem'}`);
     } finally {
-      setIsAuditing(false);
+      if (isCurrent()) setIsAuditing(false);
     }
   };
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   planCardActions, cardStateOf, isLateForSchedule, isEntryHoldLapsed, lapseKindOf, cardMoneyOf, orderMoneyOf,
+  visibleLapseOf, unpaidCardCount,
   type CardState,
 } from './scheduleCardActions';
 import type { AdScheduleEntry, ScheduleBilling, ScheduleInvoice } from '@/utils/supabase';
@@ -506,5 +507,35 @@ describe('orderMoneyOf — header tab = jumlah kartunya', () => {
     const dead = inv({ status: 'expired', isDead: true, isPending: false, isExpired: true });
     expect(orderMoneyOf([e], new Map([['s1', billing({ invoices: [dead] })]]), NOW))
       .toEqual({ billed: 0, paid: 0, hasInvoices: true });
+  });
+});
+
+describe('order yang masih menunggu review (08ef25ac sesudah Reset)', () => {
+  // Bentuk produksi: requested + in_review, tagihan mati, tanggal sudah lewat.
+  const asda = entry({
+    status: 'requested', reviewStatus: 'in_review', paymentStatus: 'expired',
+    startDate: '2026-09-22T08:00:00Z', endDate: '2026-09-27T08:00:00Z',
+  });
+  const NOW_ASDA = Date.parse('2026-09-23T06:30:00Z');
+
+  it('kartunya awaiting_review', () => {
+    expect(cardStateOf(asda, billing())).toBe('awaiting_review');
+  });
+
+  it('chip lapse TIDAK tampil — padahal lapseKindOf menyala', () => {
+    expect(lapseKindOf(asda, NOW_ASDA)).not.toBeNull();
+    expect(visibleLapseOf(asda, 'awaiting_review', NOW_ASDA)).toBeNull();
+  });
+
+  it('header tidak menghitungnya «belum dibayar»', () => {
+    expect(unpaidCardCount([asda], new Map([[asda.id, billing()]]))).toBe(0);
+  });
+
+  it('kartu yang benar-benar menunggu bayar tetap terhitung', () => {
+    const e = entry({
+      id: 's2', status: 'waiting_payment', reviewStatus: 'approved',
+      startDate: '2099-01-10T08:00:00Z', endDate: '2099-01-11T08:00:00Z',
+    });
+    expect(unpaidCardCount([asda, e], new Map([[asda.id, billing()], [e.id, billing()]]))).toBe(1);
   });
 });
