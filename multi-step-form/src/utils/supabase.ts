@@ -2944,10 +2944,16 @@ export const updateScheduleDates = async (
     const ownsAiringWindow = !otherError && !(otherSchedules && otherSchedules.length > 0);
 
     if (ownsAiringWindow) {
+      // ⚠️ `auto_closed_at IS NULL` WAJIB (sql/99). Halaman yang jendelanya
+      // ditutup sistem milik order yang belum lunas lagi — pesan ulang jadwal
+      // terjadi SEBELUM bayar, dan menyalin tanggal barunya ke sini membuka
+      // iklan yang belum dibayar. Jendelanya ditulis `ensure_survey_page`
+      // saat order lunas, dengan tanggal order yang sama.
       const { error: pageError } = await supabase
         .from('survey_pages')
         .update({ publish_start_date: normalizedStart, publish_end_date: normalizedEnd, updated_at: new Date().toISOString() })
-        .eq('submission_id', submissionId);
+        .eq('submission_id', submissionId)
+        .is('auto_closed_at', null);
 
       // pageError is non-fatal — page may not exist yet (slot_reserved stage)
       if (pageError) {
@@ -3751,15 +3757,11 @@ export const releaseExpiredSlot = async (submissionId: string) => {
         .in('id', pendingTxs.map(t => t.id));
     }
 
-    // 3. Try to clear publish_start_date, publish_end_date in survey_pages (non-fatal if missing)
-    await supabase
-      .from('survey_pages')
-      .update({
-        publish_start_date: null,
-        publish_end_date: null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('submission_id', submissionId);
+    // ⛔ survey_pages TIDAK disentuh (sql/99). Tanggal NULL = "tayang
+    // selamanya" di feed; jendela halaman order yang tidak lunas ditutup
+    // trigger `trg_form_submissions_close_page`. Peneliti yang memanggil ini
+    // memang tak punya hak UPDATE survey_pages — dulu tulisan ini gagal senyap
+    // untuk mereka dan hanya "berhasil" saat admin yang memanggil.
 
     return true;
   } catch (error) {
@@ -3946,16 +3948,13 @@ export const cancelSchedule = async (entry: {
       ));
     }
 
-    // Halaman iklan ikut kehilangan jendela terbitnya — hanya untuk ordinal 1,
-    // karena hanya jadwal pertama yang memilikinya secara langsung.
-    await supabase
-      .from('survey_pages')
-      .update({
-        publish_start_date: null,
-        publish_end_date: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('submission_id', entry.submissionId);
+    // ⛔ Halaman iklan TIDAK disentuh dari sini (sql/99).
+    //
+    // Dulu tanggal terbitnya dikosongkan — dan tanggal NULL dibaca feed
+    // sebagai "tayang selamanya". Order uji 08ef25ac bocor 11 responden
+    // 21 menit sesudah slotnya dibatalkan. Jendelanya kini ditutup trigger
+    // `trg_form_submissions_close_page` begitu status di atas mendarat, untuk
+    // SEMUA jalur pembatalan sekaligus. Jangan tulis ulang tanggal di sini.
   }
 
   // Transaksi pending MILIK JADWAL INI saja.

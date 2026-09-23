@@ -308,6 +308,10 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             } else {
                 payload.publish_start_date = toAiringInstant(formData.publish_start_date) || null;
                 payload.publish_end_date = toAiringInstant(formData.publish_end_date) || null;
+                // Admin menulis jendelanya sendiri → bukan lagi "ditutup sistem"
+                // (sql/99). Tanpa ini dashboard terus menganggap halamannya
+                // tertutup, dan pelunasan berikutnya menimpa tanggal pilihan admin.
+                payload.auto_closed_at = null;
             }
 
             // Only attach submission_id if it exists
